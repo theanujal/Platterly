@@ -2,8 +2,8 @@
 .claude/
 Project Docs/
 dev plans/
-README.md
-CLAUDE.md
+/README.md
+/CLAUDE.md
 
 # Dependencies
 node_modules/
@@ -33,3 +33,8 @@ npm-debug.log*
 # OS / editor junk
 .DS_Store
 Thumbs.db
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+/src/generated/prisma

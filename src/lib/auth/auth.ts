@@ -1,0 +1,50 @@
+import { betterAuth } from "better-auth";
+import { prismaAdapter } from "better-auth/adapters/prisma";
+import { organization } from "better-auth/plugins";
+import { nextCookies } from "better-auth/next-js";
+import { prisma } from "@/lib/db";
+import { ac, roles } from "./permissions";
+
+/**
+ * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
+ * as a Better Auth plugin/provider setup so a second strategy (WhatsApp-OTP,
+ * PRD §48) can be added later without touching callers of `auth`/`requireSession`.
+ *
+ * Better Auth's `organization` entity is this project's `Tenant` (PRD §55);
+ * its `member` is the User<->Tenant<->Role link. Branch/Kitchen/Store (§47)
+ * are separate Prisma models referencing `organizationId` directly — Better
+ * Auth doesn't model physical locations.
+ */
+export const auth = betterAuth({
+  database: prismaAdapter(prisma, { provider: "postgresql" }),
+  emailAndPassword: {
+    enabled: true,
+  },
+  user: {
+    additionalFields: {
+      /**
+       * A Super Admin (PRD §8) is a platform-level user with no organization
+       * membership at all — this flag is the only thing that distinguishes
+       * them, enforced by an app-level check (Chunk 3), never by the
+       * organization access-control engine above.
+       */
+      isSuperAdmin: {
+        type: "boolean",
+        required: false,
+        defaultValue: false,
+        input: false,
+      },
+    },
+  },
+  plugins: [
+    organization({
+      ac,
+      roles,
+      creatorRole: "owner",
+    }),
+    // Must stay last — sets/reads cookies via Next.js's own cookies() API.
+    nextCookies(),
+  ],
+});
+
+export type Session = typeof auth.$Infer.Session;
