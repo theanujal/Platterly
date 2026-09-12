@@ -38,3 +38,6 @@ Thumbs.db
 *.tsbuildinfo
 
 /src/generated/prisma
+
+# User-uploaded content (Chunk 2 local storage driver) — not source
+/public/uploads/

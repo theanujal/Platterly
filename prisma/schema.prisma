@@ -27,6 +27,9 @@ model User {
 
   isSuperAdmin Boolean @default(false)
 
+  notificationsReceived Notification[]
+  auditLogsActedOn      AuditLog[]
+
   @@unique([email])
   @@map("user")
 }
@@ -92,6 +95,12 @@ model Organization {
   branches    Branch[]
   kitchens    Kitchen[]
   stores      Store[]
+
+  notifications      Notification[]
+  whatsAppMessages   WhatsAppMessage[]
+  auditLogs          AuditLog[]
+  secureAccessTokens SecureAccessToken[]
+  settings           TenantSetting[]
 
   @@unique([slug])
   @@map("organization")
@@ -181,4 +190,125 @@ model Store {
   @@index([organizationId])
   @@index([branchId])
   @@map("store")
+}
+
+// --- Chunk 2: Cross-Cutting Platform Service Interfaces ---
+// Interfaces many later, unrelated chunks call — "interface now, integration
+// later" (same pattern as auth's pluggable strategy from Chunk 1). Real
+// WhatsApp/ZeptoMail/Push/SMS providers land in Chunk 16; these models exist
+// so every module from Chunk 9 onward has something to call today.
+
+enum NotificationChannel {
+  WHATSAPP
+  EMAIL
+  IN_APP
+  PUSH
+  SMS
+}
+
+model Notification {
+  id              String              @id @default(cuid())
+  organizationId  String
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  channel         NotificationChannel
+  event           String
+  // Recipients are frequently customers (no `User` row exists for them until
+  // Chunk 9's Customer model, and even then Customer isn't a User) — kept as
+  // plain fields rather than a hard FK so this interface doesn't have to
+  // change shape once Customer exists.
+  recipientEmail  String?
+  recipientPhone  String?
+  recipientUserId String?
+  recipientUser   User?               @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
+  payload         Json
+  createdAt       DateTime            @default(now())
+
+  logs             NotificationLog[]
+  whatsAppMessages WhatsAppMessage[]
+
+  @@index([organizationId])
+  @@map("notification")
+}
+
+model NotificationLog {
+  id             String       @id @default(cuid())
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  status         String
+  detail         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([notificationId])
+  @@map("notification_log")
+}
+
+model WhatsAppMessage {
+  id                String        @id @default(cuid())
+  organizationId    String
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  notificationId    String?
+  notification      Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  toPhone           String
+  body              String
+  providerMessageId String?
+  status            String        @default("queued")
+  createdAt         DateTime      @default(now())
+
+  @@index([organizationId])
+  @@map("whatsapp_message")
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  // Audit trail must survive the actor being removed later — SetNull, not
+  // Cascade, and the field stays optional.
+  actorUserId    String?
+  actorUser      User?        @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action         String
+  recordType     String
+  recordId       String
+  before         Json?
+  after          Json?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([recordType, recordId])
+  @@map("audit_log")
+}
+
+enum SecureAccessResourceType {
+  QUOTATION
+  MENU_SELECTION
+  INVOICE
+  PAYMENT_LINK
+}
+
+model SecureAccessToken {
+  id             String                   @id @default(cuid())
+  organizationId String
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  resourceType   SecureAccessResourceType
+  resourceId     String
+  token          String                   @unique
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                 @default(now())
+
+  @@index([organizationId])
+  @@index([resourceType, resourceId])
+  @@map("secure_access_token")
+}
+
+model TenantSetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  key            String
+  value          Json
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@map("tenant_setting")
 }
