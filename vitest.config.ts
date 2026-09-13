@@ -6,6 +6,11 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
     include: ["src/**/*.test.ts"],
+    // All test files share one real Postgres DB (no per-test isolated DB).
+    // Chunk 3 Group 3.4 added platform-wide aggregate-count queries
+    // (getPlatformCounts) — those assertions are only deterministic if no
+    // other file is concurrently creating/deleting the same tables.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

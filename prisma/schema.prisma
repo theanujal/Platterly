@@ -102,8 +102,38 @@ model Organization {
   secureAccessTokens SecureAccessToken[]
   settings           TenantSetting[]
 
+  // --- Chunk 3 Group 3.2: Super Admin tenant management (PRD §8) ---
+  status          TenantStatus @default(ACTIVE)
+  ownerName       String?
+  contactPhone    String?
+  contactEmail    String?
+  gstNumber       String?
+  addressLine1    String?
+  addressLine2    String?
+  city            String?
+  state           String?
+  postalCode      String?
+  country         String?
+  // Chunk 8's self-service limit is 2 free changes to `slug`; a Super Admin
+  // can force further changes once this is exhausted (Group 3.2). The slug
+  // column doubles as both the Better-Auth org slug and the public
+  // storefront slug — there is only one.
+  slugChangeCount Int          @default(0)
+
+  subscriptions Subscription[]
+
   @@unique([slug])
   @@map("organization")
+}
+
+// Chunk 3 Group 3.2 — Suspend/Activate/Deactivate are three distinct admin
+// actions (PRD §8.2), not two independent booleans. No hard-delete path: an
+// Organization's FKs cascade into its own AuditLog, so a literal delete
+// would destroy the record of the very action deleting it.
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
 }
 
 model Member {
@@ -311,4 +341,75 @@ model TenantSetting {
 
   @@unique([organizationId, key])
   @@map("tenant_setting")
+}
+
+// --- Chunk 3 Group 3.3: Subscription Plans (PRD §9, §58) ---
+// Definitions only — no live Razorpay billing yet (Chunk 20 reuses Chunk
+// 14's integration). `SubscriptionPlan` is a platform-wide catalog (like
+// `User`), not tenant-owned data, so it's deliberately exempt from the
+// "every app-level model carries organizationId" convention used elsewhere.
+
+model SubscriptionPlan {
+  id                String   @id @default(cuid())
+  // Stable machine key (e.g. "trial") that Chunk 4's onboarding wizard looks
+  // up directly, independent of the human-editable `name`.
+  code              String   @unique
+  name              String
+  description       String?
+  isTrial           Boolean  @default(false)
+  // Only meaningful when isTrial — the seeded Trial plan uses 7.
+  trialDurationDays Int?
+  priceMonthly      Decimal? @db.Decimal(10, 2)
+  priceAnnual       Decimal? @db.Decimal(10, 2)
+  currency          String   @default("INR")
+
+  // PRD §9 limits list. Null means unlimited.
+  maxUsers            Int?
+  maxEvents           Int?
+  maxOrders           Int?
+  maxKitchens         Int?
+  maxStores           Int?
+  maxCustomers        Int?
+  maxMenuLinks        Int?
+  maxStorageMb        Int?
+  maxReports          Int?
+  maxWhatsappMessages Int?
+
+  // Retire a plan without breaking Subscription history's FK — never
+  // hard-delete (Restrict below would block it anyway once assigned).
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("subscription_plan")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscriptionPlanId String
+  subscriptionPlan   SubscriptionPlan   @relation(fields: [subscriptionPlanId], references: [id], onDelete: Restrict)
+  status             SubscriptionStatus
+  startDate          DateTime           @default(now())
+  trialEndsAt        DateTime?
+  // Set when superseded/cancelled; null while this is the tenant's current
+  // subscription. History is kept, never deleted (immutable per the updated
+  // product doc's accounting/audit note, §19).
+  endDate            DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("subscription")
 }
