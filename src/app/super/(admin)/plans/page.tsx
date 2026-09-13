@@ -18,7 +18,7 @@ export default async function PlansPage() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Subscription Plans</h1>
-        <Button render={<Link href="/super/plans/new">New Plan</Link>} />
+        <Button render={<Link href="/super/plans/new">New Plan</Link>} nativeButton={false} />
       </div>
 
       <Table>

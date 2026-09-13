@@ -29,7 +29,7 @@ export default async function TenantsPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Caterers</h1>
-        <Button render={<Link href="/super/tenants/new">New Caterer</Link>} />
+        <Button render={<Link href="/super/tenants/new">New Caterer</Link>} nativeButton={false} />
       </div>
 
       <div className="flex gap-2">

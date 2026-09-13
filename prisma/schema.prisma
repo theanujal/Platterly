@@ -120,6 +120,16 @@ model Organization {
   // storefront slug — there is only one.
   slugChangeCount Int          @default(0)
 
+  // --- Chunk 4 Group 4.2: Self-serve onboarding business profile ---
+  // Extends the same Organization row Chunk 3 already put address/GST/
+  // contact fields on, rather than a separate BusinessProfile table —
+  // avoids two places storing overlapping tenant profile data.
+  businessDescription String?
+  websiteUrl          String?
+  instagramUrl        String?
+  facebookUrl         String?
+  gstShowOnInvoices   Boolean? @default(false)
+
   subscriptions Subscription[]
 
   @@unique([slug])

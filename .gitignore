@@ -20,6 +20,7 @@ graphify-out/
 playwright-report/
 test-results/
 blob-report/
+e2e/.artifacts/
 
 # Env files
 .env

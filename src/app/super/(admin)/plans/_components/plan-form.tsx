@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PlanInput } from "@/modules/subscriptions/plan";
 
 export interface PlanFormValues {
@@ -127,87 +128,119 @@ export function PlanForm({ includeCode = false, initialValues, onSubmit, onSucce
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {includeCode && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="code">Code</Label>
-          <Input
-            id="code"
-            required
-            value={values.code}
-            onChange={(e) => setField("code", e.target.value)}
-          />
-        </div>
-      )}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Name</Label>
-        <Input id="name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="description">Description</Label>
-        <Input id="description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
-      </div>
-      <div className="flex items-center gap-2">
-        <input
-          id="isTrial"
-          type="checkbox"
-          className="size-4"
-          checked={values.isTrial}
-          onChange={(e) => setField("isTrial", e.target.checked)}
-        />
-        <Label htmlFor="isTrial">Trial plan</Label>
-      </div>
-      {values.isTrial && (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="trialDurationDays">Trial duration (days)</Label>
-          <Input
-            id="trialDurationDays"
-            type="number"
-            value={values.trialDurationDays}
-            onChange={(e) => setField("trialDurationDays", e.target.value)}
-          />
-        </div>
-      )}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="priceMonthly">Price / month</Label>
-          <Input
-            id="priceMonthly"
-            type="number"
-            value={values.priceMonthly}
-            onChange={(e) => setField("priceMonthly", e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="priceAnnual">Price / year</Label>
-          <Input
-            id="priceAnnual"
-            type="number"
-            value={values.priceAnnual}
-            onChange={(e) => setField("priceAnnual", e.target.value)}
-          />
-        </div>
-      </div>
-      <fieldset className="grid grid-cols-2 gap-4">
-        <legend className="mb-1 text-sm font-medium">Limits (blank = unlimited)</legend>
-        {LIMIT_FIELDS.map((field) => (
-          <div key={field.key} className="flex flex-col gap-1.5">
-            <Label htmlFor={field.key}>{field.label}</Label>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Basic information</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {includeCode && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="code">Code</Label>
+              <Input
+                id="code"
+                required
+                value={values.code}
+                onChange={(e) => setField("code", e.target.value)}
+              />
+            </div>
+          )}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="description">Description</Label>
             <Input
-              id={field.key}
-              type="number"
-              value={values[field.key] as string}
-              onChange={(e) => setField(field.key, e.target.value)}
+              id="description"
+              value={values.description}
+              onChange={(e) => setField("description", e.target.value)}
             />
           </div>
-        ))}
-      </fieldset>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pricing &amp; trial</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <label
+            htmlFor="isTrial"
+            className="flex w-fit cursor-pointer items-center gap-2 rounded-md py-1.5 -my-1.5"
+          >
+            <input
+              id="isTrial"
+              type="checkbox"
+              className="size-4"
+              checked={values.isTrial}
+              onChange={(e) => setField("isTrial", e.target.checked)}
+            />
+            <span className="text-sm font-medium">Trial plan</span>
+          </label>
+          {values.isTrial && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="trialDurationDays">Trial duration (days)</Label>
+              <Input
+                id="trialDurationDays"
+                type="number"
+                className="max-w-40"
+                value={values.trialDurationDays}
+                onChange={(e) => setField("trialDurationDays", e.target.value)}
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="priceMonthly">Price / month</Label>
+              <Input
+                id="priceMonthly"
+                type="number"
+                value={values.priceMonthly}
+                onChange={(e) => setField("priceMonthly", e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="priceAnnual">Price / year</Label>
+              <Input
+                id="priceAnnual"
+                type="number"
+                value={values.priceAnnual}
+                onChange={(e) => setField("priceAnnual", e.target.value)}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Usage limits</CardTitle>
+          <CardDescription>Leave a field blank for unlimited.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            {LIMIT_FIELDS.map((field) => (
+              <div key={field.key} className="flex flex-col gap-1.5">
+                <Label htmlFor={field.key}>{field.label}</Label>
+                <Input
+                  id={field.key}
+                  type="number"
+                  value={values[field.key] as string}
+                  onChange={(e) => setField(field.key, e.target.value)}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="self-start">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

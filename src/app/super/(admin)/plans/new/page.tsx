@@ -6,8 +6,11 @@ export default async function NewPlanPage() {
   await requireSuperAdminOrRedirect();
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-4">
-      <h1 className="text-lg font-semibold">New Plan</h1>
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <div>
+        <h1 className="text-lg font-semibold">New Plan</h1>
+        <p className="text-sm text-neutral-500">Define a subscription plan tenants can be assigned to.</p>
+      </div>
       <NewPlanClient />
     </div>
   );

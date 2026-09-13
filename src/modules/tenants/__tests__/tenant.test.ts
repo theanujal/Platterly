@@ -79,6 +79,33 @@ describe("Tenant CRUD (Chunk 3 Group 3.2)", () => {
     expect(updated.slug).toBe(org.slug);
   });
 
+  it("updateTenant round-trips the Chunk 4 onboarding business-profile fields", async () => {
+    const actor = await makeActor();
+    const org = await createTenant({ name: "Profile Co", slug: `prof-${crypto.randomUUID().slice(0, 8)}` }, actor.id);
+    cleanupOrgIds.push(org.id);
+
+    const updated = await updateTenant(
+      org.id,
+      {
+        name: org.name,
+        businessDescription: "The best catering in town.",
+        websiteUrl: "https://example.test",
+        instagramUrl: "https://instagram.test/example",
+        facebookUrl: "https://facebook.test/example",
+        gstShowOnInvoices: true,
+        logo: "/uploads/organizations/x/logo.png",
+      },
+      actor.id,
+    );
+
+    expect(updated.businessDescription).toBe("The best catering in town.");
+    expect(updated.websiteUrl).toBe("https://example.test");
+    expect(updated.instagramUrl).toBe("https://instagram.test/example");
+    expect(updated.facebookUrl).toBe("https://facebook.test/example");
+    expect(updated.gstShowOnInvoices).toBe(true);
+    expect(updated.logo).toBe("/uploads/organizations/x/logo.png");
+  });
+
   it("suspendTenant sets status=SUSPENDED and writes an AuditLog row scoped to the tenant's own organizationId", async () => {
     const actor = await makeActor();
     const org = await createTenant({ name: "Suspend Co", slug: `sus-${crypto.randomUUID().slice(0, 8)}` }, actor.id);

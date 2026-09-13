@@ -17,6 +17,14 @@ export interface TenantProfileInput {
   state?: string;
   postalCode?: string;
   country?: string;
+  // Chunk 4 Group 4.2 — self-serve onboarding's business-profile fields,
+  // extending the same Organization row rather than a separate table.
+  logo?: string;
+  businessDescription?: string;
+  websiteUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  gstShowOnInvoices?: boolean;
 }
 
 export type TenantProfileUpdateInput = Omit<TenantProfileInput, "slug">;
@@ -56,6 +64,12 @@ export async function createTenant(input: TenantProfileInput, actorUserId: strin
       state: input.state,
       postalCode: input.postalCode,
       country: input.country,
+      logo: input.logo,
+      businessDescription: input.businessDescription,
+      websiteUrl: input.websiteUrl,
+      instagramUrl: input.instagramUrl,
+      facebookUrl: input.facebookUrl,
+      gstShowOnInvoices: input.gstShowOnInvoices,
     },
   });
 
@@ -89,6 +103,12 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
       state: input.state,
       postalCode: input.postalCode,
       country: input.country,
+      logo: input.logo,
+      businessDescription: input.businessDescription,
+      websiteUrl: input.websiteUrl,
+      instagramUrl: input.instagramUrl,
+      facebookUrl: input.facebookUrl,
+      gstShowOnInvoices: input.gstShowOnInvoices,
     },
   });
 

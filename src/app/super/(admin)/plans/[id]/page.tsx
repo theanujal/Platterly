@@ -13,7 +13,7 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-4">
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
       <h1 className="text-lg font-semibold">{plan.name}</h1>
       <EditPlanClient
         planId={plan.id}
