@@ -4,6 +4,12 @@ import { prisma } from "@/lib/db";
 import { SignOutButton } from "../kitchenlogin/_components/sign-out-button";
 import { OnboardingNudgeBanner } from "./_components/onboarding-nudge-banner";
 import { CustomLinkDialog } from "./_components/custom-link-dialog";
+import { OrdersOverviewCard } from "./_components/orders-overview-card";
+import { UpcomingOrdersCard } from "./_components/upcoming-orders-card";
+import { PaymentsOverviewCard } from "./_components/payments-overview-card";
+import { InventoryOverviewCard } from "./_components/inventory-overview-card";
+import { OrdersCalendarWidget } from "./_components/orders-calendar-widget";
+import { PublicMenuShortcutCard } from "./_components/public-menu-shortcut-card";
 
 export const metadata: Metadata = {
   title: "Dashboard — Platterly",
@@ -27,6 +33,14 @@ export default async function DashboardPage() {
         <SignOutButton />
       </div>
       {!organization.onboardingCompletedAt && <OnboardingNudgeBanner />}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <OrdersOverviewCard />
+        <UpcomingOrdersCard />
+        <PaymentsOverviewCard />
+        <InventoryOverviewCard />
+        <OrdersCalendarWidget />
+        <PublicMenuShortcutCard slug={organization.slug} />
+      </div>
       <CustomLinkDialog currentSlug={organization.slug} defaultOpen={organization.slugChangeCount === 0} />
     </main>
   );

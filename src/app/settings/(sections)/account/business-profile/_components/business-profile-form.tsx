@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { updateSettingsAction } from "../actions";
+import { updateBusinessProfileAction } from "../actions";
 
-export interface SettingsFormValues {
+export interface BusinessProfileFormValues {
   businessName: string;
   businessDescription: string;
   addressLine1: string;
@@ -26,7 +26,7 @@ export interface SettingsFormValues {
 
 // Chunk 4/5 — the same field set the onboarding wizard collects, reachable
 // again here for a caterer who skipped it or wants to make changes later.
-export function SettingsForm({ initialValues }: { initialValues: SettingsFormValues }) {
+export function BusinessProfileForm({ initialValues }: { initialValues: BusinessProfileFormValues }) {
   const router = useRouter();
   const [values, setValues] = useState(initialValues);
   const [logo, setLogo] = useState<File | null>(null);
@@ -34,7 +34,7 @@ export function SettingsForm({ initialValues }: { initialValues: SettingsFormVal
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
-  function setField<K extends keyof SettingsFormValues>(key: K, value: SettingsFormValues[K]) {
+  function setField<K extends keyof BusinessProfileFormValues>(key: K, value: BusinessProfileFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -62,7 +62,7 @@ export function SettingsForm({ initialValues }: { initialValues: SettingsFormVal
       formData.set("logo", logo);
     }
 
-    const result = await updateSettingsAction(formData);
+    const result = await updateBusinessProfileAction(formData);
     setPending(false);
     if (!result.ok) {
       setError(result.error);

@@ -5,6 +5,8 @@ import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
+import { notify } from "@/lib/notifications/notify";
+import { canonicalUrl } from "@/lib/seo/canonical";
 
 /**
  * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
@@ -59,6 +61,26 @@ export const auth = betterAuth({
       ac,
       roles,
       creatorRole: "owner",
+      // Chunk 5 Group 5.2 — spec asks for a 7-day expiry (default is 48h).
+      invitationExpiresIn: 60 * 60 * 24 * 7,
+      // Log-only today via notify() (Chunk 2's "interface now, integration
+      // later" pattern) — real delivery is Chunk 16's job. better-auth
+      // doesn't generate an accept URL itself; canonicalUrl() builds ours.
+      sendInvitationEmail: async (data) => {
+        await notify({
+          organizationId: data.organization.id,
+          channel: "EMAIL",
+          event: "team.invitation_sent",
+          recipient: { email: data.email },
+          payload: {
+            invitationId: data.id,
+            role: data.role,
+            organizationName: data.organization.name,
+            inviterName: data.inviter.user.name,
+            acceptUrl: canonicalUrl(`/invitations/${data.id}/accept`),
+          },
+        });
+      },
     }),
     // Must stay last — sets/reads cookies via Next.js's own cookies() API.
     nextCookies(),

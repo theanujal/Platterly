@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -68,7 +69,13 @@ export function CustomLinkDialog({ currentSlug, defaultOpen }: CustomLinkDialogP
             {error}
           </p>
         )}
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
+          <Link
+            href="/settings/integration/public-menu-link"
+            className="self-center text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            Manage your link in Settings
+          </Link>
           <Button disabled={pending || slug.length === 0} onClick={handleSave}>
             {pending ? "Saving…" : "Save my link"}
           </Button>

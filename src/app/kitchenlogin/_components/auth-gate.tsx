@@ -4,9 +4,19 @@ import { useState } from "react";
 import { SignInForm } from "./sign-in-form";
 import { SignUpForm } from "./sign-up-form";
 
+interface AuthGateProps {
+  initialMode?: "signin" | "signup";
+  /** Threaded through to both forms — see their own prop comments. Used by
+   * the invitation accept flow to bring an invited person back there. */
+  callbackURL?: string;
+  /** Threaded through to SignUpForm only — pre-fills and locks the email
+   * field so an invited teammate signs up under the exact invited address. */
+  lockedEmail?: string;
+}
+
 // Chunk 4 Group 4.1 — shown when no session exists yet.
-export function AuthGate() {
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+export function AuthGate({ initialMode = "signin", callbackURL, lockedEmail }: AuthGateProps = {}) {
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
 
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-6">
@@ -16,7 +26,11 @@ export function AuthGate() {
           {mode === "signin" ? "Sign in to manage your catering business" : "Start your free 7-day trial"}
         </p>
       </div>
-      {mode === "signin" ? <SignInForm /> : <SignUpForm />}
+      {mode === "signin" ? (
+        <SignInForm callbackURL={callbackURL} />
+      ) : (
+        <SignUpForm callbackURL={callbackURL} lockedEmail={lockedEmail} />
+      )}
       <p className="text-sm text-muted-foreground">
         {mode === "signin" ? "New to Platterly? " : "Already have an account? "}
         <button

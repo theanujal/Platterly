@@ -1,10 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, getTrialSubscriptionStatus, closeDbPool } from "./db";
+import { cleanupOnboardingTestUser, getTrialSubscriptionStatus } from "./db";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
  * real dev Postgres DB (same convention as the Vitest suite, no mocking);
  * each test cleans up the account/org it creates in `afterEach`.
+ *
+ * Chunk 5 — deliberately does NOT call `closeDbPool()`: `db.ts`'s pool is a
+ * shared module singleton across every spec file in this Playwright worker
+ * process (`workers: 1`), and closing it here (this file ran first) left it
+ * dead for every spec file that ran afterward, breaking their own db calls.
+ * A short-lived test-runner process doesn't need a graceful pool shutdown —
+ * the OS reclaims the connections when the process exits.
  */
 
 const cleanupEmails: string[] = [];
@@ -13,10 +20,6 @@ test.afterEach(async () => {
   const email = cleanupEmails.pop();
   if (!email) return;
   await cleanupOnboardingTestUser(email);
-});
-
-test.afterAll(async () => {
-  await closeDbPool();
 });
 
 test("sign up, complete the onboarding wizard, sign out, and sign back in", async ({ page }) => {

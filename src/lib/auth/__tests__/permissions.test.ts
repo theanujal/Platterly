@@ -28,3 +28,63 @@ describe("Access control (PRD §15 module/action RBAC)", () => {
     expect(roles.manager.authorize({ orders: ["delete"] }).success).toBe(false);
   });
 });
+
+describe("Chunk 5 Group 5.2 — 'Team Admin' role and the Danger Zone purge gate", () => {
+  it("only owner can purge tenant data (tenant:delete) — admin, despite being owner-level everywhere else, cannot", () => {
+    expect(roles.owner.authorize({ tenant: ["delete"] }).success).toBe(true);
+    expect(roles.admin.authorize({ tenant: ["delete"] }).success).toBe(false);
+    expect(roles.manager.authorize({ tenant: ["delete"] }).success).toBe(false);
+    expect(roles.staff.authorize({ tenant: ["delete"] }).success).toBe(false);
+  });
+
+  it("admin is owner-level on every business module except tenant:delete", () => {
+    const ownerLevelChecks: { resource: string; actions: string[] }[] = [
+      { resource: "users", actions: ["create", "edit", "delete"] },
+      { resource: "customers", actions: ["create", "edit", "delete"] },
+      { resource: "events", actions: ["create", "edit", "delete", "approve"] },
+      { resource: "orders", actions: ["create", "edit", "delete"] },
+      { resource: "menus", actions: ["create", "edit", "delete", "approve"] },
+      { resource: "inventory", actions: ["create", "edit", "delete"] },
+      { resource: "invoices", actions: ["create", "edit", "delete", "export"] },
+      { resource: "settings", actions: ["edit"] },
+    ];
+    for (const { resource, actions } of ownerLevelChecks) {
+      for (const action of actions) {
+        expect(roles.owner.authorize({ [resource]: [action] }).success, `owner:${resource}:${action}`).toBe(true);
+        expect(roles.admin.authorize({ [resource]: [action] }).success, `admin:${resource}:${action}`).toBe(true);
+      }
+    }
+    expect(roles.admin.authorize({ tenant: ["view", "edit"] }).success).toBe(true);
+  });
+
+  it("admin can invite/manage teammates (Better Auth's own invitation/member grants), but cannot delete the organization itself", () => {
+    expect(roles.admin.authorize({ invitation: ["create"] }).success).toBe(true);
+    expect(roles.admin.authorize({ member: ["create"] }).success).toBe(true);
+    expect(roles.admin.authorize({ organization: ["delete"] }).success).toBe(false);
+    expect(roles.owner.authorize({ organization: ["delete"] }).success).toBe(true);
+  });
+
+  it("a Staff-preset user cannot mutate any record across every business module (Group 5.2's explicit verify requirement)", () => {
+    const mutatingChecks: { resource: string; actions: string[] }[] = [
+      { resource: "users", actions: ["create", "edit", "delete"] },
+      { resource: "customers", actions: ["create", "edit", "delete"] },
+      { resource: "events", actions: ["create", "edit", "delete", "approve"] },
+      { resource: "orders", actions: ["create", "edit", "delete"] },
+      { resource: "menus", actions: ["create", "edit", "delete", "approve"] },
+      { resource: "inventory", actions: ["create", "edit", "delete"] },
+      { resource: "invoices", actions: ["create", "edit", "delete", "export"] },
+      { resource: "payments", actions: ["create", "manage"] },
+      { resource: "tenant", actions: ["edit", "delete"] },
+      { resource: "settings", actions: ["edit"] },
+    ];
+    for (const { resource, actions } of mutatingChecks) {
+      for (const action of actions) {
+        expect(roles.staff.authorize({ [resource]: [action] }).success, `staff:${resource}:${action}`).toBe(false);
+      }
+    }
+    // Staff still gets its granted read-only views.
+    expect(roles.staff.authorize({ customers: ["view"] }).success).toBe(true);
+    expect(roles.staff.authorize({ orders: ["view"] }).success).toBe(true);
+    expect(roles.staff.authorize({ reports: ["view"] }).success).toBe(true);
+  });
+});

@@ -9,6 +9,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "kitchenlogin",
   "dashboard",
   "settings",
+  "invitations",
   "api",
   "app",
   "_next",

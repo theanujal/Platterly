@@ -1,5 +1,6 @@
 import "server-only";
 import { headers as nextHeaders } from "next/headers";
+import { redirect } from "next/navigation";
 import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
@@ -36,6 +37,13 @@ export async function requireOrg(organizationId: string) {
   if (session.session.activeOrganizationId !== organizationId) {
     throw new ForbiddenError("Session is not scoped to this organization");
   }
+  const membership = await prisma.member.findFirst({
+    where: { userId: session.user.id, organizationId },
+    select: { disabledAt: true },
+  });
+  if (membership?.disabledAt) {
+    throw new ForbiddenError("This account has been disabled by an administrator.");
+  }
   return session;
 }
 
@@ -52,22 +60,59 @@ export async function requireOrg(organizationId: string) {
  * `databaseHooks.user.create.after` hook at signup (see
  * `auto-provision.ts`), so a membership should always already exist. This
  * only fires if that hook ever failed to run atomically with user creation.
+ *
+ * Chunk 5 Group 5.2 — two additions on top of the above:
+ *  - `provisionTenantForNewUser` now returns `{ organizationId: null }` for
+ *    a user with a pending team invitation (see that function's own
+ *    comment). When that happens here, there is genuinely no org to fall
+ *    back to yet — redirect to the invitation's own accept page rather than
+ *    throwing, since this is an expected state, not an error.
+ *  - Once an organization IS resolved (either branch), reject with
+ *    `ForbiddenError` if the caller's own `Member.disabledAt` is set. This
+ *    is the single enforcement point for "a disabled teammate is locked out
+ *    of every caterer-facing route," not a check scattered per-page.
  */
 export async function requireActiveOrganization() {
   const session = await requireSession();
   let organizationId = session.session.activeOrganizationId;
+  let membership: { organizationId: string; disabledAt: Date | null } | null = null;
 
-  if (!organizationId) {
-    let membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
+  if (organizationId) {
+    membership = await prisma.member.findFirst({
+      where: { userId: session.user.id, organizationId },
+      select: { organizationId: true, disabledAt: true },
+    });
+  } else {
+    membership = await prisma.member.findFirst({
+      where: { userId: session.user.id },
+      select: { organizationId: true, disabledAt: true },
+    });
     if (!membership) {
-      const { organizationId: healedId } = await provisionTenantForNewUser(session.user.id);
-      membership = await prisma.member.findFirstOrThrow({ where: { organizationId: healedId } });
+      const provisioned = await provisionTenantForNewUser(session.user.id);
+      if (!provisioned.organizationId) {
+        const pendingInvitation = await prisma.invitation.findFirst({
+          where: { email: session.user.email, status: "pending", expiresAt: { gt: new Date() } },
+          orderBy: { createdAt: "desc" },
+        });
+        if (pendingInvitation) {
+          redirect(`/invitations/${pendingInvitation.id}/accept`);
+        }
+        throw new ForbiddenError("No organization membership found");
+      }
+      membership = await prisma.member.findFirstOrThrow({
+        where: { organizationId: provisioned.organizationId },
+        select: { organizationId: true, disabledAt: true },
+      });
     }
     await auth.api.setActiveOrganization({
       body: { organizationId: membership.organizationId },
       headers: await nextHeaders(),
     });
     organizationId = membership.organizationId;
+  }
+
+  if (membership?.disabledAt) {
+    throw new ForbiddenError("This account has been disabled by an administrator.");
   }
 
   return { session, organizationId };

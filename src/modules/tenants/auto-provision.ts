@@ -21,8 +21,27 @@ import { assignPlan } from "@/modules/subscriptions/subscription";
  * already use. The placeholder name/slug are never shown to the user —
  * wizard Step 1's Business Name field starts from empty client state
  * regardless of what's in the database.
+ *
+ * Chunk 5 Group 5.2 — this hook fires for EVERY new user, including someone
+ * signing up specifically to accept a team invitation. Left unguarded, an
+ * invited teammate would get their own stray Organization+trial here before
+ * ever reaching the accept-invitation flow, ending up a member of two
+ * tenants. If a pending, unexpired invitation exists for this email,
+ * provisioning is skipped entirely — `auth.api.acceptInvitation` (called
+ * from `/invitations/[id]/accept`) creates the Member row and sets the
+ * active organization itself once the invitation is actually accepted.
  */
-export async function provisionTenantForNewUser(userId: string): Promise<{ organizationId: string }> {
+export async function provisionTenantForNewUser(
+  userId: string,
+): Promise<{ organizationId: string } | { organizationId: null }> {
+  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  const pendingInvitation = await prisma.invitation.findFirst({
+    where: { email: user.email, status: "pending", expiresAt: { gt: new Date() } },
+  });
+  if (pendingInvitation) {
+    return { organizationId: null };
+  }
+
   const slug = await generatePlaceholderSlug();
   const now = new Date();
 

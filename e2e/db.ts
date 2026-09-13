@@ -53,6 +53,43 @@ export async function getTrialSubscriptionStatus(email: string): Promise<string 
   return subRows[0]?.status ?? null;
 }
 
+/**
+ * Chunk 5 — for an invited teammate, who joins the INVITER's existing
+ * organization rather than getting their own. Removing only the user's own
+ * rows (never the shared organization) leaves that org's cleanup to the
+ * inviting owner's own `cleanupOnboardingTestUser` call.
+ */
+export async function cleanupInviteeUser(email: string): Promise<void> {
+  const { rows: userRows } = await pool.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [email]);
+  const user = userRows[0];
+  if (!user) return;
+
+  await pool.query('DELETE FROM member WHERE "userId" = $1', [user.id]);
+  await pool.query('DELETE FROM session WHERE "userId" = $1', [user.id]);
+  await pool.query('DELETE FROM account WHERE "userId" = $1', [user.id]);
+  await pool.query('DELETE FROM "user" WHERE id = $1', [user.id]);
+}
+
+export async function getPendingInvitationId(email: string): Promise<string | null> {
+  const { rows } = await pool.query<{ id: string }>(
+    'SELECT id FROM invitation WHERE email = $1 AND status = \'pending\' ORDER BY "createdAt" DESC LIMIT 1',
+    [email],
+  );
+  return rows[0]?.id ?? null;
+}
+
+export async function getOrganizationNameForUser(email: string): Promise<string | null> {
+  const { rows } = await pool.query<{ name: string }>(
+    `SELECT o.name FROM organization o
+     JOIN member m ON m."organizationId" = o.id
+     JOIN "user" u ON u.id = m."userId"
+     WHERE u.email = $1
+     LIMIT 1`,
+    [email],
+  );
+  return rows[0]?.name ?? null;
+}
+
 export async function closeDbPool(): Promise<void> {
   await pool.end();
 }

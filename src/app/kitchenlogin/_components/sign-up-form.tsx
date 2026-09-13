@@ -8,15 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconInput } from "./icon-input";
 
+interface SignUpFormProps {
+  /** Where to land after a successful signup. Defaults to the normal
+   * one-time onboarding wizard entry point. An invited teammate is sent
+   * back to their invitation's accept page instead (see
+   * `/invitations/[id]/accept`) — `provisionTenantForNewUser` skips
+   * creating them a new Organization when a pending invitation matches
+   * their email, so landing anywhere else would leave them without an
+   * active org until they actually accept. */
+  callbackURL?: string;
+  /** Pre-filled and read-only when arriving from an invitation — the
+   * account must be created under the exact email that was invited. */
+  lockedEmail?: string;
+}
+
 // Chunk 4 Group 4.1 — creates the owner's account. On success, redirects
 // straight into the one-time onboarding wizard at /kitchenlogin/onboarding
 // (the Organization itself is already provisioned by this point, via
 // `databaseHooks.user.create.after` — see `auto-provision.ts`). Business
 // details are collected there, not on this form.
-export function SignUpForm() {
+export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
   const router = useRouter();
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(lockedEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -39,7 +53,7 @@ export function SignUpForm() {
       setError(signUpError.message ?? "Could not create your account.");
       return;
     }
-    router.push("/kitchenlogin/onboarding");
+    router.push(callbackURL ?? "/kitchenlogin/onboarding");
   }
 
   return (
@@ -63,6 +77,8 @@ export function SignUpForm() {
           type="email"
           autoComplete="email"
           required
+          disabled={!!lockedEmail}
+          readOnly={!!lockedEmail}
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />

@@ -160,6 +160,12 @@ model Member {
   role           String       @default("member")
   createdAt      DateTime
 
+  // Chunk 5 Group 5.2 — reversible "disable a teammate" state. Better Auth's
+  // own API only offers a hard-delete `removeMember`; this is the softer
+  // state that requireActiveOrganization()/requireOrg() enforce, locking a
+  // disabled member out of every caterer-facing route without removing them.
+  disabledAt DateTime?
+
   @@index([organizationId])
   @@index([userId])
   @@map("member")

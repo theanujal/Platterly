@@ -21,7 +21,7 @@ function stringField(formData: FormData, name: string): string | undefined {
  * again after onboarding (Dashboard's nudge banner links here). Never
  * touches `onboardingCompletedAt`.
  */
-export async function updateSettingsAction(formData: FormData): Promise<ActionResult> {
+export async function updateBusinessProfileAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["edit"] }, organizationId);
 
@@ -70,7 +70,7 @@ export async function updateSettingsAction(formData: FormData): Promise<ActionRe
 
   await updateTenant(organizationId, input, session.user.id);
 
-  revalidatePath("/settings");
+  revalidatePath("/settings/account/business-profile");
   revalidatePath("/dashboard");
   return { ok: true };
 }

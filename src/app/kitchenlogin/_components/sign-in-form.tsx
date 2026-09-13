@@ -8,10 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { IconInput } from "./icon-input";
 
+interface SignInFormProps {
+  /** Where to navigate after a successful sign-in. When omitted, refreshes
+   * in place — /kitchenlogin's own server component then decides where an
+   * authenticated session belongs (the normal case). The invitation accept
+   * page passes its own URL so an existing account signing in from there
+   * lands back on the invitation instead of the Dashboard. */
+  callbackURL?: string;
+}
+
 // Chunk 4 Group 4.1 — returning caterer/kitchen admin sign-in. Unlike
 // /super (login-only, admin-provisioned accounts), /kitchenlogin also
 // offers sign-up — see AuthGate.
-export function SignInForm() {
+export function SignInForm({ callbackURL }: SignInFormProps = {}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -29,7 +38,11 @@ export function SignInForm() {
       setError(signInError.message ?? "Sign-in failed. Check your email and password.");
       return;
     }
-    router.refresh();
+    if (callbackURL) {
+      router.push(callbackURL);
+    } else {
+      router.refresh();
+    }
   }
 
   return (
