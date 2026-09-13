@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mail, Lock } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { IconInput } from "./icon-input";
 
 // Chunk 4 Group 4.1 — returning caterer/kitchen admin sign-in. Unlike
 // /super (login-only, admin-provisioned accounts), /kitchenlogin also
@@ -35,8 +36,9 @@ export function SignInForm() {
     <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signin-email">Email</Label>
-        <Input
+        <IconInput
           id="signin-email"
+          icon={Mail}
           type="email"
           autoComplete="email"
           required
@@ -46,8 +48,9 @@ export function SignInForm() {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signin-password">Password</Label>
-        <Input
+        <IconInput
           id="signin-password"
+          icon={Lock}
           type="password"
           autoComplete="current-password"
           required
@@ -60,7 +63,7 @@ export function SignInForm() {
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending}>
+      <Button type="submit" disabled={pending} className="h-11 rounded-full text-base font-semibold">
         {pending ? "Signing in…" : "Sign in to your account"}
       </Button>
     </form>

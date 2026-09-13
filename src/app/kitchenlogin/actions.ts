@@ -1,13 +1,8 @@
 "use server";
 
-import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { auth } from "@/lib/auth/auth";
-import { requireSession } from "@/lib/auth/require-session";
-import { generateUniqueSlug } from "@/modules/tenants/slug";
-import { updateTenant } from "@/modules/tenants/tenant";
-import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
-import { assignPlan } from "@/modules/subscriptions/subscription";
+import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { updateTenant, markOnboardingComplete } from "@/modules/tenants/tenant";
 import { getStorageDriver } from "@/lib/storage/storage";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -21,37 +16,17 @@ function stringField(formData: FormData, name: string): string | undefined {
 }
 
 /**
- * Chunk 4 Group 4.2 — orchestrates the wizard's final submit. Lives here
- * (not a pure `src/modules/` function) because `auth.api.createOrganization`
- * needs the request's `headers` to resolve the just-signed-up session — same
- * reasoning `src/app/super/actions.ts` uses for calling `auth.api.signOut`
- * inline. Delegates the actual domain work to existing Chunk 3 functions
- * (`updateTenant`, `ensureTrialPlan`, `assignPlan`) rather than duplicating
- * them.
+ * Chunk 4 Group 4.2 — orchestrates the wizard's final submit. The
+ * Organization already exists by this point (provisioned at signup — see
+ * `auto-provision.ts`), so this is purely an update: fill in the business
+ * profile fields, upload the logo if given, and mark onboarding complete.
  */
 export async function completeOnboardingAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireSession();
+  const { session, organizationId } = await requireActiveOrganization();
 
   const businessName = stringField(formData, "businessName");
   if (!businessName) {
     return { ok: false, error: "Business name is required." };
-  }
-
-  const headers = await nextHeaders();
-  let organizationId: string;
-  try {
-    const slug = await generateUniqueSlug(businessName);
-    // Better Auth's createOrganization creates the Organization row AND a
-    // Member(owner) row AND sets this session's activeOrganizationId, all
-    // in one call — fundamentally different from Chunk 3's Super Admin
-    // tenant creation, which never touches Member/session state.
-    const created = await auth.api.createOrganization({ body: { name: businessName, slug }, headers });
-    if (!created) {
-      return { ok: false, error: "Could not create your business account." };
-    }
-    organizationId = created.id;
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not create your business account." };
   }
 
   let logoUrl: string | undefined;
@@ -94,9 +69,8 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     session.user.id,
   );
 
-  const trialPlan = await ensureTrialPlan();
-  await assignPlan(organizationId, trialPlan.id, session.user.id);
+  await markOnboardingComplete(organizationId, session.user.id);
 
-  revalidatePath("/kitchenlogin");
+  revalidatePath("/dashboard");
   return { ok: true };
 }

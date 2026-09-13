@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { SignInForm } from "./sign-in-form";
 import { SignUpForm } from "./sign-up-form";
 
@@ -11,25 +10,23 @@ export function AuthGate() {
 
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-6">
-      <div className="flex gap-2 rounded-lg bg-muted p-1">
-        <Button
-          type="button"
-          variant={mode === "signin" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setMode("signin")}
-        >
-          Sign in
-        </Button>
-        <Button
-          type="button"
-          variant={mode === "signup" ? "default" : "ghost"}
-          size="sm"
-          onClick={() => setMode("signup")}
-        >
-          Sign up
-        </Button>
+      <div className="flex w-full flex-col items-center gap-1 text-center">
+        <h2 className="text-2xl font-bold">{mode === "signin" ? "Welcome back" : "Create your account"}</h2>
+        <p className="text-sm text-muted-foreground">
+          {mode === "signin" ? "Sign in to manage your catering business" : "Start your free 7-day trial"}
+        </p>
       </div>
       {mode === "signin" ? <SignInForm /> : <SignUpForm />}
+      <p className="text-sm text-muted-foreground">
+        {mode === "signin" ? "New to Platterly? " : "Already have an account? "}
+        <button
+          type="button"
+          onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+          className="font-semibold text-primary hover:underline"
+        >
+          {mode === "signin" ? "Create an account" : "Sign in"}
+        </button>
+      </p>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import "server-only";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "./auth";
+import { prisma } from "@/lib/db";
+import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import type { statement } from "./permissions";
 
 export class UnauthenticatedError extends Error {}
@@ -35,6 +37,40 @@ export async function requireOrg(organizationId: string) {
     throw new ForbiddenError("Session is not scoped to this organization");
   }
   return session;
+}
+
+/**
+ * Session scoped to the caller's own organization, resolving/setting
+ * `activeOrganizationId` from their `Member` row when a fresh sign-in
+ * hasn't populated it yet (Better Auth doesn't auto-restore this itself).
+ * Every caterer-facing route (`/kitchenlogin`, `/kitchenlogin/onboarding`,
+ * `/dashboard`, `/settings`) goes through this instead of duplicating the
+ * lookup.
+ *
+ * The `provisionTenantForNewUser` call is a defensive self-heal, not the
+ * primary path: an Organization is normally created via the
+ * `databaseHooks.user.create.after` hook at signup (see
+ * `auto-provision.ts`), so a membership should always already exist. This
+ * only fires if that hook ever failed to run atomically with user creation.
+ */
+export async function requireActiveOrganization() {
+  const session = await requireSession();
+  let organizationId = session.session.activeOrganizationId;
+
+  if (!organizationId) {
+    let membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
+    if (!membership) {
+      const { organizationId: healedId } = await provisionTenantForNewUser(session.user.id);
+      membership = await prisma.member.findFirstOrThrow({ where: { organizationId: healedId } });
+    }
+    await auth.api.setActiveOrganization({
+      body: { organizationId: membership.organizationId },
+      headers: await nextHeaders(),
+    });
+    organizationId = membership.organizationId;
+  }
+
+  return { session, organizationId };
 }
 
 type Statement = typeof statement;

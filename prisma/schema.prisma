@@ -130,6 +130,11 @@ model Organization {
   facebookUrl         String?
   gstShowOnInvoices   Boolean? @default(false)
 
+  // Set only when the onboarding wizard's final "Complete Setup" step
+  // succeeds — never by Skip, and never by a later Settings save. Drives
+  // the Dashboard's "finish your profile" nudge banner.
+  onboardingCompletedAt DateTime?
+
   subscriptions Subscription[]
 
   @@unique([slug])

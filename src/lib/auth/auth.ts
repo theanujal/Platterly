@@ -4,6 +4,7 @@ import { organization } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
+import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 
 /**
  * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
@@ -33,6 +34,23 @@ export const auth = betterAuth({
         required: false,
         defaultValue: false,
         input: false,
+      },
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        /**
+         * Chunk 4 self-serve signup redesign — provisions the caterer's
+         * Organization+Member immediately, before the onboarding wizard
+         * ever renders (see `auto-provision.ts`). A Super Admin account is
+         * never created through this path (Super Admins are provisioned
+         * out-of-band, no sign-up UI exists at /super), so this always
+         * means a self-service caterer signup.
+         */
+        after: async (user) => {
+          await provisionTenantForNewUser(user.id);
+        },
       },
     },
   },

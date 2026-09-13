@@ -72,6 +72,9 @@ export default async function TenantsPage({
                 <Link href={`/super/tenants/${tenant.id}`} className="font-medium hover:underline">
                   {tenant.name}
                 </Link>
+                {tenant.name === "Unnamed Business" && (
+                  <span className="ml-2 text-xs text-neutral-500">(setup incomplete)</span>
+                )}
               </TableCell>
               <TableCell className="text-neutral-500">{tenant.slug}</TableCell>
               <TableCell>

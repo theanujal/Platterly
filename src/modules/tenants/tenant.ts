@@ -31,6 +31,7 @@ export type TenantProfileUpdateInput = Omit<TenantProfileInput, "slug">;
 
 export class SlugTakenError extends Error {}
 export class InvalidSlugError extends Error {}
+export class SlugChangeLimitError extends Error {}
 
 /**
  * Chunk 3 Group 3.2 (PRD §8.2). Creates only the Organization/business-profile
@@ -152,6 +153,78 @@ export const activateTenant = (id: string, actorUserId: string) =>
 /** Soft-deactivate only — no hard delete; the Organization row and its AuditLog history survive. */
 export const deactivateTenant = (id: string, actorUserId: string) =>
   setStatus(id, "DEACTIVATED", "tenant.deactivate", actorUserId);
+
+/** Marks the onboarding wizard's final step as complete. Deliberately kept
+ * separate from `updateTenant` so a later Settings save can never
+ * accidentally set (or the wizard's Skip button never accidentally avoid
+ * setting) this flag — it only ever changes here. */
+export async function markOnboardingComplete(id: string, actorUserId: string) {
+  const after = await prisma.organization.update({
+    where: { id },
+    data: { onboardingCompletedAt: new Date() },
+  });
+
+  await audit({
+    organizationId: id,
+    actorUserId,
+    action: "tenant.onboarding_complete",
+    recordType: "Organization",
+    recordId: id,
+    after: { onboardingCompletedAt: after.onboardingCompletedAt },
+  });
+
+  return after;
+}
+
+const SELF_SERVICE_SLUG_CHANGE_LIMIT = 2;
+
+/**
+ * Caterer-facing self-service link change (Chunk 8, pulled forward in
+ * minimal form for the Dashboard's "claim your custom link" gate).
+ * Deliberately separate from `overrideSlug` below, which stays an
+ * unconditional Super Admin bypass — this one enforces the 2-lifetime-change
+ * limit `slugChangeCount` was always meant for. The very first self-service
+ * change (moving off the random placeholder slug) counts as change #1:
+ * `slugChangeCount === 0` means "hasn't set a custom link yet," not "gets a
+ * free first change."
+ */
+export async function setCustomSlug(id: string, newSlug: string, actorUserId: string) {
+  const validation = validateSlugFormat(newSlug);
+  if (!validation.valid) {
+    throw new InvalidSlugError(validation.error);
+  }
+
+  const before = await prisma.organization.findUniqueOrThrow({ where: { id } });
+
+  if (before.slug === newSlug) {
+    return before;
+  }
+  if (before.slugChangeCount >= SELF_SERVICE_SLUG_CHANGE_LIMIT) {
+    throw new SlugChangeLimitError("You've used all your free custom-link changes. Contact support for further changes.");
+  }
+
+  const existing = await prisma.organization.findUnique({ where: { slug: newSlug } });
+  if (existing) {
+    throw new SlugTakenError(`"${newSlug}" is already in use.`);
+  }
+
+  const after = await prisma.organization.update({
+    where: { id },
+    data: { slug: newSlug, slugChangeCount: { increment: 1 } },
+  });
+
+  await audit({
+    organizationId: id,
+    actorUserId,
+    action: "tenant.slug_self_service",
+    recordType: "Organization",
+    recordId: id,
+    before: { slug: before.slug },
+    after: { slug: after.slug },
+  });
+
+  return after;
+}
 
 /**
  * Super Admin escalation path for Chunk 8's self-service 2-change slug

@@ -1,14 +1,12 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
-import { prisma } from "@/lib/db";
 import { AuthGate } from "./_components/auth-gate";
-import { OnboardingWizard } from "./_components/onboarding-wizard";
-import { OnboardingComplete } from "./_components/onboarding-complete";
+import { AuthLayout } from "./_components/auth-layout";
 
-// Chunk 4 — Caterer/Kitchen Admin sign-in, sign-up, and the 5-step
-// onboarding wizard, all served at the reserved `/kitchenlogin` path from
-// Chunk 1 Group 1.4.
+// Chunk 4 — Caterer/Kitchen Admin sign-in and sign-up, served at the
+// reserved `/kitchenlogin` path from Chunk 1 Group 1.4.
 export const metadata: Metadata = {
   title: "Sign in — Platterly",
   robots: { index: false, follow: false },
@@ -19,34 +17,18 @@ export default async function KitchenAdminLoginPage() {
 
   if (!session) {
     return (
-      <main className="flex flex-1 items-center justify-center p-8">
+      <AuthLayout>
         <AuthGate />
-      </main>
+      </AuthLayout>
     );
   }
 
-  let organizationId = session.session.activeOrganizationId;
-  if (!organizationId) {
-    // A fresh sign-in's session starts with no active organization — Better
-    // Auth doesn't auto-restore it from an existing Member row (confirmed:
-    // no such hook in the organization plugin). So "no active org" alone
-    // doesn't mean "still mid-wizard" — check for an existing membership
-    // before assuming this is a brand-new signup.
-    const membership = await prisma.member.findFirst({ where: { userId: session.user.id } });
-    if (!membership) {
-      return (
-        <main className="flex flex-1 items-center justify-center p-8">
-          <OnboardingWizard />
-        </main>
-      );
-    }
-    await auth.api.setActiveOrganization({
-      body: { organizationId: membership.organizationId },
-      headers: await nextHeaders(),
-    });
-    organizationId = membership.organizationId;
-  }
-
-  const organization = await prisma.organization.findUnique({ where: { id: organizationId } });
-  return <OnboardingComplete businessName={organization?.name ?? "your business"} />;
+  // An Organization+Member always exist by the time a session exists (see
+  // `databaseHooks.user.create.after` in `src/lib/auth/auth.ts`), so a
+  // logged-in visit to /kitchenlogin always means "already set up" — the
+  // wizard is only ever reached via the sign-up form's own post-success
+  // redirect to /kitchenlogin/onboarding, never from here. This is what
+  // makes onboarding genuinely one-time: closing the browser mid-wizard and
+  // logging back in always lands on the Dashboard, never back at the wizard.
+  redirect("/dashboard");
 }

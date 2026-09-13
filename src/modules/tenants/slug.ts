@@ -73,3 +73,20 @@ export async function generateUniqueSlug(name: string): Promise<string> {
     suffix += 1;
   }
 }
+
+/**
+ * The Organization row now exists before the caterer has typed a business
+ * name (created at signup, filled in by wizard Step 1 — see
+ * `auto-provision.ts`). A placeholder slug must not be derived from a
+ * placeholder name ("Unnamed Business" for every signup would collide
+ * constantly); a random suffix sidesteps that entirely.
+ */
+export async function generatePlaceholderSlug(): Promise<string> {
+  while (true) {
+    const candidate = `biz-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    const existing = await prisma.organization.findUnique({ where: { slug: candidate } });
+    if (!existing) {
+      return candidate;
+    }
+  }
+}
