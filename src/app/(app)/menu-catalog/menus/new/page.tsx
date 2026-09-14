@@ -13,8 +13,8 @@ export default async function NewMenuPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-lg font-semibold">New Menu</h1>
-        <p className="text-sm text-muted-foreground">Set up a priced, sellable menu.</p>
+        <h1 className="text-lg font-semibold">New Menu Type</h1>
+        <p className="text-sm text-muted-foreground">Set up a priced, sellable menu type.</p>
       </div>
       <NewMenuClient
         availableItems={items.map((i) => ({ id: i.id, name: i.name }))}

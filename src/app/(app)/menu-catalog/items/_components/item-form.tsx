@@ -20,6 +20,7 @@ export interface ItemFormValues {
   foodType: string;
   price: string;
   imageUrl: string | null;
+  isActive: boolean;
   categoryIds: string[];
   menuIds: string[];
 }
@@ -30,6 +31,7 @@ export const EMPTY_ITEM_VALUES: ItemFormValues = {
   foodType: "VEGETARIAN",
   price: "",
   imageUrl: null,
+  isActive: true,
   categoryIds: [],
   menuIds: [],
 };
@@ -67,6 +69,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
     formData.set("description", values.description);
     formData.set("foodType", values.foodType);
     formData.set("price", values.price);
+    formData.set("isActive", String(values.isActive));
     for (const id of values.categoryIds) formData.append("categoryIds", id);
     for (const id of values.menuIds) formData.append("menuIds", id);
     if (image) formData.set("image", image);
@@ -138,6 +141,15 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           </div>
         </div>
       </div>
+
+      <label htmlFor="item-active" className="flex w-fit cursor-pointer items-center gap-2">
+        <Checkbox
+          id="item-active"
+          checked={values.isActive}
+          onCheckedChange={(checked) => setField("isActive", checked === true)}
+        />
+        <span className="text-sm font-medium">Active</span>
+      </label>
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Category</Label>

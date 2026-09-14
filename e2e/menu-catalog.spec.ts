@@ -39,6 +39,15 @@ test("create a category, an item, and a menu with a category assignment (max sel
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
+  // --- Renamed + reordered Menu Catalog sub-nav (AJ, 2026-09-14): Menu
+  // Types, Menu Categories, Food Items — display labels only, routes
+  // unchanged (still /menu-catalog/{menus,categories,items}). ---
+  await page.goto("/menu-catalog/menus");
+  await expect(page.getByRole("link", { name: "Menu Types" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Menu Categories" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Food Items" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Menu Types" })).toBeVisible();
+
   // --- Category ---
   const categoryName = `Starters ${suffix}`;
   await page.goto("/menu-catalog/categories/new");
@@ -58,6 +67,24 @@ test("create a category, an item, and a menu with a category assignment (max sel
   await expect(page).toHaveURL(/\/menu-catalog\/items$/);
   await expect(page.getByText(itemName)).toBeVisible();
   await expect(page.getByText("Veg", { exact: true }).first()).toBeVisible();
+
+  // --- Active/Inactive checkbox round-trip (a real gap AJ caught — the
+  // form had no isActive control at all before this round). Re-activate
+  // afterward so the item is still eligible for the Menu's "active items
+  // only" picker further down. ---
+  await page.getByText(itemName).click();
+  await expect(page).toHaveURL(/\/menu-catalog\/items\/.+/);
+  await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Active" }).uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(/\/menu-catalog\/items$/);
+  await expect(page.getByText("Inactive").first()).toBeVisible();
+
+  await page.getByText(itemName).click();
+  await expect(page.getByRole("checkbox", { name: "Active" })).not.toBeChecked();
+  await page.getByRole("checkbox", { name: "Active" }).check();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(/\/menu-catalog\/items$/);
 
   // --- Search + grid/list toggle (CatalogBrowser, shared across all 4 sections) ---
   await page.getByLabel("Search").fill("no-such-item-xyz");
@@ -88,6 +115,13 @@ test("create a category, an item, and a menu with a category assignment (max sel
   await expect(page).toHaveURL(/\/menu-catalog\/menus\/.+/);
   await expect(page.getByPlaceholder("Max selection")).toHaveValue("2");
   await expect(page.getByPlaceholder("Display order")).toHaveValue("0");
+
+  // --- Active/Inactive checkbox round-trip (Menu Type) ---
+  await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Active" }).uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page).toHaveURL(/\/menu-catalog\/menus$/);
+  await expect(page.getByText("Inactive").first()).toBeVisible();
 
   // The category's own edit page shows the read-only reverse view.
   await page.goto("/menu-catalog/categories");

@@ -149,6 +149,7 @@ model Organization {
   menuItems      MenuItem[]
   menus          Menu[]
   eventTypes     EventType[]
+  addOns         AddOn[]
 
   @@unique([slug])
   @@map("organization")
@@ -629,4 +630,40 @@ model EventTypeMenu {
   @@index([eventTypeId])
   @@index([menuId])
   @@map("event_type_menu")
+}
+
+// Add-ons Management (2026-09-14, AJ's own field-level spec): Live Counters
+// and Special Add-ons in one shared catalog, distinguished by `type`.
+// Deliberately standalone — not assigned to Menus or EventTypes — AJ:
+// "these will be Standalone and will be showcased after menu selections,"
+// which describes a future order-flow behavior (Chunk 10/11), not anything
+// built here. isActive wasn't in AJ's field list but is added for
+// consistency with every other catalog entity's soft-delete convention.
+enum AddOnType {
+  LIVE_COUNTER
+  SPECIAL_ADD_ON
+}
+
+enum AddOnPriceType {
+  PER_PLATE
+  FIXED
+}
+
+model AddOn {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  image          String?
+  type           AddOnType
+  priceType      AddOnPriceType
+  price          Decimal        @db.Decimal(10, 2)
+  isActive       Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("add_on")
 }

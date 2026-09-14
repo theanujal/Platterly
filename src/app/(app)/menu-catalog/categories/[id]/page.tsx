@@ -19,7 +19,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{category.name}</h1>
-          <p className="text-sm text-muted-foreground">Edit this category.</p>
+          <p className="text-sm text-muted-foreground">Edit this menu category.</p>
         </div>
         <CategoryRowActions categoryId={category.id} name={category.name} />
       </div>
@@ -32,12 +32,12 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
         }}
       />
       <div className="flex flex-col gap-2 border-t border-border pt-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Used in these menus</h2>
+        <h2 className="text-sm font-semibold text-muted-foreground">Used in these menu types</h2>
         {assignments.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Not assigned to any menu yet — manage that from a{" "}
+            Not assigned to any menu type yet — manage that from a{" "}
             <Link href="/menu-catalog/menus" className="text-primary hover:underline">
-              Menu&apos;s
+              Menu Type&apos;s
             </Link>{" "}
             edit page.
           </p>

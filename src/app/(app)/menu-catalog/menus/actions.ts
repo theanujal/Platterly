@@ -67,6 +67,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     image,
     menuType,
     pricePerPlate,
+    isActive: formData.get("isActive") === "true",
     itemIds,
     categoryAssignments: parseCategoryAssignments(formData),
   };

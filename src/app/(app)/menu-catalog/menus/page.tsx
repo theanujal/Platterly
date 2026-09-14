@@ -7,7 +7,7 @@ import { TableCell } from "@/components/ui/table";
 import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
 
 export const metadata: Metadata = {
-  title: "Menus — Platterly",
+  title: "Menu Types — Platterly",
   robots: { index: false, follow: false },
 };
 
@@ -63,16 +63,16 @@ export default async function MenusPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Menus</h1>
-        <p className="text-sm text-muted-foreground">Priced, sellable menus built from your catalog.</p>
+        <h1 className="text-xl font-semibold">Menu Types</h1>
+        <p className="text-sm text-muted-foreground">Priced, sellable menu types built from your catalog.</p>
       </div>
 
       <CatalogBrowser
         entries={entries}
         newHref="/menu-catalog/menus/new"
-        newLabel="Add New Menu"
-        searchPlaceholder="Search menus…"
-        emptyLabel="No menus yet."
+        newLabel="Add New Menu Type"
+        searchPlaceholder="Search menu types…"
+        emptyLabel="No menu types yet."
         listColumnCount={4}
       />
     </div>

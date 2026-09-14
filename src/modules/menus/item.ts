@@ -96,22 +96,26 @@ export async function updateMenuItem(
   return after;
 }
 
-/** Soft-delete via isActive=false — a menu referencing this item elsewhere never dangles. */
-export async function deactivateMenuItem(organizationId: string, id: string, actorUserId: string) {
+/**
+ * Hard delete (2026-09-14, replaces the old one-way `deactivateMenuItem`
+ * now that the item form has a real Active checkbox — deactivating is just
+ * unchecking Active and saving, which also supports reactivation, unlike
+ * the old flow). Menus/categories referencing this item never dangle:
+ * `MenuItemCategory`/`MenuMenuItem` both cascade (DB-level onDelete:
+ * Cascade) off this row.
+ */
+export async function deleteMenuItem(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.menuItem.findFirstOrThrow({ where: { id, organizationId } });
-  const after = await prisma.menuItem.update({ where: { id }, data: { isActive: false } });
+  await prisma.menuItem.delete({ where: { id } });
 
   await audit({
     organizationId,
     actorUserId,
-    action: "menu_item.deactivate",
+    action: "menu_item.delete",
     recordType: "MenuItem",
     recordId: id,
-    before: { isActive: before.isActive },
-    after: { isActive: after.isActive },
+    before: JSON.parse(JSON.stringify(before)),
   });
-
-  return after;
 }
 
 export async function listMenuItems(organizationId: string, filter?: { categoryId?: string; isActive?: boolean }) {

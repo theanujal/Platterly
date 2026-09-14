@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 
+// Display order/labels only (AJ, 2026-09-14) — routes/model names are
+// unchanged: /menu-catalog/menus is still "Menu Types", etc.
 const NAV_ITEMS = [
-  { label: "Categories", href: "/menu-catalog/categories" },
-  { label: "Items", href: "/menu-catalog/items" },
-  { label: "Menus", href: "/menu-catalog/menus" },
+  { label: "Menu Types", href: "/menu-catalog/menus" },
+  { label: "Menu Categories", href: "/menu-catalog/categories" },
+  { label: "Food Items", href: "/menu-catalog/items" },
 ] as const;
 
 // Chunk 6 — Menu & Product Catalog. Same "always-show nav, gate on visit"

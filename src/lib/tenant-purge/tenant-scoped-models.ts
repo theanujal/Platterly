@@ -31,6 +31,7 @@ export const TENANT_SCOPED_DELEGATES = [
   "menuItem",
   "menu",
   "eventType",
+  "addOn",
 ] as const;
 
 /**

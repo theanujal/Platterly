@@ -7,7 +7,7 @@ import { TableCell } from "@/components/ui/table";
 import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
 
 export const metadata: Metadata = {
-  title: "Menu Items — Platterly",
+  title: "Food Items — Platterly",
   robots: { index: false, follow: false },
 };
 
@@ -69,16 +69,16 @@ export default async function ItemsPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Menu Items</h1>
-        <p className="text-sm text-muted-foreground">Your reusable product catalog — dishes and add-ons.</p>
+        <h1 className="text-xl font-semibold">Food Items</h1>
+        <p className="text-sm text-muted-foreground">Your reusable product catalog — the dishes caterers add to menus.</p>
       </div>
 
       <CatalogBrowser
         entries={entries}
         newHref="/menu-catalog/items/new"
-        newLabel="Add New Item"
-        searchPlaceholder="Search items…"
-        emptyLabel="No menu items yet."
+        newLabel="Add New Food Item"
+        searchPlaceholder="Search food items…"
+        emptyLabel="No food items yet."
         listColumnCount={5}
       />
     </div>

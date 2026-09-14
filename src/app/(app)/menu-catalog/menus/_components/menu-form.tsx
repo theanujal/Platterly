@@ -27,6 +27,7 @@ export interface MenuFormValues {
   imageUrl: string | null;
   menuType: string;
   pricePerPlate: string;
+  isActive: boolean;
   itemIds: string[];
   categoryAssignments: CategoryAssignmentRow[];
 }
@@ -37,6 +38,7 @@ export const EMPTY_MENU_VALUES: Omit<MenuFormValues, "categoryAssignments"> = {
   imageUrl: null,
   menuType: "VEGETARIAN",
   pricePerPlate: "",
+  isActive: true,
   itemIds: [],
 };
 
@@ -95,6 +97,7 @@ export function MenuForm({
     formData.set("description", values.description);
     formData.set("menuType", values.menuType);
     formData.set("pricePerPlate", values.pricePerPlate);
+    formData.set("isActive", String(values.isActive));
     if (image) formData.set("image", image);
     for (const itemId of values.itemIds) formData.append("itemIds", itemId);
     const assignments = values.categoryAssignments
@@ -162,6 +165,15 @@ export function MenuForm({
           </Select>
         </div>
       </div>
+
+      <label htmlFor="menu-active" className="flex w-fit cursor-pointer items-center gap-2">
+        <Checkbox
+          id="menu-active"
+          checked={values.isActive}
+          onCheckedChange={(checked) => setField("isActive", checked === true)}
+        />
+        <span className="text-sm font-medium">Active</span>
+      </label>
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Categories in this menu</Label>

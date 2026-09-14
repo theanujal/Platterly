@@ -21,9 +21,9 @@ export default async function EditMenuItemPage({ params }: { params: Promise<{ i
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{item.name}</h1>
-          <p className="text-sm text-muted-foreground">Edit this menu item.</p>
+          <p className="text-sm text-muted-foreground">Edit this food item.</p>
         </div>
-        {item.isActive && <ItemRowActions itemId={item.id} />}
+        <ItemRowActions itemId={item.id} name={item.name} />
       </div>
       <EditItemClient
         itemId={item.id}
@@ -35,6 +35,7 @@ export default async function EditMenuItemPage({ params }: { params: Promise<{ i
           foodType: item.foodType,
           price: item.price.toString(),
           imageUrl: item.image,
+          isActive: item.isActive,
           categoryIds: item.categories.map((c) => c.categoryId),
           menuIds: item.menus.map((m) => m.menuId),
         }}

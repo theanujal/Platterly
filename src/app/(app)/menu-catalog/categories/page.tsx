@@ -46,16 +46,16 @@ export default async function CategoriesPage() {
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h1 className="text-xl font-semibold">Categories</h1>
+        <h1 className="text-xl font-semibold">Menu Categories</h1>
         <p className="text-sm text-muted-foreground">Group menu items for easier browsing (e.g. Starters, Main Course).</p>
       </div>
 
       <CatalogBrowser
         entries={entries}
         newHref="/menu-catalog/categories/new"
-        newLabel="Add New Category"
-        searchPlaceholder="Search categories…"
-        emptyLabel="No categories yet."
+        newLabel="Add New Menu Category"
+        searchPlaceholder="Search menu categories…"
+        emptyLabel="No menu categories yet."
         listColumnCount={2}
       />
     </div>

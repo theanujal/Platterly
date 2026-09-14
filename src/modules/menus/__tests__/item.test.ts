@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createMenuItem, updateMenuItem, deactivateMenuItem, listMenuItems, getMenuItem } from "@/modules/menus/item";
+import { createMenuItem, updateMenuItem, deleteMenuItem, listMenuItems, getMenuItem } from "@/modules/menus/item";
 import { createCategory } from "@/modules/menus/category";
 import { createMenu } from "@/modules/menus/menu";
 
@@ -98,16 +98,28 @@ describe("MenuItem CRUD (Chunk 6, reworked 2026-09-14)", () => {
     expect((log!.before as { price: string }).price).toBe("100");
   });
 
-  it("deactivateMenuItem soft-deletes via isActive=false, row survives", async () => {
+  it("updateMenuItem can set isActive=false, and back to true (replaces the old one-way deactivate flow)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const item = await createMenuItem(org.id, { name: "Seasonal Special", foodType: "VEGETARIAN", price: 300 }, actor.id);
+    expect(item.isActive).toBe(true);
+
+    const deactivated = await updateMenuItem(org.id, item.id, { name: "Seasonal Special", foodType: "VEGETARIAN", price: 300, isActive: false }, actor.id);
+    expect(deactivated.isActive).toBe(false);
+
+    const reactivated = await updateMenuItem(org.id, item.id, { name: "Seasonal Special", foodType: "VEGETARIAN", price: 300, isActive: true }, actor.id);
+    expect(reactivated.isActive).toBe(true);
+  });
+
+  it("deleteMenuItem hard-deletes the row", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const item = await createMenuItem(org.id, { name: "Seasonal Special", foodType: "VEGETARIAN", price: 300 }, actor.id);
 
-    const deactivated = await deactivateMenuItem(org.id, item.id, actor.id);
-    expect(deactivated.isActive).toBe(false);
+    await deleteMenuItem(org.id, item.id, actor.id);
 
     const stillExists = await prisma.menuItem.findUnique({ where: { id: item.id } });
-    expect(stillExists).not.toBeNull();
+    expect(stillExists).toBeNull();
   });
 
   it("listMenuItems filters by isActive and categoryId, and is tenant-isolated", async () => {
@@ -116,8 +128,7 @@ describe("MenuItem CRUD (Chunk 6, reworked 2026-09-14)", () => {
     const actor = await makeActor();
     const category = await createCategory(orgA.id, { name: "Mains" }, actor.id);
     const active = await createMenuItem(orgA.id, { name: "Active Dish", foodType: "VEGETARIAN", price: 100, categoryIds: [category.id] }, actor.id);
-    const inactive = await createMenuItem(orgA.id, { name: "Retired Dish", foodType: "VEGETARIAN", price: 100 }, actor.id);
-    await deactivateMenuItem(orgA.id, inactive.id, actor.id);
+    await createMenuItem(orgA.id, { name: "Retired Dish", foodType: "VEGETARIAN", price: 100, isActive: false }, actor.id);
     await createMenuItem(orgB.id, { name: "Other Tenant's Dish", foodType: "VEGETARIAN", price: 100 }, actor.id);
 
     const activeOnly = await listMenuItems(orgA.id, { isActive: true });

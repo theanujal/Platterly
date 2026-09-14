@@ -31,7 +31,7 @@ export default async function EditMenuPage({ params }: { params: Promise<{ id: s
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{menu.name}</h1>
-          <p className="text-sm text-muted-foreground">Edit this menu.</p>
+          <p className="text-sm text-muted-foreground">Edit this menu type.</p>
         </div>
         <MenuRowActions menuId={menu.id} name={menu.name} />
       </div>
@@ -45,6 +45,7 @@ export default async function EditMenuPage({ params }: { params: Promise<{ id: s
           imageUrl: menu.image,
           menuType: menu.menuType,
           pricePerPlate: menu.pricePerPlate.toString(),
+          isActive: menu.isActive,
           itemIds: menu.items.map((i) => i.menuItemId),
           categoryAssignments,
         }}

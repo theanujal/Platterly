@@ -14,19 +14,19 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { deleteMenuItemAction } from "../actions";
+import { deleteAddOnAction } from "../actions";
 
-export function ItemRowActions({ itemId, name }: { itemId: string; name: string }) {
+export function AddOnRowActions({ addOnId, name }: { addOnId: string; name: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
 
   async function handleDelete() {
     setPending(true);
-    await deleteMenuItemAction(itemId);
+    await deleteAddOnAction(addOnId);
     setPending(false);
     setOpen(false);
-    router.push("/menu-catalog/items");
+    router.push("/addons");
   }
 
   return (
@@ -35,7 +35,7 @@ export function ItemRowActions({ itemId, name }: { itemId: string; name: string 
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &quot;{name}&quot;?</AlertDialogTitle>
-          <AlertDialogDescription>The menus/categories referencing it aren&apos;t deleted, only this item.</AlertDialogDescription>
+          <AlertDialogDescription>This add-on will be permanently removed.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
