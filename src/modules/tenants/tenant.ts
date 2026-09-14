@@ -7,7 +7,8 @@ import { validateSlugFormat } from "./slug";
 export interface TenantProfileInput {
   name: string;
   slug: string;
-  ownerName?: string;
+  ownerFirstName?: string;
+  ownerLastName?: string;
   contactPhone?: string;
   contactEmail?: string;
   gstNumber?: string;
@@ -55,7 +56,8 @@ export async function createTenant(input: TenantProfileInput, actorUserId: strin
       createdAt: new Date(),
       name: input.name,
       slug: input.slug,
-      ownerName: input.ownerName,
+      ownerFirstName: input.ownerFirstName,
+      ownerLastName: input.ownerLastName,
       contactPhone: input.contactPhone,
       contactEmail: input.contactEmail,
       gstNumber: input.gstNumber,
@@ -94,7 +96,8 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
     where: { id },
     data: {
       name: input.name,
-      ownerName: input.ownerName,
+      ownerFirstName: input.ownerFirstName,
+      ownerLastName: input.ownerLastName,
       contactPhone: input.contactPhone,
       contactEmail: input.contactEmail,
       gstNumber: input.gstNumber,

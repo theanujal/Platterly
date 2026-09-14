@@ -26,7 +26,9 @@ export function MenuRowActions({ menuId, name }: { menuId: string; name: string 
     await deleteMenuAction(menuId);
     setPending(false);
     setOpen(false);
-    router.refresh();
+    // Used from the menu's own edit page — a plain refresh would 404
+    // against the just-deleted record.
+    router.push("/menu-catalog/menus");
   }
 
   return (

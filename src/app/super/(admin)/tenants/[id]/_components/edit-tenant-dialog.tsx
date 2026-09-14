@@ -35,7 +35,8 @@ export function EditTenantDialog({ tenantId, initialValues }: EditTenantDialogPr
           onSubmit={(values) =>
             updateTenantAction(tenantId, {
               name: values.name,
-              ownerName: values.ownerName,
+              ownerFirstName: values.ownerFirstName,
+              ownerLastName: values.ownerLastName,
               contactPhone: values.contactPhone,
               contactEmail: values.contactEmail,
               gstNumber: values.gstNumber,

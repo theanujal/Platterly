@@ -32,8 +32,9 @@ export default async function OnboardingPage() {
   await requireActiveOrganization();
 
   return (
-    <main className="flex flex-1 items-center justify-center p-8">
-      <OnboardingWizard accountHolderName={session.user.name} />
-    </main>
+    <OnboardingWizard
+      accountHolderFirstName={session.user.firstName ?? ""}
+      accountHolderLastName={session.user.lastName ?? ""}
+    />
   );
 }

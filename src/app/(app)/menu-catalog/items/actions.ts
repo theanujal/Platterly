@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createMenuItem, updateMenuItem, deactivateMenuItem, type MenuItemInput } from "@/modules/menus/item";
-import { uploadCatalogImage } from "@/modules/menus/image-upload";
-import type { FoodType, DietaryType, EggInfo } from "@/generated/prisma/enums";
+import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import type { FoodType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -21,6 +21,9 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
+  const foodType = stringField(formData, "foodType") as FoodType | undefined;
+  if (foodType !== "VEGETARIAN" && foodType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
+
   const priceRaw = formData.get("price");
   const price = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
   if (Number.isNaN(price) || price < 0) throw new Error("A valid, non-negative price is required.");
@@ -35,12 +38,10 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     name,
     description: stringField(formData, "description"),
     image,
-    categoryId: stringField(formData, "categoryId") ?? null,
-    isFoodProduct: formData.get("isFoodProduct") === "true",
-    foodType: (stringField(formData, "foodType") as FoodType | undefined) ?? null,
-    dietaryType: (stringField(formData, "dietaryType") as DietaryType | undefined) ?? null,
-    eggInfo: (stringField(formData, "eggInfo") as EggInfo | undefined) ?? null,
+    foodType,
     price,
+    categoryIds: formData.getAll("categoryIds").filter((v): v is string => typeof v === "string"),
+    menuIds: formData.getAll("menuIds").filter((v): v is string => typeof v === "string"),
   };
 }
 

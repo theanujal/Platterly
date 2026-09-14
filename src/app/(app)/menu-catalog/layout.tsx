@@ -5,7 +5,6 @@ const NAV_ITEMS = [
   { label: "Categories", href: "/menu-catalog/categories" },
   { label: "Items", href: "/menu-catalog/items" },
   { label: "Menus", href: "/menu-catalog/menus" },
-  { label: "Packages", href: "/menu-catalog/packages" },
 ] as const;
 
 // Chunk 6 — Menu & Product Catalog. Same "always-show nav, gate on visit"

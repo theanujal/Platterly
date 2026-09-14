@@ -3,29 +3,64 @@ import { QrCode } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { canonicalUrl } from "@/lib/seo/canonical";
+import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { DashboardCardHeader } from "./dashboard-card-header";
 
-export function PublicMenuShortcutCard({ slug }: { slug: string }) {
-  const url = canonicalUrl(`/${slug}`);
+interface PublicMenuShortcutCardProps {
+  slug: string;
+  /** 0 = the caterer hasn't claimed a real public link yet (still the auto-generated placeholder). */
+  slugChangeCount: number;
+}
+
+// AJ, 2026-09-14 — the placeholder slug generated at signup must never be
+// presented as if it's already a live, shareable link (there's no real
+// storefront behind it yet either way — Chunk 8 hasn't been built). Show
+// nothing but a claim prompt until `slugChangeCount` proves the caterer has
+// actually set one; only then render the real link and a real QR code.
+export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMenuShortcutCardProps) {
+  const claimed = slugChangeCount > 0;
+  const url = claimed ? canonicalUrl(`/${slug}`) : null;
+  const qrDataUrl = url ? await generateQrCodeDataUrl(url) : null;
 
   return (
     <Card>
       <DashboardCardHeader icon={QrCode} title="Public Menu / QR" colorClassName="bg-rose-500/10 text-rose-600" />
       <CardContent className="flex flex-col gap-3">
-        <p className="truncate text-sm text-muted-foreground">{url}</p>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
-            View
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            render={<Link href="/settings/integration/public-menu-link" />}
-            nativeButton={false}
-          >
-            Manage
-          </Button>
-        </div>
+        {claimed && url ? (
+          <>
+            <p className="truncate text-sm text-muted-foreground">{url}</p>
+            {qrDataUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={qrDataUrl} alt="QR code for your public menu link" className="size-24 rounded border border-border" />
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
+                View
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href="/settings/integration/public-menu-link" />}
+                nativeButton={false}
+              >
+                Manage
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-muted-foreground">You haven&apos;t set your public menu link yet.</p>
+            <Button
+              variant="outline"
+              size="sm"
+              render={<Link href="/settings/integration/public-menu-link" />}
+              nativeButton={false}
+              className="self-start"
+            >
+              Set your public link
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );

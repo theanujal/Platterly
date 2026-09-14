@@ -53,6 +53,11 @@ export async function provisionTenantForNewUser(
         slug,
         status: "ACTIVE",
         createdAt: now,
+        // Populates the Owner display in Super Admin/Kitchen Admin from
+        // the real signup fields — this was the actual root cause of it
+        // showing blank for every self-serve caterer (AJ, 2026-09-14).
+        ownerFirstName: user.firstName,
+        ownerLastName: user.lastName,
       },
     });
 

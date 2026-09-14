@@ -29,7 +29,8 @@ interface SignUpFormProps {
 // details are collected there, not on this form.
 export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState(lockedEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -47,7 +48,8 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
     }
 
     setPending(true);
-    const { error: signUpError } = await authClient.signUp.email({ name, email, password });
+    const name = [firstName, lastName].filter(Boolean).join(" ");
+    const { error: signUpError } = await authClient.signUp.email({ name, firstName, lastName, email, password });
     setPending(false);
     if (signUpError) {
       setError(signUpError.message ?? "Could not create your account.");
@@ -58,16 +60,28 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="signup-name">Full name</Label>
-        <IconInput
-          id="signup-name"
-          icon={User}
-          autoComplete="name"
-          required
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="signup-first-name">First name</Label>
+          <IconInput
+            id="signup-first-name"
+            icon={User}
+            autoComplete="given-name"
+            required
+            value={firstName}
+            onChange={(event) => setFirstName(event.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="signup-last-name">Last name</Label>
+          <IconInput
+            id="signup-last-name"
+            icon={User}
+            autoComplete="family-name"
+            value={lastName}
+            onChange={(event) => setLastName(event.target.value)}
+          />
+        </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signup-email">Email</Label>

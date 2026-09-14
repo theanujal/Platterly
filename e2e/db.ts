@@ -90,6 +90,20 @@ export async function getOrganizationNameForUser(email: string): Promise<string 
   return rows[0]?.name ?? null;
 }
 
+/**
+ * Chunk 6 correction round — for tenants created directly via Super Admin's
+ * `/super/tenants/new` form (no signup, no User/Member row involved, unlike
+ * `cleanupOnboardingTestUser`).
+ */
+export async function cleanupTenantBySlug(slug: string): Promise<void> {
+  const { rows } = await pool.query<{ id: string }>('SELECT id FROM organization WHERE slug = $1', [slug]);
+  const org = rows[0];
+  if (!org) return;
+  await pool.query('DELETE FROM audit_log WHERE "organizationId" = $1', [org.id]);
+  await pool.query('DELETE FROM subscription WHERE "organizationId" = $1', [org.id]);
+  await pool.query('DELETE FROM organization WHERE id = $1', [org.id]);
+}
+
 export async function closeDbPool(): Promise<void> {
   await pool.end();
 }

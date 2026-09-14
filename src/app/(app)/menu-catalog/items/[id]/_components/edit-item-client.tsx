@@ -8,14 +8,16 @@ interface EditItemClientProps {
   itemId: string;
   initialValues: ItemFormValues;
   categories: { id: string; name: string }[];
+  menus: { id: string; name: string }[];
 }
 
-export function EditItemClient({ itemId, initialValues, categories }: EditItemClientProps) {
+export function EditItemClient({ itemId, initialValues, categories, menus }: EditItemClientProps) {
   const router = useRouter();
 
   return (
     <ItemForm
       categories={categories}
+      menus={menus}
       initialValues={initialValues}
       submitLabel="Save changes"
       onSubmit={(formData) => updateMenuItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}

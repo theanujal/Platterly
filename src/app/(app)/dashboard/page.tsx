@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
+import { slugify } from "@/modules/tenants/slug";
 import { OnboardingNudgeBanner } from "./_components/onboarding-nudge-banner";
 import { CustomLinkDialog } from "./_components/custom-link-dialog";
 import { OrdersOverviewCard } from "./_components/orders-overview-card";
@@ -23,6 +24,7 @@ export const metadata: Metadata = {
 export default async function DashboardPage() {
   const { organizationId } = await requireActiveOrganization();
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+  const suggestedSlug = organization.name !== "Unnamed Business" ? slugify(organization.name) : undefined;
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6 md:p-8">
@@ -39,10 +41,10 @@ export default async function DashboardPage() {
         <OrdersCalendarWidget />
         <div className="flex flex-col gap-4">
           <MenuCatalogShortcutCard />
-          <PublicMenuShortcutCard slug={organization.slug} />
+          <PublicMenuShortcutCard slug={organization.slug} slugChangeCount={organization.slugChangeCount} />
         </div>
       </div>
-      <CustomLinkDialog currentSlug={organization.slug} defaultOpen={organization.slugChangeCount === 0} />
+      <CustomLinkDialog suggestedSlug={suggestedSlug} defaultOpen={organization.slugChangeCount === 0} />
     </main>
   );
 }

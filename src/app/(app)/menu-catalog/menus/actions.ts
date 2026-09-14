@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createMenu, updateMenu, deleteMenu, type MenuInput } from "@/modules/menus/menu";
-import { uploadCatalogImage } from "@/modules/menus/image-upload";
+import { createMenu, updateMenu, deleteMenu, type MenuInput, type CategoryAssignmentInput } from "@/modules/menus/menu";
+import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import type { FoodType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -16,9 +17,41 @@ function stringField(formData: FormData, name: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
+function parseCategoryAssignments(formData: FormData): CategoryAssignmentInput[] {
+  const raw = stringField(formData, "categoryAssignments");
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Invalid category assignment data.");
+  }
+  if (!Array.isArray(parsed)) throw new Error("Invalid category assignment data.");
+  return parsed.map((row) => {
+    if (
+      typeof row !== "object" ||
+      row === null ||
+      typeof (row as Record<string, unknown>).categoryId !== "string" ||
+      typeof (row as Record<string, unknown>).sortOrder !== "number" ||
+      !("maxSelection" in row)
+    ) {
+      throw new Error("Invalid category assignment data.");
+    }
+    const r = row as { categoryId: string; maxSelection: number | null; sortOrder: number };
+    return { categoryId: r.categoryId, maxSelection: r.maxSelection, sortOrder: r.sortOrder };
+  });
+}
+
 async function buildInput(organizationId: string, formData: FormData, existingImage?: string): Promise<MenuInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
+
+  const menuType = stringField(formData, "menuType") as FoodType | undefined;
+  if (menuType !== "VEGETARIAN" && menuType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
+
+  const priceRaw = formData.get("pricePerPlate");
+  const pricePerPlate = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
+  if (Number.isNaN(pricePerPlate) || pricePerPlate < 0) throw new Error("A valid, non-negative Price Per Plate is required.");
 
   let image = existingImage;
   const file = formData.get("image");
@@ -32,7 +65,10 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     name,
     description: stringField(formData, "description"),
     image,
+    menuType,
+    pricePerPlate,
     itemIds,
+    categoryAssignments: parseCategoryAssignments(formData),
   };
 }
 

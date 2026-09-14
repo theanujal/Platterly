@@ -17,7 +17,8 @@ import { Label } from "@/components/ui/label";
 import { setCustomSlugAction } from "../actions";
 
 interface CustomLinkDialogProps {
-  currentSlug: string;
+  /** A slugified suggestion from the business name, if one exists yet — never the ugly auto-generated placeholder. */
+  suggestedSlug?: string;
   /** True when `slugChangeCount === 0` — the caterer hasn't claimed a custom link yet. */
   defaultOpen: boolean;
 }
@@ -26,10 +27,12 @@ interface CustomLinkDialogProps {
 // visit until a custom link is set (server-computed `defaultOpen`, no
 // client-side "seen it" persistence). Dismissible within a visit via the
 // overlay/close button, matching "keep notifying him... unless it's done."
-export function CustomLinkDialog({ currentSlug, defaultOpen }: CustomLinkDialogProps) {
+// AJ, 2026-09-14 — this dialog is only ever shown pre-claim, so there is no
+// real "current slug" to prefill; only a suggestion, or a blank field.
+export function CustomLinkDialog({ suggestedSlug, defaultOpen }: CustomLinkDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(defaultOpen);
-  const [slug, setSlug] = useState(currentSlug);
+  const [slug, setSlug] = useState(suggestedSlug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 

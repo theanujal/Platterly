@@ -37,6 +37,24 @@ export const auth = betterAuth({
         defaultValue: false,
         input: false,
       },
+      /**
+       * Real source of truth for a person's name (AJ's explicit ask,
+       * 2026-09-14) — `name` stays required by Better Auth's core schema
+       * and is composed as `${firstName} ${lastName}`.trim() by every
+       * caller below (signup, user-profile edit), so Better Auth's own
+       * internal uses of `user.name` (session, invitation emails) are
+       * unaffected.
+       */
+      firstName: {
+        type: "string",
+        required: false,
+        input: true,
+      },
+      lastName: {
+        type: "string",
+        required: false,
+        input: true,
+      },
     },
   },
   databaseHooks: {

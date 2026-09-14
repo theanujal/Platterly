@@ -14,9 +14,6 @@ export default async function UserProfilePage() {
     where: { userId: session.user.id, organizationId },
   });
 
-  const [firstName, ...rest] = session.user.name.split(" ");
-  const lastName = rest.join(" ");
-
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -24,8 +21,8 @@ export default async function UserProfilePage() {
         <p className="text-sm text-muted-foreground">Your personal account details.</p>
       </div>
       <UserProfileForm
-        initialFirstName={firstName}
-        initialLastName={lastName}
+        initialFirstName={session.user.firstName ?? ""}
+        initialLastName={session.user.lastName ?? ""}
         email={session.user.email}
         role={member.role}
         createdAt={session.user.createdAt.toLocaleDateString()}

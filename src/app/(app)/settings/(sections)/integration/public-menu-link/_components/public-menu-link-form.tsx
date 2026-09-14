@@ -10,13 +10,15 @@ import { setCustomSlugAction } from "../actions";
 interface PublicMenuLinkFormProps {
   currentSlug: string;
   slugChangeCount: number;
+  /** A slugified suggestion from the business name — only used to seed the field pre-claim, never the ugly auto-generated placeholder. */
+  suggestedSlug?: string;
 }
 
 const CHANGE_LIMIT = 2;
 
-export function PublicMenuLinkForm({ currentSlug, slugChangeCount }: PublicMenuLinkFormProps) {
+export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug }: PublicMenuLinkFormProps) {
   const router = useRouter();
-  const [slug, setSlug] = useState(currentSlug);
+  const [slug, setSlug] = useState(slugChangeCount === 0 ? (suggestedSlug ?? "") : currentSlug);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);

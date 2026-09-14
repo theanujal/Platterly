@@ -41,13 +41,14 @@ describe("Tenant CRUD (Chunk 3 Group 3.2)", () => {
   it("createTenant creates an Organization with ACTIVE status and the given business-profile fields", async () => {
     const actor = await makeActor();
     const org = await createTenant(
-      { name: "Wedding Bells Catering", slug: `wb-${crypto.randomUUID().slice(0, 8)}`, ownerName: "Asha Rao" },
+      { name: "Wedding Bells Catering", slug: `wb-${crypto.randomUUID().slice(0, 8)}`, ownerFirstName: "Asha", ownerLastName: "Rao" },
       actor.id,
     );
     cleanupOrgIds.push(org.id);
 
     expect(org.status).toBe("ACTIVE");
-    expect(org.ownerName).toBe("Asha Rao");
+    expect(org.ownerFirstName).toBe("Asha");
+    expect(org.ownerLastName).toBe("Rao");
   });
 
   it("createTenant rejects an invalid slug", async () => {

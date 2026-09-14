@@ -1,19 +1,37 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import type { FoodType, DietaryType, EggInfo } from "@/generated/prisma/enums";
+import type { FoodType } from "@/generated/prisma/enums";
 
 export interface MenuItemInput {
   name: string;
   description?: string;
   image?: string;
-  categoryId?: string | null;
-  isFoodProduct: boolean;
-  foodType?: FoodType | null;
-  dietaryType?: DietaryType | null;
-  eggInfo?: EggInfo | null;
+  foodType: FoodType;
   price: number;
   isActive?: boolean;
+  /** Full replacement of this item's category tags — independent of menuIds below (AJ, 2026-09-14). */
+  categoryIds?: string[];
+  /** Full replacement of this item's direct menu assignments — independent of categoryIds above. */
+  menuIds?: string[];
+}
+
+async function replaceItemCategories(menuItemId: string, categoryIds: string[] | undefined) {
+  if (categoryIds === undefined) return;
+  await prisma.menuItemCategory.deleteMany({ where: { menuItemId } });
+  if (categoryIds.length === 0) return;
+  await prisma.menuItemCategory.createMany({
+    data: categoryIds.map((categoryId) => ({ menuItemId, categoryId })),
+  });
+}
+
+async function replaceItemMenus(menuItemId: string, menuIds: string[] | undefined) {
+  if (menuIds === undefined) return;
+  await prisma.menuMenuItem.deleteMany({ where: { menuItemId } });
+  if (menuIds.length === 0) return;
+  await prisma.menuMenuItem.createMany({
+    data: menuIds.map((menuId, index) => ({ menuId, menuItemId, sortOrder: index })),
+  });
 }
 
 export async function createMenuItem(organizationId: string, input: MenuItemInput, actorUserId: string) {
@@ -23,15 +41,13 @@ export async function createMenuItem(organizationId: string, input: MenuItemInpu
       name: input.name,
       description: input.description,
       image: input.image,
-      categoryId: input.categoryId ?? undefined,
-      isFoodProduct: input.isFoodProduct,
-      foodType: input.isFoodProduct ? (input.foodType ?? undefined) : undefined,
-      dietaryType: input.isFoodProduct ? (input.dietaryType ?? undefined) : undefined,
-      eggInfo: input.isFoodProduct ? (input.eggInfo ?? undefined) : undefined,
+      foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? true,
     },
   });
+  await replaceItemCategories(item.id, input.categoryIds);
+  await replaceItemMenus(item.id, input.menuIds);
 
   await audit({
     organizationId,
@@ -59,15 +75,13 @@ export async function updateMenuItem(
       name: input.name,
       description: input.description,
       image: input.image,
-      categoryId: input.categoryId ?? null,
-      isFoodProduct: input.isFoodProduct,
-      foodType: input.isFoodProduct ? (input.foodType ?? null) : null,
-      dietaryType: input.isFoodProduct ? (input.dietaryType ?? null) : null,
-      eggInfo: input.isFoodProduct ? (input.eggInfo ?? null) : null,
+      foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? before.isActive,
     },
   });
+  await replaceItemCategories(id, input.categoryIds);
+  await replaceItemMenus(id, input.menuIds);
 
   await audit({
     organizationId,
@@ -82,7 +96,7 @@ export async function updateMenuItem(
   return after;
 }
 
-/** Soft-delete via isActive=false — a package/menu referencing this item elsewhere never dangles. */
+/** Soft-delete via isActive=false — a menu referencing this item elsewhere never dangles. */
 export async function deactivateMenuItem(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.menuItem.findFirstOrThrow({ where: { id, organizationId } });
   const after = await prisma.menuItem.update({ where: { id }, data: { isActive: false } });
@@ -104,14 +118,20 @@ export async function listMenuItems(organizationId: string, filter?: { categoryI
   return prisma.menuItem.findMany({
     where: {
       organizationId,
-      categoryId: filter?.categoryId,
+      categories: filter?.categoryId ? { some: { categoryId: filter.categoryId } } : undefined,
       isActive: filter?.isActive,
     },
-    include: { category: true },
+    include: { categories: { include: { category: true } } },
     orderBy: { name: "asc" },
   });
 }
 
 export async function getMenuItem(organizationId: string, id: string) {
-  return prisma.menuItem.findFirst({ where: { id, organizationId }, include: { category: true } });
+  return prisma.menuItem.findFirst({
+    where: { id, organizationId },
+    include: {
+      categories: { include: { category: true } },
+      menus: { include: { menu: true } },
+    },
+  });
 }

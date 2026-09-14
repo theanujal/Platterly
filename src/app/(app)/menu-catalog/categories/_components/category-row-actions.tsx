@@ -26,7 +26,9 @@ export function CategoryRowActions({ categoryId, name }: { categoryId: string; n
     await deleteCategoryAction(categoryId);
     setPending(false);
     setOpen(false);
-    router.refresh();
+    // Now used from the category's own edit page (not an inline list row),
+    // so a plain refresh would 404 against the just-deleted record.
+    router.push("/menu-catalog/categories");
   }
 
   return (
@@ -36,7 +38,7 @@ export function CategoryRowActions({ categoryId, name }: { categoryId: string; n
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &quot;{name}&quot;?</AlertDialogTitle>
           <AlertDialogDescription>
-            Items in this category aren&apos;t deleted — they&apos;re just uncategorized afterward.
+            Items and menus using this category aren&apos;t deleted — they just lose this tag/assignment.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

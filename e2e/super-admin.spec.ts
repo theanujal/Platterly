@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { test, expect, type Page } from "@playwright/test";
+import { cleanupTenantBySlug } from "./db";
 
 /**
  * Chunk 3 — exercises the real /super login UI with the persistent Super
@@ -62,4 +63,34 @@ test("clicking 'New Caterer' actually navigates to the create-tenant page", asyn
   await page.getByRole("button", { name: "New Caterer" }).click();
   await expect(page).toHaveURL(/\/super\/tenants\/new$/);
   await expect(page.getByRole("heading", { name: "New Caterer" })).toBeVisible();
+});
+
+test("creating a tenant with a separate owner first/last name renders the joined name, not blank", async ({ page }) => {
+  // Chunk 6 correction (AJ, 2026-09-14) — Owner Name showed "—" for every
+  // self-serve signup because nothing wrote to it; this exercises the
+  // Super Admin path directly, the one place `ownerFirstName`/`ownerLastName`
+  // were always settable, to confirm the field-split itself renders correctly.
+  // 8-char prefix + 10-digit suffix stays under the slug field's 20-char
+  // maxLength — a full Date.now() here previously got silently truncated by
+  // the input, so cleanup queried for a slug that was never actually saved.
+  const slug = `e2e-own-${Date.now().toString().slice(-10)}`;
+  try {
+    await signInAsSuperAdmin(page);
+
+    await page.goto("/super/tenants/new");
+    await page.getByLabel("Business name").fill("Owner Name Test Co");
+    await page.getByLabel("Storefront slug").fill(slug);
+    await page.getByLabel("Owner first name").fill("Asha");
+    await page.getByLabel("Owner last name").fill("Rao");
+    await page.getByRole("button", { name: "Create caterer" }).click();
+
+    await expect(page).toHaveURL(/\/super\/tenants$/);
+    const row = page.getByRole("row", { name: /Owner Name Test Co/ });
+    await expect(row.getByRole("cell", { name: "Asha Rao" })).toBeVisible();
+
+    await row.getByRole("link", { name: "Owner Name Test Co" }).click();
+    await expect(page.getByText("Asha Rao")).toBeVisible();
+  } finally {
+    await cleanupTenantBySlug(slug);
+  }
 });

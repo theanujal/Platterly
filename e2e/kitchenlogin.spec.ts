@@ -22,19 +22,24 @@ test.afterEach(async () => {
   await cleanupOnboardingTestUser(email);
 });
 
-test("sign up, complete the onboarding wizard, sign out, and sign back in", async ({ page }) => {
+test("sign up, complete the redesigned onboarding wizard, claim a public link, sign out, and sign back in", async ({ page }) => {
   // Longer than the 30s default: the full 5-step wizard + sign-out/sign-in
   // round trip, each action slowed by launchOptions.slowMo (350ms, AJ's
-  // standing "watch it run" preference), plus the Chunk 6 sidebar shell
-  // added real hydration weight to every /dashboard visit this test makes.
+  // standing "watch it run" preference), plus the sidebar shell's added
+  // hydration weight on every /dashboard visit this test makes.
   test.setTimeout(60_000);
   const email = `e2e-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const businessName = "Playwright Test Catering";
+  // "pw-test-" (8 chars) + a 10-digit suffix keeps this at 18/20 chars —
+  // the slug field's maxLength truncated a full Date.now() and broke this
+  // assertion on the first pass.
+  const claimedSlug = `pw-test-${Date.now().toString().slice(-10)}`;
 
   await page.goto("/kitchenlogin");
   await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("Full name").fill("Priya Sharma");
+  await page.getByLabel("First name").fill("Priya");
+  await page.getByLabel("Last name").fill("Sharma");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
@@ -46,20 +51,27 @@ test("sign up, complete the onboarding wizard, sign out, and sign back in", asyn
   // server-side "no org yet" check.
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await expect(page.getByText("Step 1 of 5")).toBeVisible();
-  await expect(page.getByLabel("Full name")).toHaveValue("Priya Sharma");
-  await expect(page.getByLabel("Full name")).toBeDisabled();
+  await expect(page.getByLabel("First name")).toHaveValue("Priya");
+  await expect(page.getByLabel("First name")).toBeDisabled();
+  await expect(page.getByLabel("Last name")).toHaveValue("Sharma");
+  // Left-panel stage list (redesigned onboarding, AJ 2026-09-14): step 1 is
+  // the only one shown as the current stage on load.
+  await expect(page.getByText("Getting Started")).toBeVisible();
 
   await page.getByLabel("Company / business name").fill(businessName);
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 3 of 5")).toBeVisible();
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 4 of 5")).toBeVisible();
-  await page.getByRole("button", { name: "Next", exact: true }).click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 5 of 5")).toBeVisible();
 
   await page.getByRole("button", { name: "Complete Setup" }).click();
+  // Dedicated completion route (AJ's spec, point 10) — a fresh navigation,
+  // not the same wizard shell swapping local state.
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding\/complete$/);
   await expect(page.getByText("Your Platterly account is ready!")).toBeVisible({ timeout: 10_000 });
 
   // Confirm the trial subscription was actually created, not just the UI text.
@@ -69,16 +81,23 @@ test("sign up, complete the onboarding wizard, sign out, and sign back in", asyn
   await expect(page).toHaveURL(/\/dashboard$/);
 
   // A brand-new org has never claimed a custom link (slugChangeCount === 0),
-  // so the Dashboard's custom-link popup auto-opens on this first visit —
-  // dismiss it (it reappears on the *next* visit, by design) before
-  // checking anything else. While it's open, the modal correctly marks the
-  // rest of the page aria-hidden (confirmed accessible-dialog behavior), so
-  // role-based queries against the page behind it won't resolve until it's
-  // closed — check the heading only after dismissing.
+  // so the Dashboard's custom-link popup auto-opens on this first visit, and
+  // the public-menu card shows nothing but a claim prompt — no link, no QR,
+  // since there's no real link to show yet (AJ, 2026-09-14). Dismiss the
+  // dialog without claiming here (it reappears on the *next* visit, by
+  // design) — the claim happens on the second appearance below. While it's
+  // open, the modal correctly marks the rest of the page aria-hidden
+  // (confirmed accessible-dialog behavior), so role-based queries against
+  // the page behind it won't resolve until it's closed.
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
+  // Seeded with a slugified suggestion from the real business name — never
+  // the ugly auto-generated `biz-xxxx` placeholder slug.
+  await expect(page.getByLabel("platterly.com/")).not.toHaveValue(/^biz-/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
   await expect(page.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
+  await expect(page.getByText("You haven't set your public menu link yet.")).toBeVisible();
+  await expect(page.getByAltText("QR code for your public menu link")).not.toBeVisible();
 
   // Sign out, then sign back in — a fresh session has no active org until
   // requireActiveOrganization() restores it from the existing Member row;
@@ -93,10 +112,14 @@ test("sign up, complete the onboarding wizard, sign out, and sign back in", asyn
 
   await expect(page).toHaveURL(/\/dashboard$/);
   // The custom-link popup still hasn't been satisfied, so it reopens here
-  // too — dismiss it before checking the heading behind it (see above).
+  // too — this time, actually claim a link and confirm the Dashboard card
+  // flips to the claimed state (real link + a real QR code image).
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
+  await page.getByLabel("platterly.com/").fill(claimedSlug);
+  await page.getByRole("button", { name: "Save my link" }).click();
+  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
+  await expect(page.getByText(claimedSlug)).toBeVisible();
+  await expect(page.getByAltText("QR code for your public menu link")).toBeVisible();
 });
 
 test("sign-in with the wrong password shows an inline error, not a crash", async ({ page }) => {

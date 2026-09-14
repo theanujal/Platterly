@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ChefHat, Settings as SettingsIcon, UtensilsCrossed } from "lucide-react";
+import { LayoutDashboard, ChefHat, CalendarRange, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +20,7 @@ import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
+  { label: "Events", href: "/events", icon: CalendarRange },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
 ] as const;
 
@@ -32,13 +33,19 @@ export function AppSidebar({ organizationName }: { organizationName: string }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />} className="cursor-pointer">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <UtensilsCrossed className="size-4" />
-              </div>
-              <div className="flex flex-col leading-none">
-                <span className="font-heading text-sm font-semibold">Platterly</span>
-                <span className="truncate text-xs text-muted-foreground">{organizationName}</span>
-              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/platterly-logo.svg"
+                alt="Platterly"
+                className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:hidden"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/platterly-mark.svg"
+                alt="Platterly"
+                className="hidden size-6 shrink-0 group-data-[collapsible=icon]:block"
+              />
+              <span className="truncate text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">{organizationName}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

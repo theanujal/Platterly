@@ -6,7 +6,8 @@ export class CategoryNameTakenError extends Error {}
 
 export interface CategoryInput {
   name: string;
-  sortOrder?: number;
+  description?: string;
+  isActive?: boolean;
 }
 
 export async function createCategory(organizationId: string, input: CategoryInput, actorUserId: string) {
@@ -18,7 +19,12 @@ export async function createCategory(organizationId: string, input: CategoryInpu
   }
 
   const category = await prisma.menuCategory.create({
-    data: { organizationId, name: input.name, sortOrder: input.sortOrder ?? 0 },
+    data: {
+      organizationId,
+      name: input.name,
+      description: input.description,
+      isActive: input.isActive ?? true,
+    },
   });
 
   await audit({
@@ -43,7 +49,11 @@ export async function updateCategory(
 
   const after = await prisma.menuCategory.update({
     where: { id },
-    data: { name: input.name, sortOrder: input.sortOrder ?? before.sortOrder },
+    data: {
+      name: input.name,
+      description: input.description,
+      isActive: input.isActive ?? before.isActive,
+    },
   });
 
   await audit({
@@ -59,7 +69,7 @@ export async function updateCategory(
   return after;
 }
 
-/** Items in this category are not deleted — their categoryId is set null (schema's onDelete: SetNull). */
+/** Items keep this category tag until explicitly untagged — deleting a category just removes the (cascading) tag/assignment rows, never the items or menus themselves. */
 export async function deleteCategory(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.menuCategory.findFirstOrThrow({ where: { id, organizationId } });
 
@@ -76,5 +86,18 @@ export async function deleteCategory(organizationId: string, id: string, actorUs
 }
 
 export async function listCategories(organizationId: string) {
-  return prisma.menuCategory.findMany({ where: { organizationId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  return prisma.menuCategory.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+}
+
+export async function getCategory(organizationId: string, id: string) {
+  return prisma.menuCategory.findFirst({ where: { id, organizationId } });
+}
+
+/** Read-only — which Menus this Category is assigned to, and with what max-selection/order on each. Menu owns editing this relationship (see menu.ts); Category only displays it. */
+export async function listCategoryMenuAssignments(organizationId: string, categoryId: string) {
+  return prisma.menuCategoryAssignment.findMany({
+    where: { categoryId, menu: { organizationId } },
+    include: { menu: true },
+    orderBy: { menu: { name: "asc" } },
+  });
 }

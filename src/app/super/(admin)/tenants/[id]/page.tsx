@@ -8,8 +8,7 @@ import { EditTenantDialog } from "./_components/edit-tenant-dialog";
 import { SlugOverrideForm } from "./_components/slug-override-form";
 import { AssignPlan } from "./_components/assign-plan";
 
-const PROFILE_FIELDS: { key: "ownerName" | "contactPhone" | "contactEmail" | "gstNumber" | "city" | "state" | "country"; label: string }[] = [
-  { key: "ownerName", label: "Owner" },
+const PROFILE_FIELDS: { key: "contactPhone" | "contactEmail" | "gstNumber" | "city" | "state" | "country"; label: string }[] = [
   { key: "contactPhone", label: "Phone" },
   { key: "contactEmail", label: "Email" },
   { key: "gstNumber", label: "GST number" },
@@ -45,7 +44,8 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           tenantId={tenant.id}
           initialValues={{
             name: tenant.name,
-            ownerName: tenant.ownerName ?? "",
+            ownerFirstName: tenant.ownerFirstName ?? "",
+            ownerLastName: tenant.ownerLastName ?? "",
             contactPhone: tenant.contactPhone ?? "",
             contactEmail: tenant.contactEmail ?? "",
             gstNumber: tenant.gstNumber ?? "",
@@ -60,6 +60,10 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
       </div>
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div>
+          <dt className="text-neutral-500">Owner</dt>
+          <dd>{[tenant.ownerFirstName, tenant.ownerLastName].filter(Boolean).join(" ") || "—"}</dd>
+        </div>
         {PROFILE_FIELDS.map((field) => (
           <div key={field.key}>
             <dt className="text-neutral-500">{field.label}</dt>

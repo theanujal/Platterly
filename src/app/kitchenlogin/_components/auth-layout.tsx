@@ -16,7 +16,10 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-svh w-full flex-col md:flex-row">
       <div className="hidden flex-col justify-center gap-10 bg-gradient-to-br from-primary to-[#9a3412] px-12 py-16 text-primary-foreground md:flex md:w-1/2">
         <div className="flex items-center gap-2 text-lg font-bold">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-white/15 text-base">P</span>
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/platterly-mark.svg" alt="" className="size-full" />
+          </span>
           Platterly
         </div>
         <div className="flex flex-col gap-4">

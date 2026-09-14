@@ -32,7 +32,8 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   // --- Owner signs up and completes onboarding ---
   await page.goto("/kitchenlogin");
   await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("Full name").fill("Owner Person");
+  await page.getByLabel("First name").fill("Owner");
+  await page.getByLabel("Last name").fill("Person");
   await page.getByLabel("Email").fill(ownerEmail);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
@@ -42,9 +43,10 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   await page.getByLabel("Company / business name").fill(businessName);
   for (let i = 0; i < 4; i++) {
-    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
   }
   await page.getByRole("button", { name: "Complete Setup" }).click();
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding\/complete$/);
   await expect(page.getByText("Your Platterly account is ready!")).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Take me to my Dashboard" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
@@ -71,7 +73,8 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await expect(emailField).toHaveValue(staffEmail);
   await expect(emailField).toBeDisabled();
 
-  await inviteePage.getByLabel("Full name").fill("Staff Person");
+  await inviteePage.getByLabel("First name").fill("Staff");
+  await inviteePage.getByLabel("Last name").fill("Person");
   await inviteePage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await inviteePage.getByLabel("Confirm password").fill("correct-horse-battery");
   await inviteePage.getByLabel("I accept the Terms of Service and Privacy Policy").check();

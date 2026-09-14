@@ -9,10 +9,9 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 /**
  * Chunk 5 Group 5.1 — editing your own name is self-service, not gated by
  * `requirePermission`: it's the account holder's own record, not a
- * tenant-scoped resource. `User.name` stays a single field (no schema
- * change here, per the chunk's "does not re-model User Profile" boundary)
- * — the form splits it into first/last purely for display/edit, joining
- * back into one string on save.
+ * tenant-scoped resource. `firstName`/`lastName` are the real stored
+ * columns now (AJ, 2026-09-14); `name` is still composed alongside them
+ * since Better Auth's core schema requires it.
  */
 export async function updateUserProfileAction(formData: FormData): Promise<ActionResult> {
   const session = await requireSession();
@@ -24,7 +23,7 @@ export async function updateUserProfileAction(formData: FormData): Promise<Actio
   }
 
   const name = lastName ? `${firstName} ${lastName}` : firstName;
-  await prisma.user.update({ where: { id: session.user.id }, data: { name } });
+  await prisma.user.update({ where: { id: session.user.id }, data: { firstName, lastName: lastName || null, name } });
 
   revalidatePath("/settings/account/user-profile");
   return { ok: true };

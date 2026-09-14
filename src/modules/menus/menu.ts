@@ -1,14 +1,26 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import type { FoodType } from "@/generated/prisma/enums";
+
+export interface CategoryAssignmentInput {
+  categoryId: string;
+  /** null = unlimited selections from this category. */
+  maxSelection: number | null;
+  sortOrder: number;
+}
 
 export interface MenuInput {
   name: string;
   description?: string;
   image?: string;
+  menuType: FoodType;
+  pricePerPlate: number;
   isActive?: boolean;
   /** Full replacement of this Menu's item list, in display order. */
   itemIds?: string[];
+  /** Full replacement of this Menu's category assignments (max-selection + order per category). */
+  categoryAssignments?: CategoryAssignmentInput[];
 }
 
 async function replaceMenuItems(menuId: string, itemIds: string[] | undefined) {
@@ -20,6 +32,20 @@ async function replaceMenuItems(menuId: string, itemIds: string[] | undefined) {
   });
 }
 
+async function replaceMenuCategoryAssignments(menuId: string, assignments: CategoryAssignmentInput[] | undefined) {
+  if (assignments === undefined) return;
+  await prisma.menuCategoryAssignment.deleteMany({ where: { menuId } });
+  if (assignments.length === 0) return;
+  await prisma.menuCategoryAssignment.createMany({
+    data: assignments.map((a) => ({
+      menuId,
+      categoryId: a.categoryId,
+      maxSelection: a.maxSelection,
+      sortOrder: a.sortOrder,
+    })),
+  });
+}
+
 export async function createMenu(organizationId: string, input: MenuInput, actorUserId: string) {
   const menu = await prisma.menu.create({
     data: {
@@ -27,10 +53,13 @@ export async function createMenu(organizationId: string, input: MenuInput, actor
       name: input.name,
       description: input.description,
       image: input.image,
+      menuType: input.menuType,
+      pricePerPlate: input.pricePerPlate,
       isActive: input.isActive ?? true,
     },
   });
   await replaceMenuItems(menu.id, input.itemIds);
+  await replaceMenuCategoryAssignments(menu.id, input.categoryAssignments);
 
   await audit({
     organizationId,
@@ -53,10 +82,13 @@ export async function updateMenu(organizationId: string, id: string, input: Menu
       name: input.name,
       description: input.description,
       image: input.image,
+      menuType: input.menuType,
+      pricePerPlate: input.pricePerPlate,
       isActive: input.isActive ?? before.isActive,
     },
   });
   await replaceMenuItems(id, input.itemIds);
+  await replaceMenuCategoryAssignments(id, input.categoryAssignments);
 
   await audit({
     organizationId,
@@ -92,6 +124,9 @@ export async function listMenus(organizationId: string) {
 export async function getMenu(organizationId: string, id: string) {
   return prisma.menu.findFirst({
     where: { id, organizationId },
-    include: { items: { include: { menuItem: true }, orderBy: { sortOrder: "asc" } } },
+    include: {
+      items: { include: { menuItem: true }, orderBy: { sortOrder: "asc" } },
+      categoryAssignments: { include: { category: true }, orderBy: { sortOrder: "asc" } },
+    },
   });
 }

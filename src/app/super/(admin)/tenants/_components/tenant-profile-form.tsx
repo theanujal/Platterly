@@ -9,7 +9,8 @@ import type { ActionResult } from "../actions";
 export interface TenantProfileFormValues {
   name: string;
   slug: string;
-  ownerName: string;
+  ownerFirstName: string;
+  ownerLastName: string;
   contactPhone: string;
   contactEmail: string;
   gstNumber: string;
@@ -24,7 +25,8 @@ export interface TenantProfileFormValues {
 const EMPTY_VALUES: TenantProfileFormValues = {
   name: "",
   slug: "",
-  ownerName: "",
+  ownerFirstName: "",
+  ownerLastName: "",
   contactPhone: "",
   contactEmail: "",
   gstNumber: "",
@@ -44,7 +46,8 @@ interface FieldConfig {
 
 const FIELDS: FieldConfig[] = [
   { key: "name", label: "Business name", required: true },
-  { key: "ownerName", label: "Owner name" },
+  { key: "ownerFirstName", label: "Owner first name" },
+  { key: "ownerLastName", label: "Owner last name" },
   { key: "contactPhone", label: "Phone" },
   { key: "contactEmail", label: "Email" },
   { key: "gstNumber", label: "GST number" },
