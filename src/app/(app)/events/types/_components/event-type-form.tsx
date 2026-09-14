@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EVENT_TYPE_ICON_OPTIONS, getEventTypeIcon } from "@/lib/event-type-icons";
 import type { ActionResult } from "../actions";
 
 export interface EventTypeFormValues {
@@ -15,6 +17,7 @@ export interface EventTypeFormValues {
   imageUrl: string | null;
   minGuests: string;
   isActive: boolean;
+  icon: string;
   menuIds: string[];
 }
 
@@ -24,6 +27,7 @@ export const EMPTY_EVENT_TYPE_VALUES: EventTypeFormValues = {
   imageUrl: null,
   minGuests: "",
   isActive: true,
+  icon: "other",
   menuIds: [],
 };
 
@@ -59,6 +63,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
     formData.set("description", values.description);
     formData.set("minGuests", values.minGuests);
     formData.set("isActive", String(values.isActive));
+    formData.set("icon", values.icon);
     for (const id of values.menuIds) formData.append("menuIds", id);
     if (image) formData.set("image", image);
 
@@ -84,6 +89,25 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-image">Event Image</Label>
         <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="event-icon">Icon</Label>
+        <Select value={values.icon} onValueChange={(v) => setField("icon", v ?? values.icon)}>
+          <SelectTrigger id="event-icon" className="max-w-56">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EVENT_TYPE_ICON_OPTIONS.map((option) => {
+              const Icon = getEventTypeIcon(option.value);
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  <Icon className="size-4" />
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-min-guests">Min Number of Guests</Label>

@@ -14,17 +14,23 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { deleteEventTypeAction } from "../actions";
+import { deleteEventAction } from "../../actions";
 
-export function EventTypeRowActions({ eventTypeId, name }: { eventTypeId: string; name: string }) {
+export function DeleteEventButton({ eventId, name }: { eventId: string; name: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleDelete() {
     setPending(true);
-    await deleteEventTypeAction(eventTypeId);
+    setError(null);
+    const result = await deleteEventAction(eventId);
     setPending(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setOpen(false);
     router.push("/events");
   }
@@ -35,8 +41,13 @@ export function EventTypeRowActions({ eventTypeId, name }: { eventTypeId: string
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete &quot;{name}&quot;?</AlertDialogTitle>
-          <AlertDialogDescription>The menus it references aren&apos;t deleted, only this event type.</AlertDialogDescription>
+          <AlertDialogDescription>This event and its required-inventory list will be permanently removed.</AlertDialogDescription>
         </AlertDialogHeader>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction variant="destructive" disabled={pending} onClick={handleDelete}>

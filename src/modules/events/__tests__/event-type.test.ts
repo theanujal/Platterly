@@ -1,13 +1,25 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createEventType, updateEventType, deleteEventType, listEventTypes, getEventType } from "@/modules/events/event-type";
+import {
+  createEventType,
+  updateEventType,
+  deleteEventType,
+  reorderEventTypes,
+  listEventTypes,
+  getEventType,
+  EventTypeInUseError,
+} from "@/modules/events/event-type";
 import { createMenu } from "@/modules/menus/menu";
+import { createCustomer } from "@/modules/customers/customer";
+import { createEvent } from "@/modules/events/event";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.event.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.customer.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.eventTypeMenu.deleteMany({ where: { eventType: { organizationId: { in: cleanupOrgIds } } } });
   await prisma.eventType.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.menu.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
@@ -89,5 +101,68 @@ describe("EventType CRUD (pulled forward from Chunk 9 §9.1, 2026-09-14)", () =>
 
     const list = await listEventTypes(orgA.id);
     expect(list.map((e) => e.id)).toEqual([eventTypeA.id]);
+  });
+});
+
+describe("EventType icon/sortOrder (Chunk 9 Group 9.1, added 2026-09-15)", () => {
+  it("createEventType stores an icon and auto-increments sortOrder; listEventTypes orders by it", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const first = await createEventType(org.id, { name: "Wedding", icon: "wedding" }, actor.id);
+    const second = await createEventType(org.id, { name: "Birthday", icon: "birthday" }, actor.id);
+
+    expect(first.icon).toBe("wedding");
+    expect(first.sortOrder).toBe(0);
+    expect(second.sortOrder).toBe(1);
+
+    const list = await listEventTypes(org.id);
+    expect(list.map((e) => e.id)).toEqual([first.id, second.id]);
+  });
+
+  it("updateEventType can change the icon", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Party", icon: "party" }, actor.id);
+
+    const updated = await updateEventType(org.id, eventType.id, { name: "Party", icon: "celebration" }, actor.id);
+    expect(updated.icon).toBe("celebration");
+  });
+
+  it("reorderEventTypes persists a new sortOrder for the tenant's full set", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const a = await createEventType(org.id, { name: "A" }, actor.id);
+    const b = await createEventType(org.id, { name: "B" }, actor.id);
+    const c = await createEventType(org.id, { name: "C" }, actor.id);
+
+    await reorderEventTypes(org.id, [c.id, a.id, b.id], actor.id);
+
+    const list = await listEventTypes(org.id);
+    expect(list.map((e) => e.id)).toEqual([c.id, a.id, b.id]);
+  });
+
+  it("reorderEventTypes rejects an orderedIds set that doesn't exactly match the tenant's current Event Types", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const a = await createEventType(org.id, { name: "A" }, actor.id);
+    await createEventType(org.id, { name: "B" }, actor.id);
+
+    await expect(reorderEventTypes(org.id, [a.id], actor.id)).rejects.toThrow();
+  });
+
+  it("deleteEventType rejects deleting an Event Type that has real Events, with a clear message", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210" }, actor.id);
+    await createEvent(
+      org.id,
+      { customerId: customer.id, eventTypeId: eventType.id, name: "Asha's Wedding", startDate: new Date(), endDate: new Date() },
+      actor.id,
+    );
+
+    await expect(deleteEventType(org.id, eventType.id, actor.id)).rejects.toThrow(EventTypeInUseError);
+    expect(await getEventType(org.id, eventType.id)).not.toBeNull();
   });
 });

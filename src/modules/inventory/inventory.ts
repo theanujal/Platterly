@@ -116,9 +116,23 @@ export async function updateInventoryItem(
   return after;
 }
 
-/** Hard delete — nothing references Inventory yet; InventoryTransaction cascades (DB-level onDelete: Cascade). */
+/**
+ * Hard delete — InventoryTransaction cascades (DB-level onDelete: Cascade).
+ * Now referenced by Event (Chunk 9, via EventRequiredInventory's
+ * onDelete: Restrict) once an Event actually requires this item — checked
+ * explicitly up front, same pre-check convention as event-type.ts's
+ * EventTypeInUseError.
+ */
+export class InventoryInUseError extends Error {}
+
 export async function deleteInventoryItem(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.inventory.findFirstOrThrow({ where: { id, organizationId } });
+
+  const eventCount = await prisma.eventRequiredInventory.count({ where: { inventoryId: id } });
+  if (eventCount > 0) {
+    throw new InventoryInUseError(`"${before.name}" is required by ${eventCount} Event(s) and can't be deleted.`);
+  }
+
   await prisma.inventory.delete({ where: { id } });
 
   await audit({

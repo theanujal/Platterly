@@ -139,4 +139,33 @@ describe("purgeTenantData (Chunk 5 Group 5.4 Danger Zone)", () => {
     const purgeLog = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "tenant.data_purge" } });
     expect(purgeLog).toBeNull();
   });
+
+  it("purges Event/EventType/Customer/Inventory together with no FK-order failure (Chunk 9's Restrict relations)", async () => {
+    const { org, owner } = await seedFullTenant();
+
+    const eventType = await prisma.eventType.create({ data: { organizationId: org.id, name: "Wedding" } });
+    const customer = await prisma.customer.create({ data: { organizationId: org.id, name: "Asha Rao", phone: "9876543210" } });
+    const inventory = await prisma.inventory.create({ data: { organizationId: org.id, name: "Rice", category: "Grains", unit: "kg" } });
+    const event = await prisma.event.create({
+      data: {
+        organizationId: org.id,
+        customerId: customer.id,
+        eventTypeId: eventType.id,
+        name: "Asha's Wedding",
+        startDate: new Date(),
+        endDate: new Date(),
+      },
+    });
+    await prisma.eventRequiredInventory.create({ data: { eventId: event.id, inventoryId: inventory.id, quantity: 10 } });
+    await prisma.enquiry.create({ data: { organizationId: org.id, name: "Asha Rao", phone: "9876543210", customerId: customer.id } });
+
+    await purgeTenantData(org.id, owner.id, "DELETE");
+
+    expect(await prisma.event.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.eventType.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.customer.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.inventory.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.enquiry.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.eventRequiredInventory.count({ where: { eventId: event.id } })).toBe(0);
+  });
 });

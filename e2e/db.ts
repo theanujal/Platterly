@@ -24,6 +24,14 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
   );
   const orgIds = memberRows.map((row) => row.organizationId);
   if (orgIds.length > 0) {
+    // Chunk 9 — `event` cascades its own `event_required_inventory` rows,
+    // but Postgres gives no ordering guarantee between sibling cascade
+    // paths off `organization` (event->event_required_inventory vs.
+    // organization->inventory directly) within one DELETE's cascade
+    // execution — deleting `event` explicitly first, before `organization`,
+    // avoids `event_required_inventory`'s onDelete: Restrict on inventoryId
+    // ever firing against a row that's about to cascade away anyway.
+    await pool.query('DELETE FROM event WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM audit_log WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM subscription WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM member WHERE "organizationId" = ANY($1)', [orgIds]);
@@ -99,6 +107,7 @@ export async function cleanupTenantBySlug(slug: string): Promise<void> {
   const { rows } = await pool.query<{ id: string }>('SELECT id FROM organization WHERE slug = $1', [slug]);
   const org = rows[0];
   if (!org) return;
+  await pool.query('DELETE FROM event WHERE "organizationId" = $1', [org.id]); // see cleanupOnboardingTestUser's comment
   await pool.query('DELETE FROM audit_log WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM subscription WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM organization WHERE id = $1', [org.id]);

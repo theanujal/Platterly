@@ -2,13 +2,15 @@ import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
 
 /**
- * New Events section (pulled forward from dev plans/chunk-09-crm-core.md
- * §9.1, 2026-09-14) — a caterer's catalog of the *types* of events they
- * cater (e.g. "Wedding Event"), each offering a set of eligible Menus.
- * Signs up a fresh throwaway account, skips onboarding, creates a bare Menu
- * (no items/categories needed for this) via the "Add Menu Type" popup
- * (2026-09-14 UI/UX redesign round — Menu creation is a dialog now, not a
- * page), then drives the Events flow.
+ * Event Types (pulled forward from dev plans/chunk-09-crm-core.md §9.1,
+ * 2026-09-14; icon/sort-order added + relocated to /events/types when
+ * Chunk 9's real Events Dashboard was built at /events, 2026-09-15) — a
+ * caterer's catalog of the *types* of events they cater (e.g. "Wedding
+ * Event"), each offering a set of eligible Menus. Signs up a fresh
+ * throwaway account, skips onboarding, creates a bare Menu (no items/
+ * categories needed for this) via the "Add Menu Type" popup, then drives
+ * the Event Types flow reached from the Events Dashboard's "Manage Event
+ * Types" link.
  */
 
 const cleanupEmails: string[] = [];
@@ -19,7 +21,7 @@ test.afterEach(async () => {
   await cleanupOnboardingTestUser(email);
 });
 
-test("create an event type assigning a menu, then edit it", async ({ page }) => {
+test("create an event type with an icon assigning a menu, then edit it", async ({ page }) => {
   test.setTimeout(60_000);
   const email = `e2e-events-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -37,6 +39,8 @@ test("create an event type assigning a menu, then edit it", async ({ page }) => 
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
+  // A fresh account's Dashboard auto-opens the "Claim your custom link" dialog.
+  await page.getByRole("button", { name: "Close" }).click();
 
   // --- A bare Menu for the event type to reference, via the "Add Menu Type" popup ---
   const menuName = `Wedding Menu ${suffix}`;
@@ -49,33 +53,40 @@ test("create an event type assigning a menu, then edit it", async ({ page }) => 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(menuName)).toBeVisible();
 
-  // --- Events nav item (peer of Menu Catalog, not nested under it) ---
+  // --- Events nav item now lands on the real Events Dashboard (Chunk 9) ---
   await page.getByRole("link", { name: "Events" }).click();
   await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByRole("heading", { name: "Events" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Events", exact: true })).toBeVisible();
 
-  // --- Create Event Type ---
-  const eventName = `Wedding Event ${suffix}`;
-  await page.getByRole("link", { name: "Add New Event" }).click();
-  await expect(page).toHaveURL(/\/events\/new$/);
-  await page.getByLabel("Event Name").fill(eventName);
+  // --- Event Types now live at /events/types, reached via "Manage Event Types" ---
+  await page.getByRole("button", { name: "Manage Event Types" }).click();
+  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page.getByRole("heading", { name: "Event Types" })).toBeVisible();
+
+  // --- Create Event Type, with an icon (Chunk 9 Group 9.1) ---
+  const eventTypeName = `Wedding Event ${suffix}`;
+  await page.getByRole("link", { name: "Add New Event Type" }).click();
+  await expect(page).toHaveURL(/\/events\/types\/new$/);
+  await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByLabel("Description").fill("Full wedding catering package");
+  await page.getByLabel("Icon").click();
+  await page.getByRole("option", { name: "Wedding" }).click();
   await page.getByLabel("Min Number of Guests").fill("50");
   await page.getByText(menuName).click();
   await page.getByRole("button", { name: "Create event" }).click();
 
-  await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByText(eventName)).toBeVisible();
+  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page.getByText(eventTypeName)).toBeVisible();
   await expect(page.getByText("Min 50 guests")).toBeVisible();
 
-  // --- Edit: confirm the menu assignment round-trips ---
-  await page.getByText(eventName).click();
-  await expect(page).toHaveURL(/\/events\/.+/);
-  await expect(page.getByLabel("Event Name")).toHaveValue(eventName);
+  // --- Edit: confirm the menu assignment and icon round-trip ---
+  await page.getByText(eventTypeName).click();
+  await expect(page).toHaveURL(/\/events\/types\/.+/);
+  await expect(page.getByLabel("Event Name")).toHaveValue(eventTypeName);
   await expect(page.getByText(menuName)).toBeVisible();
 
-  await page.getByLabel("Event Name").fill(`${eventName} Updated`);
+  await page.getByLabel("Event Name").fill(`${eventTypeName} Updated`);
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByText(`${eventName} Updated`)).toBeVisible();
+  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page.getByText(`${eventTypeName} Updated`)).toBeVisible();
 });

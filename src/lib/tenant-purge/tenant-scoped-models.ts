@@ -30,12 +30,21 @@ export const TENANT_SCOPED_DELEGATES = [
   "menuCategory",
   "menuItem",
   "menu",
+  // Chunk 9 — Event has onDelete: Restrict FKs to Customer/EventType, and
+  // its child eventRequiredInventory (no organizationId of its own,
+  // cascades off Event automatically) has onDelete: Restrict to Inventory.
+  // purge.ts runs this array in order inside one transaction, so "event"
+  // MUST precede "eventType"/"inventory"/"customer" below or their
+  // deleteMany calls fail on the still-referencing Event rows.
+  "event",
   "eventType",
   "addOn",
   // Chunk 7 — inventoryTransaction has no organizationId of its own; it
   // cascades automatically (DB-level onDelete: Cascade) off its parent
   // inventory row.
   "inventory",
+  "enquiry",
+  "customer",
 ] as const;
 
 /**

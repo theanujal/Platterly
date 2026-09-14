@@ -9,13 +9,21 @@ import {
   recordStockTransaction,
   getInventoryOverviewStats,
   listLowStockItems,
+  InventoryInUseError,
 } from "@/modules/inventory/inventory";
+import { createEventType } from "@/modules/events/event-type";
+import { createCustomer } from "@/modules/customers/customer";
+import { createEvent } from "@/modules/events/event";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.eventRequiredInventory.deleteMany({ where: { event: { organizationId: { in: cleanupOrgIds } } } });
+  await prisma.event.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.customer.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.eventType.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.inventory.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: cleanupOrgIds } } });
   await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
@@ -226,5 +234,39 @@ describe("getInventoryOverviewStats / listLowStockItems — Dashboard Inventory 
 
     const lowStock = await listLowStockItems(org.id);
     expect(lowStock.map((i) => i.id)).toEqual([low.id]);
+  });
+});
+
+describe("deleteInventoryItem — in-use guard (Chunk 9, EventRequiredInventory's onDelete: Restrict)", () => {
+  it("rejects deleting an item required by a real Event, with a clear message, and changes nothing", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const item = await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg" }, actor.id, 50);
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210" }, actor.id);
+    await createEvent(
+      org.id,
+      {
+        customerId: customer.id,
+        eventTypeId: eventType.id,
+        name: "Asha's Wedding",
+        startDate: new Date(),
+        endDate: new Date(),
+        requiredInventory: [{ inventoryId: item.id, quantity: 10 }],
+      },
+      actor.id,
+    );
+
+    await expect(deleteInventoryItem(org.id, item.id, actor.id)).rejects.toThrow(InventoryInUseError);
+    expect(await getInventoryItem(org.id, item.id)).not.toBeNull();
+  });
+
+  it("still allows deleting an item nothing requires", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const item = await createInventoryItem(org.id, { name: "Sugar", category: "Grocery", unit: "kg" }, actor.id, 10);
+
+    await deleteInventoryItem(org.id, item.id, actor.id);
+    expect(await getInventoryItem(org.id, item.id)).toBeNull();
   });
 });
