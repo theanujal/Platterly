@@ -32,6 +32,11 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // avoids `event_required_inventory`'s onDelete: Restrict on inventoryId
     // ever firing against a row that's about to cascade away anyway.
     await pool.query('DELETE FROM event WHERE "organizationId" = ANY($1)', [orgIds]);
+    // Chunk 10 — same ordering hazard: `order`.customerId is onDelete:
+    // Restrict, and Postgres gives no guarantee it resolves organization's
+    // cascade into `order` before its cascade into `customer`. `order` is
+    // also a reserved SQL keyword, hence the quoting.
+    await pool.query('DELETE FROM "order" WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM audit_log WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM subscription WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM member WHERE "organizationId" = ANY($1)', [orgIds]);
@@ -108,6 +113,7 @@ export async function cleanupTenantBySlug(slug: string): Promise<void> {
   const org = rows[0];
   if (!org) return;
   await pool.query('DELETE FROM event WHERE "organizationId" = $1', [org.id]); // see cleanupOnboardingTestUser's comment
+  await pool.query('DELETE FROM "order" WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM audit_log WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM subscription WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM organization WHERE id = $1', [org.id]);

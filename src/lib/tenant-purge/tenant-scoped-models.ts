@@ -44,6 +44,12 @@ export const TENANT_SCOPED_DELEGATES = [
   // inventory row.
   "inventory",
   "enquiry",
+  // Chunk 10 — orderItem/mealPlanEntry have no organizationId of their own;
+  // they cascade automatically off their parent order row. Order.customerId
+  // is onDelete: Restrict (same reasoning as Event's), so "order" must
+  // precede "customer" below. Order->Event is the reverse direction
+  // (Event.orderId, onDelete: SetNull) — no ordering constraint either way.
+  "order",
   "customer",
 ] as const;
 

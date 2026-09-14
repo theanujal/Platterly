@@ -19,10 +19,10 @@ default Kitchen usable until Chunk 23's multi-location UI), a date range
 `customerId` are `onDelete: Restrict` — `event-type.ts`'s `deleteEventType`
 and `inventory.ts`'s `deleteInventoryItem` both pre-check for in-use Events
 and throw a friendly error rather than relying on the DB's own FK-violation
-error (same convention as `slug.ts`'s `SlugTakenError`). `Event.orderId` is
-a bare column with no `@relation` yet — Chunk 10 hasn't built `Order`; it
-adds the real FK on top of this same column, no migration needed here.
-`listKitchens` also lives here — it's Event-specific data (the Events
+error (same convention as `slug.ts`'s `SlugTakenError`). `Event.orderId`
+got its real `@relation` to `Order` in Chunk 10 (`onDelete: SetNull` —
+deleting an Order never deletes its Event, only unlinks it), on top of the
+same bare column this chunk left in place for exactly that. `listKitchens` also lives here — it's Event-specific data (the Events
 Dashboard's location filter, the Event form's kitchen picker), not a
 general Kitchen CRUD module (none exists; Kitchen itself is still schema-only
 until Chunk 23).

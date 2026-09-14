@@ -155,6 +155,7 @@ model Organization {
   customers      Customer[]
   enquiries      Enquiry[]
   events         Event[]
+  orders         Order[]
 
   @@unique([slug])
   @@map("organization")
@@ -511,6 +512,7 @@ model MenuItem {
 
   categories MenuItemCategory[]
   menus      MenuMenuItem[]
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -550,6 +552,7 @@ model Menu {
   categoryAssignments MenuCategoryAssignment[]
   eventTypes          EventTypeMenu[]
   preferredByEnquiries Enquiry[]
+  orderItems           OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -628,6 +631,7 @@ model EventType {
   menus     EventTypeMenu[]
   events    Event[]
   enquiries Enquiry[]
+  orders    Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -678,6 +682,8 @@ model AddOn {
   priceType      AddOnPriceType
   price          Decimal        @db.Decimal(10, 2)
   isActive       Boolean        @default(true)
+
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -773,6 +779,7 @@ model Customer {
 
   enquiries Enquiry[]
   events    Event[]
+  orders    Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -880,11 +887,15 @@ model Event {
   notes      String?
   status     EventStatus @default(PENDING)
 
-  // Left as a bare column, no FK yet — Chunk 10 hasn't built Order. Populated
-  // once Order exists and the caterer chooses "Yes, create event" after
-  // Order creation (Updated doc §8); avoids a data migration later, Chunk 10
-  // adds the actual `@relation` on top of this same column.
+  // Populated once the caterer chooses "Yes, create event" after Order
+  // creation (Updated doc §8, Chunk 10 Group 10.6). SetNull, not Restrict —
+  // deleting an Order should never block deleting/keeping its Event, it
+  // just unlinks it. Nullable/non-unique: an Event can exist with no Order
+  // yet, and nothing stops several Events sharing one Order (e.g. a
+  // multi-day booking with a distinct operational day each) — see the
+  // Order/Event judgment call in dev plans/index.md #14.
   orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   requiredInventory EventRequiredInventory[]
 
@@ -913,4 +924,153 @@ model EventRequiredInventory {
   @@index([eventId])
   @@index([inventoryId])
   @@map("event_required_inventory")
+}
+
+// Chunk 10 — Sales Pipeline: Order (Quotation, Group 10.1, deferred to a
+// later pass per AJ — Order is scoped here to be creatable directly, matching
+// the updated doc's order-first flow; a `quotationId` FK gets added on top
+// of this same table whenever Quotation lands, same "leave it out until the
+// referenced model exists" convention as Chunk 9's `Event.orderId`).
+
+// PRD §21's own state machine, not the updated doc's shorter dashboard-filter
+// list — this dev plan's own chunk-10 file already made that call.
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  IN_PREPARATION
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderPaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+// Updated doc §6's five meal slots.
+enum MealType {
+  BREAKFAST
+  LUNCH
+  HITEA
+  DINNER
+  OTHER
+}
+
+// Shared by OrderItem (and, later, QuotationItem) — a catalog line item can
+// be a whole priced Menu, a single MenuItem, or an AddOn; exactly one of
+// menuId/menuItemId/addOnId is set per row, matching which itemType this is.
+enum OrderItemType {
+  MENU
+  MENU_ITEM
+  ADD_ON
+}
+
+model Order {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Nullable/SetNull, unlike Event's required/Restrict eventTypeId — an
+  // Order's own event-type is lightweight categorization, not something
+  // Menu Selection logic depends on the way Event's does.
+  eventTypeId String?
+  eventType   EventType? @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
+
+  // Updated doc §5 "Event Information" — captured directly on the Order,
+  // independent of whether a formal Event row exists yet (Group 10.6).
+  eventStartDate DateTime
+  eventEndDate   DateTime
+  venue          String?
+  eventAddress   String?
+
+  // Participant Information (Group 10.3) — lets pricing reflect actual
+  // guest composition. `totalParticipants` is a UI-suggested default
+  // (adultCount+childCount) but stored independently/overridable.
+  adultCount        Int?
+  childCount        Int?
+  totalParticipants Int?
+  adultNonVegCount  Int?
+  adultVegCount     Int?
+
+  // Meal Planning (Group 10.4) — when true, each MealPlanEntry's own
+  // `price` is added into `subtotal`; when false, meal selections are
+  // purely operational (which meals, which days) and only `items`
+  // (Products & Menu Items) drive pricing.
+  individualPricingEnabled Boolean @default(false)
+
+  // Pricing (PRD §21) — `subtotal`/`total`/`balance` are kept in sync by
+  // `recalculateOrderTotals` (src/modules/orders/order.ts) whenever items/
+  // mealPlanEntries/discount/taxes/advance change, not recomputed ad hoc
+  // by every reader.
+  subtotal Decimal @default(0) @db.Decimal(12, 2)
+  discount Decimal @default(0) @db.Decimal(12, 2)
+  taxes    Decimal @default(0) @db.Decimal(12, 2)
+  total    Decimal @default(0) @db.Decimal(12, 2)
+  advance  Decimal @default(0) @db.Decimal(12, 2)
+  balance  Decimal @default(0) @db.Decimal(12, 2)
+
+  paymentStatus OrderPaymentStatus @default(UNPAID)
+  status        OrderStatus        @default(DRAFT)
+  notes         String?
+
+  items           OrderItem[]
+  mealPlanEntries MealPlanEntry[]
+  events          Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@map("order")
+}
+
+// No `organizationId` of its own — cascades off its parent Order row.
+model OrderItem {
+  id      String        @id @default(cuid())
+  orderId String
+  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemType OrderItemType
+
+  menuId     String?
+  menu       Menu?     @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  addOnId    String?
+  addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
+
+  // Snapshotted at add-time — survives the catalog item being renamed,
+  // repriced, or deleted later without silently rewriting a past Order.
+  name      String
+  unitPrice Decimal @db.Decimal(10, 2)
+  quantity  Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_item")
+}
+
+// No `organizationId` of its own — cascades off its parent Order row.
+// Existence of a row = that (date, mealType) is selected for this Order;
+// there's no separate boolean to go out of sync with row presence.
+model MealPlanEntry {
+  id       String   @id @default(cuid())
+  orderId  String
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  date     DateTime
+  mealType MealType
+  // Only meaningful (and only ever set) when Order.individualPricingEnabled.
+  price Decimal? @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  @@unique([orderId, date, mealType])
+  @@index([orderId])
+  @@map("meal_plan_entry")
 }
