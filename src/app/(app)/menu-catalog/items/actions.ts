@@ -73,7 +73,6 @@ export async function updateMenuItemAction(
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/items");
-  revalidatePath(`/menu-catalog/items/${id}`);
   return { ok: true };
 }
 

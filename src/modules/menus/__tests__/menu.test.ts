@@ -1,8 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createMenuItem } from "@/modules/menus/item";
-import { createCategory } from "@/modules/menus/category";
-import { createMenu, updateMenu, deleteMenu, getMenu, listMenus } from "@/modules/menus/menu";
+import { createCategory, updateCategory } from "@/modules/menus/category";
+import { createMenu, updateMenu, deleteMenu, getMenu, listMenus, reorderMenuCategoryAssignments } from "@/modules/menus/menu";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -36,7 +36,7 @@ async function makeActor() {
   return actor;
 }
 
-describe("Menu CRUD (Chunk 6, reworked 2026-09-14)", () => {
+describe("Menu CRUD (Chunk 6, reworked 2026-09-14; ownership restructured again 2026-09-14)", () => {
   it("createMenu stores menuType and pricePerPlate", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
@@ -47,101 +47,85 @@ describe("Menu CRUD (Chunk 6, reworked 2026-09-14)", () => {
     expect(Number(menu.pricePerPlate)).toBe(350);
   });
 
-  it("createMenu attaches items in the given order", async () => {
+  it("the same Category can be assigned to two different Menus with different max-selection (AJ's exact scenario), via the Category side", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const itemA = await createMenuItem(org.id, { name: "Dish A", foodType: "VEGETARIAN", price: 100 }, actor.id);
-    const itemB = await createMenuItem(org.id, { name: "Dish B", foodType: "VEGETARIAN", price: 100 }, actor.id);
 
-    const menu = await createMenu(
-      org.id,
-      { name: "Wedding Silver Menu", menuType: "VEGETARIAN", pricePerPlate: 300, itemIds: [itemB.id, itemA.id] },
-      actor.id,
-    );
-    const fetched = await getMenu(org.id, menu.id);
-
-    expect(fetched!.items.map((i) => i.menuItemId)).toEqual([itemB.id, itemA.id]);
-  });
-
-  it("the same Category can be assigned to two different Menus with different max-selection (AJ's exact scenario)", async () => {
-    const org = await makeOrg();
-    const actor = await makeActor();
-    const starters = await createCategory(org.id, { name: "Starters" }, actor.id);
-
-    const vegMenu = await createMenu(
-      org.id,
-      { name: "Wedding Veg Menu", menuType: "VEGETARIAN", pricePerPlate: 300, categoryAssignments: [{ categoryId: starters.id, maxSelection: 2, sortOrder: 0 }] },
-      actor.id,
-    );
-    const nonVegMenu = await createMenu(
-      org.id,
-      { name: "Wedding Non-Veg Menu", menuType: "NON_VEGETARIAN", pricePerPlate: 400, categoryAssignments: [{ categoryId: starters.id, maxSelection: 3, sortOrder: 0 }] },
-      actor.id,
-    );
-
-    const vegFetched = await getMenu(org.id, vegMenu.id);
-    const nonVegFetched = await getMenu(org.id, nonVegMenu.id);
-    expect(vegFetched!.categoryAssignments[0].maxSelection).toBe(2);
-    expect(nonVegFetched!.categoryAssignments[0].maxSelection).toBe(3);
-  });
-
-  it("getMenu's categoryAssignments respect sortOrder", async () => {
-    const org = await makeOrg();
-    const actor = await makeActor();
-    const starters = await createCategory(org.id, { name: "Starters" }, actor.id);
-    const mains = await createCategory(org.id, { name: "Mains" }, actor.id);
-
-    const menu = await createMenu(
+    const vegMenu = await createMenu(org.id, { name: "Wedding Veg Menu", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const nonVegMenu = await createMenu(org.id, { name: "Wedding Non-Veg Menu", menuType: "NON_VEGETARIAN", pricePerPlate: 400 }, actor.id);
+    const starters = await createCategory(
       org.id,
       {
-        name: "Ordered Menu",
-        menuType: "VEGETARIAN",
-        pricePerPlate: 300,
-        categoryAssignments: [
-          { categoryId: mains.id, maxSelection: null, sortOrder: 1 },
-          { categoryId: starters.id, maxSelection: null, sortOrder: 0 },
+        name: "Starters",
+        menuAssignments: [
+          { menuId: vegMenu.id, maxSelection: 2 },
+          { menuId: nonVegMenu.id, maxSelection: 3 },
         ],
       },
       actor.id,
     );
 
-    const fetched = await getMenu(org.id, menu.id);
-    expect(fetched!.categoryAssignments.map((a) => a.categoryId)).toEqual([starters.id, mains.id]);
+    const vegFetched = await getMenu(org.id, vegMenu.id);
+    const nonVegFetched = await getMenu(org.id, nonVegMenu.id);
+    expect(vegFetched!.categoryAssignments.find((a) => a.categoryId === starters.id)!.maxSelection).toBe(2);
+    expect(nonVegFetched!.categoryAssignments.find((a) => a.categoryId === starters.id)!.maxSelection).toBe(3);
   });
 
-  it("the same MenuItem can belong to two different Menus", async () => {
+  it("reorderMenuCategoryAssignments persists a new sortOrder for a menu's already-assigned categories", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const item = await createMenuItem(org.id, { name: "Shared Dish", foodType: "VEGETARIAN", price: 100 }, actor.id);
+    const menu = await createMenu(org.id, { name: "Ordered Menu", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const starters = await createCategory(org.id, { name: "Starters", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+    const mains = await createCategory(org.id, { name: "Mains", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
 
-    const menuOne = await createMenu(org.id, { name: "Menu One", menuType: "VEGETARIAN", pricePerPlate: 200, itemIds: [item.id] }, actor.id);
-    const menuTwo = await createMenu(org.id, { name: "Menu Two", menuType: "VEGETARIAN", pricePerPlate: 250, itemIds: [item.id] }, actor.id);
+    // Appended in creation order: Starters (sortOrder 0), Mains (sortOrder 1).
+    let fetched = await getMenu(org.id, menu.id);
+    expect(fetched!.categoryAssignments.map((a) => a.categoryId)).toEqual([starters.id, mains.id]);
+
+    await reorderMenuCategoryAssignments(org.id, menu.id, [mains.id, starters.id], actor.id);
+
+    fetched = await getMenu(org.id, menu.id);
+    expect(fetched!.categoryAssignments.map((a) => a.categoryId)).toEqual([mains.id, starters.id]);
+  });
+
+  it("reorderMenuCategoryAssignments rejects a category not currently assigned to that menu", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const unassigned = await createCategory(org.id, { name: "Not On This Menu" }, actor.id);
+
+    await expect(reorderMenuCategoryAssignments(org.id, menu.id, [unassigned.id], actor.id)).rejects.toThrow();
+  });
+
+  it("the same MenuItem can belong to two different Menus (via the item's own menuIds)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menuOne = await createMenu(org.id, { name: "Menu One", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const menuTwo = await createMenu(org.id, { name: "Menu Two", menuType: "VEGETARIAN", pricePerPlate: 250 }, actor.id);
+
+    await createMenuItem(org.id, { name: "Shared Dish", foodType: "VEGETARIAN", price: 100, menuIds: [menuOne.id, menuTwo.id] }, actor.id);
 
     expect((await getMenu(org.id, menuOne.id))!.items).toHaveLength(1);
     expect((await getMenu(org.id, menuTwo.id))!.items).toHaveLength(1);
   });
 
-  it("updateMenu replaces the item list and category assignments wholesale", async () => {
+  it("updateCategory can replace a menu assignment's max-selection without disturbing its sortOrder", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const itemA = await createMenuItem(org.id, { name: "Dish A", foodType: "VEGETARIAN", price: 100 }, actor.id);
-    const itemB = await createMenuItem(org.id, { name: "Dish B", foodType: "VEGETARIAN", price: 100 }, actor.id);
-    const category = await createCategory(org.id, { name: "Starters" }, actor.id);
-    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, itemIds: [itemA.id] }, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const first = await createCategory(org.id, { name: "First", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+    await createCategory(org.id, { name: "Second", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+    await reorderMenuCategoryAssignments(org.id, menu.id, (await getMenu(org.id, menu.id))!.categoryAssignments.map((a) => a.categoryId).reverse(), actor.id);
 
-    await updateMenu(
-      org.id,
-      menu.id,
-      { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, itemIds: [itemB.id], categoryAssignments: [{ categoryId: category.id, maxSelection: 1, sortOrder: 0 }] },
-      actor.id,
-    );
+    await updateCategory(org.id, first.id, { name: "First", menuAssignments: [{ menuId: menu.id, maxSelection: 5 }] }, actor.id);
+
     const fetched = await getMenu(org.id, menu.id);
-
-    expect(fetched!.items.map((i) => i.menuItemId)).toEqual([itemB.id]);
-    expect(fetched!.categoryAssignments.map((a) => a.categoryId)).toEqual([category.id]);
+    const firstAssignment = fetched!.categoryAssignments.find((a) => a.categoryId === first.id)!;
+    expect(firstAssignment.maxSelection).toBe(5);
+    expect(firstAssignment.sortOrder).toBe(1); // untouched by updateCategory, still reflects the earlier reorder
   });
 
-  it("updateMenu can switch pricingModel-adjacent fields (menuType/pricePerPlate)", async () => {
+  it("updateMenu can switch menuType/pricePerPlate", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
@@ -154,13 +138,9 @@ describe("Menu CRUD (Chunk 6, reworked 2026-09-14)", () => {
   it("deleteMenu removes the menu without deleting its MenuItems or Categories", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const item = await createMenuItem(org.id, { name: "Survives", foodType: "VEGETARIAN", price: 100 }, actor.id);
-    const category = await createCategory(org.id, { name: "Survives Too" }, actor.id);
-    const menu = await createMenu(
-      org.id,
-      { name: "Temp Menu", menuType: "VEGETARIAN", pricePerPlate: 200, itemIds: [item.id], categoryAssignments: [{ categoryId: category.id, maxSelection: null, sortOrder: 0 }] },
-      actor.id,
-    );
+    const menu = await createMenu(org.id, { name: "Temp Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const item = await createMenuItem(org.id, { name: "Survives", foodType: "VEGETARIAN", price: 100, menuIds: [menu.id] }, actor.id);
+    const category = await createCategory(org.id, { name: "Survives Too", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
 
     await deleteMenu(org.id, menu.id, actor.id);
 

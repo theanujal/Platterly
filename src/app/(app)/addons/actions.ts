@@ -75,7 +75,6 @@ export async function updateAddOnAction(
     return toErrorResult(error);
   }
   revalidatePath("/addons");
-  revalidatePath(`/addons/${id}`);
   return { ok: true };
 }
 

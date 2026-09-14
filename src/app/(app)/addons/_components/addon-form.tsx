@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
 
@@ -95,17 +96,8 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="addon-image">Image (PNG or JPG, up to 2MB)</Label>
-          {values.imageUrl && !image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={values.imageUrl} alt="" className="size-16 rounded-lg border border-border object-cover" />
-          )}
-          <input
-            id="addon-image"
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-          />
+          <Label htmlFor="addon-image">Image</Label>
+          <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">

@@ -41,7 +41,7 @@ async function makeActor() {
   return actor;
 }
 
-describe("MenuCategory CRUD (Chunk 6, reworked 2026-09-14)", () => {
+describe("MenuCategory CRUD (Chunk 6, reworked 2026-09-14; Category owns Menu assignment as of 2026-09-14)", () => {
   it("createCategory stores description/isActive and writes an AuditLog row", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
@@ -94,12 +94,8 @@ describe("MenuCategory CRUD (Chunk 6, reworked 2026-09-14)", () => {
   it("deleteCategory removes the row without touching menus or items (cascades only join rows)", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const category = await createCategory(org.id, { name: "Snacks" }, actor.id);
-    const menu = await createMenu(
-      org.id,
-      { name: "Test Menu", menuType: "VEGETARIAN", pricePerPlate: 100, categoryAssignments: [{ categoryId: category.id, maxSelection: 2, sortOrder: 0 }] },
-      actor.id,
-    );
+    const menu = await createMenu(org.id, { name: "Test Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const category = await createCategory(org.id, { name: "Snacks", menuAssignments: [{ menuId: menu.id, maxSelection: 2 }] }, actor.id);
 
     await deleteCategory(org.id, category.id, actor.id);
 
@@ -122,15 +118,17 @@ describe("MenuCategory CRUD (Chunk 6, reworked 2026-09-14)", () => {
   it("listCategoryMenuAssignments reflects the same category with different max-selection on two different menus", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
-    const category = await createCategory(org.id, { name: "Starters" }, actor.id);
-    const vegMenu = await createMenu(
+    const vegMenu = await createMenu(org.id, { name: "Veg Menu", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const nonVegMenu = await createMenu(org.id, { name: "Non-Veg Menu", menuType: "NON_VEGETARIAN", pricePerPlate: 400 }, actor.id);
+    const category = await createCategory(
       org.id,
-      { name: "Veg Menu", menuType: "VEGETARIAN", pricePerPlate: 300, categoryAssignments: [{ categoryId: category.id, maxSelection: 2, sortOrder: 0 }] },
-      actor.id,
-    );
-    const nonVegMenu = await createMenu(
-      org.id,
-      { name: "Non-Veg Menu", menuType: "NON_VEGETARIAN", pricePerPlate: 400, categoryAssignments: [{ categoryId: category.id, maxSelection: 3, sortOrder: 1 }] },
+      {
+        name: "Starters",
+        menuAssignments: [
+          { menuId: vegMenu.id, maxSelection: 2 },
+          { menuId: nonVegMenu.id, maxSelection: 3 },
+        ],
+      },
       actor.id,
     );
 
@@ -140,5 +138,31 @@ describe("MenuCategory CRUD (Chunk 6, reworked 2026-09-14)", () => {
     const nonVeg = assignments.find((a) => a.menuId === nonVegMenu.id);
     expect(veg!.maxSelection).toBe(2);
     expect(nonVeg!.maxSelection).toBe(3);
+  });
+
+  it("createCategory appends new menu assignments in creation order, each starting at sortOrder 0 for its own menu", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const first = await createCategory(org.id, { name: "First", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+    const second = await createCategory(org.id, { name: "Second", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+
+    const assignments = await listCategoryMenuAssignments(org.id, first.id);
+    expect(assignments[0].sortOrder).toBe(0);
+    const secondAssignments = await listCategoryMenuAssignments(org.id, second.id);
+    expect(secondAssignments[0].sortOrder).toBe(1);
+  });
+
+  it("updateCategory can unassign a menu (uncheck) without affecting other categories' assignments to that menu", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const category = await createCategory(org.id, { name: "Starters", menuAssignments: [{ menuId: menu.id, maxSelection: 2 }] }, actor.id);
+    const other = await createCategory(org.id, { name: "Mains", menuAssignments: [{ menuId: menu.id, maxSelection: 3 }] }, actor.id);
+
+    await updateCategory(org.id, category.id, { name: "Starters", menuAssignments: [] }, actor.id);
+
+    expect(await listCategoryMenuAssignments(org.id, category.id)).toHaveLength(0);
+    expect(await listCategoryMenuAssignments(org.id, other.id)).toHaveLength(1);
   });
 });

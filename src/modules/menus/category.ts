@@ -4,10 +4,61 @@ import { audit } from "@/lib/audit/audit";
 
 export class CategoryNameTakenError extends Error {}
 
+export interface MenuAssignmentInput {
+  menuId: string;
+  /** null = unlimited selections from this category on that menu. */
+  maxSelection: number | null;
+}
+
 export interface CategoryInput {
   name: string;
   description?: string;
   isActive?: boolean;
+  /** Full replacement of which Menus this Category is assigned to, and each one's max-selection. */
+  menuAssignments?: MenuAssignmentInput[];
+}
+
+/**
+ * Assigning a Category to Menus is owned here (2026-09-14, AJ) — the Menu
+ * Type screen only *displays* and *reorders* its already-assigned
+ * categories now, it can no longer add/remove them or edit max-selection.
+ * Deliberately preserves each surviving assignment's existing `sortOrder`
+ * (the Menu Type screen's Move Up/Down owns that), and appends new
+ * assignments after the current max sortOrder for that specific menu.
+ */
+async function replaceCategoryMenuAssignments(categoryId: string, assignments: MenuAssignmentInput[] | undefined) {
+  if (assignments === undefined) return;
+
+  const existing = await prisma.menuCategoryAssignment.findMany({ where: { categoryId } });
+  const existingByMenu = new Map(existing.map((a) => [a.menuId, a]));
+  const keepMenuIds = assignments.map((a) => a.menuId);
+
+  await prisma.menuCategoryAssignment.deleteMany({
+    where: { categoryId, menuId: { notIn: keepMenuIds } },
+  });
+
+  for (const assignment of assignments) {
+    const prior = existingByMenu.get(assignment.menuId);
+    if (prior) {
+      await prisma.menuCategoryAssignment.update({
+        where: { id: prior.id },
+        data: { maxSelection: assignment.maxSelection },
+      });
+      continue;
+    }
+    const { _max } = await prisma.menuCategoryAssignment.aggregate({
+      where: { menuId: assignment.menuId },
+      _max: { sortOrder: true },
+    });
+    await prisma.menuCategoryAssignment.create({
+      data: {
+        categoryId,
+        menuId: assignment.menuId,
+        maxSelection: assignment.maxSelection,
+        sortOrder: _max.sortOrder != null ? _max.sortOrder + 1 : 0,
+      },
+    });
+  }
 }
 
 export async function createCategory(organizationId: string, input: CategoryInput, actorUserId: string) {
@@ -26,6 +77,7 @@ export async function createCategory(organizationId: string, input: CategoryInpu
       isActive: input.isActive ?? true,
     },
   });
+  await replaceCategoryMenuAssignments(category.id, input.menuAssignments);
 
   await audit({
     organizationId,
@@ -55,6 +107,7 @@ export async function updateCategory(
       isActive: input.isActive ?? before.isActive,
     },
   });
+  await replaceCategoryMenuAssignments(id, input.menuAssignments);
 
   await audit({
     organizationId,
@@ -93,7 +146,7 @@ export async function getCategory(organizationId: string, id: string) {
   return prisma.menuCategory.findFirst({ where: { id, organizationId } });
 }
 
-/** Read-only — which Menus this Category is assigned to, and with what max-selection/order on each. Menu owns editing this relationship (see menu.ts); Category only displays it. */
+/** Which Menus this Category is assigned to, and with what max-selection/order on each — seeds the Category form's "Assign to Menus" checklist. */
 export async function listCategoryMenuAssignments(organizationId: string, categoryId: string) {
   return prisma.menuCategoryAssignment.findMany({
     where: { categoryId, menu: { organizationId } },

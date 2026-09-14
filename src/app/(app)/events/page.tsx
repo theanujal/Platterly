@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { CalendarRange } from "lucide-react";
+import Link from "next/link";
+import { CalendarRange, Plus } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listEventTypes } from "@/modules/events/event-type";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
 
 export const metadata: Metadata = {
   title: "Events — Platterly",
@@ -55,18 +57,28 @@ export default async function EventsPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <div>
-        <h1 className="text-xl font-semibold">Events</h1>
-        <p className="text-sm text-muted-foreground">The types of events you cater — e.g. Wedding, Corporate Lunch.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Events</h1>
+          <p className="text-sm text-muted-foreground">The types of events you cater — e.g. Wedding, Corporate Lunch.</p>
+        </div>
+        <Button size="sm" render={<Link href="/events/new" />} nativeButton={false}>
+          <Plus className="size-4" />
+          Add Event
+        </Button>
       </div>
 
       <CatalogBrowser
         entries={entries}
-        newHref="/events/new"
-        newLabel="Add New Event"
+        addTile={
+          <Link href="/events/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+            <Plus className="size-6" />
+            <span className="text-sm font-medium">Add New Event</span>
+          </Link>
+        }
+        columns={["Name", "Min Guests", "Status"]}
         searchPlaceholder="Search events…"
         emptyLabel="No events yet."
-        listColumnCount={3}
       />
     </div>
   );

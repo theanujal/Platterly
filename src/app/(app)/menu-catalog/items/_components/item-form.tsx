@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
 
@@ -84,45 +85,24 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-name">Item Name</Label>
-          <Input id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-description">Item Description</Label>
-          <Textarea
-            id="item-description"
-            value={values.description}
-            onChange={(e) => setField("description", e.target.value)}
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-image">Image (PNG or JPG, up to 2MB)</Label>
-          {values.imageUrl && !image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={values.imageUrl} alt="" className="size-16 rounded-lg border border-border object-cover" />
-          )}
-          <input
-            id="item-image"
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-price">Item Price Per Plate</Label>
-            <Input
-              id="item-price"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={values.price}
-              onChange={(e) => setField("price", e.target.value)}
+            <Label htmlFor="item-name">Item Name</Label>
+            <Input id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-description">Item Description</Label>
+            <Textarea
+              id="item-description"
+              value={values.description}
+              onChange={(e) => setField("description", e.target.value)}
             />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-image">Image</Label>
+            <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-food-type">Menu Type</Label>
@@ -139,49 +119,62 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
               </SelectContent>
             </Select>
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-price">Item Price Per Plate</Label>
+            <Input
+              id="item-price"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={values.price}
+              onChange={(e) => setField("price", e.target.value)}
+            />
+          </div>
+          <label htmlFor="item-active" className="flex w-fit cursor-pointer items-center gap-2">
+            <Checkbox
+              id="item-active"
+              checked={values.isActive}
+              onCheckedChange={(checked) => setField("isActive", checked === true)}
+            />
+            <span className="text-sm font-medium">Active</span>
+          </label>
         </div>
-      </div>
 
-      <label htmlFor="item-active" className="flex w-fit cursor-pointer items-center gap-2">
-        <Checkbox
-          id="item-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => setField("isActive", checked === true)}
-        />
-        <span className="text-sm font-medium">Active</span>
-      </label>
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <Label>Assign to Menus</Label>
+            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
+              {menus.map((menu) => (
+                <label key={menu.id} htmlFor={`item-menu-${menu.id}`} className="flex cursor-pointer items-center gap-2 py-1">
+                  <Checkbox
+                    id={`item-menu-${menu.id}`}
+                    checked={values.menuIds.includes(menu.id)}
+                    onCheckedChange={(checked) => toggle("menuIds", menu.id, checked === true)}
+                  />
+                  <span className="text-sm">{menu.name}</span>
+                </label>
+              ))}
+              {menus.length === 0 && <p className="text-sm text-muted-foreground">No menus yet — add some first.</p>}
+            </div>
+          </div>
 
-      <div className="flex flex-col gap-2 border-t border-border pt-4">
-        <Label>Category</Label>
-        <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
-          {categories.map((category) => (
-            <label key={category.id} htmlFor={`item-category-${category.id}`} className="flex cursor-pointer items-center gap-2 py-1">
-              <Checkbox
-                id={`item-category-${category.id}`}
-                checked={values.categoryIds.includes(category.id)}
-                onCheckedChange={(checked) => toggle("categoryIds", category.id, checked === true)}
-              />
-              <span className="text-sm">{category.name}</span>
-            </label>
-          ))}
-          {categories.length === 0 && <p className="text-sm text-muted-foreground">No categories yet — add some first.</p>}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Assign to Menus</Label>
-        <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
-          {menus.map((menu) => (
-            <label key={menu.id} htmlFor={`item-menu-${menu.id}`} className="flex cursor-pointer items-center gap-2 py-1">
-              <Checkbox
-                id={`item-menu-${menu.id}`}
-                checked={values.menuIds.includes(menu.id)}
-                onCheckedChange={(checked) => toggle("menuIds", menu.id, checked === true)}
-              />
-              <span className="text-sm">{menu.name}</span>
-            </label>
-          ))}
-          {menus.length === 0 && <p className="text-sm text-muted-foreground">No menus yet — add some first.</p>}
+          <div className="flex flex-col gap-2">
+            <Label>Assign to Categories</Label>
+            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
+              {categories.map((category) => (
+                <label key={category.id} htmlFor={`item-category-${category.id}`} className="flex cursor-pointer items-center gap-2 py-1">
+                  <Checkbox
+                    id={`item-category-${category.id}`}
+                    checked={values.categoryIds.includes(category.id)}
+                    onCheckedChange={(checked) => toggle("categoryIds", category.id, checked === true)}
+                  />
+                  <span className="text-sm">{category.name}</span>
+                </label>
+              ))}
+              {categories.length === 0 && <p className="text-sm text-muted-foreground">No categories yet — add some first.</p>}
+            </div>
+          </div>
         </div>
       </div>
 

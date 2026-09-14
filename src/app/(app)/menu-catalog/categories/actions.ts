@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createCategory, updateCategory, deleteCategory, type CategoryInput } from "@/modules/menus/category";
+import {
+  createCategory,
+  updateCategory,
+  deleteCategory,
+  listCategoryMenuAssignments,
+  type CategoryInput,
+} from "@/modules/menus/category";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -44,4 +50,28 @@ export async function deleteCategoryAction(id: string): Promise<ActionResult> {
   }
   revalidatePath("/menu-catalog/categories");
   return { ok: true };
+}
+
+export interface CategoryMenuAssignmentSummary {
+  id: string;
+  menuId: string;
+  menuName: string;
+  maxSelection: number | null;
+  sortOrder: number;
+}
+
+// Returns plain, pre-serialized fields only — the underlying MenuCategoryAssignment/Menu
+// rows carry a Decimal (Menu.pricePerPlate) which can't cross the Server->Client
+// boundary this action is called from (see the earlier catalog-image RSC fix).
+export async function getCategoryMenuAssignmentsAction(categoryId: string): Promise<CategoryMenuAssignmentSummary[]> {
+  const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["view"] }, organizationId);
+  const assignments = await listCategoryMenuAssignments(organizationId, categoryId);
+  return assignments.map((a) => ({
+    id: a.id,
+    menuId: a.menuId,
+    menuName: a.menu.name,
+    maxSelection: a.maxSelection,
+    sortOrder: a.sortOrder,
+  }));
 }

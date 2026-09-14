@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ImageDropzone } from "@/components/ui/image-dropzone";
 import type { ActionResult } from "../actions";
 
 export interface EventTypeFormValues {
@@ -81,12 +82,8 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
         <Textarea id="event-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="event-image">Event Image (PNG or JPG, up to 2MB)</Label>
-        {values.imageUrl && !image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={values.imageUrl} alt="" className="size-16 rounded-lg border border-border object-cover" />
-        )}
-        <input id="event-image" type="file" accept="image/png,image/jpeg" onChange={(e) => setImage(e.target.files?.[0] ?? null)} />
+        <Label htmlFor="event-image">Event Image</Label>
+        <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-min-guests">Min Number of Guests</Label>

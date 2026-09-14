@@ -5,7 +5,11 @@ import { cleanupOnboardingTestUser } from "./db";
  * Add-ons Management (2026-09-14, AJ's own field-level spec) — a standalone
  * catalog of Live Counters and Special Add-ons, each priced Per Plate or
  * Fixed. A new top-level sidebar section (a peer of Menu Catalog and
- * Events), not a tab inside Menu Catalog. Signs up a fresh throwaway
+ * Events), not a tab inside Menu Catalog.
+ *
+ * Reworked again 2026-09-14 (UI/UX redesign round): Add and Edit are now
+ * popup dialogs (a top-right "Add Add-on" button, a pencil icon per card) —
+ * there is no more /new or /[id] page route. Signs up a fresh throwaway
  * account, skips onboarding, then drives the Add-ons flow.
  */
 
@@ -46,24 +50,25 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await expect(page).toHaveURL(/\/addons$/);
   await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
 
-  // --- Live Counter, priced Per Plate ---
+  // --- Live Counter, priced Per Plate, via the "Add Add-on" popup ---
   const liveCounterName = `Live Chaat Counter ${suffix}`;
-  await page.getByRole("link", { name: "Add New Add-on" }).click();
-  await expect(page).toHaveURL(/\/addons\/new$/);
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Name").fill(liveCounterName);
   await page.getByLabel("Description").fill("Fresh chaat made to order");
   // Type defaults to Live Counter, Price Type defaults to Per Plate.
   await page.getByLabel("Price", { exact: true }).fill("150");
   await page.getByRole("button", { name: "Create add-on" }).click();
 
-  await expect(page).toHaveURL(/\/addons$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(liveCounterName)).toBeVisible();
   await expect(page.getByText("Live Counter").first()).toBeVisible();
   await expect(page.getByText("₹150.00 / plate")).toBeVisible();
 
   // --- Special Add-on, priced Fixed ---
   const specialAddonName = `Custom Cake Topper ${suffix}`;
-  await page.getByRole("link", { name: "Add New Add-on" }).click();
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Name").fill(specialAddonName);
   await page.getByLabel("Type", { exact: true }).click();
   await page.getByRole("option", { name: "Special Add-on" }).click();
@@ -72,7 +77,7 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByLabel("Price", { exact: true }).fill("5000");
   await page.getByRole("button", { name: "Create add-on" }).click();
 
-  await expect(page).toHaveURL(/\/addons$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(specialAddonName)).toBeVisible();
   await expect(page.getByText("Special Add-on").first()).toBeVisible();
   await expect(page.getByText("₹5000.00 flat")).toBeVisible();
@@ -83,17 +88,17 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByLabel("Search").fill("");
   await expect(page.getByText(liveCounterName)).toBeVisible();
   await page.getByLabel("List view").click();
-  await expect(page.getByRole("cell", { name: liveCounterName })).toBeVisible();
+  await expect(page.getByRole("cell", { name: liveCounterName, exact: true })).toBeVisible();
   await page.getByLabel("Grid view").click();
 
-  // --- Edit: confirm fields persisted, then update and verify ---
-  await page.getByText(liveCounterName).click();
-  await expect(page).toHaveURL(/\/addons\/.+/);
+  // --- Edit via the pencil-icon popup: confirm fields persisted, then update and verify ---
+  await page.getByRole("button", { name: `Edit ${liveCounterName}` }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue(liveCounterName);
   await expect(page.getByLabel("Price", { exact: true })).toHaveValue("150");
 
   await page.getByLabel("Name").fill(`${liveCounterName} Updated`);
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/addons$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(`${liveCounterName} Updated`)).toBeVisible();
 });

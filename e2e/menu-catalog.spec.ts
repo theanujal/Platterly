@@ -2,13 +2,15 @@ import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
 
 /**
- * Chunk 6, reworked 2026-09-14 per AJ's field-level spec — Menu is now the
- * top-level priced object, Category is assigned to Menu(s) with a
- * per-assignment max-selection/display-order, and MenuItem's category tags
- * and menu assignments are independent of each other. Signs up a fresh
- * throwaway account (same convention as e2e/kitchenlogin.spec.ts), skips
- * onboarding, then drives category -> item -> menu (incl. the category
- * assignment) through the real browser against the real dev DB.
+ * Chunk 6, reworked 2026-09-14 per AJ's field-level spec, then redesigned
+ * again the same day (popup forms, restored Add tiles, visible list
+ * headings), then corrected once more the same day: Category is now the
+ * *only* place a Category gets assigned to a Menu (with its max-selection),
+ * and the Menu Type popup only displays + reorders (Move Up/Down, no drag)
+ * its already-assigned categories — it can no longer add/remove them or
+ * pick Food Items directly. Signs up a fresh throwaway account, skips
+ * onboarding, then drives menu -> category (incl. assigning it to that
+ * menu) -> item through the real browser against the real dev DB.
  */
 
 const cleanupEmails: string[] = [];
@@ -19,7 +21,7 @@ test.afterEach(async () => {
   await cleanupOnboardingTestUser(email);
 });
 
-test("create a category, an item, and a menu with a category assignment (max selection + order)", async ({ page }) => {
+test("create a menu, a category assigned to it (max selection + reorder), and an item", async ({ page }) => {
   test.setTimeout(60_000);
   const email = `e2e-catalog-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -39,93 +41,105 @@ test("create a category, an item, and a menu with a category assignment (max sel
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  // --- Renamed + reordered Menu Catalog sub-nav (AJ, 2026-09-14): Menu
-  // Types, Menu Categories, Food Items — display labels only, routes
-  // unchanged (still /menu-catalog/{menus,categories,items}). ---
+  // --- Renamed + reordered Menu Catalog sub-nav: Menu Types, Menu
+  // Categories, Food Items — display labels only, routes unchanged. ---
   await page.goto("/menu-catalog/menus");
   await expect(page.getByRole("link", { name: "Menu Types" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Menu Categories" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Food Items" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Menu Types" })).toBeVisible();
 
-  // --- Category ---
-  const categoryName = `Starters ${suffix}`;
-  await page.goto("/menu-catalog/categories/new");
-  await page.getByLabel("Category Name").fill(categoryName);
-  await page.getByLabel("Category Description").fill("Small plates to start");
-  await page.getByRole("button", { name: "Create category" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/categories$/);
-  await expect(page.getByText(categoryName)).toBeVisible();
-
-  // --- Item (Menu Type defaults to Vegetarian; tag it with the category) ---
-  const itemName = `Paneer Tikka ${suffix}`;
-  await page.goto("/menu-catalog/items/new");
-  await page.getByLabel("Item Name").fill(itemName);
-  await page.getByLabel("Item Price Per Plate").fill("250");
-  await page.getByText(categoryName).click();
-  await page.getByRole("button", { name: "Create item" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/items$/);
-  await expect(page.getByText(itemName)).toBeVisible();
-  await expect(page.getByText("Veg", { exact: true }).first()).toBeVisible();
-
-  // --- Active/Inactive checkbox round-trip (a real gap AJ caught — the
-  // form had no isActive control at all before this round). Re-activate
-  // afterward so the item is still eligible for the Menu's "active items
-  // only" picker further down. ---
-  await page.getByText(itemName).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/items\/.+/);
-  await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked();
-  await page.getByRole("checkbox", { name: "Active" }).uncheck();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/items$/);
-  await expect(page.getByText("Inactive").first()).toBeVisible();
-
-  await page.getByText(itemName).click();
-  await expect(page.getByRole("checkbox", { name: "Active" })).not.toBeChecked();
-  await page.getByRole("checkbox", { name: "Active" }).check();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/items$/);
-
-  // --- Search + grid/list toggle (CatalogBrowser, shared across all 4 sections) ---
-  await page.getByLabel("Search").fill("no-such-item-xyz");
-  await expect(page.getByText(itemName)).not.toBeVisible();
-  await page.getByLabel("Search").fill("");
-  await expect(page.getByText(itemName)).toBeVisible();
-  await page.getByLabel("List view").click();
-  await expect(page.getByRole("cell", { name: itemName })).toBeVisible();
-  await page.getByLabel("Grid view").click();
-
-  // --- Menu: assign the category (max selection 2, order 0) and the item ---
+  // --- Menu Type first, via the restored dashed "Add New" tile (not the top-right button, to prove it opens the same popup) ---
   const menuName = `Wedding Menu ${suffix}`;
-  await page.goto("/menu-catalog/menus/new");
+  await page.getByRole("button", { name: "Add New Menu Type" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Menu Name").fill(menuName);
   await page.getByLabel("Price Per Plate").fill("300");
-  await page.getByText(categoryName).click();
-  await page.getByPlaceholder("Max selection").fill("2");
-  await page.getByPlaceholder("Display order").fill("0");
-  await page.getByText(itemName).click();
+  await expect(page.getByText("No categories assigned yet")).toBeVisible();
   await page.getByRole("button", { name: "Create menu" }).click();
-
-  await expect(page).toHaveURL(/\/menu-catalog\/menus$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(menuName)).toBeVisible();
-  await expect(page.getByText("₹300.00 / plate")).toBeVisible();
 
-  // Round-trip: reopening the menu's edit page shows the category assignment persisted.
+  // --- Two Categories, each assigned to that Menu with a different max-selection — Category owns this relationship now, not the Menu. ---
+  await page.goto("/menu-catalog/categories");
+  const startersName = `Starters ${suffix}`;
+  await page.getByRole("button", { name: "Add Category" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByLabel("Category Name").fill(startersName);
   await page.getByText(menuName).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/menus\/.+/);
-  await expect(page.getByPlaceholder("Max selection")).toHaveValue("2");
-  await expect(page.getByPlaceholder("Display order")).toHaveValue("0");
+  await page.getByPlaceholder("Max selection").fill("2");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText(startersName)).toBeVisible();
+
+  const mainsName = `Mains ${suffix}`;
+  await page.getByRole("button", { name: "Add Category" }).click();
+  await page.getByLabel("Category Name").fill(mainsName);
+  await page.getByText(menuName).click();
+  await page.getByPlaceholder("Max selection").fill("3");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
+  // --- List view headings are visible (not screen-reader-only) ---
+  await page.getByLabel("List view").click();
+  await expect(page.getByRole("columnheader", { name: "Name" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
+  await page.getByLabel("Grid view").click();
+
+  // --- Back on the Menu: both categories now show up, read-only, with their max-selection, in assignment order ---
+  await page.goto("/menu-catalog/menus");
+  await page.getByRole("button", { name: `Edit ${menuName}` }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText(`${startersName} (max 2)`)).toBeVisible();
+  await expect(page.getByText(`${mainsName} (max 3)`)).toBeVisible();
+
+  // Move Mains up (no drag — buttons only) and confirm the new order persists after reopening.
+  await page.getByRole("button", { name: `Move ${mainsName} up` }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
+  await page.getByRole("button", { name: `Edit ${menuName}` }).click();
+  const categoryRows = page.locator("form div.flex.items-center.justify-between").filter({ hasText: /max \d/ });
+  await expect(categoryRows.first()).toContainText(mainsName);
 
   // --- Active/Inactive checkbox round-trip (Menu Type) ---
   await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked();
   await page.getByRole("checkbox", { name: "Active" }).uncheck();
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/menus$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText("Inactive").first()).toBeVisible();
 
-  // The category's own edit page shows the read-only reverse view.
-  await page.goto("/menu-catalog/categories");
-  await page.getByText(categoryName).click();
-  await expect(page.getByText(menuName)).toBeVisible();
-  await expect(page.getByText(/max 2/)).toBeVisible();
+  // --- Food Item: tag it with a category, assign it to the menu, via the restored dashed tile on Food Items ---
+  const itemName = `Paneer Tikka ${suffix}`;
+  await page.goto("/menu-catalog/items");
+  await page.getByRole("button", { name: "Add New Item" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByLabel("Item Name").fill(itemName);
+  await page.getByLabel("Item Price Per Plate").fill("250");
+  await page.getByText(menuName).click();
+  await page.getByText(startersName).click();
+  await page.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText(itemName)).toBeVisible();
+  await expect(page.getByText("Veg", { exact: true }).first()).toBeVisible();
+
+  // --- Active/Inactive checkbox round-trip (Food Item) ---
+  await page.getByRole("button", { name: `Edit ${itemName}` }).click();
+  await expect(page.getByRole("checkbox", { name: "Active" })).toBeChecked();
+  await page.getByRole("checkbox", { name: "Active" }).uncheck();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText("Inactive").first()).toBeVisible();
+
+  await page.getByRole("button", { name: `Edit ${itemName}` }).click();
+  await expect(page.getByRole("checkbox", { name: "Active" })).not.toBeChecked();
+  await page.getByRole("checkbox", { name: "Active" }).check();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
+  // --- Search + grid/list toggle (CatalogBrowser, shared across all catalog sections) ---
+  await page.getByLabel("Search").fill("no-such-item-xyz");
+  await expect(page.getByText(itemName)).not.toBeVisible();
+  await page.getByLabel("Search").fill("");
+  await expect(page.getByText(itemName)).toBeVisible();
 });

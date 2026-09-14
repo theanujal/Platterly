@@ -6,7 +6,9 @@ import { cleanupOnboardingTestUser } from "./db";
  * §9.1, 2026-09-14) — a caterer's catalog of the *types* of events they
  * cater (e.g. "Wedding Event"), each offering a set of eligible Menus.
  * Signs up a fresh throwaway account, skips onboarding, creates a bare Menu
- * (no items/categories needed for this), then drives the Events flow.
+ * (no items/categories needed for this) via the "Add Menu Type" popup
+ * (2026-09-14 UI/UX redesign round — Menu creation is a dialog now, not a
+ * page), then drives the Events flow.
  */
 
 const cleanupEmails: string[] = [];
@@ -36,13 +38,16 @@ test("create an event type assigning a menu, then edit it", async ({ page }) => 
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 
-  // --- A bare Menu for the event type to reference ---
+  // --- A bare Menu for the event type to reference, via the "Add Menu Type" popup ---
   const menuName = `Wedding Menu ${suffix}`;
-  await page.goto("/menu-catalog/menus/new");
+  await page.goto("/menu-catalog/menus");
+  await page.getByRole("button", { name: "Add Menu Type" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Menu Name").fill(menuName);
   await page.getByLabel("Price Per Plate").fill("300");
   await page.getByRole("button", { name: "Create menu" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/menus$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText(menuName)).toBeVisible();
 
   // --- Events nav item (peer of Menu Catalog, not nested under it) ---
   await page.getByRole("link", { name: "Events" }).click();

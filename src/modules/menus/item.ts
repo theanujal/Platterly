@@ -125,7 +125,9 @@ export async function listMenuItems(organizationId: string, filter?: { categoryI
       categories: filter?.categoryId ? { some: { categoryId: filter.categoryId } } : undefined,
       isActive: filter?.isActive,
     },
-    include: { categories: { include: { category: true } } },
+    // `menus: true` (no nested include) is enough — the edit dialog only
+    // needs each row's scalar `menuId`, not the related Menu record itself.
+    include: { categories: { include: { category: true } }, menus: true },
     orderBy: { name: "asc" },
   });
 }

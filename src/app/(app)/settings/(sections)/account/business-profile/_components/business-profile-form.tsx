@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { updateBusinessProfileAction } from "../actions";
 
 export interface BusinessProfileFormValues {
@@ -195,17 +196,8 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
       <div className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold text-muted-foreground">Brand identity</h2>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="logo">Logo (PNG or JPG, up to 2MB)</Label>
-          {values.logoUrl && !logo && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={values.logoUrl} alt="Current logo" className="size-16 rounded-lg border border-border object-cover" />
-          )}
-          <input
-            id="logo"
-            type="file"
-            accept="image/png,image/jpeg"
-            onChange={(e) => setLogo(e.target.files?.[0] ?? null)}
-          />
+          <Label htmlFor="logo">Logo</Label>
+          <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} maxSizeMB={2} />
         </div>
       </div>
 

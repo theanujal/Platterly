@@ -49,8 +49,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleLogoChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
+  function handleLogoSelect(file: File | null) {
     if (file && file.size > MAX_LOGO_BYTES) {
       setLogoError("Logo must be 2MB or smaller.");
       setLogo(null);
@@ -132,7 +131,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
       {step === 2 && <ContactAddressStep values={values} setField={setField} />}
       {step === 3 && <BusinessSetupStep values={values} setField={setField} />}
       {step === 4 && <OnlinePresenceStep values={values} setField={setField} />}
-      {step === 5 && <BrandIdentityStep onLogoChange={handleLogoChange} logoError={logoError} />}
+      {step === 5 && <BrandIdentityStep onLogoSelect={handleLogoSelect} logoError={logoError} />}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
