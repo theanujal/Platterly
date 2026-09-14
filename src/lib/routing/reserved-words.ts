@@ -16,6 +16,21 @@ export const RESERVED_PATH_SEGMENTS = [
   "favicon.ico",
   "robots.txt",
   "sitemap.xml",
+  // Belt-and-suspenders only — Next.js's own static-route priority over the
+  // `[tenantSlug]` catch-all is what actually prevents a collision for all
+  // of these; this list exists so slug-creation UI proactively rejects an
+  // obviously-bad choice too. Backfilled 2026-09-15 (Chunk 10.1) — several
+  // of these had been live routes since Chunks 6/9/10 without ever being
+  // added here.
+  "menu-catalog",
+  "addons",
+  "inventory",
+  "enquiries",
+  "customers",
+  "quotations",
+  "quote",
+  "orders",
+  "events",
 ] as const;
 
 export function isReservedPathSegment(segment: string): boolean {

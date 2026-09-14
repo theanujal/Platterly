@@ -47,9 +47,11 @@ export interface OrderInput {
 /**
  * Resolves a catalog reference (Menu/MenuItem/AddOn) to a name+price
  * snapshot server-side — never trusts a client-submitted price, so an
- * OrderItem's price can't be tampered with via the form payload.
+ * OrderItem's price can't be tampered with via the form payload. Exported
+ * for `quotations/quotation.ts`'s own `QuotationItem` add-flow, which needs
+ * the identical snapshot behavior.
  */
-async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string) {
+export async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string) {
   if (itemType === "MENU") {
     const menu = await prisma.menu.findFirstOrThrow({ where: { id: catalogId, organizationId } });
     return { name: menu.name, unitPrice: menu.pricePerPlate, menuId: catalogId, menuItemId: null, addOnId: null };

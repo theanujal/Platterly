@@ -50,6 +50,12 @@ export const TENANT_SCOPED_DELEGATES = [
   // precede "customer" below. Order->Event is the reverse direction
   // (Event.orderId, onDelete: SetNull) — no ordering constraint either way.
   "order",
+  // Chunk 10 Group 10.1 — quotationItem has no organizationId of its own,
+  // cascades off its parent quotation row. Quotation.customerId is also
+  // onDelete: Restrict, so "quotation" must precede "customer" too.
+  // Order.quotationId is the reverse direction (SetNull) — no constraint
+  // between "order" and "quotation" either way.
+  "quotation",
   "customer",
 ] as const;
 

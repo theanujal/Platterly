@@ -156,6 +156,7 @@ model Organization {
   enquiries      Enquiry[]
   events         Event[]
   orders         Order[]
+  quotations     Quotation[]
 
   @@unique([slug])
   @@map("organization")
@@ -510,9 +511,10 @@ model MenuItem {
   // add it, without pulling Recipe/BOM logic itself forward.
   recipeId String?
 
-  categories MenuItemCategory[]
-  menus      MenuMenuItem[]
-  orderItems OrderItem[]
+  categories     MenuItemCategory[]
+  menus          MenuMenuItem[]
+  orderItems     OrderItem[]
+  quotationItems QuotationItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -548,11 +550,12 @@ model Menu {
   pricePerPlate  Decimal      @db.Decimal(10, 2)
   isActive       Boolean      @default(true)
 
-  items               MenuMenuItem[]
-  categoryAssignments MenuCategoryAssignment[]
-  eventTypes          EventTypeMenu[]
+  items                MenuMenuItem[]
+  categoryAssignments  MenuCategoryAssignment[]
+  eventTypes           EventTypeMenu[]
   preferredByEnquiries Enquiry[]
   orderItems           OrderItem[]
+  quotationItems       QuotationItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -628,10 +631,11 @@ model EventType {
   icon      String?
   sortOrder Int     @default(0)
 
-  menus     EventTypeMenu[]
-  events    Event[]
-  enquiries Enquiry[]
-  orders    Order[]
+  menus      EventTypeMenu[]
+  events     Event[]
+  enquiries  Enquiry[]
+  orders     Order[]
+  quotations Quotation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -683,7 +687,8 @@ model AddOn {
   price          Decimal        @db.Decimal(10, 2)
   isActive       Boolean        @default(true)
 
-  orderItems OrderItem[]
+  orderItems     OrderItem[]
+  quotationItems QuotationItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -777,9 +782,10 @@ model Customer {
   notes          String?
   isActive       Boolean      @default(true)
 
-  enquiries Enquiry[]
-  events    Event[]
-  orders    Order[]
+  enquiries  Enquiry[]
+  events     Event[]
+  orders     Order[]
+  quotations Quotation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -981,6 +987,14 @@ model Order {
   eventTypeId String?
   eventType   EventType? @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
 
+  // Chunk 10 Group 10.1 — set only when this Order was converted from an
+  // Accepted Quotation (src/modules/quotations/quotation.ts's
+  // `convertQuotationToOrder`); null for an Order created directly. Unique:
+  // a Quotation converts into at most one Order. SetNull so deleting the
+  // Quotation later never deletes the Order it already produced.
+  quotationId String?    @unique
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+
   // Updated doc §5 "Event Information" — captured directly on the Order,
   // independent of whether a formal Event row exists yet (Group 10.6).
   eventStartDate DateTime
@@ -1073,4 +1087,100 @@ model MealPlanEntry {
   @@unique([orderId, date, mealType])
   @@index([orderId])
   @@map("meal_plan_entry")
+}
+
+// Chunk 10 Group 10.1 — Quotation (deferred from the initial Chunk 10 pass,
+// built once Order already existed, so `Order.quotationId` above is a real
+// `@relation` from day one rather than another bare-column-then-migrate).
+
+// PRD §20's exact 7-state list. Customer-facing transitions (VIEWED/
+// CHANGES_REQUESTED/ACCEPTED/REJECTED) happen via the public token page,
+// not the admin UI.
+enum QuotationStatus {
+  DRAFT
+  SENT
+  VIEWED
+  CHANGES_REQUESTED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Quotation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // Nullable, same reasoning as Order.eventTypeId — a Quotation may predate
+  // firm event details.
+  eventTypeId String?
+  eventType   EventType? @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
+
+  // Nullable, unlike Order's required date range — a Quotation can be sent
+  // before dates are finalized; `convertQuotationToOrder` requires both to
+  // be set (Order itself requires them) and throws a clear error otherwise.
+  eventStartDate DateTime?
+  eventEndDate   DateTime?
+  venue          String?
+  eventAddress   String?
+
+  status     QuotationStatus @default(DRAFT)
+  validUntil DateTime?
+  terms      String?
+  notes      String?
+  // Set by the customer's own Request Changes / Reject action on the
+  // public token page — distinct from `notes`, which is the caterer's own.
+  customerMessage String?
+
+  // Pricing (PRD §20 — Quotation's own field list is a superset of Order's:
+  // additionalCharges/deliveryCharges have no Order equivalent, matching
+  // Order's leaner PRD §21 field list; convertQuotationToOrder folds both
+  // into the new Order's `taxes` so the converted total still matches).
+  subtotal          Decimal @default(0) @db.Decimal(12, 2)
+  discount          Decimal @default(0) @db.Decimal(12, 2)
+  taxes             Decimal @default(0) @db.Decimal(12, 2)
+  additionalCharges Decimal @default(0) @db.Decimal(12, 2)
+  deliveryCharges   Decimal @default(0) @db.Decimal(12, 2)
+  total             Decimal @default(0) @db.Decimal(12, 2)
+
+  items QuotationItem[]
+  order Order?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@map("quotation")
+}
+
+// No `organizationId` of its own — cascades off its parent Quotation row.
+model QuotationItem {
+  id          String        @id @default(cuid())
+  quotationId String
+  quotation   Quotation     @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  itemType    OrderItemType
+
+  menuId     String?
+  menu       Menu?     @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  addOnId    String?
+  addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
+
+  // Snapshotted at add-time, same convention as OrderItem — and the exact
+  // values `convertQuotationToOrder` copies onto the new OrderItem rows
+  // untouched, so an accepted quotation's price can never silently drift
+  // from a later catalog change.
+  name      String
+  unitPrice Decimal @db.Decimal(10, 2)
+  quantity  Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@index([quotationId])
+  @@map("quotation_item")
 }

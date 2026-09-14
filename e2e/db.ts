@@ -37,6 +37,9 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // cascade into `order` before its cascade into `customer`. `order` is
     // also a reserved SQL keyword, hence the quoting.
     await pool.query('DELETE FROM "order" WHERE "organizationId" = ANY($1)', [orgIds]);
+    // Chunk 10 Group 10.1 — same hazard again: quotation.customerId is also
+    // onDelete: Restrict.
+    await pool.query('DELETE FROM quotation WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM audit_log WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM subscription WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM member WHERE "organizationId" = ANY($1)', [orgIds]);
@@ -114,6 +117,7 @@ export async function cleanupTenantBySlug(slug: string): Promise<void> {
   if (!org) return;
   await pool.query('DELETE FROM event WHERE "organizationId" = $1', [org.id]); // see cleanupOnboardingTestUser's comment
   await pool.query('DELETE FROM "order" WHERE "organizationId" = $1', [org.id]);
+  await pool.query('DELETE FROM quotation WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM audit_log WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM subscription WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM organization WHERE id = $1', [org.id]);

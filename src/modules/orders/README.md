@@ -1,7 +1,13 @@
 # orders
 
 Owning chunk: Chunk 10 — Sales Pipeline: Quotation & Order. Quotation itself
-(Group 10.1) is deferred to a later pass — see `dev plans/chunk-10-quotation-order.md`.
+(Group 10.1, `src/modules/quotations/`) was built as a deferred second pass,
+once this module already existed — `resolveCatalogItem` is exported from
+here specifically because `quotations/quotation.ts` reuses it for the
+identical snapshot-pricing behavior on `QuotationItem`. `Order.quotationId`,
+absent when this module was first built, is now a real `@relation` back to
+`Quotation` — set by `quotations/quotation.ts`'s `convertQuotationToOrder`,
+never by anything in this module.
 
 Built:
 

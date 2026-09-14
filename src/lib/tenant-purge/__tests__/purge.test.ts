@@ -163,6 +163,10 @@ describe("purgeTenantData (Chunk 5 Group 5.4 Danger Zone)", () => {
     const order = await prisma.order.create({
       data: { organizationId: org.id, customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() },
     });
+    // Chunk 10 Group 10.1 — Quotation.customerId is also onDelete: Restrict.
+    const quotation = await prisma.quotation.create({ data: { organizationId: org.id, customerId: customer.id } });
+    const menuItem = await prisma.menuItem.create({ data: { organizationId: org.id, name: "Paneer Tikka", foodType: "VEGETARIAN", price: 150 } });
+    await prisma.quotationItem.create({ data: { quotationId: quotation.id, itemType: "MENU_ITEM", menuItemId: menuItem.id, name: "Paneer Tikka", unitPrice: 150, quantity: 2 } });
 
     await purgeTenantData(org.id, owner.id, "DELETE");
 
@@ -172,7 +176,9 @@ describe("purgeTenantData (Chunk 5 Group 5.4 Danger Zone)", () => {
     expect(await prisma.inventory.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.enquiry.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.order.count({ where: { organizationId: org.id } })).toBe(0);
+    expect(await prisma.quotation.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.eventRequiredInventory.count({ where: { eventId: event.id } })).toBe(0);
     expect(await prisma.orderItem.count({ where: { orderId: order.id } })).toBe(0);
+    expect(await prisma.quotationItem.count({ where: { quotationId: quotation.id } })).toBe(0);
   });
 });
