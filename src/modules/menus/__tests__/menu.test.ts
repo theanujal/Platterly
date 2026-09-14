@@ -1,8 +1,16 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createMenuItem } from "@/modules/menus/item";
+import { createMenuItem, updateMenuItem } from "@/modules/menus/item";
 import { createCategory, updateCategory } from "@/modules/menus/category";
-import { createMenu, updateMenu, deleteMenu, getMenu, listMenus, reorderMenuCategoryAssignments } from "@/modules/menus/menu";
+import {
+  createMenu,
+  updateMenu,
+  deleteMenu,
+  getMenu,
+  listMenus,
+  listStorefrontMenus,
+  reorderMenuCategoryAssignments,
+} from "@/modules/menus/menu";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -158,5 +166,110 @@ describe("Menu CRUD (Chunk 6, reworked 2026-09-14; ownership restructured again 
 
     const list = await listMenus(orgA.id);
     expect(list.map((m) => m.id)).toEqual([menuA.id]);
+  });
+});
+
+describe("listStorefrontMenus (Chunk 8 Group 8.3 — public storefront)", () => {
+  it("only returns active menus, and only active items within them", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const activeMenu = await createMenu(org.id, { name: "Active Menu", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const inactiveMenu = await createMenu(org.id, { name: "Inactive Menu", menuType: "VEGETARIAN", pricePerPlate: 300, isActive: false }, actor.id);
+    const activeItem = await createMenuItem(org.id, { name: "Live Item", foodType: "VEGETARIAN", price: 100, menuIds: [activeMenu.id] }, actor.id);
+    const inactiveItem = await createMenuItem(org.id, { name: "Hidden Item", foodType: "VEGETARIAN", price: 100, menuIds: [activeMenu.id] }, actor.id);
+    await updateMenuItem(org.id, inactiveItem.id, { name: "Hidden Item", foodType: "VEGETARIAN", price: 100, isActive: false }, actor.id);
+
+    const storefront = await listStorefrontMenus(org.id);
+    expect(storefront.map((m) => m.id)).toEqual([activeMenu.id]);
+    expect(storefront[0].id).not.toBe(inactiveMenu.id);
+    const items = storefront[0].sections.flatMap((s) => s.items);
+    expect(items.map((i) => i.id)).toEqual([activeItem.id]);
+  });
+
+  it("groups items into sections by the menu's category assignments, in sortOrder", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Wedding Menu", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const starters = await createCategory(org.id, { name: "Starters", menuAssignments: [{ menuId: menu.id, maxSelection: 2 }] }, actor.id);
+    const mains = await createCategory(org.id, { name: "Mains", menuAssignments: [{ menuId: menu.id, maxSelection: 3 }] }, actor.id);
+
+    const starter = await createMenuItem(
+      org.id,
+      { name: "Paneer Tikka", foodType: "VEGETARIAN", price: 150, menuIds: [menu.id], categoryIds: [starters.id] },
+      actor.id,
+    );
+    const main = await createMenuItem(
+      org.id,
+      { name: "Dal Makhani", foodType: "VEGETARIAN", price: 180, menuIds: [menu.id], categoryIds: [mains.id] },
+      actor.id,
+    );
+
+    const [storefrontMenu] = await listStorefrontMenus(org.id);
+    expect(storefrontMenu.sections.map((s) => s.categoryName)).toEqual(["Starters", "Mains"]);
+    expect(storefrontMenu.sections[0].items.map((i) => i.id)).toEqual([starter.id]);
+    expect(storefrontMenu.sections[1].items.map((i) => i.id)).toEqual([main.id]);
+  });
+
+  it("puts items with no matching category assignment into a trailing 'Other Items' section", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Simple Menu", menuType: "VEGETARIAN", pricePerPlate: 250 }, actor.id);
+    const item = await createMenuItem(org.id, { name: "Uncategorized Dish", foodType: "VEGETARIAN", price: 120, menuIds: [menu.id] }, actor.id);
+
+    const [storefrontMenu] = await listStorefrontMenus(org.id);
+    expect(storefrontMenu.sections).toEqual([
+      { categoryId: null, categoryName: "Other Items", items: [expect.objectContaining({ id: item.id })] },
+    ]);
+  });
+
+  it("omits a category section entirely once it has no active/assigned items, rather than rendering it empty", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    await createCategory(org.id, { name: "Empty Category", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+
+    const [storefrontMenu] = await listStorefrontMenus(org.id);
+    expect(storefrontMenu.sections).toEqual([]);
+  });
+
+  it("an inactive category's assignment is excluded — its items fall through to 'Other Items' instead", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const category = await createCategory(org.id, { name: "Soon Inactive", menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+    const item = await createMenuItem(
+      org.id,
+      { name: "Dish", foodType: "VEGETARIAN", price: 100, menuIds: [menu.id], categoryIds: [category.id] },
+      actor.id,
+    );
+    await updateCategory(org.id, category.id, { name: "Soon Inactive", isActive: false, menuAssignments: [{ menuId: menu.id, maxSelection: null }] }, actor.id);
+
+    const [storefrontMenu] = await listStorefrontMenus(org.id);
+    expect(storefrontMenu.sections).toEqual([
+      { categoryId: null, categoryName: "Other Items", items: [expect.objectContaining({ id: item.id })] },
+    ]);
+  });
+
+  it("converts Decimal price fields to plain numbers", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 275.5 }, actor.id);
+    await createMenuItem(org.id, { name: "Dish", foodType: "VEGETARIAN", price: 99.99, menuIds: [menu.id] }, actor.id);
+
+    const [storefrontMenu] = await listStorefrontMenus(org.id);
+    expect(storefrontMenu.pricePerPlate).toBe(275.5);
+    expect(typeof storefrontMenu.sections[0].items[0].price).toBe("number");
+    expect(storefrontMenu.sections[0].items[0].price).toBe(99.99);
+  });
+
+  it("is tenant-isolated", async () => {
+    const orgA = await makeOrg();
+    const orgB = await makeOrg();
+    const actor = await makeActor();
+    const menuA = await createMenu(orgA.id, { name: "Org A Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    await createMenu(orgB.id, { name: "Org B Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+
+    const storefront = await listStorefrontMenus(orgA.id);
+    expect(storefront.map((m) => m.id)).toEqual([menuA.id]);
   });
 });

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { slugify } from "@/modules/tenants/slug";
+import { CopyButton } from "@/components/ui/copy-button";
 import { PublicMenuLinkForm } from "./_components/public-menu-link-form";
 
 export const metadata: Metadata = {
@@ -29,15 +30,27 @@ export default async function PublicMenuLinkPage() {
       </div>
       {claimed && (
         <div className="flex flex-col gap-3">
-          <p className="text-sm">
-            Current link:{" "}
-            <a href={canonicalUrl(`/${organization.slug}`)} target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
-              {canonicalUrl(`/${organization.slug}`)}
-            </a>
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm">
+              Current link:{" "}
+              <a href={canonicalUrl(`/${organization.slug}`)} target="_blank" rel="noopener" className="font-medium text-primary hover:underline">
+                {canonicalUrl(`/${organization.slug}`)}
+              </a>
+            </p>
+            <CopyButton value={canonicalUrl(`/${organization.slug}`)} />
+          </div>
           {qrDataUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={qrDataUrl} alt="Scan to view your public menu" className="size-32 rounded border border-border" />
+            <div className="flex flex-col items-start gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrDataUrl} alt="Scan to view your public menu" className="size-32 rounded border border-border" />
+              <a
+                href={qrDataUrl}
+                download={`${organization.slug}-menu-qr.png`}
+                className="text-xs font-medium text-primary hover:underline"
+              >
+                Download QR code
+              </a>
+            </div>
           )}
         </div>
       )}

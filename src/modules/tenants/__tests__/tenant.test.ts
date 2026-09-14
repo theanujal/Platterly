@@ -7,7 +7,10 @@ import {
   activateTenant,
   deactivateTenant,
   overrideSlug,
+  setCustomSlug,
   listTenants,
+  getPublishedTenantBySlug,
+  listPublishedTenantSlugs,
   SlugTakenError,
   InvalidSlugError,
 } from "@/modules/tenants/tenant";
@@ -179,5 +182,52 @@ describe("Tenant CRUD (Chunk 3 Group 3.2)", () => {
     const suspendedList = await listTenants({ status: "SUSPENDED" });
     expect(suspendedList.some((t) => t.id === suspended.id)).toBe(true);
     expect(suspendedList.some((t) => t.id === active.id)).toBe(false);
+  });
+});
+
+describe("getPublishedTenantBySlug / listPublishedTenantSlugs (Chunk 8 Group 8.3)", () => {
+  it("returns null for a tenant that has never claimed a custom slug (slugChangeCount === 0)", async () => {
+    const actor = await makeActor();
+    const org = await createTenant({ name: "Unclaimed Co", slug: `unclaimed-${crypto.randomUUID().slice(0, 8)}` }, actor.id);
+    cleanupOrgIds.push(org.id);
+
+    expect(await getPublishedTenantBySlug(org.slug)).toBeNull();
+  });
+
+  it("returns the tenant once slugChangeCount > 0, and is unreachable at the old slug afterward", async () => {
+    const actor = await makeActor();
+    const org = await createTenant({ name: "Claimed Co", slug: `pre-${crypto.randomUUID().slice(0, 6)}` }, actor.id);
+    cleanupOrgIds.push(org.id);
+    const newSlug = `live-${crypto.randomUUID().slice(0, 6)}`;
+
+    await setCustomSlug(org.id, newSlug, actor.id);
+
+    const found = await getPublishedTenantBySlug(newSlug);
+    expect(found?.id).toBe(org.id);
+    expect(await getPublishedTenantBySlug(org.slug)).toBeNull();
+  });
+
+  it("returns null for a SUSPENDED tenant even with a claimed slug", async () => {
+    const actor = await makeActor();
+    const org = await createTenant({ name: "Suspended Storefront Co", slug: `susp-pre-${crypto.randomUUID().slice(0, 4)}` }, actor.id);
+    cleanupOrgIds.push(org.id);
+    const newSlug = `susp-live-${crypto.randomUUID().slice(0, 4)}`;
+    await setCustomSlug(org.id, newSlug, actor.id);
+    await suspendTenant(org.id, actor.id);
+
+    expect(await getPublishedTenantBySlug(newSlug)).toBeNull();
+  });
+
+  it("listPublishedTenantSlugs only includes claimed, ACTIVE tenants", async () => {
+    const actor = await makeActor();
+    const published = await createTenant({ name: "Published Co", slug: `pub-pre-${crypto.randomUUID().slice(0, 4)}` }, actor.id);
+    const unclaimed = await createTenant({ name: "Unclaimed Co 2", slug: `unc-${crypto.randomUUID().slice(0, 8)}` }, actor.id);
+    cleanupOrgIds.push(published.id, unclaimed.id);
+    const publishedNewSlug = `pub-live-${crypto.randomUUID().slice(0, 4)}`;
+    await setCustomSlug(published.id, publishedNewSlug, actor.id);
+
+    const slugs = (await listPublishedTenantSlugs()).map((t) => t.slug);
+    expect(slugs).toContain(publishedNewSlug);
+    expect(slugs).not.toContain(unclaimed.slug);
   });
 });

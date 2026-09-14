@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
+import { CopyButton } from "@/components/ui/copy-button";
 import { DashboardCardHeader } from "./dashboard-card-header";
 
 interface PublicMenuShortcutCardProps {
@@ -13,10 +14,11 @@ interface PublicMenuShortcutCardProps {
 }
 
 // AJ, 2026-09-14 — the placeholder slug generated at signup must never be
-// presented as if it's already a live, shareable link (there's no real
-// storefront behind it yet either way — Chunk 8 hasn't been built). Show
-// nothing but a claim prompt until `slugChangeCount` proves the caterer has
-// actually set one; only then render the real link and a real QR code.
+// presented as if it's already a live, shareable link. Show nothing but a
+// claim prompt until `slugChangeCount` proves the caterer has actually set
+// one (Chunk 8's `getPublishedTenantBySlug` uses the same signal to decide
+// whether `/{slug}` actually resolves); only then render the real link and
+// a real QR code.
 export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMenuShortcutCardProps) {
   const claimed = slugChangeCount > 0;
   const url = claimed ? canonicalUrl(`/${slug}`) : null;
@@ -33,10 +35,11 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
               // eslint-disable-next-line @next/next/no-img-element
               <img src={qrDataUrl} alt="QR code for your public menu link" className="size-24 rounded border border-border" />
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
                 View
               </Button>
+              <CopyButton value={url} />
               <Button
                 variant="outline"
                 size="sm"

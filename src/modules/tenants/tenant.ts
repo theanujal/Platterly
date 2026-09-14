@@ -289,3 +289,26 @@ export async function getTenant(id: string) {
     },
   });
 }
+
+/**
+ * Chunk 8 Group 8.3 — the public storefront's tenant lookup. "Published"
+ * means the same thing the rest of the app already uses to gate the
+ * Dashboard/Settings public-link UI: `slugChangeCount > 0` (the caterer has
+ * actually claimed a real slug, not just the random placeholder from
+ * signup) — plus `status: ACTIVE`, so a suspended/deactivated tenant's
+ * storefront stops resolving the moment Super Admin flips that switch,
+ * with no separate "unpublish" flag needed.
+ */
+export async function getPublishedTenantBySlug(slug: string) {
+  return prisma.organization.findFirst({
+    where: { slug, status: "ACTIVE", slugChangeCount: { gt: 0 } },
+  });
+}
+
+/** Feeds `sitemap.xml` — same "published" definition as `getPublishedTenantBySlug`. */
+export async function listPublishedTenantSlugs() {
+  return prisma.organization.findMany({
+    where: { status: "ACTIVE", slugChangeCount: { gt: 0 } },
+    select: { slug: true },
+  });
+}

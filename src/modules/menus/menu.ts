@@ -141,3 +141,98 @@ export async function getMenu(organizationId: string, id: string) {
     },
   });
 }
+
+export interface StorefrontMenuItem {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  foodType: FoodType;
+  price: number;
+}
+
+export interface StorefrontMenuSection {
+  categoryId: string | null;
+  categoryName: string;
+  items: StorefrontMenuItem[];
+}
+
+export interface StorefrontMenu {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  menuType: FoodType;
+  pricePerPlate: number;
+  sections: StorefrontMenuSection[];
+}
+
+function toStorefrontItem(item: { id: string; name: string; description: string | null; image: string | null; foodType: FoodType; price: unknown }): StorefrontMenuItem {
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    image: item.image,
+    foodType: item.foodType,
+    price: Number(item.price),
+  };
+}
+
+/**
+ * Chunk 8 Group 8.3 — active Menus with their active items, grouped into
+ * sections by the menu's own category assignments (items tagged with an
+ * assigned category land in that section; anything else falls into a
+ * trailing "Other Items" section). View-only: no `maxSelection`/customer
+ * picking semantics here — that's Chunk 11's Menu Selection workflow.
+ */
+export async function listStorefrontMenus(organizationId: string): Promise<StorefrontMenu[]> {
+  const menus = await prisma.menu.findMany({
+    where: { organizationId, isActive: true },
+    include: {
+      items: {
+        where: { menuItem: { isActive: true } },
+        include: { menuItem: { include: { categories: { select: { categoryId: true } } } } },
+        orderBy: { sortOrder: "asc" },
+      },
+      categoryAssignments: {
+        where: { category: { isActive: true } },
+        include: { category: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return menus.map((menu) => {
+    const categorizedItemIds = new Set<string>();
+
+    const sections: StorefrontMenuSection[] = menu.categoryAssignments
+      .map((assignment) => {
+        const categoryItems = menu.items
+          .filter((mi) => mi.menuItem.categories.some((c) => c.categoryId === assignment.categoryId))
+          .map((mi) => mi.menuItem);
+        categoryItems.forEach((item) => categorizedItemIds.add(item.id));
+        return {
+          categoryId: assignment.categoryId,
+          categoryName: assignment.category.name,
+          items: categoryItems.map(toStorefrontItem),
+        };
+      })
+      .filter((section) => section.items.length > 0);
+
+    const uncategorized = menu.items.filter((mi) => !categorizedItemIds.has(mi.menuItemId)).map((mi) => mi.menuItem);
+    if (uncategorized.length > 0) {
+      sections.push({ categoryId: null, categoryName: "Other Items", items: uncategorized.map(toStorefrontItem) });
+    }
+
+    return {
+      id: menu.id,
+      name: menu.name,
+      description: menu.description,
+      image: menu.image,
+      menuType: menu.menuType,
+      pricePerPlate: Number(menu.pricePerPlate),
+      sections,
+    };
+  });
+}
