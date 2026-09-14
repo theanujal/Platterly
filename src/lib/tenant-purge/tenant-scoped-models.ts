@@ -32,6 +32,10 @@ export const TENANT_SCOPED_DELEGATES = [
   "menu",
   "eventType",
   "addOn",
+  // Chunk 7 — inventoryTransaction has no organizationId of its own; it
+  // cascades automatically (DB-level onDelete: Cascade) off its parent
+  // inventory row.
+  "inventory",
 ] as const;
 
 /**

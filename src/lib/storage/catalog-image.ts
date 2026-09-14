@@ -14,13 +14,13 @@ const ALLOWED_IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image
  * edit's new image never collides with (or requires deleting) the old one.
  *
  * Lives in src/lib/ (relocated from src/modules/menus/), not one module's
- * folder, since the `menus`, `events`, and `addons` modules all use it —
- * matches this project's "src/lib/ = cross-cutting platform services"
- * convention.
+ * folder, since the `menus`, `events`, `addons`, and `inventory` modules all
+ * use it — matches this project's "src/lib/ = cross-cutting platform
+ * services" convention.
  */
 export async function uploadCatalogImage(
   organizationId: string,
-  kind: "items" | "menus" | "event-types" | "add-ons",
+  kind: "items" | "menus" | "event-types" | "add-ons" | "inventory",
   file: File,
 ): Promise<string> {
   const extension = ALLOWED_IMAGE_TYPES[file.type];

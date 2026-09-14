@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ChefHat, Sparkles, CalendarRange, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, ChefHat, Sparkles, Boxes, CalendarRange, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -21,6 +21,7 @@ const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
   { label: "Add-ons", href: "/addons", icon: Sparkles },
+  { label: "Inventory", href: "/inventory", icon: Boxes },
   { label: "Events", href: "/events", icon: CalendarRange },
   { label: "Settings", href: "/settings", icon: SettingsIcon },
 ] as const;

@@ -36,6 +36,7 @@ model User {
 
   notificationsReceived Notification[]
   auditLogsActedOn      AuditLog[]
+  inventoryTransactionsActedOn InventoryTransaction[]
 
   @@unique([email])
   @@map("user")
@@ -150,6 +151,7 @@ model Organization {
   menus          Menu[]
   eventTypes     EventType[]
   addOns         AddOn[]
+  inventoryItems Inventory[]
 
   @@unique([slug])
   @@map("organization")
@@ -666,4 +668,71 @@ model AddOn {
 
   @@index([organizationId])
   @@map("add_on")
+}
+
+// Chunk 7 (Inventory, Basic) — PRD §35 (subset), Updated doc §13's exact Add
+// Inventory Item field list. Simple text-field supplier contact directly on
+// the item (no `Ingredient`/full `Supplier` entity/FK yet — that's Chunk 18,
+// see the chunk file's note); `storageLocation` stays a plain text field,
+// not a `Store` FK, matching Updated doc §13 exactly (multi-location Store
+// assignment is Chunk 23 UI on the schema Chunk 1 already stubbed).
+enum InventoryTransactionType {
+  STOCK_IN
+  STOCK_OUT
+  ADJUSTMENT
+}
+
+model Inventory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  category       String
+  description    String?
+  image          String?
+  unit           String
+  // Current on-hand balance — the source of truth for "what do we have",
+  // kept in sync with each InventoryTransaction inside one DB transaction
+  // (src/modules/inventory/inventory.ts's `recordStockTransaction`) rather
+  // than recomputed by summing the ledger on every read.
+  stockCount        Decimal   @db.Decimal(12, 2) @default(0)
+  lowStockThreshold Decimal?  @db.Decimal(12, 2)
+  costPerUnit       Decimal?  @db.Decimal(10, 2)
+  storageLocation   String?
+  supplierName      String?
+  supplierContact   String?
+  expiryDate        DateTime?
+
+  transactions InventoryTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("inventory")
+}
+
+// No `organizationId` of its own — cascades automatically (DB-level
+// onDelete: Cascade) off its parent Inventory row, same pattern as
+// MenuMenuItem/EventTypeMenu (see tenant-scoped-models.ts's comment).
+model InventoryTransaction {
+  id          String                   @id @default(cuid())
+  inventoryId String
+  inventory   Inventory                @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  type        InventoryTransactionType
+  // Always a positive magnitude for STOCK_IN/STOCK_OUT; a signed delta
+  // (can be negative) for ADJUSTMENT — see `recordStockTransaction`'s
+  // stock-quantity math for the exact rules each type applies.
+  quantity Decimal @db.Decimal(12, 2)
+  note     String?
+
+  // Nullable/SetNull so the ledger entry survives actor deletion, same
+  // rationale as AuditLog.actorUserId.
+  actorUserId String?
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([inventoryId])
+  @@map("inventory_transaction")
 }
