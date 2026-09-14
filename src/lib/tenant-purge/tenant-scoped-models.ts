@@ -23,6 +23,13 @@ export const TENANT_SCOPED_DELEGATES = [
   "whatsAppMessage",
   "secureAccessToken",
   "tenantSetting",
+  // Chunk 6 — menuMenuItem/menuPackageItem have no organizationId of their
+  // own; they cascade automatically (DB-level onDelete: Cascade) when their
+  // parent menu/menuPackage row here is deleted.
+  "menuCategory",
+  "menuItem",
+  "menu",
+  "menuPackage",
 ] as const;
 
 /**

@@ -24,7 +24,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${dmSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      {/* suppressHydrationWarning: some browser extensions (e.g. ColorZilla)
+          inject attributes like cz-shortcut-listen onto <body> before React
+          hydrates — a real mismatch there is unavoidable and not a bug in
+          this app. Scoped to this element only, not deep-tree suppression. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         {children}
         {process.env.NODE_ENV !== "production" && <Agentation />}
       </body>

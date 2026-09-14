@@ -10,6 +10,7 @@ import { PaymentsOverviewCard } from "./_components/payments-overview-card";
 import { InventoryOverviewCard } from "./_components/inventory-overview-card";
 import { OrdersCalendarWidget } from "./_components/orders-calendar-widget";
 import { PublicMenuShortcutCard } from "./_components/public-menu-shortcut-card";
+import { MenuCatalogShortcutCard } from "./_components/menu-catalog-shortcut-card";
 
 export const metadata: Metadata = {
   title: "Dashboard — Platterly",
@@ -36,6 +37,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <OrdersOverviewCard />
         <UpcomingOrdersCard />
+        <MenuCatalogShortcutCard />
         <PaymentsOverviewCard />
         <InventoryOverviewCard />
         <OrdersCalendarWidget />

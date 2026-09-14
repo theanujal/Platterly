@@ -137,6 +137,11 @@ model Organization {
 
   subscriptions Subscription[]
 
+  menuCategories MenuCategory[]
+  menuItems      MenuItem[]
+  menus          Menu[]
+  menuPackages   MenuPackage[]
+
   @@unique([slug])
   @@map("organization")
 }
@@ -433,4 +438,180 @@ model Subscription {
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("subscription")
+}
+
+// --- Chunk 6: Menu & Product Catalog (PRD §22-24, Updated doc §12) ---
+// MenuCategory/MenuItem form the org's reusable product catalog ("the
+// product information can then be reused in menus and orders" — Updated
+// §12). Menu is a separate, named curated grouping of catalog items (e.g.
+// "Wedding Silver Menu") consumed by the Public Storefront (Chunk 8) and
+// Menu Selection (Chunk 11); MenuPackage is the sellable, priced bundle
+// Quotation/Order (Chunk 10) and Meal Planning actually charge against —
+// kept distinct from Menu because a single Menu can be priced multiple ways
+// (e.g. a Silver and a Gold package drawing from the same item list).
+
+model MenuCategory {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  items MenuItem[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@map("menu_category")
+}
+
+// Updated doc §12's "Dietary Information" toggle.
+enum FoodType {
+  VEGETARIAN
+  NON_VEGETARIAN
+}
+
+// Updated doc §12's "Additional dietary data" -> "Dietary type" field.
+// The doc doesn't enumerate its values; this set covers the common Indian
+// catering distinctions beyond plain veg/non-veg (a documented judgment
+// call, not confirmed with AJ — narrow enough to revisit if it doesn't fit
+// real catalog data).
+enum DietaryType {
+  STANDARD
+  JAIN
+  VEGAN
+  GLUTEN_FREE
+}
+
+// Updated doc §12's "Additional dietary data" -> "Egg information" field.
+enum EggInfo {
+  NO_EGG
+  CONTAINS_EGG
+  EGG_OPTIONAL
+}
+
+model MenuItem {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categoryId     String?
+  category       MenuCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  name           String
+  description    String?
+  image          String?
+  // Updated §12 "food-product toggle" — distinguishes food items from
+  // non-food add-ons (e.g. a table decoration or a disposable-cutlery line).
+  isFoodProduct  Boolean       @default(true)
+  // Dietary fields only meaningful when isFoodProduct is true.
+  foodType       FoodType?
+  dietaryType    DietaryType?
+  eggInfo        EggInfo?
+  price          Decimal       @db.Decimal(10, 2)
+  isActive       Boolean       @default(true)
+
+  // Chunk 18 (Phase 2) attaches Recipe/BOM via this FK — left nullable now
+  // per the roadmap's explicit note, so Phase 2 doesn't need a migration to
+  // add it, without pulling Recipe/BOM logic itself forward.
+  recipeId String?
+
+  menus        MenuMenuItem[]
+  packageItems MenuPackageItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([categoryId])
+  @@map("menu_item")
+}
+
+model Menu {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  image          String?
+  isActive       Boolean      @default(true)
+
+  items MenuMenuItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("menu")
+}
+
+// Menu <-> MenuItem membership (many-to-many: a catalog item can be reused
+// across multiple named Menus, per Updated §12's reuse note). sortOrder
+// controls display order within that Menu (e.g. on the Chunk 8 storefront).
+model MenuMenuItem {
+  id         String   @id @default(cuid())
+  menuId     String
+  menu       Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  @@unique([menuId, menuItemId])
+  @@index([menuId])
+  @@index([menuItemId])
+  @@map("menu_menu_item")
+}
+
+enum PackagePricingModel {
+  FIXED
+  PER_PERSON
+}
+
+model MenuPackage {
+  id             String              @id @default(cuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  image          String?
+  pricingModel   PackagePricingModel
+  // Exactly one of these two is set, matching pricingModel — enforced in
+  // the module layer, not the schema (Postgres has no portable "exactly one
+  // of" CHECK short of a trigger, and this mirrors how nullable pairs are
+  // handled elsewhere in this schema, e.g. Subscription.endDate).
+  fixedPrice     Decimal?            @db.Decimal(10, 2)
+  perPersonPrice Decimal?            @db.Decimal(10, 2)
+  minGuests      Int?
+  maxGuests      Int?
+  isActive       Boolean             @default(true)
+
+  items MenuPackageItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("menu_package")
+}
+
+// A package's line items. isOptional = guest can choose to include/exclude;
+// isAddOn = not part of the base package at all, offered as an extra. Both
+// can carry extraPrice — added on top of the package's base price when
+// selected (per-guest when the package is PER_PERSON, flat otherwise; see
+// `calculatePackagePrice` in src/modules/menus/pricing.ts).
+model MenuPackageItem {
+  id         String      @id @default(cuid())
+  packageId  String
+  package    MenuPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  menuItemId String
+  menuItem   MenuItem    @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  isOptional Boolean     @default(false)
+  isAddOn    Boolean     @default(false)
+  extraPrice Decimal?    @db.Decimal(10, 2)
+  createdAt  DateTime    @default(now())
+
+  @@unique([packageId, menuItemId])
+  @@index([packageId])
+  @@index([menuItemId])
+  @@map("menu_package_item")
 }
