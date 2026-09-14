@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans, Geist_Mono } from "next/font/google";
 import { Agentation } from "agentation";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -29,7 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           hydrates — a real mismatch there is unavoidable and not a bug in
           this app. Scoped to this element only, not deep-tree suppression. */}
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
+        <TooltipProvider>{children}</TooltipProvider>
         {process.env.NODE_ENV !== "production" && <Agentation />}
       </body>
     </html>

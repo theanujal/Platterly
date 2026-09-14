@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
-import { SignOutButton } from "../kitchenlogin/_components/sign-out-button";
 import { OnboardingNudgeBanner } from "./_components/onboarding-nudge-banner";
 import { CustomLinkDialog } from "./_components/custom-link-dialog";
 import { OrdersOverviewCard } from "./_components/orders-overview-card";
@@ -19,29 +18,29 @@ export const metadata: Metadata = {
 
 // Minimal caterer-facing dashboard shell. Real modules (events, orders,
 // kitchen, etc.) land in later chunks — this exists now so the redesigned
-// signup/onboarding flow has a real place to land.
+// signup/onboarding flow has a real place to land. Sign-out lives in the
+// sidebar footer (src/components/app-shell/app-sidebar.tsx) now, not here.
 export default async function DashboardPage() {
   const { organizationId } = await requireActiveOrganization();
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Welcome, {organization.name}</h1>
-          <p className="text-sm text-muted-foreground">Your catering business dashboard.</p>
-        </div>
-        <SignOutButton />
+    <main className="flex flex-1 flex-col gap-6 p-6 md:p-8">
+      <div>
+        <h1 className="text-2xl font-semibold">Welcome back, {organization.name}</h1>
+        <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with your catering business.</p>
       </div>
       {!organization.onboardingCompletedAt && <OnboardingNudgeBanner />}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <OrdersOverviewCard />
-        <UpcomingOrdersCard />
-        <MenuCatalogShortcutCard />
         <PaymentsOverviewCard />
         <InventoryOverviewCard />
+        <UpcomingOrdersCard />
         <OrdersCalendarWidget />
-        <PublicMenuShortcutCard slug={organization.slug} />
+        <div className="flex flex-col gap-4">
+          <MenuCatalogShortcutCard />
+          <PublicMenuShortcutCard slug={organization.slug} />
+        </div>
       </div>
       <CustomLinkDialog currentSlug={organization.slug} defaultOpen={organization.slugChangeCount === 0} />
     </main>

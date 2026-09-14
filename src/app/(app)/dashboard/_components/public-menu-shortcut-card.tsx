@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { QrCode } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { canonicalUrl } from "@/lib/seo/canonical";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 export function PublicMenuShortcutCard({ slug }: { slug: string }) {
   const url = canonicalUrl(`/${slug}`);
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Public Menu / QR</CardTitle>
-      </CardHeader>
+      <DashboardCardHeader icon={QrCode} title="Public Menu / QR" colorClassName="bg-rose-500/10 text-rose-600" />
       <CardContent className="flex flex-col gap-3">
         <p className="truncate text-sm text-muted-foreground">{url}</p>
         <div className="flex gap-2">

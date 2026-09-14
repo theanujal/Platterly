@@ -1,4 +1,6 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CalendarDays } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -14,9 +16,11 @@ export function OrdersCalendarWidget() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{now.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</CardTitle>
-      </CardHeader>
+      <DashboardCardHeader
+        icon={CalendarDays}
+        title={now.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+        colorClassName="bg-amber-500/10 text-amber-600"
+      />
       <CardContent>
         <div className="grid grid-cols-7 gap-1 text-center text-xs">
           {WEEKDAY_LABELS.map((label, i) => (

@@ -1,4 +1,6 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { IndianRupee } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 const STATS = ["Revenue", "Total Orders", "Avg. Order Value", "Collected", "Pending", "Partially Paid"];
 
@@ -6,9 +8,7 @@ const STATS = ["Revenue", "Total Orders", "Avg. Order Value", "Collected", "Pend
 export function PaymentsOverviewCard() {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Payments Overview</CardTitle>
-      </CardHeader>
+      <DashboardCardHeader icon={IndianRupee} title="Payments Overview" colorClassName="bg-emerald-500/10 text-emerald-600" />
       <CardContent>
         <div className="grid grid-cols-2 gap-3">
           {STATS.map((stat) => (

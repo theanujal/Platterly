@@ -1,4 +1,6 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { ShoppingBag } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 const STATUSES = ["Total", "Pending", "Confirmed", "Processing", "Completed", "Cancelled"];
 
@@ -6,9 +8,7 @@ const STATUSES = ["Total", "Pending", "Confirmed", "Processing", "Completed", "C
 export function OrdersOverviewCard() {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Orders Overview</CardTitle>
-      </CardHeader>
+      <DashboardCardHeader icon={ShoppingBag} title="Orders Overview" colorClassName="bg-primary/10 text-primary" />
       <CardContent>
         <div className="grid grid-cols-3 gap-3">
           {STATUSES.map((status) => (

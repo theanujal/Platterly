@@ -1,4 +1,6 @@
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Package } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 const STATS = ["Total Items", "In Stock", "Low Stock", "Out of Stock", "Categories", "Total Value"];
 
@@ -6,9 +8,7 @@ const STATS = ["Total Items", "In Stock", "Low Stock", "Out of Stock", "Categori
 export function InventoryOverviewCard() {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Inventory Overview</CardTitle>
-      </CardHeader>
+      <DashboardCardHeader icon={Package} title="Inventory Overview" colorClassName="bg-violet-500/10 text-violet-600" />
       <CardContent>
         <div className="grid grid-cols-2 gap-3">
           {STATS.map((stat) => (

@@ -23,6 +23,11 @@ test.afterEach(async () => {
 });
 
 test("sign up, complete the onboarding wizard, sign out, and sign back in", async ({ page }) => {
+  // Longer than the 30s default: the full 5-step wizard + sign-out/sign-in
+  // round trip, each action slowed by launchOptions.slowMo (350ms, AJ's
+  // standing "watch it run" preference), plus the Chunk 6 sidebar shell
+  // added real hydration weight to every /dashboard visit this test makes.
+  test.setTimeout(60_000);
   const email = `e2e-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const businessName = "Playwright Test Catering";
@@ -73,7 +78,7 @@ test("sign up, complete the onboarding wizard, sign out, and sign back in", asyn
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: `Welcome, ${businessName}` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
 
   // Sign out, then sign back in — a fresh session has no active org until
   // requireActiveOrganization() restores it from the existing Member row;
@@ -91,7 +96,7 @@ test("sign up, complete the onboarding wizard, sign out, and sign back in", asyn
   // too — dismiss it before checking the heading behind it (see above).
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: `Welcome, ${businessName}` })).toBeVisible();
+  await expect(page.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
 });
 
 test("sign-in with the wrong password shows an inline error, not a crash", async ({ page }) => {
