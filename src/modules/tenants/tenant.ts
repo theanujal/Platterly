@@ -26,6 +26,14 @@ export interface TenantProfileInput {
   instagramUrl?: string;
   facebookUrl?: string;
   gstShowOnInvoices?: boolean;
+  // Order Numbering — Kitchen Admin-configurable prefix/counter/padding for
+  // human-readable Order Numbers (e.g. "AJ-0001"), consumed by
+  // src/modules/orders/order.ts's nextOrderNumber. Editing orderNumberNextValue
+  // after orders already exist deliberately lets the admin jump/reset the
+  // counter — their explicit choice, not guarded here.
+  orderNumberPrefix?: string;
+  orderNumberNextValue?: number;
+  orderNumberPadding?: number;
 }
 
 export type TenantProfileUpdateInput = Omit<TenantProfileInput, "slug">;
@@ -113,6 +121,9 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
       instagramUrl: input.instagramUrl,
       facebookUrl: input.facebookUrl,
       gstShowOnInvoices: input.gstShowOnInvoices,
+      orderNumberPrefix: input.orderNumberPrefix,
+      orderNumberNextValue: input.orderNumberNextValue,
+      orderNumberPadding: input.orderNumberPadding,
     },
   });
 

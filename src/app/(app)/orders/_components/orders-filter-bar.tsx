@@ -16,6 +16,12 @@ const STATUS_OPTIONS = [
   { value: "CANCELLED", label: "Cancelled" },
 ] as const;
 
+const ORDER_KIND_OPTIONS = [
+  { value: "ALL", label: "All Types" },
+  { value: "SINGLE", label: "Single Order" },
+  { value: "MULTI", label: "Multi Order" },
+] as const;
+
 export function OrdersFilterBar() {
   const router = useRouter();
   const pathname = usePathname();
@@ -54,6 +60,19 @@ export function OrdersFilterBar() {
         </SelectTrigger>
         <SelectContent>
           {STATUS_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={searchParams.get("orderKind") ?? "ALL"} onValueChange={(v) => updateParam("orderKind", v ?? "ALL")}>
+        <SelectTrigger aria-label="Order type filter" className="w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {ORDER_KIND_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

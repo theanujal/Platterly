@@ -144,6 +144,14 @@ model Organization {
   // the Dashboard's "finish your profile" nudge banner.
   onboardingCompletedAt DateTime?
 
+  // --- Order Numbering — Kitchen Admin-configurable prefix/counter for
+  // human-readable Order Numbers (e.g. "AJ-0001"). Assigned once per Order
+  // at creation (src/modules/orders/order.ts's nextOrderNumber), never
+  // recalculated later — orderNumberNextValue is the atomic counter.
+  orderNumberPrefix    String @default("ORD")
+  orderNumberNextValue Int    @default(1)
+  orderNumberPadding   Int    @default(4)
+
   subscriptions Subscription[]
 
   menuCategories MenuCategory[]
@@ -556,6 +564,7 @@ model Menu {
   preferredByEnquiries Enquiry[]
   orderItems           OrderItem[]
   quotationItems       QuotationItem[]
+  mealPlanEntries      MealPlanEntry[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -973,6 +982,15 @@ enum OrderItemType {
   ADD_ON
 }
 
+// Single = one Menu for the whole Order (today's default flow). Multi = one
+// Event with different Menus for different meal slots (MealPlanEntry.menuId)
+// — day count does not determine this; it's an explicit, overridable choice
+// on the Order (src/app/(app)/orders/_components/order-form.tsx).
+enum OrderKind {
+  SINGLE
+  MULTI
+}
+
 model Order {
   id             String       @id @default(cuid())
   organizationId String
@@ -994,6 +1012,16 @@ model Order {
   // Quotation later never deletes the Order it already produced.
   quotationId String?    @unique
   quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
+
+  // Single = one Menu for the whole Order; Multi = different Menus per meal
+  // slot via MealPlanEntry.menuId. Explicit, not inferred from date range.
+  orderKind OrderKind @default(SINGLE)
+
+  // Human-readable, per-tenant sequential label (e.g. "AJ-0001"), assigned
+  // once at creation from Organization.orderNumberPrefix/NextValue/Padding —
+  // immutable afterward, unlike the pricing fields below. Nullable because
+  // Orders created before this feature shipped have none.
+  orderNumber String?
 
   // Updated doc §5 "Event Information" — captured directly on the Order,
   // independent of whether a formal Event row exists yet (Group 10.6).
@@ -1041,6 +1069,7 @@ model Order {
 
   @@index([organizationId])
   @@index([customerId])
+  @@unique([organizationId, orderNumber])
   @@map("order")
 }
 
@@ -1057,6 +1086,13 @@ model OrderItem {
   menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
   addOnId    String?
   addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
+
+  // Set only for a Multi Order's per-meal-slot item picks (chosen from that
+  // slot's own Menu); null for every whole-order item, which is all of them
+  // on a Single Order. Cascade: a slot's items only make sense scoped to it,
+  // so unchecking that meal removes them along with its MealPlanEntry row.
+  mealPlanEntryId String?
+  mealPlanEntry   MealPlanEntry? @relation(fields: [mealPlanEntryId], references: [id], onDelete: Cascade)
 
   // Snapshotted at add-time — survives the catalog item being renamed,
   // repriced, or deleted later without silently rewriting a past Order.
@@ -1081,6 +1117,14 @@ model MealPlanEntry {
   mealType MealType
   // Only meaningful (and only ever set) when Order.individualPricingEnabled.
   price Decimal? @db.Decimal(10, 2)
+
+  // Multi Order only (Order.orderKind) — which Menu this specific meal slot
+  // uses; null for Single Order and for a Multi Order slot not yet decided.
+  menuId String?
+  menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  // Items chosen from that Menu specifically for this slot — see
+  // OrderItem.mealPlanEntryId.
+  items OrderItem[]
 
   createdAt DateTime @default(now())
 

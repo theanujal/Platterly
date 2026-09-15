@@ -34,6 +34,9 @@ export default async function BusinessProfilePage() {
           instagramUrl: organization.instagramUrl ?? "",
           facebookUrl: organization.facebookUrl ?? "",
           logoUrl: organization.logo,
+          orderNumberPrefix: organization.orderNumberPrefix,
+          orderNumberNextValue: String(organization.orderNumberNextValue),
+          orderNumberPadding: String(organization.orderNumberPadding),
         }}
       />
     </div>

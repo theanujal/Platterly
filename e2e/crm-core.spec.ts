@@ -4,12 +4,20 @@ import { cleanupOnboardingTestUser } from "./db";
 /**
  * Chunk 9 — CRM Core. Drives the full Lead -> Customer -> Event lifecycle
  * against the real dev DB and browser: Add New Lead -> edit into a fuller
- * Enquiry -> Convert to Customer -> create an Event for that Customer with
- * a required-inventory link -> verify the Events Dashboard's search/status/
- * location filters -> verify the Customer's timeline shows both the
- * (now Converted) Enquiry and the Event. This is the chunk plan's own
- * Verify line: "Enquiry->Event conversion, timeline correctness,
+ * Enquiry -> Convert to Customer -> create an Order for that Customer and,
+ * from the Order detail page, create + fully edit its linked Event (name,
+ * status, required-inventory link) -> verify the Customer's timeline shows
+ * both the (now Converted) Enquiry and the Event. This is the chunk plan's
+ * own Verify line: "Enquiry->Event conversion, timeline correctness,
  * required-inventory link persists correctly."
+ *
+ * Updated 2026-09-16: the standalone `/events` Dashboard and `/events/new`
+ * (Customer-only Event creation) were removed once every Event started
+ * coming from an Order (AJ's decision) — Event creation/editing now happens
+ * entirely from the Order detail page's inline editor, which folded in
+ * everything the old standalone `/events/[id]` page used to expose (status,
+ * required inventory, name/dates/notes, delete). `/events` now serves Event
+ * Types instead (see e2e/events.spec.ts).
  */
 
 const cleanupEmails: string[] = [];
@@ -52,10 +60,10 @@ test("Lead -> Enquiry -> Customer -> Event, with required inventory and timeline
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/events/types/new");
+  await page.goto("/events/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page).toHaveURL(/\/events$/);
 
   // --- Add New Lead (Updated doc §11's lightweight form) ---
   const leadName = `Asha Rao ${suffix}`;
@@ -104,47 +112,40 @@ test("Lead -> Enquiry -> Customer -> Event, with required inventory and timeline
   const customerUrl = page.url();
   const customerId = customerUrl.split("/customers/")[1];
 
-  // --- Create an Event for this Customer, with required inventory ---
-  await page.goto("/events/new");
-  await page.getByLabel("Event Name").fill(`${leadName}'s Wedding`);
+  // --- Create an Order for this Customer, then create + fully edit its
+  // linked Event (name, required inventory, status) from the Order page ---
+  await page.goto("/orders/new");
   await page.getByLabel("Customer").click();
   await page.getByRole("option", { name: new RegExp(leadName) }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
-  await page.getByLabel("Start Date").fill("2026-12-01");
-  await page.getByLabel("End Date").fill("2026-12-02");
-  await page.getByLabel("Venue").fill("Taj Hall");
-  await page.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
-  await page.getByPlaceholder("Quantity").fill("20");
-  await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByText(`${leadName}'s Wedding`)).toBeVisible();
-  await expect(page.getByText("Pending", { exact: true }).first()).toBeVisible();
+  await page.getByLabel("Event Start Date").fill("2026-12-01");
+  await page.getByLabel("Event End Date").fill("2026-12-02");
+  await page.getByLabel("Location / Venue").fill("Taj Hall");
+  await page.getByRole("button", { name: "Create Order", exact: true }).click();
+  await expect(page).toHaveURL(/\/orders$/);
 
-  // --- Events Dashboard filters ---
-  await page.getByLabel("Search events").fill("no-such-event-xyz");
-  await page.getByLabel("Search events").press("Enter");
-  await expect(page.getByText(`${leadName}'s Wedding`)).not.toBeVisible();
-  await page.getByLabel("Search events").fill("");
-  await page.getByLabel("Search events").press("Enter");
-  await expect(page.getByText(`${leadName}'s Wedding`)).toBeVisible();
+  await page.getByText(leadName).click();
+  await expect(page).toHaveURL(/\/orders\/.+/);
+  await expect(page.getByText("Create an event for this order?")).toBeVisible();
+  await page.getByRole("button", { name: "Yes, create event" }).click();
+  await expect(page.getByText("Event details", { exact: true })).toBeVisible();
 
-  await page.getByLabel("Status filter").click();
-  await page.getByRole("option", { name: "Completed" }).click();
-  await expect(page.getByText(`${leadName}'s Wedding`)).not.toBeVisible();
-  await page.getByLabel("Status filter").click();
-  await page.getByRole("option", { name: "All Status" }).click();
-  await expect(page.getByText(`${leadName}'s Wedding`)).toBeVisible();
-
-  // --- Edit the Event: change status, confirm required inventory round-trips ---
-  await page.getByText(`${leadName}'s Wedding`).click();
-  await expect(page).toHaveURL(/\/events\/.+/);
-  await expect(page.getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
-  await page.getByLabel("Status").click();
+  // The inline editor shares field labels ("Status", "Event Type", ...) with
+  // the Order form on the same page — scope every interaction to it.
+  const eventEditor = page.getByTestId("order-event-editor");
+  await eventEditor.getByLabel("Event Name").fill(`${leadName}'s Wedding`);
+  await eventEditor.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
+  await eventEditor.getByPlaceholder("Quantity").fill("20");
+  await eventEditor.getByLabel("Status").click();
   await page.getByRole("option", { name: "Processing" }).click();
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByText("Processing", { exact: true }).first()).toBeVisible();
+  await eventEditor.getByRole("button", { name: "Save Event details" }).click();
+  await expect(eventEditor.getByText("Saved.")).toBeVisible();
+
+  await page.reload();
+  const reloadedEventEditor = page.getByTestId("order-event-editor");
+  await expect(reloadedEventEditor.getByLabel("Event Name")).toHaveValue(`${leadName}'s Wedding`);
+  await expect(reloadedEventEditor.getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
 
   // --- Customer timeline now shows both the Converted Enquiry and the Event ---
   await page.goto(`/customers/${customerId}`);

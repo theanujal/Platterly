@@ -236,3 +236,31 @@ export async function listStorefrontMenus(organizationId: string): Promise<Store
     };
   });
 }
+
+/**
+ * Chunk 10's Multi Order — for each active Menu, the flat list of its own
+ * items (direct MenuMenuItem assignment — the same population
+ * `listStorefrontMenus` groups into sections; MenuCategoryAssignment only
+ * governs how those already-assigned items are bucketed/limited for
+ * selection, per AJ's "independent, not derived" rule — it never adds
+ * items to a Menu on its own). Lets the Order form's per-meal-slot item
+ * picker offer only "this slot's chosen Menu's items."
+ */
+export async function listMenuItemsByMenu(organizationId: string): Promise<Record<string, { id: string; name: string; price: number }[]>> {
+  const menus = await prisma.menu.findMany({
+    where: { organizationId, isActive: true },
+    include: {
+      items: {
+        where: { menuItem: { isActive: true } },
+        include: { menuItem: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+
+  const result: Record<string, { id: string; name: string; price: number }[]> = {};
+  for (const menu of menus) {
+    result[menu.id] = menu.items.map(({ menuItem }) => ({ id: menuItem.id, name: menuItem.name, price: Number(menuItem.price) }));
+  }
+  return result;
+}

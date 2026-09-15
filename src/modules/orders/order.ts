@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { createEvent } from "@/modules/events/event";
-import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType } from "@/generated/prisma/enums";
+import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -17,6 +17,10 @@ export interface MealPlanEntryInput {
   mealType: MealType;
   /** Only meaningful when individualPricingEnabled. */
   price?: number;
+  /** Multi Order only (orderKind) — stripped server-side otherwise. */
+  menuId?: string | null;
+  /** Multi Order only — items chosen from that slot's own Menu. Stripped server-side otherwise. */
+  items?: OrderItemCatalogInput[];
 }
 
 export interface OrderInput {
@@ -31,6 +35,8 @@ export interface OrderInput {
   totalParticipants?: number | null;
   adultNonVegCount?: number | null;
   adultVegCount?: number | null;
+  /** Single = one Menu for the whole Order; Multi = a Menu per meal slot. Explicit, not inferred. */
+  orderKind?: OrderKind;
   individualPricingEnabled?: boolean;
   discount?: number;
   taxes?: number;
@@ -38,9 +44,9 @@ export interface OrderInput {
   paymentStatus?: OrderPaymentStatus;
   status?: OrderStatus;
   notes?: string;
-  /** Full replacement of this Order's Products & Menu Items (Group 10.5). */
+  /** Full replacement of this Order's whole-order Products & Menu Items (Group 10.5). */
   items?: OrderItemCatalogInput[];
-  /** Full replacement of this Order's Meal Planning selections (Group 10.4). */
+  /** Sync (not blind replace — see replaceMealPlanEntries) of this Order's Meal Planning selections (Group 10.4). */
   mealPlanEntries?: MealPlanEntryInput[];
 }
 
@@ -79,13 +85,80 @@ async function replaceOrderItems(organizationId: string, orderId: string, items:
   await prisma.orderItem.createMany({ data: resolved });
 }
 
-async function replaceMealPlanEntries(orderId: string, entries: MealPlanEntryInput[] | undefined) {
+/**
+ * Replaces this entry's own scoped items (Multi Order's per-meal-slot Menu
+ * items) — a narrow, slot-scoped version of `replaceOrderItems`'s
+ * delete-then-recreate pattern, never touching whole-order items
+ * (mealPlanEntryId: null).
+ */
+async function replaceMealPlanEntryItems(organizationId: string, orderId: string, mealPlanEntryId: string, items: OrderItemCatalogInput[]) {
+  await prisma.orderItem.deleteMany({ where: { mealPlanEntryId } });
+  if (items.length === 0) return;
+  const resolved = await Promise.all(
+    items.map(async (item) => ({
+      orderId,
+      mealPlanEntryId,
+      itemType: item.itemType,
+      quantity: item.quantity,
+      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
+    })),
+  );
+  await prisma.orderItem.createMany({ data: resolved });
+}
+
+/**
+ * Upsert-by-(date,mealType) sync, NOT a blind delete+recreate — unlike
+ * `replaceOrderItems`, a MealPlanEntry can now own child OrderItems (Multi
+ * Order's per-slot items via `mealPlanEntryId`), and recreating a row would
+ * hand it a new id, cascade-deleting those items on every unrelated save.
+ * Existing (date, mealType) rows are updated in place (id preserved); only
+ * genuinely removed slots are deleted (their items cascade with them).
+ * `menuId`/per-slot `items` are silently stripped unless `orderKind ===
+ * "MULTI"`, so a Single Order can never end up with stray Menu/item data.
+ */
+async function replaceMealPlanEntries(organizationId: string, orderId: string, orderKind: OrderKind, entries: MealPlanEntryInput[] | undefined) {
   if (entries === undefined) return;
-  await prisma.mealPlanEntry.deleteMany({ where: { orderId } });
-  if (entries.length === 0) return;
-  await prisma.mealPlanEntry.createMany({
-    data: entries.map((entry) => ({ orderId, date: entry.date, mealType: entry.mealType, price: entry.price })),
+  const existing = await prisma.mealPlanEntry.findMany({ where: { orderId } });
+  const existingByKey = new Map(existing.map((e) => [`${e.date.toISOString()}|${e.mealType}`, e]));
+  const keepIds = new Set<string>();
+
+  for (const entry of entries) {
+    const menuId = orderKind === "MULTI" ? (entry.menuId ?? null) : null;
+    if (menuId) {
+      await prisma.menu.findFirstOrThrow({ where: { id: menuId, organizationId } });
+    }
+    const key = `${entry.date.toISOString()}|${entry.mealType}`;
+    const match = existingByKey.get(key);
+    const entryId = match
+      ? (await prisma.mealPlanEntry.update({ where: { id: match.id }, data: { price: entry.price, menuId } })).id
+      : (await prisma.mealPlanEntry.create({ data: { orderId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
+    keepIds.add(entryId);
+
+    const scopedItems = orderKind === "MULTI" ? (entry.items ?? []) : [];
+    await replaceMealPlanEntryItems(organizationId, orderId, entryId, scopedItems);
+  }
+
+  const toDelete = existing.filter((e) => !keepIds.has(e.id));
+  if (toDelete.length > 0) {
+    await prisma.mealPlanEntry.deleteMany({ where: { id: { in: toDelete.map((e) => e.id) } } });
+  }
+}
+
+/**
+ * Assigns this Order's human-readable, per-tenant Order Number (e.g.
+ * "AJ-0001") from Organization's configurable prefix/counter/padding.
+ * Prisma's `increment` compiles to an atomic SQL UPDATE, so two concurrent
+ * createOrder calls for the same tenant can never collide. Called only from
+ * createOrder — immutable afterward, like OrderItem's price snapshot.
+ */
+async function nextOrderNumber(organizationId: string): Promise<string> {
+  const org = await prisma.organization.update({
+    where: { id: organizationId },
+    data: { orderNumberNextValue: { increment: 1 } },
+    select: { orderNumberPrefix: true, orderNumberNextValue: true, orderNumberPadding: true },
   });
+  const assigned = org.orderNumberNextValue - 1;
+  return `${org.orderNumberPrefix}-${String(assigned).padStart(org.orderNumberPadding, "0")}`;
 }
 
 /**
@@ -112,11 +185,15 @@ export async function recalculateOrderTotals(orderId: string) {
 }
 
 export async function createOrder(organizationId: string, input: OrderInput, actorUserId: string) {
+  const orderKind = input.orderKind ?? "SINGLE";
+  const orderNumber = await nextOrderNumber(organizationId);
   const order = await prisma.order.create({
     data: {
       organizationId,
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      orderKind,
+      orderNumber,
       eventStartDate: input.eventStartDate,
       eventEndDate: input.eventEndDate,
       venue: input.venue,
@@ -136,7 +213,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
     },
   });
   await replaceOrderItems(organizationId, order.id, input.items);
-  await replaceMealPlanEntries(order.id, input.mealPlanEntries);
+  await replaceMealPlanEntries(organizationId, order.id, orderKind, input.mealPlanEntries);
   const withTotals = await recalculateOrderTotals(order.id);
 
   await audit({
@@ -153,12 +230,15 @@ export async function createOrder(organizationId: string, input: OrderInput, act
 
 export async function updateOrder(organizationId: string, id: string, input: OrderInput, actorUserId: string) {
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
+  // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
+  const orderKind = input.orderKind ?? before.orderKind;
 
   await prisma.order.update({
     where: { id },
     data: {
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      orderKind,
       eventStartDate: input.eventStartDate,
       eventEndDate: input.eventEndDate,
       venue: input.venue,
@@ -178,7 +258,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
     },
   });
   await replaceOrderItems(organizationId, id, input.items);
-  await replaceMealPlanEntries(id, input.mealPlanEntries);
+  await replaceMealPlanEntries(organizationId, id, orderKind, input.mealPlanEntries);
   const withTotals = await recalculateOrderTotals(id);
 
   await audit({
@@ -211,6 +291,7 @@ export async function deleteOrder(organizationId: string, id: string, actorUserI
 
 export interface OrderListFilter {
   status?: OrderStatus;
+  orderKind?: OrderKind;
   search?: string;
 }
 
@@ -219,7 +300,15 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
     where: {
       organizationId,
       status: filter?.status,
-      customer: filter?.search ? { name: { contains: filter.search, mode: "insensitive" } } : undefined,
+      orderKind: filter?.orderKind,
+      ...(filter?.search
+        ? {
+            OR: [
+              { customer: { name: { contains: filter.search, mode: "insensitive" } } },
+              { orderNumber: { contains: filter.search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     },
     include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
@@ -232,9 +321,21 @@ export async function getOrder(organizationId: string, id: string) {
     include: {
       customer: true,
       eventType: true,
-      items: { orderBy: { createdAt: "asc" } },
-      mealPlanEntries: { orderBy: [{ date: "asc" }, { mealType: "asc" }] },
-      events: { include: { assignedKitchen: true, eventType: true } },
+      // Whole-order items only (Products & Menu Items) — a Multi Order's
+      // per-slot items live under mealPlanEntries.items below instead, so
+      // they aren't double-represented in both places.
+      items: { where: { mealPlanEntryId: null }, orderBy: { createdAt: "asc" } },
+      mealPlanEntries: {
+        orderBy: [{ date: "asc" }, { mealType: "asc" }],
+        include: { menu: { select: { id: true, name: true } }, items: { orderBy: { createdAt: "asc" } } },
+      },
+      events: {
+        include: {
+          assignedKitchen: true,
+          eventType: true,
+          requiredInventory: { select: { inventoryId: true, quantity: true } },
+        },
+      },
     },
   });
 }

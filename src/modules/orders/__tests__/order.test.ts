@@ -346,3 +346,244 @@ describe("createEventForOrder (Group 10.6 — Event Creation Prompt)", () => {
     expect(stillExists!.orderId).toBeNull();
   });
 });
+
+describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () => {
+  it("defaults orderKind to SINGLE when omitted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    expect(order.orderKind).toBe("SINGLE");
+  });
+
+  it("a Multi Order can assign a different Menu (and different chosen items) to each meal slot", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menuA = await createMenu(org.id, { name: "Breakfast Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+    const menuB = await createMenu(org.id, { name: "Dinner Menu", menuType: "NON_VEGETARIAN", pricePerPlate: 500 }, actor.id);
+    const idli = await createMenuItem(org.id, { name: "Idli", foodType: "VEGETARIAN", price: 40 }, actor.id);
+    const biryani = await createMenuItem(org.id, { name: "Biryani", foodType: "NON_VEGETARIAN", price: 300 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "MULTI",
+        mealPlanEntries: [
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: idli.id, quantity: 2 }] },
+          { date: new Date("2026-12-01"), mealType: "DINNER", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: biryani.id, quantity: 1 }] },
+        ],
+      },
+      actor.id,
+    );
+
+    const fetched = await getOrder(org.id, order.id);
+    expect(fetched!.orderKind).toBe("MULTI");
+    const breakfast = fetched!.mealPlanEntries.find((e) => e.mealType === "BREAKFAST")!;
+    const dinner = fetched!.mealPlanEntries.find((e) => e.mealType === "DINNER")!;
+    expect(breakfast.menuId).toBe(menuA.id);
+    expect(breakfast.items.map((i) => i.name)).toEqual(["Idli"]);
+    expect(dinner.menuId).toBe(menuB.id);
+    expect(dinner.items.map((i) => i.name)).toEqual(["Biryani"]);
+    // Whole-order Products & Menu Items list stays separate from per-slot items.
+    expect(fetched!.items).toHaveLength(0);
+  });
+
+  it("updating a Multi Order re-submitting one slot unchanged preserves its id and items (no wipe-on-save)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Lunch Menu", menuType: "VEGETARIAN", pricePerPlate: 250 }, actor.id);
+    const item = await createMenuItem(org.id, { name: "Dal Makhani", foodType: "VEGETARIAN", price: 120 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-02"),
+        orderKind: "MULTI",
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 3 }] }],
+      },
+      actor.id,
+    );
+    const before = (await getOrder(org.id, order.id))!.mealPlanEntries[0];
+
+    await updateOrder(
+      org.id,
+      order.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-02"),
+        orderKind: "MULTI",
+        mealPlanEntries: [
+          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 3 }] },
+          { date: new Date("2026-12-02"), mealType: "DINNER" },
+        ],
+      },
+      actor.id,
+    );
+
+    const after = await getOrder(org.id, order.id);
+    const lunch = after!.mealPlanEntries.find((e) => e.mealType === "LUNCH")!;
+    // The MealPlanEntry row itself keeps its id (the actual bug this guards
+    // against: a blind recreate would cascade-delete its items via a new
+    // id). Its own items are still a full-replace blob each save — same
+    // convention as the whole-order Products list — so their content, not
+    // row identity, is what must survive intact.
+    expect(lunch.id).toBe(before.id);
+    expect(lunch.items).toHaveLength(1);
+    expect(lunch.items[0].name).toBe("Dal Makhani");
+    expect(lunch.items[0].quantity).toBe(3);
+  });
+
+  it("unchecking a previously-selected slot deletes it and cascades its items", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const item = await createMenuItem(org.id, { name: "Item", foodType: "VEGETARIAN", price: 10 }, actor.id);
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "MULTI",
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1 }] }],
+      },
+      actor.id,
+    );
+    const entryId = (await getOrder(org.id, order.id))!.mealPlanEntries[0].id;
+
+    await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), orderKind: "MULTI", mealPlanEntries: [] }, actor.id);
+
+    expect(await prisma.mealPlanEntry.findUnique({ where: { id: entryId } })).toBeNull();
+    expect(await prisma.orderItem.count({ where: { mealPlanEntryId: entryId } })).toBe(0);
+  });
+
+  it("Single Order strips a stray menuId/items on a meal plan entry — never persisted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const item = await createMenuItem(org.id, { name: "Item", foodType: "VEGETARIAN", price: 10 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "SINGLE",
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1 }] }],
+      },
+      actor.id,
+    );
+
+    const entry = (await getOrder(org.id, order.id))!.mealPlanEntries[0];
+    expect(entry.menuId).toBeNull();
+    expect(entry.items).toHaveLength(0);
+  });
+
+  it("a cross-tenant menuId on a Multi Order's meal slot is rejected", async () => {
+    const org = await makeOrg();
+    const otherOrg = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const otherMenu = await createMenu(otherOrg.id, { name: "Someone Else's Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+
+    await expect(
+      createOrder(
+        org.id,
+        {
+          customerId: customer.id,
+          eventStartDate: new Date("2026-12-01"),
+          eventEndDate: new Date("2026-12-01"),
+          orderKind: "MULTI",
+          mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: otherMenu.id }],
+        },
+        actor.id,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("listOrders filters by orderKind", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const single = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), orderKind: "SINGLE" }, actor.id);
+    const multi = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), orderKind: "MULTI" }, actor.id);
+
+    expect((await listOrders(org.id, { orderKind: "SINGLE" })).map((o) => o.id)).toEqual([single.id]);
+    expect((await listOrders(org.id, { orderKind: "MULTI" })).map((o) => o.id)).toEqual([multi.id]);
+  });
+
+  it("recalculateOrderTotals sums whole-order items and per-slot Multi Order items together", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const wholeOrderItem = await createMenuItem(org.id, { name: "Whole Order Item", foodType: "VEGETARIAN", price: 40 }, actor.id);
+    const slotItem = await createMenuItem(org.id, { name: "Slot Item", foodType: "VEGETARIAN", price: 60 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "MULTI",
+        items: [{ itemType: "MENU_ITEM", catalogId: wholeOrderItem.id, quantity: 1 }], // 40
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: slotItem.id, quantity: 2 }] }], // 120
+      },
+      actor.id,
+    );
+
+    expect(Number(order.subtotal)).toBe(40 + 120);
+  });
+});
+
+describe("Order Numbering (per-tenant prefix/counter/padding)", () => {
+  it("assigns a formatted, incrementing orderNumber on createOrder using Organization's prefix/padding", async () => {
+    const org = await makeOrg();
+    await prisma.organization.update({ where: { id: org.id }, data: { orderNumberPrefix: "AJ", orderNumberNextValue: 5, orderNumberPadding: 4 } });
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+
+    const first = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    const second = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+
+    expect(first.orderNumber).toBe("AJ-0005");
+    expect(second.orderNumber).toBe("AJ-0006");
+  });
+
+  it("two tenants' order-number counters are independent (tenant isolation)", async () => {
+    const orgA = await makeOrg();
+    const orgB = await makeOrg();
+    const actor = await makeActor();
+    const customerA = await makeCustomer(orgA.id, actor.id);
+    const customerB = await makeCustomer(orgB.id, actor.id);
+
+    const orderA = await createOrder(orgA.id, { customerId: customerA.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    const orderB = await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+
+    expect(orderA.orderNumber).toBe("ORD-0001");
+    expect(orderB.orderNumber).toBe("ORD-0001");
+  });
+
+  it("updateOrder never changes an already-assigned orderNumber", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+
+    const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "CONFIRMED" }, actor.id);
+
+    expect(updated.orderNumber).toBe(order.orderNumber);
+  });
+});

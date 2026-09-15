@@ -15,6 +15,13 @@ function stringField(formData: FormData, name: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
+function numberField(formData: FormData, name: string): number | undefined {
+  const raw = stringField(formData, name);
+  if (raw === undefined) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 /**
  * Reuses the same `updateTenant` call the onboarding wizard uses — the
  * fields are identical, this is just the place a caterer reaches them
@@ -49,6 +56,15 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     logoUrl = uploaded.url;
   }
 
+  const orderNumberNextValue = numberField(formData, "orderNumberNextValue");
+  if (orderNumberNextValue !== undefined && orderNumberNextValue < 1) {
+    return { ok: false, error: "Starting number must be at least 1." };
+  }
+  const orderNumberPadding = numberField(formData, "orderNumberPadding");
+  if (orderNumberPadding !== undefined && (orderNumberPadding < 1 || orderNumberPadding > 10)) {
+    return { ok: false, error: "Digits must be between 1 and 10." };
+  }
+
   const input: TenantProfileUpdateInput = {
     name: businessName,
     businessDescription: stringField(formData, "businessDescription"),
@@ -63,6 +79,9 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     websiteUrl: stringField(formData, "websiteUrl"),
     instagramUrl: stringField(formData, "instagramUrl"),
     facebookUrl: stringField(formData, "facebookUrl"),
+    orderNumberPrefix: stringField(formData, "orderNumberPrefix")?.toUpperCase(),
+    orderNumberNextValue,
+    orderNumberPadding,
   };
   if (logoUrl) {
     input.logo = logoUrl;

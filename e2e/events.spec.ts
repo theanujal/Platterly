@@ -6,11 +6,14 @@ import { cleanupOnboardingTestUser } from "./db";
  * 2026-09-14; icon/sort-order added + relocated to /events/types when
  * Chunk 9's real Events Dashboard was built at /events, 2026-09-15) — a
  * caterer's catalog of the *types* of events they cater (e.g. "Wedding
- * Event"), each offering a set of eligible Menus. Signs up a fresh
- * throwaway account, skips onboarding, creates a bare Menu (no items/
- * categories needed for this) via the "Add Menu Type" popup, then drives
- * the Event Types flow reached from the Events Dashboard's "Manage Event
- * Types" link.
+ * Event"), each offering a set of eligible Menus.
+ *
+ * Updated 2026-09-16: the standalone Events Dashboard (transactional
+ * Events, created/edited independent of an Order) was removed once every
+ * Event started coming from an Order (AJ's decision — see
+ * src/modules/orders/README.md and e2e/crm-core.spec.ts). Event Types moved
+ * up to replace it: the sidebar's "Event Types" item now lands directly on
+ * `/events` (formerly `/events/types`), with no dashboard in between.
  */
 
 const cleanupEmails: string[] = [];
@@ -53,20 +56,15 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(menuName)).toBeVisible();
 
-  // --- Events nav item now lands on the real Events Dashboard (Chunk 9) ---
-  await page.getByRole("link", { name: "Events" }).click();
+  // --- "Event Types" nav item lands directly on /events (no dashboard) ---
+  await page.getByRole("link", { name: "Event Types" }).click();
   await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByRole("heading", { name: "Events", exact: true })).toBeVisible();
-
-  // --- Event Types now live at /events/types, reached via "Manage Event Types" ---
-  await page.getByRole("button", { name: "Manage Event Types" }).click();
-  await expect(page).toHaveURL(/\/events\/types$/);
   await expect(page.getByRole("heading", { name: "Event Types" })).toBeVisible();
 
   // --- Create Event Type, with an icon (Chunk 9 Group 9.1) ---
   const eventTypeName = `Wedding Event ${suffix}`;
   await page.getByRole("link", { name: "Add New Event Type" }).click();
-  await expect(page).toHaveURL(/\/events\/types\/new$/);
+  await expect(page).toHaveURL(/\/events\/new$/);
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByLabel("Description").fill("Full wedding catering package");
   await page.getByLabel("Icon").click();
@@ -75,18 +73,18 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await page.getByText(menuName).click();
   await page.getByRole("button", { name: "Create event" }).click();
 
-  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page).toHaveURL(/\/events$/);
   await expect(page.getByText(eventTypeName)).toBeVisible();
   await expect(page.getByText("Min 50 guests")).toBeVisible();
 
   // --- Edit: confirm the menu assignment and icon round-trip ---
   await page.getByText(eventTypeName).click();
-  await expect(page).toHaveURL(/\/events\/types\/.+/);
+  await expect(page).toHaveURL(/\/events\/.+/);
   await expect(page.getByLabel("Event Name")).toHaveValue(eventTypeName);
   await expect(page.getByText(menuName)).toBeVisible();
 
   await page.getByLabel("Event Name").fill(`${eventTypeName} Updated`);
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page).toHaveURL(/\/events$/);
   await expect(page.getByText(`${eventTypeName} Updated`)).toBeVisible();
 });

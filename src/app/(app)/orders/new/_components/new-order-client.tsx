@@ -8,11 +8,12 @@ interface NewOrderClientProps {
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
   menus: { id: string; name: string; price: number }[];
+  menuItemsByMenu: Record<string, { id: string; name: string; price: number }[]>;
   menuItems: { id: string; name: string; price: number }[];
   addOns: { id: string; name: string; price: number }[];
 }
 
-export function NewOrderClient({ customers, eventTypes, menus, menuItems, addOns }: NewOrderClientProps) {
+export function NewOrderClient({ customers, eventTypes, menus, menuItemsByMenu, menuItems, addOns }: NewOrderClientProps) {
   const router = useRouter();
 
   return (
@@ -20,6 +21,7 @@ export function NewOrderClient({ customers, eventTypes, menus, menuItems, addOns
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
+      menuItemsByMenu={menuItemsByMenu}
       menuItems={menuItems}
       addOns={addOns}
       submitLabel="Create Order"

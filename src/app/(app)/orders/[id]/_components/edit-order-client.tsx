@@ -10,11 +10,12 @@ interface EditOrderClientProps {
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
   menus: { id: string; name: string; price: number }[];
+  menuItemsByMenu: Record<string, { id: string; name: string; price: number }[]>;
   menuItems: { id: string; name: string; price: number }[];
   addOns: { id: string; name: string; price: number }[];
 }
 
-export function EditOrderClient({ orderId, initialValues, customers, eventTypes, menus, menuItems, addOns }: EditOrderClientProps) {
+export function EditOrderClient({ orderId, initialValues, customers, eventTypes, menus, menuItemsByMenu, menuItems, addOns }: EditOrderClientProps) {
   const router = useRouter();
 
   return (
@@ -22,6 +23,7 @@ export function EditOrderClient({ orderId, initialValues, customers, eventTypes,
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
+      menuItemsByMenu={menuItemsByMenu}
       menuItems={menuItems}
       addOns={addOns}
       initialValues={initialValues}

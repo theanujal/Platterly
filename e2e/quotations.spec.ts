@@ -50,10 +50,10 @@ test("create, send, and have a customer accept a Quotation, then convert it to a
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Birthday ${suffix}`;
-  await page.goto("/events/types/new");
+  await page.goto("/events/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events\/types$/);
+  await expect(page).toHaveURL(/\/events$/);
 
   const itemName = `Biryani ${suffix}`;
   await page.goto("/menu-catalog/items");

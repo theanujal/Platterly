@@ -12,8 +12,8 @@ import {
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
-import { getEvent, updateEvent } from "@/modules/events/event";
-import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType } from "@/generated/prisma/enums";
+import { getEvent, updateEvent, deleteEvent, type RequiredInventoryInput } from "@/modules/events/event";
+import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, EventStatus } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -55,11 +55,27 @@ function buildMealPlanEntries(formData: FormData): MealPlanEntryInput[] {
   const dates = formData.getAll("mealDate").filter((v): v is string => typeof v === "string");
   const mealTypes = formData.getAll("mealType").filter((v): v is string => typeof v === "string");
   const prices = formData.getAll("mealPrice").filter((v): v is string => typeof v === "string");
-  return dates.map((date, index) => ({
-    date: new Date(date),
-    mealType: mealTypes[index] as MealType,
-    price: Number.parseFloat(prices[index] ?? "0") || undefined,
-  }));
+  const menuIds = formData.getAll("mealMenuId").filter((v): v is string => typeof v === "string");
+  // One JSON-encoded OrderItemCatalogInput[] per slot, aligned by index with
+  // the arrays above — a slot's item count varies, so a flat parallel array
+  // of scalars (like the others here) can't represent it.
+  const itemsJson = formData.getAll("mealItems").filter((v): v is string => typeof v === "string");
+  return dates.map((date, index) => {
+    let items: OrderItemCatalogInput[] = [];
+    try {
+      const parsed = JSON.parse(itemsJson[index] ?? "[]");
+      if (Array.isArray(parsed)) items = parsed;
+    } catch {
+      items = [];
+    }
+    return {
+      date: new Date(date),
+      mealType: mealTypes[index] as MealType,
+      price: Number.parseFloat(prices[index] ?? "0") || undefined,
+      menuId: menuIds[index] || null,
+      items,
+    };
+  });
 }
 
 function buildInput(formData: FormData): OrderInput {
@@ -74,6 +90,7 @@ function buildInput(formData: FormData): OrderInput {
   return {
     customerId,
     eventTypeId: stringField(formData, "eventTypeId") ?? null,
+    orderKind: (stringField(formData, "orderKind") as OrderKind | undefined) ?? "SINGLE",
     eventStartDate,
     eventEndDate,
     venue: stringField(formData, "venue"),
@@ -176,12 +193,25 @@ export async function createEventForOrderAction(orderId: string): Promise<Action
   return { ok: true };
 }
 
+function buildRequiredInventory(formData: FormData): RequiredInventoryInput[] {
+  const ids = formData.getAll("requiredInventoryId").filter((v): v is string => typeof v === "string");
+  const quantities = formData.getAll("requiredInventoryQuantity").filter((v): v is string => typeof v === "string");
+  return ids.map((inventoryId, index) => ({
+    inventoryId,
+    quantity: Number.parseFloat(quantities[index] ?? "0") || 0,
+  }));
+}
+
 /**
- * The Order/Event judgment call (dev plans/index.md #14): a linked Event's
- * own operational fields are editable inline from the Order detail page,
- * not just linked out to /events/[id]. Reuses event.ts's own updateEvent —
- * fetches the current row first so fields this small form doesn't expose
- * (name, dates, status, required inventory) survive untouched.
+ * The Order/Event judgment call (dev plans/index.md #14): a linked Event is
+ * now fully editable inline from the Order detail page — the standalone
+ * `/events/[id]` page (Chunk 9) was removed once every Event started coming
+ * from an Order (AJ, 2026-09-16), so this is the only place left that edits
+ * an Event's own fields, including what a smaller draft of this form used
+ * to leave untouched (name, dates, status, required inventory) and what the
+ * standalone page alone used to expose (status, required inventory, delete
+ * — see deleteOrderEventAction below). Customer reassignment is deliberately
+ * NOT exposed here — an Event's customer follows its Order's.
  */
 export async function updateOrderEventAction(eventId: string, formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
@@ -191,6 +221,13 @@ export async function updateOrderEventAction(eventId: string, formData: FormData
     if (!current) throw new Error("Event not found.");
     const eventTypeId = stringField(formData, "eventTypeId");
     if (!eventTypeId) throw new Error("Event Type is required.");
+    const name = stringField(formData, "name");
+    if (!name) throw new Error("Event Name is required.");
+    const startDate = dateField(formData, "startDate");
+    if (!startDate) throw new Error("A valid Start Date is required.");
+    const endDate = dateField(formData, "endDate");
+    if (!endDate) throw new Error("A valid End Date is required.");
+    if (endDate < startDate) throw new Error("End Date can't be before Start Date.");
 
     await updateEvent(
       organizationId,
@@ -199,13 +236,14 @@ export async function updateOrderEventAction(eventId: string, formData: FormData
         customerId: current.customerId,
         eventTypeId,
         assignedKitchenId: stringField(formData, "assignedKitchenId") ?? null,
-        name: current.name,
-        startDate: current.startDate,
-        endDate: current.endDate,
+        name,
+        startDate,
+        endDate,
         venue: stringField(formData, "venue"),
         guestCount: numberField(formData, "guestCount") ?? null,
-        notes: current.notes ?? undefined,
-        status: current.status,
+        notes: stringField(formData, "notes"),
+        status: stringField(formData, "status") as EventStatus | undefined,
+        requiredInventory: buildRequiredInventory(formData),
       },
       session.user.id,
     );
@@ -213,5 +251,18 @@ export async function updateOrderEventAction(eventId: string, formData: FormData
     return toErrorResult(error);
   }
   revalidatePath("/orders");
+  return { ok: true };
+}
+
+/** Folded in from the deleted standalone `/events/[id]` page's DeleteEventButton. */
+export async function deleteOrderEventAction(orderId: string, eventId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ events: ["delete"] }, organizationId);
+  try {
+    await deleteEvent(organizationId, eventId, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath(`/orders/${orderId}`);
   return { ok: true };
 }

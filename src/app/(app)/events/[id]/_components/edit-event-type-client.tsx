@@ -19,7 +19,7 @@ export function EditEventTypeClient({ eventTypeId, initialValues, availableMenus
       initialValues={initialValues}
       submitLabel="Save changes"
       onSubmit={(formData) => updateEventTypeAction(eventTypeId, initialValues.imageUrl ?? undefined, formData)}
-      onSuccess={() => router.push("/events/types")}
+      onSuccess={() => router.push("/events")}
     />
   );
 }

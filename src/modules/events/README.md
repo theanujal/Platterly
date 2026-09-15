@@ -27,12 +27,32 @@ Dashboard's location filter, the Event form's kitchen picker), not a
 general Kitchen CRUD module (none exists; Kitchen itself is still schema-only
 until Chunk 23).
 
-Admin UI lives at `src/app/(app)/events/` — the real Events Dashboard
-(search/status filter/location filter/Create/Refresh, Updated doc §9) at
-the bare route, Event Types moved to `/events/types`, both page-based
-(not popup dialogs, unlike Menu Catalog/Add-ons/Inventory — an established
-distinction from the Chunk 6 rework, carried forward). Gated by the
-`events` permission (Chunk 1).
-
 Chunk 9 Groups 9.2/9.3 (Customer, Enquiry) live in their own
 `src/modules/customers/`/`src/modules/enquiries/` folders, not here.
+
+## Standalone Events Dashboard removed (2026-09-16)
+
+The real Events Dashboard/CRUD described above (`/events`, `/events/new`,
+`/events/[id]`, its search/status/location filter bar) was deleted once
+Chunk 10's `OrderEventSection` existed to create/edit an Event inline from
+its Order — AJ judged the standalone section "no meaning" now that every
+Event comes from an Order, and the Customer-only creation path a deliberate
+retirement, not just a relocation (see `src/modules/orders/README.md`'s
+"Order-only Events" section for what replaced it). `event.ts`'s own
+functions (`createEvent`/`updateEvent`/`deleteEvent`/`getEvent`/
+`listKitchens`) are unchanged and still fully exercised — just called from
+`src/app/(app)/orders/actions.ts` now instead of a dedicated `events/
+actions.ts`. `listEvents`/`EventListFilter` (the deleted Dashboard's own
+search/status/kitchen filter query) has no remaining caller — kept in
+`event.ts` rather than deleted, since removing a working, harmless function
+serves no purpose and it costs nothing to leave for a future admin surface
+that might want the same query.
+
+Event Types (this file's other subject) then moved up to occupy the
+vacated `/events` route (`/events/types` → `/events`, `/events/types/new`
+→ `/events/new`, `/events/types/[id]` → `/events/[id]`) — it's now the
+*only* thing `src/app/(app)/events/` serves, page-based (not popup dialogs,
+unlike Menu Catalog/Add-ons/Inventory — an established distinction from the
+Chunk 6 rework, carried forward). The sidebar's nav item is labelled
+"Event Types", not "Events". Still gated by the same `events` permission
+(Chunk 1) — no separate `eventTypes` RBAC resource was ever created.

@@ -12,7 +12,7 @@ export function NewEventTypeClient({ availableMenus }: { availableMenus: { id: s
       availableMenus={availableMenus}
       submitLabel="Create event"
       onSubmit={createEventTypeAction}
-      onSuccess={() => router.push("/events/types")}
+      onSuccess={() => router.push("/events")}
     />
   );
 }

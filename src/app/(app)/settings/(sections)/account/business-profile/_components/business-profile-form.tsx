@@ -23,6 +23,9 @@ export interface BusinessProfileFormValues {
   instagramUrl: string;
   facebookUrl: string;
   logoUrl: string | null;
+  orderNumberPrefix: string;
+  orderNumberNextValue: string;
+  orderNumberPadding: string;
 }
 
 // Chunk 4/5 — the same field set the onboarding wizard collects, reachable
@@ -59,6 +62,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
     formData.set("websiteUrl", values.websiteUrl);
     formData.set("instagramUrl", values.instagramUrl);
     formData.set("facebookUrl", values.facebookUrl);
+    formData.set("orderNumberPrefix", values.orderNumberPrefix);
+    formData.set("orderNumberNextValue", values.orderNumberNextValue);
+    formData.set("orderNumberPadding", values.orderNumberPadding);
     if (logo) {
       formData.set("logo", logo);
     }
@@ -190,6 +196,45 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             value={values.facebookUrl}
             onChange={(e) => setField("facebookUrl", e.target.value)}
           />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <h2 className="text-sm font-semibold text-muted-foreground">Order Numbering</h2>
+        <p className="text-xs text-muted-foreground">
+          Every new order gets a number like <span className="font-mono">{values.orderNumberPrefix || "ORD"}-{values.orderNumberNextValue.padStart(Number(values.orderNumberPadding) || 4, "0")}</span>, incrementing by 1 each time. Changing the starting number resets the counter going forward — it never affects orders already created.
+        </p>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="orderNumberPrefix">Prefix</Label>
+            <Input
+              id="orderNumberPrefix"
+              maxLength={10}
+              value={values.orderNumberPrefix}
+              onChange={(e) => setField("orderNumberPrefix", e.target.value.toUpperCase())}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="orderNumberNextValue">Starting number</Label>
+            <Input
+              id="orderNumberNextValue"
+              type="number"
+              min="1"
+              value={values.orderNumberNextValue}
+              onChange={(e) => setField("orderNumberNextValue", e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="orderNumberPadding">Digits</Label>
+            <Input
+              id="orderNumberPadding"
+              type="number"
+              min="1"
+              max="10"
+              value={values.orderNumberPadding}
+              onChange={(e) => setField("orderNumberPadding", e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
