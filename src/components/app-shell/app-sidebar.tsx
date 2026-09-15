@@ -15,7 +15,9 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
+import { UpgradeCard } from "@/components/app-shell/upgrade-card";
 
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -27,10 +29,15 @@ const NAV_ITEMS = [
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Orders", href: "/orders", icon: ShoppingCart },
   { label: "Event Types", href: "/events", icon: Settings2 },
-  { label: "Settings", href: "/settings", icon: SettingsIcon },
 ] as const;
 
-export function AppSidebar({ organizationName }: { organizationName: string }) {
+interface AppSidebarProps {
+  organizationName: string;
+  /** Null when the tenant has no active subscription row at all — the card is skipped rather than showing a fabricated plan. */
+  subscription: { planName: string; isTrialing: boolean; trialDaysLeft: number | null } | null;
+}
+
+export function AppSidebar({ organizationName, subscription }: AppSidebarProps) {
   const pathname = usePathname();
 
   return (
@@ -80,10 +87,39 @@ export function AppSidebar({ organizationName }: { organizationName: string }) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="gap-3">
+        {subscription && (
+          <div className="group-data-[collapsible=icon]:hidden">
+            <UpgradeCard
+              planName={subscription.planName}
+              isTrialing={subscription.isTrialing}
+              trialDaysLeft={subscription.trialDaysLeft}
+            />
+          </div>
+        )}
+        <Separator className="group-data-[collapsible=icon]:hidden" />
         <SidebarMenu>
-          <SidebarMenuItem className="group-data-[collapsible=icon]:hidden">
-            <SignOutButton />
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              isActive={pathname === "/settings" || pathname.startsWith("/settings/")}
+              tooltip="Settings"
+              render={<Link href="/settings" />}
+              className="cursor-pointer"
+            >
+              <SettingsIcon />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem className="flex items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              {organizationName.charAt(0).toUpperCase()}
+            </div>
+            <span className="min-w-0 flex-1 truncate text-xs font-medium group-data-[collapsible=icon]:hidden">{organizationName}</span>
+            <div className="group-data-[collapsible=icon]:hidden">
+              <SignOutButton />
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

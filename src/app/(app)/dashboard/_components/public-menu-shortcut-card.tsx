@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { QrCode } from "lucide-react";
+import { QrCode, MessageCircle, Settings2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { canonicalUrl } from "@/lib/seo/canonical";
@@ -30,11 +30,18 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
       <CardContent className="flex flex-col gap-3">
         {claimed && url ? (
           <>
-            <p className="truncate text-sm text-muted-foreground">{url}</p>
-            {qrDataUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrDataUrl} alt="QR code for your public menu link" className="size-24 rounded border border-border" />
-            )}
+            <p className="text-xs font-medium text-muted-foreground">Scan QR code or use the link</p>
+            <div className="flex items-center gap-3">
+              {qrDataUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qrDataUrl}
+                  alt="QR code for your public menu link"
+                  className="size-28 shrink-0 rounded-lg border border-border p-1"
+                />
+              )}
+              <p className="min-w-0 truncate text-sm text-muted-foreground">{url}</p>
+            </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
                 View
@@ -43,9 +50,25 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
               <Button
                 variant="outline"
                 size="sm"
+                render={
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
+                    target="_blank"
+                    rel="noopener"
+                  />
+                }
+                nativeButton={false}
+              >
+                <MessageCircle className="size-4 text-emerald-600" />
+                Share
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 render={<Link href="/settings/integration/public-menu-link" />}
                 nativeButton={false}
               >
+                <Settings2 className="size-4" />
                 Manage
               </Button>
             </div>

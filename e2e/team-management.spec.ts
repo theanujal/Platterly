@@ -105,7 +105,10 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   if (await inviteeDialog.isVisible().catch(() => false)) {
     await inviteePage.keyboard.press("Escape");
   }
-  await expect(inviteePage.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
+  // Dashboard welcome heading greets the signed-in person by name (Staff
+  // Person, filled in above), not the business name — AJ's explicit ask,
+  // 2026-09-16.
+  await expect(inviteePage.getByRole("heading", { name: "Welcome back, Staff Person" })).toBeVisible();
 
   // The critical proof: same organization, not a stray new one.
   const ownerOrgName = await getOrganizationNameForUser(ownerEmail);
@@ -123,7 +126,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   // --- Disabled invitee is locked out on their next request ---
   await inviteePage.reload();
-  await expect(inviteePage.getByRole("heading", { name: `Welcome back, ${businessName}` })).not.toBeVisible();
+  await expect(inviteePage.getByRole("heading", { name: "Welcome back, Staff Person" })).not.toBeVisible();
 
   await inviteeContext.close();
 });

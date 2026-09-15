@@ -129,7 +129,10 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByLabel("platterly.com/")).not.toHaveValue(/^biz-/);
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: `Welcome back, ${businessName}` })).toBeVisible();
+  // Dashboard welcome heading greets the signed-in person by name (Priya
+  // Sharma, filled in above), not the business name — AJ's explicit ask,
+  // 2026-09-16, to match a richer dashboard reference design.
+  await expect(page.getByRole("heading", { name: "Welcome back, Priya Sharma" })).toBeVisible();
   await expect(page.getByText("You haven't set your public menu link yet.")).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).not.toBeVisible();
 
