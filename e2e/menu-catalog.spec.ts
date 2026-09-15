@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
+import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
  * Chunk 6, reworked 2026-09-14 per AJ's field-level spec, then redesigned
@@ -37,6 +38,7 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
 
+  await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

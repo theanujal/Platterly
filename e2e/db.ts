@@ -123,6 +123,25 @@ export async function cleanupTenantBySlug(slug: string): Promise<void> {
   await pool.query('DELETE FROM organization WHERE id = $1', [org.id]);
 }
 
+/**
+ * Reads the plain-text OTP Better Auth's `emailOTP` plugin just wrote to its
+ * own generic `verification` table (`identifier` = `"email-verification-otp-<email>"`,
+ * `value` = `"<otp>:<attempts>"` — see `node_modules/better-auth/dist/
+ * plugins/email-otp/utils.mjs`'s `toOTPIdentifier`/`index.mjs`'s
+ * `createVerificationValue` call). Delivery is log-only for now (AJ's
+ * explicit choice, 2026-09-16) — this is the only way an E2E test (or AJ,
+ * manually) can get the code without a real inbox.
+ */
+export async function getLatestEmailOtp(email: string): Promise<string | null> {
+  const { rows } = await pool.query<{ value: string }>(
+    'SELECT value FROM verification WHERE identifier = $1 ORDER BY "createdAt" DESC LIMIT 1',
+    [`email-verification-otp-${email}`],
+  );
+  const value = rows[0]?.value;
+  if (!value) return null;
+  return value.slice(0, value.lastIndexOf(":"));
+}
+
 export async function closeDbPool(): Promise<void> {
   await pool.end();
 }

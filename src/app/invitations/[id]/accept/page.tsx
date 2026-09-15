@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
@@ -51,6 +52,10 @@ export default async function AcceptInvitationPage({ params }: { params: Promise
         <AuthGate initialMode="signup" callbackURL={callbackURL} lockedEmail={invitation.email} />
       </AuthLayout>
     );
+  }
+
+  if (!session.user.emailVerified) {
+    redirect(`/kitchenlogin/verify-email?next=${encodeURIComponent(callbackURL)}`);
   }
 
   if (session.user.email.toLowerCase() !== invitation.email.toLowerCase()) {

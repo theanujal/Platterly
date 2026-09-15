@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
+import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
  * Event Types (pulled forward from dev plans/chunk-09-crm-core.md §9.1,
@@ -39,6 +40,7 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

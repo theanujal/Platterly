@@ -29,6 +29,23 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     return { ok: false, error: "Business name is required." };
   }
 
+  // AJ's explicit ask (2026-09-16): every Contact & Address field is
+  // mandatory — client-side gating (onboarding-wizard.tsx's
+  // canAdvanceFromStep2) already blocks Continue, this is defense in depth.
+  const REQUIRED_STEP_2_FIELDS: Record<string, string> = {
+    addressLine1: "Street address",
+    city: "City",
+    state: "State",
+    postalCode: "ZIP code",
+    country: "Country",
+    mobileNumber: "Mobile number",
+  };
+  for (const [field, label] of Object.entries(REQUIRED_STEP_2_FIELDS)) {
+    if (!stringField(formData, field)) {
+      return { ok: false, error: `${label} is required.` };
+    }
+  }
+
   let logoUrl: string | undefined;
   const logo = formData.get("logo");
   if (logo instanceof File && logo.size > 0) {

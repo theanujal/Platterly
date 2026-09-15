@@ -6,7 +6,7 @@ import { User, Mail, Lock } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { IconInput } from "./icon-input";
+import { IconInput, PasswordInput } from "./icon-input";
 
 interface SignUpFormProps {
   /** Where to land after a successful signup. Defaults to the normal
@@ -55,14 +55,15 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
       setError(signUpError.message ?? "Could not create your account.");
       return;
     }
-    router.push(callbackURL ?? "/kitchenlogin/onboarding");
+    const next = callbackURL ?? "/kitchenlogin/onboarding";
+    router.push(`/kitchenlogin/verify-email?next=${encodeURIComponent(next)}`);
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="signup-first-name">First name</Label>
+          <Label htmlFor="signup-first-name" required>First name</Label>
           <IconInput
             id="signup-first-name"
             icon={User}
@@ -84,7 +85,7 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="signup-email">Email</Label>
+        <Label htmlFor="signup-email" required>Email</Label>
         <IconInput
           id="signup-email"
           icon={Mail}
@@ -98,11 +99,10 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="signup-password">Password</Label>
-        <IconInput
+        <Label htmlFor="signup-password" required>Password</Label>
+        <PasswordInput
           id="signup-password"
           icon={Lock}
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}
@@ -111,11 +111,10 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="signup-confirm-password">Confirm password</Label>
-        <IconInput
+        <Label htmlFor="signup-confirm-password" required>Confirm password</Label>
+        <PasswordInput
           id="signup-confirm-password"
           icon={Lock}
-          type="password"
           autoComplete="new-password"
           required
           minLength={8}

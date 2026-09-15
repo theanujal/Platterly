@@ -28,6 +28,9 @@ export default async function OnboardingPage() {
   if (!session) {
     redirect("/kitchenlogin");
   }
+  if (!session.user.emailVerified) {
+    redirect("/kitchenlogin/verify-email?next=/kitchenlogin/onboarding");
+  }
 
   await requireActiveOrganization();
 

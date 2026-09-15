@@ -15,7 +15,7 @@ interface OnboardingLayoutProps {
 export function OnboardingLayout({ steps, children }: OnboardingLayoutProps) {
   return (
     <div className="flex min-h-svh w-full flex-col md:flex-row">
-      <div className="hidden flex-col justify-between gap-10 bg-gradient-to-br from-primary to-[#9a3412] px-10 py-12 text-primary-foreground md:flex md:w-72 lg:w-80">
+      <div className="hidden flex-col justify-between gap-10 bg-gradient-to-br from-primary to-[#9a3412] px-10 py-12 text-primary-foreground md:flex md:w-1/2">
         <div className="flex items-center gap-2 text-lg font-bold">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -26,7 +26,7 @@ export function OnboardingLayout({ steps, children }: OnboardingLayoutProps) {
         <OnboardingStageList steps={steps} />
       </div>
       {/* Constrained content area (spec point 5) — the form never stretches full-width even on a wide right panel. */}
-      <main className="flex flex-1 items-center justify-center p-6 md:p-8">
+      <main className="flex flex-1 items-center justify-center bg-muted p-6 md:p-8">
         <div className="flex w-full max-w-lg flex-col gap-10">{children}</div>
       </main>
     </div>

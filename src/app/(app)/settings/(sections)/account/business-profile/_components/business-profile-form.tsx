@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { updateBusinessProfileAction } from "../actions";
 
 export interface BusinessProfileFormValues {
@@ -136,11 +137,10 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="mobileNumber">Mobile number</Label>
-          <Input
+          <PhoneInput
             id="mobileNumber"
-            type="tel"
             value={values.mobileNumber}
-            onChange={(e) => setField("mobileNumber", e.target.value)}
+            onChange={(value) => setField("mobileNumber", value)}
           />
         </div>
       </div>

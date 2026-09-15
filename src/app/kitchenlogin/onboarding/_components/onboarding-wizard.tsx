@@ -68,6 +68,18 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     return values.businessName.trim().length > 0;
   }
 
+  // AJ's explicit ask (2026-09-16): every Contact & Address field is now mandatory.
+  function canAdvanceFromStep2() {
+    return (
+      values.addressLine1.trim().length > 0 &&
+      values.city.trim().length > 0 &&
+      values.state.trim().length > 0 &&
+      values.postalCode.trim().length > 0 &&
+      values.country.trim().length > 0 &&
+      values.mobileNumber.trim().length > 0
+    );
+  }
+
   async function handleFinish() {
     setError(null);
     setPending(true);
@@ -145,7 +157,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
         onSkip={() => router.push("/dashboard")}
         onContinue={handleContinue}
         continueLabel={step < STEP_LABELS.length ? "Continue" : "Complete Setup"}
-        continueDisabled={step === 1 && !canAdvanceFromStep1()}
+        continueDisabled={(step === 1 && !canAdvanceFromStep1()) || (step === 2 && !canAdvanceFromStep2())}
         pending={pending}
       />
     </OnboardingLayout>

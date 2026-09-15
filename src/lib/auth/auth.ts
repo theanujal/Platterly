@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { organization } from "better-auth/plugins";
+import { organization, emailOTP } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
@@ -98,6 +98,29 @@ export const auth = betterAuth({
             acceptUrl: canonicalUrl(`/invitations/${data.id}/accept`),
           },
         });
+      },
+    }),
+    /**
+     * AJ's explicit ask (2026-09-16): a 6-digit email OTP right after
+     * sign-up, gating both post-signup entry points (onboarding and the
+     * invitation-accept page — see their own `emailVerified` guards).
+     * Deliberately NOT routed through the tenant-scoped `notify()`
+     * interface, unlike `sendInvitationEmail` above — `auto-provision.ts`
+     * returns `organizationId: null` for a user signing up to accept a
+     * pending invitation, so no Organization is guaranteed to exist yet at
+     * this point. Log-only for now (AJ's explicit choice, same "interface
+     * now, integration later" convention as everything else pre-Chunk-16)
+     * — swap the one `console.log` line for a real provider call once a
+     * provider exists; nothing else here changes.
+     */
+    emailOTP({
+      otpLength: 6,
+      expiresIn: 600,
+      allowedAttempts: 5,
+      sendVerificationOnSignUp: true,
+      async sendVerificationOTP({ email, otp, type }) {
+        if (type !== "email-verification") return;
+        console.log(`[dev-only] Email verification OTP for ${email}: ${otp}`);
       },
     }),
     // Must stay last — sets/reads cookies via Next.js's own cookies() API.

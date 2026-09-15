@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
+import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
  * Chunk 8 — Public Storefront: Menu Link, Custom Slug & QR (view-only).
@@ -34,6 +35,7 @@ test("claim a custom link, build a menu, then view the real public storefront pa
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

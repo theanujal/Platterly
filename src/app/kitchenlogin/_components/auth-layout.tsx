@@ -42,7 +42,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
           ))}
         </ul>
       </div>
-      <main className="flex flex-1 items-center justify-center p-8">{children}</main>
+      <main className="flex flex-1 items-center justify-center bg-muted p-8">{children}</main>
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { Mail, Lock } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { IconInput } from "./icon-input";
+import { IconInput, PasswordInput } from "./icon-input";
 
 interface SignInFormProps {
   /** Where to navigate after a successful sign-in. When omitted, refreshes
@@ -61,10 +61,9 @@ export function SignInForm({ callbackURL }: SignInFormProps = {}) {
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signin-password">Password</Label>
-        <IconInput
+        <PasswordInput
           id="signin-password"
           icon={Lock}
-          type="password"
           autoComplete="current-password"
           required
           value={password}

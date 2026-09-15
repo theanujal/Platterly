@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, getTrialSubscriptionStatus } from "./db";
+import { cleanupOnboardingTestUser, getTrialSubscriptionStatus, getLatestEmailOtp } from "./db";
+import { maskEmail } from "../src/lib/auth/mask-email";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
@@ -27,7 +28,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // round trip, each action slowed by launchOptions.slowMo (350ms, AJ's
   // standing "watch it run" preference), plus the sidebar shell's added
   // hydration weight on every /dashboard visit this test makes.
-  test.setTimeout(60_000);
+  test.setTimeout(100_000);
   const email = `e2e-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const businessName = "Playwright Test Catering";
@@ -42,9 +43,29 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByLabel("Last name").fill("Sharma");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
+  // Password show/hide toggle (AJ's explicit ask, 2026-09-16) — flip it on
+  // and confirm the raw value is actually readable, not just that a click
+  // handler exists.
+  await page.getByRole("button", { name: "Show password" }).first().click();
+  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("correct-horse-battery");
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "text");
+  await page.getByRole("button", { name: "Hide password" }).first().click();
+  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "password");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
+
+  // Email OTP verification (AJ's explicit ask, 2026-09-16) — sits between
+  // sign-up and onboarding for every new account. Delivery is log-only for
+  // now (real provider wiring is Chunk 16's job), so the test reads the
+  // plain-text code straight out of Better Auth's own `verification` table,
+  // the same way AJ would have to for now without a real inbox.
+  await expect(page).toHaveURL(/\/kitchenlogin\/verify-email/);
+  await expect(page.getByText(maskEmail(email))).toBeVisible();
+  const otp = await getLatestEmailOtp(email);
+  expect(otp).toMatch(/^\d{6}$/);
+  await page.getByLabel("Enter verification code").fill(otp!);
+  await page.getByRole("button", { name: "Verify Email" }).click();
 
   // Organization is already provisioned at signup — the wizard is reached
   // by an explicit client-side redirect to its own route, not by a
@@ -61,6 +82,19 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByLabel("Company / business name").fill(businessName);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
+
+  // Every Contact & Address field is now mandatory (AJ, 2026-09-16) —
+  // Continue stays disabled until all six are filled.
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await page.getByLabel("Street address").fill("221B Baker Street");
+  await page.getByLabel("City").fill("Mumbai");
+  await page.getByLabel("State").fill("Maharashtra");
+  await page.getByLabel("ZIP code").fill("400001");
+  await page.getByLabel("Country", { exact: true }).fill("India");
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  // Country-flag phone field (AJ's explicit ask) — defaults to India.
+  await page.getByLabel("Mobile number").fill("9876543210");
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 3 of 5")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();

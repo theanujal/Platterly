@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser } from "./db";
+import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
  * Chunk 5 Group 5.2 — proves the invite/accept flow's real risk: that a
@@ -23,6 +24,7 @@ test.afterEach(async () => {
 // other file that runs afterward.
 
 test("inviting a teammate, accepting via signup, joins the SAME organization, and disabling locks them out", async ({ page, browser }) => {
+  test.setTimeout(60_000);
   const ownerEmail = `e2e-owner-${Date.now()}@example.test`;
   const staffEmail = `e2e-staff-${Date.now()}@example.test`;
   cleanupOwnerEmails.push(ownerEmail);
@@ -39,10 +41,19 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(page, ownerEmail);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
 
   await page.getByLabel("Company / business name").fill(businessName);
-  for (let i = 0; i < 4; i++) {
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  // Every Contact & Address field is now mandatory (AJ, 2026-09-16).
+  await page.getByLabel("Street address").fill("221B Baker Street");
+  await page.getByLabel("City").fill("Mumbai");
+  await page.getByLabel("State").fill("Maharashtra");
+  await page.getByLabel("ZIP code").fill("400001");
+  await page.getByLabel("Country", { exact: true }).fill("India");
+  await page.getByLabel("Mobile number").fill("9876543210");
+  for (let i = 0; i < 3; i++) {
     await page.getByRole("button", { name: "Continue", exact: true }).click();
   }
   await page.getByRole("button", { name: "Complete Setup" }).click();
@@ -79,6 +90,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await inviteePage.getByLabel("Confirm password").fill("correct-horse-battery");
   await inviteePage.getByLabel("I accept the Terms of Service and Privacy Policy").check();
   await inviteePage.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(inviteePage, staffEmail);
 
   // Must return to the invitation's own accept page, NOT the onboarding wizard.
   await expect(inviteePage).toHaveURL(new RegExp(`/invitations/${invitationId}/accept$`));
