@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listMembers, listPendingInvitations } from "@/modules/team/team";
 import { getTeamPrivacyAction } from "./actions";
@@ -26,9 +27,12 @@ export default async function TeamPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <PageBreadcrumb
+        items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Team Management" }]}
+      />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Team Management</h1>
+          <h1 className="text-2xl font-semibold">Team Management</h1>
           <p className="text-sm text-muted-foreground">Invite teammates and manage their access.</p>
         </div>
         <InviteMemberDialog />

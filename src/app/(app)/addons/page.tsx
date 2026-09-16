@@ -4,6 +4,8 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listAddOns } from "@/modules/addons/addon";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddAddOnDialog } from "./_components/add-addon-dialog";
 import { AddOnCardActions } from "./_components/addon-card-actions";
@@ -108,13 +110,15 @@ export default async function AddOnsPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Add-ons" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Add-ons</h1>
+          <h1 className="text-2xl font-semibold">Add-ons</h1>
           <p className="text-sm text-muted-foreground">Live counters and special add-ons your customers can add on.</p>
         </div>
         <AddAddOnDialog />
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -124,7 +128,7 @@ export default async function AddOnsPage() {
         emptyLabel="No add-ons yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={8}
+        pageSize={16}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
 import { CustomerForm } from "./customer-form";
 import { createCustomerAction } from "../actions";
 
@@ -17,11 +17,10 @@ export function AddCustomerDialog({ variant = "button" }: { variant?: "button" |
     <Dialog open={open} onOpenChange={setOpen}>
       {variant === "tile" ? (
         <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <Plus className="size-6" />
-          <span className="text-sm font-medium">Add New Customer</span>
+          <CatalogAddTileContent label="Add New Customer" description="Add someone you've catered for" />
         </DialogTrigger>
       ) : (
-        <DialogTrigger render={<Button size="sm" />}>
+        <DialogTrigger render={<Button />}>
           <Plus className="size-4" />
           Add Customer
         </DialogTrigger>

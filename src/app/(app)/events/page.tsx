@@ -7,7 +7,9 @@ import { getEventTypeIcon } from "@/lib/event-type-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry, CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import { CatalogBrowser, type CatalogEntry, CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
 import { EventTypeReorderButtons } from "./_components/event-type-reorder-buttons";
 
 export const metadata: Metadata = {
@@ -75,23 +77,24 @@ export default async function EventTypesPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Event Types" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Event Types</h1>
+          <h1 className="text-2xl font-semibold">Event Types</h1>
           <p className="text-sm text-muted-foreground">The types of events you cater — e.g. Wedding, Corporate Lunch.</p>
         </div>
-        <Button size="sm" render={<Link href="/events/new" />} nativeButton={false}>
+        <Button render={<Link href="/events/new" />} nativeButton={false}>
           <Plus className="size-4" />
           Add Event Type
         </Button>
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
         addTile={
           <Link href="/events/new" className={CATALOG_ADD_TILE_CLASSNAME}>
-            <Plus className="size-6" />
-            <span className="text-sm font-medium">Add New Event Type</span>
+            <CatalogAddTileContent label="Add New Event Type" description="e.g. Wedding, Corporate Lunch" />
           </Link>
         }
         columns={["Name", "Min Guests", "Status", "Reorder"]}
@@ -107,7 +110,7 @@ export default async function EventTypesPage() {
             ],
           },
         ]}
-        pageSize={8}
+        pageSize={16}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PlanInput } from "@/modules/subscriptions/plan";
 
@@ -169,12 +170,10 @@ export function PlanForm({ includeCode = false, initialValues, onSubmit, onSucce
             htmlFor="isTrial"
             className="flex w-fit cursor-pointer items-center gap-2 rounded-md py-1.5 -my-1.5"
           >
-            <input
+            <Checkbox
               id="isTrial"
-              type="checkbox"
-              className="size-4"
               checked={values.isTrial}
-              onChange={(e) => setField("isTrial", e.target.checked)}
+              onCheckedChange={(checked) => setField("isTrial", checked === true)}
             />
             <span className="text-sm font-medium">Trial plan</span>
           </label>

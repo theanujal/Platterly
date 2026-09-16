@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
 import { ItemForm } from "./item-form";
 import { createMenuItemAction } from "../actions";
 
@@ -23,11 +23,10 @@ export function AddItemDialog({ categories, menus, variant = "button" }: AddItem
     <Dialog open={open} onOpenChange={setOpen}>
       {variant === "tile" ? (
         <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <Plus className="size-6" />
-          <span className="text-sm font-medium">Add New Item</span>
+          <CatalogAddTileContent label="Add New Item" description="Add a new dish to your catalog" />
         </DialogTrigger>
       ) : (
-        <DialogTrigger render={<Button size="sm" />}>
+        <DialogTrigger render={<Button />}>
           <Plus className="size-4" />
           Add Item
         </DialogTrigger>

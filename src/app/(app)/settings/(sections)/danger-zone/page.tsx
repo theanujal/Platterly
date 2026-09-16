@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { PurgeConfirmationDialog } from "./_components/purge-confirmation-dialog";
 
@@ -14,8 +15,9 @@ export default async function DangerZonePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Danger Zone" }]} />
       <div>
-        <h1 className="text-xl font-semibold">Danger Zone</h1>
+        <h1 className="text-2xl font-semibold">Danger Zone</h1>
         <p className="text-sm text-muted-foreground">Irreversible actions. Proceed with care.</p>
       </div>
       <div className="flex max-w-lg flex-col gap-3 rounded-xl border border-destructive/30 p-4">

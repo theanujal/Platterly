@@ -6,7 +6,15 @@ import { listQuotations } from "@/modules/quotations/quotation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry, type CatalogSortOption, CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import {
+  CatalogBrowser,
+  type CatalogEntry,
+  type CatalogSortOption,
+  CATALOG_ADD_TILE_CLASSNAME,
+  CatalogAddTileContent,
+} from "@/components/catalog/catalog-browser";
 import { QuotationsFilterBar } from "./_components/quotations-filter-bar";
 import type { QuotationStatus } from "@/generated/prisma/enums";
 
@@ -102,23 +110,24 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Quotations" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Quotations</h1>
+          <h1 className="text-2xl font-semibold">Quotations</h1>
           <p className="text-sm text-muted-foreground">Send a priced proposal for a customer to approve digitally, before it becomes an Order.</p>
         </div>
-        <Button size="sm" render={<Link href="/quotations/new" />} nativeButton={false}>
+        <Button render={<Link href="/quotations/new" />} nativeButton={false}>
           <Plus className="size-4" />
           Create Quotation
         </Button>
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
         addTile={
           <Link href="/quotations/new" className={CATALOG_ADD_TILE_CLASSNAME}>
-            <Plus className="size-6" />
-            <span className="text-sm font-medium">Create Quotation</span>
+            <CatalogAddTileContent label="Create Quotation" description="Send a priced proposal to a customer" />
           </Link>
         }
         columns={["Customer", "Event Type", "Total", "Valid Until", "Status"]}
@@ -126,7 +135,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
         emptyLabel="No quotations yet."
         filters={<QuotationsFilterBar />}
         sortOptions={sortOptions}
-        pageSize={9}
+        pageSize={16}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
@@ -20,8 +21,9 @@ export default async function PublicMenuLinkPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Public Menu Link" }]} />
       <div>
-        <h1 className="text-xl font-semibold">Public Menu Link</h1>
+        <h1 className="text-2xl font-semibold">Public Menu Link</h1>
         <p className="text-sm text-muted-foreground">
           {claimed
             ? "Your menu's public link — share it with customers, or scan the QR code below."

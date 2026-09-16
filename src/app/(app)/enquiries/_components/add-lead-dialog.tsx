@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
 import { EnquiryForm } from "./enquiry-form";
 import { createEnquiryAction } from "../actions";
 
@@ -18,12 +18,11 @@ export function AddLeadDialog({ variant = "button" }: { variant?: "button" | "ti
     <Dialog open={open} onOpenChange={setOpen}>
       {variant === "tile" ? (
         <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <Plus className="size-6" />
-          <span className="text-sm font-medium">Add Lead</span>
+          <CatalogAddTileContent label="Add Lead" description="Capture a new enquiry" />
         </DialogTrigger>
       ) : (
         // Updated doc §11's exact wording for the primary button.
-        <DialogTrigger render={<Button size="sm" />}>
+        <DialogTrigger render={<Button />}>
           <Plus className="size-4" />
           Add New Lead
         </DialogTrigger>

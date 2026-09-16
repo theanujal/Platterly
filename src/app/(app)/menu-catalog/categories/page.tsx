@@ -5,7 +5,14 @@ import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import {
+  CatalogBrowser,
+  type CatalogEntry,
+  type CatalogFilterOption,
+  type CatalogSortOption,
+} from "@/components/catalog/catalog-browser";
 import { AddCategoryDialog } from "./_components/add-category-dialog";
 import { CategoryCardActions } from "./_components/category-card-actions";
 
@@ -25,6 +32,8 @@ export default async function CategoriesPage() {
     return {
       id: category.id,
       searchText: `${category.name} ${category.description ?? ""}`,
+      filterValues: { status: category.isActive ? "ACTIVE" : "INACTIVE" },
+      sortValues: { name: category.name, newest: category.createdAt.getTime() },
       card: (
         <>
           <div className="flex aspect-video w-full items-center justify-center bg-muted">
@@ -66,15 +75,35 @@ export default async function CategoriesPage() {
     };
   });
 
+  const filterOptions: CatalogFilterOption[] = [
+    {
+      key: "status",
+      allLabel: "Status",
+      options: [
+        { value: "ACTIVE", label: "Active" },
+        { value: "INACTIVE", label: "Inactive" },
+      ],
+    },
+  ];
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
+      <PageBreadcrumb
+        items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Catalog", href: "/menu-catalog" }, { label: "Menu Categories" }]}
+      />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Menu Categories</h1>
+          <h1 className="text-2xl font-semibold">Menu Categories</h1>
           <p className="text-sm text-muted-foreground">Group menu items for easier browsing (e.g. Starters, Main Course).</p>
         </div>
         <AddCategoryDialog availableMenus={availableMenus} />
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -82,6 +111,9 @@ export default async function CategoriesPage() {
         columns={["Name", "Status", "Actions"]}
         searchPlaceholder="Search menu categories…"
         emptyLabel="No menu categories yet."
+        filterOptions={filterOptions}
+        sortOptions={sortOptions}
+        pageSize={16}
       />
     </div>
   );

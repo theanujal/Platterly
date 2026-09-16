@@ -32,7 +32,7 @@ export default async function OnboardingCompletePage() {
         You can now start managing your orders, inventory, and grow your catering business.
       </p>
       <Button
-        className="h-11 rounded-full px-8 text-base font-semibold"
+        className="px-8 text-base font-semibold"
         render={<Link href="/dashboard" />}
         nativeButton={false}
       >

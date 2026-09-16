@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { updateTeamPrivacyAction } from "../actions";
 import type { TeamPrivacySettings } from "../types";
@@ -42,12 +43,10 @@ export function TeamPrivacyForm({ initialValues }: { initialValues: TeamPrivacyS
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       {TOGGLES.map(({ key, label }) => (
         <div key={key} className="flex items-center gap-2">
-          <input
+          <Checkbox
             id={key}
-            type="checkbox"
-            className="size-4"
             checked={values[key]}
-            onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.checked }))}
+            onCheckedChange={(checked) => setValues((prev) => ({ ...prev, [key]: checked === true }))}
           />
           <Label htmlFor={key}>{label}</Label>
         </div>

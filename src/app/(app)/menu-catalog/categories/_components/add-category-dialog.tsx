@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
 import { CategoryForm } from "./category-form";
 import { createCategoryAction } from "../actions";
 
@@ -23,11 +23,10 @@ export function AddCategoryDialog({ availableMenus, variant = "button" }: AddCat
     <Dialog open={open} onOpenChange={setOpen}>
       {variant === "tile" ? (
         <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <Plus className="size-6" />
-          <span className="text-sm font-medium">Add New Category</span>
+          <CatalogAddTileContent label="Add New Category" description="Group your food items together" />
         </DialogTrigger>
       ) : (
-        <DialogTrigger render={<Button size="sm" />}>
+        <DialogTrigger render={<Button />}>
           <Plus className="size-4" />
           Add Category
         </DialogTrigger>

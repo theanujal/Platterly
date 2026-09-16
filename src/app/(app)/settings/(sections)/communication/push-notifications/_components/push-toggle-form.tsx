@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { updatePushToggleAction } from "../../actions";
 
@@ -27,13 +28,7 @@ export function PushToggleForm({ initialEnabled }: { initialEnabled: boolean }) 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <input
-          id="push-enabled"
-          type="checkbox"
-          className="size-4"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
+        <Checkbox id="push-enabled" checked={enabled} onCheckedChange={(checked) => setEnabled(checked === true)} />
         <Label htmlFor="push-enabled">Send push notifications</Label>
       </div>
       <p className="max-w-md text-xs text-muted-foreground">

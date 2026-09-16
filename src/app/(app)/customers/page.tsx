@@ -4,6 +4,8 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listCustomers } from "@/modules/customers/customer";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddCustomerDialog } from "./_components/add-customer-dialog";
 import { CustomerCardActions } from "./_components/customer-card-actions";
@@ -89,13 +91,15 @@ export default async function CustomersPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Customers" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Customers</h1>
+          <h1 className="text-2xl font-semibold">Customers</h1>
           <p className="text-sm text-muted-foreground">Your customer database — the record of everyone you&apos;ve catered for.</p>
         </div>
         <AddCustomerDialog />
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -105,7 +109,7 @@ export default async function CustomersPage() {
         emptyLabel="No customers yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={8}
+        pageSize={16}
       />
     </div>
   );

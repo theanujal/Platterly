@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { updateSmsToggleAction } from "../../actions";
 
@@ -27,13 +28,7 @@ export function SmsToggleForm({ initialEnabled }: { initialEnabled: boolean }) {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <input
-          id="sms-enabled"
-          type="checkbox"
-          className="size-4"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
+        <Checkbox id="sms-enabled" checked={enabled} onCheckedChange={(checked) => setEnabled(checked === true)} />
         <Label htmlFor="sms-enabled">Send SMS notifications</Label>
       </div>
       <p className="max-w-md text-xs text-muted-foreground">

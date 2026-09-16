@@ -34,7 +34,7 @@ test("create an order with participants/meal planning/products, then create and 
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
@@ -115,11 +115,9 @@ test("create an order with participants/meal planning/products, then create and 
   await expect(page.getByText("₹1750.00")).toBeVisible();
 
   // --- Orders Dashboard filters ---
-  await page.getByLabel("Search orders").fill("no-such-customer-xyz");
-  await page.getByLabel("Search orders").press("Enter");
+  await page.getByLabel("Search").fill("no-such-customer-xyz");
   await expect(page.getByText(customerName)).not.toBeVisible();
-  await page.getByLabel("Search orders").fill("");
-  await page.getByLabel("Search orders").press("Enter");
+  await page.getByLabel("Search").fill("");
   await expect(page.getByText(customerName)).toBeVisible();
 
   await page.getByLabel("Order status filter").click();
@@ -171,7 +169,7 @@ test("Multi Order: different Menus per meal slot, a configured Order Number, and
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);

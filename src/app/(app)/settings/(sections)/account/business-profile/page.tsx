@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { BusinessProfileForm } from "./_components/business-profile-form";
@@ -14,8 +15,9 @@ export default async function BusinessProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Business Profile" }]} />
       <div>
-        <h1 className="text-xl font-semibold">Business Profile</h1>
+        <h1 className="text-2xl font-semibold">Business Profile</h1>
         <p className="text-sm text-muted-foreground">Keep your business profile up to date.</p>
       </div>
       <BusinessProfileForm

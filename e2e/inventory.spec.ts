@@ -35,7 +35,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
@@ -56,7 +56,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByRole("button", { name: "Add Item" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Item Name").fill(itemName);
-  await page.getByLabel("Category").fill("Grains");
+  await page.getByLabel("Category", { exact: true }).fill("Grains");
   await page.getByLabel("Unit", { exact: true }).fill("kg");
   await page.getByLabel("Opening Stock").fill("50");
   await page.getByLabel("Low Stock Alert").fill("20");
@@ -104,7 +104,9 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Dashboard's Inventory Overview card reflects the real data ---
-  await page.getByRole("link", { name: "Dashboard" }).click();
+  // .first() — the sidebar's own "Dashboard" link, not the page's breadcrumb
+  // trail, which now also has one ("Dashboard > Inventory").
+  await page.getByRole("link", { name: "Dashboard" }).first().click();
   await expect(page).toHaveURL(/\/dashboard$/);
   // A full navigation to /dashboard re-opens the "Claim your custom link"
   // dialog every time (defaultOpen while slugChangeCount stays 0) — close

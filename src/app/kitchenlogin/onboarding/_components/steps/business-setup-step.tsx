@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { WizardState } from "../types";
 
 interface BusinessSetupStepProps {
@@ -20,12 +21,10 @@ export function BusinessSetupStep({ values, setField }: BusinessSetupStepProps) 
         />
       </div>
       <div className="flex items-center gap-2">
-        <input
+        <Checkbox
           id="gstShowOnInvoices"
-          type="checkbox"
-          className="size-4"
           checked={values.gstShowOnInvoices}
-          onChange={(e) => setField("gstShowOnInvoices", e.target.checked)}
+          onCheckedChange={(checked) => setField("gstShowOnInvoices", checked === true)}
         />
         <Label htmlFor="gstShowOnInvoices">Show GST details on invoices</Label>
       </div>

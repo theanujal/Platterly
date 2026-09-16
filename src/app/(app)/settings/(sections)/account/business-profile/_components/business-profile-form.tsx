@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { updateBusinessProfileAction } from "../actions";
@@ -157,12 +158,10 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
           />
         </div>
         <div className="flex items-center gap-2">
-          <input
+          <Checkbox
             id="gstShowOnInvoices"
-            type="checkbox"
-            className="size-4"
             checked={values.gstShowOnInvoices}
-            onChange={(e) => setField("gstShowOnInvoices", e.target.checked)}
+            onCheckedChange={(checked) => setField("gstShowOnInvoices", checked === true)}
           />
           <Label htmlFor="gstShowOnInvoices">Show GST details on invoices</Label>
         </div>

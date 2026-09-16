@@ -35,7 +35,7 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
 
   await verifyEmailViaOtp(page, email);

@@ -488,7 +488,10 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
+        // h-11, matching the Button component's own default (AJ,
+        // 2026-09-17) — same height as the kitchenlogin Sign In button, so
+        // primary nav items read as the same control size everywhere.
+        default: "h-11 text-sm",
         sm: "h-7 text-xs",
         lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
       },

@@ -4,6 +4,8 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
 import { InventoryCardActions } from "./_components/inventory-card-actions";
@@ -134,13 +136,15 @@ export default async function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Inventory" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Inventory</h1>
+          <h1 className="text-2xl font-semibold">Inventory</h1>
           <p className="text-sm text-muted-foreground">Track stock on hand, low-stock alerts, and supplier contacts.</p>
         </div>
         <AddInventoryDialog />
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -150,7 +154,7 @@ export default async function InventoryPage() {
         emptyLabel="No inventory items yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={8}
+        pageSize={16}
         defaultView="list"
       />
     </div>

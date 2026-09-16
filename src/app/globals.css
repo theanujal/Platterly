@@ -55,7 +55,7 @@
   --card-foreground: #111827;
   --popover: #ffffff;
   --popover-foreground: #111827;
-  --primary: #ea580c;
+  --primary: #ff6900;
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
@@ -66,8 +66,8 @@
   --destructive: #ef4444;
   --border: #e5e7eb;
   --input: #e5e7eb;
-  --ring: #ea580c;
-  --chart-1: #ea580c;
+  --ring: #ff6900;
+  --chart-1: #ff6900;
   --chart-2: #16a34a;
   --chart-3: #eab308;
   --chart-4: #6b7280;
@@ -80,12 +80,12 @@
      uses instead of --sidebar-accent, for the same reason. */
   --sidebar: #fff7ed;
   --sidebar-foreground: #111827;
-  --sidebar-primary: #ea580c;
+  --sidebar-primary: #ff6900;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ffedd5;
   --sidebar-accent-foreground: #9a3412;
   --sidebar-border: #fed7aa;
-  --sidebar-ring: #ea580c;
+  --sidebar-ring: #ff6900;
 }
 
 @layer base {

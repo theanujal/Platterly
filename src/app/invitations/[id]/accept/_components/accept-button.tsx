@@ -26,7 +26,7 @@ export function AcceptButton({ invitationId }: { invitationId: string }) {
           {error}
         </p>
       )}
-      <Button onClick={handleAccept} disabled={pending} className="h-11 rounded-full text-base font-semibold">
+      <Button onClick={handleAccept} disabled={pending} className="text-base font-semibold">
         {pending ? "Joining…" : "Accept invitation"}
       </Button>
     </div>

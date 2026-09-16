@@ -7,6 +7,8 @@ import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddLeadDialog } from "./_components/add-lead-dialog";
 import { EnquiryRowActions } from "./_components/enquiry-row-actions";
@@ -129,9 +131,10 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Enquiries" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Enquiries</h1>
+          <h1 className="text-2xl font-semibold">Enquiries</h1>
           <p className="text-sm text-muted-foreground">Leads and enquiries — the early stage of the customer journey.</p>
         </div>
         <div className="flex items-center gap-4">
@@ -141,6 +144,7 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
           <AddLeadDialog />
         </div>
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -150,7 +154,7 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
         emptyLabel="No enquiries yet."
         filters={<EnquiryStatusFilter />}
         sortOptions={sortOptions}
-        pageSize={8}
+        pageSize={16}
       />
     </div>
   );

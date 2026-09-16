@@ -46,7 +46,7 @@ export function SignInForm({ callbackURL }: SignInFormProps = {}) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex w-full max-w-lg flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signin-email">Email</Label>
         <IconInput
@@ -75,7 +75,7 @@ export function SignInForm({ callbackURL }: SignInFormProps = {}) {
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="h-11 rounded-full text-base font-semibold">
+      <Button type="submit" disabled={pending} className="text-base font-semibold">
         {pending ? "Signing in…" : "Sign in to your account"}
       </Button>
     </form>

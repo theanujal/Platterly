@@ -2,16 +2,32 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, LayoutGrid, List as ListIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, LayoutGrid, List as ListIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableHeader, TableRow, TableHead } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 
-/** Shared styling for every "Add New X" dashed-border tile across the catalog sections, so all 5 stay visually identical without copy-pasting the class string. */
+/** Shared styling for every "Add New X" dashed-border tile across the catalog sections, so all 5 stay visually identical without copy-pasting the class string. A constant tinted fill (not just a plain dashed box), matching AJ's reference screenshot (2026-09-17). */
 export const CATALOG_ADD_TILE_CLASSNAME =
-  "flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary hover:text-primary cursor-pointer";
+  "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/25 bg-accent/60 text-muted-foreground transition-colors hover:border-primary hover:bg-accent cursor-pointer";
+
+/** Icon-circle + title + description body for an "Add New X" tile — reused by every catalog page's tile trigger instead of each hand-rolling its own Plus-icon-and-label markup. */
+export function CatalogAddTileContent({ label, description }: { label: string; description: string }) {
+  return (
+    <>
+      <div className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Plus className="size-6" />
+      </div>
+      <div className="flex flex-col items-center gap-0.5 px-4 text-center">
+        <span className="text-sm font-semibold text-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground">{description}</span>
+      </div>
+    </>
+  );
+}
 
 export interface CatalogFilterOption {
   /** Matches a key in each entry's `filterValues`. */
@@ -171,7 +187,7 @@ export function CatalogBrowser({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative max-w-sm flex-1">
+        <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -195,7 +211,11 @@ export function CatalogBrowser({
               resetPage();
             }}
           >
-            <SelectTrigger aria-label={filter.allLabel} className={filter.className ?? "w-40"}>
+            {/* "Filter by X", not bare "X" — a bare "Type"/"Category" aria-label
+                collides with an identically-labeled form field inside an
+                Add/Edit dialog open on the same page (a real, not
+                hypothetical, strict-mode failure caught via the E2E suite). */}
+            <SelectTrigger aria-label={`Filter by ${filter.allLabel}`} className={filter.className ?? "w-40"}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -259,6 +279,7 @@ export function CatalogBrowser({
           </Button>
         </div>
       </div>
+      <Separator />
 
       {view === "grid" ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

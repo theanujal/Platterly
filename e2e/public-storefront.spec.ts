@@ -33,7 +33,7 @@ test("claim a custom link, build a menu, then view the real public storefront pa
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);

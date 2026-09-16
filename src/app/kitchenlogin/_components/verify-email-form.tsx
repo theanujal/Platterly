@@ -77,7 +77,7 @@ export function VerifyEmailForm({ email, next }: { email: string; next: string }
         type="button"
         disabled={otp.length !== 6 || pending}
         onClick={handleVerify}
-        className="h-11 w-full rounded-full text-base font-semibold"
+        className="w-full text-base font-semibold"
       >
         {pending ? "Verifying…" : "Verify Email"}
       </Button>

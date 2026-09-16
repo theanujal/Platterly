@@ -6,6 +6,8 @@ import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddItemDialog } from "./_components/add-item-dialog";
 import { ItemCardActions } from "./_components/item-card-actions";
@@ -15,6 +17,18 @@ export const metadata: Metadata = {
   title: "Food Items — Platterly",
   robots: { index: false, follow: false },
 };
+
+/** Veg/Non-Veg reads as green/red everywhere it's shown — a dietary signal, not a brand-color one, so it deliberately doesn't reuse Badge's primary/destructive variants (which would make Veg render in the brand orange). */
+function FoodTypeBadge({ nonVeg }: { nonVeg: boolean }) {
+  return (
+    <Badge
+      variant="secondary"
+      className={nonVeg ? "border-transparent bg-red-100 text-red-700" : "border-transparent bg-green-100 text-green-700"}
+    >
+      {nonVeg ? "Non-Veg" : "Veg"}
+    </Badge>
+  );
+}
 
 export default async function ItemsPage() {
   const { organizationId } = await requireActiveOrganization();
@@ -73,9 +87,7 @@ export default async function ItemsPage() {
             </div>
             {item.description && <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>}
             <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <Badge variant={item.foodType === "NON_VEGETARIAN" ? "destructive" : "default"}>
-                {item.foodType === "NON_VEGETARIAN" ? "Non-Veg" : "Veg"}
-              </Badge>
+              <FoodTypeBadge nonVeg={item.foodType === "NON_VEGETARIAN"} />
               {item.categories.map((c) => (
                 <Badge key={c.categoryId} variant="secondary">
                   {c.category.name}
@@ -93,9 +105,7 @@ export default async function ItemsPage() {
             {item.categories.map((c) => c.category.name).join(", ") || "—"}
           </TableCell>
           <TableCell>
-            <Badge variant={item.foodType === "NON_VEGETARIAN" ? "destructive" : "default"}>
-              {item.foodType === "NON_VEGETARIAN" ? "Non-Veg" : "Veg"}
-            </Badge>
+            <FoodTypeBadge nonVeg={item.foodType === "NON_VEGETARIAN"} />
           </TableCell>
           <TableCell>₹{Number(item.price).toFixed(2)}</TableCell>
           <TableCell>
@@ -129,13 +139,17 @@ export default async function ItemsPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageBreadcrumb
+        items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Catalog", href: "/menu-catalog" }, { label: "Food Items" }]}
+      />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Food Items</h1>
+          <h1 className="text-2xl font-semibold">Food Items</h1>
           <p className="text-sm text-muted-foreground">Your reusable product catalog — the dishes caterers add to menus.</p>
         </div>
         <AddItemDialog categories={categoryOptions} menus={menuOptions} />
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
@@ -145,7 +159,7 @@ export default async function ItemsPage() {
         emptyLabel="No food items yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={8}
+        pageSize={16}
       />
     </div>
   );

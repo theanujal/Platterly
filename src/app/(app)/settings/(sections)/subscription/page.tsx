@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { getCurrentSubscription, listSubscriptionHistory } from "@/modules/subscriptions/subscription";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -35,8 +36,11 @@ export default async function SubscriptionPage() {
 
   return (
     <div className="flex flex-col gap-8">
+      <PageBreadcrumb
+        items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Subscription" }]}
+      />
       <div>
-        <h1 className="text-xl font-semibold">Subscription</h1>
+        <h1 className="text-2xl font-semibold">Subscription</h1>
         <p className="text-sm text-muted-foreground">Your current plan and subscription history.</p>
       </div>
 

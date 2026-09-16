@@ -52,7 +52,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByRole("button", { name: "Hide password" }).first().click();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "password");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
 
   // Email OTP verification (AJ's explicit ask, 2026-09-16) — sits between

@@ -6,6 +6,7 @@ import { User, Mail, Lock } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { IconInput, PasswordInput } from "./icon-input";
 
 interface SignUpFormProps {
@@ -60,7 +61,7 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex w-full max-w-lg flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="signup-first-name" required>First name</Label>
@@ -123,13 +124,12 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
         />
       </div>
       <div className="flex items-start gap-2">
-        <input
+        <Checkbox
           id="signup-terms"
-          type="checkbox"
           required
-          className="mt-0.5 size-4"
+          className="mt-0.5"
           checked={acceptedTerms}
-          onChange={(event) => setAcceptedTerms(event.target.checked)}
+          onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
         />
         <Label htmlFor="signup-terms" className="text-sm font-normal text-muted-foreground">
           I accept the Terms of Service and Privacy Policy
@@ -140,7 +140,7 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="h-11 rounded-full text-base font-semibold">
+      <Button type="submit" disabled={pending} className="text-base font-semibold">
         {pending ? "Creating your account…" : "Create Platterly Account"}
       </Button>
     </form>

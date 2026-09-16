@@ -6,7 +6,15 @@ import { listOrders } from "@/modules/orders/order";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry, type CatalogSortOption, CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
+import { Separator } from "@/components/ui/separator";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import {
+  CatalogBrowser,
+  type CatalogEntry,
+  type CatalogSortOption,
+  CATALOG_ADD_TILE_CLASSNAME,
+  CatalogAddTileContent,
+} from "@/components/catalog/catalog-browser";
 import { OrdersFilterBar } from "./_components/orders-filter-bar";
 import type { OrderStatus, OrderKind } from "@/generated/prisma/enums";
 
@@ -130,23 +138,24 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Orders" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Orders</h1>
+          <h1 className="text-2xl font-semibold">Orders</h1>
           <p className="text-sm text-muted-foreground">The commercial record of every catering sale — pricing, participants, and what&apos;s included.</p>
         </div>
-        <Button size="sm" render={<Link href="/orders/new" />} nativeButton={false}>
+        <Button render={<Link href="/orders/new" />} nativeButton={false}>
           <Plus className="size-4" />
           Create Order
         </Button>
       </div>
+      <Separator />
 
       <CatalogBrowser
         entries={entries}
         addTile={
           <Link href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
-            <Plus className="size-6" />
-            <span className="text-sm font-medium">Create Order</span>
+            <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
           </Link>
         }
         columns={["Order #", "Customer", "Event Date", "Total", "Payment", "Status"]}
@@ -154,7 +163,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         emptyLabel="No orders yet."
         filters={<OrdersFilterBar />}
         sortOptions={sortOptions}
-        pageSize={9}
+        pageSize={16}
       />
     </div>
   );

@@ -1,13 +1,5 @@
-import Link from "next/link";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-
-// Display order/labels only (AJ, 2026-09-14) — routes/model names are
-// unchanged: /menu-catalog/menus is still "Menu Types", etc.
-const NAV_ITEMS = [
-  { label: "Menu Types", href: "/menu-catalog/menus" },
-  { label: "Menu Categories", href: "/menu-catalog/categories" },
-  { label: "Food Items", href: "/menu-catalog/items" },
-] as const;
+import { MenuCatalogNav } from "./_components/menu-catalog-nav";
 
 // Chunk 6 — Menu & Product Catalog. Same "always-show nav, gate on visit"
 // convention as Settings/Super Admin: every leaf page enforces its own
@@ -18,22 +10,9 @@ export default async function MenuCatalogLayout({ children }: { children: React.
   await requirePermission({ menus: ["view"] }, organizationId);
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-8 md:flex-row">
-      <nav className="flex shrink-0 flex-col gap-1 md:w-48">
-        <h2 className="px-2 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          Menu Catalog
-        </h2>
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted"
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div className="flex flex-1 flex-col md:flex-row">
+      <MenuCatalogNav />
+      <div className="min-w-0 flex-1 p-8">{children}</div>
     </div>
   );
 }

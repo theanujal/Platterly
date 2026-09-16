@@ -42,7 +42,7 @@ test("Lead -> Enquiry -> Customer -> Event, with required inventory and timeline
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByLabel("I accept the Terms of Service and Privacy Policy").check();
+  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
@@ -55,7 +55,7 @@ test("Lead -> Enquiry -> Customer -> Event, with required inventory and timeline
   await page.goto("/inventory");
   await page.getByRole("button", { name: "Add Item" }).click();
   await page.getByLabel("Item Name").fill(inventoryName);
-  await page.getByLabel("Category").fill("Grains");
+  await page.getByLabel("Category", { exact: true }).fill("Grains");
   await page.getByLabel("Unit", { exact: true }).fill("kg");
   await page.getByLabel("Opening Stock").fill("100");
   await page.getByRole("button", { name: "Create item" }).click();
