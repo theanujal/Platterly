@@ -13,16 +13,26 @@ const ACTIONS = [
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 
-// AJ, 2026-09-16 (Agentation feedback) — moved above Needs Attention and
-// given the same colored icon-chip header as the KPI/module cards, plus a
-// tinted border/background, so it reads as more prominent than a plain
-// utility card.
+// AJ, 2026-09-17 — matches the reference screenshot's placement exactly:
+// its own full-width row directly under the KPI grid (previously stacked at
+// the bottom of the right-hand column below Public Menu/QR and Needs
+// Attention), all 4 actions in a single row (was a 2x2 grid). `shrink-0` is
+// load-bearing, not decorative: as a bare flex child of the page's <main>
+// (rather than a CSS Grid cell, which every other dashboard card sits in),
+// this card is exposed to a real flexbox edge case — `overflow-hidden`
+// (every Card's own default) nullifies a flex item's automatic
+// content-based minimum height, so when the page's scroll gets locked (e.g.
+// the "Claim your custom link" dialog that auto-opens for a brand-new
+// account) and total content exceeds the viewport, the browser silently
+// shrinks this card down to near-zero instead of just letting the page
+// scroll. Caught live via a real headed-browser screenshot during a
+// brand-new-signup walkthrough, not hypothetical.
 export function QuickActionsCard() {
   return (
-    <Card className="border-primary/20 bg-primary/[0.03]">
+    <Card className="shrink-0 border-primary/20 bg-primary/[0.03]">
       <DashboardCardHeader icon={Zap} title="Quick Actions" colorClassName="bg-primary/10 text-primary" />
       <CardContent>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {ACTIONS.map((action) => (
             <Link
               key={action.href}

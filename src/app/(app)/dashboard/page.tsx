@@ -20,13 +20,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Business Command Centre: welcome header -> colorful KPI grid -> dominant
-// Orders activity (revenue trend + recent orders, with Public Menu/QR,
-// Needs Attention, and Quick Actions stacked alongside, in that order) ->
+// Business Command Centre: welcome header -> colorful KPI grid -> Quick
+// Actions (full width) -> dominant Orders activity (revenue trend + recent
+// orders, with Public Menu/QR and Needs Attention stacked alongside) ->
 // Inventory Status / Partial Payments / Orders Calendar status cards (3
-// columns) -> Upcoming Events (full width). Every module reads real data
-// from the modules that already exist (Orders, Events, Quotations,
-// Inventory, Public Menu) — see ./_data.ts for the shared query.
+// columns) -> Upcoming Events (full width). Matches AJ's reference
+// screenshot exactly (2026-09-17) — Quick Actions was previously stacked at
+// the bottom of the right-hand column instead of its own full-width row.
+// Every module reads real data from the modules that already exist (Orders,
+// Events, Quotations, Inventory, Public Menu) — see ./_data.ts for the
+// shared query.
 export default async function DashboardPage() {
   const { session, organizationId } = await requireActiveOrganization();
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
@@ -58,6 +61,8 @@ export default async function DashboardPage() {
         outstandingOrdersCount={snapshot.outstandingOrdersCount}
       />
 
+      <QuickActionsCard />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <OrdersActivityCard
@@ -74,7 +79,6 @@ export default async function DashboardPage() {
             outstandingBalance={snapshot.outstandingBalance}
             quotationsAwaitingResponse={snapshot.quotationsAwaitingResponse}
           />
-          <QuickActionsCard />
         </div>
       </div>
 

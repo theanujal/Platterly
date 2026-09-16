@@ -1,22 +1,23 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardAction, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "cn";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 type StatusTone = "teal" | "indigo";
 
 const TONE_STYLES: Record<StatusTone, { iconChip: string; progressFill: string; progressTrack: string; primaryValue: string }> = {
   teal: {
-    iconChip: "bg-teal-800 text-white",
-    progressFill: "bg-teal-800",
+    iconChip: "bg-teal-500/10 text-teal-600",
+    progressFill: "bg-teal-600",
     progressTrack: "bg-teal-100",
     primaryValue: "text-teal-900",
   },
   indigo: {
-    iconChip: "bg-indigo-800 text-white",
-    progressFill: "bg-indigo-800",
+    iconChip: "bg-indigo-500/10 text-indigo-600",
+    progressFill: "bg-indigo-600",
     progressTrack: "bg-indigo-100",
     primaryValue: "text-indigo-900",
   },
@@ -54,11 +55,12 @@ interface StatusOverviewCardProps {
 // Shared "status" card shell (Inventory Status / Partial Payments) — AJ,
 // 2026-09-16, matching a reference screenshot: icon-chip header, a headline
 // stat over a progress bar, two tinted alert chips, then a short list of
-// the specific records driving those chips. Correction round (same day):
-// the header now reuses the app's real CardHeader/CardTitle/CardAction
-// primitives (same font/weight/spacing as every other Dashboard card) —
-// only the icon chip's own dark/solid tone and right-side position stay
-// bespoke, since that's what the reference screenshot actually showed.
+// the specific records driving those chips. Correction round 2 (AJ,
+// 2026-09-17): the header now uses the same shared `DashboardCardHeader`
+// every other Dashboard card uses (light-tint icon chip, left of the
+// title) instead of a bespoke dark/solid chip pinned to the header's right
+// side — the reference screenshot's placement didn't match the rest of the
+// page, and AJ asked for it to be made consistent.
 export function StatusOverviewCard({
   tone,
   title,
@@ -78,14 +80,7 @@ export function StatusOverviewCard({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardAction>
-          <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-lg", styles.iconChip)}>
-            <Icon className="size-4" />
-          </div>
-        </CardAction>
-      </CardHeader>
+      <DashboardCardHeader icon={Icon} title={title} colorClassName={styles.iconChip} />
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-2">
           <div className="flex items-baseline justify-between">
