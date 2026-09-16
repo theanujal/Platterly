@@ -47,18 +47,11 @@ export function AppSidebar({ organizationName, subscription }: AppSidebarProps) 
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />} className="cursor-pointer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/platterly-logo.svg"
-                alt="Platterly"
-                className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:hidden"
-              />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/platterly-mark.svg"
-                alt="Platterly"
-                className="hidden size-6 shrink-0 group-data-[collapsible=icon]:block"
-              />
-              <span className="truncate text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">{organizationName}</span>
+              <img src="/platterly-mark.svg" alt="Platterly" className="size-6 shrink-0" />
+              <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
+                <span className="truncate text-sm font-semibold">Platterly</span>
+                <span className="truncate text-xs text-muted-foreground">{organizationName}</span>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -112,14 +105,8 @@ export function AppSidebar({ organizationName, subscription }: AppSidebarProps) 
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2 px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-            <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-              {organizationName.charAt(0).toUpperCase()}
-            </div>
-            <span className="min-w-0 flex-1 truncate text-xs font-medium group-data-[collapsible=icon]:hidden">{organizationName}</span>
-            <div className="group-data-[collapsible=icon]:hidden">
-              <SignOutButton />
-            </div>
+          <SidebarMenuItem>
+            <SignOutButton className="w-full justify-start rounded-md px-4 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2!" />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -293,6 +293,8 @@ export interface OrderListFilter {
   status?: OrderStatus;
   orderKind?: OrderKind;
   search?: string;
+  /** Caps the result count (e.g. the Dashboard's global search bar) — omitted for the full Orders list. */
+  take?: number;
 }
 
 export async function listOrders(organizationId: string, filter?: OrderListFilter) {
@@ -305,6 +307,7 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
         ? {
             OR: [
               { customer: { name: { contains: filter.search, mode: "insensitive" } } },
+              { customer: { phone: { contains: filter.search, mode: "insensitive" } } },
               { orderNumber: { contains: filter.search, mode: "insensitive" } },
             ],
           }
@@ -312,7 +315,47 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
     },
     include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true } } },
     orderBy: { createdAt: "desc" },
+    take: filter?.take,
   });
+}
+
+/** Feeds the Dashboard's Partial Payments card — mirrors getInventoryOverviewStats' shape/purpose for its own domain. */
+export async function getPartialPaymentsOverview(organizationId: string) {
+  const orders = await prisma.order.findMany({
+    where: { organizationId, status: { not: "CANCELLED" }, paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] }, balance: { gt: 0 } },
+    orderBy: { balance: "desc" },
+    select: {
+      id: true,
+      orderNumber: true,
+      paymentStatus: true,
+      balance: true,
+      advance: true,
+      total: true,
+      eventStartDate: true,
+      customer: { select: { name: true } },
+    },
+  });
+
+  const now = new Date();
+  const totalDue = orders.reduce((sum, o) => sum + Number(o.balance), 0);
+  const totalCollected = orders.reduce((sum, o) => sum + Number(o.advance), 0);
+  const partialCount = orders.filter((o) => o.paymentStatus === "PARTIALLY_PAID").length;
+  const overdueCount = orders.filter((o) => o.eventStartDate < now).length;
+
+  return {
+    totalOrders: orders.length,
+    partialCount,
+    overdueCount,
+    totalDue,
+    totalCollected,
+    orders: orders.map((o) => ({
+      id: o.id,
+      orderNumber: o.orderNumber,
+      customerName: o.customer.name,
+      balance: Number(o.balance),
+      paymentStatus: o.paymentStatus,
+    })),
+  };
 }
 
 export async function getOrder(organizationId: string, id: string) {

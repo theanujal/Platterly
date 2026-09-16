@@ -41,8 +41,15 @@ interface OrderRow {
   customerName: string;
 }
 
+interface RevenueTrendPoint {
+  date: string;
+  totalValue: number;
+  completedValue: number;
+  pendingValue: number;
+}
+
 interface OrdersActivityCardProps {
-  revenueTrend: { date: string; value: number }[];
+  revenueTrend: RevenueTrendPoint[];
   recentOrders: OrderRow[];
   totalOrders: number;
 }
@@ -84,10 +91,7 @@ export function OrdersActivityCard({ revenueTrend, recentOrders, totalOrders }: 
           </div>
         ) : (
           <>
-            <div>
-              <p className="mb-2 text-xs font-medium text-muted-foreground">Revenue trend · last 30 days</p>
-              <RevenueTrendChart data={revenueTrend} />
-            </div>
+            <RevenueTrendChart data={revenueTrend} />
             <div className="flex flex-col divide-y divide-border">
               {recentOrders.map((order) => (
                 <Link

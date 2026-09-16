@@ -25,7 +25,11 @@ function dateKey(d: Date): string {
 export async function getDashboardSnapshot(organizationId: string) {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const thirtyDaysAgo = new Date(startOfToday.getTime() - 29 * 86400000);
+  // 1 year back covers the Orders card's revenue trend's longest range
+  // (1Y) — the 1M/3M/6M range-toggle buttons just slice the tail of this
+  // same dense array client-side, no extra round trip per range.
+  const REVENUE_TREND_DAYS = 365;
+  const revenueTrendStart = new Date(startOfToday.getTime() - (REVENUE_TREND_DAYS - 1) * 86400000);
   // Calendar window: 1 month back to 3 months forward — enough range for
   // the Orders Calendar's in-browser month navigation without refetching.
   const calendarStart = new Date(startOfToday.getFullYear(), startOfToday.getMonth() - 1, 1);
@@ -80,8 +84,8 @@ export async function getDashboardSnapshot(organizationId: string) {
     prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
     getInventoryOverviewStats(organizationId),
     prisma.order.findMany({
-      where: { organizationId, createdAt: { gte: thirtyDaysAgo } },
-      select: { createdAt: true, total: true },
+      where: { organizationId, createdAt: { gte: revenueTrendStart }, status: { not: "CANCELLED" } },
+      select: { createdAt: true, total: true, status: true },
     }),
     prisma.order.findMany({
       where: { organizationId, eventStartDate: { gte: calendarStart, lt: calendarEnd }, status: { not: "CANCELLED" } },
@@ -98,18 +102,34 @@ export async function getDashboardSnapshot(organizationId: string) {
     return { status, count: row?._count._all ?? 0, totalValue: Number(row?._sum.total ?? 0) };
   });
 
-  // Revenue trend: sum of Order.total per day, created in the last 30 days,
-  // filled dense so every day plots (0 where nothing was booked that day).
-  const revenueByDay = new Map<string, number>();
+  // Revenue trend: sum of Order.total per day (split Completed vs. still-
+  // Pending, i.e. everything short of Completed/Cancelled), created in the
+  // last year, filled dense so every day plots (0 where nothing was booked
+  // that day). Cancelled orders are excluded entirely, same as the
+  // outstanding-balance aggregate above.
+  const totalByDay = new Map<string, number>();
+  const completedByDay = new Map<string, number>();
+  const pendingByDay = new Map<string, number>();
   for (const order of revenueOrdersRaw) {
     const key = dateKey(order.createdAt);
-    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + Number(order.total));
+    const value = Number(order.total);
+    totalByDay.set(key, (totalByDay.get(key) ?? 0) + value);
+    if (order.status === "COMPLETED") {
+      completedByDay.set(key, (completedByDay.get(key) ?? 0) + value);
+    } else {
+      pendingByDay.set(key, (pendingByDay.get(key) ?? 0) + value);
+    }
   }
-  const revenueTrend: { date: string; value: number }[] = [];
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(thirtyDaysAgo.getTime() + i * 86400000);
+  const revenueTrend: { date: string; totalValue: number; completedValue: number; pendingValue: number }[] = [];
+  for (let i = 0; i < REVENUE_TREND_DAYS; i++) {
+    const d = new Date(revenueTrendStart.getTime() + i * 86400000);
     const key = dateKey(d);
-    revenueTrend.push({ date: key, value: revenueByDay.get(key) ?? 0 });
+    revenueTrend.push({
+      date: key,
+      totalValue: totalByDay.get(key) ?? 0,
+      completedValue: completedByDay.get(key) ?? 0,
+      pendingValue: pendingByDay.get(key) ?? 0,
+    });
   }
 
   const orderCountsByDay: Record<string, number> = {};

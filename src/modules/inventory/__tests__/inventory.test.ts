@@ -220,8 +220,23 @@ describe("getInventoryOverviewStats / listLowStockItems — Dashboard Inventory 
     expect(stats.inStock).toBe(1);
     expect(stats.lowStock).toBe(1);
     expect(stats.outOfStock).toBe(1);
+    expect(stats.expired).toBe(0);
     expect(stats.categories).toBe(2);
     expect(stats.totalValue).toBe(100 * 40 + 15 * 150 + 0 * 20);
+  });
+
+  it("expired counts only items whose expiryDate has already passed", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const yesterday = new Date(Date.now() - 86400000);
+    const nextYear = new Date(Date.now() + 365 * 86400000);
+
+    await createInventoryItem(org.id, { name: "Old Milk", category: "Dairy", unit: "ltr", expiryDate: yesterday }, actor.id, 5);
+    await createInventoryItem(org.id, { name: "Fresh Milk", category: "Dairy", unit: "ltr", expiryDate: nextYear }, actor.id, 5);
+    await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg" }, actor.id, 5); // no expiry at all
+
+    const stats = await getInventoryOverviewStats(org.id);
+    expect(stats.expired).toBe(1);
   });
 
   it("listLowStockItems returns only items at or below their threshold, tenant-isolated", async () => {

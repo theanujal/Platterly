@@ -73,13 +73,18 @@
   --chart-4: #6b7280;
   --chart-5: #9a3412;
   --radius: 0.625rem;
-  --sidebar: #ffffff;
+  /* AJ, 2026-09-16 (Agentation feedback on /dashboard) — whole caterer
+     sidebar in Orange 50. The hover tint moved from Orange 50 to Orange 100
+     so it stays visible against the new Orange 50 sidebar background;
+     --sidebar-primary (Orange 600 / white) is what the active nav item now
+     uses instead of --sidebar-accent, for the same reason. */
+  --sidebar: #fff7ed;
   --sidebar-foreground: #111827;
   --sidebar-primary: #ea580c;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #fff7ed;
+  --sidebar-accent: #ffedd5;
   --sidebar-accent-foreground: #9a3412;
-  --sidebar-border: #e5e7eb;
+  --sidebar-border: #fed7aa;
   --sidebar-ring: #ea580c;
 }
 

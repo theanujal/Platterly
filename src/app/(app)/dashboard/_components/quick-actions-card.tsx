@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ShoppingCart, FileText, ClipboardList, ChefHat } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Zap, ShoppingCart, FileText, ClipboardList, ChefHat } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { DashboardCardHeader } from "./dashboard-card-header";
 
 // Direct shortcuts into the four most common creation flows — folds in what
 // used to be the standalone Menu Catalog shortcut card, since "manage
@@ -12,19 +13,21 @@ const ACTIONS = [
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 
+// AJ, 2026-09-16 (Agentation feedback) — moved above Needs Attention and
+// given the same colored icon-chip header as the KPI/module cards, plus a
+// tinted border/background, so it reads as more prominent than a plain
+// utility card.
 export function QuickActionsCard() {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Quick Actions</CardTitle>
-      </CardHeader>
+    <Card className="border-primary/20 bg-primary/[0.03]">
+      <DashboardCardHeader icon={Zap} title="Quick Actions" colorClassName="bg-primary/10 text-primary" />
       <CardContent>
         <div className="grid grid-cols-2 gap-2">
           {ACTIONS.map((action) => (
             <Link
               key={action.href}
               href={action.href}
-              className="flex flex-col items-start gap-2 rounded-lg border border-border p-3 text-sm font-medium transition-colors hover:border-primary/30 hover:bg-primary/5"
+              className="flex flex-col items-start gap-2 rounded-lg border border-border bg-background p-3 text-sm font-medium transition-colors hover:border-primary/30 hover:bg-primary/5"
             >
               <action.icon className="size-4 text-primary" />
               {action.label}

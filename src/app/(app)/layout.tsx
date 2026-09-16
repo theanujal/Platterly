@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { GlobalSearch } from "@/components/app-shell/global-search";
 
 function daysUntil(date: Date): number {
   return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000));
@@ -55,7 +56,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm font-medium text-muted-foreground">{organization.name}</span>
+          <div className="flex flex-1 justify-center px-2 sm:justify-start">
+            <GlobalSearch />
+          </div>
           <div className="ml-auto flex items-center gap-1">
             <NotificationBell />
             <Link

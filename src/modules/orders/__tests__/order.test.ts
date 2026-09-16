@@ -9,6 +9,7 @@ import {
   recalculateOrderTotals,
   sendOrderWhatsApp,
   createEventForOrder,
+  getPartialPaymentsOverview,
   OrderEventTypeRequiredError,
 } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
@@ -585,5 +586,62 @@ describe("Order Numbering (per-tenant prefix/counter/padding)", () => {
     const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "CONFIRMED" }, actor.id);
 
     expect(updated.orderNumber).toBe(order.orderNumber);
+  });
+});
+
+describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () => {
+  it("aggregates only non-cancelled Partially Paid/Unpaid orders with a real balance, incl. overdue-by-event-date", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const future = new Date(Date.now() + 30 * 86400000);
+    const past = new Date(Date.now() - 5 * 86400000);
+
+    // taxes alone drives `total` here (no catalog items needed) — subtotal
+    // stays 0, total = 0 - discount + taxes, per recalculateOrderTotals.
+    await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 10000, advance: 4000, paymentStatus: "PARTIALLY_PAID", status: "CONFIRMED" },
+      actor.id,
+    );
+    await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: past, eventEndDate: past, taxes: 5000, advance: 0, paymentStatus: "UNPAID", status: "CONFIRMED" },
+      actor.id,
+    );
+    // Fully paid — excluded by paymentStatus AND balance filters.
+    await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 2000, advance: 2000, paymentStatus: "PAID", status: "COMPLETED" },
+      actor.id,
+    );
+    // Cancelled with an unpaid balance — excluded by status filter.
+    await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 3000, advance: 0, paymentStatus: "UNPAID", status: "CANCELLED" },
+      actor.id,
+    );
+
+    const overview = await getPartialPaymentsOverview(org.id);
+    expect(overview.totalOrders).toBe(2);
+    expect(overview.partialCount).toBe(1);
+    expect(overview.overdueCount).toBe(1);
+    expect(overview.totalDue).toBe(6000 + 5000);
+    expect(overview.totalCollected).toBe(4000);
+    // orderBy balance desc — the 6000-balance order first.
+    expect(overview.orders.map((o) => o.balance)).toEqual([6000, 5000]);
+  });
+
+  it("tenant-isolated — another org's unpaid orders never leak in", async () => {
+    const orgA = await makeOrg();
+    const orgB = await makeOrg();
+    const actor = await makeActor();
+    const customerB = await makeCustomer(orgB.id, actor.id);
+
+    await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date(), taxes: 9000, paymentStatus: "UNPAID", status: "CONFIRMED" }, actor.id);
+
+    const overview = await getPartialPaymentsOverview(orgA.id);
+    expect(overview.totalOrders).toBe(0);
+    expect(overview.totalDue).toBe(0);
   });
 });

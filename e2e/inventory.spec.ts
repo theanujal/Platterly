@@ -110,8 +110,13 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   // dialog every time (defaultOpen while slugChangeCount stays 0) — close
   // it again before interacting with anything else.
   await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByText("Inventory Overview")).toBeVisible();
-  await expect(page.getByText("₹600.00")).toBeVisible(); // 15kg * ₹40
+  // Redesigned "Inventory Status" card (AJ, 2026-09-16) — Total Items/Low
+  // Stock counts and the low-stock item row are its real visible content;
+  // the total-₹-value calculation itself is covered by
+  // getInventoryOverviewStats' own Vitest test, not duplicated here.
+  await expect(page.getByText("Inventory Status")).toBeVisible();
+  await expect(page.getByText(itemName)).toBeVisible();
+  await expect(page.getByText("Low stock", { exact: true })).toBeVisible();
 
   // --- Delete ---
   await page.getByRole("link", { name: "Inventory" }).click();

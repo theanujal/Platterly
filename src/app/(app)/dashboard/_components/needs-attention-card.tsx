@@ -17,6 +17,10 @@ function formatCurrency(amount: number) {
 // where that action happens — the "Actionability" principle from the
 // redesign brief: no digging through the sidebar to act on something
 // already visible here.
+//
+// AJ, 2026-09-16 (Agentation feedback) — moved above Quick Actions and
+// given the same tinted-border/background treatment Quick Actions got in
+// the previous round, so it reads as the more prominent of the two.
 export function NeedsAttentionCard({
   draftOrders,
   outstandingOrdersCount,
@@ -39,7 +43,7 @@ export function NeedsAttentionCard({
   ].filter((item): item is { href: string; label: string } => Boolean(item));
 
   return (
-    <Card>
+    <Card className="border-amber-500/20 bg-amber-500/[0.03]">
       <CardHeader>
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">

@@ -1,42 +1,36 @@
-import Link from "next/link";
-import { Package } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { DashboardCardHeader } from "./dashboard-card-header";
-import { getInventoryOverviewStats } from "@/modules/inventory/inventory";
+import { Package, TriangleAlert, CircleX } from "lucide-react";
+import { getInventoryOverviewStats, listLowStockItems } from "@/modules/inventory/inventory";
+import { StatusOverviewCard } from "./status-overview-card";
 
 // Chunk 5 Group 5.5 placeholder shell, wired to real data in Chunk 7
-// (Inventory, Basic) — the low-stock count doubles as the "low-stock flag"
-// the chunk plan calls for.
+// (Inventory, Basic), redesigned to a reference screenshot's "Inventory
+// Status" look (AJ, 2026-09-16) — same StatusOverviewCard shell the new
+// Partial Payments card uses.
 export async function InventoryOverviewCard({ organizationId }: { organizationId: string }) {
-  const stats = await getInventoryOverviewStats(organizationId);
-  const items: { label: string; value: string }[] = [
-    { label: "Total Items", value: String(stats.totalItems) },
-    { label: "In Stock", value: String(stats.inStock) },
-    { label: "Low Stock", value: String(stats.lowStock) },
-    { label: "Out of Stock", value: String(stats.outOfStock) },
-    { label: "Categories", value: String(stats.categories) },
-    { label: "Total Value", value: `₹${stats.totalValue.toFixed(2)}` },
-  ];
+  const [stats, lowStockItems] = await Promise.all([
+    getInventoryOverviewStats(organizationId),
+    listLowStockItems(organizationId),
+  ]);
 
   return (
-    <Card>
-      <DashboardCardHeader icon={Package} title="Inventory Overview" colorClassName="bg-violet-500/10 text-violet-600" />
-      <CardContent className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          {items.map((item) => (
-            <div key={item.label} className="flex flex-col gap-0.5">
-              <span className={item.label === "Low Stock" && stats.lowStock > 0 ? "text-lg font-semibold text-destructive" : "text-lg font-semibold"}>
-                {item.value}
-              </span>
-              <span className="text-xs text-muted-foreground">{item.label}</span>
-            </div>
-          ))}
-        </div>
-        <Button variant="outline" size="sm" render={<Link href="/inventory" />} nativeButton={false} className="self-start">
-          Manage inventory
-        </Button>
-      </CardContent>
-    </Card>
+    <StatusOverviewCard
+      tone="teal"
+      title="Inventory Status"
+      icon={Package}
+      primaryLabel="Total Items"
+      primaryValue={String(stats.totalItems)}
+      progressPercent={stats.totalItems === 0 ? 0 : (stats.inStock / stats.totalItems) * 100}
+      redChip={{ icon: TriangleAlert, label: "Low Stock", value: stats.lowStock }}
+      orangeChip={{ icon: CircleX, label: "Expired", value: stats.expired }}
+      rows={lowStockItems.slice(0, 2).map((item) => ({
+        key: item.id,
+        title: item.name,
+        subtitle: `${Number(item.stockCount)} ${item.unit}`,
+        badgeLabel: "Low stock",
+      }))}
+      emptyMessage="No items are low on stock."
+      footerHref="/inventory"
+      footerLabel="Manage inventory"
+    />
   );
 }

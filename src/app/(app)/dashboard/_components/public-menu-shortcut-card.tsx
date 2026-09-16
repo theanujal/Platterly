@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { QrCode, MessageCircle, Settings2 } from "lucide-react";
+import { QrCode, ExternalLink, Settings2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { CopyButton } from "@/components/ui/copy-button";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { DashboardCardHeader } from "./dashboard-card-header";
 
 interface PublicMenuShortcutCardProps {
@@ -31,7 +32,7 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
         {claimed && url ? (
           <>
             <p className="text-xs font-medium text-muted-foreground">Scan QR code or use the link</p>
-            <div className="flex items-center gap-3">
+            <div className="flex items-start gap-3">
               {qrDataUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -40,37 +41,40 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
                   className="size-28 shrink-0 rounded-lg border border-border p-1"
                 />
               )}
-              <p className="min-w-0 truncate text-sm text-muted-foreground">{url}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
-                View
-              </Button>
-              <CopyButton value={url} />
-              <Button
-                variant="outline"
-                size="sm"
-                render={
-                  <a
-                    href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
-                    target="_blank"
-                    rel="noopener"
-                  />
-                }
-                nativeButton={false}
-              >
-                <MessageCircle className="size-4 text-emerald-600" />
-                Share
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                render={<Link href="/settings/integration/public-menu-link" />}
-                nativeButton={false}
-              >
-                <Settings2 className="size-4" />
-                Manage
-              </Button>
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                <p className="min-w-0 truncate text-sm text-muted-foreground">{url}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
+                    <ExternalLink className="size-4" />
+                    View
+                  </Button>
+                  <CopyButton value={url} />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    render={
+                      <a
+                        href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
+                        target="_blank"
+                        rel="noopener"
+                      />
+                    }
+                    nativeButton={false}
+                  >
+                    <WhatsAppIcon className="size-4 text-emerald-600" />
+                    Share
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    render={<Link href="/settings/integration/public-menu-link" />}
+                    nativeButton={false}
+                  >
+                    <Settings2 className="size-4" />
+                    Manage
+                  </Button>
+                </div>
+              </div>
             </div>
           </>
         ) : (

@@ -215,20 +215,23 @@ export async function recordStockTransaction(
 export async function getInventoryOverviewStats(organizationId: string) {
   const items = await prisma.inventory.findMany({
     where: { organizationId },
-    select: { category: true, stockCount: true, lowStockThreshold: true, costPerUnit: true },
+    select: { category: true, stockCount: true, lowStockThreshold: true, costPerUnit: true, expiryDate: true },
   });
 
   let inStock = 0;
   let lowStock = 0;
   let outOfStock = 0;
+  let expired = 0;
   let totalValue = 0;
   const categories = new Set<string>();
+  const now = new Date();
 
   for (const item of items) {
     categories.add(item.category);
     const stock = Number(item.stockCount);
     const threshold = item.lowStockThreshold !== null ? Number(item.lowStockThreshold) : null;
     if (item.costPerUnit !== null) totalValue += stock * Number(item.costPerUnit);
+    if (item.expiryDate !== null && item.expiryDate < now) expired += 1;
 
     if (stock <= 0) outOfStock += 1;
     else if (threshold !== null && stock <= threshold) lowStock += 1;
@@ -240,6 +243,7 @@ export async function getInventoryOverviewStats(organizationId: string) {
     inStock,
     lowStock,
     outOfStock,
+    expired,
     categories: categories.size,
     totalValue,
   };
