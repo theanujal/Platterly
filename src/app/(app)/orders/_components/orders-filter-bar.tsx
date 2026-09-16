@@ -1,9 +1,6 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useState } from "react";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUS_OPTIONS = [
@@ -26,7 +23,6 @@ export function OrdersFilterBar() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get("search") ?? "");
 
   function updateParam(key: string, value: string) {
     const params = new URLSearchParams(searchParams.toString());
@@ -36,25 +32,12 @@ export function OrdersFilterBar() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <form
-        className="relative max-w-sm flex-1"
-        onSubmit={(e) => {
-          e.preventDefault();
-          updateParam("search", search);
-        }}
+    <>
+      <Select
+        items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+        value={searchParams.get("status") ?? "ALL"}
+        onValueChange={(v) => updateParam("status", v ?? "ALL")}
       >
-        <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search orders by customer…"
-          className="pl-8"
-          aria-label="Search orders"
-        />
-      </form>
-
-      <Select value={searchParams.get("status") ?? "ALL"} onValueChange={(v) => updateParam("status", v ?? "ALL")}>
         <SelectTrigger aria-label="Order status filter" className="w-44">
           <SelectValue />
         </SelectTrigger>
@@ -67,7 +50,11 @@ export function OrdersFilterBar() {
         </SelectContent>
       </Select>
 
-      <Select value={searchParams.get("orderKind") ?? "ALL"} onValueChange={(v) => updateParam("orderKind", v ?? "ALL")}>
+      <Select
+        items={Object.fromEntries(ORDER_KIND_OPTIONS.map((o) => [o.value, o.label]))}
+        value={searchParams.get("orderKind") ?? "ALL"}
+        onValueChange={(v) => updateParam("orderKind", v ?? "ALL")}
+      >
         <SelectTrigger aria-label="Order type filter" className="w-40">
           <SelectValue />
         </SelectTrigger>
@@ -79,6 +66,6 @@ export function OrdersFilterBar() {
           ))}
         </SelectContent>
       </Select>
-    </div>
+    </>
   );
 }

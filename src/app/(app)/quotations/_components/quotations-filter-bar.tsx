@@ -27,7 +27,11 @@ export function QuotationsFilterBar() {
   }
 
   return (
-    <Select value={searchParams.get("status") ?? "ALL"} onValueChange={(v) => updateStatus(v ?? "ALL")}>
+    <Select
+      items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+      value={searchParams.get("status") ?? "ALL"}
+      onValueChange={(v) => updateStatus(v ?? "ALL")}
+    >
       <SelectTrigger aria-label="Quotation status filter" className="w-52">
         <SelectValue />
       </SelectTrigger>

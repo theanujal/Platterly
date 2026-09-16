@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
 import { InventoryCardActions } from "./_components/inventory-card-actions";
 import type { InventoryFormValues } from "./_components/inventory-form";
@@ -51,6 +51,8 @@ export default async function InventoryPage() {
     return {
       id: item.id,
       searchText: `${item.name} ${item.category} ${item.storageLocation ?? ""} ${item.supplierName ?? ""}`,
+      filterValues: { category: item.category, status: status.label },
+      sortValues: { name: item.name, stock, newest: item.createdAt.getTime() },
       card: (
         <>
           {item.image ? (
@@ -109,6 +111,27 @@ export default async function InventoryPage() {
     };
   });
 
+  const categories = [...new Set(items.map((item) => item.category))].sort();
+  const filterOptions: CatalogFilterOption[] = [
+    { key: "category", allLabel: "Category", options: categories.map((c) => ({ value: c, label: c })) },
+    {
+      key: "status",
+      allLabel: "Status",
+      options: [
+        { value: "In Stock", label: "In Stock" },
+        { value: "Low Stock", label: "Low Stock" },
+        { value: "Out of Stock", label: "Out of Stock" },
+      ],
+    },
+  ];
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+    { value: "stock-low", label: "Stock (Low–High)", key: "stock" },
+    { value: "stock-high", label: "Stock (High–Low)", key: "stock", direction: "desc" },
+  ];
+
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -125,6 +148,10 @@ export default async function InventoryPage() {
         columns={["Name", "Category", "Stock", "Location", "Status", "Actions"]}
         searchPlaceholder="Search inventory…"
         emptyLabel="No inventory items yet."
+        filterOptions={filterOptions}
+        sortOptions={sortOptions}
+        pageSize={8}
+        defaultView="list"
       />
     </div>
   );

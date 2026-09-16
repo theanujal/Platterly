@@ -26,7 +26,11 @@ export function EnquiryStatusFilter() {
   }
 
   return (
-    <Select value={searchParams.get("status") ?? "ALL"} onValueChange={(v) => updateStatus(v ?? "ALL")}>
+    <Select
+      items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+      value={searchParams.get("status") ?? "ALL"}
+      onValueChange={(v) => updateStatus(v ?? "ALL")}
+    >
       <SelectTrigger aria-label="Status filter" className="w-44">
         <SelectValue />
       </SelectTrigger>

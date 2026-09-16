@@ -27,6 +27,7 @@ export default async function EventTypesPage() {
       id: eventType.id,
       href: `/events/${eventType.id}`,
       searchText: `${eventType.name} ${eventType.description ?? ""}`,
+      filterValues: { status: eventType.isActive ? "ACTIVE" : "INACTIVE" },
       card: (
         <>
           {eventType.image ? (
@@ -96,6 +97,17 @@ export default async function EventTypesPage() {
         columns={["Name", "Min Guests", "Status", "Reorder"]}
         searchPlaceholder="Search event types…"
         emptyLabel="No event types yet."
+        filterOptions={[
+          {
+            key: "status",
+            allLabel: "Status",
+            options: [
+              { value: "ACTIVE", label: "Active" },
+              { value: "INACTIVE", label: "Inactive" },
+            ],
+          },
+        ]}
+        pageSize={8}
       />
     </div>
   );

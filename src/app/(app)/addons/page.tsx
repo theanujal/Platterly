@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listAddOns } from "@/modules/addons/addon";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddAddOnDialog } from "./_components/add-addon-dialog";
 import { AddOnCardActions } from "./_components/addon-card-actions";
 import type { AddOnFormValues } from "./_components/addon-form";
@@ -38,6 +38,8 @@ export default async function AddOnsPage() {
     return {
       id: addOn.id,
       searchText: `${addOn.name} ${addOn.description ?? ""}`,
+      filterValues: { type: addOn.type },
+      sortValues: { name: addOn.name, price: Number(addOn.price), newest: addOn.createdAt.getTime() },
       card: (
         <>
           {addOn.image ? (
@@ -86,6 +88,24 @@ export default async function AddOnsPage() {
     };
   });
 
+  const filterOptions: CatalogFilterOption[] = [
+    {
+      key: "type",
+      allLabel: "Type",
+      options: [
+        { value: "LIVE_COUNTER", label: "Live Counter" },
+        { value: "SPECIAL_ADD_ON", label: "Special Add-on" },
+      ],
+    },
+  ];
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+    { value: "price-low", label: "Price (Low–High)", key: "price" },
+    { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" },
+  ];
+
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -102,6 +122,9 @@ export default async function AddOnsPage() {
         columns={["Name", "Type", "Price", "Status", "Actions"]}
         searchPlaceholder="Search add-ons…"
         emptyLabel="No add-ons yet."
+        filterOptions={filterOptions}
+        sortOptions={sortOptions}
+        pageSize={8}
       />
     </div>
   );

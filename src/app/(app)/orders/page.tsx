@@ -5,7 +5,8 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listOrders } from "@/modules/orders/order";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { TableCell } from "@/components/ui/table";
+import { CatalogBrowser, type CatalogEntry, type CatalogSortOption, CATALOG_ADD_TILE_CLASSNAME } from "@/components/catalog/catalog-browser";
 import { OrdersFilterBar } from "./_components/orders-filter-bar";
 import type { OrderStatus, OrderKind } from "@/generated/prisma/enums";
 
@@ -41,18 +42,91 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
 
+function formatDate(date: Date) {
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
 interface OrdersPageProps {
-  searchParams: Promise<{ search?: string; status?: string; orderKind?: string }>;
+  searchParams: Promise<{ status?: string; orderKind?: string }>;
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
-  const { search, status, orderKind } = await searchParams;
+  const { status, orderKind } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
   const validOrderKind = orderKind && orderKind in ORDER_KIND_LABEL ? (orderKind as OrderKind) : undefined;
 
-  const orders = await listOrders(organizationId, { search, status: validStatus, orderKind: validOrderKind });
+  const orders = await listOrders(organizationId, { status: validStatus, orderKind: validOrderKind });
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "customer", label: "Customer (A–Z)", key: "customer" },
+    { value: "total-high", label: "Total (High–Low)", key: "total", direction: "desc" },
+    { value: "total-low", label: "Total (Low–High)", key: "total" },
+    { value: "event-date", label: "Event Date", key: "eventDate" },
+  ];
+
+  const entries: CatalogEntry[] = orders.map((order) => ({
+    id: order.id,
+    href: `/orders/${order.id}`,
+    searchText: `${order.customer.name} ${order.customer.phone} ${order.orderNumber ?? ""}`,
+    sortValues: {
+      customer: order.customer.name,
+      total: Number(order.total),
+      newest: order.eventStartDate.getTime(),
+      eventDate: order.eventStartDate.getTime(),
+    },
+    card: (
+      <div className="flex flex-col gap-2 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold">{order.orderNumber ?? "—"}</span>
+            <span className="flex items-center gap-1.5 font-medium">
+              <ShoppingCart className="size-4 text-muted-foreground" />
+              {order.customer.name}
+            </span>
+          </div>
+          <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {order.eventStartDate.toDateString() === order.eventEndDate.toDateString()
+            ? formatDate(order.eventStartDate)
+            : `${order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${formatDate(order.eventEndDate)}`}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="secondary" className="w-fit">
+            {ORDER_KIND_LABEL[order.orderKind]}
+          </Badge>
+          {order.eventType && (
+            <Badge variant="outline" className="w-fit">
+              {order.eventType.name}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-sm font-semibold">{formatCurrency(Number(order.total))}</span>
+          <span className="text-xs text-muted-foreground">
+            {order.paymentStatus === "PAID" ? "Paid" : order.paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : "Unpaid"}
+          </span>
+        </div>
+      </div>
+    ),
+    listRow: (
+      <>
+        <TableCell className="font-medium">{order.orderNumber ?? "—"}</TableCell>
+        <TableCell>{order.customer.name}</TableCell>
+        <TableCell className="text-muted-foreground">{formatDate(order.eventStartDate)}</TableCell>
+        <TableCell>{formatCurrency(Number(order.total))}</TableCell>
+        <TableCell className="text-muted-foreground">
+          {order.paymentStatus === "PAID" ? "Paid" : order.paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : "Unpaid"}
+        </TableCell>
+        <TableCell>
+          <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+        </TableCell>
+      </>
+    ),
+  }));
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -67,53 +141,21 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         </Button>
       </div>
 
-      <OrdersFilterBar />
-
-      {orders.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">No orders yet.</p>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orders.map((order) => (
-            <Link key={order.id} href={`/orders/${order.id}`} className="block">
-              <Card className="h-full transition-shadow hover:shadow-md">
-                <CardContent className="flex flex-col gap-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-xs font-semibold">{order.orderNumber ?? "—"}</span>
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <ShoppingCart className="size-4 text-muted-foreground" />
-                        {order.customer.name}
-                      </span>
-                    </div>
-                    <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {order.eventStartDate.toDateString() === order.eventEndDate.toDateString()
-                      ? order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-                      : `${order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${order.eventEndDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge variant="secondary" className="w-fit">
-                      {ORDER_KIND_LABEL[order.orderKind]}
-                    </Badge>
-                    {order.eventType && (
-                      <Badge variant="outline" className="w-fit">
-                        {order.eventType.name}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-sm font-semibold">{formatCurrency(Number(order.total))}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {order.paymentStatus === "PAID" ? "Paid" : order.paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : "Unpaid"}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
+      <CatalogBrowser
+        entries={entries}
+        addTile={
+          <Link href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+            <Plus className="size-6" />
+            <span className="text-sm font-medium">Create Order</span>
+          </Link>
+        }
+        columns={["Order #", "Customer", "Event Date", "Total", "Payment", "Status"]}
+        searchPlaceholder="Search orders by customer, phone, or order #…"
+        emptyLabel="No orders yet."
+        filters={<OrdersFilterBar />}
+        sortOptions={sortOptions}
+        pageSize={9}
+      />
     </div>
   );
 }

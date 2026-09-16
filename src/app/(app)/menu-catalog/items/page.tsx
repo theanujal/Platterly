@@ -6,7 +6,7 @@ import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddItemDialog } from "./_components/add-item-dialog";
 import { ItemCardActions } from "./_components/item-card-actions";
 import type { ItemFormValues } from "./_components/item-form";
@@ -42,6 +42,11 @@ export default async function ItemsPage() {
     return {
       id: item.id,
       searchText: `${item.name} ${item.description ?? ""} ${item.categories.map((c) => c.category.name).join(" ")}`,
+      filterValues: {
+        menuId: item.menus.map((m) => m.menuId),
+        categoryId: item.categories.map((c) => c.categoryId),
+      },
+      sortValues: { name: item.name, price: Number(item.price), newest: item.createdAt.getTime() },
       card: (
         <>
           {item.image ? (
@@ -110,6 +115,18 @@ export default async function ItemsPage() {
     };
   });
 
+  const filterOptions: CatalogFilterOption[] = [
+    { key: "menuId", allLabel: "Menu Type", options: menuOptions.map((m) => ({ value: m.id, label: m.name })) },
+    { key: "categoryId", allLabel: "Category", options: categoryOptions.map((c) => ({ value: c.id, label: c.name })) },
+  ];
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+    { value: "price-low", label: "Price (Low–High)", key: "price" },
+    { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-4">
@@ -126,6 +143,9 @@ export default async function ItemsPage() {
         columns={["Name", "Category", "Type", "Price", "Status", "Actions"]}
         searchPlaceholder="Search food items…"
         emptyLabel="No food items yet."
+        filterOptions={filterOptions}
+        sortOptions={sortOptions}
+        pageSize={8}
       />
     </div>
   );

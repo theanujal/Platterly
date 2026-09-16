@@ -7,7 +7,7 @@ import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddLeadDialog } from "./_components/add-lead-dialog";
 import { EnquiryRowActions } from "./_components/enquiry-row-actions";
 import type { EnquiryFormValues } from "./_components/enquiry-form";
@@ -75,6 +75,7 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
     return {
       id: enquiry.id,
       searchText: `${enquiry.name} ${enquiry.phone} ${enquiry.venue ?? ""}`,
+      sortValues: { name: enquiry.name, newest: enquiry.createdAt.getTime() },
       card: (
         <div className="flex flex-col gap-1.5 p-4">
           <div className="flex items-start justify-between gap-2">
@@ -121,6 +122,11 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
     };
   });
 
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+  ];
+
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -128,14 +134,12 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
           <h1 className="text-xl font-semibold">Enquiries</h1>
           <p className="text-sm text-muted-foreground">Leads and enquiries — the early stage of the customer journey.</p>
         </div>
-        <AddLeadDialog />
-      </div>
-
-      <div className="flex items-center justify-between gap-2">
-        <EnquiryStatusFilter />
-        <Link href="/customers" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
-          View Customers →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/customers" className="text-xs text-muted-foreground hover:text-foreground hover:underline">
+            View Customers →
+          </Link>
+          <AddLeadDialog />
+        </div>
       </div>
 
       <CatalogBrowser
@@ -144,6 +148,9 @@ export default async function EnquiriesPage({ searchParams }: EnquiriesPageProps
         columns={["Name", "Phone", "Event Type", "Status", "Actions"]}
         searchPlaceholder="Search enquiries…"
         emptyLabel="No enquiries yet."
+        filters={<EnquiryStatusFilter />}
+        sortOptions={sortOptions}
+        pageSize={8}
       />
     </div>
   );

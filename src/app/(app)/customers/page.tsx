@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listCustomers } from "@/modules/customers/customer";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddCustomerDialog } from "./_components/add-customer-dialog";
 import { CustomerCardActions } from "./_components/customer-card-actions";
 import type { CustomerFormValues } from "./_components/customer-form";
@@ -34,6 +34,8 @@ export default async function CustomersPage() {
     return {
       id: customer.id,
       searchText: `${customer.name} ${customer.phone} ${customer.email ?? ""} ${customer.city ?? ""}`,
+      filterValues: { status: customer.isActive ? "ACTIVE" : "INACTIVE" },
+      sortValues: { name: customer.name, newest: customer.createdAt.getTime() },
       card: (
         <div className="flex flex-col gap-1.5 p-4">
           <div className="flex items-start justify-between gap-2">
@@ -69,6 +71,22 @@ export default async function CustomersPage() {
     };
   });
 
+  const filterOptions: CatalogFilterOption[] = [
+    {
+      key: "status",
+      allLabel: "Status",
+      options: [
+        { value: "ACTIVE", label: "Active" },
+        { value: "INACTIVE", label: "Inactive" },
+      ],
+    },
+  ];
+
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "name", label: "Name (A–Z)", key: "name" },
+  ];
+
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <div className="flex items-start justify-between gap-4">
@@ -85,6 +103,9 @@ export default async function CustomersPage() {
         columns={["Name", "Phone", "Email", "Status", "Actions"]}
         searchPlaceholder="Search customers…"
         emptyLabel="No customers yet."
+        filterOptions={filterOptions}
+        sortOptions={sortOptions}
+        pageSize={8}
       />
     </div>
   );
