@@ -190,16 +190,28 @@ function toStorefrontItem(item: { id: string; name: string; description: string 
   };
 }
 
+export interface StorefrontMenuFilter {
+  /** Chunk 11 Group 11.2 — scope to Menus assigned to the customer's chosen Event Type (EventTypeMenu). */
+  eventTypeId?: string;
+  menuType?: FoodType;
+}
+
 /**
  * Chunk 8 Group 8.3 — active Menus with their active items, grouped into
  * sections by the menu's own category assignments (items tagged with an
  * assigned category land in that section; anything else falls into a
- * trailing "Other Items" section). View-only: no `maxSelection`/customer
- * picking semantics here — that's Chunk 11's Menu Selection workflow.
+ * trailing "Other Items" section). View-only itself: no `maxSelection`
+ * semantics here, but Chunk 11's Menu Selection reuses it with `filter`
+ * scoped to the customer's Event Type/Menu Preference.
  */
-export async function listStorefrontMenus(organizationId: string): Promise<StorefrontMenu[]> {
+export async function listStorefrontMenus(organizationId: string, filter?: StorefrontMenuFilter): Promise<StorefrontMenu[]> {
   const menus = await prisma.menu.findMany({
-    where: { organizationId, isActive: true },
+    where: {
+      organizationId,
+      isActive: true,
+      ...(filter?.eventTypeId ? { eventTypes: { some: { eventTypeId: filter.eventTypeId } } } : {}),
+      ...(filter?.menuType ? { menuType: filter.menuType } : {}),
+    },
     include: {
       items: {
         where: { menuItem: { isActive: true } },

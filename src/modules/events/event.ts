@@ -32,7 +32,7 @@ async function replaceRequiredInventory(eventId: string, items: RequiredInventor
   });
 }
 
-export async function createEvent(organizationId: string, input: EventInput, actorUserId: string) {
+export async function createEvent(organizationId: string, input: EventInput, actorUserId?: string) {
   const event = await prisma.event.create({
     data: {
       organizationId,

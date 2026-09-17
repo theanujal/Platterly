@@ -31,8 +31,8 @@ describe("secure access tokens (Chunk 2 Group 2.4) — the chunk file's explicit
     const issued = await prisma.secureAccessToken.create({
       data: {
         organizationId: org.id,
-        resourceType: "MENU_SELECTION",
-        resourceId: "ms_1",
+        resourceType: "PAYMENT_LINK",
+        resourceId: "pl_1",
         token: crypto.randomUUID(),
         expiresAt: new Date(Date.now() - 1000), // already expired
       },

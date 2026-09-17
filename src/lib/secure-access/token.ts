@@ -18,10 +18,12 @@ export interface ResolvedToken {
 }
 
 /**
- * Chunk 2 Group 2.4 — generic token issuance for the `/menu/{secure-token}`
- * pattern (PRD §25), shared by Quotation/Menu-Selection/Invoice/Payment-Link
- * (Chunks 10, 11, 14). The Public Storefront's human-readable slug (Chunk 8)
- * is a *separate* mechanism built on Chunk 1's routing, not this service.
+ * Chunk 2 Group 2.4 — generic token issuance (PRD §25), shared by
+ * Quotation/Invoice/Payment-Link (Chunks 10, 14). Menu Selection (Chunk 11)
+ * does NOT use this service — per AJ's explicit direction (2026-09-17), it
+ * rides on Chunk 8's human-readable Public Menu Link slug instead. The
+ * Public Storefront's slug is a *separate* mechanism built on Chunk 1's
+ * routing, not this service.
  */
 export async function issueToken(params: IssueTokenParams) {
   const token = randomBytes(24).toString("base64url");

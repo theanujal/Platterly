@@ -30,6 +30,14 @@ export const TENANT_SCOPED_DELEGATES = [
   "menuCategory",
   "menuItem",
   "menu",
+  // Chunk 11 (2026-09-17) — menuSelection has its own organizationId (used
+  // directly by Kitchen Dashboard/admin queries, unlike its child
+  // menuSelectionItem/menuVersion/menuVersionItem, which cascade off it
+  // automatically and have no organizationId of their own). Its own FK to
+  // Event is onDelete: Cascade, so this deleteMany is redundant with
+  // "event" below at the DB level either way — listed here purely to
+  // satisfy the guardrail test, order doesn't matter against "event".
+  "menuSelection",
   // Chunk 9 — Event has onDelete: Restrict FKs to Customer/EventType, and
   // its child eventRequiredInventory (no organizationId of its own,
   // cascades off Event automatically) has onDelete: Restrict to Inventory.

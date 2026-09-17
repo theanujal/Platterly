@@ -15,7 +15,7 @@ export interface CustomerInput {
   leadSource?: EnquiryLeadSource | null;
 }
 
-export async function createCustomer(organizationId: string, input: CustomerInput, actorUserId: string) {
+export async function createCustomer(organizationId: string, input: CustomerInput, actorUserId?: string) {
   const customer = await prisma.customer.create({
     data: {
       organizationId,
@@ -106,6 +106,16 @@ export async function listCustomers(organizationId: string, filter?: CustomerLis
   });
 
   return customers.map(({ _count, ...customer }) => ({ ...customer, status: statusOf(_count.orders) }));
+}
+
+/**
+ * Chunk 11 Group 11.2 — the anonymous public intake form's customer
+ * identification step (no login, phone number only; see
+ * `Customer.@@unique([organizationId, phone])`). Not exclusive to that flow,
+ * but that's the reason it exists.
+ */
+export async function findCustomerByPhone(organizationId: string, phone: string) {
+  return prisma.customer.findUnique({ where: { organizationId_phone: { organizationId, phone } } });
 }
 
 export async function getCustomer(organizationId: string, id: string) {

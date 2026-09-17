@@ -228,7 +228,7 @@ export async function recalculateOrderTotals(orderId: string) {
   return prisma.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, total, balance } });
 }
 
-export async function createOrder(organizationId: string, input: OrderInput, actorUserId: string) {
+export async function createOrder(organizationId: string, input: OrderInput, actorUserId?: string) {
   const orderKind = input.orderKind ?? "SINGLE";
   if (orderKind === "SINGLE" && input.childPricingMenuId) {
     await prisma.menu.findFirstOrThrow({ where: { id: input.childPricingMenuId, organizationId } });
@@ -472,7 +472,7 @@ export class OrderEventTypeRequiredError extends Error {}
  * #14): Order and Event stay separate rows, but this is the one place an
  * Order's own snapshot fields seed a real operational Event.
  */
-export async function createEventForOrder(organizationId: string, orderId: string, actorUserId: string) {
+export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string) {
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { customer: true } });
   if (!order.eventTypeId) {
     throw new OrderEventTypeRequiredError("Set an Event Type on this Order before creating an Event for it.");

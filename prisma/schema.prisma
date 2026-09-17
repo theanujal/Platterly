@@ -34,8 +34,8 @@ model User {
   firstName String?
   lastName  String?
 
-  notificationsReceived Notification[]
-  auditLogsActedOn      AuditLog[]
+  notificationsReceived        Notification[]
+  auditLogsActedOn             AuditLog[]
   inventoryTransactionsActedOn InventoryTransaction[]
 
   @@unique([email])
@@ -164,6 +164,7 @@ model Organization {
   events         Event[]
   orders         Order[]
   quotations     Quotation[]
+  menuSelections MenuSelection[]
 
   @@unique([slug])
   @@map("organization")
@@ -359,9 +360,10 @@ model AuditLog {
   @@map("audit_log")
 }
 
+// MENU_SELECTION removed 2026-09-17 — Chunk 11 doesn't use this token
+// service (see src/lib/secure-access/token.ts's header comment).
 enum SecureAccessResourceType {
   QUOTATION
-  MENU_SELECTION
   INVOICE
   PAYMENT_LINK
 }
@@ -624,10 +626,12 @@ model MenuItem {
   // add it, without pulling Recipe/BOM logic itself forward.
   recipeId String?
 
-  categories     MenuItemCategory[]
-  menus          MenuMenuItem[]
-  orderItems     OrderItem[]
-  quotationItems QuotationItem[]
+  categories         MenuItemCategory[]
+  menus              MenuMenuItem[]
+  orderItems         OrderItem[]
+  quotationItems     QuotationItem[]
+  menuSelectionItems MenuSelectionItem[]
+  menuVersionItems   MenuVersionItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -673,13 +677,15 @@ model Menu {
   child5To10PricingType ChildPricingType @default(FIXED)
   child5To10PriceValue  Decimal?         @db.Decimal(10, 2)
 
-  items                MenuMenuItem[]
-  categoryAssignments  MenuCategoryAssignment[]
-  eventTypes           EventTypeMenu[]
-  orderItems           OrderItem[]
-  quotationItems       QuotationItem[]
-  mealPlanEntries      MealPlanEntry[]
-  childPricingOrders   Order[]
+  items               MenuMenuItem[]
+  categoryAssignments MenuCategoryAssignment[]
+  eventTypes          EventTypeMenu[]
+  orderItems          OrderItem[]
+  quotationItems      QuotationItem[]
+  mealPlanEntries     MealPlanEntry[]
+  childPricingOrders  Order[]
+  menuSelectionItems  MenuSelectionItem[]
+  menuVersionItems    MenuVersionItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -752,8 +758,8 @@ model EventType {
   // build. "Default menu/package/pricing rules" (also named in §7) stays
   // deliberately unbuilt — nothing downstream consumes it yet (Quotation/
   // Order is Chunk 10); documented as a deferral, not a silent omission.
-  icon      String?
-  sortOrder Int     @default(0)
+  icon           String?
+  sortOrder      Int          @default(0)
 
   menus      EventTypeMenu[]
   events     Event[]
@@ -815,8 +821,10 @@ model AddOn {
   price          Decimal        @db.Decimal(10, 2)
   isActive       Boolean        @default(true)
 
-  orderItems     OrderItem[]
-  quotationItems QuotationItem[]
+  orderItems         OrderItem[]
+  quotationItems     QuotationItem[]
+  menuSelectionItems MenuSelectionItem[]
+  menuVersionItems   MenuVersionItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -838,27 +846,27 @@ enum InventoryTransactionType {
 }
 
 model Inventory {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  category       String
-  description    String?
-  image          String?
-  unit           String
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  category          String
+  description       String?
+  image             String?
+  unit              String
   // Current on-hand balance — the source of truth for "what do we have",
   // kept in sync with each InventoryTransaction inside one DB transaction
   // (src/modules/inventory/inventory.ts's `recordStockTransaction`) rather
   // than recomputed by summing the ledger on every read.
-  stockCount        Decimal   @db.Decimal(12, 2) @default(0)
-  lowStockThreshold Decimal?  @db.Decimal(12, 2)
-  costPerUnit       Decimal?  @db.Decimal(10, 2)
+  stockCount        Decimal      @default(0) @db.Decimal(12, 2)
+  lowStockThreshold Decimal?     @db.Decimal(12, 2)
+  costPerUnit       Decimal?     @db.Decimal(10, 2)
   storageLocation   String?
   supplierName      String?
   supplierContact   String?
   expiryDate        DateTime?
 
-  transactions InventoryTransaction[]
+  transactions     InventoryTransaction[]
   requiredByEvents EventRequiredInventory[]
 
   createdAt DateTime @default(now())
@@ -879,8 +887,8 @@ model InventoryTransaction {
   // Always a positive magnitude for STOCK_IN/STOCK_OUT; a signed delta
   // (can be negative) for ADJUSTMENT — see `recordStockTransaction`'s
   // stock-quantity math for the exact rules each type applies.
-  quantity Decimal @db.Decimal(12, 2)
-  note     String?
+  quantity    Decimal                  @db.Decimal(12, 2)
+  note        String?
 
   // Nullable/SetNull so the ledger entry survives actor deletion, same
   // rationale as AuditLog.actorUserId.
@@ -936,6 +944,10 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Added 2026-09-17 for Chunk 11's phone-based customer lookup
+  // (findCustomerByPhone) — verified no existing duplicate
+  // (organizationId, phone) pairs in dev data before adding.
+  @@unique([organizationId, phone])
   @@index([organizationId])
   @@map("customer")
 }
@@ -987,6 +999,9 @@ model Event {
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   requiredInventory EventRequiredInventory[]
+  // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
+  // is @unique).
+  menuSelection     MenuSelection?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1065,6 +1080,26 @@ enum OrderKind {
   MULTI
 }
 
+// Chunk 11 Group 11.2 — the intake form's "Venue Type" dropdown options
+// (2026-09-17 reference form).
+enum VenueType {
+  CLUBHOUSE
+  HOTEL
+  BANQUET_HALL
+  RESORT
+  HOME
+  OFFICE
+  OTHER
+}
+
+// Chunk 11 Group 11.2 — the intake form's "Vehicle Access" dropdown options.
+enum VehicleAccessType {
+  VEHICLE_AND_PARKING
+  VEHICLE_NO_PARKING
+  NO_VEHICLE_ACCESS
+  MANUAL_LOADING_REQUIRED
+}
+
 model Order {
   id             String       @id @default(cuid())
   organizationId String
@@ -1103,6 +1138,34 @@ model Order {
   eventEndDate   DateTime
   venue          String?
   eventAddress   String?
+
+  // Chunk 11 Group 11.2 (2026-09-17) — the customer-facing event-details
+  // intake form's "Menu Preference" and "Event Time" fields, captured here
+  // rather than a new model, following this same section's existing
+  // precedent of storing intake fields directly on Order. eventMealType
+  // reuses MealType (the same enum MealPlanEntry uses) but is independent of
+  // it — this is the single meal slot the *whole event* is for, not a
+  // per-day Multi Order slot.
+  menuPreference FoodType?
+  eventMealType  MealType?
+
+  // Chunk 11 Group 11.2 — "Venue & Delivery Details" section of the intake
+  // form. `venue`/`eventAddress` above already cover the free-text venue
+  // name/full address; these are the additional structured fields the
+  // reference form (AJ, 2026-09-17) collects on top of them.
+  venueType               VenueType?
+  venueDoorNumber         String?
+  venueTower              String?
+  venueFloor              String?
+  venueHallName           String?
+  venueLandmark           String?
+  venueContactName        String?
+  venueContactPhone       String?
+  venueLatitude           Float?
+  venueLongitude          Float?
+  venueAccessInstructions String?
+  vehicleAccess           VehicleAccessType?
+  liveCounterAvailable    Boolean?
 
   // Participant Information (Group 10.3) — lets pricing reflect actual
   // guest composition. `totalParticipants` is a UI-suggested default
@@ -1155,17 +1218,17 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, orderNumber])
   @@index([organizationId])
   @@index([customerId])
-  @@unique([organizationId, orderNumber])
   @@map("order")
 }
 
 // No `organizationId` of its own — cascades off its parent Order row.
 model OrderItem {
-  id      String        @id @default(cuid())
-  orderId String
-  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id       String        @id @default(cuid())
+  orderId  String
+  order    Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   itemType OrderItemType
 
   menuId     String?
@@ -1204,7 +1267,7 @@ model MealPlanEntry {
   date     DateTime
   mealType MealType
   // Only meaningful (and only ever set) when Order.individualPricingEnabled.
-  price Decimal? @db.Decimal(10, 2)
+  price    Decimal? @db.Decimal(10, 2)
 
   // Multi Order per-slot Children Guests & Pricing counts — only meaningful
   // (and only ever set) when Order.orderKind === "MULTI", same gating as
@@ -1215,10 +1278,10 @@ model MealPlanEntry {
   // Multi Order only (Order.orderKind) — which Menu this specific meal slot
   // uses; null for Single Order and for a Multi Order slot not yet decided.
   menuId String?
-  menu   Menu?   @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menu   Menu?       @relation(fields: [menuId], references: [id], onDelete: SetNull)
   // Items chosen from that Menu specifically for this slot — see
   // OrderItem.mealPlanEntryId.
-  items OrderItem[]
+  items  OrderItem[]
 
   createdAt DateTime @default(now())
 
@@ -1265,10 +1328,10 @@ model Quotation {
   venue          String?
   eventAddress   String?
 
-  status     QuotationStatus @default(DRAFT)
-  validUntil DateTime?
-  terms      String?
-  notes      String?
+  status          QuotationStatus @default(DRAFT)
+  validUntil      DateTime?
+  terms           String?
+  notes           String?
   // Set by the customer's own Request Changes / Reject action on the
   // public token page — distinct from `notes`, which is the caterer's own.
   customerMessage String?
@@ -1321,4 +1384,131 @@ model QuotationItem {
 
   @@index([quotationId])
   @@map("quotation_item")
+}
+
+// Chunk 11 Groups 11.2/11.3 (2026-09-17) — Menu Selection + Approval
+// Workflow. AJ's redesign (see dev plans/chunk-11-menu-selection-approval-
+// kitchen.md): no per-event link/token — the customer reaches this through
+// Chunk 8's tenant-wide Public Menu Link, identified by phone (Group 11.2),
+// with a brand-new Event created per submission. One MenuSelection per
+// Event (MenuSelection.eventId is @unique).
+
+// PRD §29's exact 9-state list.
+enum MenuSelectionStatus {
+  DRAFT
+  SENT_TO_CUSTOMER
+  CUSTOMER_REVIEWING
+  CHANGES_REQUESTED
+  CUSTOMER_APPROVED
+  KITCHEN_REVIEWING
+  KITCHEN_CHANGES_REQUESTED
+  KITCHEN_APPROVED
+  FINAL_LOCKED
+}
+
+model MenuSelection {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  eventId String @unique
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  status MenuSelectionStatus @default(DRAFT)
+
+  // Bumped each time a post-approval change snapshots the prior state into
+  // a new MenuVersion (§30) — the version number `items` below currently
+  // represents.
+  currentVersion Int @default(1)
+
+  // Set by the customer's/kitchen's own Request Changes action — kept
+  // separate per side so neither overwrites the other's comment.
+  customerRequestNote String?
+  kitchenRequestNote  String?
+
+  submittedAt DateTime?
+  lockedAt    DateTime?
+
+  items    MenuSelectionItem[]
+  versions MenuVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("menu_selection")
+}
+
+// No `organizationId` of its own — cascades off its parent MenuSelection
+// row, same pattern as OrderItem/QuotationItem. Represents the *current*
+// live selection; §30's versioning snapshots this into MenuVersionItem
+// before it's changed again once no longer DRAFT.
+model MenuSelectionItem {
+  id              String        @id @default(cuid())
+  menuSelectionId String
+  menuSelection   MenuSelection @relation(fields: [menuSelectionId], references: [id], onDelete: Cascade)
+  itemType        OrderItemType
+
+  menuId     String?
+  menu       Menu?     @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  addOnId    String?
+  addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
+
+  // Snapshotted at add-time, same convention as OrderItem/QuotationItem.
+  name      String
+  unitPrice Decimal @db.Decimal(10, 2)
+  quantity  Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@index([menuSelectionId])
+  @@map("menu_selection_item")
+}
+
+// A frozen snapshot of MenuSelection's items at a point in time — created
+// whenever a post-approval change happens (§30: "any post-approval change
+// creates a new MenuVersion, never mutates in place"). `status` is
+// MenuSelection's status at the moment this version was captured.
+model MenuVersion {
+  id              String        @id @default(cuid())
+  menuSelectionId String
+  menuSelection   MenuSelection @relation(fields: [menuSelectionId], references: [id], onDelete: Cascade)
+
+  versionNumber Int
+  status        MenuSelectionStatus
+  note          String?
+
+  items MenuVersionItem[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([menuSelectionId, versionNumber])
+  @@index([menuSelectionId])
+  @@map("menu_version")
+}
+
+// No `organizationId` of its own — cascades off its parent MenuVersion row.
+model MenuVersionItem {
+  id            String        @id @default(cuid())
+  menuVersionId String
+  menuVersion   MenuVersion   @relation(fields: [menuVersionId], references: [id], onDelete: Cascade)
+  itemType      OrderItemType
+
+  menuId     String?
+  menu       Menu?     @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  menuItemId String?
+  menuItem   MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  addOnId    String?
+  addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
+
+  name      String
+  unitPrice Decimal @db.Decimal(10, 2)
+  quantity  Int     @default(1)
+
+  createdAt DateTime @default(now())
+
+  @@index([menuVersionId])
+  @@map("menu_version_item")
 }
