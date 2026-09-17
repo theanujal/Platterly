@@ -47,6 +47,77 @@ describe("MenuItem CRUD (Chunk 6, reworked 2026-09-14)", () => {
     expect(Number(item.price)).toBe(250);
   });
 
+  it("createMenuItem defaults every Additional Details field to null when omitted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const item = await createMenuItem(org.id, { name: "Paneer Tikka", foodType: "VEGETARIAN", price: 250 }, actor.id);
+
+    expect(item.origin).toBeNull();
+    expect(item.baseType).toBeNull();
+    expect(item.preparationMethod).toBeNull();
+    expect(item.spiceLevel).toBeNull();
+    expect(item.onionGarlic).toBeNull();
+    expect(item.vegFriendly).toBeNull();
+    expect(item.nonVegFriendly).toBeNull();
+    expect(item.texture).toBeNull();
+    expect(item.tasteProfile).toBeNull();
+    expect(item.keyIngredients).toBeNull();
+  });
+
+  it("createMenuItem/updateMenuItem persist Additional Details, and updateMenuItem preserves them when omitted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const item = await createMenuItem(
+      org.id,
+      {
+        name: "Paneer Tikka",
+        foodType: "VEGETARIAN",
+        price: 250,
+        origin: "NORTH_INDIAN",
+        baseType: "GRAVY_BASED",
+        preparationMethod: "TANDOOR",
+        spiceLevel: "MEDIUM",
+        onionGarlic: "WITHOUT_ONION_GARLIC",
+        vegFriendly: true,
+        nonVegFriendly: false,
+        texture: "CREAMY",
+        tasteProfile: "SAVORY",
+        keyIngredients: "Paneer, Tomato, Cashew",
+      },
+      actor.id,
+    );
+
+    expect(item.origin).toBe("NORTH_INDIAN");
+    expect(item.baseType).toBe("GRAVY_BASED");
+    expect(item.preparationMethod).toBe("TANDOOR");
+    expect(item.spiceLevel).toBe("MEDIUM");
+    expect(item.onionGarlic).toBe("WITHOUT_ONION_GARLIC");
+    expect(item.vegFriendly).toBe(true);
+    expect(item.nonVegFriendly).toBe(false);
+    expect(item.texture).toBe("CREAMY");
+    expect(item.tasteProfile).toBe("SAVORY");
+    expect(item.keyIngredients).toBe("Paneer, Tomato, Cashew");
+
+    // A partial update (name only) preserves every Additional Details field untouched.
+    const updated = await updateMenuItem(org.id, item.id, { name: "Paneer Tikka Deluxe", foodType: "VEGETARIAN", price: 250 }, actor.id);
+    expect(updated.origin).toBe("NORTH_INDIAN");
+    expect(updated.spiceLevel).toBe("MEDIUM");
+    expect(updated.keyIngredients).toBe("Paneer, Tomato, Cashew");
+
+    // An explicit update can change a subset and null out another explicitly.
+    const changed = await updateMenuItem(
+      org.id,
+      item.id,
+      { name: "Paneer Tikka Deluxe", foodType: "VEGETARIAN", price: 250, spiceLevel: "SPICY", origin: null },
+      actor.id,
+    );
+    expect(changed.spiceLevel).toBe("SPICY");
+    expect(changed.origin).toBeNull();
+    expect(changed.baseType).toBe("GRAVY_BASED");
+  });
+
   it("an item can be tagged with multiple categories at once", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

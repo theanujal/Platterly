@@ -16,6 +16,85 @@ const FOOD_TYPE_OPTIONS = [
   { value: "NON_VEGETARIAN", label: "Non-Vegetarian" },
 ] as const;
 
+const ORIGIN_OPTIONS = [
+  { value: "NORTH_INDIAN", label: "North Indian" },
+  { value: "SOUTH_INDIAN", label: "South Indian" },
+  { value: "PUNJABI", label: "Punjabi" },
+  { value: "GUJARATI", label: "Gujarati" },
+  { value: "BENGALI", label: "Bengali" },
+  { value: "MUGHLAI", label: "Mughlai" },
+  { value: "CHINESE", label: "Chinese" },
+  { value: "CONTINENTAL", label: "Continental" },
+  { value: "ITALIAN", label: "Italian" },
+  { value: "MEXICAN", label: "Mexican" },
+  { value: "THAI", label: "Thai" },
+  { value: "SOUTH_EAST_ASIAN", label: "South East Asian" },
+  { value: "FUSION", label: "Fusion" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+const BASE_TYPE_OPTIONS = [
+  { value: "GRAVY_BASED", label: "Gravy-based" },
+  { value: "DRY", label: "Dry" },
+  { value: "CREAM_BASED", label: "Cream-based" },
+  { value: "TOMATO_BASED", label: "Tomato-based" },
+  { value: "COCONUT_BASED", label: "Coconut-based" },
+  { value: "YOGURT_BASED", label: "Yogurt-based" },
+  { value: "CLEAR", label: "Clear" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+const PREPARATION_METHOD_OPTIONS = [
+  { value: "GRILLED", label: "Grilled" },
+  { value: "ROASTED", label: "Roasted" },
+  { value: "DEEP_FRIED", label: "Deep Fried" },
+  { value: "SHALLOW_FRIED", label: "Shallow Fried" },
+  { value: "STEAMED", label: "Steamed" },
+  { value: "SAUTEED", label: "Sautéed" },
+  { value: "BAKED", label: "Baked" },
+  { value: "BOILED", label: "Boiled" },
+  { value: "TANDOOR", label: "Tandoor" },
+  { value: "RAW", label: "Raw" },
+  { value: "SLOW_COOKED", label: "Slow Cooked" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+const SPICE_LEVEL_OPTIONS = [
+  { value: "NONE", label: "None" },
+  { value: "MILD", label: "Mild" },
+  { value: "MEDIUM", label: "Medium" },
+  { value: "SPICY", label: "Spicy" },
+  { value: "EXTRA_SPICY", label: "Extra Spicy" },
+] as const;
+
+const ONION_GARLIC_OPTIONS = [
+  { value: "WITH_ONION_GARLIC", label: "With Onion & Garlic" },
+  { value: "WITHOUT_ONION_GARLIC", label: "Without Onion & Garlic (Jain-friendly)" },
+] as const;
+
+const TEXTURE_OPTIONS = [
+  { value: "CRISPY", label: "Crispy" },
+  { value: "SOFT", label: "Soft" },
+  { value: "CREAMY", label: "Creamy" },
+  { value: "CRUNCHY", label: "Crunchy" },
+  { value: "SMOOTH", label: "Smooth" },
+  { value: "CHEWY", label: "Chewy" },
+  { value: "JUICY", label: "Juicy" },
+  { value: "FLAKY", label: "Flaky" },
+  { value: "OTHER", label: "Other" },
+] as const;
+
+const TASTE_PROFILE_OPTIONS = [
+  { value: "SWEET", label: "Sweet" },
+  { value: "SOUR", label: "Sour" },
+  { value: "SPICY", label: "Spicy" },
+  { value: "TANGY", label: "Tangy" },
+  { value: "SAVORY", label: "Savory" },
+  { value: "BITTER", label: "Bitter" },
+  { value: "UMAMI", label: "Umami" },
+  { value: "MILD", label: "Mild" },
+] as const;
+
 export interface ItemFormValues {
   name: string;
   description: string;
@@ -25,6 +104,17 @@ export interface ItemFormValues {
   isActive: boolean;
   categoryIds: string[];
   menuIds: string[];
+  /** Additional Details — all optional; "" means not specified. */
+  origin: string;
+  baseType: string;
+  preparationMethod: string;
+  spiceLevel: string;
+  onionGarlic: string;
+  vegFriendly: boolean;
+  nonVegFriendly: boolean;
+  texture: string;
+  tasteProfile: string;
+  keyIngredients: string;
 }
 
 export const EMPTY_ITEM_VALUES: ItemFormValues = {
@@ -36,6 +126,16 @@ export const EMPTY_ITEM_VALUES: ItemFormValues = {
   isActive: true,
   categoryIds: [],
   menuIds: [],
+  origin: "",
+  baseType: "",
+  preparationMethod: "",
+  spiceLevel: "",
+  onionGarlic: "",
+  vegFriendly: false,
+  nonVegFriendly: false,
+  texture: "",
+  tasteProfile: "",
+  keyIngredients: "",
 };
 
 interface ItemFormProps {
@@ -74,6 +174,16 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
     formData.set("isActive", String(values.isActive));
     for (const id of values.categoryIds) formData.append("categoryIds", id);
     for (const id of values.menuIds) formData.append("menuIds", id);
+    formData.set("origin", values.origin);
+    formData.set("baseType", values.baseType);
+    formData.set("preparationMethod", values.preparationMethod);
+    formData.set("spiceLevel", values.spiceLevel);
+    formData.set("onionGarlic", values.onionGarlic);
+    formData.set("vegFriendly", String(values.vegFriendly));
+    formData.set("nonVegFriendly", String(values.nonVegFriendly));
+    formData.set("texture", values.texture);
+    formData.set("tasteProfile", values.tasteProfile);
+    formData.set("keyIngredients", values.keyIngredients);
     if (image) formData.set("image", image);
 
     const result = await onSubmit(formData);
@@ -106,7 +216,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
             <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-food-type">Menu Type</Label>
+            <Label htmlFor="item-food-type">Veg / Non-Veg</Label>
             <Select
               items={Object.fromEntries(FOOD_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
               value={values.foodType}
@@ -178,6 +288,186 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
               {categories.length === 0 && <p className="text-sm text-muted-foreground">No categories yet — add some first.</p>}
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4 rounded-md border border-border p-4">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-semibold">Additional Details</span>
+          <p className="text-xs text-muted-foreground">
+            Optional — only shown on the customer-facing menu once it&apos;s filled in.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-origin">Origin</Label>
+            <Select
+              items={Object.fromEntries(ORIGIN_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.origin}
+              onValueChange={(v) => setField("origin", v ?? "")}
+            >
+              <SelectTrigger id="item-origin" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {ORIGIN_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-base-type">Base Type</Label>
+            <Select
+              items={Object.fromEntries(BASE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.baseType}
+              onValueChange={(v) => setField("baseType", v ?? "")}
+            >
+              <SelectTrigger id="item-base-type" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {BASE_TYPE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-preparation-method">Preparation Method</Label>
+            <Select
+              items={Object.fromEntries(PREPARATION_METHOD_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.preparationMethod}
+              onValueChange={(v) => setField("preparationMethod", v ?? "")}
+            >
+              <SelectTrigger id="item-preparation-method" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {PREPARATION_METHOD_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-spice-level">Spice Level</Label>
+            <Select
+              items={Object.fromEntries(SPICE_LEVEL_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.spiceLevel}
+              onValueChange={(v) => setField("spiceLevel", v ?? "")}
+            >
+              <SelectTrigger id="item-spice-level" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {SPICE_LEVEL_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-onion-garlic">Onion / Garlic</Label>
+            <Select
+              items={Object.fromEntries(ONION_GARLIC_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.onionGarlic}
+              onValueChange={(v) => setField("onionGarlic", v ?? "")}
+            >
+              <SelectTrigger id="item-onion-garlic" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {ONION_GARLIC_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-texture">Texture</Label>
+            <Select
+              items={Object.fromEntries(TEXTURE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.texture}
+              onValueChange={(v) => setField("texture", v ?? "")}
+            >
+              <SelectTrigger id="item-texture" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {TEXTURE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-taste-profile">Taste Profile</Label>
+            <Select
+              items={Object.fromEntries(TASTE_PROFILE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.tasteProfile}
+              onValueChange={(v) => setField("tasteProfile", v ?? "")}
+            >
+              <SelectTrigger id="item-taste-profile" className="w-full">
+                <SelectValue placeholder="Not specified" />
+              </SelectTrigger>
+              <SelectContent>
+                {TASTE_PROFILE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-key-ingredients">Key Ingredients</Label>
+            <Input
+              id="item-key-ingredients"
+              placeholder="e.g. Paneer, Tomato, Cashew"
+              value={values.keyIngredients}
+              onChange={(e) => setField("keyIngredients", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-4">
+          <label htmlFor="item-veg-friendly" className="flex w-fit cursor-pointer items-center gap-2">
+            <Checkbox
+              id="item-veg-friendly"
+              checked={values.vegFriendly}
+              onCheckedChange={(checked) => setField("vegFriendly", checked === true)}
+            />
+            <span className="text-sm font-medium">Veg Friendly</span>
+          </label>
+          <label htmlFor="item-nonveg-friendly" className="flex w-fit cursor-pointer items-center gap-2">
+            <Checkbox
+              id="item-nonveg-friendly"
+              checked={values.nonVegFriendly}
+              onCheckedChange={(checked) => setField("nonVegFriendly", checked === true)}
+            />
+            <span className="text-sm font-medium">Non-Veg Friendly</span>
+          </label>
         </div>
       </div>
 

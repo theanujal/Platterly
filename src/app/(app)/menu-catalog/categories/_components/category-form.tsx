@@ -106,6 +106,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
         id="category-active"
         checked={values.isActive}
         onCheckedChange={(checked) => setField("isActive", checked)}
+        label="Active (visible to customers)"
       />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">

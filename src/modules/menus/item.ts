@@ -1,7 +1,16 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import type { FoodType } from "@/generated/prisma/enums";
+import type {
+  FoodType,
+  MenuItemOrigin,
+  MenuItemBaseType,
+  MenuItemPreparationMethod,
+  MenuItemSpiceLevel,
+  MenuItemOnionGarlic,
+  MenuItemTexture,
+  MenuItemTasteProfile,
+} from "@/generated/prisma/enums";
 
 export interface MenuItemInput {
   name: string;
@@ -14,6 +23,17 @@ export interface MenuItemInput {
   categoryIds?: string[];
   /** Full replacement of this item's direct menu assignments — independent of categoryIds above. */
   menuIds?: string[];
+  /** Additional Details (2026-09-17) — all optional, dynamically consumed by the future customer-facing menu. */
+  origin?: MenuItemOrigin | null;
+  baseType?: MenuItemBaseType | null;
+  preparationMethod?: MenuItemPreparationMethod | null;
+  spiceLevel?: MenuItemSpiceLevel | null;
+  onionGarlic?: MenuItemOnionGarlic | null;
+  vegFriendly?: boolean | null;
+  nonVegFriendly?: boolean | null;
+  texture?: MenuItemTexture | null;
+  tasteProfile?: MenuItemTasteProfile | null;
+  keyIngredients?: string | null;
 }
 
 async function replaceItemCategories(menuItemId: string, categoryIds: string[] | undefined) {
@@ -44,6 +64,16 @@ export async function createMenuItem(organizationId: string, input: MenuItemInpu
       foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? true,
+      origin: input.origin,
+      baseType: input.baseType,
+      preparationMethod: input.preparationMethod,
+      spiceLevel: input.spiceLevel,
+      onionGarlic: input.onionGarlic,
+      vegFriendly: input.vegFriendly,
+      nonVegFriendly: input.nonVegFriendly,
+      texture: input.texture,
+      tasteProfile: input.tasteProfile,
+      keyIngredients: input.keyIngredients,
     },
   });
   await replaceItemCategories(item.id, input.categoryIds);
@@ -78,6 +108,16 @@ export async function updateMenuItem(
       foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? before.isActive,
+      origin: input.origin !== undefined ? input.origin : before.origin,
+      baseType: input.baseType !== undefined ? input.baseType : before.baseType,
+      preparationMethod: input.preparationMethod !== undefined ? input.preparationMethod : before.preparationMethod,
+      spiceLevel: input.spiceLevel !== undefined ? input.spiceLevel : before.spiceLevel,
+      onionGarlic: input.onionGarlic !== undefined ? input.onionGarlic : before.onionGarlic,
+      vegFriendly: input.vegFriendly !== undefined ? input.vegFriendly : before.vegFriendly,
+      nonVegFriendly: input.nonVegFriendly !== undefined ? input.nonVegFriendly : before.nonVegFriendly,
+      texture: input.texture !== undefined ? input.texture : before.texture,
+      tasteProfile: input.tasteProfile !== undefined ? input.tasteProfile : before.tasteProfile,
+      keyIngredients: input.keyIngredients !== undefined ? input.keyIngredients : before.keyIngredients,
     },
   });
   await replaceItemCategories(id, input.categoryIds);

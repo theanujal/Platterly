@@ -503,6 +503,90 @@ enum FoodType {
   NON_VEGETARIAN
 }
 
+// Food Item Additional Details (2026-09-17, AJ) — curated single-select
+// vocabularies for the Indian-catering domain, each with an OTHER escape
+// hatch where the value space is genuinely open-ended. All optional on
+// MenuItem; nothing here is required or defaulted.
+enum MenuItemOrigin {
+  NORTH_INDIAN
+  SOUTH_INDIAN
+  PUNJABI
+  GUJARATI
+  BENGALI
+  MUGHLAI
+  CHINESE
+  CONTINENTAL
+  ITALIAN
+  MEXICAN
+  THAI
+  SOUTH_EAST_ASIAN
+  FUSION
+  OTHER
+}
+
+enum MenuItemBaseType {
+  GRAVY_BASED
+  DRY
+  CREAM_BASED
+  TOMATO_BASED
+  COCONUT_BASED
+  YOGURT_BASED
+  CLEAR
+  OTHER
+}
+
+enum MenuItemPreparationMethod {
+  GRILLED
+  ROASTED
+  DEEP_FRIED
+  SHALLOW_FRIED
+  STEAMED
+  SAUTEED
+  BAKED
+  BOILED
+  TANDOOR
+  RAW
+  SLOW_COOKED
+  OTHER
+}
+
+enum MenuItemSpiceLevel {
+  NONE
+  MILD
+  MEDIUM
+  SPICY
+  EXTRA_SPICY
+}
+
+// Jain-friendly indicator — a common Indian-catering requirement.
+enum MenuItemOnionGarlic {
+  WITH_ONION_GARLIC
+  WITHOUT_ONION_GARLIC
+}
+
+enum MenuItemTexture {
+  CRISPY
+  SOFT
+  CREAMY
+  CRUNCHY
+  SMOOTH
+  CHEWY
+  JUICY
+  FLAKY
+  OTHER
+}
+
+enum MenuItemTasteProfile {
+  SWEET
+  SOUR
+  SPICY
+  TANGY
+  SAVORY
+  BITTER
+  UMAMI
+  MILD
+}
+
 model MenuItem {
   id             String       @id @default(cuid())
   organizationId String
@@ -513,6 +597,28 @@ model MenuItem {
   foodType       FoodType
   price          Decimal      @db.Decimal(10, 2)
   isActive       Boolean      @default(true)
+
+  // Additional Details (2026-09-17, AJ) — all optional, edited from the
+  // same Food Item form as Basic Information, dynamically consumed by the
+  // (not-yet-built) customer-facing menu: a field left unset here simply
+  // doesn't render there, no placeholder/default text. `vegFriendly`/
+  // `nonVegFriendly` are deliberately independent nullable booleans, not a
+  // single enum — distinct from the existing strict `foodType` above,
+  // this instead flags whether the dish can additionally suit a veg or
+  // non-veg guest (e.g. a base gravy offered either way), so both, one, or
+  // neither can be set without forcing a single classification.
+  origin            MenuItemOrigin?
+  baseType          MenuItemBaseType?
+  preparationMethod MenuItemPreparationMethod?
+  spiceLevel        MenuItemSpiceLevel?
+  onionGarlic       MenuItemOnionGarlic?
+  vegFriendly       Boolean?
+  nonVegFriendly    Boolean?
+  texture           MenuItemTexture?
+  tasteProfile      MenuItemTasteProfile?
+  // Free text — ingredient names have no fixed vocabulary, unlike the
+  // curated fields above. Comma-separated, parsed at the form boundary.
+  keyIngredients    String?
 
   // Chunk 18 (Phase 2) attaches Recipe/BOM via this FK — left nullable now
   // per the roadmap's explicit note, so Phase 2 doesn't need a migration to

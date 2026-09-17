@@ -51,6 +51,16 @@ export default async function ItemsPage() {
       isActive: item.isActive,
       categoryIds: item.categories.map((c) => c.categoryId),
       menuIds: item.menus.map((m) => m.menuId),
+      origin: item.origin ?? "",
+      baseType: item.baseType ?? "",
+      preparationMethod: item.preparationMethod ?? "",
+      spiceLevel: item.spiceLevel ?? "",
+      onionGarlic: item.onionGarlic ?? "",
+      vegFriendly: item.vegFriendly ?? false,
+      nonVegFriendly: item.nonVegFriendly ?? false,
+      texture: item.texture ?? "",
+      tasteProfile: item.tasteProfile ?? "",
+      keyIngredients: item.keyIngredients ?? "",
     };
 
     return {

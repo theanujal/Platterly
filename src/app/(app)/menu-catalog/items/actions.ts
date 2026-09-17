@@ -4,7 +4,16 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
-import type { FoodType } from "@/generated/prisma/enums";
+import type {
+  FoodType,
+  MenuItemOrigin,
+  MenuItemBaseType,
+  MenuItemPreparationMethod,
+  MenuItemSpiceLevel,
+  MenuItemOnionGarlic,
+  MenuItemTexture,
+  MenuItemTasteProfile,
+} from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -43,6 +52,16 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     isActive: formData.get("isActive") === "true",
     categoryIds: formData.getAll("categoryIds").filter((v): v is string => typeof v === "string"),
     menuIds: formData.getAll("menuIds").filter((v): v is string => typeof v === "string"),
+    origin: (stringField(formData, "origin") as MenuItemOrigin | undefined) ?? null,
+    baseType: (stringField(formData, "baseType") as MenuItemBaseType | undefined) ?? null,
+    preparationMethod: (stringField(formData, "preparationMethod") as MenuItemPreparationMethod | undefined) ?? null,
+    spiceLevel: (stringField(formData, "spiceLevel") as MenuItemSpiceLevel | undefined) ?? null,
+    onionGarlic: (stringField(formData, "onionGarlic") as MenuItemOnionGarlic | undefined) ?? null,
+    vegFriendly: formData.get("vegFriendly") === "true" ? true : null,
+    nonVegFriendly: formData.get("nonVegFriendly") === "true" ? true : null,
+    texture: (stringField(formData, "texture") as MenuItemTexture | undefined) ?? null,
+    tasteProfile: (stringField(formData, "tasteProfile") as MenuItemTasteProfile | undefined) ?? null,
+    keyIngredients: stringField(formData, "keyIngredients") ?? null,
   };
 }
 
