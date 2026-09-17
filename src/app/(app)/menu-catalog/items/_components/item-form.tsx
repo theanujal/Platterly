@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -106,8 +107,12 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-food-type">Menu Type</Label>
-            <Select value={values.foodType} onValueChange={(v) => setField("foodType", v ?? values.foodType)}>
-              <SelectTrigger id="item-food-type">
+            <Select
+              items={Object.fromEntries(FOOD_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.foodType}
+              onValueChange={(v) => setField("foodType", v ?? values.foodType)}
+            >
+              <SelectTrigger id="item-food-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -131,14 +136,12 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
               onChange={(e) => setField("price", e.target.value)}
             />
           </div>
-          <label htmlFor="item-active" className="flex w-fit cursor-pointer items-center gap-2">
-            <Checkbox
-              id="item-active"
-              checked={values.isActive}
-              onCheckedChange={(checked) => setField("isActive", checked === true)}
-            />
-            <span className="text-sm font-medium">Active</span>
-          </label>
+          <ActiveToggleCard
+            id="item-active"
+            checked={values.isActive}
+            onCheckedChange={(checked) => setField("isActive", checked)}
+            label="Active (visible to customers)"
+          />
         </div>
 
         <div className="flex flex-col gap-6">
@@ -183,7 +186,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

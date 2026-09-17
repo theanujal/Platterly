@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import type { FoodType } from "@/generated/prisma/enums";
+import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 
 export interface MenuInput {
   name: string;
@@ -10,6 +10,10 @@ export interface MenuInput {
   menuType: FoodType;
   pricePerPlate: number;
   isActive?: boolean;
+  childUnder5Chargeable?: boolean;
+  childUnder5Price?: number | null;
+  child5To10PricingType?: ChildPricingType;
+  child5To10PriceValue?: number | null;
 }
 
 export async function createMenu(organizationId: string, input: MenuInput, actorUserId: string) {
@@ -22,6 +26,10 @@ export async function createMenu(organizationId: string, input: MenuInput, actor
       menuType: input.menuType,
       pricePerPlate: input.pricePerPlate,
       isActive: input.isActive ?? true,
+      childUnder5Chargeable: input.childUnder5Chargeable ?? false,
+      childUnder5Price: input.childUnder5Price,
+      child5To10PricingType: input.child5To10PricingType ?? "FIXED",
+      child5To10PriceValue: input.child5To10PriceValue,
     },
   });
 
@@ -49,6 +57,10 @@ export async function updateMenu(organizationId: string, id: string, input: Menu
       menuType: input.menuType,
       pricePerPlate: input.pricePerPlate,
       isActive: input.isActive ?? before.isActive,
+      childUnder5Chargeable: input.childUnder5Chargeable ?? before.childUnder5Chargeable,
+      childUnder5Price: input.childUnder5Price !== undefined ? input.childUnder5Price : before.childUnder5Price,
+      child5To10PricingType: input.child5To10PricingType ?? before.child5To10PricingType,
+      child5To10PriceValue: input.child5To10PriceValue !== undefined ? input.child5To10PriceValue : before.child5To10PriceValue,
     },
   });
 

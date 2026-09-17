@@ -34,7 +34,11 @@ export function AssignPlan({ tenantId, plans, currentPlanId }: AssignPlanProps) 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
-        <Select value={planId} onValueChange={(value) => setPlanId(value ?? undefined)}>
+        <Select
+          items={Object.fromEntries(plans.map((p) => [p.id, p.name]))}
+          value={planId}
+          onValueChange={(value) => setPlanId(value ?? undefined)}
+        >
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Select a plan" />
           </SelectTrigger>

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import type { ActionResult } from "../actions";
 
 export interface CustomerFormValues {
@@ -103,21 +103,18 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }
         </div>
       </div>
 
-      <label htmlFor="customer-active" className="flex w-fit cursor-pointer items-center gap-2">
-        <Checkbox
-          id="customer-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => setField("isActive", checked === true)}
-        />
-        <span className="text-sm font-medium">Active</span>
-      </label>
+      <ActiveToggleCard
+        id="customer-active"
+        checked={values.isActive}
+        onCheckedChange={(checked) => setField("isActive", checked)}
+      />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

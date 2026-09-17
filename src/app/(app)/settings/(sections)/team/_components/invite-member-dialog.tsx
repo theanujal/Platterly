@@ -92,8 +92,12 @@ export function InviteMemberDialog() {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="invite-role">Role</Label>
-            <Select value={role} onValueChange={(value) => setRole(value as typeof role)}>
-              <SelectTrigger id="invite-role">
+            <Select
+              items={Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={role}
+              onValueChange={(value) => setRole(value as typeof role)}
+            >
+              <SelectTrigger id="invite-role" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

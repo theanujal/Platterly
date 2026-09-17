@@ -169,7 +169,11 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-customer">Customer</Label>
-            <Select value={values.customerId} onValueChange={(v) => setField("customerId", v ?? values.customerId)}>
+            <Select
+              items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.phone})`]))}
+              value={values.customerId}
+              onValueChange={(v) => setField("customerId", v ?? values.customerId)}
+            >
               <SelectTrigger id="quote-customer">
                 <SelectValue placeholder="Select a customer" />
               </SelectTrigger>
@@ -189,7 +193,11 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-event-type">Event Type</Label>
-            <Select value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}>
+            <Select
+              items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+              value={values.eventTypeId}
+              onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
+            >
               <SelectTrigger id="quote-event-type">
                 <SelectValue placeholder="Not set" />
               </SelectTrigger>
@@ -226,7 +234,11 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-item-type">Type</Label>
-            <Select value={pendingItemType} onValueChange={(v) => { setPendingItemType((v as typeof pendingItemType) ?? pendingItemType); setPendingCatalogId(""); }}>
+            <Select
+              items={Object.fromEntries(ITEM_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={pendingItemType}
+              onValueChange={(v) => { setPendingItemType((v as typeof pendingItemType) ?? pendingItemType); setPendingCatalogId(""); }}
+            >
               <SelectTrigger id="quote-item-type" className="w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -241,7 +253,11 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-item-catalog">Item</Label>
-            <Select value={pendingCatalogId} onValueChange={(v) => setPendingCatalogId(v ?? "")}>
+            <Select
+              items={Object.fromEntries(catalogByType[pendingItemType].map((o) => [o.id, `${o.name} — ${formatCurrency(o.price)}`]))}
+              value={pendingCatalogId}
+              onValueChange={(v) => setPendingCatalogId(v ?? "")}
+            >
               <SelectTrigger id="quote-item-catalog" className="w-56">
                 <SelectValue placeholder="Select an item" />
               </SelectTrigger>

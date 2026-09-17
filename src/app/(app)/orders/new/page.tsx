@@ -27,7 +27,17 @@ export default async function NewOrderPage() {
       <NewOrderClient
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
         eventTypes={eventTypes.filter((t) => t.isActive).map((t) => ({ id: t.id, name: t.name }))}
-        menus={menus.filter((m) => m.isActive).map((m) => ({ id: m.id, name: m.name, price: Number(m.pricePerPlate) }))}
+        menus={menus
+          .filter((m) => m.isActive)
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            price: Number(m.pricePerPlate),
+            childUnder5Chargeable: m.childUnder5Chargeable,
+            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
+            child5To10PricingType: m.child5To10PricingType,
+            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
+          }))}
         menuItemsByMenu={menuItemsByMenu}
         menuItems={menuItems.map((i) => ({ id: i.id, name: i.name, price: Number(i.price) }))}
         addOns={addOns.map((a) => ({ id: a.id, name: a.name, price: Number(a.price) }))}

@@ -47,6 +47,13 @@ interface CatalogOption {
   price: number;
 }
 
+interface MenuOption extends CatalogOption {
+  childUnder5Chargeable: boolean;
+  childUnder5Price: number | null;
+  child5To10PricingType: "PERCENTAGE" | "FIXED";
+  child5To10PriceValue: number | null;
+}
+
 interface LineItemRow {
   key: string;
   itemType: (typeof ITEM_TYPE_OPTIONS)[number]["value"];
@@ -72,6 +79,9 @@ interface MealSelection {
   menuId: string;
   /** Multi Order only — items chosen from that Menu specifically for this slot. */
   items: MealPlanItemRow[];
+  /** Multi Order Children Guests & Pricing, per slot — priced against this slot's own menuId. */
+  childBelow5Count: string;
+  child5To10Count: string;
 }
 
 export interface OrderFormValues {
@@ -84,10 +94,13 @@ export interface OrderFormValues {
   venue: string;
   eventAddress: string;
   adultCount: string;
-  childCount: string;
+  childBelow5Count: string;
+  child5To10Count: string;
   totalParticipants: string;
   adultNonVegCount: string;
   adultVegCount: string;
+  /** Single Order only — which Menu's Children Guests & Pricing rates apply. */
+  childPricingMenuId: string;
   individualPricingEnabled: boolean;
   discount: string;
   taxes: string;
@@ -108,10 +121,12 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   venue: "",
   eventAddress: "",
   adultCount: "",
-  childCount: "",
+  childBelow5Count: "",
+  child5To10Count: "",
   totalParticipants: "",
   adultNonVegCount: "",
   adultVegCount: "",
+  childPricingMenuId: "",
   individualPricingEnabled: false,
   discount: "0",
   taxes: "0",
@@ -155,11 +170,20 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
 
+/** Mirrors order.ts's server-side computeChildrenCharge exactly. */
+function computeChildrenChargePreview(menu: MenuOption | undefined, below5Count: number, child5To10Count: number): number {
+  if (!menu) return 0;
+  const under5Charge = menu.childUnder5Chargeable ? below5Count * (menu.childUnder5Price ?? 0) : 0;
+  const perChild5to10 =
+    menu.child5To10PricingType === "PERCENTAGE" ? (menu.price * (menu.child5To10PriceValue ?? 0)) / 100 : (menu.child5To10PriceValue ?? 0);
+  return under5Charge + child5To10Count * perChild5to10;
+}
+
 interface OrderFormProps {
   initialValues?: Partial<OrderFormValues>;
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
-  menus: CatalogOption[];
+  menus: MenuOption[];
   /** Multi Order's per-meal-slot item picker — menuId -> that Menu's own items. */
   menuItemsByMenu: Record<string, CatalogOption[]>;
   menuItems: CatalogOption[];
@@ -238,7 +262,7 @@ export function OrderForm({
     setField(
       "mealPlanEntries",
       checked
-        ? [...values.mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }]
+        ? [...values.mealPlanEntries, { date, mealType, price: "", menuId: "", items: [], childBelow5Count: "", child5To10Count: "" }]
         : values.mealPlanEntries.filter((e) => !(e.date === date && e.mealType === mealType)),
     );
   }
@@ -250,9 +274,21 @@ export function OrderForm({
     );
   }
 
+  function setMealChildCount(
+    date: string,
+    mealType: (typeof MEAL_TYPES)[number]["value"],
+    field: "childBelow5Count" | "child5To10Count",
+    value: string,
+  ) {
+    setField(
+      "mealPlanEntries",
+      values.mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, [field]: value } : e)),
+    );
+  }
+
   function bulkSelect(mealType: (typeof MEAL_TYPES)[number]["value"]) {
     const withoutThisMeal = values.mealPlanEntries.filter((e) => e.mealType !== mealType);
-    const additions = days.map((date) => ({ date, mealType, price: "", menuId: "", items: [] }));
+    const additions = days.map((date) => ({ date, mealType, price: "", menuId: "", items: [], childBelow5Count: "", child5To10Count: "" }));
     setField("mealPlanEntries", [...withoutThisMeal, ...additions]);
   }
 
@@ -318,7 +354,19 @@ export function OrderForm({
   const mealsSubtotal = values.individualPricingEnabled
     ? values.mealPlanEntries.reduce((sum, e) => sum + (Number.parseFloat(e.price) || 0), 0)
     : 0;
-  const subtotal = itemsSubtotal + mealsSubtotal;
+  const childrenCharge =
+    values.orderKind === "SINGLE"
+      ? computeChildrenChargePreview(
+          menus.find((m) => m.id === values.childPricingMenuId),
+          Number(values.childBelow5Count) || 0,
+          Number(values.child5To10Count) || 0,
+        )
+      : values.mealPlanEntries.reduce(
+          (sum, e) =>
+            sum + computeChildrenChargePreview(menus.find((m) => m.id === e.menuId), Number(e.childBelow5Count) || 0, Number(e.child5To10Count) || 0),
+          0,
+        );
+  const subtotal = itemsSubtotal + mealsSubtotal + childrenCharge;
   const discountNum = Number.parseFloat(values.discount) || 0;
   const taxesNum = Number.parseFloat(values.taxes) || 0;
   const advanceNum = Number.parseFloat(values.advance) || 0;
@@ -335,10 +383,16 @@ export function OrderForm({
     formData.set("venue", values.venue);
     formData.set("eventAddress", values.eventAddress);
     formData.set("adultCount", values.adultCount);
-    formData.set("childCount", values.childCount);
-    formData.set("totalParticipants", values.totalParticipants || String((Number(values.adultCount) || 0) + (Number(values.childCount) || 0)));
+    formData.set("childBelow5Count", values.childBelow5Count);
+    formData.set("child5To10Count", values.child5To10Count);
+    formData.set(
+      "totalParticipants",
+      values.totalParticipants ||
+        String((Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0)),
+    );
     formData.set("adultNonVegCount", values.adultNonVegCount);
     formData.set("adultVegCount", values.adultVegCount);
+    formData.set("childPricingMenuId", values.orderKind === "SINGLE" ? values.childPricingMenuId : "");
     formData.set("individualPricingEnabled", String(values.individualPricingEnabled));
     formData.set("discount", values.discount);
     formData.set("taxes", values.taxes);
@@ -356,6 +410,8 @@ export function OrderForm({
       formData.append("mealType", entry.mealType);
       formData.append("mealPrice", entry.price || "0");
       formData.append("mealMenuId", entry.menuId || "");
+      formData.append("mealChildBelow5Count", entry.childBelow5Count || "0");
+      formData.append("mealChild5To10Count", entry.child5To10Count || "0");
       formData.append(
         "mealItems",
         JSON.stringify(entry.items.map(({ catalogId, quantity }) => ({ itemType: "MENU_ITEM", catalogId, quantity }))),
@@ -399,7 +455,11 @@ export function OrderForm({
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Customer Information</h2>
         <div className="flex flex-col gap-1.5 sm:max-w-sm">
           <Label htmlFor="order-customer">Customer</Label>
-          <Select value={values.customerId} onValueChange={(v) => setField("customerId", v ?? values.customerId)}>
+          <Select
+            items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.phone})`]))}
+            value={values.customerId}
+            onValueChange={(v) => setField("customerId", v ?? values.customerId)}
+          >
             <SelectTrigger id="order-customer">
               <SelectValue placeholder="Select a customer" />
             </SelectTrigger>
@@ -443,7 +503,11 @@ export function OrderForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-event-type">Event Type</Label>
-            <Select value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}>
+            <Select
+              items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+              value={values.eventTypeId}
+              onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
+            >
               <SelectTrigger id="order-event-type">
                 <SelectValue placeholder="Not set" />
               </SelectTrigger>
@@ -479,14 +543,30 @@ export function OrderForm({
       {/* 3. Participant Information */}
       <section className="flex flex-col gap-3 border-t border-border pt-6">
         <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Participant Information</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-adults">Adults</Label>
             <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-children">Children</Label>
-            <Input id="order-children" type="number" min="0" value={values.childCount} onChange={(e) => setField("childCount", e.target.value)} />
+            <Label htmlFor="order-child-below5">Children (Under 5)</Label>
+            <Input
+              id="order-child-below5"
+              type="number"
+              min="0"
+              value={values.childBelow5Count}
+              onChange={(e) => setField("childBelow5Count", e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="order-child-5to10">Children (5–10)</Label>
+            <Input
+              id="order-child-5to10"
+              type="number"
+              min="0"
+              value={values.child5To10Count}
+              onChange={(e) => setField("child5To10Count", e.target.value)}
+            />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-total-participants">Total Participants</Label>
@@ -494,7 +574,9 @@ export function OrderForm({
               id="order-total-participants"
               type="number"
               min="0"
-              placeholder={String((Number(values.adultCount) || 0) + (Number(values.childCount) || 0))}
+              placeholder={String(
+                (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0),
+              )}
               value={values.totalParticipants}
               onChange={(e) => setField("totalParticipants", e.target.value)}
             />
@@ -509,6 +591,34 @@ export function OrderForm({
           </div>
         </div>
       </section>
+
+      {values.orderKind === "SINGLE" && (
+        <section className="flex flex-col gap-3 border-t border-border pt-6">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Children Guests & Pricing</h2>
+          <div className="flex flex-col gap-1.5 sm:max-w-sm">
+            <Label htmlFor="order-child-pricing-menu">Menu for Children Pricing</Label>
+            <Select
+              items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
+              value={values.childPricingMenuId}
+              onValueChange={(v) => setField("childPricingMenuId", v ?? "")}
+            >
+              <SelectTrigger id="order-child-pricing-menu" className="w-full">
+                <SelectValue placeholder="Select a menu to apply child rates" />
+              </SelectTrigger>
+              <SelectContent>
+                {menus.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Determines the per-child rates applied to the Children (Under 5) / (5–10) counts above.
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* 4. Meal Planning */}
       <section className="flex flex-col gap-3 border-t border-border pt-6">
@@ -586,7 +696,11 @@ export function OrderForm({
                                 <Label htmlFor={`meal-menu-${date}-${meal.value}`} className="text-xs">
                                   {meal.label} — Menu
                                 </Label>
-                                <Select value={entry.menuId} onValueChange={(v) => setMealMenu(date, meal.value, v ?? "")}>
+                                <Select
+                                  items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
+                                  value={entry.menuId}
+                                  onValueChange={(v) => setMealMenu(date, meal.value, v ?? "")}
+                                >
                                   <SelectTrigger id={`meal-menu-${date}-${meal.value}`} className="w-48">
                                     <SelectValue placeholder="Choose a menu" />
                                   </SelectTrigger>
@@ -599,6 +713,32 @@ export function OrderForm({
                                   </SelectContent>
                                 </Select>
                               </div>
+                              <div className="flex flex-col gap-1.5">
+                                <Label htmlFor={`meal-child-below5-${date}-${meal.value}`} className="text-xs">
+                                  Below 5
+                                </Label>
+                                <Input
+                                  id={`meal-child-below5-${date}-${meal.value}`}
+                                  type="number"
+                                  min="0"
+                                  className="w-20"
+                                  value={entry.childBelow5Count}
+                                  onChange={(e) => setMealChildCount(date, meal.value, "childBelow5Count", e.target.value)}
+                                />
+                              </div>
+                              <div className="flex flex-col gap-1.5">
+                                <Label htmlFor={`meal-child-5to10-${date}-${meal.value}`} className="text-xs">
+                                  5–10
+                                </Label>
+                                <Input
+                                  id={`meal-child-5to10-${date}-${meal.value}`}
+                                  type="number"
+                                  min="0"
+                                  className="w-20"
+                                  value={entry.child5To10Count}
+                                  onChange={(e) => setMealChildCount(date, meal.value, "child5To10Count", e.target.value)}
+                                />
+                              </div>
                               {entry.menuId && (
                                 <>
                                   <div className="flex flex-col gap-1.5">
@@ -606,6 +746,7 @@ export function OrderForm({
                                       Menu Item
                                     </Label>
                                     <Select
+                                      items={Object.fromEntries(menuItemOptions.map((o) => [o.id, `${o.name} — ${formatCurrency(o.price)}`]))}
                                       value={pendingForSlot.catalogId}
                                       onValueChange={(v) =>
                                         setPendingMealItem((prev) => ({ ...prev, [key]: { ...pendingForSlot, catalogId: v ?? "" } }))
@@ -691,7 +832,11 @@ export function OrderForm({
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-type">Type</Label>
-            <Select value={pendingItemType} onValueChange={(v) => { setPendingItemType((v as typeof pendingItemType) ?? pendingItemType); setPendingCatalogId(""); }}>
+            <Select
+              items={Object.fromEntries(ITEM_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={pendingItemType}
+              onValueChange={(v) => { setPendingItemType((v as typeof pendingItemType) ?? pendingItemType); setPendingCatalogId(""); }}
+            >
               <SelectTrigger id="item-type" className="w-40">
                 <SelectValue />
               </SelectTrigger>
@@ -706,7 +851,11 @@ export function OrderForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-catalog">Item</Label>
-            <Select value={pendingCatalogId} onValueChange={(v) => setPendingCatalogId(v ?? "")}>
+            <Select
+              items={Object.fromEntries(catalogByType[pendingItemType].map((o) => [o.id, `${o.name} — ${formatCurrency(o.price)}`]))}
+              value={pendingCatalogId}
+              onValueChange={(v) => setPendingCatalogId(v ?? "")}
+            >
               <SelectTrigger id="item-catalog" className="w-56">
                 <SelectValue placeholder="Select an item" />
               </SelectTrigger>
@@ -757,7 +906,11 @@ export function OrderForm({
           {showStatus && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="order-status">Status</Label>
-              <Select value={values.status} onValueChange={(v) => setField("status", v ?? values.status)}>
+              <Select
+                items={Object.fromEntries(ORDER_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+                value={values.status}
+                onValueChange={(v) => setField("status", v ?? values.status)}
+              >
                 <SelectTrigger id="order-status">
                   <SelectValue />
                 </SelectTrigger>
@@ -773,7 +926,11 @@ export function OrderForm({
           )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-payment-status">Payment Status</Label>
-            <Select value={values.paymentStatus} onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}>
+            <Select
+              items={Object.fromEntries(PAYMENT_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.paymentStatus}
+              onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}
+            >
               <SelectTrigger id="order-payment-status">
                 <SelectValue />
               </SelectTrigger>
@@ -808,6 +965,9 @@ export function OrderForm({
       {/* Pricing summary — live preview, mirrors recalculateOrderTotals server-side */}
       <section className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/30 p-4 text-sm sm:max-w-sm">
         <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
+        {childrenCharge > 0 && (
+          <div className="flex justify-between"><span className="text-muted-foreground">Children Charges</span><span>{formatCurrency(childrenCharge)}</span></div>
+        )}
         <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{formatCurrency(discountNum)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">Taxes</span><span>+{formatCurrency(taxesNum)}</span></div>
         <div className="flex justify-between border-t border-border pt-1.5 font-semibold"><span>Total</span><span>{formatCurrency(total)}</span></div>

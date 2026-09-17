@@ -53,6 +53,10 @@ export default async function MenusPage() {
       menuType: menu.menuType,
       pricePerPlate: menu.pricePerPlate.toString(),
       isActive: menu.isActive,
+      childUnder5Chargeable: menu.childUnder5Chargeable,
+      childUnder5Price: menu.childUnder5Price?.toString() ?? "",
+      child5To10PricingType: menu.child5To10PricingType,
+      child5To10PriceValue: menu.child5To10PriceValue?.toString() ?? "",
     };
 
     return {

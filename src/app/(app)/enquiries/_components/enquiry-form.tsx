@@ -121,7 +121,11 @@ export function EnquiryForm({ initialValues, showFullFields, eventTypes, menus, 
         </div>
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="enquiry-source">Lead Source</Label>
-          <Select value={values.leadSource} onValueChange={(v) => setField("leadSource", v ?? values.leadSource)}>
+          <Select
+            items={Object.fromEntries(LEAD_SOURCE_OPTIONS.map((o) => [o.value, o.label]))}
+            value={values.leadSource}
+            onValueChange={(v) => setField("leadSource", v ?? values.leadSource)}
+          >
             <SelectTrigger id="enquiry-source">
               <SelectValue />
             </SelectTrigger>
@@ -141,7 +145,11 @@ export function EnquiryForm({ initialValues, showFullFields, eventTypes, menus, 
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="enquiry-status">Status</Label>
-              <Select value={values.status} onValueChange={(v) => setField("status", v ?? values.status)}>
+              <Select
+                items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+                value={values.status}
+                onValueChange={(v) => setField("status", v ?? values.status)}
+              >
                 <SelectTrigger id="enquiry-status">
                   <SelectValue />
                 </SelectTrigger>
@@ -156,7 +164,11 @@ export function EnquiryForm({ initialValues, showFullFields, eventTypes, menus, 
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="enquiry-event-type">Event Type</Label>
-              <Select value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}>
+              <Select
+                items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+                value={values.eventTypeId}
+                onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
+              >
                 <SelectTrigger id="enquiry-event-type">
                   <SelectValue placeholder="Not set" />
                 </SelectTrigger>
@@ -200,7 +212,11 @@ export function EnquiryForm({ initialValues, showFullFields, eventTypes, menus, 
             </div>
             <div className="col-span-2 flex flex-col gap-1.5">
               <Label htmlFor="enquiry-menu">Preferred Menu</Label>
-              <Select value={values.preferredMenuId} onValueChange={(v) => setField("preferredMenuId", v ?? values.preferredMenuId)}>
+              <Select
+                items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
+                value={values.preferredMenuId}
+                onValueChange={(v) => setField("preferredMenuId", v ?? values.preferredMenuId)}
+              >
                 <SelectTrigger id="enquiry-menu">
                   <SelectValue placeholder="Not set" />
                 </SelectTrigger>
@@ -230,7 +246,7 @@ export function EnquiryForm({ initialValues, showFullFields, eventTypes, menus, 
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

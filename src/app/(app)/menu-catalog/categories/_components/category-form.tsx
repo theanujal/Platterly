@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import type { CategoryInput } from "@/modules/menus/category";
 import type { ActionResult } from "../actions";
 
@@ -101,14 +102,11 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
           onChange={(e) => setField("description", e.target.value)}
         />
       </div>
-      <label htmlFor="category-active" className="flex w-fit cursor-pointer items-center gap-2">
-        <Checkbox
-          id="category-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => setField("isActive", checked === true)}
-        />
-        <span className="text-sm font-medium">Active</span>
-      </label>
+      <ActiveToggleCard
+        id="category-active"
+        checked={values.isActive}
+        onCheckedChange={(checked) => setField("isActive", checked)}
+      />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Assign to Menus</Label>
@@ -151,7 +149,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

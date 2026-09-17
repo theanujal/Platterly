@@ -143,6 +143,54 @@ describe("Menu CRUD (Chunk 6, reworked 2026-09-14; ownership restructured again 
     expect(Number(updated.pricePerPlate)).toBe(350);
   });
 
+  it("createMenu defaults Children Guests & Pricing when omitted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200 }, actor.id);
+
+    expect(menu.childUnder5Chargeable).toBe(false);
+    expect(menu.childUnder5Price).toBeNull();
+    expect(menu.child5To10PricingType).toBe("FIXED");
+    expect(menu.child5To10PriceValue).toBeNull();
+  });
+
+  it("createMenu/updateMenu persist under-5 chargeable + price, and PERCENTAGE 5-10 pricing round-trips", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const menu = await createMenu(
+      org.id,
+      {
+        name: "Menu",
+        menuType: "VEGETARIAN",
+        pricePerPlate: 200,
+        childUnder5Chargeable: true,
+        childUnder5Price: 60,
+        child5To10PricingType: "PERCENTAGE",
+        child5To10PriceValue: 33.33,
+      },
+      actor.id,
+    );
+
+    expect(menu.childUnder5Chargeable).toBe(true);
+    expect(Number(menu.childUnder5Price)).toBe(60);
+    expect(menu.child5To10PricingType).toBe("PERCENTAGE");
+    expect(Number(menu.child5To10PriceValue)).toBe(33.33);
+
+    const updated = await updateMenu(
+      org.id,
+      menu.id,
+      { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, child5To10PricingType: "FIXED", child5To10PriceValue: 75 },
+      actor.id,
+    );
+    expect(updated.child5To10PricingType).toBe("FIXED");
+    expect(Number(updated.child5To10PriceValue)).toBe(75);
+    // Omitted fields on a partial update preserve their previous value, same as isActive's own convention.
+    expect(updated.childUnder5Chargeable).toBe(true);
+    expect(Number(updated.childUnder5Price)).toBe(60);
+  });
+
   it("deleteMenu removes the menu without deleting its MenuItems or Categories", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

@@ -62,7 +62,12 @@ export function MemberRowActions({ memberId, role, disabled }: MemberRowActionsP
 
   return (
     <div className="flex items-center gap-2">
-      <Select value={role} onValueChange={(value) => value && handleRoleChange(value)} disabled={pendingRole}>
+      <Select
+        items={Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]))}
+        value={role}
+        onValueChange={(value) => value && handleRoleChange(value)}
+        disabled={pendingRole}
+      >
         <SelectTrigger size="sm">
           <SelectValue />
         </SelectTrigger>

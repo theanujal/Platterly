@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -14,6 +15,11 @@ import type { ActionResult } from "../actions";
 const FOOD_TYPE_OPTIONS = [
   { value: "VEGETARIAN", label: "Vegetarian" },
   { value: "NON_VEGETARIAN", label: "Non-Vegetarian" },
+] as const;
+
+const CHILD_5_TO_10_PRICING_OPTIONS = [
+  { value: "PERCENTAGE", label: "Percentage of Price Per Plate" },
+  { value: "FIXED", label: "Fixed Price Per Plate" },
 ] as const;
 
 export interface AssignedCategory {
@@ -29,6 +35,10 @@ export interface MenuFormValues {
   menuType: string;
   pricePerPlate: string;
   isActive: boolean;
+  childUnder5Chargeable: boolean;
+  childUnder5Price: string;
+  child5To10PricingType: string;
+  child5To10PriceValue: string;
 }
 
 export const EMPTY_MENU_VALUES: MenuFormValues = {
@@ -38,6 +48,10 @@ export const EMPTY_MENU_VALUES: MenuFormValues = {
   menuType: "VEGETARIAN",
   pricePerPlate: "",
   isActive: true,
+  childUnder5Chargeable: false,
+  childUnder5Price: "",
+  child5To10PricingType: "FIXED",
+  child5To10PriceValue: "",
 };
 
 interface MenuFormProps {
@@ -103,6 +117,10 @@ export function MenuForm({
     formData.set("menuType", values.menuType);
     formData.set("pricePerPlate", values.pricePerPlate);
     formData.set("isActive", String(values.isActive));
+    formData.set("childUnder5Chargeable", String(values.childUnder5Chargeable));
+    formData.set("childUnder5Price", values.childUnder5Price);
+    formData.set("child5To10PricingType", values.child5To10PricingType);
+    formData.set("child5To10PriceValue", values.child5To10PriceValue);
     if (image) formData.set("image", image);
 
     const result = await onSubmit(formData);
@@ -131,21 +149,13 @@ export function MenuForm({
             <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="menu-price">Price Per Plate</Label>
-            <Input
-              id="menu-price"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={values.pricePerPlate}
-              onChange={(e) => setField("pricePerPlate", e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label htmlFor="menu-type">Menu Type</Label>
-            <Select value={values.menuType} onValueChange={(v) => setField("menuType", v ?? values.menuType)}>
-              <SelectTrigger id="menu-type">
+            <Select
+              items={Object.fromEntries(FOOD_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.menuType}
+              onValueChange={(v) => setField("menuType", v ?? values.menuType)}
+            >
+              <SelectTrigger id="menu-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -157,67 +167,152 @@ export function MenuForm({
               </SelectContent>
             </Select>
           </div>
-          <label htmlFor="menu-active" className="flex w-fit cursor-pointer items-center gap-2">
-            <Checkbox
-              id="menu-active"
-              checked={values.isActive}
-              onCheckedChange={(checked) => setField("isActive", checked === true)}
-            />
-            <span className="text-sm font-medium">Active</span>
-          </label>
+          <ActiveToggleCard
+            id="menu-active"
+            checked={values.isActive}
+            onCheckedChange={(checked) => setField("isActive", checked)}
+            label="Active (visible to customers)"
+          />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label>Categories in this menu</Label>
-          <p className="text-xs text-muted-foreground">
-            Assign categories to this menu from a Category&apos;s own edit screen — reorder them here.
-          </p>
-          {reorderError && (
-            <p role="alert" className="text-sm text-destructive">
-              {reorderError}
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 rounded-md border border-border p-4">
+            <span className="text-sm font-semibold">Pricing</span>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="menu-price">Price Per Plate</Label>
+              <Input
+                id="menu-price"
+                type="number"
+                step="0.01"
+                min="0"
+                required
+                value={values.pricePerPlate}
+                onChange={(e) => setField("pricePerPlate", e.target.value)}
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-border pt-4">
+              <span className="text-sm font-semibold">Children Guests & Pricing</span>
+
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-foreground">Below 5 years</span>
+                  <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                    Complimentary
+                  </span>
+                </div>
+                <label htmlFor="menu-child-under5-chargeable" className="flex w-fit cursor-pointer items-center gap-2">
+                  <Checkbox
+                    id="menu-child-under5-chargeable"
+                    checked={values.childUnder5Chargeable}
+                    onCheckedChange={(checked) => setField("childUnder5Chargeable", checked === true)}
+                  />
+                  <span className="text-sm font-medium">Charge for Below 5 years</span>
+                </label>
+              </div>
+              {values.childUnder5Chargeable && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="menu-child-under5-price">Price per child (under 5)</Label>
+                  <Input
+                    id="menu-child-under5-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={values.childUnder5Price}
+                    onChange={(e) => setField("childUnder5Price", e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="menu-child-5to10-type">5–10 Years Pricing</Label>
+                <Select
+                  items={Object.fromEntries(CHILD_5_TO_10_PRICING_OPTIONS.map((o) => [o.value, o.label]))}
+                  value={values.child5To10PricingType}
+                  onValueChange={(v) => setField("child5To10PricingType", v ?? values.child5To10PricingType)}
+                >
+                  <SelectTrigger id="menu-child-5to10-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHILD_5_TO_10_PRICING_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="menu-child-5to10-value">
+                  {values.child5To10PricingType === "PERCENTAGE" ? "Percentage (%)" : "Fixed Price"}
+                </Label>
+                <Input
+                  id="menu-child-5to10-value"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max={values.child5To10PricingType === "PERCENTAGE" ? 100 : undefined}
+                  value={values.child5To10PriceValue}
+                  onChange={(e) => setField("child5To10PriceValue", e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Categories in this menu</Label>
+            <p className="text-xs text-muted-foreground">
+              Assign categories to this menu from a Category&apos;s own edit screen — reorder them here.
             </p>
-          )}
-          <div className="flex flex-col gap-1 rounded-md border border-border p-3">
-            {categories.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No categories assigned yet — assign this menu from a Category&apos;s edit screen after creating it.
+            {reorderError && (
+              <p role="alert" className="text-sm text-destructive">
+                {reorderError}
               </p>
             )}
-            {categories.map((category, index) => (
-              <div
-                key={category.categoryId}
-                className="flex items-center justify-between gap-2 border-b border-border/50 py-1.5 last:border-0"
-              >
-                <span className="text-sm">
-                  {category.name}{" "}
-                  <span className="text-muted-foreground">(max {category.maxSelection ?? "unlimited"})</span>
-                </span>
-                {onReorderCategories && (
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Move ${category.name} up`}
-                      disabled={index === 0}
-                      onClick={() => moveCategory(index, -1)}
-                    >
-                      <ArrowUp className="size-3.5" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Move ${category.name} down`}
-                      disabled={index === categories.length - 1}
-                      onClick={() => moveCategory(index, 1)}
-                    >
-                      <ArrowDown className="size-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
+            <div className="flex flex-col gap-1 rounded-md border border-border p-3">
+              {categories.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No categories assigned yet — assign this menu from a Category&apos;s edit screen after creating it.
+                </p>
+              )}
+              {categories.map((category, index) => (
+                <div
+                  key={category.categoryId}
+                  className="flex items-center justify-between gap-2 border-b border-border/50 py-1.5 last:border-0"
+                >
+                  <span className="text-sm">
+                    {category.name}{" "}
+                    <span className="text-muted-foreground">(max {category.maxSelection ?? "unlimited"})</span>
+                  </span>
+                  {onReorderCategories && (
+                    <div className="flex shrink-0 items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${category.name} up`}
+                        disabled={index === 0}
+                        onClick={() => moveCategory(index, -1)}
+                      >
+                        <ArrowUp className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${category.name} down`}
+                        disabled={index === categories.length - 1}
+                        onClick={() => moveCategory(index, 1)}
+                      >
+                        <ArrowDown className="size-3.5" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -227,7 +322,7 @@ export function MenuForm({
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

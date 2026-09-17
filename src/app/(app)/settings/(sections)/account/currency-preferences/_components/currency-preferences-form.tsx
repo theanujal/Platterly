@@ -68,7 +68,11 @@ export function CurrencyPreferencesForm({ initialValues }: { initialValues: Curr
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="roundingMode">Rounding</Label>
-        <Select value={roundingMode} onValueChange={(value) => setRoundingMode(value as CurrencyPreferences["roundingMode"])}>
+        <Select
+          items={Object.fromEntries(ROUNDING_OPTIONS.map((o) => [o.value, o.label]))}
+          value={roundingMode}
+          onValueChange={(value) => setRoundingMode(value as CurrencyPreferences["roundingMode"])}
+        >
           <SelectTrigger id="roundingMode">
             <SelectValue />
           </SelectTrigger>

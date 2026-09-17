@@ -233,7 +233,6 @@ export function CatalogBrowser({
 
         {sortOptions && sortOptions.length > 0 && (
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-sm text-muted-foreground">Sort by</span>
             <Select
               items={Object.fromEntries(sortOptions.map((o) => [o.value, o.label]))}
               value={sort}
@@ -260,22 +259,26 @@ export function CatalogBrowser({
           <Button
             type="button"
             variant={view === "grid" ? "default" : "ghost"}
-            size="icon-sm"
+            size="sm"
+            className="h-10 gap-1.5 px-3 text-sm"
             aria-pressed={view === "grid"}
             aria-label="Grid view"
             onClick={() => setView("grid")}
           >
             <LayoutGrid className="size-4" />
+            Grid
           </Button>
           <Button
             type="button"
             variant={view === "list" ? "default" : "ghost"}
-            size="icon-sm"
+            size="sm"
+            className="h-10 gap-1.5 px-3 text-sm"
             aria-pressed={view === "list"}
             aria-label="List view"
             onClick={() => setView("list")}
           >
             <ListIcon className="size-4" />
+            List
           </Button>
         </div>
       </div>

@@ -166,7 +166,7 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

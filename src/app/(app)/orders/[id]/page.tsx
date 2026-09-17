@@ -50,10 +50,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     venue: order.venue ?? "",
     eventAddress: order.eventAddress ?? "",
     adultCount: order.adultCount?.toString() ?? "",
-    childCount: order.childCount?.toString() ?? "",
+    childBelow5Count: order.childBelow5Count?.toString() ?? "",
+    child5To10Count: order.child5To10Count?.toString() ?? "",
     totalParticipants: order.totalParticipants?.toString() ?? "",
     adultNonVegCount: order.adultNonVegCount?.toString() ?? "",
     adultVegCount: order.adultVegCount?.toString() ?? "",
+    childPricingMenuId: order.childPricingMenuId ?? "",
     individualPricingEnabled: order.individualPricingEnabled,
     discount: order.discount.toString(),
     taxes: order.taxes.toString(),
@@ -74,6 +76,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       mealType: entry.mealType,
       price: entry.price?.toString() ?? "",
       menuId: entry.menuId ?? "",
+      childBelow5Count: entry.childBelow5Count?.toString() ?? "",
+      child5To10Count: entry.child5To10Count?.toString() ?? "",
       items: entry.items.map((item) => ({
         key: item.id,
         catalogId: item.menuItemId ?? "",
@@ -105,7 +109,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         initialValues={initialValues}
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
         eventTypes={eventTypes.filter((t) => t.isActive || t.id === order.eventTypeId).map((t) => ({ id: t.id, name: t.name }))}
-        menus={menus.filter((m) => m.isActive).map((m) => ({ id: m.id, name: m.name, price: Number(m.pricePerPlate) }))}
+        menus={menus
+          .filter((m) => m.isActive)
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            price: Number(m.pricePerPlate),
+            childUnder5Chargeable: m.childUnder5Chargeable,
+            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
+            child5To10PricingType: m.child5To10PricingType,
+            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
+          }))}
         menuItemsByMenu={menuItemsByMenu}
         menuItems={menuItems.map((i) => ({ id: i.id, name: i.name, price: Number(i.price) }))}
         addOns={addOns.map((a) => ({ id: a.id, name: a.name, price: Number(a.price) }))}

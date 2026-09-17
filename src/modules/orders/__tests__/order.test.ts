@@ -70,7 +70,8 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
         eventEndDate: new Date("2026-12-02"),
         venue: "Taj Hall",
         adultCount: 100,
-        childCount: 20,
+        childBelow5Count: 5,
+        child5To10Count: 15,
         adultNonVegCount: 60,
         adultVegCount: 40,
       },
@@ -305,7 +306,8 @@ describe("createEventForOrder (Group 10.6 — Event Creation Prompt)", () => {
         eventEndDate: new Date("2026-12-02"),
         venue: "Taj Hall",
         adultCount: 80,
-        childCount: 20,
+        childBelow5Count: 5,
+        child5To10Count: 15,
         totalParticipants: 100,
       },
       actor.id,
@@ -546,6 +548,250 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
     );
 
     expect(Number(order.subtotal)).toBe(40 + 120);
+  });
+});
+
+describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
+  it("under-5 stays free even with a non-zero count when the Menu's chargeable toggle is off", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, childUnder5Chargeable: false, childUnder5Price: 50 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childPricingMenuId: menu.id,
+        childBelow5Count: 10,
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(0);
+    expect(Number(order.subtotal)).toBe(0);
+  });
+
+  it("under-5 charges per child once the Menu's chargeable toggle is on", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, childUnder5Chargeable: true, childUnder5Price: 50 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childPricingMenuId: menu.id,
+        childBelow5Count: 4,
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(4 * 50);
+  });
+
+  it("5-10 PERCENTAGE pricing computes as a share of the Menu's own pricePerPlate", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(
+      org.id,
+      { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 333, child5To10PricingType: "PERCENTAGE", child5To10PriceValue: 33.33 },
+      actor.id,
+    );
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childPricingMenuId: menu.id,
+        child5To10Count: 3,
+      },
+      actor.id,
+    );
+
+    const expectedPerChild = (333 * 33.33) / 100;
+    expect(Number(order.childrenCharge)).toBeCloseTo(3 * expectedPerChild, 2);
+  });
+
+  it("5-10 FIXED pricing charges a flat per-child amount independent of pricePerPlate", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(
+      org.id,
+      { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 999, child5To10PricingType: "FIXED", child5To10PriceValue: 75 },
+      actor.id,
+    );
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childPricingMenuId: menu.id,
+        child5To10Count: 2,
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(2 * 75);
+  });
+
+  it("zero counts on a chargeable Menu yield a zero charge", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(
+      org.id,
+      { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, childUnder5Chargeable: true, childUnder5Price: 50, child5To10PricingType: "FIXED", child5To10PriceValue: 75 },
+      actor.id,
+    );
+
+    const order = await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: menu.id },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(0);
+  });
+
+  it("Single Order with no childPricingMenuId set charges nothing even with non-zero counts", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childBelow5Count: 5,
+        child5To10Count: 5,
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(0);
+  });
+
+  it("Multi Order sums Children Guests & Pricing across every meal slot, not just one", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menuA = await createMenu(org.id, { name: "Menu A", menuType: "VEGETARIAN", pricePerPlate: 200, child5To10PricingType: "FIXED", child5To10PriceValue: 50 }, actor.id);
+    const menuB = await createMenu(org.id, { name: "Menu B", menuType: "NON_VEGETARIAN", pricePerPlate: 300, child5To10PricingType: "FIXED", child5To10PriceValue: 80 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "MULTI",
+        mealPlanEntries: [
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, child5To10Count: 2 }, // 100
+          { date: new Date("2026-12-01"), mealType: "DINNER", menuId: menuB.id, child5To10Count: 3 }, // 240
+        ],
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(100 + 240);
+  });
+
+  it("a Multi Order slot with no Menu chosen yet contributes 0 regardless of its counts", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        orderKind: "MULTI",
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", child5To10Count: 4 }],
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(0);
+  });
+
+  it("updateOrder recomputes childrenCharge when counts/childPricingMenuId change", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, child5To10PricingType: "FIXED", child5To10PriceValue: 60 }, actor.id);
+    const order = await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") },
+      actor.id,
+    );
+    expect(Number(order.childrenCharge)).toBe(0);
+
+    const updated = await updateOrder(
+      org.id,
+      order.id,
+      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: menu.id, child5To10Count: 3 },
+      actor.id,
+    );
+    expect(Number(updated.childrenCharge)).toBe(3 * 60);
+  });
+
+  it("a cross-tenant childPricingMenuId on a Single Order is rejected", async () => {
+    const org = await makeOrg();
+    const otherOrg = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const otherMenu = await createMenu(otherOrg.id, { name: "Someone Else's Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+
+    await expect(
+      createOrder(
+        org.id,
+        { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: otherMenu.id },
+        actor.id,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("deleting a Menu referenced by childPricingMenuId SetNulls the Order and later recalculation degrades to 0, not a throw", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 200, childUnder5Chargeable: true, childUnder5Price: 50 }, actor.id);
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        childPricingMenuId: menu.id,
+        childBelow5Count: 2,
+      },
+      actor.id,
+    );
+    expect(Number(order.childrenCharge)).toBe(100);
+
+    await prisma.menu.delete({ where: { id: menu.id } });
+
+    const afterDelete = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(afterDelete.childPricingMenuId).toBeNull();
+
+    const recalculated = await recalculateOrderTotals(order.id);
+    expect(Number(recalculated.childrenCharge)).toBe(0);
   });
 });
 

@@ -56,6 +56,8 @@ function buildMealPlanEntries(formData: FormData): MealPlanEntryInput[] {
   const mealTypes = formData.getAll("mealType").filter((v): v is string => typeof v === "string");
   const prices = formData.getAll("mealPrice").filter((v): v is string => typeof v === "string");
   const menuIds = formData.getAll("mealMenuId").filter((v): v is string => typeof v === "string");
+  const childBelow5Counts = formData.getAll("mealChildBelow5Count").filter((v): v is string => typeof v === "string");
+  const child5To10Counts = formData.getAll("mealChild5To10Count").filter((v): v is string => typeof v === "string");
   // One JSON-encoded OrderItemCatalogInput[] per slot, aligned by index with
   // the arrays above — a slot's item count varies, so a flat parallel array
   // of scalars (like the others here) can't represent it.
@@ -74,6 +76,8 @@ function buildMealPlanEntries(formData: FormData): MealPlanEntryInput[] {
       price: Number.parseFloat(prices[index] ?? "0") || undefined,
       menuId: menuIds[index] || null,
       items,
+      childBelow5Count: Number.parseInt(childBelow5Counts[index] ?? "0", 10) || 0,
+      child5To10Count: Number.parseInt(child5To10Counts[index] ?? "0", 10) || 0,
     };
   });
 }
@@ -96,7 +100,9 @@ function buildInput(formData: FormData): OrderInput {
     venue: stringField(formData, "venue"),
     eventAddress: stringField(formData, "eventAddress"),
     adultCount: numberField(formData, "adultCount") ?? null,
-    childCount: numberField(formData, "childCount") ?? null,
+    childBelow5Count: numberField(formData, "childBelow5Count") ?? null,
+    child5To10Count: numberField(formData, "child5To10Count") ?? null,
+    childPricingMenuId: stringField(formData, "childPricingMenuId") ?? null,
     totalParticipants: numberField(formData, "totalParticipants") ?? null,
     adultNonVegCount: numberField(formData, "adultNonVegCount") ?? null,
     adultVegCount: numberField(formData, "adultVegCount") ?? null,

@@ -7,7 +7,15 @@ import { createOrderAction, createOrderAndNotifyAction } from "../../actions";
 interface NewOrderClientProps {
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
-  menus: { id: string; name: string; price: number }[];
+  menus: {
+    id: string;
+    name: string;
+    price: number;
+    childUnder5Chargeable: boolean;
+    childUnder5Price: number | null;
+    child5To10PricingType: "PERCENTAGE" | "FIXED";
+    child5To10PriceValue: number | null;
+  }[];
   menuItemsByMenu: Record<string, { id: string; name: string; price: number }[]>;
   menuItems: { id: string; name: string; price: number }[];
   addOns: { id: string; name: string; price: number }[];

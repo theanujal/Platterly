@@ -558,6 +558,16 @@ model Menu {
   pricePerPlate  Decimal      @db.Decimal(10, 2)
   isActive       Boolean      @default(true)
 
+  // Children Guests & Pricing — under-5 is complimentary unless explicitly
+  // opted into being charged; 5-10 always prices, either as a percentage of
+  // this Menu's own pricePerPlate or a flat per-plate amount (chosen via
+  // child5To10PricingType), same reused-field-with-a-type-toggle shape as
+  // AddOn.priceType/price.
+  childUnder5Chargeable Boolean          @default(false)
+  childUnder5Price      Decimal?         @db.Decimal(10, 2)
+  child5To10PricingType ChildPricingType @default(FIXED)
+  child5To10PriceValue  Decimal?         @db.Decimal(10, 2)
+
   items                MenuMenuItem[]
   categoryAssignments  MenuCategoryAssignment[]
   eventTypes           EventTypeMenu[]
@@ -565,6 +575,7 @@ model Menu {
   orderItems           OrderItem[]
   quotationItems       QuotationItem[]
   mealPlanEntries      MealPlanEntry[]
+  childPricingOrders   Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -681,6 +692,11 @@ enum AddOnType {
 
 enum AddOnPriceType {
   PER_PLATE
+  FIXED
+}
+
+enum ChildPricingType {
+  PERCENTAGE
   FIXED
 }
 
@@ -1032,12 +1048,24 @@ model Order {
 
   // Participant Information (Group 10.3) — lets pricing reflect actual
   // guest composition. `totalParticipants` is a UI-suggested default
-  // (adultCount+childCount) but stored independently/overridable.
+  // (adultCount+childBelow5Count+child5To10Count) but stored independently/
+  // overridable. Children are split by age band (below-5 / 5-10) rather than
+  // one flat count, since Menu Type pricing rates now differ by band.
   adultCount        Int?
-  childCount        Int?
+  childBelow5Count  Int?
+  child5To10Count   Int?
   totalParticipants Int?
   adultNonVegCount  Int?
   adultVegCount     Int?
+
+  // Children Guests & Pricing, Single Order only — which Menu's child rates
+  // apply to childBelow5Count/child5To10Count above; ignored/stripped
+  // server-side for Multi Order, which instead uses each MealPlanEntry's own
+  // menuId + its own per-slot counts. SetNull (not Restrict) — deleting a
+  // Menu still referenced here shouldn't block or cascade the Order, same
+  // precedent as OrderItem.menuId/MealPlanEntry.menuId.
+  childPricingMenuId String?
+  childPricingMenu   Menu?   @relation(fields: [childPricingMenuId], references: [id], onDelete: SetNull)
 
   // Meal Planning (Group 10.4) — when true, each MealPlanEntry's own
   // `price` is added into `subtotal`; when false, meal selections are
@@ -1048,13 +1076,15 @@ model Order {
   // Pricing (PRD §21) — `subtotal`/`total`/`balance` are kept in sync by
   // `recalculateOrderTotals` (src/modules/orders/order.ts) whenever items/
   // mealPlanEntries/discount/taxes/advance change, not recomputed ad hoc
-  // by every reader.
-  subtotal Decimal @default(0) @db.Decimal(12, 2)
-  discount Decimal @default(0) @db.Decimal(12, 2)
-  taxes    Decimal @default(0) @db.Decimal(12, 2)
-  total    Decimal @default(0) @db.Decimal(12, 2)
-  advance  Decimal @default(0) @db.Decimal(12, 2)
-  balance  Decimal @default(0) @db.Decimal(12, 2)
+  // by every reader. `childrenCharge` is the live-recomputed Children
+  // Guests & Pricing contribution folded into `subtotal`.
+  subtotal       Decimal @default(0) @db.Decimal(12, 2)
+  childrenCharge Decimal @default(0) @db.Decimal(12, 2)
+  discount       Decimal @default(0) @db.Decimal(12, 2)
+  taxes          Decimal @default(0) @db.Decimal(12, 2)
+  total          Decimal @default(0) @db.Decimal(12, 2)
+  advance        Decimal @default(0) @db.Decimal(12, 2)
+  balance        Decimal @default(0) @db.Decimal(12, 2)
 
   paymentStatus OrderPaymentStatus @default(UNPAID)
   status        OrderStatus        @default(DRAFT)
@@ -1117,6 +1147,12 @@ model MealPlanEntry {
   mealType MealType
   // Only meaningful (and only ever set) when Order.individualPricingEnabled.
   price Decimal? @db.Decimal(10, 2)
+
+  // Multi Order per-slot Children Guests & Pricing counts — only meaningful
+  // (and only ever set) when Order.orderKind === "MULTI", same gating as
+  // menuId itself below; priced against this slot's own menuId's rates.
+  childBelow5Count Int?
+  child5To10Count  Int?
 
   // Multi Order only (Order.orderKind) — which Menu this specific meal slot
   // uses; null for Single Order and for a Multi Order slot not yet decided.

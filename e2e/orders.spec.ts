@@ -79,7 +79,8 @@ test("create an order with participants/meal planning/products, then create and 
 
   // Participant Information
   await page.getByLabel("Adults").fill("80");
-  await page.getByLabel("Children").fill("20");
+  await page.getByLabel("Children (Under 5)").fill("5");
+  await page.getByLabel("Children (5–10)").fill("15");
   await page.getByLabel("Adult Non-Veg").fill("50");
   await page.getByLabel("Adult Veg").fill("30");
 

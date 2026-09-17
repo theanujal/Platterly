@@ -70,8 +70,12 @@ export function StockTransactionDialog({ itemId, name, unit, currentStock }: Sto
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="stock-type">Type</Label>
-            <Select value={type} onValueChange={(v) => setType((v as typeof type) ?? type)}>
-              <SelectTrigger id="stock-type">
+            <Select
+              items={Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={type}
+              onValueChange={(v) => setType((v as typeof type) ?? type)}
+            >
+              <SelectTrigger id="stock-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -105,7 +109,7 @@ export function StockTransactionDialog({ itemId, name, unit, currentStock }: Sto
               {error}
             </p>
           )}
-          <Button type="submit" disabled={pending} className="self-start">
+          <Button type="submit" disabled={pending} className="self-end">
             {pending ? "Saving…" : "Record movement"}
           </Button>
         </form>

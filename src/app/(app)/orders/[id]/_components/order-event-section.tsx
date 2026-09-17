@@ -258,7 +258,11 @@ function InlineEventEditor({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inline-event-type">Event Type</Label>
-            <Select value={eventTypeId} onValueChange={(v) => setEventTypeId(v ?? eventTypeId)}>
+            <Select
+              items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+              value={eventTypeId}
+              onValueChange={(v) => setEventTypeId(v ?? eventTypeId)}
+            >
               <SelectTrigger id="inline-event-type">
                 <SelectValue />
               </SelectTrigger>
@@ -273,7 +277,11 @@ function InlineEventEditor({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inline-event-kitchen">Kitchen</Label>
-            <Select value={assignedKitchenId} onValueChange={(v) => setAssignedKitchenId(v ?? assignedKitchenId)}>
+            <Select
+              items={Object.fromEntries(kitchens.map((k) => [k.id, k.name]))}
+              value={assignedKitchenId}
+              onValueChange={(v) => setAssignedKitchenId(v ?? assignedKitchenId)}
+            >
               <SelectTrigger id="inline-event-kitchen">
                 <SelectValue placeholder="Unassigned" />
               </SelectTrigger>
@@ -304,7 +312,11 @@ function InlineEventEditor({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inline-event-status">Status</Label>
-            <Select value={status} onValueChange={(v) => setStatus(v ?? status)}>
+            <Select
+              items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+              value={status}
+              onValueChange={(v) => setStatus(v ?? status)}
+            >
               <SelectTrigger id="inline-event-status">
                 <SelectValue />
               </SelectTrigger>

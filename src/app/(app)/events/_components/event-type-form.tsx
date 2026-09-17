@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EVENT_TYPE_ICON_OPTIONS, getEventTypeIcon } from "@/lib/event-type-icons";
@@ -92,8 +93,12 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-icon">Icon</Label>
-        <Select value={values.icon} onValueChange={(v) => setField("icon", v ?? values.icon)}>
-          <SelectTrigger id="event-icon" className="max-w-56">
+        <Select
+          items={Object.fromEntries(EVENT_TYPE_ICON_OPTIONS.map((o) => [o.value, o.label]))}
+          value={values.icon}
+          onValueChange={(v) => setField("icon", v ?? values.icon)}
+        >
+          <SelectTrigger id="event-icon" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -120,14 +125,11 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
           onChange={(e) => setField("minGuests", e.target.value)}
         />
       </div>
-      <label htmlFor="event-active" className="flex w-fit cursor-pointer items-center gap-2">
-        <Checkbox
-          id="event-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => setField("isActive", checked === true)}
-        />
-        <span className="text-sm font-medium">Active</span>
-      </label>
+      <ActiveToggleCard
+        id="event-active"
+        checked={values.isActive}
+        onCheckedChange={(checked) => setField("isActive", checked)}
+      />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Event Menus</Label>
@@ -151,7 +153,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>

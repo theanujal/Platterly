@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -102,8 +102,12 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="addon-type">Type</Label>
-            <Select value={values.type} onValueChange={(v) => setField("type", v ?? values.type)}>
-              <SelectTrigger id="addon-type">
+            <Select
+              items={Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.type}
+              onValueChange={(v) => setField("type", v ?? values.type)}
+            >
+              <SelectTrigger id="addon-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -117,8 +121,12 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="addon-price-type">Price Type</Label>
-            <Select value={values.priceType} onValueChange={(v) => setField("priceType", v ?? values.priceType)}>
-              <SelectTrigger id="addon-price-type">
+            <Select
+              items={Object.fromEntries(PRICE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.priceType}
+              onValueChange={(v) => setField("priceType", v ?? values.priceType)}
+            >
+              <SelectTrigger id="addon-price-type" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -146,21 +154,18 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
         </div>
       </div>
 
-      <label htmlFor="addon-active" className="flex w-fit cursor-pointer items-center gap-2">
-        <Checkbox
-          id="addon-active"
-          checked={values.isActive}
-          onCheckedChange={(checked) => setField("isActive", checked === true)}
-        />
-        <span className="text-sm font-medium">Active</span>
-      </label>
+      <ActiveToggleCard
+        id="addon-active"
+        checked={values.isActive}
+        onCheckedChange={(checked) => setField("isActive", checked)}
+      />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} className="self-start">
+      <Button type="submit" disabled={pending} className="self-end">
         {pending ? "Saving…" : submitLabel}
       </Button>
     </form>
