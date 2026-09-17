@@ -2,11 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { UtensilsCrossed, Phone, Mail, Globe } from "lucide-react";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
-import { listStorefrontMenus } from "@/modules/menus/menu";
+import { listEventTypes } from "@/modules/events/event-type";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { EventDetailsForm } from "./_components/event-details-form";
 
 interface StorefrontPageProps {
   params: Promise<{ tenantSlug: string }>;
@@ -21,8 +20,8 @@ export async function generateMetadata({ params }: StorefrontPageProps): Promise
   const organization = await getPublishedTenantBySlug(tenantSlug);
   if (!organization) return {};
 
-  const title = `${organization.name} — Menu`;
-  const description = organization.businessDescription?.trim() || `View ${organization.name}'s menu on Platterly.`;
+  const title = `Plan Your Event — ${organization.name}`;
+  const description = organization.businessDescription?.trim() || `Plan your event with ${organization.name} on Platterly.`;
   const url = canonicalUrl(`/${organization.slug}`);
   const image = organization.logo ? canonicalUrl(organization.logo) : undefined;
 
@@ -41,15 +40,17 @@ export async function generateMetadata({ params }: StorefrontPageProps): Promise
   };
 }
 
-// Chunk 8 Group 8.3 — the always-on, ungated public storefront. No auth, no
-// approval gate, server-rendered so it's crawlable. Distinct from Chunk 11's
-// per-event Menu Selection workflow (that one's approval-gated).
+// Chunk 8 Group 8.3 + Chunk 11 Group 11.2 (revised 2026-09-18, AJ) — the
+// tenant-wide Public Menu Link now opens straight into the event-details
+// intake form, no separate /eventdetails step and no browsable menu/item
+// listing here (that's inside Menu Selection, after this form is submitted).
 export default async function TenantStorefrontPage({ params }: StorefrontPageProps) {
   const { tenantSlug } = await params;
   const organization = await getPublishedTenantBySlug(tenantSlug);
   if (!organization) notFound();
 
-  const menus = await listStorefrontMenus(organization.id);
+  const eventTypes = (await listEventTypes(organization.id)).filter((et) => et.isActive);
+
   const url = canonicalUrl(`/${organization.slug}`);
   const jsonLd = buildRestaurantJsonLd({
     name: organization.name,
@@ -64,17 +65,13 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
       postalCode: organization.postalCode,
       addressCountry: organization.country,
     },
-    menuItems: menus.flatMap((menu) => menu.sections.flatMap((section) => section.items)).map((item) => ({
-      name: item.name,
-      description: item.description ?? undefined,
-      price: item.price,
-    })),
+    menuItems: [],
   });
 
   const address = formatAddress(organization);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-10 md:px-8">
+    <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-10 md:px-8">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
       <header className="flex flex-col items-center gap-3 text-center">
@@ -113,57 +110,12 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
         </div>
       </header>
 
-      {menus.length === 0 ? (
-        <p className="text-center text-sm text-muted-foreground">This menu isn&apos;t published yet — check back soon.</p>
-      ) : (
-        <div className="flex flex-col gap-8">
-          {menus.map((menu) => (
-            <section key={menu.id} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-lg font-semibold">{menu.name}</h2>
-                  <Badge variant={menu.menuType === "VEGETARIAN" ? "default" : "outline"}>
-                    {menu.menuType === "VEGETARIAN" ? "Veg" : "Non-Veg"}
-                  </Badge>
-                </div>
-                {menu.description && <p className="text-sm text-muted-foreground">{menu.description}</p>}
-                <p className="text-sm font-medium">₹{menu.pricePerPlate.toFixed(2)} / plate</p>
-              </div>
+      <div className="flex flex-col gap-1 text-center">
+        <h2 className="text-xl font-semibold">Plan Your Event</h2>
+        <p className="text-sm text-muted-foreground">Tell us about your special occasion</p>
+      </div>
 
-              {menu.sections.map((section) => (
-                <div key={section.categoryId ?? "other"} className="flex flex-col gap-2">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{section.categoryName}</h3>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {section.items.map((item) => (
-                      <Card key={item.id} className="overflow-hidden py-0">
-                        <CardContent className="flex items-center gap-3 p-3">
-                          {item.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={item.image} alt="" className="size-14 shrink-0 rounded-md object-cover" />
-                          ) : (
-                            <div className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted">
-                              <UtensilsCrossed className="size-5 text-muted-foreground" />
-                            </div>
-                          )}
-                          <div className="flex flex-1 flex-col gap-0.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium">{item.name}</span>
-                              <Badge variant={item.foodType === "VEGETARIAN" ? "default" : "outline"} className="shrink-0">
-                                {item.foodType === "VEGETARIAN" ? "Veg" : "Non-Veg"}
-                              </Badge>
-                            </div>
-                            {item.description && <p className="line-clamp-2 text-xs text-muted-foreground">{item.description}</p>}
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
-      )}
+      <EventDetailsForm tenantSlug={tenantSlug} eventTypes={eventTypes.map((et) => ({ id: et.id, name: et.name }))} />
     </main>
   );
 }
