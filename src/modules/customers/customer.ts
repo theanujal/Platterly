@@ -1,16 +1,18 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import type { EnquiryLeadSource } from "@/generated/prisma/enums";
+
+export type CustomerStatus = "LEAD" | "CUSTOMER";
 
 export interface CustomerInput {
   name: string;
   phone: string;
   email?: string;
-  addressLine1?: string;
-  city?: string;
-  state?: string;
   notes?: string;
   isActive?: boolean;
+  isEnquiry?: boolean;
+  leadSource?: EnquiryLeadSource | null;
 }
 
 export async function createCustomer(organizationId: string, input: CustomerInput, actorUserId: string) {
@@ -20,11 +22,10 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
       name: input.name,
       phone: input.phone,
       email: input.email,
-      addressLine1: input.addressLine1,
-      city: input.city,
-      state: input.state,
       notes: input.notes,
       isActive: input.isActive ?? true,
+      isEnquiry: input.isEnquiry ?? false,
+      leadSource: input.isEnquiry ? (input.leadSource ?? "MANUAL_ENTRY") : null,
     },
   });
 
@@ -42,6 +43,7 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
 
 export async function updateCustomer(organizationId: string, id: string, input: CustomerInput, actorUserId: string) {
   const before = await prisma.customer.findFirstOrThrow({ where: { id, organizationId } });
+  const isEnquiry = input.isEnquiry ?? before.isEnquiry;
 
   const after = await prisma.customer.update({
     where: { id },
@@ -49,11 +51,10 @@ export async function updateCustomer(organizationId: string, id: string, input: 
       name: input.name,
       phone: input.phone,
       email: input.email,
-      addressLine1: input.addressLine1,
-      city: input.city,
-      state: input.state,
       notes: input.notes,
       isActive: input.isActive ?? before.isActive,
+      isEnquiry,
+      leadSource: isEnquiry ? (input.leadSource ?? before.leadSource ?? "MANUAL_ENTRY") : null,
     },
   });
 
@@ -71,60 +72,68 @@ export async function updateCustomer(organizationId: string, id: string, input: 
 }
 
 /**
- * No hard-delete UI/action — a CRM record with a real Enquiry/Event
- * history shouldn't disappear outright (PRD §54's audit-trail principle,
- * same rationale as Organization's own soft-only lifecycle). The Active
- * checkbox on `updateCustomer` is the only lifecycle control this chunk
- * ships; a real "merge duplicate customers" tool is out of scope here.
+ * No hard-delete UI/action — a CRM record with a real Event/Order history
+ * shouldn't disappear outright (PRD §54's audit-trail principle, same
+ * rationale as Organization's own soft-only lifecycle). The Active checkbox
+ * on `updateCustomer` is the only lifecycle control this chunk ships; a real
+ * "merge duplicate customers" tool is out of scope here.
  */
 
-export async function listCustomers(organizationId: string) {
-  return prisma.customer.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+/**
+ * Lead vs Customer is derived from Order ownership, not a stored/synced
+ * column — "at least one Order" is the one source of truth the merged Lead/
+ * Customer workflow asks for, and deriving it at read time means it can
+ * never drift out of sync with the Order table the way a persisted flag
+ * updated only at order-creation time could.
+ */
+function statusOf(orderCount: number): CustomerStatus {
+  return orderCount > 0 ? "CUSTOMER" : "LEAD";
+}
+
+export interface CustomerListFilter {
+  status?: CustomerStatus;
+}
+
+export async function listCustomers(organizationId: string, filter?: CustomerListFilter) {
+  const customers = await prisma.customer.findMany({
+    where: {
+      organizationId,
+      ...(filter?.status === "CUSTOMER" ? { orders: { some: {} } } : {}),
+      ...(filter?.status === "LEAD" ? { orders: { none: {} } } : {}),
+    },
+    include: { _count: { select: { orders: true } } },
+    orderBy: { name: "asc" },
+  });
+
+  return customers.map(({ _count, ...customer }) => ({ ...customer, status: statusOf(_count.orders) }));
 }
 
 export async function getCustomer(organizationId: string, id: string) {
-  return prisma.customer.findFirst({ where: { id, organizationId } });
+  const customer = await prisma.customer.findFirst({ where: { id, organizationId }, include: { _count: { select: { orders: true } } } });
+  if (!customer) return null;
+  const { _count, ...rest } = customer;
+  return { ...rest, status: statusOf(_count.orders) };
 }
 
 export type CustomerTimelineEntry =
-  | { type: "enquiry"; id: string; date: Date; status: string; eventTypeName: string | null }
+  | { type: "order"; id: string; date: Date; status: string; orderNumber: string | null }
   | { type: "event"; id: string; date: Date; status: string; name: string };
 
 /**
- * Chunk 9 Group 9.2's "timeline view (populated as later chunks add data)"
- * — for now just this Customer's own Enquiries and Events, merged and
- * sorted newest-first. No separate Activity/log table: nothing else writes
- * customer-facing timeline entries yet, and inventing one ahead of a real
- * second source (Order/Invoice/Payment, Chunk 10/14) would be speculative.
+ * This Customer's own Orders and Events, merged and sorted newest-first, for
+ * the profile page's timeline view — Order is what drives this Customer's
+ * status (Lead -> Customer); Event was already shown here pre-merge and
+ * still has real history worth showing (Invoice/Payment are later chunks).
  */
 export async function getCustomerTimeline(organizationId: string, customerId: string): Promise<CustomerTimelineEntry[]> {
-  const [enquiries, events] = await Promise.all([
-    prisma.enquiry.findMany({
-      where: { organizationId, customerId },
-      include: { eventType: { select: { name: true } } },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.event.findMany({
-      where: { organizationId, customerId },
-      orderBy: { startDate: "desc" },
-    }),
+  const [orders, events] = await Promise.all([
+    prisma.order.findMany({ where: { organizationId, customerId }, orderBy: { createdAt: "desc" } }),
+    prisma.event.findMany({ where: { organizationId, customerId }, orderBy: { startDate: "desc" } }),
   ]);
 
   const entries: CustomerTimelineEntry[] = [
-    ...enquiries.map((e) => ({
-      type: "enquiry" as const,
-      id: e.id,
-      date: e.createdAt,
-      status: e.status,
-      eventTypeName: e.eventType?.name ?? null,
-    })),
-    ...events.map((e) => ({
-      type: "event" as const,
-      id: e.id,
-      date: e.startDate,
-      status: e.status,
-      name: e.name,
-    })),
+    ...orders.map((o) => ({ type: "order" as const, id: o.id, date: o.createdAt, status: o.status, orderNumber: o.orderNumber })),
+    ...events.map((e) => ({ type: "event" as const, id: e.id, date: e.startDate, status: e.status, name: e.name })),
   ];
 
   return entries.sort((a, b) => b.date.getTime() - a.date.getTime());

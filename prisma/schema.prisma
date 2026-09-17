@@ -161,7 +161,6 @@ model Organization {
   addOns         AddOn[]
   inventoryItems Inventory[]
   customers      Customer[]
-  enquiries      Enquiry[]
   events         Event[]
   orders         Order[]
   quotations     Quotation[]
@@ -677,7 +676,6 @@ model Menu {
   items                MenuMenuItem[]
   categoryAssignments  MenuCategoryAssignment[]
   eventTypes           EventTypeMenu[]
-  preferredByEnquiries Enquiry[]
   orderItems           OrderItem[]
   quotationItems       QuotationItem[]
   mealPlanEntries      MealPlanEntry[]
@@ -759,7 +757,6 @@ model EventType {
 
   menus      EventTypeMenu[]
   events     Event[]
-  enquiries  Enquiry[]
   orders     Order[]
   quotations Quotation[]
 
@@ -896,35 +893,13 @@ model InventoryTransaction {
   @@map("inventory_transaction")
 }
 
-// Chunk 9 — CRM Core: Customer, Lead/Enquiry, Event. One tightly-coupled
-// cluster (PRD §16-19, Updated doc §7/§9/§11/§25) sharing the customer
-// timeline: Lead -> Customer -> Order -> Event -> Repeat Customer.
-
-model Customer {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  phone          String
-  email          String?
-  addressLine1   String?
-  city           String?
-  state          String?
-  notes          String?
-  isActive       Boolean      @default(true)
-
-  enquiries  Enquiry[]
-  events     Event[]
-  orders     Order[]
-  quotations Quotation[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([organizationId])
-  @@map("customer")
-}
-
+// Chunk 9 — CRM Core: Customer, Event. Lead/Enquiry merged into Customer
+// (2026-09-17, AJ) — one record per person, not two: `isEnquiry`/`leadSource`
+// carry the lightweight lead-capture info directly on Customer instead of a
+// separate Enquiry entity, and whether someone is a Lead or a Customer is
+// derived from Order.customerId (see `getCustomerStatus`/`listCustomers` in
+// customer.ts), not a synced column that could drift.
+//
 // Updated doc §11's "Add New Lead" source options.
 enum EnquiryLeadSource {
   MANUAL_ENTRY
@@ -937,55 +912,32 @@ enum EnquiryLeadSource {
   OTHER
 }
 
-// Judgment call (dev plans/chunk-09-crm-core.md, "Lead == Enquiry, one
-// entity"): the updated doc's lightweight Lead and the PRD's fuller Enquiry
-// are the same record at different maturity — `status` carries that
-// maturity rather than a separate boolean "lead toggle" field, since a bare
-// Lead is just a record sitting at NEW with only name/phone/source filled
-// in and everything else null.
-enum EnquiryStatus {
-  NEW
-  CONTACTED
-  QUOTATION_SENT
-  FOLLOW_UP
-  CONVERTED
-  LOST
-}
-
-model Enquiry {
-  id             String            @id @default(cuid())
+model Customer {
+  id             String       @id @default(cuid())
   organizationId String
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String
+  email          String?
+  notes          String?
+  isActive       Boolean      @default(true)
 
-  // Lightweight Lead fields — required from the very first "Add New Lead" save.
-  name       String
-  phone      String
-  leadSource EnquiryLeadSource @default(MANUAL_ENTRY)
-  status     EnquiryStatus     @default(NEW)
+  // "Is this an enquiry?" toggle — when true, `leadSource`/`notes` above
+  // hold the Lead Information captured at intake. Status (Lead vs Customer)
+  // is derived from whether any Order references this Customer, not stored
+  // here — see the module-level comment above.
+  isEnquiry  Boolean            @default(false)
+  leadSource EnquiryLeadSource?
 
-  // Set once this Enquiry converts (convertEnquiryToCustomer) — nullable
-  // until then, never cleared afterward.
-  customerId String?
-  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-
-  // Fuller Enquiry fields — filled in as the record matures past NEW.
-  eventTypeId     String?
-  eventType       EventType? @relation(fields: [eventTypeId], references: [id], onDelete: SetNull)
-  eventDate       DateTime?
-  guestCount      Int?
-  venue           String?
-  requirements    String?
-  budget          Decimal?   @db.Decimal(12, 2)
-  preferredMenuId String?
-  preferredMenu   Menu?      @relation(fields: [preferredMenuId], references: [id], onDelete: SetNull)
-  notes           String?
+  events     Event[]
+  orders     Order[]
+  quotations Quotation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
-  @@index([customerId])
-  @@map("enquiry")
+  @@map("customer")
 }
 
 // Matches the Events Dashboard's own status filter values exactly (Updated

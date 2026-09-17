@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createCustomer, updateCustomer, type CustomerInput } from "@/modules/customers/customer";
+import type { EnquiryLeadSource } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -25,11 +26,10 @@ function buildInput(formData: FormData): CustomerInput {
     name,
     phone,
     email: stringField(formData, "email"),
-    addressLine1: stringField(formData, "addressLine1"),
-    city: stringField(formData, "city"),
-    state: stringField(formData, "state"),
     notes: stringField(formData, "notes"),
     isActive: formData.get("isActive") === "true",
+    isEnquiry: formData.get("isEnquiry") === "true",
+    leadSource: stringField(formData, "leadSource") as EnquiryLeadSource | undefined,
   };
 }
 

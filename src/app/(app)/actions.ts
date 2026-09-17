@@ -14,8 +14,8 @@ export interface GlobalSearchResult {
 }
 
 // Backs the app shell's header search bar (client, order number, phone) —
-// deliberately scoped to Order, since a Customer/Enquiry has no page of its
-// own worth landing on that an Order's detail page doesn't already surface.
+// deliberately scoped to Order, not Customer, since this is a
+// "find the order I'm looking for" search, not a CRM lookup.
 export async function searchOrdersAction(query: string): Promise<GlobalSearchResult[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];

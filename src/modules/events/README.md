@@ -27,8 +27,8 @@ Dashboard's location filter, the Event form's kitchen picker), not a
 general Kitchen CRUD module (none exists; Kitchen itself is still schema-only
 until Chunk 23).
 
-Chunk 9 Groups 9.2/9.3 (Customer, Enquiry) live in their own
-`src/modules/customers/`/`src/modules/enquiries/` folders, not here.
+Chunk 9 Group 9.2 (Customer, Lead/Enquiry merged in) lives in its own
+`src/modules/customers/` folder, not here.
 
 ## Standalone Events Dashboard removed (2026-09-16)
 

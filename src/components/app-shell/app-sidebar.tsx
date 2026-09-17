@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, ClipboardList, FileText, ShoppingCart, Settings2, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, Settings2, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -24,7 +24,6 @@ const NAV_ITEMS = [
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
   { label: "Add-ons", href: "/addons", icon: Sparkles },
   { label: "Inventory", href: "/inventory", icon: Boxes },
-  { label: "Enquiries", href: "/enquiries", icon: ClipboardList },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Orders", href: "/orders", icon: ShoppingCart },

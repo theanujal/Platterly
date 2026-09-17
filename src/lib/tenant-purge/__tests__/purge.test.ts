@@ -157,7 +157,6 @@ describe("purgeTenantData (Chunk 5 Group 5.4 Danger Zone)", () => {
       },
     });
     await prisma.eventRequiredInventory.create({ data: { eventId: event.id, inventoryId: inventory.id, quantity: 10 } });
-    await prisma.enquiry.create({ data: { organizationId: org.id, name: "Asha Rao", phone: "9876543210", customerId: customer.id } });
     // Chunk 10 — Order.customerId is also onDelete: Restrict; "order" must
     // precede "customer" in TENANT_SCOPED_DELEGATES the same way "event" does.
     const order = await prisma.order.create({
@@ -174,7 +173,6 @@ describe("purgeTenantData (Chunk 5 Group 5.4 Danger Zone)", () => {
     expect(await prisma.eventType.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.customer.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.inventory.count({ where: { organizationId: org.id } })).toBe(0);
-    expect(await prisma.enquiry.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.order.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.quotation.count({ where: { organizationId: org.id } })).toBe(0);
     expect(await prisma.eventRequiredInventory.count({ where: { eventId: event.id } })).toBe(0);

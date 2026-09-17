@@ -1,7 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createCustomer, updateCustomer, listCustomers, getCustomer, getCustomerTimeline } from "@/modules/customers/customer";
-import { createEnquiry } from "@/modules/enquiries/enquiry";
 import { createEventType } from "@/modules/events/event-type";
 import { createEvent } from "@/modules/events/event";
 
@@ -11,7 +10,7 @@ const cleanupUserIds: string[] = [];
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.event.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
-  await prisma.enquiry.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.order.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.eventType.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: cleanupOrgIds } } });
@@ -36,17 +35,33 @@ async function makeActor() {
   return actor;
 }
 
-describe("Customer CRUD (Chunk 9 Group 9.2)", () => {
-  it("createCustomer stores fields, defaults isActive to true, and writes an AuditLog row", async () => {
+describe("Customer CRUD (Chunk 9 Group 9.2, merged with Lead/Enquiry 2026-09-17)", () => {
+  it("createCustomer stores fields, defaults isActive to true and isEnquiry to false, and writes an AuditLog row", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
 
-    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210", city: "Bengaluru" }, actor.id);
+    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210" }, actor.id);
     expect(customer.name).toBe("Asha Rao");
     expect(customer.isActive).toBe(true);
+    expect(customer.isEnquiry).toBe(false);
+    expect(customer.leadSource).toBeNull();
 
     const log = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "customer.create", recordId: customer.id } });
     expect(log).not.toBeNull();
+  });
+
+  it("createCustomer with isEnquiry stores leadSource and notes as this Customer's Lead Information", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+
+    const customer = await createCustomer(
+      org.id,
+      { name: "Walk-in Lead", phone: "9111111111", isEnquiry: true, leadSource: "REFERRAL", notes: "Met at a wedding expo." },
+      actor.id,
+    );
+    expect(customer.isEnquiry).toBe(true);
+    expect(customer.leadSource).toBe("REFERRAL");
+    expect(customer.notes).toBe("Met at a wedding expo.");
   });
 
   it("updateCustomer changes fields, can toggle isActive, and writes a before/after AuditLog row", async () => {
@@ -59,6 +74,16 @@ describe("Customer CRUD (Chunk 9 Group 9.2)", () => {
 
     const log = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "customer.update", recordId: customer.id } });
     expect(log).not.toBeNull();
+  });
+
+  it("updateCustomer clears leadSource when isEnquiry is turned back off", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Toggle Lead", phone: "9222222222", isEnquiry: true, leadSource: "WEBSITE" }, actor.id);
+
+    const updated = await updateCustomer(org.id, customer.id, { name: "Toggle Lead", phone: "9222222222", isEnquiry: false }, actor.id);
+    expect(updated.isEnquiry).toBe(false);
+    expect(updated.leadSource).toBeNull();
   });
 
   it("listCustomers orders by name and is tenant-isolated; getCustomer is tenant-isolated", async () => {
@@ -77,17 +102,59 @@ describe("Customer CRUD (Chunk 9 Group 9.2)", () => {
   });
 });
 
-describe("getCustomerTimeline (Chunk 9 Group 9.2)", () => {
-  it("merges this Customer's own Enquiries and Events, sorted newest-first, tenant/customer-isolated", async () => {
+describe("Lead -> Customer status (derived from Order ownership, Merge Leads/Enquiries/Customers)", () => {
+  it("a newly created person defaults to LEAD status", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Fresh Lead", phone: "9333333333" }, actor.id);
+
+    expect((await getCustomer(org.id, customer.id))?.status).toBe("LEAD");
+  });
+
+  it("placing an Order automatically flips status to CUSTOMER, without creating a second record", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Soon a Customer", phone: "9444444444" }, actor.id);
+
+    await prisma.order.create({
+      data: { organizationId: org.id, customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() },
+    });
+
+    expect((await getCustomer(org.id, customer.id))?.status).toBe("CUSTOMER");
+    expect(await prisma.customer.count({ where: { organizationId: org.id, phone: "9444444444" } })).toBe(1);
+  });
+
+  it("listCustomers filters by derived status", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const lead = await createCustomer(org.id, { name: "Still a Lead", phone: "9555555555" }, actor.id);
+    const customer = await createCustomer(org.id, { name: "Has an Order", phone: "9666666666" }, actor.id);
+    await prisma.order.create({
+      data: { organizationId: org.id, customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() },
+    });
+
+    const leads = await listCustomers(org.id, { status: "LEAD" });
+    expect(leads.map((c) => c.id)).toEqual([lead.id]);
+
+    const customers = await listCustomers(org.id, { status: "CUSTOMER" });
+    expect(customers.map((c) => c.id)).toEqual([customer.id]);
+
+    const all = await listCustomers(org.id);
+    expect(all.map((c) => c.id).sort()).toEqual([lead.id, customer.id].sort());
+  });
+});
+
+describe("getCustomerTimeline (Chunk 9 Group 9.2, now sourced from Order + Event)", () => {
+  it("merges this Customer's own Orders and Events, sorted newest-first, tenant/customer-isolated", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await createCustomer(org.id, { name: "Priya Nair", phone: "8000000000" }, actor.id);
     const otherCustomer = await createCustomer(org.id, { name: "Other Customer", phone: "8000000001" }, actor.id);
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
 
-    const enquiry = await createEnquiry(org.id, { name: "Priya Nair", phone: "8000000000" }, actor.id);
-    await prisma.enquiry.update({ where: { id: enquiry.id }, data: { customerId: customer.id } });
-
+    const order = await prisma.order.create({
+      data: { organizationId: org.id, customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() },
+    });
     const event = await createEvent(
       org.id,
       {
@@ -100,21 +167,19 @@ describe("getCustomerTimeline (Chunk 9 Group 9.2)", () => {
       actor.id,
     );
 
-    // Noise: an Enquiry/Event for a different customer must not leak in.
-    await createEvent(
-      org.id,
-      { customerId: otherCustomer.id, eventTypeId: eventType.id, name: "Someone Else's Event", startDate: new Date(), endDate: new Date() },
-      actor.id,
-    );
+    // Noise: an Order/Event for a different customer must not leak in.
+    await prisma.order.create({
+      data: { organizationId: org.id, customerId: otherCustomer.id, eventStartDate: new Date(), eventEndDate: new Date() },
+    });
 
     const timeline = await getCustomerTimeline(org.id, customer.id);
     expect(timeline).toHaveLength(2);
-    expect(timeline.map((t) => t.id).sort()).toEqual([enquiry.id, event.id].sort());
+    expect(timeline.map((t) => t.id).sort()).toEqual([order.id, event.id].sort());
+    expect(timeline.find((t) => t.type === "order")).toMatchObject({ status: "DRAFT" });
     expect(timeline.find((t) => t.type === "event")).toMatchObject({ name: "Priya's Wedding", status: "PENDING" });
-    expect(timeline.find((t) => t.type === "enquiry")).toMatchObject({ status: "NEW" });
   });
 
-  it("returns an empty array for a customer with no enquiries or events", async () => {
+  it("returns an empty array for a customer with no orders or events", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await createCustomer(org.id, { name: "Fresh Customer", phone: "7000000000" }, actor.id);

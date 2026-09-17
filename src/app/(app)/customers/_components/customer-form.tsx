@@ -5,29 +5,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import type { ActionResult } from "../actions";
+
+const LEAD_SOURCE_OPTIONS = [
+  { value: "MANUAL_ENTRY", label: "Manual Entry" },
+  { value: "REFERRAL", label: "Referral" },
+  { value: "WEBSITE", label: "Website" },
+  { value: "SOCIAL_MEDIA", label: "Social Media" },
+  { value: "ADVERTISEMENT", label: "Advertisement" },
+  { value: "COLD_CALL", label: "Cold Call" },
+  { value: "NETWORKING", label: "Networking" },
+  { value: "OTHER", label: "Other" },
+] as const;
 
 export interface CustomerFormValues {
   name: string;
   phone: string;
   email: string;
-  addressLine1: string;
-  city: string;
-  state: string;
   notes: string;
   isActive: boolean;
+  isEnquiry: boolean;
+  leadSource: string;
 }
 
 export const EMPTY_CUSTOMER_VALUES: CustomerFormValues = {
   name: "",
   phone: "",
   email: "",
-  addressLine1: "",
-  city: "",
-  state: "",
   notes: "",
   isActive: true,
+  isEnquiry: false,
+  leadSource: "MANUAL_ENTRY",
 };
 
 interface CustomerFormProps {
@@ -55,11 +66,12 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }
     formData.set("name", values.name);
     formData.set("phone", values.phone);
     formData.set("email", values.email);
-    formData.set("addressLine1", values.addressLine1);
-    formData.set("city", values.city);
-    formData.set("state", values.state);
-    formData.set("notes", values.notes);
     formData.set("isActive", String(values.isActive));
+    formData.set("isEnquiry", String(values.isEnquiry));
+    if (values.isEnquiry) {
+      formData.set("leadSource", values.leadSource);
+      formData.set("notes", values.notes);
+    }
 
     const result = await onSubmit(formData);
     setPending(false);
@@ -85,23 +97,48 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }
           <Label htmlFor="customer-email">Email</Label>
           <Input id="customer-email" type="email" value={values.email} onChange={(e) => setField("email", e.target.value)} />
         </div>
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="customer-address">Address</Label>
-          <Input id="customer-address" value={values.addressLine1} onChange={(e) => setField("addressLine1", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="customer-city">City</Label>
-          <Input id="customer-city" value={values.city} onChange={(e) => setField("city", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="customer-state">State</Label>
-          <Input id="customer-state" value={values.state} onChange={(e) => setField("state", e.target.value)} />
-        </div>
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="customer-notes">Notes</Label>
-          <Textarea id="customer-notes" value={values.notes} onChange={(e) => setField("notes", e.target.value)} />
-        </div>
       </div>
+
+      <div className="flex items-center gap-2 rounded-lg border border-border p-3">
+        <Checkbox id="customer-is-enquiry" checked={values.isEnquiry} onCheckedChange={(checked) => setField("isEnquiry", checked === true)} />
+        <Label htmlFor="customer-is-enquiry" className="cursor-pointer font-normal">
+          Is this an enquiry?
+        </Label>
+      </div>
+
+      {values.isEnquiry && (
+        <div className="flex flex-col gap-4 border-t border-border pt-4">
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Lead Information</p>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="customer-lead-source">Lead Source</Label>
+            <Select
+              items={Object.fromEntries(LEAD_SOURCE_OPTIONS.map((o) => [o.value, o.label]))}
+              value={values.leadSource}
+              onValueChange={(v) => setField("leadSource", v ?? values.leadSource)}
+            >
+              <SelectTrigger id="customer-lead-source">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LEAD_SOURCE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="customer-notes">Notes</Label>
+            <Textarea
+              id="customer-notes"
+              placeholder="Add any notes about this lead..."
+              value={values.notes}
+              onChange={(e) => setField("notes", e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
       <ActiveToggleCard
         id="customer-active"

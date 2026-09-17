@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Zap, ShoppingCart, FileText, ClipboardList, ChefHat } from "lucide-react";
+import { Zap, ShoppingCart, FileText, Users, ChefHat } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardCardHeader } from "./dashboard-card-header";
 
@@ -9,7 +9,10 @@ import { DashboardCardHeader } from "./dashboard-card-header";
 const ACTIONS = [
   { label: "New Order", href: "/orders/new", icon: ShoppingCart },
   { label: "New Quotation", href: "/quotations/new", icon: FileText },
-  { label: "New Enquiry", href: "/enquiries", icon: ClipboardList },
+  // Enquiries merged into Customers (2026-09-17, AJ) — "New Lead" now just
+  // opens the Customers page, same "Add Customer" popup with its "Is this
+  // an enquiry?" toggle, rather than a separate Enquiries route.
+  { label: "New Lead", href: "/customers", icon: Users },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 

@@ -26,17 +26,16 @@ export default async function CustomersPage() {
       name: customer.name,
       phone: customer.phone,
       email: customer.email ?? "",
-      addressLine1: customer.addressLine1 ?? "",
-      city: customer.city ?? "",
-      state: customer.state ?? "",
       notes: customer.notes ?? "",
       isActive: customer.isActive,
+      isEnquiry: customer.isEnquiry,
+      leadSource: customer.leadSource ?? "MANUAL_ENTRY",
     };
 
     return {
       id: customer.id,
-      searchText: `${customer.name} ${customer.phone} ${customer.email ?? ""} ${customer.city ?? ""}`,
-      filterValues: { status: customer.isActive ? "ACTIVE" : "INACTIVE" },
+      searchText: `${customer.name} ${customer.phone} ${customer.email ?? ""}`,
+      filterValues: { activeStatus: customer.isActive ? "ACTIVE" : "INACTIVE", recordStatus: customer.status },
       sortValues: { name: customer.name, newest: customer.createdAt.getTime() },
       card: (
         <div className="flex flex-col gap-1.5 p-4">
@@ -52,9 +51,9 @@ export default async function CustomersPage() {
           </div>
           <span className="text-sm text-muted-foreground">{customer.phone}</span>
           {customer.email && <span className="text-xs text-muted-foreground">{customer.email}</span>}
-          {(customer.city || customer.state) && (
-            <span className="text-xs text-muted-foreground">{[customer.city, customer.state].filter(Boolean).join(", ")}</span>
-          )}
+          <Badge variant={customer.status === "CUSTOMER" ? "default" : "outline"} className="w-fit">
+            {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
+          </Badge>
         </div>
       ),
       listRow: (
@@ -62,6 +61,11 @@ export default async function CustomersPage() {
           <TableCell className="font-medium">{customer.name}</TableCell>
           <TableCell>{customer.phone}</TableCell>
           <TableCell className="text-muted-foreground">{customer.email ?? "—"}</TableCell>
+          <TableCell>
+            <Badge variant={customer.status === "CUSTOMER" ? "default" : "outline"}>
+              {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
+            </Badge>
+          </TableCell>
           <TableCell>
             <Badge variant={customer.isActive ? "default" : "secondary"}>{customer.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
@@ -75,7 +79,15 @@ export default async function CustomersPage() {
 
   const filterOptions: CatalogFilterOption[] = [
     {
-      key: "status",
+      key: "recordStatus",
+      allLabel: "All",
+      options: [
+        { value: "LEAD", label: "Leads" },
+        { value: "CUSTOMER", label: "Customers" },
+      ],
+    },
+    {
+      key: "activeStatus",
       allLabel: "Status",
       options: [
         { value: "ACTIVE", label: "Active" },
@@ -95,7 +107,7 @@ export default async function CustomersPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Customers</h1>
-          <p className="text-sm text-muted-foreground">Your customer database — the record of everyone you&apos;ve catered for.</p>
+          <p className="text-sm text-muted-foreground">Leads and customers — every person you&apos;ve enquired with or catered for, in one place.</p>
         </div>
         <AddCustomerDialog />
       </div>
@@ -104,7 +116,7 @@ export default async function CustomersPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddCustomerDialog variant="tile" />}
-        columns={["Name", "Phone", "Email", "Status", "Actions"]}
+        columns={["Name", "Phone", "Email", "Status", "Active", "Actions"]}
         searchPlaceholder="Search customers…"
         emptyLabel="No customers yet."
         filterOptions={filterOptions}

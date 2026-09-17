@@ -43,7 +43,6 @@ export const TENANT_SCOPED_DELEGATES = [
   // cascades automatically (DB-level onDelete: Cascade) off its parent
   // inventory row.
   "inventory",
-  "enquiry",
   // Chunk 10 — orderItem/mealPlanEntry have no organizationId of their own;
   // they cascade automatically off their parent order row. Order.customerId
   // is onDelete: Restrict (same reasoning as Event's), so "order" must
