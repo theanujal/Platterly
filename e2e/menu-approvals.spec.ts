@@ -11,6 +11,10 @@ import { verifyEmailViaOtp } from "./auth-helpers";
  * customer-side flow), approves the menu selection as that customer
  * (reaching KITCHEN_REVIEWING), then drives the admin side through
  * Approve -> Lock and confirms the final state.
+ *
+ * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`):
+ * once locked, the menu selection should show up in the Pending column and
+ * advance through Preparing -> Ready -> Completed as the kitchen works it.
  */
 
 const cleanupEmails: string[] = [];
@@ -122,4 +126,21 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await expect(page.getByRole("button", { name: "Lock Menu" })).toBeVisible();
   await page.getByRole("button", { name: "Lock Menu" }).click();
   await expect(page.getByText(/Locked on/)).toBeVisible();
+
+  // --- Kitchen Dashboard: the freshly-locked menu starts Pending, and advances one stage at a time ---
+  await page.goto("/kitchen-dashboard");
+  const pendingColumn = page.locator('[data-stage="PENDING"]');
+  await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
+
+  await pendingColumn.getByRole("button", { name: "Start Preparing" }).click();
+  const preparingColumn = page.locator('[data-stage="PREPARING"]');
+  await expect(preparingColumn.getByText(customerName, { exact: true })).toBeVisible();
+
+  await preparingColumn.getByRole("button", { name: "Mark Ready" }).click();
+  const readyColumn = page.locator('[data-stage="READY"]');
+  await expect(readyColumn.getByText(customerName, { exact: true })).toBeVisible();
+
+  await readyColumn.getByRole("button", { name: "Mark Completed" }).click();
+  const completedColumn = page.locator('[data-stage="COMPLETED"]');
+  await expect(completedColumn.getByText(customerName, { exact: true })).toBeVisible();
 });

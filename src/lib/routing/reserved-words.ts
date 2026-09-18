@@ -31,6 +31,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "orders",
   "events",
   "menu-approvals",
+  "kitchen-dashboard",
 ] as const;
 
 export function isReservedPathSegment(segment: string): boolean {

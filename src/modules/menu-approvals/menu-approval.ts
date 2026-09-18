@@ -4,7 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, resolveCatalogItem, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
-import type { MenuSelectionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
+import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export class InvalidMenuSelectionTransitionError extends Error {}
 
@@ -311,4 +311,63 @@ export async function listMenuSelectionsForKitchen(organizationId: string, statu
     include: { items: true, event: { include: { customer: true, eventType: true, assignedKitchen: true } } },
     orderBy: { updatedAt: "desc" },
   });
+}
+
+// --- Group 11.5 — Kitchen Dashboard & Basic Display (PRD §33/§34) ---
+// Deliberately basic/manual, not the recipe/BOM-driven production planning
+// of Chunk 18: a single `kitchenProductionStatus` column on MenuSelection,
+// advanced one stage at a time by the kitchen team, only once `status` has
+// reached FINAL_LOCKED.
+
+const KITCHEN_PRODUCTION_NEXT_STAGE: Record<KitchenProductionStatus, KitchenProductionStatus | null> = {
+  PENDING: "PREPARING",
+  PREPARING: "READY",
+  READY: "COMPLETED",
+  COMPLETED: null,
+};
+
+/** Every locked menu, nearest event first — the Kitchen Dashboard's own listing. */
+export async function listKitchenProductionQueue(organizationId: string, productionStatuses?: KitchenProductionStatus[]) {
+  return prisma.menuSelection.findMany({
+    where: {
+      organizationId,
+      status: "FINAL_LOCKED",
+      ...(productionStatuses ? { kitchenProductionStatus: { in: productionStatuses } } : {}),
+    },
+    include: { items: true, event: { include: { customer: true, eventType: true, assignedKitchen: true } } },
+    orderBy: { event: { startDate: "asc" } },
+  });
+}
+
+/**
+ * Moves a locked menu selection one stage forward through §34's Pending ->
+ * Preparing -> Ready -> Completed display status. Forward-only, one stage
+ * at a time — this is a basic manual board, not a second approval state
+ * machine, so it reuses InvalidMenuSelectionTransitionError rather than
+ * introducing a parallel error type.
+ */
+export async function advanceKitchenProductionStatus(organizationId: string, id: string, actorUserId: string) {
+  const before = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
+  if (before.status !== "FINAL_LOCKED") {
+    throw new InvalidMenuSelectionTransitionError("Only a final/locked menu selection has a kitchen production status.");
+  }
+
+  const next = KITCHEN_PRODUCTION_NEXT_STAGE[before.kitchenProductionStatus];
+  if (!next) {
+    throw new InvalidMenuSelectionTransitionError(`Cannot advance kitchen production status past ${before.kitchenProductionStatus}.`);
+  }
+
+  const after = await prisma.menuSelection.update({ where: { id }, data: { kitchenProductionStatus: next } });
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "menu_selection.kitchen_production_status_advance",
+    recordType: "MenuSelection",
+    recordId: id,
+    before: { kitchenProductionStatus: before.kitchenProductionStatus },
+    after: { kitchenProductionStatus: after.kitchenProductionStatus },
+  });
+
+  return after;
 }

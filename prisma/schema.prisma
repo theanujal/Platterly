@@ -1406,6 +1406,17 @@ enum MenuSelectionStatus {
   FINAL_LOCKED
 }
 
+// Group 11.5 — PRD §34's Kitchen Display System status, distinct from
+// MenuSelectionStatus above (the approval workflow). Only meaningful once
+// `status` reaches FINAL_LOCKED; the kitchen team advances it manually,
+// one stage at a time, from the Kitchen Dashboard.
+enum KitchenProductionStatus {
+  PENDING
+  PREPARING
+  READY
+  COMPLETED
+}
+
 model MenuSelection {
   id             String       @id @default(cuid())
   organizationId String
@@ -1415,6 +1426,10 @@ model MenuSelection {
   event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   status MenuSelectionStatus @default(DRAFT)
+
+  // Group 11.5 — kitchen team's own manual production tracking (§34), only
+  // acted on once `status` is FINAL_LOCKED.
+  kitchenProductionStatus KitchenProductionStatus @default(PENDING)
 
   // Bumped each time a post-approval change snapshots the prior state into
   // a new MenuVersion (§30) — the version number `items` below currently

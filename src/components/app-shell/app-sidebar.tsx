@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, ClipboardCheck, Settings2, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, ClipboardCheck, Flame, Settings2, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Orders", href: "/orders", icon: ShoppingCart },
   { label: "Menu Approvals", href: "/menu-approvals", icon: ClipboardCheck },
+  { label: "Kitchen Dashboard", href: "/kitchen-dashboard", icon: Flame },
   { label: "Event Types", href: "/events", icon: Settings2 },
 ] as const;
 

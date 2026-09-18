@@ -14,6 +14,8 @@ import {
   setMenuSelectionItems,
   getMenuSelection,
   listMenuSelectionsForKitchen,
+  listKitchenProductionQueue,
+  advanceKitchenProductionStatus,
   InvalidMenuSelectionTransitionError,
   type EventDetailsIntakeInput,
 } from "@/modules/menu-approvals/menu-approval";
@@ -291,5 +293,67 @@ describe("listMenuSelectionsForKitchen (Chunk 11 Group 11.5)", () => {
 
     const all = await listMenuSelectionsForKitchen(org.id);
     expect(all.map((s) => s.eventId).sort()).toEqual([eventA.id, eventB.id].sort());
+  });
+});
+
+describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", () => {
+  it("only surfaces FINAL_LOCKED menu selections, nearest event first", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+
+    const { event: eventNear } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000001", eventDate: new Date("2026-12-05") }));
+    const nearSelection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: eventNear.id } });
+    await customerApproves(org.id, nearSelection.id);
+    await kitchenApproves(org.id, nearSelection.id, actor.id);
+    await lockMenuSelection(org.id, nearSelection.id, actor.id);
+
+    const { event: eventFar } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000002", eventDate: new Date("2027-01-20") }));
+    const farSelection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: eventFar.id } });
+    await customerApproves(org.id, farSelection.id);
+    await kitchenApproves(org.id, farSelection.id, actor.id);
+    await lockMenuSelection(org.id, farSelection.id, actor.id);
+
+    // Still KITCHEN_REVIEWING — not locked, so it should never appear.
+    await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000003", eventDate: new Date("2026-12-01") }));
+
+    const queue = await listKitchenProductionQueue(org.id);
+    expect(queue.map((s) => s.eventId)).toEqual([nearSelection.eventId, farSelection.eventId]);
+    expect(queue.every((s) => s.kitchenProductionStatus === "PENDING")).toBe(true);
+  });
+
+  it("advances PENDING -> PREPARING -> READY -> COMPLETED one stage at a time, and refuses to go past COMPLETED", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    await customerApproves(org.id, selection.id);
+    await kitchenApproves(org.id, selection.id, actor.id);
+    await lockMenuSelection(org.id, selection.id, actor.id);
+
+    const preparing = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
+    expect(preparing.kitchenProductionStatus).toBe("PREPARING");
+
+    const ready = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
+    expect(ready.kitchenProductionStatus).toBe("READY");
+
+    const completed = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
+    expect(completed.kitchenProductionStatus).toBe("COMPLETED");
+
+    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+  });
+
+  it("refuses to set a production status before the menu selection is FINAL_LOCKED", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+
+    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+
+    await customerApproves(org.id, selection.id);
+    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
   });
 });
