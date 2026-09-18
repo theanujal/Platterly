@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/modules/tenants/slug";
 import { getDashboardSnapshot } from "./_data";
@@ -36,6 +36,10 @@ export default async function DashboardPage() {
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
   const suggestedSlug = organization.name !== "Unnamed Business" ? slugify(organization.name) : undefined;
   const snapshot = await getDashboardSnapshot(organizationId);
+  // Only the person who can actually save a slug change should see the
+  // popup nudging them to (AJ, 2026-09-19) — it was showing to every role,
+  // including staff who'd just hit a permission error trying to use it.
+  const canClaimLink = await hasPermission({ tenant: ["edit"] }, organizationId);
 
   const firstName = session.user.firstName ?? session.user.name.split(" ")[0];
   const lastName = session.user.lastName ?? "";
@@ -92,7 +96,7 @@ export default async function DashboardPage() {
 
       <UpcomingEventsCard events={snapshot.upcomingEvents} />
 
-      <CustomLinkDialog suggestedSlug={suggestedSlug} defaultOpen={organization.slugChangeCount === 0} />
+      <CustomLinkDialog suggestedSlug={suggestedSlug} defaultOpen={canClaimLink && organization.slugChangeCount === 0} />
     </main>
   );
 }

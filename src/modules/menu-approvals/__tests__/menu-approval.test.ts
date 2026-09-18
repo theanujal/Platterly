@@ -80,7 +80,8 @@ describe("submitEventDetails (Chunk 11 Group 11.2)", () => {
 
     const result = await submitEventDetails(org.id, intakeInput(eventType.id));
 
-    expect(result.customer.phone).toBe("9876543210");
+    // Phone is normalized to E.164 at write time (AJ, 2026-09-19) — see lib/phone.ts.
+    expect(result.customer.phone).toBe("+919876543210");
     expect(result.order.customerId).toBe(result.customer.id);
     expect(result.event.orderId).toBe(result.order.id);
     expect(result.menuSelection.eventId).toBe(result.event.id);

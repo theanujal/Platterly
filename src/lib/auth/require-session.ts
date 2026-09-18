@@ -144,6 +144,27 @@ export async function requirePermission<Resource extends keyof Statement>(
 }
 
 /**
+ * Same check as `requirePermission`, but returns a boolean instead of
+ * throwing (AJ, 2026-09-19) — for deciding whether to *show* something
+ * (e.g. a "claim your link" popup) rather than gating access to a whole
+ * page/action. Use `requirePermission` when the caller has no fallback UI.
+ */
+export async function hasPermission<Resource extends keyof Statement>(
+  permissions: { [K in Resource]?: Statement[K][number][] },
+  organizationId?: string,
+): Promise<boolean> {
+  const session = await requireSession();
+  const result = await auth.api.hasPermission({
+    headers: await nextHeaders(),
+    body: {
+      organizationId: organizationId ?? session.session.activeOrganizationId ?? undefined,
+      permissions,
+    },
+  });
+  return result.success;
+}
+
+/**
  * Platform-level check for Super Admin-only routes (Chunk 3). A Super Admin
  * has no organization membership — this never touches the access-control
  * engine above.

@@ -283,7 +283,8 @@ describe("sendOrderWhatsApp (Group 10.5 — Create & Send WhatsApp)", () => {
 
     const notification = await prisma.notification.findFirst({ where: { organizationId: org.id, event: "order.create_and_notify" } });
     expect(notification).not.toBeNull();
-    const whatsapp = await prisma.whatsAppMessage.findFirst({ where: { organizationId: org.id, toPhone: "9000000000" } });
+    // Phone is normalized to E.164 at write time (AJ, 2026-09-19) — see lib/phone.ts.
+    const whatsapp = await prisma.whatsAppMessage.findFirst({ where: { organizationId: org.id, toPhone: "+919000000000" } });
     expect(whatsapp).not.toBeNull();
 
     const log = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "order.whatsapp_sent", recordId: order.id } });

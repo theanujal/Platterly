@@ -100,13 +100,15 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   await inviteePage.getByRole("button", { name: "Accept invitation" }).click();
   await expect(inviteePage).toHaveURL(/\/dashboard$/);
-  // A brand-new org has never claimed a custom link, so the custom-link
-  // popup auto-opens and (correctly) marks the rest of the page aria-hidden
-  // while open — dismiss it before checking content behind it.
+  // The custom-link popup is gated on `tenant: ["edit"]` (AJ, 2026-09-19) —
+  // Staff doesn't hold that permission, so it must NOT auto-open here even
+  // though the org has never claimed a link. This `if` is just defensive;
+  // it should never actually trigger for this role.
   const inviteeDialog = inviteePage.getByRole("dialog", { name: "Claim your custom link" });
   if (await inviteeDialog.isVisible().catch(() => false)) {
     await inviteePage.keyboard.press("Escape");
   }
+  await expect(inviteeDialog).not.toBeVisible();
   // Dashboard welcome heading greets the signed-in person by name (Staff
   // Person, filled in above), not the business name — AJ's explicit ask,
   // 2026-09-16.

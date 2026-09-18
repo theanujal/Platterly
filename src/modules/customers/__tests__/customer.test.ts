@@ -121,7 +121,8 @@ describe("Lead -> Customer status (derived from Order ownership, Merge Leads/Enq
     });
 
     expect((await getCustomer(org.id, customer.id))?.status).toBe("CUSTOMER");
-    expect(await prisma.customer.count({ where: { organizationId: org.id, phone: "9444444444" } })).toBe(1);
+    // Phone is normalized to E.164 at write time (AJ, 2026-09-19) — see lib/phone.ts.
+    expect(await prisma.customer.count({ where: { organizationId: org.id, phone: "+919444444444" } })).toBe(1);
   });
 
   it("listCustomers filters by derived status", async () => {

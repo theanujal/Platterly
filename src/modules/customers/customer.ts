@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { normalizePhone } from "@/lib/phone";
 import type { EnquiryLeadSource } from "@/generated/prisma/enums";
 
 export type CustomerStatus = "LEAD" | "CUSTOMER";
@@ -20,7 +21,7 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
     data: {
       organizationId,
       name: input.name,
-      phone: input.phone,
+      phone: normalizePhone(input.phone),
       email: input.email,
       notes: input.notes,
       isActive: input.isActive ?? true,
@@ -49,7 +50,7 @@ export async function updateCustomer(organizationId: string, id: string, input: 
     where: { id },
     data: {
       name: input.name,
-      phone: input.phone,
+      phone: normalizePhone(input.phone),
       email: input.email,
       notes: input.notes,
       isActive: input.isActive ?? before.isActive,
@@ -115,7 +116,7 @@ export async function listCustomers(organizationId: string, filter?: CustomerLis
  * but that's the reason it exists.
  */
 export async function findCustomerByPhone(organizationId: string, phone: string) {
-  return prisma.customer.findUnique({ where: { organizationId_phone: { organizationId, phone } } });
+  return prisma.customer.findUnique({ where: { organizationId_phone: { organizationId, phone: normalizePhone(phone) } } });
 }
 
 export async function getCustomer(organizationId: string, id: string) {
