@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { UtensilsCrossed, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -201,7 +203,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-name">Item Name</Label>
-            <Input id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+            <IconInput icon={UtensilsCrossed} id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-description">Item Description</Label>
@@ -236,7 +238,8 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-price">Item Price Per Plate</Label>
-            <Input
+            <IconInput
+              icon={IndianRupee}
               id="item-price"
               type="number"
               step="0.01"

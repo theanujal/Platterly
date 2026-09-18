@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { User, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -140,12 +142,12 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
         <CardContent className="flex flex-col gap-4 pt-6">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="ed-name">Your Name *</Label>
-            <Input id="ed-name" required placeholder="Enter your full name" value={values.name} onChange={(e) => setField("name", e.target.value)} />
+            <IconInput icon={User} id="ed-name" required placeholder="Enter your full name" value={values.name} onChange={(e) => setField("name", e.target.value)} />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-email">Email Address *</Label>
-              <Input id="ed-email" type="email" required placeholder="your.email@example.com" value={values.email} onChange={(e) => setField("email", e.target.value)} />
+              <IconInput icon={Mail} id="ed-email" type="email" required placeholder="your.email@example.com" value={values.email} onChange={(e) => setField("email", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-phone">Phone Number *</Label>

@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listMenuSelectionsForKitchen } from "@/modules/menu-approvals/menu-approval";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -10,6 +11,8 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { MenuApprovalsFilterBar } from "./_components/menu-approvals-filter-bar";
 import type { MenuSelectionStatus } from "@/generated/prisma/enums";
+import type { VariantProps } from "class-variance-authority";
+import type { LucideIcon } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Menu Approvals — Platterly",
@@ -28,16 +31,32 @@ const STATUS_LABEL: Record<MenuSelectionStatus, string> = {
   FINAL_LOCKED: "Final / Locked",
 };
 
-const STATUS_VARIANT: Record<MenuSelectionStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  DRAFT: "secondary",
-  SENT_TO_CUSTOMER: "secondary",
-  CUSTOMER_REVIEWING: "outline",
-  CHANGES_REQUESTED: "destructive",
-  CUSTOMER_APPROVED: "outline",
-  KITCHEN_REVIEWING: "default",
-  KITCHEN_CHANGES_REQUESTED: "destructive",
-  KITCHEN_APPROVED: "default",
-  FINAL_LOCKED: "outline",
+// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19) — was
+// "default"/"secondary"/"outline"/"destructive" picked ad hoc per status,
+// which left Kitchen Reviewing and Kitchen Approved rendering as the exact
+// same orange badge despite meaning very different things.
+const STATUS_VARIANT: Record<MenuSelectionStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
+  DRAFT: "neutral",
+  SENT_TO_CUSTOMER: "info",
+  CUSTOMER_REVIEWING: "info",
+  CHANGES_REQUESTED: "warning",
+  CUSTOMER_APPROVED: "success",
+  KITCHEN_REVIEWING: "info",
+  KITCHEN_CHANGES_REQUESTED: "warning",
+  KITCHEN_APPROVED: "success",
+  FINAL_LOCKED: "success",
+};
+
+const STATUS_ICON: Record<MenuSelectionStatus, LucideIcon> = {
+  DRAFT: Circle,
+  SENT_TO_CUSTOMER: Clock,
+  CUSTOMER_REVIEWING: Clock,
+  CHANGES_REQUESTED: TriangleAlert,
+  CUSTOMER_APPROVED: Check,
+  KITCHEN_REVIEWING: Clock,
+  KITCHEN_CHANGES_REQUESTED: TriangleAlert,
+  KITCHEN_APPROVED: Check,
+  FINAL_LOCKED: Lock,
 };
 
 function formatDate(date: Date) {
@@ -92,14 +111,19 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
                 </TableCell>
               </TableRow>
             ) : (
-              menuSelections.map((menuSelection) => (
+              menuSelections.map((menuSelection) => {
+                const StatusIcon = STATUS_ICON[menuSelection.status];
+                return (
                 <TableRow key={menuSelection.id}>
                   <TableCell className="font-medium">{menuSelection.event.customer.name}</TableCell>
                   <TableCell>{menuSelection.event.name}</TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(menuSelection.event.startDate)}</TableCell>
                   <TableCell className="text-muted-foreground">{menuSelection.event.assignedKitchen?.name ?? "—"}</TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_VARIANT[menuSelection.status]}>{STATUS_LABEL[menuSelection.status]}</Badge>
+                    <Badge variant={STATUS_VARIANT[menuSelection.status]}>
+                      <StatusIcon data-icon="inline-start" />
+                      {STATUS_LABEL[menuSelection.status]}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(menuSelection.updatedAt)}</TableCell>
                   <TableCell className="text-right">
@@ -108,7 +132,8 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
                     </Button>
                   </TableCell>
                 </TableRow>
-              ))
+                );
+              })
             )}
           </TableBody>
         </Table>

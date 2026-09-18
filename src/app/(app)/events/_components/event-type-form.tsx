@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -81,7 +82,8 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
     <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-name">Event Name</Label>
-        <Input id="event-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+        {/* Icon matches whatever's picked below (AJ, 2026-09-19) — reinforces the choice instead of showing an unrelated generic glyph. */}
+        <IconInput icon={getEventTypeIcon(values.icon)} id="event-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-description">Description</Label>

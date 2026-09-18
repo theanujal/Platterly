@@ -7,6 +7,7 @@ import { StatusActions } from "./_components/status-actions";
 import { EditTenantDialog } from "./_components/edit-tenant-dialog";
 import { SlugOverrideForm } from "./_components/slug-override-form";
 import { AssignPlan } from "./_components/assign-plan";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const PROFILE_FIELDS: { key: "contactPhone" | "contactEmail" | "gstNumber" | "city" | "state" | "country"; label: string }[] = [
   { key: "contactPhone", label: "Phone" },
@@ -35,7 +36,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
           <h1 className="text-lg font-semibold">{tenant.name}</h1>
           <p className="text-sm text-neutral-500">/{tenant.slug}</p>
         </div>
-        <Badge variant={tenant.status === "ACTIVE" ? "default" : "secondary"}>{tenant.status}</Badge>
+        <Badge variant={tenant.status === "ACTIVE" ? "success" : tenant.status === "SUSPENDED" ? "danger" : "neutral"}>{tenant.status}</Badge>
       </div>
 
       <div className="flex gap-2">
@@ -67,7 +68,7 @@ export default async function TenantDetailPage({ params }: { params: Promise<{ i
         {PROFILE_FIELDS.map((field) => (
           <div key={field.key}>
             <dt className="text-neutral-500">{field.label}</dt>
-            <dd>{tenant[field.key] ?? "—"}</dd>
+            <dd>{field.key === "contactPhone" ? formatPhoneDisplay(tenant[field.key]) : tenant[field.key] ?? "—"}</dd>
           </div>
         ))}
         <div>

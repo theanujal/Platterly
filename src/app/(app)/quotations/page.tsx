@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Circle, Send, Eye, TriangleAlert, Check, X, CalendarX } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listQuotations } from "@/modules/quotations/quotation";
-import { Badge } from "@/components/ui/badge";
+import { getEventTypeIcon } from "@/lib/event-type-icons";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
+import type { VariantProps } from "class-variance-authority";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
@@ -23,14 +26,25 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS_VARIANT: Record<QuotationStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  DRAFT: "secondary",
-  SENT: "outline",
-  VIEWED: "outline",
-  CHANGES_REQUESTED: "destructive",
-  ACCEPTED: "default",
-  REJECTED: "destructive",
-  EXPIRED: "secondary",
+// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19).
+const STATUS_VARIANT: Record<QuotationStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
+  DRAFT: "neutral",
+  SENT: "info",
+  VIEWED: "info",
+  CHANGES_REQUESTED: "warning",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+  EXPIRED: "neutral",
+};
+
+const STATUS_ICON: Record<QuotationStatus, LucideIcon> = {
+  DRAFT: Circle,
+  SENT: Send,
+  VIEWED: Eye,
+  CHANGES_REQUESTED: TriangleAlert,
+  ACCEPTED: Check,
+  REJECTED: X,
+  EXPIRED: CalendarX,
 };
 
 const STATUS_LABEL: Record<QuotationStatus, string> = {
@@ -70,7 +84,10 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
     { value: "total-low", label: "Total (Low–High)", key: "total" },
   ];
 
-  const entries: CatalogEntry[] = quotations.map((quotation) => ({
+  const entries: CatalogEntry[] = quotations.map((quotation) => {
+    const StatusIcon = STATUS_ICON[quotation.status];
+    const EventTypeIcon = quotation.eventType ? getEventTypeIcon(quotation.eventType.icon) : null;
+    return {
     id: quotation.id,
     href: `/quotations/${quotation.id}`,
     searchText: `${quotation.customer.name} ${quotation.customer.phone}`,
@@ -82,10 +99,14 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
             <FileText className="size-4 text-muted-foreground" />
             {quotation.customer.name}
           </span>
-          <Badge variant={STATUS_VARIANT[quotation.status]}>{STATUS_LABEL[quotation.status]}</Badge>
+          <Badge variant={STATUS_VARIANT[quotation.status]}>
+            <StatusIcon data-icon="inline-start" />
+            {STATUS_LABEL[quotation.status]}
+          </Badge>
         </div>
-        {quotation.eventType && (
+        {quotation.eventType && EventTypeIcon && (
           <Badge variant="outline" className="w-fit">
+            <EventTypeIcon data-icon="inline-start" />
             {quotation.eventType.name}
           </Badge>
         )}
@@ -102,11 +123,15 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
         <TableCell>{formatCurrency(Number(quotation.total))}</TableCell>
         <TableCell className="text-muted-foreground">{quotation.validUntil ? formatDate(quotation.validUntil) : "—"}</TableCell>
         <TableCell>
-          <Badge variant={STATUS_VARIANT[quotation.status]}>{STATUS_LABEL[quotation.status]}</Badge>
+          <Badge variant={STATUS_VARIANT[quotation.status]}>
+            <StatusIcon data-icon="inline-start" />
+            {STATUS_LABEL[quotation.status]}
+          </Badge>
         </TableCell>
       </>
     ),
-  }));
+    };
+  });
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

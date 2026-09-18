@@ -48,7 +48,7 @@ export default async function SubscriptionPage() {
         <div className="flex max-w-lg flex-col gap-3 rounded-xl border border-border p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-medium">{current.subscriptionPlan.name}</h2>
-            <Badge variant={current.status === "TRIALING" ? "secondary" : "default"}>{current.status}</Badge>
+            <Badge variant={current.status === "TRIALING" ? "info" : "success"}>{current.status}</Badge>
           </div>
           {current.status === "TRIALING" && current.trialEndsAt && (
             <p className="text-sm text-muted-foreground">

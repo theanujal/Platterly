@@ -48,7 +48,7 @@ export default async function PlansPage() {
                 {plan.priceMonthly ? `${plan.currency} ${plan.priceMonthly}` : "—"}
               </TableCell>
               <TableCell>
-                <Badge variant={plan.isActive ? "default" : "secondary"}>
+                <Badge variant={plan.isActive ? "success" : "neutral"}>
                   {plan.isActive ? "Active" : "Inactive"}
                 </Badge>
               </TableCell>

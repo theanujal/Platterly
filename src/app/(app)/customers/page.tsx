@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Users } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listCustomers } from "@/modules/customers/customer";
+import { formatPhoneDisplay } from "@/lib/phone";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
@@ -45,13 +46,13 @@ export default async function CustomersPage() {
               {customer.name}
             </span>
             <div className="flex shrink-0 items-center gap-0.5">
-              {!customer.isActive && <Badge variant="secondary">Inactive</Badge>}
+              {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}
               <CustomerCardActions customerId={customer.id} name={customer.name} initialValues={initialValues} />
             </div>
           </div>
-          <span className="text-sm text-muted-foreground">{customer.phone}</span>
+          <span className="text-sm text-muted-foreground">{formatPhoneDisplay(customer.phone)}</span>
           {customer.email && <span className="text-xs text-muted-foreground">{customer.email}</span>}
-          <Badge variant={customer.status === "CUSTOMER" ? "default" : "outline"} className="w-fit">
+          <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"} className="w-fit">
             {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
           </Badge>
         </div>
@@ -59,15 +60,15 @@ export default async function CustomersPage() {
       listRow: (
         <>
           <TableCell className="font-medium">{customer.name}</TableCell>
-          <TableCell>{customer.phone}</TableCell>
+          <TableCell>{formatPhoneDisplay(customer.phone)}</TableCell>
           <TableCell className="text-muted-foreground">{customer.email ?? "—"}</TableCell>
           <TableCell>
-            <Badge variant={customer.status === "CUSTOMER" ? "default" : "outline"}>
+            <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"}>
               {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
             </Badge>
           </TableCell>
           <TableCell>
-            <Badge variant={customer.isActive ? "default" : "secondary"}>{customer.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={customer.isActive ? "success" : "neutral"}>{customer.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <CustomerCardActions customerId={customer.id} name={customer.name} initialValues={initialValues} />

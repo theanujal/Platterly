@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, Mail, Phone, ShoppingCart, CalendarRange } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getCustomer, getCustomerTimeline } from "@/modules/customers/customer";
+import { formatPhoneDisplay } from "@/lib/phone";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EditCustomerDialog } from "../_components/edit-customer-dialog";
@@ -71,15 +72,15 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{customer.name}</h1>
-            <Badge variant={customer.status === "CUSTOMER" ? "default" : "outline"}>
+            <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"}>
               {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
             </Badge>
-            {!customer.isActive && <Badge variant="secondary">Inactive</Badge>}
+            {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Phone className="size-3.5" />
-              {customer.phone}
+              {formatPhoneDisplay(customer.phone)}
             </span>
             {customer.email && (
               <span className="flex items-center gap-1">

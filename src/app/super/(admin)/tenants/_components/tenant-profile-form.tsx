@@ -1,8 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { Building, User, Mail, MapPin, Link as LinkIcon, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import type { ActionResult } from "../actions";
 
@@ -59,6 +62,17 @@ const FIELDS: FieldConfig[] = [
   { key: "country", label: "Country" },
 ];
 
+// Icons for the fields that have an obvious one (AJ, 2026-09-19) — city/
+// state/postal/country/GST/addressLine2 don't get a distinct enough glyph
+// of their own, so they stay plain rather than reaching for a stretch.
+const FIELD_ICON: Partial<Record<keyof TenantProfileFormValues, LucideIcon>> = {
+  name: Building,
+  ownerFirstName: User,
+  ownerLastName: User,
+  contactEmail: Mail,
+  addressLine1: MapPin,
+};
+
 interface TenantProfileFormProps {
   /** Whether to render the slug field — only on creation; slug changes go through the dedicated override action. */
   includeSlug?: boolean;
@@ -84,6 +98,10 @@ export function TenantProfileForm({
       setValues((prev) => ({ ...prev, [key]: event.target.value }));
   }
 
+  function setFieldValue(key: keyof TenantProfileFormValues, value: string) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -102,20 +120,40 @@ export function TenantProfileForm({
       {includeSlug && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="slug">Storefront slug</Label>
-          <Input id="slug" required maxLength={20} value={values.slug} onChange={setField("slug")} />
+          <IconInput icon={LinkIcon} id="slug" required maxLength={20} value={values.slug} onChange={setField("slug")} />
         </div>
       )}
-      {FIELDS.map((field) => (
+      {FIELDS.map((field) => {
+        const Icon = FIELD_ICON[field.key];
+        return (
         <div key={field.key} className="flex flex-col gap-1.5">
           <Label htmlFor={field.key}>{field.label}</Label>
-          <Input
-            id={field.key}
-            required={field.required}
-            value={values[field.key]}
-            onChange={setField(field.key)}
-          />
+          {field.key === "contactPhone" ? (
+            <PhoneInput
+              id={field.key}
+              required={field.required}
+              value={values[field.key]}
+              onChange={(v) => setFieldValue(field.key, v)}
+            />
+          ) : Icon ? (
+            <IconInput
+              icon={Icon}
+              id={field.key}
+              required={field.required}
+              value={values[field.key]}
+              onChange={setField(field.key)}
+            />
+          ) : (
+            <Input
+              id={field.key}
+              required={field.required}
+              value={values[field.key]}
+              onChange={setField(field.key)}
+            />
+          )}
         </div>
-      ))}
+        );
+      })}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

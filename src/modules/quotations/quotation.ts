@@ -142,7 +142,7 @@ export async function deleteQuotation(organizationId: string, id: string, actorU
 export async function listQuotations(organizationId: string, filter?: { status?: QuotationStatus }) {
   return prisma.quotation.findMany({
     where: { organizationId, status: filter?.status },
-    include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true } } },
+    include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true, icon: true } } },
     orderBy: { createdAt: "desc" },
   });
 }

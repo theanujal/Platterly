@@ -9,13 +9,13 @@ import type { OrderStatus, OrderPaymentStatus } from "@/generated/prisma/enums";
 // Same status → badge-variant/label mapping as the Orders list page
 // (src/app/(app)/orders/page.tsx) — kept in sync deliberately so a status
 // reads identically wherever it appears.
-const STATUS_VARIANT: Record<OrderStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  DRAFT: "secondary",
-  CONFIRMED: "default",
-  IN_PREPARATION: "default",
-  READY: "outline",
-  COMPLETED: "outline",
-  CANCELLED: "destructive",
+const STATUS_VARIANT: Record<OrderStatus, "neutral" | "info" | "success" | "danger"> = {
+  DRAFT: "neutral",
+  CONFIRMED: "info",
+  IN_PREPARATION: "info",
+  READY: "success",
+  COMPLETED: "success",
+  CANCELLED: "danger",
 };
 
 const STATUS_LABEL: Record<OrderStatus, string> = {

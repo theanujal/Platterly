@@ -2,14 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatPhoneDisplay } from "@/lib/phone";
 import type { ActionResult } from "../actions";
 
 const MEAL_TYPES = [
@@ -456,7 +458,7 @@ export function OrderForm({
         <div className="flex flex-col gap-1.5 sm:max-w-sm">
           <Label htmlFor="order-customer">Customer</Label>
           <Select
-            items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${c.phone})`]))}
+            items={Object.fromEntries(customers.map((c) => [c.id, `${c.name} (${formatPhoneDisplay(c.phone)})`]))}
             value={values.customerId}
             onValueChange={(v) => setField("customerId", v ?? values.customerId)}
           >
@@ -466,7 +468,7 @@ export function OrderForm({
             <SelectContent>
               {customers.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
-                  {c.name} ({c.phone})
+                  {c.name} ({formatPhoneDisplay(c.phone)})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -531,11 +533,11 @@ export function OrderForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-venue">Location / Venue</Label>
-            <Input id="order-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
+            <IconInput icon={MapPin} id="order-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="order-address">Event Address</Label>
-            <Input id="order-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
+            <IconInput icon={MapPin} id="order-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
           </div>
         </div>
       </section>

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { setCustomSlugAction } from "../actions";
 
@@ -44,7 +45,8 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
     <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="public-menu-slug">platterly.com/</Label>
-        <Input
+        <IconInput
+          icon={LinkIcon}
           id="public-menu-slug"
           maxLength={20}
           value={slug}

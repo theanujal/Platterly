@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
 import { searchOrdersAction, type GlobalSearchResult } from "@/app/(app)/actions";
 import type { OrderStatus } from "@/generated/prisma/enums";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
   DRAFT: "Draft",
@@ -100,7 +101,7 @@ export function GlobalSearch() {
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate font-medium">{result.customerName}</span>
                       <span className="text-xs text-muted-foreground">
-                        {result.orderNumber ?? "—"} · {result.customerPhone}
+                        {result.orderNumber ?? "—"} · {formatPhoneDisplay(result.customerPhone)}
                       </span>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-0.5">

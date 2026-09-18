@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { User, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -87,15 +89,15 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="customer-name">Name</Label>
-          <Input id="customer-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+          <IconInput icon={User} id="customer-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="customer-phone">Phone</Label>
-          <Input id="customer-phone" required value={values.phone} onChange={(e) => setField("phone", e.target.value)} />
+          <PhoneInput id="customer-phone" required value={values.phone} onChange={(v) => setField("phone", v)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="customer-email">Email</Label>
-          <Input id="customer-email" type="email" value={values.email} onChange={(e) => setField("email", e.target.value)} />
+          <IconInput icon={Mail} id="customer-email" type="email" value={values.email} onChange={(e) => setField("email", e.target.value)} />
         </div>
       </div>
 

@@ -22,6 +22,18 @@ const STATUS_LABEL: Record<QuotationStatus, string> = {
   EXPIRED: "Expired",
 };
 
+// Kept in sync with the same legend in (app)/quotations/page.tsx (AJ,
+// 2026-09-19) — a status should read identically wherever it appears.
+const STATUS_VARIANT: Record<QuotationStatus, "neutral" | "info" | "warning" | "success" | "danger"> = {
+  DRAFT: "neutral",
+  SENT: "info",
+  VIEWED: "info",
+  CHANGES_REQUESTED: "warning",
+  ACCEPTED: "success",
+  REJECTED: "danger",
+  EXPIRED: "neutral",
+};
+
 const ACTIONABLE_STATUSES: QuotationStatus[] = ["SENT", "VIEWED"];
 
 function formatCurrency(amount: number) {
@@ -75,7 +87,7 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
         )}
         <h1 className="text-xl font-semibold">{organization.name}</h1>
         <p className="text-sm text-muted-foreground">Quotation for {quotation.customer.name}</p>
-        <Badge variant={quotation.status === "ACCEPTED" ? "default" : "outline"}>{STATUS_LABEL[quotation.status]}</Badge>
+        <Badge variant={STATUS_VARIANT[quotation.status]}>{STATUS_LABEL[quotation.status]}</Badge>
       </header>
 
       {(quotation.venue || quotation.eventType) && (

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { Sparkles, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
@@ -85,7 +86,7 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-name">Name</Label>
-          <Input id="addon-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+          <IconInput icon={Sparkles} id="addon-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-description">Description</Label>
@@ -141,7 +142,8 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-price">Price</Label>
-          <Input
+          <IconInput
+            icon={IndianRupee}
             id="addon-price"
             type="number"
             step="0.01"

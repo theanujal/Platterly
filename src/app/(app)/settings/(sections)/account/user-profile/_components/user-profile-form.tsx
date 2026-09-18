@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { User, Mail, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { updateUserProfileAction } from "../actions";
 
@@ -48,22 +49,22 @@ export function UserProfileForm({ initialFirstName, initialLastName, email, role
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="firstName">First name</Label>
-          <Input id="firstName" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+          <IconInput icon={User} id="firstName" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="lastName">Last name</Label>
-          <Input id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          <IconInput icon={User} id="lastName" value={lastName} onChange={(e) => setLastName(e.target.value)} />
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" value={email} disabled readOnly />
+        <IconInput icon={Mail} id="email" value={email} disabled readOnly />
         <p className="text-xs text-muted-foreground">Contact support to change your email address.</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="role">Account role</Label>
-          <Input id="role" value={role} disabled readOnly className="capitalize" />
+          <IconInput icon={ShieldCheck} id="role" value={role} disabled readOnly className="capitalize" />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Building, Globe, Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -87,7 +89,8 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         <h2 className="text-sm font-semibold text-muted-foreground">Business</h2>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="businessName">Company / business name</Label>
-          <Input
+          <IconInput
+            icon={Building}
             id="businessName"
             required
             value={values.businessName}
@@ -171,7 +174,8 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         <h2 className="text-sm font-semibold text-muted-foreground">Online presence</h2>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="websiteUrl">Website URL</Label>
-          <Input
+          <IconInput
+            icon={Globe}
             id="websiteUrl"
             type="url"
             value={values.websiteUrl}
@@ -179,8 +183,11 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
           />
         </div>
         <div className="flex flex-col gap-1.5">
+          {/* lucide-react has no brand icons (Instagram/Facebook), so both
+              social fields use the same generic external-link glyph. */}
           <Label htmlFor="instagramUrl">Instagram URL</Label>
-          <Input
+          <IconInput
+            icon={LinkIcon}
             id="instagramUrl"
             type="url"
             value={values.instagramUrl}
@@ -189,7 +196,8 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="facebookUrl">Facebook URL</Label>
-          <Input
+          <IconInput
+            icon={LinkIcon}
             id="facebookUrl"
             type="url"
             value={values.facebookUrl}

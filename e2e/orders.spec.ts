@@ -32,6 +32,7 @@ test("create an order with participants/meal planning/products, then create and 
   await page.getByLabel("First name").fill("Orders");
   await page.getByLabel("Last name").fill("Tester");
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
@@ -47,7 +48,7 @@ test("create an order with participants/meal planning/products, then create and 
   await page.goto("/customers");
   await page.getByRole("button", { name: "Add Customer" }).click();
   await page.getByLabel("Name").fill(customerName);
-  await page.getByLabel("Phone").fill("9876543210");
+  await page.getByLabel("Phone", { exact: true }).fill("9876543210");
   await page.getByRole("button", { name: "Create customer" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
@@ -168,6 +169,7 @@ test("Multi Order: different Menus per meal slot, a configured Order Number, and
   await page.getByLabel("First name").fill("Multi");
   await page.getByLabel("Last name").fill("Tester");
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
@@ -194,7 +196,7 @@ test("Multi Order: different Menus per meal slot, a configured Order Number, and
   await page.goto("/customers");
   await page.getByRole("button", { name: "Add Customer" }).click();
   await page.getByLabel("Name").fill(customerName);
-  await page.getByLabel("Phone").fill("9123456780");
+  await page.getByLabel("Phone", { exact: true }).fill("9123456780");
   await page.getByRole("button", { name: "Create customer" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 

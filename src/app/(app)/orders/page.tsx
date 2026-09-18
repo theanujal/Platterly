@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShoppingCart, Plus } from "lucide-react";
+import { ShoppingCart, Plus, Circle, Clock, Package, Check, X, Receipt, Layers } from "lucide-react";
+import { getEventTypeIcon } from "@/lib/event-type-icons";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listOrders } from "@/modules/orders/order";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
+import type { VariantProps } from "class-variance-authority";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
@@ -23,13 +26,23 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS_VARIANT: Record<OrderStatus, "default" | "secondary" | "outline" | "destructive"> = {
-  DRAFT: "secondary",
-  CONFIRMED: "default",
-  IN_PREPARATION: "default",
-  READY: "outline",
-  COMPLETED: "outline",
-  CANCELLED: "destructive",
+// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19).
+const STATUS_VARIANT: Record<OrderStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
+  DRAFT: "neutral",
+  CONFIRMED: "info",
+  IN_PREPARATION: "info",
+  READY: "success",
+  COMPLETED: "success",
+  CANCELLED: "danger",
+};
+
+const STATUS_ICON: Record<OrderStatus, LucideIcon> = {
+  DRAFT: Circle,
+  CONFIRMED: Clock,
+  IN_PREPARATION: Clock,
+  READY: Package,
+  COMPLETED: Check,
+  CANCELLED: X,
 };
 
 const STATUS_LABEL: Record<OrderStatus, string> = {
@@ -44,6 +57,18 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
 const ORDER_KIND_LABEL: Record<OrderKind, string> = {
   SINGLE: "Single Order",
   MULTI: "Multi Order",
+};
+
+// Legend for Single vs. Multi Order (AJ, 2026-09-19) — both used to render
+// the same "secondary" gray badge with no way to tell them apart at a glance.
+const ORDER_KIND_VARIANT: Record<OrderKind, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
+  SINGLE: "neutral",
+  MULTI: "info",
+};
+
+const ORDER_KIND_ICON: Record<OrderKind, LucideIcon> = {
+  SINGLE: Receipt,
+  MULTI: Layers,
 };
 
 function formatCurrency(amount: number) {
@@ -75,7 +100,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     { value: "event-date", label: "Event Date", key: "eventDate" },
   ];
 
-  const entries: CatalogEntry[] = orders.map((order) => ({
+  const entries: CatalogEntry[] = orders.map((order) => {
+    const StatusIcon = STATUS_ICON[order.status];
+    const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
+    const EventTypeIcon = order.eventType ? getEventTypeIcon(order.eventType.icon) : null;
+    return {
     id: order.id,
     href: `/orders/${order.id}`,
     searchText: `${order.customer.name} ${order.customer.phone} ${order.orderNumber ?? ""}`,
@@ -95,7 +124,10 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               {order.customer.name}
             </span>
           </div>
-          <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+          <Badge variant={STATUS_VARIANT[order.status]}>
+            <StatusIcon data-icon="inline-start" />
+            {STATUS_LABEL[order.status]}
+          </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
           {order.eventStartDate.toDateString() === order.eventEndDate.toDateString()
@@ -103,11 +135,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             : `${order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${formatDate(order.eventEndDate)}`}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="secondary" className="w-fit">
+          <Badge variant={ORDER_KIND_VARIANT[order.orderKind]} className="w-fit">
+            <OrderKindIcon data-icon="inline-start" />
             {ORDER_KIND_LABEL[order.orderKind]}
           </Badge>
-          {order.eventType && (
+          {order.eventType && EventTypeIcon && (
             <Badge variant="outline" className="w-fit">
+              <EventTypeIcon data-icon="inline-start" />
               {order.eventType.name}
             </Badge>
           )}
@@ -130,11 +164,15 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           {order.paymentStatus === "PAID" ? "Paid" : order.paymentStatus === "PARTIALLY_PAID" ? "Partially Paid" : "Unpaid"}
         </TableCell>
         <TableCell>
-          <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+          <Badge variant={STATUS_VARIANT[order.status]}>
+            <StatusIcon data-icon="inline-start" />
+            {STATUS_LABEL[order.status]}
+          </Badge>
         </TableCell>
       </>
     ),
-  }));
+    };
+  });
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

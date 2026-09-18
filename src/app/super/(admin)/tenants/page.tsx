@@ -78,7 +78,7 @@ export default async function TenantsPage({
               </TableCell>
               <TableCell className="text-neutral-500">{tenant.slug}</TableCell>
               <TableCell>
-                <Badge variant={tenant.status === "ACTIVE" ? "default" : "secondary"}>{tenant.status}</Badge>
+                <Badge variant={tenant.status === "ACTIVE" ? "success" : tenant.status === "SUSPENDED" ? "danger" : "neutral"}>{tenant.status}</Badge>
               </TableCell>
               <TableCell>{[tenant.ownerFirstName, tenant.ownerLastName].filter(Boolean).join(" ") || "—"}</TableCell>
               <TableCell>{tenant.createdAt.toLocaleDateString()}</TableCell>

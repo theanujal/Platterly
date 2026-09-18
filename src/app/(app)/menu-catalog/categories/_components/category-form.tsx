@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,7 +94,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="category-name">Category Name</Label>
-        <Input id="category-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+        <IconInput icon={LayoutGrid} id="category-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="category-description">Category Description</Label>

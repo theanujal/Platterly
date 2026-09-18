@@ -42,6 +42,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByLabel("First name").fill("Priya");
   await page.getByLabel("Last name").fill("Sharma");
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   // Password show/hide toggle (AJ's explicit ask, 2026-09-16) — flip it on
   // and confirm the raw value is actually readable, not just that a click

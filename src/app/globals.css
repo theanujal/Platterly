@@ -27,6 +27,9 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -64,6 +67,12 @@
   --accent: #fff7ed;
   --accent-foreground: #9a3412;
   --destructive: #ef4444;
+  /* Status-badge color legend (AJ, 2026-09-19) — neutral/info/warning/
+     success/danger, one set of tokens reused by every status badge across
+     the app instead of each page picking bg-primary/bg-secondary ad hoc. */
+  --success: #16a34a;
+  --warning: #d97706;
+  --info: #2563eb;
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #ff6900;

@@ -16,10 +16,13 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19) — Low
+// Stock used to render "secondary" (the same neutral gray as an inactive
+// item), when it's actually a caution state, not a neutral one.
 function stockStatus(stock: number, threshold: number | null) {
-  if (stock <= 0) return { label: "Out of Stock", variant: "destructive" as const };
-  if (threshold !== null && stock <= threshold) return { label: "Low Stock", variant: "secondary" as const };
-  return { label: "In Stock", variant: "default" as const };
+  if (stock <= 0) return { label: "Out of Stock", variant: "danger" as const };
+  if (threshold !== null && stock <= threshold) return { label: "Low Stock", variant: "warning" as const };
+  return { label: "In Stock", variant: "success" as const };
 }
 
 function toDateInputValue(date: Date | null) {

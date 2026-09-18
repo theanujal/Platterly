@@ -367,7 +367,7 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
           }
         : {}),
     },
-    include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true } } },
+    include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true, icon: true } } },
     orderBy: { createdAt: "desc" },
     take: filter?.take,
   });

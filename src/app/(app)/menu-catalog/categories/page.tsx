@@ -43,7 +43,7 @@ export default async function CategoriesPage() {
             <div className="flex items-start justify-between gap-2">
               <span className="font-medium">{category.name}</span>
               <div className="flex shrink-0 items-center gap-0.5">
-                {!category.isActive && <Badge variant="secondary">Inactive</Badge>}
+                {!category.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <CategoryCardActions
                   categoryId={category.id}
                   name={category.name}
@@ -60,7 +60,7 @@ export default async function CategoriesPage() {
         <>
           <TableCell className="font-medium">{category.name}</TableCell>
           <TableCell>
-            <Badge variant={category.isActive ? "default" : "secondary"}>{category.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={category.isActive ? "success" : "neutral"}>{category.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <CategoryCardActions

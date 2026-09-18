@@ -5,6 +5,7 @@ import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
+import { formatPhoneDisplay } from "@/lib/phone";
 import { EventDetailsForm } from "./_components/event-details-form";
 
 interface StorefrontPageProps {
@@ -92,7 +93,7 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
           {organization.contactPhone && (
             <span className="flex items-center gap-1">
               <Phone className="size-3" />
-              {organization.contactPhone}
+              {formatPhoneDisplay(organization.contactPhone)}
             </span>
           )}
           {organization.contactEmail && (

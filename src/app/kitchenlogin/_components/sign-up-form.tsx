@@ -7,6 +7,7 @@ import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { IconInput, PasswordInput } from "./icon-input";
 
 interface SignUpFormProps {
@@ -33,6 +34,7 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState(lockedEmail ?? "");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -50,7 +52,7 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
 
     setPending(true);
     const name = [firstName, lastName].filter(Boolean).join(" ");
-    const { error: signUpError } = await authClient.signUp.email({ name, firstName, lastName, email, password });
+    const { error: signUpError } = await authClient.signUp.email({ name, firstName, lastName, email, phone, password });
     setPending(false);
     if (signUpError) {
       setError(signUpError.message ?? "Could not create your account.");
@@ -98,6 +100,10 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="signup-phone" required>Phone</Label>
+        <PhoneInput id="signup-phone" required value={phone} onChange={setPhone} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="signup-password" required>Password</Label>

@@ -34,6 +34,10 @@ model User {
   firstName String?
   lastName  String?
 
+  // Collected at signup via the shared `PhoneInput` (AJ, 2026-09-19) — see
+  // `additionalFields.phone` in src/lib/auth/auth.ts.
+  phone String?
+
   notificationsReceived        Notification[]
   auditLogsActedOn             AuditLog[]
   inventoryTransactionsActedOn InventoryTransaction[]

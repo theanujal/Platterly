@@ -14,6 +14,7 @@ import { OrdersCalendarCard } from "./_components/orders-calendar-card";
 import { InventoryOverviewCard } from "./_components/inventory-overview-card";
 import { PartialPaymentsCard } from "./_components/partial-payments-card";
 import { PublicMenuShortcutCard } from "./_components/public-menu-shortcut-card";
+import { Separator } from "@/components/ui/separator";
 
 export const metadata: Metadata = {
   title: "Dashboard — Platterly",
@@ -52,6 +53,7 @@ export default async function DashboardPage() {
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
         </p>
       </div>
+      <Separator />
 
       {!organization.onboardingCompletedAt && <OnboardingNudgeBanner />}
 

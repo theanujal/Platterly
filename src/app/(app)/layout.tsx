@@ -42,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         planName: subscription.subscriptionPlan.name,
         isTrialing: subscription.status === "TRIALING",
         trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null,
+        trialTotalDays: subscription.subscriptionPlan.trialDurationDays,
       }
     : null;
 

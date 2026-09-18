@@ -8,16 +8,29 @@ import { listMenuItems } from "@/modules/menus/item";
 import { listKitchens } from "@/modules/events/event";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { prisma } from "@/lib/db";
+import { Receipt, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EditOrderClient } from "./_components/edit-order-client";
 import { DeleteOrderButton } from "./_components/delete-order-button";
 import { OrderEventSection } from "./_components/order-event-section";
 import type { OrderFormValues } from "../_components/order-form";
 import type { OrderKind } from "@/generated/prisma/enums";
+import type { LucideIcon } from "lucide-react";
 
 const ORDER_KIND_LABEL: Record<OrderKind, string> = {
   SINGLE: "Single Order",
   MULTI: "Multi Order",
+};
+
+// Kept in sync with the same legend in ../page.tsx (AJ, 2026-09-19).
+const ORDER_KIND_VARIANT: Record<OrderKind, "neutral" | "info"> = {
+  SINGLE: "neutral",
+  MULTI: "info",
+};
+
+const ORDER_KIND_ICON: Record<OrderKind, LucideIcon> = {
+  SINGLE: Receipt,
+  MULTI: Layers,
 };
 
 function toDateInputValue(date: Date) {
@@ -95,7 +108,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <p className="text-xs font-medium text-muted-foreground">{order.orderNumber ?? "Order"}</p>
           <h1 className="text-lg font-semibold">Order for {order.customer.name}</h1>
           <div className="mt-1 flex items-center gap-2">
-            <Badge variant="secondary">{ORDER_KIND_LABEL[order.orderKind]}</Badge>
+            {(() => {
+              const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
+              return (
+                <Badge variant={ORDER_KIND_VARIANT[order.orderKind]}>
+                  <OrderKindIcon data-icon="inline-start" />
+                  {ORDER_KIND_LABEL[order.orderKind]}
+                </Badge>
+              );
+            })()}
             <p className="text-sm text-muted-foreground">
               {order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
             </p>

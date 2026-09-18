@@ -45,6 +45,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.getByLabel("First name").fill("CRM");
   await page.getByLabel("Last name").fill("Tester");
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
@@ -79,7 +80,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.getByRole("button", { name: "Add Customer" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Name").fill(leadName);
-  await page.getByLabel("Phone").fill(leadPhone);
+  await page.getByLabel("Phone", { exact: true }).fill(leadPhone);
   await page.getByRole("checkbox", { name: "Is this an enquiry?" }).check();
   await page.getByLabel("Lead Source").click();
   await page.getByRole("option", { name: "Referral" }).click();

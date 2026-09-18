@@ -10,9 +10,24 @@ import { Table, TableBody, TableHeader, TableRow, TableHead } from "@/components
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 
-/** Shared styling for every "Add New X" dashed-border tile across the catalog sections, so all 5 stay visually identical without copy-pasting the class string. A constant tinted fill (not just a plain dashed box), matching AJ's reference screenshot (2026-09-17). */
+/**
+ * Shared styling for every "Add New X" dashed-border tile across the catalog sections, so all 5 stay visually identical without copy-pasting the class string. A constant tinted fill (not just a plain dashed box), matching AJ's reference screenshot (2026-09-17).
+ *
+ * `h-full`, not a fixed `min-h` (AJ, 2026-09-19) — the grid's own default
+ * `align-items: stretch` already sizes every row to its tallest data card;
+ * this tile just fills that height rather than imposing its own, so it
+ * tracks whatever the data cards' content determines instead of a
+ * hardcoded floor that could mismatch a row of short or tall cards.
+ *
+ * `py-10` is padding, not height (AJ, 2026-09-19) — with zero data cards in
+ * the grid there's no taller sibling for `h-full` to stretch against, so the
+ * tile was collapsing to its bare content size with no breathing room at
+ * all. Padding guarantees a comfortable minimum regardless of row height,
+ * without reintroducing a fixed height: `justify-center` still absorbs any
+ * extra space when a sibling row is taller than this padding alone would be.
+ */
 export const CATALOG_ADD_TILE_CLASSNAME =
-  "flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/25 bg-accent/60 text-muted-foreground transition-colors hover:border-primary hover:bg-accent cursor-pointer";
+  "flex h-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-primary/25 bg-accent/60 text-muted-foreground transition-colors hover:border-primary hover:bg-accent cursor-pointer py-10";
 
 /** Icon-circle + title + description body for an "Add New X" tile — reused by every catalog page's tile trigger instead of each hand-rolling its own Plus-icon-and-label markup. */
 export function CatalogAddTileContent({ label, description }: { label: string; description: string }) {

@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listKitchenProductionQueue } from "@/modules/menu-approvals/menu-approval";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { AdvanceStageButton } from "./_components/advance-stage-button";
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
+import type { VariantProps } from "class-variance-authority";
 
 export const metadata: Metadata = {
   title: "Kitchen Dashboard — Platterly",
@@ -25,12 +26,15 @@ function formatDate(date: Date) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function priority(eventDate: Date): { label: string; variant: "default" | "secondary" | "outline" | "destructive" } {
+// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19) — Today
+// and Overdue used to both render "destructive" (same red for two different
+// urgency levels); Overdue is the one that's actually gone wrong.
+function priority(eventDate: Date): { label: string; variant: NonNullable<VariantProps<typeof badgeVariants>["variant"]> } {
   const days = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-  if (days < 0) return { label: "Overdue", variant: "destructive" };
-  if (days === 0) return { label: "Today", variant: "destructive" };
-  if (days === 1) return { label: "Tomorrow", variant: "default" };
-  return { label: `In ${days} days`, variant: "outline" };
+  if (days < 0) return { label: "Overdue", variant: "danger" };
+  if (days === 0) return { label: "Today", variant: "warning" };
+  if (days === 1) return { label: "Tomorrow", variant: "info" };
+  return { label: `In ${days} days`, variant: "neutral" };
 }
 
 export default async function KitchenDashboardPage() {

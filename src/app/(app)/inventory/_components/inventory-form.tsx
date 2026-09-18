@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { Boxes, Tag, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -89,11 +91,11 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="inv-name">Item Name</Label>
-          <Input id="inv-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+          <IconInput icon={Boxes} id="inv-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-category">Category</Label>
-          <Input id="inv-category" required value={values.category} onChange={(e) => setField("category", e.target.value)} />
+          <IconInput icon={Tag} id="inv-category" required value={values.category} onChange={(e) => setField("category", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-unit">Unit</Label>
@@ -134,7 +136,8 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-cost">Cost Per Unit</Label>
-          <Input
+          <IconInput
+            icon={IndianRupee}
             id="inv-cost"
             type="number"
             step="0.01"

@@ -56,7 +56,7 @@ export default async function AddOnsPage() {
             <div className="flex items-start justify-between gap-2">
               <span className="font-medium">{addOn.name}</span>
               <div className="flex shrink-0 items-center gap-0.5">
-                {!addOn.isActive && <Badge variant="secondary">Inactive</Badge>}
+                {!addOn.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
               </div>
             </div>
@@ -80,7 +80,7 @@ export default async function AddOnsPage() {
           </TableCell>
           <TableCell>{formatPrice(Number(addOn.price), addOn.priceType)}</TableCell>
           <TableCell>
-            <Badge variant={addOn.isActive ? "default" : "secondary"}>{addOn.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={addOn.isActive ? "success" : "neutral"}>{addOn.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />

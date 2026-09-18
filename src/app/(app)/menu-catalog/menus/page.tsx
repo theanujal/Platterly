@@ -78,7 +78,7 @@ export default async function MenusPage() {
             <div className="flex items-start justify-between gap-2">
               <span className="font-medium">{menu.name}</span>
               <div className="flex shrink-0 items-center gap-0.5">
-                {!menu.isActive && <Badge variant="secondary">Inactive</Badge>}
+                {!menu.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
               </div>
             </div>
@@ -98,7 +98,7 @@ export default async function MenusPage() {
           </TableCell>
           <TableCell>₹{Number(menu.pricePerPlate).toFixed(2)}</TableCell>
           <TableCell>
-            <Badge variant={menu.isActive ? "default" : "secondary"}>{menu.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={menu.isActive ? "success" : "neutral"}>{menu.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />

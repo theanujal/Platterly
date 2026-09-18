@@ -37,6 +37,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await page.getByLabel("First name").fill("Owner");
   await page.getByLabel("Last name").fill("Person");
   await page.getByLabel("Email").fill(ownerEmail);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
@@ -86,6 +87,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   await inviteePage.getByLabel("First name").fill("Staff");
   await inviteePage.getByLabel("Last name").fill("Person");
+  await inviteePage.getByLabel("Phone", { exact: true }).fill("9800000098");
   await inviteePage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await inviteePage.getByLabel("Confirm password").fill("correct-horse-battery");
   await inviteePage.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();

@@ -55,6 +55,16 @@ export const auth = betterAuth({
         required: false,
         input: true,
       },
+      /**
+       * Collected at signup via the shared `PhoneInput` (AJ, 2026-09-19) —
+       * required client-side on the signup form itself, but stays optional
+       * here since accounts created before this field existed have none.
+       */
+      phone: {
+        type: "string",
+        required: false,
+        input: true,
+      },
     },
   },
   databaseHooks: {

@@ -201,15 +201,15 @@ export function MenuApprovalReview({
               {menu.sections.map((section) => (
                 <div key={section.categoryId ?? "other"} className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{section.categoryName}</h3>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {section.items.map((item) => (
                       <Card key={item.id} className="overflow-hidden py-0">
-                        <CardContent className="flex items-center gap-3 p-3">
+                        <CardContent className="flex items-center gap-4 p-4">
                           {item.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={item.image} alt="" className="size-14 shrink-0 rounded-md object-cover" />
+                            <img src={item.image} alt="" className="size-16 shrink-0 rounded-md object-cover" />
                           ) : (
-                            <div className="flex size-14 shrink-0 items-center justify-center rounded-md bg-muted">
+                            <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted">
                               <UtensilsCrossed className="size-5 text-muted-foreground" />
                             </div>
                           )}
@@ -221,7 +221,7 @@ export function MenuApprovalReview({
                             type="number"
                             min={0}
                             disabled={!editable}
-                            className="w-16 shrink-0"
+                            className="h-10 w-16 shrink-0"
                             value={quantities[item.id] ?? 0}
                             onChange={(e) => setQuantity(item.id, Number(e.target.value))}
                             aria-label={`Quantity for ${item.name}`}

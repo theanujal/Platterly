@@ -85,7 +85,7 @@ export default async function ItemsPage() {
             <div className="flex items-start justify-between gap-2">
               <span className="font-medium">{item.name}</span>
               <div className="flex shrink-0 items-center gap-0.5">
-                {!item.isActive && <Badge variant="secondary">Inactive</Badge>}
+                {!item.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <ItemCardActions
                   itemId={item.id}
                   name={item.name}
@@ -119,7 +119,7 @@ export default async function ItemsPage() {
           </TableCell>
           <TableCell>₹{Number(item.price).toFixed(2)}</TableCell>
           <TableCell>
-            <Badge variant={item.isActive ? "default" : "secondary"}>{item.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={item.isActive ? "success" : "neutral"}>{item.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <ItemCardActions

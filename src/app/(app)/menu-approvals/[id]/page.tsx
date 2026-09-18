@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
 import { listStorefrontMenus } from "@/modules/menus/menu";
@@ -25,6 +26,32 @@ const STATUS_LABEL: Record<MenuSelectionStatus, string> = {
   FINAL_LOCKED: "Final / Locked",
 };
 
+// Kept in sync with the same legend in ../page.tsx (AJ, 2026-09-19) — was
+// hardcoded "outline" for every status here, unlike the queue page.
+const STATUS_VARIANT: Record<MenuSelectionStatus, "neutral" | "info" | "warning" | "success"> = {
+  DRAFT: "neutral",
+  SENT_TO_CUSTOMER: "info",
+  CUSTOMER_REVIEWING: "info",
+  CHANGES_REQUESTED: "warning",
+  CUSTOMER_APPROVED: "success",
+  KITCHEN_REVIEWING: "info",
+  KITCHEN_CHANGES_REQUESTED: "warning",
+  KITCHEN_APPROVED: "success",
+  FINAL_LOCKED: "success",
+};
+
+const STATUS_ICON = {
+  DRAFT: Circle,
+  SENT_TO_CUSTOMER: Clock,
+  CUSTOMER_REVIEWING: Clock,
+  CHANGES_REQUESTED: TriangleAlert,
+  CUSTOMER_APPROVED: Check,
+  KITCHEN_REVIEWING: Clock,
+  KITCHEN_CHANGES_REQUESTED: TriangleAlert,
+  KITCHEN_APPROVED: Check,
+  FINAL_LOCKED: Lock,
+} satisfies Record<MenuSelectionStatus, typeof Circle>;
+
 export default async function MenuApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
@@ -32,6 +59,8 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
 
   const menuSelection = await getMenuSelection(organizationId, id);
   if (!menuSelection) notFound();
+
+  const StatusIcon = STATUS_ICON[menuSelection.status];
 
   const menus = await listStorefrontMenus(organizationId, {
     eventTypeId: menuSelection.event.eventTypeId,
@@ -50,7 +79,10 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
             {menuSelection.event.assignedKitchen ? ` · ${menuSelection.event.assignedKitchen.name}` : ""}
           </p>
         </div>
-        <Badge variant="outline">{STATUS_LABEL[menuSelection.status]}</Badge>
+        <Badge variant={STATUS_VARIANT[menuSelection.status]}>
+          <StatusIcon data-icon="inline-start" />
+          {STATUS_LABEL[menuSelection.status]}
+        </Badge>
       </div>
 
       <MenuApprovalReview

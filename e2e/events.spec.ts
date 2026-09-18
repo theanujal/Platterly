@@ -36,6 +36,7 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await page.getByLabel("First name").fill("Events");
   await page.getByLabel("Last name").fill("Tester");
   await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();

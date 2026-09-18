@@ -46,7 +46,7 @@ export default async function EventTypesPage() {
                 <Icon className="size-4 text-muted-foreground" />
                 {eventType.name}
               </span>
-              {!eventType.isActive && <Badge variant="secondary">Inactive</Badge>}
+              {!eventType.isActive && <Badge variant="neutral">Inactive</Badge>}
             </div>
             {eventType.description && <p className="line-clamp-2 text-xs text-muted-foreground">{eventType.description}</p>}
             {eventType.minGuests != null && (
@@ -65,7 +65,7 @@ export default async function EventTypesPage() {
           </TableCell>
           <TableCell className="text-muted-foreground">{eventType.minGuests ?? "—"}</TableCell>
           <TableCell>
-            <Badge variant={eventType.isActive ? "default" : "secondary"}>{eventType.isActive ? "Active" : "Inactive"}</Badge>
+            <Badge variant={eventType.isActive ? "success" : "neutral"}>{eventType.isActive ? "Active" : "Inactive"}</Badge>
           </TableCell>
           <TableCell>
             <EventTypeReorderButtons orderedIds={orderedIds} eventTypeId={eventType.id} />

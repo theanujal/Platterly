@@ -39,7 +39,9 @@ export function AdvanceStageButton({ menuSelectionId, currentStage }: AdvanceSta
 
   return (
     <div className="flex flex-col gap-1">
-      <Button type="button" size="sm" className="w-full" disabled={pending} onClick={handleClick}>
+      {/* size="default" (h-11), not "sm" (h-7) — AJ, 2026-09-19: the shorter
+          height read as pill-shaped against the shared 10px radius. */}
+      <Button type="button" className="w-full" disabled={pending} onClick={handleClick}>
         {pending ? "Updating…" : label}
       </Button>
       {error && (

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown, BookOpen, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -138,7 +139,7 @@ export function MenuForm({
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="menu-name">Menu Name</Label>
-            <Input id="menu-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+            <IconInput icon={BookOpen} id="menu-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="menu-description">Menu Description</Label>
@@ -180,7 +181,8 @@ export function MenuForm({
             <span className="text-sm font-semibold">Pricing</span>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="menu-price">Price Per Plate</Label>
-              <Input
+              <IconInput
+                icon={IndianRupee}
                 id="menu-price"
                 type="number"
                 step="0.01"
