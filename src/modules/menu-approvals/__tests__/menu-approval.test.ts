@@ -15,7 +15,8 @@ import {
   getMenuSelection,
   listMenuSelectionsForKitchen,
   listKitchenProductionQueue,
-  advanceKitchenProductionStatus,
+  listKitchenProductionBoard,
+  setKitchenProductionStatus,
   InvalidMenuSelectionTransitionError,
   type EventDetailsIntakeInput,
 } from "@/modules/menu-approvals/menu-approval";
@@ -323,7 +324,7 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     expect(queue.every((s) => s.kitchenProductionStatus === "PENDING")).toBe(true);
   });
 
-  it("advances PENDING -> PREPARING -> READY -> COMPLETED one stage at a time, and refuses to go past COMPLETED", async () => {
+  it("setKitchenProductionStatus is a free-choice jump — any stage, any direction, incl. CANCELLED", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
@@ -333,16 +334,46 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     await kitchenApproves(org.id, selection.id, actor.id);
     await lockMenuSelection(org.id, selection.id, actor.id);
 
-    const preparing = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
-    expect(preparing.kitchenProductionStatus).toBe("PREPARING");
-
-    const ready = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
+    const ready = await setKitchenProductionStatus(org.id, selection.id, "READY", actor.id);
     expect(ready.kitchenProductionStatus).toBe("READY");
 
-    const completed = await advanceKitchenProductionStatus(org.id, selection.id, actor.id);
-    expect(completed.kitchenProductionStatus).toBe("COMPLETED");
+    // Jumping backward is allowed — this is a free-choice dropdown, not a
+    // forward-only advance (AJ's explicit ask, 2026-09-19).
+    const backToPending = await setKitchenProductionStatus(org.id, selection.id, "PENDING", actor.id);
+    expect(backToPending.kitchenProductionStatus).toBe("PENDING");
 
-    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    const cancelled = await setKitchenProductionStatus(org.id, selection.id, "CANCELLED", actor.id);
+    expect(cancelled.kitchenProductionStatus).toBe("CANCELLED");
+
+    // Not `findFirst` + `orderBy: createdAt desc` — 3 real transitions land
+    // within the same millisecond locally, so timestamp ties make "last
+    // written" non-deterministic. Asserting a matching row exists at all is
+    // just as strong a check and isn't a race (caught as a real flake, AJ's
+    // full-suite run, 2026-09-19).
+    const logs = await prisma.auditLog.findMany({
+      where: { organizationId: org.id, action: "menu_selection.kitchen_production_status_change", recordId: selection.id },
+    });
+    expect(logs).toHaveLength(3); // READY, PENDING, CANCELLED — each a real (non-no-op) transition
+    expect(logs.some((l) => (l.after as { kitchenProductionStatus?: string } | null)?.kitchenProductionStatus === "CANCELLED")).toBe(true);
+  });
+
+  it("setKitchenProductionStatus is a no-op (no write, no audit log) when the same stage is picked again", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    await customerApproves(org.id, selection.id);
+    await kitchenApproves(org.id, selection.id, actor.id);
+    await lockMenuSelection(org.id, selection.id, actor.id);
+
+    const result = await setKitchenProductionStatus(org.id, selection.id, "PENDING", actor.id);
+    expect(result.kitchenProductionStatus).toBe("PENDING");
+
+    const log = await prisma.auditLog.findFirst({
+      where: { organizationId: org.id, action: "menu_selection.kitchen_production_status_change", recordId: selection.id },
+    });
+    expect(log).toBeNull();
   });
 
   it("refuses to set a production status before the menu selection is FINAL_LOCKED", async () => {
@@ -352,9 +383,39 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
 
-    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(setKitchenProductionStatus(org.id, selection.id, "PREPARING", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
     await customerApproves(org.id, selection.id);
-    await expect(advanceKitchenProductionStatus(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(setKitchenProductionStatus(org.id, selection.id, "PREPARING", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+  });
+});
+
+describe("listKitchenProductionBoard (Chunk 11 Group 11.5 redesign, AJ 2026-09-19)", () => {
+  it("only includes the 3 in-flight stages, within a today-through-+2-days window", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+
+    async function lockedToday(phone: string, daysFromNow: number) {
+      const eventDate = new Date();
+      eventDate.setDate(eventDate.getDate() + daysFromNow);
+      const { event } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone, eventDate }));
+      const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+      await customerApproves(org.id, selection.id);
+      await kitchenApproves(org.id, selection.id, actor.id);
+      await lockMenuSelection(org.id, selection.id, actor.id);
+      return selection;
+    }
+
+    const inWindow = await lockedToday("2000000001", 2);
+    const tooFar = await lockedToday("2000000002", 5);
+    const completedInWindow = await lockedToday("2000000003", 1);
+    await setKitchenProductionStatus(org.id, completedInWindow.id, "COMPLETED", actor.id);
+
+    const board = await listKitchenProductionBoard(org.id);
+    const boardIds = board.map((s) => s.id);
+    expect(boardIds).toContain(inWindow.id);
+    expect(boardIds).not.toContain(tooFar.id); // outside the +2-day window
+    expect(boardIds).not.toContain(completedInWindow.id); // COMPLETED never shows on the board, even in-window
   });
 });

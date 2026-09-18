@@ -316,17 +316,32 @@ export async function listMenuSelectionsForKitchen(organizationId: string, statu
 // --- Group 11.5 — Kitchen Dashboard & Basic Display (PRD §33/§34) ---
 // Deliberately basic/manual, not the recipe/BOM-driven production planning
 // of Chunk 18: a single `kitchenProductionStatus` column on MenuSelection,
-// advanced one stage at a time by the kitchen team, only once `status` has
-// reached FINAL_LOCKED.
+// set by the kitchen team, only once `status` has reached FINAL_LOCKED.
+//
+// Redesigned 2026-09-19 (AJ, live reference screenshot): the board is now a
+// free-choice status dropdown (any of the 5 stages, any direction — not the
+// original forward-only single-step advance) plus a `CANCELLED` stage. The
+// 3 "in flight" stages (Pending/Preparing/Ready) are the board's own 3
+// columns; Completed and Cancelled move off the board entirely and are only
+// reachable via their own "Delivered Orders"/"Cancelled Orders" list pages —
+// see `listKitchenProductionQueue` below, unchanged, for those.
 
-const KITCHEN_PRODUCTION_NEXT_STAGE: Record<KitchenProductionStatus, KitchenProductionStatus | null> = {
-  PENDING: "PREPARING",
-  PREPARING: "READY",
-  READY: "COMPLETED",
-  COMPLETED: null,
-};
+export { KITCHEN_PRODUCTION_STATUS_LABEL, KITCHEN_PRODUCTION_BOARD_STAGES } from "./kitchen-production-status";
+import { KITCHEN_PRODUCTION_BOARD_STAGES } from "./kitchen-production-status";
 
-/** Every locked menu, nearest event first — the Kitchen Dashboard's own listing. */
+// The board's "Menu name" (bell/utensils icon, AJ's reference screenshot)
+// comes from the Event Type's own assigned Menu(s), not from individual
+// selected line items — a customer picking food items one at a time never
+// sets `MenuSelectionItem.menuId` (that field is only for a whole-Menu line
+// item type, see resolveCatalogItem in orders/order.ts), so the Event
+// Type's EventTypeMenu join is the only place "which Menu is this order
+// following" is actually recorded.
+const KITCHEN_PRODUCTION_INCLUDE = {
+  items: true,
+  event: { include: { customer: true, assignedKitchen: true, eventType: { include: { menus: { include: { menu: true } } } } } },
+} as const;
+
+/** Every locked menu, nearest event first — no date window. Used by the Delivered/Cancelled list pages, and by tests. */
 export async function listKitchenProductionQueue(organizationId: string, productionStatuses?: KitchenProductionStatus[]) {
   return prisma.menuSelection.findMany({
     where: {
@@ -334,35 +349,61 @@ export async function listKitchenProductionQueue(organizationId: string, product
       status: "FINAL_LOCKED",
       ...(productionStatuses ? { kitchenProductionStatus: { in: productionStatuses } } : {}),
     },
-    include: { items: true, event: { include: { customer: true, eventType: true, assignedKitchen: true } } },
+    include: KITCHEN_PRODUCTION_INCLUDE,
     orderBy: { event: { startDate: "asc" } },
   });
 }
 
 /**
- * Moves a locked menu selection one stage forward through §34's Pending ->
- * Preparing -> Ready -> Completed display status. Forward-only, one stage
- * at a time — this is a basic manual board, not a second approval state
- * machine, so it reuses InvalidMenuSelectionTransitionError rather than
- * introducing a parallel error type.
+ * The board's own listing (AJ, 2026-09-19): only the 3 "in flight" stages,
+ * and only events happening today through 2 days from now — a kitchen
+ * doesn't need to see next month's locked menus mixed in with today's
+ * production. The window is computed from the current date on every call,
+ * so it rolls forward on its own with no separate refresh job.
  */
-export async function advanceKitchenProductionStatus(organizationId: string, id: string, actorUserId: string) {
+export async function listKitchenProductionBoard(organizationId: string) {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfWindow = new Date(startOfToday);
+  endOfWindow.setDate(endOfWindow.getDate() + 3); // exclusive upper bound: today + 2 full days
+
+  return prisma.menuSelection.findMany({
+    where: {
+      organizationId,
+      status: "FINAL_LOCKED",
+      kitchenProductionStatus: { in: [...KITCHEN_PRODUCTION_BOARD_STAGES] },
+      event: { startDate: { gte: startOfToday, lt: endOfWindow } },
+    },
+    include: KITCHEN_PRODUCTION_INCLUDE,
+    orderBy: { event: { startDate: "asc" } },
+  });
+}
+
+/**
+ * Sets a locked menu selection's kitchen production stage directly to any
+ * of the 5 values (AJ's explicit ask, 2026-09-19 — a free-choice dropdown,
+ * not a forward-only single-step advance). Still gated on the menu
+ * selection itself being FINAL_LOCKED; a no-op (same stage picked again)
+ * skips the write/audit-log entirely.
+ */
+export async function setKitchenProductionStatus(
+  organizationId: string,
+  id: string,
+  status: KitchenProductionStatus,
+  actorUserId: string,
+) {
   const before = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
   if (before.status !== "FINAL_LOCKED") {
     throw new InvalidMenuSelectionTransitionError("Only a final/locked menu selection has a kitchen production status.");
   }
+  if (before.kitchenProductionStatus === status) return before;
 
-  const next = KITCHEN_PRODUCTION_NEXT_STAGE[before.kitchenProductionStatus];
-  if (!next) {
-    throw new InvalidMenuSelectionTransitionError(`Cannot advance kitchen production status past ${before.kitchenProductionStatus}.`);
-  }
-
-  const after = await prisma.menuSelection.update({ where: { id }, data: { kitchenProductionStatus: next } });
+  const after = await prisma.menuSelection.update({ where: { id }, data: { kitchenProductionStatus: status } });
 
   await audit({
     organizationId,
     actorUserId,
-    action: "menu_selection.kitchen_production_status_advance",
+    action: "menu_selection.kitchen_production_status_change",
     recordType: "MenuSelection",
     recordId: id,
     before: { kitchenProductionStatus: before.kitchenProductionStatus },

@@ -12,10 +12,24 @@ import { verifyEmailViaOtp } from "./auth-helpers";
  * (reaching KITCHEN_REVIEWING), then drives the admin side through
  * Approve -> Lock and confirms the final state.
  *
- * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`):
- * once locked, the menu selection should show up in the Pending column and
- * advance through Preparing -> Ready -> Completed as the kitchen works it.
+ * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`),
+ * redesigned 2026-09-19 (AJ, live reference screenshot): a 3-column board
+ * (Pending/Preparing/Ready only, windowed to today-through-+2-days) with a
+ * free-choice status dropdown per card, plus Completed/Cancelled moving off
+ * the board entirely onto their own `/kitchen-dashboard/delivered` and
+ * `/kitchen-dashboard/cancelled` list pages.
  */
+
+// Local-date formatting, not `toISOString().slice(0, 10)` — that round-trips
+// through UTC and shifts the calendar date backward in IST after ~18:30
+// local time, a documented bug (order-form.tsx's `enumerateDates`) this test
+// deliberately avoids repeating.
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 const cleanupEmails: string[] = [];
 
@@ -96,7 +110,9 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await publicPage.getByLabel("Your Name").fill(customerName);
   await publicPage.getByLabel("Email Address").fill(`customer-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500000");
-  await publicPage.getByLabel("Event Date").fill("2026-12-20");
+  // Today, not a far-future date — the redesigned Kitchen Dashboard board
+  // only shows events in a today-through-+2-days window (AJ, 2026-09-19).
+  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date()));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
   await publicPage.getByLabel("Number of Guests").fill("100");
@@ -128,20 +144,39 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await page.getByRole("button", { name: "Lock Menu" }).click();
   await expect(page.getByText(/Locked on/)).toBeVisible();
 
-  // --- Kitchen Dashboard: the freshly-locked menu starts Pending, and advances one stage at a time ---
+  // --- Kitchen Dashboard: the freshly-locked menu starts Pending, in a real board column ---
   await page.goto("/kitchen-dashboard");
   const pendingColumn = page.locator('[data-stage="PENDING"]');
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
-  await pendingColumn.getByRole("button", { name: "Start Preparing" }).click();
+  // Free-choice dropdown (AJ, 2026-09-19) — jumps directly between any of
+  // the 5 stages, not a forward-only single-step advance.
+  const stageDropdown = pendingColumn.getByRole("combobox", { name: "Kitchen production stage" });
+  await stageDropdown.click();
+  await page.getByRole("option", { name: "Preparing" }).click();
   const preparingColumn = page.locator('[data-stage="PREPARING"]');
   await expect(preparingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
-  await preparingColumn.getByRole("button", { name: "Mark Ready" }).click();
+  await preparingColumn.getByRole("combobox", { name: "Kitchen production stage" }).click();
+  await page.getByRole("option", { name: "Ready" }).click();
   const readyColumn = page.locator('[data-stage="READY"]');
   await expect(readyColumn.getByText(customerName, { exact: true })).toBeVisible();
 
-  await readyColumn.getByRole("button", { name: "Mark Completed" }).click();
-  const completedColumn = page.locator('[data-stage="COMPLETED"]');
-  await expect(completedColumn.getByText(customerName, { exact: true })).toBeVisible();
+  // Completed moves it off the board entirely (AJ's screenshot has no
+  // Completed column) — only reachable via "Delivered Orders" from here on.
+  await readyColumn.getByRole("combobox", { name: "Kitchen production stage" }).click();
+  await page.getByRole("option", { name: "Completed" }).click();
+  await expect(page.locator('[data-stage]').getByText(customerName, { exact: true })).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Delivered Orders" }).click();
+  await expect(page).toHaveURL(/\/kitchen-dashboard\/delivered$/);
+  await expect(page.getByText(customerName, { exact: true })).toBeVisible();
+
+  // Cancelling from the Delivered list moves it again, to Cancelled Orders.
+  await page.getByRole("combobox", { name: "Kitchen production stage" }).click();
+  await page.getByRole("option", { name: "Cancelled" }).click();
+  await expect(page.getByText(customerName, { exact: true })).not.toBeVisible();
+
+  await page.goto("/kitchen-dashboard/cancelled");
+  await expect(page.getByText(customerName, { exact: true })).toBeVisible();
 });
