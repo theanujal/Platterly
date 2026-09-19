@@ -18,12 +18,12 @@ interface EditOrderClientProps {
     child5To10PricingType: "PERCENTAGE" | "FIXED";
     child5To10PriceValue: number | null;
   }[];
-  menuItemsByMenu: Record<string, { id: string; name: string; price: number }[]>;
-  menuItems: { id: string; name: string; price: number }[];
-  addOns: { id: string; name: string; price: number }[];
+  /** See OrderForm's own doc comment — non-zero only for an Order converted from a Quotation. */
+  carriedOverItemsSubtotal?: number;
+  canBypassDateRestriction: boolean;
 }
 
-export function EditOrderClient({ orderId, initialValues, customers, eventTypes, menus, menuItemsByMenu, menuItems, addOns }: EditOrderClientProps) {
+export function EditOrderClient({ orderId, initialValues, customers, eventTypes, menus, carriedOverItemsSubtotal, canBypassDateRestriction }: EditOrderClientProps) {
   const router = useRouter();
 
   return (
@@ -31,9 +31,8 @@ export function EditOrderClient({ orderId, initialValues, customers, eventTypes,
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
-      menuItemsByMenu={menuItemsByMenu}
-      menuItems={menuItems}
-      addOns={addOns}
+      carriedOverItemsSubtotal={carriedOverItemsSubtotal}
+      canBypassDateRestriction={canBypassDateRestriction}
       initialValues={initialValues}
       showStatus
       submitLabel="Save changes"

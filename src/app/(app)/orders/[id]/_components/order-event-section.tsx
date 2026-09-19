@@ -56,6 +56,22 @@ interface OrderEventSectionProps {
   eventTypes: { id: string; name: string }[];
   kitchens: { id: string; name: string }[];
   inventoryItems: { id: string; name: string; unit: string }[];
+  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  canBypassDateRestriction: boolean;
+}
+
+// Mirrors orders/actions.ts's own MIN_DAYS_BEFORE_EVENT/daysUntil/
+// assertEventDateAllowed exactly — applied consistently "wherever event
+// dates are entered" (AJ, 2026-09-19), same rule as Create Order's.
+const MIN_DAYS_BEFORE_EVENT = 2;
+
+function daysUntilPreview(iso: string): number | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.split("-").map(Number);
+  const eventDate = new Date(y, m - 1, d);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((eventDate.getTime() - startOfToday.getTime()) / 86_400_000);
 }
 
 function buildInventoryRows(
@@ -80,7 +96,7 @@ function buildInventoryRows(
  * once every Event started coming from an Order — see AJ's note in
  * `src/modules/orders/README.md`).
  */
-export function OrderEventSection({ orderId, events, eventTypes, kitchens, inventoryItems }: OrderEventSectionProps) {
+export function OrderEventSection({ orderId, events, eventTypes, kitchens, inventoryItems, canBypassDateRestriction }: OrderEventSectionProps) {
   const router = useRouter();
   const [showExplainer, setShowExplainer] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -136,7 +152,15 @@ export function OrderEventSection({ orderId, events, eventTypes, kitchens, inven
       ) : (
         <div className="flex flex-col gap-3">
           {events.map((event) => (
-            <InlineEventEditor key={event.id} orderId={orderId} event={event} eventTypes={eventTypes} kitchens={kitchens} inventoryItems={inventoryItems} />
+            <InlineEventEditor
+              key={event.id}
+              orderId={orderId}
+              event={event}
+              eventTypes={eventTypes}
+              kitchens={kitchens}
+              inventoryItems={inventoryItems}
+              canBypassDateRestriction={canBypassDateRestriction}
+            />
           ))}
         </div>
       )}
@@ -150,12 +174,15 @@ function InlineEventEditor({
   eventTypes,
   kitchens,
   inventoryItems,
+  canBypassDateRestriction,
 }: {
   orderId: string;
   event: LinkedEvent;
   eventTypes: { id: string; name: string }[];
   kitchens: { id: string; name: string }[];
   inventoryItems: { id: string; name: string; unit: string }[];
+  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  canBypassDateRestriction: boolean;
 }) {
   const router = useRouter();
   const [name, setName] = useState(event.name);
@@ -177,11 +204,18 @@ function InlineEventEditor({
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const eventDaysUntil = daysUntilPreview(startDate);
+  const eventDateRestricted = eventDaysUntil !== null && eventDaysUntil < MIN_DAYS_BEFORE_EVENT;
+
   function updateInventoryRow(inventoryId: string, patch: Partial<RequiredInventoryRow>) {
     setRequiredInventory((prev) => prev.map((row) => (row.inventoryId === inventoryId ? { ...row, ...patch } : row)));
   }
 
   async function handleSave() {
+    if (eventDateRestricted && !canBypassDateRestriction) {
+      setError(`Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner or Team Admin.`);
+      return;
+    }
     setPending(true);
     setError(null);
     setSaved(false);
@@ -297,6 +331,13 @@ function InlineEventEditor({
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inline-event-start">Start Date</Label>
             <Input id="inline-event-start" type="date" required value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            {eventDateRestricted && (
+              <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
+                {canBypassDateRestriction
+                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save it as an Owner/Team Admin.`
+                  : `Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner or Team Admin.`}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inline-event-end">End Date</Label>

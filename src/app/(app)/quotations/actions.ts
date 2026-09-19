@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import {
   createQuotation,
   updateQuotation,
@@ -72,11 +72,36 @@ function buildInput(formData: FormData): QuotationInput {
   };
 }
 
+// Same rule as Create Order's own (orders/actions.ts) — applied consistently
+// "wherever event dates are entered" (AJ, 2026-09-19). Reuses the `orders`
+// resource's bypass_date_restriction permission rather than adding a
+// duplicate `quotations` one, since it's the same underlying business rule.
+// Skipped entirely when no event date is set yet — unlike Order, a
+// Quotation's event date is optional (early-stage sales artifact).
+const MIN_DAYS_BEFORE_EVENT = 2;
+
+function daysUntil(date: Date): number {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfEvent = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((startOfEvent.getTime() - startOfToday.getTime()) / 86_400_000);
+}
+
+async function assertEventDateAllowed(organizationId: string, eventStartDate: Date | null | undefined) {
+  if (!eventStartDate) return;
+  if (daysUntil(eventStartDate) >= MIN_DAYS_BEFORE_EVENT) return;
+  const canBypass = await hasPermission({ orders: ["bypass_date_restriction"] }, organizationId);
+  if (!canBypass) {
+    throw new Error(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`);
+  }
+}
+
 export async function createQuotationAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["create"] }, organizationId);
   try {
     const input = buildInput(formData);
+    await assertEventDateAllowed(organizationId, input.eventStartDate);
     await createQuotation(organizationId, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -90,6 +115,7 @@ export async function updateQuotationAction(id: string, formData: FormData): Pro
   await requirePermission({ quotations: ["edit"] }, organizationId);
   try {
     const input = buildInput(formData);
+    await assertEventDateAllowed(organizationId, input.eventStartDate);
     await updateQuotation(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);

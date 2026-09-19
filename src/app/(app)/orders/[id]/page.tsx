@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getOrder } from "@/modules/orders/order";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
-import { listMenus, listMenuItemsByMenu } from "@/modules/menus/menu";
-import { listMenuItems } from "@/modules/menus/item";
+import { listMenus } from "@/modules/menus/menu";
 import { listKitchens } from "@/modules/events/event";
 import { listInventoryItems } from "@/modules/inventory/inventory";
-import { prisma } from "@/lib/db";
 import { Receipt, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EditOrderClient } from "./_components/edit-order-client";
@@ -37,20 +35,22 @@ function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatCurrency(amount: number) {
+  return `₹${amount.toFixed(2)}`;
+}
+
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
-  const [order, customers, eventTypes, menus, menuItemsByMenu, menuItems, addOns, kitchens, inventoryItems] = await Promise.all([
+  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canBypassDateRestriction] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
     listMenus(organizationId),
-    listMenuItemsByMenu(organizationId),
-    listMenuItems(organizationId, { isActive: true }),
-    prisma.addOn.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" } }),
     listKitchens(organizationId),
     listInventoryItems(organizationId),
+    hasPermission({ orders: ["bypass_date_restriction"] }, organizationId),
   ]);
   if (!order) notFound();
 
@@ -62,41 +62,42 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     eventEndDate: toDateInputValue(order.eventEndDate),
     venue: order.venue ?? "",
     eventAddress: order.eventAddress ?? "",
+    venueType: order.venueType ?? "",
+    venueLandmark: order.venueLandmark ?? "",
+    venueContactName: order.venueContactName ?? "",
+    venueContactPhone: order.venueContactPhone ?? "",
+    liveCounterAvailable: order.liveCounterAvailable ?? false,
+    gasElectricAvailable: order.gasElectricAvailable ?? false,
+    deliveryInstructions: order.deliveryInstructions ?? "",
+    cookingInstructions: order.cookingInstructions ?? "",
     adultCount: order.adultCount?.toString() ?? "",
     childBelow5Count: order.childBelow5Count?.toString() ?? "",
     child5To10Count: order.child5To10Count?.toString() ?? "",
     totalParticipants: order.totalParticipants?.toString() ?? "",
-    adultNonVegCount: order.adultNonVegCount?.toString() ?? "",
-    adultVegCount: order.adultVegCount?.toString() ?? "",
-    childPricingMenuId: order.childPricingMenuId ?? "",
+    pricingMethod: order.pricingMethod,
+    individualChildBelow5Rate: order.individualChildBelow5Rate?.toString() ?? "",
+    individualChildBelow5PricingType: order.individualChildBelow5PricingType ?? "FIXED",
+    individualChild5To10Rate: order.individualChild5To10Rate?.toString() ?? "",
+    individualChild5To10PricingType: order.individualChild5To10PricingType ?? "FIXED",
     individualPricingEnabled: order.individualPricingEnabled,
     discount: order.discount.toString(),
-    taxes: order.taxes.toString(),
+    transportationCost: order.transportationCost.toString(),
+    otherCharges: order.otherCharges.toString(),
     advance: order.advance.toString(),
     paymentStatus: order.paymentStatus,
     status: order.status,
     notes: order.notes ?? "",
-    items: order.items.map((item) => ({
-      key: item.id,
-      itemType: item.itemType,
-      catalogId: item.menuId ?? item.menuItemId ?? item.addOnId ?? "",
-      name: item.name,
-      unitPrice: Number(item.unitPrice),
-      quantity: item.quantity,
-    })),
+    kitchenNotes: order.kitchenNotes ?? "",
     mealPlanEntries: order.mealPlanEntries.map((entry) => ({
       date: toDateInputValue(entry.date),
       mealType: entry.mealType,
       price: entry.price?.toString() ?? "",
       menuId: entry.menuId ?? "",
-      childBelow5Count: entry.childBelow5Count?.toString() ?? "",
-      child5To10Count: entry.child5To10Count?.toString() ?? "",
       items: entry.items.map((item) => ({
         key: item.id,
         catalogId: item.menuItemId ?? "",
         name: item.name,
         unitPrice: Number(item.unitPrice),
-        quantity: item.quantity,
       })),
     })),
   };
@@ -125,6 +126,33 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         <DeleteOrderButton orderId={order.id} name={order.customer.name} />
       </div>
 
+      {/*
+        Whole-order items (mealPlanEntryId: null) only exist on an Order
+        converted from an accepted Quotation (quotation.ts's
+        convertQuotationToOrder writes them directly, copying the
+        Quotation's own frozen item snapshots) — the Create Order form
+        itself no longer has a whole-order item picker as of the
+        2026-09-20 redesign (food items are only ever picked per meal in
+        Meal Planning), so this read-only recap is the only place these
+        carried-over items are still visible/editable-adjacent.
+      */}
+      {order.items.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
+          <h2 className="text-sm font-semibold">Carried over from the original Quotation</h2>
+          <div className="flex flex-col gap-1.5">
+            {order.items.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span>{item.name}</span>
+                  <span className="text-muted-foreground">× {item.quantity}</span>
+                </div>
+                <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <EditOrderClient
         orderId={order.id}
         initialValues={initialValues}
@@ -141,9 +169,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             child5To10PricingType: m.child5To10PricingType,
             child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
           }))}
-        menuItemsByMenu={menuItemsByMenu}
-        menuItems={menuItems.map((i) => ({ id: i.id, name: i.name, price: Number(i.price) }))}
-        addOns={addOns.map((a) => ({ id: a.id, name: a.name, price: Number(a.price) }))}
+        carriedOverItemsSubtotal={order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0)}
+        canBypassDateRestriction={canBypassDateRestriction}
       />
 
       <OrderEventSection
@@ -164,6 +191,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         eventTypes={eventTypes.filter((t) => t.isActive).map((t) => ({ id: t.id, name: t.name }))}
         kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
         inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+        canBypassDateRestriction={canBypassDateRestriction}
       />
     </div>
   );

@@ -6,7 +6,6 @@ export interface WizardState {
   state: string;
   postalCode: string;
   country: string;
-  mobileNumber: string;
   gstNumber: string;
   gstShowOnInvoices: boolean;
   websiteUrl: string;
@@ -22,7 +21,6 @@ export const EMPTY_WIZARD_STATE: WizardState = {
   state: "",
   postalCode: "",
   country: "",
-  mobileNumber: "",
   gstNumber: "",
   gstShowOnInvoices: false,
   websiteUrl: "",

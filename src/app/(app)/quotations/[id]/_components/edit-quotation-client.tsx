@@ -12,9 +12,10 @@ interface EditQuotationClientProps {
   menus: { id: string; name: string; price: number }[];
   menuItems: { id: string; name: string; price: number }[];
   addOns: { id: string; name: string; price: number }[];
+  canBypassDateRestriction: boolean;
 }
 
-export function EditQuotationClient({ quotationId, initialValues, customers, eventTypes, menus, menuItems, addOns }: EditQuotationClientProps) {
+export function EditQuotationClient({ quotationId, initialValues, customers, eventTypes, menus, menuItems, addOns, canBypassDateRestriction }: EditQuotationClientProps) {
   const router = useRouter();
 
   return (
@@ -24,6 +25,7 @@ export function EditQuotationClient({ quotationId, initialValues, customers, eve
       menus={menus}
       menuItems={menuItems}
       addOns={addOns}
+      canBypassDateRestriction={canBypassDateRestriction}
       initialValues={initialValues}
       submitLabel="Save changes"
       onSubmit={(formData) => updateQuotationAction(quotationId, formData)}

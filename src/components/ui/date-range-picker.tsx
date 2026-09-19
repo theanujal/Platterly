@@ -1,0 +1,167 @@
+"use client";
+
+import { useState } from "react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "cn";
+
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+function toIsoDate(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseIsoDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatDisplay(d: Date): string {
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function buildMonthGrid(viewMonth: Date): (Date | null)[] {
+  const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate();
+  const leading = first.getDay();
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < leading; i++) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day++) cells.push(new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+interface DateRangePickerProps {
+  id?: string;
+  startDate: string;
+  endDate: string;
+  onChange: (startDate: string, endDate: string) => void;
+  placeholder?: string;
+  className?: string;
+}
+
+/**
+ * Create Order's "Event Date" range field (2026-09-19) — replaces the old
+ * separate Event Start Date / End Date inputs with one field. Built from
+ * scratch (Popover + a plain month grid) rather than a new dependency, per
+ * AJ's explicit choice — no calendar/date-range component existed anywhere
+ * in the repo before this. Deliberately does not disable or grey out any
+ * date: the "can't create an order <2 days before the event" rule is a
+ * soft, message-based validation (owner/admin can bypass it), not a calendar
+ * restriction — see order-form.tsx's own validation next to this field.
+ */
+export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className }: DateRangePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [pendingStart, setPendingStart] = useState<string | null>(null);
+  const [viewMonth, setViewMonth] = useState(() => (startDate ? parseIsoDate(startDate) : new Date()));
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      setPendingStart(null);
+      setViewMonth(startDate ? parseIsoDate(startDate) : new Date());
+    }
+  }
+
+  function handleDayClick(iso: string) {
+    // First click only previews (via pendingStart, below) — it deliberately
+    // does NOT call onChange yet. It used to fire a transient single-day
+    // range immediately, which callers (order-form.tsx's setEventDateRange)
+    // treat as the real, final range — e.g. pruning meal-plan entries against
+    // it — silently destroying data for every other day before the second
+    // click ever lands (AJ, 2026-09-19, found in Meal Planning testing).
+    if (pendingStart === null) {
+      setPendingStart(iso);
+      return;
+    }
+    const [s, e] = iso < pendingStart ? [iso, pendingStart] : [pendingStart, iso];
+    onChange(s, e);
+    setPendingStart(null);
+    setOpen(false);
+  }
+
+  const grid = buildMonthGrid(viewMonth);
+  const todayIso = toIsoDate(new Date());
+
+  const label =
+    startDate && endDate
+      ? startDate === endDate
+        ? formatDisplay(parseIsoDate(startDate))
+        : `${formatDisplay(parseIsoDate(startDate))} – ${formatDisplay(parseIsoDate(endDate))}`
+      : placeholder;
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        id={id}
+        type="button"
+        className={cn(
+          "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-transparent px-3 text-left text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+          !(startDate && endDate) && "text-muted-foreground",
+          className,
+        )}
+      >
+        <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-3">
+        <div className="flex items-center justify-between pb-2">
+          <button
+            type="button"
+            aria-label="Previous month"
+            className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+            onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="text-sm font-medium">{viewMonth.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</span>
+          <button
+            type="button"
+            aria-label="Next month"
+            className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+            onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
+          {WEEKDAY_LABELS.map((label) => (
+            <div key={label} className="py-1">
+              {label}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {grid.map((date, index) => {
+            if (!date) return <div key={index} />;
+            const iso = toIsoDate(date);
+            // Mid-pick (pendingStart set, no second day yet), show only that
+            // one day highlighted — there's no real range to shade until the
+            // second click supplies an end date.
+            const inRange = pendingStart ? iso === pendingStart : Boolean(startDate && endDate && iso >= startDate && iso <= endDate);
+            const isEndpoint = pendingStart ? iso === pendingStart : iso === startDate || iso === endDate;
+            const isToday = iso === todayIso;
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => handleDayClick(iso)}
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-md text-sm transition-colors hover:bg-muted",
+                  inRange && !isEndpoint && "bg-accent text-accent-foreground",
+                  isEndpoint && "bg-primary text-primary-foreground hover:bg-primary/90",
+                  !inRange && isToday && "font-semibold text-primary",
+                )}
+              >
+                {date.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}

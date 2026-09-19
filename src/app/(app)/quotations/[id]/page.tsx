@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getQuotation, getOrIssueQuotationLink } from "@/modules/quotations/quotation";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
@@ -30,13 +30,14 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["edit"] }, organizationId);
-  const [quotation, customers, eventTypes, menus, menuItems, addOns] = await Promise.all([
+  const [quotation, customers, eventTypes, menus, menuItems, addOns, canBypassDateRestriction] = await Promise.all([
     getQuotation(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
     listMenus(organizationId),
     listMenuItems(organizationId, { isActive: true }),
     prisma.addOn.findMany({ where: { organizationId, isActive: true }, orderBy: { name: "asc" } }),
+    hasPermission({ orders: ["bypass_date_restriction"] }, organizationId),
   ]);
   if (!quotation) notFound();
 
@@ -101,6 +102,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
         menus={menus.filter((m) => m.isActive).map((m) => ({ id: m.id, name: m.name, price: Number(m.pricePerPlate) }))}
         menuItems={menuItems.map((i) => ({ id: i.id, name: i.name, price: Number(i.price) }))}
         addOns={addOns.map((a) => ({ id: a.id, name: a.name, price: Number(a.price) }))}
+        canBypassDateRestriction={canBypassDateRestriction}
       />
     </div>
   );

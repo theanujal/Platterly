@@ -111,8 +111,7 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2 }],
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH" }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2 }] }],
       },
       actor.id,
     );
@@ -137,7 +136,7 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
 });
 
 describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", () => {
-  it("subtotal sums Products & Menu Items; total/balance derive from discount/taxes/advance", async () => {
+  it("subtotal sums each meal's own items; total/balance derive from discount/transportationCost/otherCharges/advance", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -151,19 +150,26 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
         discount: 100,
-        taxes: 50,
+        transportationCost: 30,
+        otherCharges: 20,
         advance: 500,
-        items: [
-          { itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 10 }, // 1500
-          { itemType: "ADD_ON", catalogId: addOn.id, quantity: 1 }, // 200
+        mealPlanEntries: [
+          {
+            date: new Date("2026-12-01"),
+            mealType: "LUNCH",
+            items: [
+              { itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 10 }, // 1500
+              { itemType: "ADD_ON", catalogId: addOn.id, quantity: 1 }, // 200
+            ],
+          },
         ],
       },
       actor.id,
     );
 
     expect(Number(order.subtotal)).toBe(1700);
-    expect(Number(order.total)).toBe(1700 - 100 + 50);
-    expect(Number(order.balance)).toBe(1700 - 100 + 50 - 500);
+    expect(Number(order.total)).toBe(1700 - 100 + 30 + 20);
+    expect(Number(order.balance)).toBe(1700 - 100 + 30 + 20 - 500);
   });
 
   it("individualPricingEnabled adds MealPlanEntry prices into subtotal; disabled ignores them", async () => {
@@ -219,7 +225,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     expect(fetched!.mealPlanEntries).toHaveLength(1);
   });
 
-  it("updateOrder replacing items recalculates totals from the new set, not the old", async () => {
+  it("updateOrder replacing a meal's items recalculates totals from the new set, not the old", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -227,7 +233,12 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     const pricierItem = await createMenuItem(org.id, { name: "Biryani", foodType: "NON_VEGETARIAN", price: 300 }, actor.id);
     const order = await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), items: [{ itemType: "MENU_ITEM", catalogId: cheapItem.id, quantity: 1 }] },
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: cheapItem.id, quantity: 1 }] }],
+      },
       actor.id,
     );
     expect(Number(order.subtotal)).toBe(50);
@@ -235,11 +246,16 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     const updated = await updateOrder(
       org.id,
       order.id,
-      { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), items: [{ itemType: "MENU_ITEM", catalogId: pricierItem.id, quantity: 2 }] },
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: pricierItem.id, quantity: 2 }] }],
+      },
       actor.id,
     );
     expect(Number(updated.subtotal)).toBe(600);
-    const items = (await getOrder(org.id, order.id))!.items;
+    const items = (await getOrder(org.id, order.id))!.mealPlanEntries[0].items;
     expect(items).toHaveLength(1);
     expect(items[0].name).toBe("Biryani");
   });
@@ -252,10 +268,15 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
 
     const order = await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), items: [{ itemType: "MENU", catalogId: menu.id, quantity: 3 }] },
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU", catalogId: menu.id, quantity: 3 }] }],
+      },
       actor.id,
     );
-    const item = (await getOrder(org.id, order.id))!.items[0];
+    const item = (await getOrder(org.id, order.id))!.mealPlanEntries[0].items[0];
     expect(item.name).toBe("Wedding Menu");
     expect(Number(item.unitPrice)).toBe(999);
     expect(Number(order.subtotal)).toBe(999 * 3);
@@ -265,7 +286,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
-    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), taxes: 20 }, actor.id);
+    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), transportationCost: 20 }, actor.id);
 
     const recalculated = await recalculateOrderTotals(order.id);
     expect(Number(recalculated.total)).toBe(20);
@@ -470,7 +491,7 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
     expect(await prisma.orderItem.count({ where: { mealPlanEntryId: entryId } })).toBe(0);
   });
 
-  it("Single Order strips a stray menuId/items on a meal plan entry — never persisted", async () => {
+  it("a Single Order also persists a meal's own Menu/items — not Multi-only (Create Order redesign, 2026-09-20)", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -490,8 +511,31 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
     );
 
     const entry = (await getOrder(org.id, order.id))!.mealPlanEntries[0];
-    expect(entry.menuId).toBeNull();
-    expect(entry.items).toHaveLength(0);
+    expect(entry.menuId).toBe(menu.id);
+    expect(entry.items).toHaveLength(1);
+    expect(entry.items[0].name).toBe("Item");
+  });
+
+  it("a cross-tenant menuId on a Single Order's meal slot is rejected too — the guard doesn't depend on orderKind", async () => {
+    const org = await makeOrg();
+    const otherOrg = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const otherMenu = await createMenu(otherOrg.id, { name: "Someone Else's Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+
+    await expect(
+      createOrder(
+        org.id,
+        {
+          customerId: customer.id,
+          eventStartDate: new Date("2026-12-01"),
+          eventEndDate: new Date("2026-12-01"),
+          orderKind: "SINGLE",
+          mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: otherMenu.id }],
+        },
+        actor.id,
+      ),
+    ).rejects.toThrow();
   });
 
   it("a cross-tenant menuId on a Multi Order's meal slot is rejected", async () => {
@@ -527,13 +571,14 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
     expect((await listOrders(org.id, { orderKind: "MULTI" })).map((o) => o.id)).toEqual([multi.id]);
   });
 
-  it("recalculateOrderTotals sums whole-order items and per-slot Multi Order items together", async () => {
+  it("recalculateOrderTotals sums every meal slot's own items together", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
-    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
-    const wholeOrderItem = await createMenuItem(org.id, { name: "Whole Order Item", foodType: "VEGETARIAN", price: 40 }, actor.id);
-    const slotItem = await createMenuItem(org.id, { name: "Slot Item", foodType: "VEGETARIAN", price: 60 }, actor.id);
+    const menuA = await createMenu(org.id, { name: "Menu A", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const menuB = await createMenu(org.id, { name: "Menu B", menuType: "VEGETARIAN", pricePerPlate: 100 }, actor.id);
+    const itemA = await createMenuItem(org.id, { name: "Item A", foodType: "VEGETARIAN", price: 40 }, actor.id);
+    const itemB = await createMenuItem(org.id, { name: "Item B", foodType: "VEGETARIAN", price: 60 }, actor.id);
 
     const order = await createOrder(
       org.id,
@@ -542,8 +587,10 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
         orderKind: "MULTI",
-        items: [{ itemType: "MENU_ITEM", catalogId: wholeOrderItem.id, quantity: 1 }], // 40
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: slotItem.id, quantity: 2 }] }], // 120
+        mealPlanEntries: [
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: itemA.id, quantity: 1 }] }, // 40
+          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: itemB.id, quantity: 2 }] }, // 120
+        ],
       },
       actor.id,
     );
@@ -552,7 +599,7 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
   });
 });
 
-describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
+describe("Children Guests & Pricing (charge formula — order-level, all Order Types)", () => {
   it("under-5 stays free even with a non-zero count when the Menu's chargeable toggle is off", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
@@ -565,7 +612,10 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        childPricingMenuId: menu.id,
+        // A meal assigns the Menu (so STANDARD's deriveStandardChildPricingMenuId
+        // has something to find) without any items — isolates this assertion
+        // to the children-charge formula alone.
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
         childBelow5Count: 10,
       },
       actor.id,
@@ -587,7 +637,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        childPricingMenuId: menu.id,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
         childBelow5Count: 4,
       },
       actor.id,
@@ -612,7 +662,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        childPricingMenuId: menu.id,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
         child5To10Count: 3,
       },
       actor.id,
@@ -638,7 +688,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        childPricingMenuId: menu.id,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
         child5To10Count: 2,
       },
       actor.id,
@@ -659,14 +709,19 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
 
     const order = await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: menu.id },
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
+      },
       actor.id,
     );
 
     expect(Number(order.childrenCharge)).toBe(0);
   });
 
-  it("Single Order with no childPricingMenuId set charges nothing even with non-zero counts", async () => {
+  it("no meal with an assigned Menu yet charges nothing even with non-zero counts", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -686,7 +741,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
     expect(Number(order.childrenCharge)).toBe(0);
   });
 
-  it("Multi Order sums Children Guests & Pricing across every meal slot, not just one", async () => {
+  it("a Multi Order still prices children once, order-level, from the earliest-dated meal's own Menu", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -698,20 +753,22 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
       {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
-        eventEndDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-02"),
         orderKind: "MULTI",
+        child5To10Count: 2,
         mealPlanEntries: [
-          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, child5To10Count: 2 }, // 100
-          { date: new Date("2026-12-01"), mealType: "DINNER", menuId: menuB.id, child5To10Count: 3 }, // 240
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id },
+          { date: new Date("2026-12-02"), mealType: "DINNER", menuId: menuB.id },
         ],
       },
       actor.id,
     );
 
-    expect(Number(order.childrenCharge)).toBe(100 + 240);
+    // 2026-12-01 (Menu A, rate 50) is earlier than 2026-12-02 (Menu B) — Menu A wins, not summed across both.
+    expect(Number(order.childrenCharge)).toBe(2 * 50);
   });
 
-  it("a Multi Order slot with no Menu chosen yet contributes 0 regardless of its counts", async () => {
+  it("a Multi Order with no meal assigned a Menu yet charges nothing regardless of its counts", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -723,7 +780,8 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
         orderKind: "MULTI",
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", child5To10Count: 4 }],
+        child5To10Count: 4,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH" }],
       },
       actor.id,
     );
@@ -731,7 +789,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
     expect(Number(order.childrenCharge)).toBe(0);
   });
 
-  it("updateOrder recomputes childrenCharge when counts/childPricingMenuId change", async () => {
+  it("updateOrder recomputes childrenCharge when counts/assigned Menu change", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -746,13 +804,46 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
     const updated = await updateOrder(
       org.id,
       order.id,
-      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: menu.id, child5To10Count: 3 },
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
+        child5To10Count: 3,
+      },
       actor.id,
     );
     expect(Number(updated.childrenCharge)).toBe(3 * 60);
   });
 
-  it("a cross-tenant childPricingMenuId on a Single Order is rejected", async () => {
+  it("INDIVIDUAL pricing charges a Percentage-of-Menu-price rate for one band and a flat Per Plate rate for the other", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 400 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
+        pricingMethod: "INDIVIDUAL",
+        childBelow5Count: 2,
+        individualChildBelow5Rate: 25, // 25% of 400 = 100/child
+        individualChildBelow5PricingType: "PERCENTAGE",
+        child5To10Count: 3,
+        individualChild5To10Rate: 120, // flat ₹120/child
+        individualChild5To10PricingType: "FIXED",
+      },
+      actor.id,
+    );
+
+    expect(Number(order.childrenCharge)).toBe(2 * 100 + 3 * 120);
+  });
+
+  it("a cross-tenant menuId on a Single Order's meal is rejected", async () => {
     const org = await makeOrg();
     const otherOrg = await makeOrg();
     const actor = await makeActor();
@@ -762,13 +853,18 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
     await expect(
       createOrder(
         org.id,
-        { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), childPricingMenuId: otherMenu.id },
+        {
+          customerId: customer.id,
+          eventStartDate: new Date("2026-12-01"),
+          eventEndDate: new Date("2026-12-01"),
+          mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: otherMenu.id }],
+        },
         actor.id,
       ),
     ).rejects.toThrow();
   });
 
-  it("deleting a Menu referenced by childPricingMenuId SetNulls the Order and later recalculation degrades to 0, not a throw", async () => {
+  it("deleting a Menu referenced by the derived childPricingMenuId SetNulls the Order and later recalculation degrades to 0, not a throw", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -779,7 +875,7 @@ describe("Children Guests & Pricing (charge formula, Single vs Multi)", () => {
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        childPricingMenuId: menu.id,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
         childBelow5Count: 2,
       },
       actor.id,
@@ -844,28 +940,29 @@ describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () =>
     const future = new Date(Date.now() + 30 * 86400000);
     const past = new Date(Date.now() - 5 * 86400000);
 
-    // taxes alone drives `total` here (no catalog items needed) — subtotal
-    // stays 0, total = 0 - discount + taxes, per recalculateOrderTotals.
+    // otherCharges alone drives `total` here (no catalog items needed) —
+    // subtotal stays 0, total = 0 - discount + otherCharges, per
+    // recalculateOrderTotals.
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 10000, advance: 4000, paymentStatus: "PARTIALLY_PAID", status: "CONFIRMED" },
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, otherCharges: 10000, advance: 4000, paymentStatus: "PARTIALLY_PAID", status: "CONFIRMED" },
       actor.id,
     );
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: past, eventEndDate: past, taxes: 5000, advance: 0, paymentStatus: "UNPAID", status: "CONFIRMED" },
+      { customerId: customer.id, eventStartDate: past, eventEndDate: past, otherCharges: 5000, advance: 0, paymentStatus: "UNPAID", status: "CONFIRMED" },
       actor.id,
     );
     // Fully paid — excluded by paymentStatus AND balance filters.
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 2000, advance: 2000, paymentStatus: "PAID", status: "COMPLETED" },
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, otherCharges: 2000, advance: 2000, paymentStatus: "PAID", status: "COMPLETED" },
       actor.id,
     );
     // Cancelled with an unpaid balance — excluded by status filter.
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: future, eventEndDate: future, taxes: 3000, advance: 0, paymentStatus: "UNPAID", status: "CANCELLED" },
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, otherCharges: 3000, advance: 0, paymentStatus: "UNPAID", status: "CANCELLED" },
       actor.id,
     );
 
@@ -885,7 +982,7 @@ describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () =>
     const actor = await makeActor();
     const customerB = await makeCustomer(orgB.id, actor.id);
 
-    await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date(), taxes: 9000, paymentStatus: "UNPAID", status: "CONFIRMED" }, actor.id);
+    await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date(), otherCharges: 9000, paymentStatus: "UNPAID", status: "CONFIRMED" }, actor.id);
 
     const overview = await getPartialPaymentsOverview(orgA.id);
     expect(overview.totalOrders).toBe(0);

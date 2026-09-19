@@ -261,30 +261,74 @@ export async function listStorefrontMenus(organizationId: string, filter?: Store
   });
 }
 
+export interface OrderPickerSection {
+  categoryId: string | null;
+  categoryName: string;
+  /** MenuCategoryAssignment.maxSelection — null means no cap for this category on this Menu. */
+  maxSelection: number | null;
+  items: { id: string; name: string; price: number }[];
+}
+
+export interface OrderPickerMenu {
+  id: string;
+  name: string;
+  sections: OrderPickerSection[];
+}
+
 /**
- * Chunk 10's Multi Order — for each active Menu, the flat list of its own
- * items (direct MenuMenuItem assignment — the same population
- * `listStorefrontMenus` groups into sections; MenuCategoryAssignment only
- * governs how those already-assigned items are bucketed/limited for
- * selection, per AJ's "independent, not derived" rule — it never adds
- * items to a Menu on its own). Lets the Order form's per-meal-slot item
- * picker offer only "this slot's chosen Menu's items."
+ * Create Order redesign (2026-09-20) — the "Select Food Items" dialog's data
+ * source for one specific Menu, fetched on demand once a meal assigns that
+ * Menu (rather than preloading every Menu's items up front for every Order
+ * form load). Same category-grouping shape as `listStorefrontMenus` (items
+ * bucketed by the Menu's own categoryAssignments, anything uncategorized
+ * trailing under "Other Items"), but scoped to one Menu and additionally
+ * carrying each section's `maxSelection` — `listStorefrontMenus` drops that
+ * because the public storefront never needs to cap selection, but the
+ * reference "0/2" cap in the admin picker does.
  */
-export async function listMenuItemsByMenu(organizationId: string): Promise<Record<string, { id: string; name: string; price: number }[]>> {
-  const menus = await prisma.menu.findMany({
-    where: { organizationId, isActive: true },
+export async function getMenuForOrderPicker(organizationId: string, menuId: string): Promise<OrderPickerMenu | null> {
+  const menu = await prisma.menu.findFirst({
+    where: { id: menuId, organizationId },
     include: {
       items: {
         where: { menuItem: { isActive: true } },
-        include: { menuItem: true },
+        include: { menuItem: { include: { categories: { select: { categoryId: true } } } } },
+        orderBy: { sortOrder: "asc" },
+      },
+      categoryAssignments: {
+        where: { category: { isActive: true } },
+        include: { category: true },
         orderBy: { sortOrder: "asc" },
       },
     },
   });
+  if (!menu) return null;
 
-  const result: Record<string, { id: string; name: string; price: number }[]> = {};
-  for (const menu of menus) {
-    result[menu.id] = menu.items.map(({ menuItem }) => ({ id: menuItem.id, name: menuItem.name, price: Number(menuItem.price) }));
+  const categorizedItemIds = new Set<string>();
+  const sections: OrderPickerSection[] = menu.categoryAssignments
+    .map((assignment) => {
+      const categoryItems = menu.items
+        .filter((mi) => mi.menuItem.categories.some((c) => c.categoryId === assignment.categoryId))
+        .map((mi) => mi.menuItem);
+      categoryItems.forEach((item) => categorizedItemIds.add(item.id));
+      return {
+        categoryId: assignment.categoryId,
+        categoryName: assignment.category.name,
+        maxSelection: assignment.maxSelection,
+        items: categoryItems.map((item) => ({ id: item.id, name: item.name, price: Number(item.price) })),
+      };
+    })
+    .filter((section) => section.items.length > 0);
+
+  const uncategorized = menu.items.filter((mi) => !categorizedItemIds.has(mi.menuItemId)).map((mi) => mi.menuItem);
+  if (uncategorized.length > 0) {
+    sections.push({
+      categoryId: null,
+      categoryName: "Other Items",
+      maxSelection: null,
+      items: uncategorized.map((item) => ({ id: item.id, name: item.name, price: Number(item.price) })),
+    });
   }
-  return result;
+
+  return { id: menu.id, name: menu.name, sections };
 }

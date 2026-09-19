@@ -16,12 +16,10 @@ interface NewOrderClientProps {
     child5To10PricingType: "PERCENTAGE" | "FIXED";
     child5To10PriceValue: number | null;
   }[];
-  menuItemsByMenu: Record<string, { id: string; name: string; price: number }[]>;
-  menuItems: { id: string; name: string; price: number }[];
-  addOns: { id: string; name: string; price: number }[];
+  canBypassDateRestriction: boolean;
 }
 
-export function NewOrderClient({ customers, eventTypes, menus, menuItemsByMenu, menuItems, addOns }: NewOrderClientProps) {
+export function NewOrderClient({ customers, eventTypes, menus, canBypassDateRestriction }: NewOrderClientProps) {
   const router = useRouter();
 
   return (
@@ -29,9 +27,7 @@ export function NewOrderClient({ customers, eventTypes, menus, menuItemsByMenu, 
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
-      menuItemsByMenu={menuItemsByMenu}
-      menuItems={menuItems}
-      addOns={addOns}
+      canBypassDateRestriction={canBypassDateRestriction}
       submitLabel="Create Order"
       onSubmit={createOrderAction}
       onSubmitAndNotify={createOrderAndNotifyAction}

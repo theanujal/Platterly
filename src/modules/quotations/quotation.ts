@@ -320,8 +320,10 @@ export const requestQuotationChanges = (organizationId: string, id: string, mess
  * QuotationItem's own frozen snapshot onto the new OrderItem rows directly
  * (never re-resolved from the live catalog) — an accepted quotation's price
  * must never silently drift from a later catalog change. Quotation's
- * additionalCharges/deliveryCharges (no Order equivalent) are folded into
- * the new Order's `taxes` so the converted total still matches exactly.
+ * taxes/additionalCharges/deliveryCharges (no direct Order equivalent since
+ * Create Order's 2026-09-20 redesign dropped Order.taxes) are folded into
+ * the new Order's `otherCharges` so the converted total still matches
+ * exactly.
  */
 export async function convertQuotationToOrder(organizationId: string, quotationId: string, actorUserId: string) {
   const quotation = await prisma.quotation.findFirstOrThrow({
@@ -345,7 +347,7 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
       venue: quotation.venue ?? undefined,
       eventAddress: quotation.eventAddress ?? undefined,
       discount: Number(quotation.discount),
-      taxes: Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges),
+      otherCharges: Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges),
       notes: quotation.notes ?? undefined,
     },
     actorUserId,
@@ -371,8 +373,13 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
     data: { quotationId },
     include: { items: true, mealPlanEntries: true },
   });
+  // Re-sums now that the whole-order items above have landed (createOrder's
+  // own recalculateOrderTotals ran before they existed) — mirrors that same
+  // formula (subtotal - discount + transportationCost + otherCharges),
+  // taxes removed from Order entirely (2026-09-20), already folded into
+  // otherCharges above.
   const subtotal = linkedOrder.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
-  const total = subtotal - Number(linkedOrder.discount) + Number(linkedOrder.taxes);
+  const total = subtotal - Number(linkedOrder.discount) + Number(linkedOrder.transportationCost) + Number(linkedOrder.otherCharges);
   const finalOrder = await prisma.order.update({ where: { id: order.id }, data: { subtotal, total, balance: total } });
 
   await audit({

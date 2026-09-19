@@ -1104,6 +1104,18 @@ enum VehicleAccessType {
   MANUAL_LOADING_REQUIRED
 }
 
+// Create Order's "Pricing Information" section (2026-09-19). STANDARD reads
+// straight off the Menu's own rates (childPricingMenu below, plus each
+// MealPlanEntry's own menu for Multi Order) — no new fields needed for that
+// case. INDIVIDUAL overrides all three per-guest rates for this one order
+// only, via the individual*Rate fields below; it never touches Menu Type
+// itself. This is a distinct concept from `individualPricingEnabled`, which
+// is the pre-existing per-meal-slot Meal Planning price override.
+enum PricingMethod {
+  STANDARD
+  INDIVIDUAL
+}
+
 model Order {
   id             String       @id @default(cuid())
   organizationId String
@@ -1126,8 +1138,14 @@ model Order {
   quotationId String?    @unique
   quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
 
-  // Single = one Menu for the whole Order; Multi = different Menus per meal
-  // slot via MealPlanEntry.menuId. Explicit, not inferred from date range.
+  // Create Order redesign (2026-09-20) — every meal already assigns its own
+  // Menu via MealPlanEntry.menuId regardless of this value now (see that
+  // model's own comment). orderKind is purely a UI/reporting distinction:
+  // SINGLE renders Meal Planning as one continuous event even across
+  // several days; MULTI groups the same per-day data into visually distinct
+  // "Event 1 / Event 2…" blocks (one per date) in order-form.tsx. Explicit,
+  // not inferred from date range alone — see that file's confirmation-
+  // dialog flow for switching between the two.
   orderKind OrderKind @default(SINGLE)
 
   // Human-readable, per-tenant sequential label (e.g. "AJ-0001"), assigned
@@ -1171,6 +1189,15 @@ model Order {
   vehicleAccess           VehicleAccessType?
   liveCounterAvailable    Boolean?
 
+  // "Venue & Delivery Details" section, Create Order redesign (2026-09-19).
+  // Distinct from venueAccessInstructions above (that field is the
+  // customer-facing intake form's own free-text access note; these two are
+  // the admin Create Order form's separate Delivery/Cooking instruction
+  // fields, per AJ's explicit ask for two distinct textareas).
+  gasElectricAvailable Boolean?
+  deliveryInstructions String?
+  cookingInstructions  String?
+
   // Participant Information (Group 10.3) — lets pricing reflect actual
   // guest composition. `totalParticipants` is a UI-suggested default
   // (adultCount+childBelow5Count+child5To10Count) but stored independently/
@@ -1183,14 +1210,33 @@ model Order {
   adultNonVegCount  Int?
   adultVegCount     Int?
 
-  // Children Guests & Pricing, Single Order only — which Menu's child rates
-  // apply to childBelow5Count/child5To10Count above; ignored/stripped
-  // server-side for Multi Order, which instead uses each MealPlanEntry's own
-  // menuId + its own per-slot counts. SetNull (not Restrict) — deleting a
-  // Menu still referenced here shouldn't block or cascade the Order, same
-  // precedent as OrderItem.menuId/MealPlanEntry.menuId.
+  // Children Guests & Pricing (order-level, all order kinds) — which Menu's
+  // child rates apply to childBelow5Count/child5To10Count above when
+  // pricingMethod is STANDARD. Server-derived (deriveStandardChildPricingMenuId
+  // in order.ts) from the first Meal Planning entry's own menuId, in
+  // date/mealType order — never a client-submitted value, there's no
+  // separate "pick a menu for children" selector. SetNull (not Restrict) —
+  // deleting a Menu still referenced here shouldn't block or cascade the Order,
+  // same precedent as OrderItem.menuId/MealPlanEntry.menuId.
   childPricingMenuId String?
   childPricingMenu   Menu?   @relation(fields: [childPricingMenuId], references: [id], onDelete: SetNull)
+
+  // "Pricing Information" section (2026-09-19) — STANDARD (default) prices
+  // off childPricingMenu (derived from the first Meal Planning entry's own
+  // Menu — see deriveStandardChildPricingMenuId), same as before this field
+  // existed. INDIVIDUAL overrides both per-guest child rates for this order
+  // only; the individual*Rate fields are ignored when STANDARD. Create Order
+  // redesign (2026-09-20): each child band's individual rate now carries its
+  // own Per Plate/Percentage type (individual*PricingType, reusing the same
+  // ChildPricingType enum Menu.child5To10PricingType uses) instead of always
+  // being a flat amount — Percentage is computed against that same derived
+  // Menu's pricePerPlate.
+  pricingMethod                     PricingMethod    @default(STANDARD)
+  individualAdultRate               Decimal?         @db.Decimal(12, 2)
+  individualChildBelow5Rate         Decimal?         @db.Decimal(12, 2)
+  individualChildBelow5PricingType  ChildPricingType?
+  individualChild5To10Rate          Decimal?         @db.Decimal(12, 2)
+  individualChild5To10PricingType   ChildPricingType?
 
   // Meal Planning (Group 10.4) — when true, each MealPlanEntry's own
   // `price` is added into `subtotal`; when false, meal selections are
@@ -1199,21 +1245,29 @@ model Order {
   individualPricingEnabled Boolean @default(false)
 
   // Pricing (PRD §21) — `subtotal`/`total`/`balance` are kept in sync by
-  // `recalculateOrderTotals` (src/modules/orders/order.ts) whenever items/
-  // mealPlanEntries/discount/taxes/advance change, not recomputed ad hoc
-  // by every reader. `childrenCharge` is the live-recomputed Children
-  // Guests & Pricing contribution folded into `subtotal`.
-  subtotal       Decimal @default(0) @db.Decimal(12, 2)
-  childrenCharge Decimal @default(0) @db.Decimal(12, 2)
-  discount       Decimal @default(0) @db.Decimal(12, 2)
-  taxes          Decimal @default(0) @db.Decimal(12, 2)
-  total          Decimal @default(0) @db.Decimal(12, 2)
-  advance        Decimal @default(0) @db.Decimal(12, 2)
-  balance        Decimal @default(0) @db.Decimal(12, 2)
+  // `recalculateOrderTotals` (src/modules/orders/order.ts) whenever
+  // mealPlanEntries/discount/advance change, not recomputed ad hoc by every
+  // reader. `childrenCharge` is the live-recomputed Children Guests &
+  // Pricing contribution folded into `subtotal`. Taxes removed from Create
+  // Order entirely (2026-09-20, AJ's explicit ask) — no replacement field;
+  // GST/tax handling isn't part of this flow.
+  subtotal          Decimal @default(0) @db.Decimal(12, 2)
+  childrenCharge    Decimal @default(0) @db.Decimal(12, 2)
+  // "Order Details" section (2026-09-19) — editable pricing add-ons folded
+  // into `total` by recalculateOrderTotals alongside discount.
+  transportationCost Decimal @default(0) @db.Decimal(12, 2)
+  otherCharges       Decimal @default(0) @db.Decimal(12, 2)
+  discount          Decimal @default(0) @db.Decimal(12, 2)
+  total             Decimal @default(0) @db.Decimal(12, 2)
+  advance           Decimal @default(0) @db.Decimal(12, 2)
+  balance           Decimal @default(0) @db.Decimal(12, 2)
 
   paymentStatus OrderPaymentStatus @default(UNPAID)
   status        OrderStatus        @default(DRAFT)
   notes         String?
+  // "Order Details" section — a second, kitchen-facing note distinct from
+  // the customer/admin-facing `notes` above.
+  kitchenNotes  String?
 
   items           OrderItem[]
   mealPlanEntries MealPlanEntry[]
@@ -1242,10 +1296,12 @@ model OrderItem {
   addOnId    String?
   addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
 
-  // Set only for a Multi Order's per-meal-slot item picks (chosen from that
-  // slot's own Menu); null for every whole-order item, which is all of them
-  // on a Single Order. Cascade: a slot's items only make sense scoped to it,
-  // so unchecking that meal removes them along with its MealPlanEntry row.
+  // Create Order redesign (2026-09-20) — every OrderItem now belongs to the
+  // meal it was picked for (the removed "Products & Menu Items" section was
+  // the last source of a whole-order item with this left null). Cascade: a
+  // meal's items only make sense scoped to it, so unchecking that meal
+  // removes them along with its MealPlanEntry row. Quotations keep their own
+  // separate, unaffected whole-order item model.
   mealPlanEntryId String?
   mealPlanEntry   MealPlanEntry? @relation(fields: [mealPlanEntryId], references: [id], onDelete: Cascade)
 
@@ -1273,17 +1329,17 @@ model MealPlanEntry {
   // Only meaningful (and only ever set) when Order.individualPricingEnabled.
   price    Decimal? @db.Decimal(10, 2)
 
-  // Multi Order per-slot Children Guests & Pricing counts — only meaningful
-  // (and only ever set) when Order.orderKind === "MULTI", same gating as
-  // menuId itself below; priced against this slot's own menuId's rates.
-  childBelow5Count Int?
-  child5To10Count  Int?
-
-  // Multi Order only (Order.orderKind) — which Menu this specific meal slot
-  // uses; null for Single Order and for a Multi Order slot not yet decided.
+  // Create Order redesign (2026-09-20) — every meal, regardless of
+  // Order.orderKind, assigns its own Menu (required before food items can be
+  // chosen — see order-form.tsx's meal-card flow) and picks items from it.
+  // Previously Multi-order-only; Single Order used to share one order-wide
+  // Menu via the now-removed "Products & Menu Items" section instead.
+  // Children Guests & Pricing moved to being order-level only (Order's own
+  // childBelow5Count/child5To10Count + pricingMethod) — the per-slot
+  // childBelow5Count/child5To10Count columns this model briefly had are gone.
   menuId String?
   menu   Menu?       @relation(fields: [menuId], references: [id], onDelete: SetNull)
-  // Items chosen from that Menu specifically for this slot — see
+  // Items chosen from that Menu specifically for this meal — see
   // OrderItem.mealPlanEntryId.
   items  OrderItem[]
 

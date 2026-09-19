@@ -72,6 +72,21 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
 
+// Mirrors actions.ts's own MIN_DAYS_BEFORE_EVENT/daysUntil/assertEventDateAllowed
+// exactly — applied consistently "wherever event dates are entered" (AJ,
+// 2026-09-19), same rule as Create Order's. A Quotation's event date is
+// optional, so this is a no-op until one is actually set.
+const MIN_DAYS_BEFORE_EVENT = 2;
+
+function daysUntilPreview(iso: string): number | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.split("-").map(Number);
+  const eventDate = new Date(y, m - 1, d);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((eventDate.getTime() - startOfToday.getTime()) / 86_400_000);
+}
+
 interface QuotationFormProps {
   initialValues?: Partial<QuotationFormValues>;
   customers: { id: string; name: string; phone: string }[];
@@ -79,12 +94,25 @@ interface QuotationFormProps {
   menus: CatalogOption[];
   menuItems: CatalogOption[];
   addOns: CatalogOption[];
+  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  canBypassDateRestriction: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
 }
 
-export function QuotationForm({ initialValues, customers, eventTypes, menus, menuItems, addOns, onSubmit, onSuccess, submitLabel }: QuotationFormProps) {
+export function QuotationForm({
+  initialValues,
+  customers,
+  eventTypes,
+  menus,
+  menuItems,
+  addOns,
+  canBypassDateRestriction,
+  onSubmit,
+  onSuccess,
+  submitLabel,
+}: QuotationFormProps) {
   const [values, setValues] = useState<QuotationFormValues>({ ...EMPTY_QUOTATION_VALUES, ...initialValues });
   const [pendingItemType, setPendingItemType] = useState<(typeof ITEM_TYPE_OPTIONS)[number]["value"]>("MENU_ITEM");
   const [pendingCatalogId, setPendingCatalogId] = useState("");
@@ -125,12 +153,18 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
   const additionalNum = Number.parseFloat(values.additionalCharges) || 0;
   const deliveryNum = Number.parseFloat(values.deliveryCharges) || 0;
   const total = itemsSubtotal - discountNum + taxesNum + additionalNum + deliveryNum;
+  const eventDaysUntil = daysUntilPreview(values.eventStartDate);
+  const eventDateRestricted = eventDaysUntil !== null && eventDaysUntil < MIN_DAYS_BEFORE_EVENT;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
     if (!values.customerId) {
       setError("A Customer is required.");
+      return;
+    }
+    if (eventDateRestricted && !canBypassDateRestriction) {
+      setError(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`);
       return;
     }
     setPending(true);
@@ -215,6 +249,13 @@ export function QuotationForm({ initialValues, customers, eventTypes, menus, men
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-start-date">Event Start Date</Label>
             <Input id="quote-start-date" type="date" value={values.eventStartDate} onChange={(e) => setField("eventStartDate", e.target.value)} />
+            {eventDateRestricted && (
+              <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
+                {canBypassDateRestriction
+                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save this Quotation as an Owner/Team Admin.`
+                  : `Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`}
+              </p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="quote-end-date">Event End Date</Label>

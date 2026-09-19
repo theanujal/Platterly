@@ -93,6 +93,10 @@ function statusOf(orderCount: number): CustomerStatus {
 
 export interface CustomerListFilter {
   status?: CustomerStatus;
+  /** Name/phone substring match (Create Order's customer autocomplete). */
+  search?: string;
+  /** Caps the result count — used by the autocomplete, omitted for the full Customers list. */
+  take?: number;
 }
 
 export async function listCustomers(organizationId: string, filter?: CustomerListFilter) {
@@ -101,9 +105,18 @@ export async function listCustomers(organizationId: string, filter?: CustomerLis
       organizationId,
       ...(filter?.status === "CUSTOMER" ? { orders: { some: {} } } : {}),
       ...(filter?.status === "LEAD" ? { orders: { none: {} } } : {}),
+      ...(filter?.search
+        ? {
+            OR: [
+              { name: { contains: filter.search, mode: "insensitive" } },
+              { phone: { contains: filter.search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
     },
     include: { _count: { select: { orders: true } } },
     orderBy: { name: "asc" },
+    take: filter?.take,
   });
 
   return customers.map(({ _count, ...customer }) => ({ ...customer, status: statusOf(_count.orders) }));

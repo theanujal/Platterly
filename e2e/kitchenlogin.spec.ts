@@ -85,16 +85,16 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
 
   // Every Contact & Address field is now mandatory (AJ, 2026-09-16) —
-  // Continue stays disabled until all six are filled.
+  // Continue stays disabled until all five are filled. Mobile number was
+  // removed from this step (AJ, 2026-09-19) — it duplicated the phone
+  // already collected on the signup form.
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await page.getByLabel("Street address").fill("221B Baker Street");
   await page.getByLabel("City").fill("Mumbai");
   await page.getByLabel("State").fill("Maharashtra");
   await page.getByLabel("ZIP code").fill("400001");
-  await page.getByLabel("Country", { exact: true }).fill("India");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
-  // Country-flag phone field (AJ's explicit ask) — defaults to India.
-  await page.getByLabel("Mobile number").fill("9876543210");
+  await page.getByLabel("Country", { exact: true }).fill("India");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 3 of 5")).toBeVisible();

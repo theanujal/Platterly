@@ -38,7 +38,6 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     state: "State",
     postalCode: "ZIP code",
     country: "Country",
-    mobileNumber: "Mobile number",
   };
   for (const [field, label] of Object.entries(REQUIRED_STEP_2_FIELDS)) {
     if (!stringField(formData, field)) {
@@ -70,7 +69,6 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     {
       name: businessName,
       businessDescription: stringField(formData, "businessDescription"),
-      contactPhone: stringField(formData, "mobileNumber"),
       addressLine1: stringField(formData, "addressLine1"),
       city: stringField(formData, "city"),
       state: stringField(formData, "state"),

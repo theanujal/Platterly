@@ -35,7 +35,11 @@ test.afterEach(async () => {
 });
 
 test("Lead -> Customer (auto, via Order) -> Event, with required inventory and timeline", async ({ page }) => {
-  test.setTimeout(90_000);
+  // Bumped from 90s (AJ, 2026-09-20): the Create Order redesign's Event Date
+  // range-picker (open popover, navigate months, two clicks) and its extra
+  // sections take noticeably longer per step than the old plain date inputs
+  // did, especially headed with this repo's standing slowMo: 350.
+  test.setTimeout(120_000);
   const email = `e2e-crm-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
@@ -115,13 +119,30 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   // create + fully edit its linked Event (name, required inventory, status)
   // from the Order page ---
   await page.goto("/orders/new");
-  await page.getByLabel("Customer").click();
-  await page.getByRole("option", { name: new RegExp(leadName) }).click();
+  // Customer is a search-autocomplete (CustomerCombobox), not a plain <Select>.
+  const customerInput = page.getByLabel("Customer");
+  await customerInput.click();
+  await customerInput.fill(leadName);
+  await page.getByRole("button", { name: new RegExp(leadName) }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
-  await page.getByLabel("Event Start Date").fill("2026-12-01");
-  await page.getByLabel("Event End Date").fill("2026-12-02");
-  await page.getByLabel("Location / Venue").fill("Taj Hall");
+  // Event Date is a single range-picker (DateRangePicker), defaulting to the
+  // current month — navigate to December 2026 before picking, then click
+  // the two end days to commit a two-day range.
+  await page.getByLabel("Event Date").click();
+  const datePopover = page.locator('[data-slot="popover-content"]');
+  await expect(datePopover).toBeVisible();
+  while ((await datePopover.locator("span.font-medium").textContent()) !== "December 2026") {
+    await datePopover.getByRole("button", { name: "Next month" }).click();
+  }
+  await datePopover.getByRole("button", { name: "1", exact: true }).click();
+  await datePopover.getByRole("button", { name: "2", exact: true }).click();
+  // A multi-day range while Order Type is untouched auto-prompts the Single
+  // -> Multi confirmation (order-form.tsx) — this test isn't about Order
+  // Type at all, so decline it and stay Single, matching the original
+  // (pre-redesign) test's plain single-order intent.
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await page.getByLabel("Venue / Building Name").fill("Taj Hall");
   await page.getByRole("button", { name: "Create Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
 

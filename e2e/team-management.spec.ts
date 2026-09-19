@@ -53,7 +53,6 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await page.getByLabel("State").fill("Maharashtra");
   await page.getByLabel("ZIP code").fill("400001");
   await page.getByLabel("Country", { exact: true }).fill("India");
-  await page.getByLabel("Mobile number").fill("9876543210");
   for (let i = 0; i < 3; i++) {
     await page.getByRole("button", { name: "Continue", exact: true }).click();
   }

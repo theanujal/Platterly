@@ -49,7 +49,10 @@ export const statement = {
   users: ["view", "create", "edit", "delete"],
   customers: ["view", "create", "edit", "delete"],
   events: ["view", "create", "edit", "delete", "approve"],
-  orders: ["view", "create", "edit", "delete"],
+  // "bypass_date_restriction" — Create Order's own <2-days-before-event
+  // guard (order-form.tsx / order.ts, 2026-09-19); owner/admin only, see
+  // the `roles` grants below.
+  orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
   quotations: ["view", "create", "edit", "delete"],
   menus: ["view", "create", "edit", "delete", "approve"],
   inventory: ["view", "create", "edit", "delete"],
@@ -74,7 +77,7 @@ export const roles = {
     users: ["view", "create", "edit", "delete"],
     customers: ["view", "create", "edit", "delete"],
     events: ["view", "create", "edit", "delete", "approve"],
-    orders: ["view", "create", "edit", "delete"],
+    orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
   quotations: ["view", "create", "edit", "delete"],
     menus: ["view", "create", "edit", "delete", "approve"],
     inventory: ["view", "create", "edit", "delete"],
@@ -98,7 +101,7 @@ export const roles = {
     users: ["view", "create", "edit", "delete"],
     customers: ["view", "create", "edit", "delete"],
     events: ["view", "create", "edit", "delete", "approve"],
-    orders: ["view", "create", "edit", "delete"],
+    orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
   quotations: ["view", "create", "edit", "delete"],
     menus: ["view", "create", "edit", "delete", "approve"],
     inventory: ["view", "create", "edit", "delete"],

@@ -10,9 +10,10 @@ interface NewQuotationClientProps {
   menus: { id: string; name: string; price: number }[];
   menuItems: { id: string; name: string; price: number }[];
   addOns: { id: string; name: string; price: number }[];
+  canBypassDateRestriction: boolean;
 }
 
-export function NewQuotationClient({ customers, eventTypes, menus, menuItems, addOns }: NewQuotationClientProps) {
+export function NewQuotationClient({ customers, eventTypes, menus, menuItems, addOns, canBypassDateRestriction }: NewQuotationClientProps) {
   const router = useRouter();
 
   return (
@@ -22,6 +23,7 @@ export function NewQuotationClient({ customers, eventTypes, menus, menuItems, ad
       menus={menus}
       menuItems={menuItems}
       addOns={addOns}
+      canBypassDateRestriction={canBypassDateRestriction}
       submitLabel="Create Quotation"
       onSubmit={createQuotationAction}
       onSuccess={() => router.push("/quotations")}

@@ -75,8 +75,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
       values.city.trim().length > 0 &&
       values.state.trim().length > 0 &&
       values.postalCode.trim().length > 0 &&
-      values.country.trim().length > 0 &&
-      values.mobileNumber.trim().length > 0
+      values.country.trim().length > 0
     );
   }
 
@@ -92,7 +91,6 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     formData.set("state", values.state);
     formData.set("postalCode", values.postalCode);
     formData.set("country", values.country);
-    formData.set("mobileNumber", values.mobileNumber);
     formData.set("gstNumber", values.gstNumber);
     formData.set("gstShowOnInvoices", String(values.gstShowOnInvoices));
     formData.set("websiteUrl", values.websiteUrl);

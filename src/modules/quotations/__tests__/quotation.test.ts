@@ -289,7 +289,7 @@ describe("Customer token actions — accept/reject/request changes (PRD §20 dig
 });
 
 describe("convertQuotationToOrder (Group 10.2's 'generated from an Accepted Quotation')", () => {
-  it("creates a real Order with the Quotation's snapshot items and folds additional+delivery charges into taxes", async () => {
+  it("creates a real Order with the Quotation's snapshot items and folds taxes+additional+delivery charges into otherCharges", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -323,8 +323,8 @@ describe("convertQuotationToOrder (Group 10.2's 'generated from an Accepted Quot
     expect(order.eventTypeId).toBe(eventType.id);
     expect(order.quotationId).toBe(quotation.id);
     expect(Number(order.subtotal)).toBe(600); // 150 * 4, copied from the frozen QuotationItem snapshot
-    // taxes = quotation.taxes + additionalCharges + deliveryCharges = 20 + 10 + 5 = 35
-    expect(Number(order.taxes)).toBe(35);
+    // otherCharges = quotation.taxes + additionalCharges + deliveryCharges = 20 + 10 + 5 = 35
+    expect(Number(order.otherCharges)).toBe(35);
     expect(Number(order.total)).toBe(600 - 50 + 35);
 
     const orderItems = await prisma.orderItem.findMany({ where: { orderId: order.id } });
