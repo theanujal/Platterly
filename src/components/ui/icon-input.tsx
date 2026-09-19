@@ -13,6 +13,7 @@ export function IconInput({ icon: Icon, className, ...props }: ComponentProps<ty
   return (
     <div className="relative">
       <Icon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      {/* h-10 matches Input/Select's shared field-height contract (see input.tsx) */}
       <Input className={cn("h-10 rounded-lg pl-8", className)} {...props} />
     </div>
   );
