@@ -29,6 +29,10 @@ function toDateInputValue(date: Date | null) {
   return date ? date.toISOString().slice(0, 10) : "";
 }
 
+function formatDate(date: Date) {
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
 export default async function InventoryPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
@@ -93,15 +97,24 @@ export default async function InventoryPage() {
       ),
       listRow: (
         <>
+          <TableCell>
+            {item.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={item.image} alt="" className="size-10 rounded-md border border-border object-cover" />
+            ) : (
+              <div className="flex size-10 items-center justify-center rounded-md border border-border bg-muted">
+                <Boxes className="size-4 text-muted-foreground" />
+              </div>
+            )}
+          </TableCell>
           <TableCell className="font-medium">{item.name}</TableCell>
           <TableCell>{item.category}</TableCell>
           <TableCell>
             {stock} {item.unit}
           </TableCell>
+          <TableCell>{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
           <TableCell>{item.storageLocation ?? "—"}</TableCell>
-          <TableCell>
-            <Badge variant={status.variant}>{status.label}</Badge>
-          </TableCell>
+          <TableCell>{item.expiryDate ? formatDate(item.expiryDate) : "—"}</TableCell>
           <TableCell>
             <InventoryCardActions
               itemId={item.id}
@@ -152,7 +165,7 @@ export default async function InventoryPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddInventoryDialog variant="tile" />}
-        columns={["Name", "Category", "Stock", "Location", "Status", "Actions"]}
+        columns={["Image", "Name", "Category", "Stock", "Cost/Unit", "Storage Location", "Expiry", "Actions"]}
         searchPlaceholder="Search inventory…"
         emptyLabel="No inventory items yet."
         filterOptions={filterOptions}

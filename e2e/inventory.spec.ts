@@ -58,7 +58,9 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Item Name").fill(itemName);
   await page.getByLabel("Category", { exact: true }).fill("Grains");
-  await page.getByLabel("Unit", { exact: true }).fill("kg");
+  // Unit is a dropdown now, not free text (AJ, 2026-09-19).
+  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByRole("option", { name: "Kilogram (kg)" }).click();
   await page.getByLabel("Opening Stock").fill("50");
   await page.getByLabel("Low Stock Alert").fill("20");
   await page.getByLabel("Cost Per Unit").fill("40");
@@ -66,6 +68,11 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByRole("button", { name: "Create item" }).click();
 
   await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText(itemName)).toBeVisible();
+  // The stock-status badge (In Stock/Low Stock) is Grid-card-only now — List
+  // view's columns are Image/Name/Category/Stock/Cost/Location/Expiry only
+  // (AJ, 2026-09-19), no Status column.
+  await page.getByRole("button", { name: "Grid view" }).click();
   await expect(page.getByText(itemName)).toBeVisible();
   await expect(page.getByText("50 kg")).toBeVisible();
   await expect(page.getByText("In Stock", { exact: true }).first()).toBeVisible();
