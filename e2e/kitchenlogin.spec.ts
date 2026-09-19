@@ -107,7 +107,13 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // Dedicated completion route (AJ's spec, point 10) — a fresh navigation,
   // not the same wizard shell swapping local state.
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding\/complete$/);
-  await expect(page.getByText("Your Platterly account is ready!")).toBeVisible({ timeout: 10_000 });
+  // getByRole("heading", ...), not getByText (AJ, 2026-09-19) — Next.js's
+  // #__next-route-announcer__ a11y live-region briefly mirrors this exact
+  // text after the client-side redirect, so a bare getByText intermittently
+  // strict-mode-fails against 2 elements. This is the 3rd occurrence of the
+  // same flake (ISSUE-LOG.md) — fixed at the source this time instead of
+  // just retrying.
+  await expect(page.getByRole("heading", { name: "Your Platterly account is ready!" })).toBeVisible({ timeout: 10_000 });
 
   // Confirm the trial subscription was actually created, not just the UI text.
   expect(await getTrialSubscriptionStatus(email)).toBe("TRIALING");

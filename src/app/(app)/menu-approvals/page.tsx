@@ -127,7 +127,7 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
                   </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(menuSelection.updatedAt)}</TableCell>
                   <TableCell className="text-right">
-                    <Button size="sm" variant="outline" render={<Link href={`/menu-approvals/${menuSelection.id}`} />} nativeButton={false}>
+                    <Button size="md" variant="outline" render={<Link href={`/menu-approvals/${menuSelection.id}`} />} nativeButton={false}>
                       Review
                     </Button>
                   </TableCell>

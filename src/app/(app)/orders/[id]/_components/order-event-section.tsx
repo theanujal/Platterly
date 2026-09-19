@@ -124,10 +124,10 @@ export function OrderEventSection({ orderId, events, eventTypes, kitchens, inven
               </p>
             )}
             <div className="flex gap-2">
-              <Button type="button" size="sm" disabled={creating} onClick={handleCreate}>
+              <Button type="button" size="md" disabled={creating} onClick={handleCreate}>
                 {creating ? "Creating…" : "Yes, create event"}
               </Button>
-              <Button type="button" size="sm" variant="outline" disabled>
+              <Button type="button" size="md" variant="outline" disabled>
                 I&apos;ll do it later
               </Button>
             </div>
@@ -378,7 +378,7 @@ function InlineEventEditor({
           </p>
         )}
         <div className="flex items-center gap-2">
-          <Button type="button" size="sm" disabled={pending} onClick={handleSave}>
+          <Button type="button" size="md" disabled={pending} onClick={handleSave}>
             {pending ? "Saving…" : "Save Event details"}
           </Button>
           {saved && <span className="text-xs text-emerald-600">Saved.</span>}

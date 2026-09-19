@@ -49,18 +49,15 @@ export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDay
           : "Unlock higher limits and more team seats on a bigger plan."}
       </p>
       {/*
-        h-[38px], not size="sm" (h-7) or size="default" (h-11) — AJ,
-        2026-09-19. The design doc's own mockup (section 08, "Trial Upsell
-        Card: make it prominent") specifies 38px exactly; h-7 read as
-        pill-shaped against the shared 10px radius, but h-11 overshot the
-        approved spec. 38px is a one-off for this button and the matching
-        Kitchen Dashboard stage-action button ONLY — don't reach for it
-        elsewhere without checking the design doc first; every other
-        full-width small button in the app should still be size="sm" or
-        size="default", not a third height.
+        size="md" (h-[38px]) — formalized 2026-09-19 as a real Button size
+        (button.tsx) instead of a one-off className override; this was the
+        button that originally established the 38px value (design doc
+        section 08, "Trial Upsell Card"). Standing rule: any button inside a
+        card uses size="md".
       */}
       <Button
-        className="h-[38px] w-full bg-white text-success hover:bg-white/90"
+        size="md"
+        className="w-full bg-white text-success hover:bg-white/90"
         render={<Link href="/settings/subscription" />}
         nativeButton={false}
       >

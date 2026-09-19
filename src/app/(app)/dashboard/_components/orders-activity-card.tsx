@@ -85,7 +85,7 @@ export function OrdersActivityCard({ revenueTrend, recentOrders, totalOrders }: 
               <p className="text-sm font-medium">No orders yet</p>
               <p className="text-xs text-muted-foreground">Orders you create will show up here.</p>
             </div>
-            <Button size="sm" render={<Link href="/orders/new" />} nativeButton={false}>
+            <Button size="md" render={<Link href="/orders/new" />} nativeButton={false}>
               Create an order
             </Button>
           </div>

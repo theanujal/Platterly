@@ -59,7 +59,13 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   }
   await page.getByRole("button", { name: "Complete Setup" }).click();
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding\/complete$/);
-  await expect(page.getByText("Your Platterly account is ready!")).toBeVisible({ timeout: 10_000 });
+  // getByRole("heading", ...), not getByText (AJ, 2026-09-19) — Next.js's
+  // #__next-route-announcer__ a11y live-region briefly mirrors this exact
+  // text after the client-side redirect, so a bare getByText intermittently
+  // strict-mode-fails against 2 elements. This is the 3rd occurrence of the
+  // same flake (ISSUE-LOG.md) — fixed at the source this time instead of
+  // just retrying.
+  await expect(page.getByRole("heading", { name: "Your Platterly account is ready!" })).toBeVisible({ timeout: 10_000 });
   await page.getByRole("button", { name: "Take me to my Dashboard" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
 

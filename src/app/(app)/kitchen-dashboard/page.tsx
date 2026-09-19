@@ -41,12 +41,15 @@ export default async function KitchenDashboardPage() {
         </div>
         <div className="flex gap-2">
           {/*
-            Default size (h-11/44px), not size="sm" (AJ, 2026-09-19) — every
-            standard button in the app uses the default height; "sm" is only
-            for compact inline controls, not a page-header action button.
+            size="md" (h-[38px]), not default (AJ, 2026-09-19) — these are
+            secondary tab-style navigation into the Delivered/Cancelled
+            sub-views, not the one dominant page action the way "Create
+            Order" is elsewhere; reserve default (h-11) for that role and use
+            the same medium size every other secondary/card action uses.
           */}
           <Button
             variant="outline"
+            size="md"
             className="border-success/30 bg-success/10 text-success hover:bg-success/20"
             render={<Link href="/kitchen-dashboard/delivered" />}
             nativeButton={false}
@@ -56,6 +59,7 @@ export default async function KitchenDashboardPage() {
           </Button>
           <Button
             variant="outline"
+            size="md"
             className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20"
             render={<Link href="/kitchen-dashboard/cancelled" />}
             nativeButton={false}

@@ -8,9 +8,11 @@ import { KITCHEN_PRODUCTION_STATUS_LABEL } from "@/modules/menu-approvals/kitche
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 
 // Same 5-tone legend as Badge's neutral/info/warning/success/danger
-// variants (AJ, 2026-09-19) — this control IS a status badge, just an
-// interactive one, so it keeps the pill shape reserved for badges rather
-// than the app's rounded-lg button shape.
+// variants (AJ, 2026-09-19). Colors only, not shape: the design system's
+// own rule 1 reserves the pill (radius 9999px) for status badges and chips
+// specifically — a Select is a control, not a badge, so it keeps Select's
+// shared rounded-lg contract with Button/Input rather than borrowing the
+// pill it merely LOOKS related to (fixed 2026-09-19, was rounded-full).
 const STAGE_STYLE: Record<KitchenProductionStatus, string> = {
   PENDING: "bg-secondary text-secondary-foreground",
   PREPARING: "bg-warning/10 text-warning",
@@ -58,9 +60,9 @@ export function StageSelect({ menuSelectionId, currentStage }: StageSelectProps)
         disabled={pending}
       >
         <SelectTrigger
-          size="sm"
+          size="md"
           aria-label="Kitchen production stage"
-          className={`rounded-full border-transparent px-3 font-medium ${STAGE_STYLE[stage]}`}
+          className={`border-transparent px-3 font-medium ${STAGE_STYLE[stage]}`}
         >
           <SelectValue />
         </SelectTrigger>

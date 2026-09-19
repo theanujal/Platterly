@@ -72,7 +72,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold">{customer.name}</h1>
-            <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"}>
+            <Badge variant={customer.status === "CUSTOMER" ? "info" : "warning"}>
               {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
             </Badge>
             {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}

@@ -52,7 +52,7 @@ export default async function CustomersPage() {
           </div>
           <span className="text-sm text-muted-foreground">{formatPhoneDisplay(customer.phone)}</span>
           {customer.email && <span className="text-xs text-muted-foreground">{customer.email}</span>}
-          <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"} className="w-fit">
+          <Badge variant={customer.status === "CUSTOMER" ? "info" : "warning"} className="w-fit">
             {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
           </Badge>
         </div>
@@ -63,7 +63,7 @@ export default async function CustomersPage() {
           <TableCell>{formatPhoneDisplay(customer.phone)}</TableCell>
           <TableCell className="text-muted-foreground">{customer.email ?? "—"}</TableCell>
           <TableCell>
-            <Badge variant={customer.status === "CUSTOMER" ? "success" : "neutral"}>
+            <Badge variant={customer.status === "CUSTOMER" ? "info" : "warning"}>
               {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
             </Badge>
           </TableCell>

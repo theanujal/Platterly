@@ -44,14 +44,14 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <p className="min-w-0 truncate text-sm text-muted-foreground">{url}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
+                  <Button variant="outline" size="md" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
                     <ExternalLink className="size-4" />
                     View
                   </Button>
-                  <CopyButton value={url} />
+                  <CopyButton value={url} size="md" />
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="md"
                     render={
                       <a
                         href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
@@ -66,7 +66,7 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
                   </Button>
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="md"
                     render={<Link href="/settings/integration/public-menu-link" />}
                     nativeButton={false}
                   >
@@ -82,7 +82,7 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
             <p className="text-sm text-muted-foreground">You haven&apos;t set your public menu link yet.</p>
             <Button
               variant="outline"
-              size="sm"
+              size="md"
               render={<Link href="/settings/integration/public-menu-link" />}
               nativeButton={false}
               className="self-start"
