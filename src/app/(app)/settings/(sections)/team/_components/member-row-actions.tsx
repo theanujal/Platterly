@@ -15,13 +15,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
 import { updateMemberRoleAction, disableMemberAction, enableMemberAction } from "../actions";
 
-const ROLE_OPTIONS = [
-  { value: "admin", label: "Team Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "staff", label: "Staff" },
-] as const;
+const ROLE_OPTIONS = INVITABLE_ROLE_DEFINITIONS.map((r) => ({ value: r.id, label: r.label }));
 
 interface MemberRowActionsProps {
   memberId: string;

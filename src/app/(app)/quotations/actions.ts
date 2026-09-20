@@ -92,7 +92,7 @@ async function assertEventDateAllowed(organizationId: string, eventStartDate: Da
   if (daysUntil(eventStartDate) >= MIN_DAYS_BEFORE_EVENT) return;
   const canBypass = await hasPermission({ orders: ["bypass_date_restriction"] }, organizationId);
   if (!canBypass) {
-    throw new Error(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`);
+    throw new Error(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`);
   }
 }
 

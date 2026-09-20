@@ -56,7 +56,7 @@ interface OrderEventSectionProps {
   eventTypes: { id: string; name: string }[];
   kitchens: { id: string; name: string }[];
   inventoryItems: { id: string; name: string; unit: string }[];
-  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
   canBypassDateRestriction: boolean;
 }
 
@@ -181,7 +181,7 @@ function InlineEventEditor({
   eventTypes: { id: string; name: string }[];
   kitchens: { id: string; name: string }[];
   inventoryItems: { id: string; name: string; unit: string }[];
-  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
   canBypassDateRestriction: boolean;
 }) {
   const router = useRouter();
@@ -213,7 +213,7 @@ function InlineEventEditor({
 
   async function handleSave() {
     if (eventDateRestricted && !canBypassDateRestriction) {
-      setError(`Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner or Team Admin.`);
+      setError(`Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner.`);
       return;
     }
     setPending(true);
@@ -334,8 +334,8 @@ function InlineEventEditor({
             {eventDateRestricted && (
               <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
                 {canBypassDateRestriction
-                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save it as an Owner/Team Admin.`
-                  : `Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner or Team Admin.`}
+                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save it as an Owner.`
+                  : `Events can't normally be saved less than ${MIN_DAYS_BEFORE_EVENT} days before their start date. Ask an Owner.`}
               </p>
             )}
           </div>

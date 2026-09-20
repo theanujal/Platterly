@@ -262,7 +262,7 @@ interface OrderFormProps {
    * persisted order. Zero/omitted for every Order created directly.
    */
   carriedOverItemsSubtotal?: number;
-  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
   canBypassDateRestriction: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
@@ -512,7 +512,7 @@ export function OrderForm({
       return;
     }
     if (eventDateRestricted && !canBypassDateRestriction) {
-      setError(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner or Team Admin to create this one.`);
+      setError(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner to create this one.`);
       return;
     }
     if (values.paymentStatus === "PARTIALLY_PAID" && advanceNum <= 0) {
@@ -783,8 +783,8 @@ export function OrderForm({
             {eventDateRestricted && (
               <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
                 {canBypassDateRestriction
-                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still create this order as an Owner/Team Admin.`
-                  : `Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner or Team Admin to create this one.`}
+                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still create this order as an Owner.`
+                  : `Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner to create this one.`}
               </p>
             )}
           </div>

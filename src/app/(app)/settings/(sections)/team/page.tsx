@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { roleLabel } from "@/lib/auth/role-metadata";
 import { listMembers, listPendingInvitations } from "@/modules/team/team";
 import { getTeamPrivacyAction } from "./actions";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -56,7 +57,7 @@ export default async function TeamPage() {
               <TableRow key={member.id}>
                 <TableCell className="font-medium">{member.user.name}</TableCell>
                 <TableCell className="text-muted-foreground">{member.user.email}</TableCell>
-                <TableCell className="capitalize">{member.role}</TableCell>
+                <TableCell>{roleLabel(member.role)}</TableCell>
                 <TableCell>{member.disabledAt ? "Disabled" : "Active"}</TableCell>
                 <TableCell>{member.createdAt.toLocaleDateString()}</TableCell>
                 <TableCell>
@@ -84,7 +85,7 @@ export default async function TeamPage() {
               {invitations.map((invitation) => (
                 <TableRow key={invitation.id}>
                   <TableCell className="font-medium">{invitation.email}</TableCell>
-                  <TableCell className="capitalize">{invitation.role}</TableCell>
+                  <TableCell>{roleLabel(invitation.role ?? "staff")}</TableCell>
                   <TableCell className={invitation.expiresAt < new Date() ? "text-destructive" : undefined}>
                     {invitation.expiresAt < new Date() ? "Expired" : invitation.expiresAt.toLocaleDateString()}
                   </TableCell>
@@ -105,7 +106,7 @@ export default async function TeamPage() {
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-muted-foreground">Team Privacy</h2>
         <p className="max-w-lg text-xs text-muted-foreground">
-          Controls what teammates see about each other — this never restricts what Owners/Admins can see.
+          Controls what teammates see about each other — this never restricts what Owners can see.
         </p>
         <TeamPrivacyForm initialValues={teamPrivacy} />
       </div>

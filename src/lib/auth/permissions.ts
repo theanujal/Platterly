@@ -6,29 +6,6 @@ import {
 } from "better-auth/plugins/organization/access";
 
 /**
- * Better Auth's own `invitation`/`member`/`team`/`ac` grants (not our own
- * `statement` below) are what let a role call its organization-management
- * endpoints (createInvitation, updateMemberRole, etc.) — `memberAc` grants
- * `invitation: []` (explicit deny), which is why manager/staff can't invite
- * today. `ownerAc.statements` bundles these together with `organization:
- * ["update", "delete"]` — but that `"delete"` gates a REAL
- * `auth.api.deleteOrganization` endpoint (crud-org.mjs) that hard-deletes the
- * Organization row outright, nothing survives. The new `admin` role below
- * deliberately does NOT spread `...ownerAc.statements` wholesale — it picks
- * only the team-management pieces, explicitly excluding `organization:
- * ["delete"]`, so "Team Admin" can never delete the tenant via that
- * Better-Auth-native path, matching Chunk 5's "owner-only forever" decision
- * for both our own Danger Zone purge (`tenant: ["delete"]` below) and this.
- */
-const adminOrganizationManagementGrants = {
-  organization: ["update"],
-  member: ownerAc.statements.member,
-  invitation: ownerAc.statements.invitation,
-  team: ownerAc.statements.team,
-  ac: ownerAc.statements.ac,
-} as const;
-
-/**
  * Business-module permissions (PRD §15: module/action-level RBAC).
  * `defaultStatements` covers organization-management actions (invite members,
  * manage teams, etc.) that Better Auth's organization plugin already ships.
@@ -36,21 +13,21 @@ const adminOrganizationManagementGrants = {
  * starting set proving the deny-by-default mechanism works end to end. Each
  * later chunk extends this statement with its own module's actions as that
  * module gets built (e.g. Chunk 9 adds `customers`/`events` actions beyond the
- * placeholders below, Chunk 14 adds `invoices`/`payments`, etc.). Chunk 5's
- * Team Admin / Manager / Staff preset UI is built on top of the `roles` below,
- * never a replacement for this granular engine.
+ * placeholders below, Chunk 14 adds `invoices`/`payments`, etc.). The role
+ * presets in `roles` below (PRD §5's Owner/Manager/Staff plus its five named
+ * department teams) are a UI layer on top of this engine, never a
+ * replacement for it.
  */
 export const statement = {
   ...defaultStatements,
   // "delete" = Chunk 5's Danger Zone data purge — owner-only, granted to no
-  // other role (see the `admin` role's comment above for why this must stay
-  // exclusive even for an otherwise owner-level role).
+  // other role.
   tenant: ["view", "edit", "delete"],
   users: ["view", "create", "edit", "delete"],
   customers: ["view", "create", "edit", "delete"],
   events: ["view", "create", "edit", "delete", "approve"],
   // "bypass_date_restriction" — Create Order's own <2-days-before-event
-  // guard (order-form.tsx / order.ts, 2026-09-19); owner/admin only, see
+  // guard (order-form.tsx / order.ts, 2026-09-19); owner-only, see
   // the `roles` grants below.
   orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
   quotations: ["view", "create", "edit", "delete"],
@@ -69,6 +46,15 @@ export const ac = createAccessControl(statement);
  * listed for a role is unauthorized (see permission tests in src/lib/auth/__tests__).
  * Super Admin is not an organization role at all — it's a separate, tenant-less
  * platform-level user (Chunk 3), enforced by an app-level check, not by this ac.
+ *
+ * `owner` is the only top-tier role — there is deliberately no second
+ * owner-level "admin" role (AJ, 2026-09-20: removed the Chunk 5 "Team Admin"
+ * preset). Below owner sit `manager`/`staff` plus PRD §5's five named
+ * department teams (`sales`/`kitchen`/`inventoryTeam`/`accounts`/`eventTeam`).
+ * None of the non-owner roles get `tenant`, `users`, `settings`, or Better
+ * Auth's own org-management grants (invite/manage teammates stays owner or
+ * `manager` only, via `...memberAc.statements` below) — team management is
+ * an owner/manager-only capability regardless of department.
  */
 export const roles = {
   owner: ac.newRole({
@@ -78,31 +64,7 @@ export const roles = {
     customers: ["view", "create", "edit", "delete"],
     events: ["view", "create", "edit", "delete", "approve"],
     orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
-  quotations: ["view", "create", "edit", "delete"],
-    menus: ["view", "create", "edit", "delete", "approve"],
-    inventory: ["view", "create", "edit", "delete"],
-    invoices: ["view", "create", "edit", "delete", "export"],
-    payments: ["view", "create", "manage"],
-    reports: ["view", "export"],
-    settings: ["view", "edit"],
-  }),
-  /**
-   * Chunk 5 Group 5.2 — the "Team Admin" invite preset. Owner-level access to
-   * every business module (including team management, via
-   * `adminOrganizationManagementGrants`), but explicitly excluded from
-   * `tenant: ["delete"]` (Danger Zone) and from Better Auth's own
-   * `organization: ["delete"]` — both irreversible, both owner-only forever.
-   * Any future billing/payment-destructive action should follow the same
-   * pattern: grant to owner, withhold from admin, by default.
-   */
-  admin: ac.newRole({
-    ...adminOrganizationManagementGrants,
-    tenant: ["view", "edit"],
-    users: ["view", "create", "edit", "delete"],
-    customers: ["view", "create", "edit", "delete"],
-    events: ["view", "create", "edit", "delete", "approve"],
-    orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
-  quotations: ["view", "create", "edit", "delete"],
+    quotations: ["view", "create", "edit", "delete"],
     menus: ["view", "create", "edit", "delete", "approve"],
     inventory: ["view", "create", "edit", "delete"],
     invoices: ["view", "create", "edit", "delete", "export"],
@@ -138,6 +100,115 @@ export const roles = {
     invoices: [],
     payments: [],
     reports: ["view"],
+    settings: [],
+  }),
+  /**
+   * PRD §5 "Sales Team" — Enquiries/Customers/Quotations/Orders/Follow-ups.
+   * Needs read access to `events` (to attach orders) and `menus` (to quote
+   * against the catalog), but no approval authority and no deletes.
+   */
+  sales: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: ["view", "create", "edit"],
+    events: ["view"],
+    orders: ["view", "create", "edit"],
+    quotations: ["view", "create", "edit"],
+    menus: ["view"],
+    inventory: [],
+    invoices: [],
+    payments: [],
+    reports: ["view"],
+    settings: [],
+  }),
+  /**
+   * PRD §5 "Kitchen Team" — Approved menus/Kitchen production/Preparation/
+   * Kitchen status. Gets `menus:edit` (Kitchen Dashboard's own status-update
+   * actions, kitchen-dashboard/actions.ts) and `menus:view` (both the
+   * dashboard and its own query already scope to orders that reached the
+   * Kitchen Reviewing/Approved stage). Deliberately NO `menus:approve` — AJ,
+   * 2026-09-20: Kitchen Team executes production against already-approved
+   * menus, they don't run the approval pipeline itself (that's `eventTeam`
+   * below), so `/menu-approvals` (gated on `menus:["approve"]`) stays closed
+   * to this role.
+   */
+  kitchen: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: [],
+    events: ["view"],
+    orders: ["view"],
+    quotations: [],
+    menus: ["view", "edit"],
+    inventory: [],
+    invoices: [],
+    payments: [],
+    reports: [],
+    settings: [],
+  }),
+  /**
+   * PRD §5 "Store / Inventory Team" — Stock/Ingredients/Purchases/Suppliers.
+   * `inventory` is this role's entire domain, so unlike every other
+   * non-owner role it gets `delete` there too.
+   */
+  inventoryTeam: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: [],
+    events: [],
+    orders: [],
+    quotations: [],
+    menus: [],
+    inventory: ["view", "create", "edit", "delete"],
+    invoices: [],
+    payments: [],
+    reports: ["view"],
+    settings: [],
+  }),
+  /**
+   * PRD §5 "Accounts Team" (Finance) — Invoices/Payments/Expenses/Financial
+   * reports. `reports:export` mirrors owner's grant since financial
+   * reporting is this role's core job.
+   */
+  accounts: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: [],
+    events: [],
+    orders: [],
+    quotations: [],
+    menus: [],
+    inventory: [],
+    invoices: ["view", "create", "edit", "export"],
+    payments: ["view", "create", "manage"],
+    reports: ["view", "export"],
+    settings: [],
+  }),
+  /**
+   * PRD §5 "Event Team" — Event requirements/Staff/Equipment/Logistics,
+   * **plus menu-approval ownership** (AJ, 2026-09-20, explicit ask beyond
+   * the PRD's own department description): `menu-approvals/actions.ts`'s
+   * entire Draft→...→Final/Locked pipeline is already uniformly gated on
+   * `menus:["approve"]`, so granting it here gives this role the full
+   * customer-approval-through-lock flow end to end.
+   */
+  eventTeam: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: [],
+    events: ["view", "create", "edit"],
+    orders: ["view"],
+    quotations: [],
+    menus: ["view", "approve"],
+    inventory: [],
+    invoices: [],
+    payments: [],
+    reports: [],
     settings: [],
   }),
 };

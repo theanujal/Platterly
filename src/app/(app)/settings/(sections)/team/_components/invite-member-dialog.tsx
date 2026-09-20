@@ -15,13 +15,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
 import { inviteMemberAction } from "../actions";
 
-const ROLE_OPTIONS = [
-  { value: "admin", label: "Team Admin" },
-  { value: "manager", label: "Manager" },
-  { value: "staff", label: "Staff" },
-] as const;
+const ROLE_OPTIONS = INVITABLE_ROLE_DEFINITIONS.map((r) => ({ value: r.id, label: r.label }));
 
 /**
  * A per-invite custom permission bundle would need Better Auth's dynamic
@@ -30,22 +27,9 @@ const ROLE_OPTIONS = [
  * actual grants instead, so an inviter can verify what they're sending
  * before they send it.
  */
-const ROLE_GRANT_PREVIEWS: Record<(typeof ROLE_OPTIONS)[number]["value"], string[]> = {
-  admin: [
-    "Full access to customers, events, orders, menus, inventory, invoices, payments, reports, settings",
-    "Can invite and manage other team members",
-    "Cannot delete all tenant data (Danger Zone) — owner only",
-  ],
-  manager: [
-    "Can view and create/edit customers, events, orders, menus, inventory",
-    "Can view invoices and payments, create new ones",
-    "Cannot delete records, cannot manage the team, cannot edit settings",
-  ],
-  staff: [
-    "View-only across customers, events, orders, menus, inventory, reports",
-    "No access to invoices, payments, team management, or settings",
-  ],
-};
+const ROLE_GRANT_PREVIEWS = Object.fromEntries(
+  INVITABLE_ROLE_DEFINITIONS.map((r): [string, string[]] => [r.id, [...(r.previews ?? [])]]),
+) as Record<(typeof ROLE_OPTIONS)[number]["value"], string[]>;
 
 export function InviteMemberDialog() {
   const router = useRouter();

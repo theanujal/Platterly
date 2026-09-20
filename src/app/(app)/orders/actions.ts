@@ -140,12 +140,12 @@ function daysUntil(date: Date): number {
   return Math.round((startOfEvent.getTime() - startOfToday.getTime()) / 86_400_000);
 }
 
-/** Owner/Team Admin only (permissions.ts's `orders: ["bypass_date_restriction"]`) — see RULES.md-style rationale in order-form.tsx's own client-side copy of this check. */
+/** Owner only (permissions.ts's `orders: ["bypass_date_restriction"]`) — see RULES.md-style rationale in order-form.tsx's own client-side copy of this check. */
 async function assertEventDateAllowed(organizationId: string, eventStartDate: Date) {
   if (daysUntil(eventStartDate) >= MIN_DAYS_BEFORE_EVENT) return;
   const canBypass = await hasPermission({ orders: ["bypass_date_restriction"] }, organizationId);
   if (!canBypass) {
-    throw new Error(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. An Owner or Team Admin can override this.`);
+    throw new Error(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. An Owner can override this.`);
   }
 }
 

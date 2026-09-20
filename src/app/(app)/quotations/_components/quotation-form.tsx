@@ -94,7 +94,7 @@ interface QuotationFormProps {
   menus: CatalogOption[];
   menuItems: CatalogOption[];
   addOns: CatalogOption[];
-  /** Owner/Team Admin — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
+  /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
   canBypassDateRestriction: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
@@ -164,7 +164,7 @@ export function QuotationForm({
       return;
     }
     if (eventDateRestricted && !canBypassDateRestriction) {
-      setError(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`);
+      setError(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`);
       return;
     }
     setPending(true);
@@ -252,8 +252,8 @@ export function QuotationForm({
             {eventDateRestricted && (
               <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
                 {canBypassDateRestriction
-                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save this Quotation as an Owner/Team Admin.`
-                  : `Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner or Team Admin.`}
+                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save this Quotation as an Owner.`
+                  : `Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`}
               </p>
             )}
           </div>

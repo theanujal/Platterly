@@ -7,11 +7,12 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { disableMember, enableMember } from "@/modules/team/team";
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import { audit } from "@/lib/audit/audit";
+import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
 import { TEAM_PRIVACY_KEY, DEFAULT_TEAM_PRIVACY, type TeamPrivacySettings } from "./types";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-const INVITABLE_ROLES = ["admin", "manager", "staff"] as const;
+const INVITABLE_ROLES = INVITABLE_ROLE_DEFINITIONS.map((r) => r.id);
 type InvitableRole = (typeof INVITABLE_ROLES)[number];
 
 function isInvitableRole(role: string): role is InvitableRole {
