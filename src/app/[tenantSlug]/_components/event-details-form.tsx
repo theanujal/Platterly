@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail } from "lucide-react";
+import { User, Mail, Leaf, Drumstick, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { submitEventDetailsAction } from "../actions";
+import { Card, CardContent } from "@/components/ui/card";
+import { MARKETING_CONSENT_DEFAULT_CHECKED } from "@/modules/menu-approvals/storefront-draft-constants";
+import { startDraftAction, saveDetailsAction } from "../actions";
+import { cn } from "cn";
 
 const MEAL_TYPE_OPTIONS = [
   { value: "BREAKFAST", label: "Breakfast" },
@@ -21,33 +22,6 @@ const MEAL_TYPE_OPTIONS = [
   { value: "DINNER", label: "Dinner" },
   { value: "OTHER", label: "Other" },
 ] as const;
-
-const MENU_PREFERENCE_OPTIONS = [
-  { value: "VEGETARIAN", label: "Vegetarian — Pure veg menu" },
-  { value: "NON_VEGETARIAN", label: "Non-Vegetarian — Includes meat options" },
-] as const;
-
-const VENUE_TYPE_OPTIONS = [
-  { value: "CLUBHOUSE", label: "Clubhouse" },
-  { value: "HOTEL", label: "Hotel" },
-  { value: "BANQUET_HALL", label: "Banquet Hall" },
-  { value: "RESORT", label: "Resort" },
-  { value: "HOME", label: "Home" },
-  { value: "OFFICE", label: "Office" },
-  { value: "OTHER", label: "Other" },
-] as const;
-
-const VEHICLE_ACCESS_OPTIONS = [
-  { value: "VEHICLE_AND_PARKING", label: "Vehicle can enter venue & parking available" },
-  { value: "VEHICLE_NO_PARKING", label: "Vehicle can enter but no parking" },
-  { value: "NO_VEHICLE_ACCESS", label: "Vehicle cannot enter venue" },
-  { value: "MANUAL_LOADING_REQUIRED", label: "Manual loading required" },
-] as const;
-
-interface EventDetailsFormProps {
-  tenantSlug: string;
-  eventTypes: { id: string; name: string }[];
-}
 
 interface FormValues {
   name: string;
@@ -60,19 +34,6 @@ interface FormValues {
   child5To10Count: string;
   eventMealType: string;
   menuPreference: string;
-  venueType: string;
-  venueBuildingName: string;
-  venueDoorNumber: string;
-  venueTower: string;
-  venueFloor: string;
-  venueHallName: string;
-  completeVenueAddress: string;
-  venueLandmark: string;
-  venueContactName: string;
-  venueContactPhone: string;
-  venueAccessInstructions: string;
-  vehicleAccess: string;
-  liveCounterAvailable: string;
 }
 
 const EMPTY_VALUES: FormValues = {
@@ -86,28 +47,22 @@ const EMPTY_VALUES: FormValues = {
   child5To10Count: "",
   eventMealType: "",
   menuPreference: "",
-  venueType: "",
-  venueBuildingName: "",
-  venueDoorNumber: "",
-  venueTower: "",
-  venueFloor: "",
-  venueHallName: "",
-  completeVenueAddress: "",
-  venueLandmark: "",
-  venueContactName: "",
-  venueContactPhone: "",
-  venueAccessInstructions: "",
-  vehicleAccess: "",
-  liveCounterAvailable: "",
 };
 
-function selectItemsMap(options: readonly { value: string; label: string }[]) {
-  return Object.fromEntries(options.map((o) => [o.value, o.label]));
+interface EventDetailsFormProps {
+  tenantSlug: string;
+  businessName: string;
+  eventTypes: { id: string; name: string; minGuests: number | null }[];
+  /** Present when stepping back to edit an existing draft — contact fields are then read-only. */
+  draft?: { id: string; values: FormValues };
 }
 
-export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormProps) {
+export type { FormValues as EventDetailsFormValues };
+
+export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }: EventDetailsFormProps) {
   const router = useRouter();
-  const [values, setValues] = useState<FormValues>(EMPTY_VALUES);
+  const [values, setValues] = useState<FormValues>(draft?.values ?? EMPTY_VALUES);
+  const [consent, setConsent] = useState(MARKETING_CONSENT_DEFAULT_CHECKED);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -115,9 +70,21 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  const selectedEventType = eventTypes.find((et) => et.id === values.eventTypeId);
+  const minGuests = selectedEventType?.minGuests ?? null;
+  const today = new Date().toISOString().slice(0, 10);
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!values.menuPreference) {
+      setError("Please choose Vegetarian or Non-Vegetarian.");
+      return;
+    }
+    if (!values.eventMealType) {
+      setError("Please choose an Event Time.");
+      return;
+    }
     setPending(true);
 
     const formData = new FormData();
@@ -125,44 +92,55 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
       if (value !== "") formData.set(key, value);
     });
 
-    const result = await submitEventDetailsAction(tenantSlug, formData);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.error);
+    if (draft) {
+      const result = await saveDetailsAction(tenantSlug, draft.id, formData);
+      setPending(false);
+      if (!result.ok) return setError(result.error);
+      router.push(`/${tenantSlug}/plan/${draft.id}?step=menu`);
       return;
     }
-    router.push(`/${tenantSlug}/menu-selection/${result.menuSelectionId}`);
+
+    formData.set("marketingConsent", consent ? "true" : "false");
+    const result = await startDraftAction(tenantSlug, formData);
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    router.push(`/${tenantSlug}/plan/${result.draftId}?step=menu`);
   }
 
   const eventTypeItems = Object.fromEntries(eventTypes.map((et) => [et.id, et.name]));
+  const mealItems = Object.fromEntries(MEAL_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
       <Card>
         <CardContent className="flex flex-col gap-4 pt-6">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-name">Your Name *</Label>
-            <IconInput icon={User} id="ed-name" required placeholder="Enter your full name" value={values.name} onChange={(e) => setField("name", e.target.value)} />
+            <Label htmlFor="ed-name" required>Your Name</Label>
+            <IconInput icon={User} id="ed-name" required readOnly={!!draft} placeholder="Enter your full name" value={values.name} onChange={(e) => setField("name", e.target.value)} />
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-email">Email Address *</Label>
-              <IconInput icon={Mail} id="ed-email" type="email" required placeholder="your.email@example.com" value={values.email} onChange={(e) => setField("email", e.target.value)} />
+              <Label htmlFor="ed-email" required>Email Address</Label>
+              <IconInput icon={Mail} id="ed-email" type="email" required readOnly={!!draft} placeholder="your.email@example.com" value={values.email} onChange={(e) => setField("email", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-phone">Phone Number *</Label>
-              <PhoneInput id="ed-phone" required value={values.phone} onChange={(v) => setField("phone", v)} />
+              <Label htmlFor="ed-phone" required>Phone Number</Label>
+              {draft ? (
+                <Input id="ed-phone" readOnly value={values.phone} />
+              ) : (
+                <PhoneInput id="ed-phone" required value={values.phone} onChange={(v) => setField("phone", v)} />
+              )}
             </div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-date">Event Date *</Label>
-              <Input id="ed-date" type="date" required value={values.eventDate} onChange={(e) => setField("eventDate", e.target.value)} />
+              <Label htmlFor="ed-date" required>Event Date</Label>
+              <Input id="ed-date" type="date" required min={today} value={values.eventDate} onChange={(e) => setField("eventDate", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-event-type">Event Type *</Label>
+              <Label htmlFor="ed-event-type" required>Event Type</Label>
               <Select items={eventTypeItems} value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? "")}>
-                <SelectTrigger id="ed-event-type">
+                <SelectTrigger id="ed-event-type" className="w-full">
                   <SelectValue placeholder="Select event type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -176,8 +154,17 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-guests">Number of Guests *</Label>
-            <Input id="ed-guests" type="number" min={1} required placeholder="Minimum 50 guests" value={values.guestCount} onChange={(e) => setField("guestCount", e.target.value)} />
+            <Label htmlFor="ed-guests" required>Number of Guests</Label>
+            <Input
+              id="ed-guests"
+              type="number"
+              min={minGuests ?? 1}
+              required
+              placeholder={minGuests ? `Minimum ${minGuests} guests` : "Number of guests"}
+              value={values.guestCount}
+              onChange={(e) => setField("guestCount", e.target.value)}
+            />
+            {minGuests && <p className="text-xs text-muted-foreground">Minimum {minGuests} guests required</p>}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -190,9 +177,9 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-meal-type">Event Time *</Label>
-            <Select items={selectItemsMap(MEAL_TYPE_OPTIONS)} value={values.eventMealType} onValueChange={(v) => setField("eventMealType", v ?? "")}>
-              <SelectTrigger id="ed-meal-type">
+            <Label htmlFor="ed-meal-type" required>Event Time</Label>
+            <Select items={mealItems} value={values.eventMealType} onValueChange={(v) => setField("eventMealType", v ?? "")}>
+              <SelectTrigger id="ed-meal-type" className="w-full">
                 <SelectValue placeholder="Select event time" />
               </SelectTrigger>
               <SelectContent>
@@ -205,112 +192,35 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-menu-preference">Menu Preference *</Label>
-            <Select items={selectItemsMap(MENU_PREFERENCE_OPTIONS)} value={values.menuPreference} onValueChange={(v) => setField("menuPreference", v ?? "")}>
-              <SelectTrigger id="ed-menu-preference">
-                <SelectValue placeholder="Select menu preference" />
-              </SelectTrigger>
-              <SelectContent>
-                {MENU_PREFERENCE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label required>Menu Preference</Label>
+            <div role="radiogroup" aria-label="Menu Preference" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <PreferenceCard
+                selected={values.menuPreference === "VEGETARIAN"}
+                onSelect={() => setField("menuPreference", "VEGETARIAN")}
+                icon={<Leaf className="size-5 text-success" />}
+                tone="success"
+                title="Vegetarian"
+                subtitle="Pure veg menu"
+              />
+              <PreferenceCard
+                selected={values.menuPreference === "NON_VEGETARIAN"}
+                onSelect={() => setField("menuPreference", "NON_VEGETARIAN")}
+                icon={<Drumstick className="size-5 text-destructive" />}
+                tone="danger"
+                title="Non-Vegetarian"
+                subtitle="Includes meat options"
+              />
+            </div>
           </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Venue & Delivery Details</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-type">Venue Type *</Label>
-            <Select items={selectItemsMap(VENUE_TYPE_OPTIONS)} value={values.venueType} onValueChange={(v) => setField("venueType", v ?? "")}>
-              <SelectTrigger id="ed-venue-type">
-                <SelectValue placeholder="Select venue type" />
-              </SelectTrigger>
-              <SelectContent>
-                {VENUE_TYPE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-building">Venue / Building Name *</Label>
-            <Input id="ed-venue-building" placeholder="Enter venue / building name" value={values.venueBuildingName} onChange={(e) => setField("venueBuildingName", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-venue-door">Door / Flat / House No. *</Label>
-              <Input id="ed-venue-door" placeholder="e.g. B-1204" value={values.venueDoorNumber} onChange={(e) => setField("venueDoorNumber", e.target.value)} />
+          {!draft && (
+            <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+              <Checkbox id="ed-consent" checked={consent} onCheckedChange={(checked) => setConsent(checked === true)} className="mt-0.5" />
+              <Label htmlFor="ed-consent" className="cursor-pointer font-normal leading-5">
+                Keep me posted about my event on WhatsApp and email — including occasional offers and menu ideas from {businessName}. You can opt out any time.
+              </Label>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-venue-tower">Tower / Block</Label>
-              <Input id="ed-venue-tower" placeholder="e.g. Tower B" value={values.venueTower} onChange={(e) => setField("venueTower", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-venue-floor">Floor</Label>
-              <Input id="ed-venue-floor" placeholder="e.g. 12th Floor" value={values.venueFloor} onChange={(e) => setField("venueFloor", e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-hall">Function Area / Hall Name *</Label>
-            <Input id="ed-venue-hall" placeholder="e.g. Clubhouse" value={values.venueHallName} onChange={(e) => setField("venueHallName", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-address">Complete Venue Address *</Label>
-            <Textarea id="ed-venue-address" placeholder="Enter complete venue address" value={values.completeVenueAddress} onChange={(e) => setField("completeVenueAddress", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-landmark">Landmark (Optional)</Label>
-            <Input id="ed-venue-landmark" placeholder="e.g. Near Varthur Lake" value={values.venueLandmark} onChange={(e) => setField("venueLandmark", e.target.value)} />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-venue-contact-name">Venue Contact Person *</Label>
-              <Input id="ed-venue-contact-name" placeholder="Enter contact person name" value={values.venueContactName} onChange={(e) => setField("venueContactName", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="ed-venue-contact-phone">Contact Number *</Label>
-              <PhoneInput id="ed-venue-contact-phone" value={values.venueContactPhone} onChange={(v) => setField("venueContactPhone", v)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-venue-access">Catering Access / Loading Instructions (Optional)</Label>
-            <Textarea id="ed-venue-access" placeholder="Enter loading / access instructions" value={values.venueAccessInstructions} onChange={(e) => setField("venueAccessInstructions", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-vehicle-access">Vehicle Access *</Label>
-            <Select items={selectItemsMap(VEHICLE_ACCESS_OPTIONS)} value={values.vehicleAccess} onValueChange={(v) => setField("vehicleAccess", v ?? "")}>
-              <SelectTrigger id="ed-vehicle-access">
-                <SelectValue placeholder="Select vehicle access" />
-              </SelectTrigger>
-              <SelectContent>
-                {VEHICLE_ACCESS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border p-3">
-            <Checkbox
-              id="ed-live-counter"
-              checked={values.liveCounterAvailable === "true"}
-              onCheckedChange={(checked) => setField("liveCounterAvailable", checked === true ? "true" : "false")}
-            />
-            <Label htmlFor="ed-live-counter" className="cursor-pointer font-normal">
-              Cooking live counter facility available?
-            </Label>
-          </div>
+          )}
         </CardContent>
       </Card>
 
@@ -319,9 +229,45 @@ export function EventDetailsForm({ tenantSlug, eventTypes }: EventDetailsFormPro
           {error}
         </p>
       )}
-      <Button type="submit" disabled={pending} size="lg">
-        {pending ? "Submitting…" : "Continue to Menu Selection"}
+      <Button type="submit" disabled={pending} size="lg" className="w-full">
+        {pending ? "Saving…" : "Continue to Menu Selection"}
+        <ArrowRight />
       </Button>
     </form>
+  );
+}
+
+function PreferenceCard({
+  selected,
+  onSelect,
+  icon,
+  tone,
+  title,
+  subtitle,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  icon: React.ReactNode;
+  tone: "success" | "danger";
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+        selected ? (tone === "success" ? "border-success bg-success/10" : "border-destructive bg-destructive/10") : "border-border hover:border-foreground/30",
+      )}
+    >
+      <span className={cn("flex size-10 items-center justify-center rounded-lg", tone === "success" ? "bg-success/10" : "bg-destructive/10")}>{icon}</span>
+      <span className="flex flex-col">
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="text-xs text-muted-foreground">{subtitle}</span>
+      </span>
+    </button>
   );
 }

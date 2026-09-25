@@ -161,11 +161,15 @@ export interface StorefrontMenuItem {
   image: string | null;
   foodType: FoodType;
   price: number;
+  /** Food Item "Additional Details", pre-formatted as label/value rows — only the ones the caterer filled in (a blank one never renders). */
+  details: { label: string; value: string }[];
 }
 
 export interface StorefrontMenuSection {
   categoryId: string | null;
   categoryName: string;
+  /** MenuCategoryAssignment.maxSelection — null means uncapped (Other Items, or a Custom Menu). */
+  maxSelection: number | null;
   items: StorefrontMenuItem[];
 }
 
@@ -179,7 +183,52 @@ export interface StorefrontMenu {
   sections: StorefrontMenuSection[];
 }
 
-function toStorefrontItem(item: { id: string; name: string; description: string | null; image: string | null; foodType: FoodType; price: unknown }): StorefrontMenuItem {
+function humanize(value: string): string {
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+type StorefrontItemSource = {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  foodType: FoodType;
+  price: unknown;
+  origin: string | null;
+  baseType: string | null;
+  preparationMethod: string | null;
+  spiceLevel: string | null;
+  onionGarlic: string | null;
+  vegFriendly: boolean | null;
+  nonVegFriendly: boolean | null;
+  texture: string | null;
+  tasteProfile: string | null;
+  keyIngredients: string | null;
+};
+
+function buildItemDetailRows(item: StorefrontItemSource): { label: string; value: string }[] {
+  const rows: { label: string; value: string | null }[] = [
+    { label: "Origin", value: item.origin ? humanize(item.origin) : null },
+    { label: "Base", value: item.baseType ? humanize(item.baseType) : null },
+    { label: "Preparation", value: item.preparationMethod ? humanize(item.preparationMethod) : null },
+    { label: "Spice Level", value: item.spiceLevel ? humanize(item.spiceLevel) : null },
+    { label: "Onion / Garlic", value: item.onionGarlic ? (item.onionGarlic === "WITH_ONION_GARLIC" ? "With onion & garlic" : "Without onion & garlic") : null },
+    {
+      label: "Also Suits",
+      value: [item.vegFriendly ? "Veg guests" : null, item.nonVegFriendly ? "Non-veg guests" : null].filter(Boolean).join(" & ") || null,
+    },
+    { label: "Texture", value: item.texture ? humanize(item.texture) : null },
+    { label: "Taste", value: item.tasteProfile ? humanize(item.tasteProfile) : null },
+    { label: "Key Ingredients", value: item.keyIngredients?.trim() || null },
+  ];
+  return rows.filter((row): row is { label: string; value: string } => row.value !== null);
+}
+
+function toStorefrontItem(item: StorefrontItemSource): StorefrontMenuItem {
   return {
     id: item.id,
     name: item.name,
@@ -187,6 +236,7 @@ function toStorefrontItem(item: { id: string; name: string; description: string 
     image: item.image,
     foodType: item.foodType,
     price: Number(item.price),
+    details: buildItemDetailRows(item),
   };
 }
 
@@ -239,6 +289,7 @@ export async function listStorefrontMenus(organizationId: string, filter?: Store
         return {
           categoryId: assignment.categoryId,
           categoryName: assignment.category.name,
+          maxSelection: assignment.maxSelection,
           items: categoryItems.map(toStorefrontItem),
         };
       })
@@ -246,7 +297,7 @@ export async function listStorefrontMenus(organizationId: string, filter?: Store
 
     const uncategorized = menu.items.filter((mi) => !categorizedItemIds.has(mi.menuItemId)).map((mi) => mi.menuItem);
     if (uncategorized.length > 0) {
-      sections.push({ categoryId: null, categoryName: "Other Items", items: uncategorized.map(toStorefrontItem) });
+      sections.push({ categoryId: null, categoryName: "Other Items", maxSelection: null, items: uncategorized.map(toStorefrontItem) });
     }
 
     return {
@@ -331,4 +382,29 @@ export async function getMenuForOrderPicker(organizationId: string, menuId: stri
   }
 
   return { id: menu.id, name: menu.name, sections };
+}
+
+/**
+ * Chunk 12 — the storefront's Custom Menu path: no Menu, no caps, no prices
+ * shown; the customer hand-picks any active dish (a Vegetarian preference
+ * only sees veg dishes; Non-Vegetarian sees everything), grouped by each
+ * dish's first category. The kitchen quotes the per-plate price afterwards.
+ */
+export async function listCustomMenuSections(organizationId: string, menuPreference: FoodType): Promise<StorefrontMenuSection[]> {
+  const items = await prisma.menuItem.findMany({
+    where: { organizationId, isActive: true, ...(menuPreference === "VEGETARIAN" ? { foodType: "VEGETARIAN" } : {}) },
+    include: { categories: { include: { category: true } } },
+    orderBy: { name: "asc" },
+  });
+
+  const sections = new Map<string, StorefrontMenuSection>();
+  for (const item of items) {
+    const category = item.categories.map((c) => c.category).find((c) => c.isActive);
+    const key = category?.id ?? "other";
+    if (!sections.has(key)) {
+      sections.set(key, { categoryId: category?.id ?? null, categoryName: category?.name ?? "Other Items", maxSelection: null, items: [] });
+    }
+    sections.get(key)!.items.push(toStorefrontItem(item));
+  }
+  return [...sections.values()].sort((a, b) => (a.categoryId === null ? 1 : 0) - (b.categoryId === null ? 1 : 0));
 }

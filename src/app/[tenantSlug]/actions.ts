@@ -1,89 +1,150 @@
 "use server";
 
+import { headers } from "next/headers";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
-import { submitEventDetails, type EventDetailsIntakeInput } from "@/modules/menu-approvals/menu-approval";
+import { isRateLimited } from "@/lib/rate-limit";
+import {
+  startDraft,
+  saveDraftDetails,
+  saveDraftMenuChoice,
+  saveDraftItems,
+  saveDraftVenue,
+  submitDraft,
+  StorefrontDraftError,
+  type EventDetailsInput,
+  type DraftVenue,
+  type MenuChoice,
+} from "@/modules/menu-approvals/storefront-draft";
 import type { FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
-export type ActionResult = { ok: true; menuSelectionId: string } | { ok: false; error: string };
+// Chunk 12 — every public storefront mutation. The tenant is resolved from
+// the URL slug on each call (never a client-supplied id), and only
+// StorefrontDraftError messages reach the visitor; anything else is logged
+// and replaced with a generic line.
 
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+export type StepResult = { ok: true } | { ok: false; error: string };
+export type StartResult = { ok: true; draftId: string } | { ok: false; error: string };
+export type SubmitResult = { ok: true; isCustomMenu: boolean } | { ok: false; error: string };
+
+function fail(error: unknown): { ok: false; error: string } {
+  if (error instanceof StorefrontDraftError) return { ok: false, error: error.message };
+  console.error("[storefront]", error);
+  return { ok: false, error: "Something went wrong. Please try again." };
 }
 
-function stringField(formData: FormData, name: string): string | undefined {
+async function resolveOrganization(tenantSlug: string) {
+  const organization = await getPublishedTenantBySlug(tenantSlug);
+  if (!organization) throw new StorefrontDraftError("This kitchen isn't taking requests right now.");
+  return organization;
+}
+
+async function tooManyRequests(bucket: string, limit: number): Promise<boolean> {
+  const forwarded = (await headers()).get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  return isRateLimited(`${bucket}:${ip}`, limit, 60 * 60 * 1000);
+}
+
+function text(formData: FormData, name: string): string {
   const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function numberField(formData: FormData, name: string): number | undefined {
-  const value = stringField(formData, name);
-  if (value === undefined) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+function count(formData: FormData, name: string): number {
+  const value = text(formData, name);
+  return value === "" ? 0 : Number(value);
 }
 
-function buildInput(formData: FormData): EventDetailsIntakeInput {
-  const name = stringField(formData, "name");
-  if (!name) throw new Error("Your Name is required.");
-  const email = stringField(formData, "email");
-  if (!email) throw new Error("Email Address is required.");
-  const phone = stringField(formData, "phone");
-  if (!phone) throw new Error("Phone Number is required.");
-  const eventTypeId = stringField(formData, "eventTypeId");
-  if (!eventTypeId) throw new Error("Event Type is required.");
-  const eventDateRaw = stringField(formData, "eventDate");
-  if (!eventDateRaw) throw new Error("Event Date is required.");
-  const guestCount = numberField(formData, "guestCount");
-  if (!guestCount) throw new Error("Number of Guests is required.");
-  const eventMealType = stringField(formData, "eventMealType") as MealType | undefined;
-  if (!eventMealType) throw new Error("Event Time is required.");
-  const menuPreference = stringField(formData, "menuPreference") as FoodType | undefined;
-  if (!menuPreference) throw new Error("Menu Preference is required.");
-
+function readEventDetails(formData: FormData): EventDetailsInput {
   return {
-    name,
-    email,
-    phone,
-    eventTypeId,
-    eventDate: new Date(eventDateRaw),
-    guestCount,
-    childBelow5Count: numberField(formData, "childBelow5Count"),
-    child5To10Count: numberField(formData, "child5To10Count"),
-    eventMealType,
-    menuPreference,
-    venueType: stringField(formData, "venueType") as VenueType | undefined,
-    venueBuildingName: stringField(formData, "venueBuildingName"),
-    venueDoorNumber: stringField(formData, "venueDoorNumber"),
-    venueTower: stringField(formData, "venueTower"),
-    venueFloor: stringField(formData, "venueFloor"),
-    venueHallName: stringField(formData, "venueHallName"),
-    completeVenueAddress: stringField(formData, "completeVenueAddress"),
-    venueLandmark: stringField(formData, "venueLandmark"),
-    venueContactName: stringField(formData, "venueContactName"),
-    venueContactPhone: stringField(formData, "venueContactPhone"),
-    venueLatitude: numberField(formData, "venueLatitude"),
-    venueLongitude: numberField(formData, "venueLongitude"),
-    venueAccessInstructions: stringField(formData, "venueAccessInstructions"),
-    vehicleAccess: stringField(formData, "vehicleAccess") as VehicleAccessType | undefined,
-    liveCounterAvailable: formData.get("liveCounterAvailable") === "true" ? true : formData.get("liveCounterAvailable") === "false" ? false : undefined,
+    eventTypeId: text(formData, "eventTypeId"),
+    eventDate: text(formData, "eventDate"),
+    guestCount: count(formData, "guestCount"),
+    childBelow5Count: count(formData, "childBelow5Count"),
+    child5To10Count: count(formData, "child5To10Count"),
+    eventMealType: text(formData, "eventMealType") as MealType,
+    menuPreference: text(formData, "menuPreference") as FoodType,
   };
 }
 
-/**
- * Chunk 11 Group 11.2 — the public intake form's submit action. No session:
- * `tenantSlug` resolves the Organization, same as the Chunk 8 storefront
- * itself (this form is reached from that same tenant-wide Public Menu
- * Link — see dev plans/chunk-11.md's 2026-09-17 redesign).
- */
-export async function submitEventDetailsAction(tenantSlug: string, formData: FormData): Promise<ActionResult> {
-  const organization = await getPublishedTenantBySlug(tenantSlug);
-  if (!organization) return { ok: false, error: "This page is no longer available." };
-
+export async function startDraftAction(tenantSlug: string, formData: FormData): Promise<StartResult> {
   try {
-    const input = buildInput(formData);
-    const { menuSelection } = await submitEventDetails(organization.id, input);
-    return { ok: true, menuSelectionId: menuSelection.id };
+    const organization = await resolveOrganization(tenantSlug);
+    if (await tooManyRequests("start", 15)) return { ok: false, error: "Too many attempts. Please try again in a little while." };
+    const { draft } = await startDraft(organization.id, {
+      ...readEventDetails(formData),
+      name: text(formData, "name"),
+      email: text(formData, "email"),
+      phone: text(formData, "phone"),
+      marketingConsent: text(formData, "marketingConsent") === "true",
+    });
+    return { ok: true, draftId: draft.id };
   } catch (error) {
-    return toErrorResult(error);
+    return fail(error);
+  }
+}
+
+export async function saveDetailsAction(tenantSlug: string, draftId: string, formData: FormData): Promise<StepResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    await saveDraftDetails(organization.id, draftId, readEventDetails(formData));
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveMenuChoiceAction(tenantSlug: string, draftId: string, choice: MenuChoice): Promise<StepResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    await saveDraftMenuChoice(organization.id, draftId, choice);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveItemsAction(tenantSlug: string, draftId: string, itemIds: string[], addOnIds: string[]): Promise<StepResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    await saveDraftItems(organization.id, draftId, { itemIds, addOnIds });
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveVenueAction(tenantSlug: string, draftId: string, formData: FormData): Promise<StepResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    const venue: DraftVenue = {
+      venueType: text(formData, "venueType") as VenueType,
+      venueBuildingName: text(formData, "venueBuildingName"),
+      venueDoorNumber: text(formData, "venueDoorNumber"),
+      venueTower: text(formData, "venueTower"),
+      venueFloor: text(formData, "venueFloor"),
+      venueHallName: text(formData, "venueHallName"),
+      completeVenueAddress: text(formData, "completeVenueAddress"),
+      venueLandmark: text(formData, "venueLandmark"),
+      venueContactName: text(formData, "venueContactName"),
+      venueContactPhone: text(formData, "venueContactPhone"),
+      venueAccessInstructions: text(formData, "venueAccessInstructions"),
+      vehicleAccess: text(formData, "vehicleAccess") as VehicleAccessType,
+      liveCounterAvailable: text(formData, "liveCounterAvailable") === "true",
+    };
+    await saveDraftVenue(organization.id, draftId, venue);
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function submitDraftAction(tenantSlug: string, draftId: string, notes: string): Promise<SubmitResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    if (await tooManyRequests("submit", 10)) return { ok: false, error: "Too many attempts. Please try again in a little while." };
+    const result = await submitDraft(organization.id, draftId, notes);
+    return { ok: true, isCustomMenu: result.isCustomMenu };
+  } catch (error) {
+    return fail(error);
   }
 }

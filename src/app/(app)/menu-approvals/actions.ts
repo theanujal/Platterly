@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
   setMenuSelectionItems,
+  setCustomMenuPricePerPlate,
   kitchenApproves,
   kitchenRequestsChanges,
   resumeKitchenReview,
   lockMenuSelection,
   InvalidMenuSelectionTransitionError,
+  type MenuSelectionItemInput,
 } from "@/modules/menu-approvals/menu-approval";
-import type { OrderItemCatalogInput } from "@/modules/orders/order";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -26,7 +27,7 @@ function revalidate(id: string) {
   revalidatePath(`/menu-approvals/${id}`);
 }
 
-export async function updateMenuApprovalItemsAction(id: string, items: OrderItemCatalogInput[]): Promise<ActionResult> {
+export async function updateMenuApprovalItemsAction(id: string, items: MenuSelectionItemInput[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   try {
@@ -79,6 +80,18 @@ export async function lockMenuSelectionAction(id: string): Promise<ActionResult>
   await requirePermission({ menus: ["approve"] }, organizationId);
   try {
     await lockMenuSelection(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidate(id);
+  return { ok: true };
+}
+
+export async function setCustomMenuPriceAction(id: string, pricePerPlate: number): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["approve"] }, organizationId);
+  try {
+    await setCustomMenuPricePerPlate(organizationId, id, pricePerPlate, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

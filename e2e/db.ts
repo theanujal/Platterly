@@ -145,3 +145,18 @@ export async function getLatestEmailOtp(email: string): Promise<string | null> {
 export async function closeDbPool(): Promise<void> {
   await pool.end();
 }
+
+/**
+ * Chunk 12 — pushes a tenant's unfinished storefront drafts back in time so
+ * the "abandoned after 30 minutes idle" state can be exercised without
+ * waiting half an hour. Prisma stores DateTime as UTC in `timestamp` (no
+ * zone) columns, so "now" must be taken in UTC too — plain `now()` would use
+ * the session's local zone and land hours in the future on an IST machine.
+ */
+export async function backdateStorefrontDrafts(slug: string, minutesAgo: number): Promise<void> {
+  await pool.query(
+    `UPDATE storefront_draft SET "lastActivityAt" = (now() AT TIME ZONE 'utc') - ($2 || ' minutes')::interval
+     WHERE status = 'IN_PROGRESS' AND "organizationId" = (SELECT id FROM organization WHERE slug = $1)`,
+    [slug, String(minutesAgo)],
+  );
+}

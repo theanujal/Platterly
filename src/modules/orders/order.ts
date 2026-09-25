@@ -189,7 +189,7 @@ interface ChildPricingRates {
  * Menu's own pricePerPlate or a flat per-plate amount. `menu` is null when
  * no meal has an assigned Menu yet — degrades to 0, never throws.
  */
-function computeChildrenCharge(menu: ChildPricingRates | null, below5Count: number | null, child5To10Count: number | null): number {
+export function computeChildrenCharge(menu: ChildPricingRates | null, below5Count: number | null, child5To10Count: number | null): number {
   if (!menu) return 0;
   const below5 = below5Count ?? 0;
   const child5to10 = child5To10Count ?? 0;

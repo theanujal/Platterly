@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
-import { listStorefrontMenus } from "@/modules/menus/menu";
+import { listStorefrontMenus, listCustomMenuSections, type StorefrontMenuSection } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { MenuApprovalReview } from "./_components/menu-approval-review";
@@ -62,10 +62,20 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
 
   const StatusIcon = STATUS_ICON[menuSelection.status];
 
-  const menus = await listStorefrontMenus(organizationId, {
-    eventTypeId: menuSelection.event.eventTypeId,
-    menuType: menuSelection.event.order?.menuPreference ?? undefined,
-  });
+  // What the kitchen can add/remove from: the Menu the customer chose, the
+  // open dish list for a Custom Menu, or (older selections that predate the
+  // Chunk 12 flow, with no chosen menu) every menu for the event type.
+  const preference = menuSelection.event.order?.menuPreference ?? undefined;
+  let groups: { key: string; name: string; sections: StorefrontMenuSection[] }[];
+  if (menuSelection.isCustomMenu) {
+    groups = [{ key: "custom", name: "Custom Menu", sections: await listCustomMenuSections(organizationId, preference ?? "NON_VEGETARIAN") }];
+  } else if (menuSelection.chosenMenuId) {
+    const menu = (await listStorefrontMenus(organizationId)).find((m) => m.id === menuSelection.chosenMenuId);
+    groups = menu ? [{ key: menu.id, name: menu.name, sections: menu.sections }] : [];
+  } else {
+    const menus = await listStorefrontMenus(organizationId, { eventTypeId: menuSelection.event.eventTypeId, menuType: preference });
+    groups = menus.map((m) => ({ key: m.id, name: m.name, sections: m.sections }));
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
@@ -91,17 +101,22 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
         customerRequestNote={menuSelection.customerRequestNote}
         kitchenRequestNote={menuSelection.kitchenRequestNote}
         lockedAt={menuSelection.lockedAt}
-        menus={menus}
+        groups={groups}
+        isCustomMenu={menuSelection.isCustomMenu}
+        chosenMenuName={menuSelection.chosenMenu?.name ?? null}
+        guests={menuSelection.event.order?.totalParticipants ?? 0}
+        customPricePerPlate={menuSelection.customPricePerPlate ? Number(menuSelection.customPricePerPlate) : null}
         initialItems={menuSelection.items.map((item) => ({
           itemType: item.itemType,
           catalogId: item.menuId ?? item.menuItemId ?? item.addOnId ?? "",
-          quantity: item.quantity,
+          name: item.name,
+          isExtra: item.isExtra,
         }))}
         versions={menuSelection.versions.map((version) => ({
           versionNumber: version.versionNumber,
           status: version.status,
           createdAt: version.createdAt,
-          items: version.items.map((item) => ({ name: item.name, quantity: item.quantity, unitPrice: Number(item.unitPrice) })),
+          items: version.items.map((item) => ({ name: item.name })),
         }))}
       />
     </div>

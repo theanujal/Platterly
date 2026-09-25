@@ -241,7 +241,7 @@ describe("MenuSelection item versioning (Chunk 11 Group 11.3, PRD §30)", () => 
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
 
-    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2 }]);
+    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: menuItem.id }]);
 
     const versionCount = await prisma.menuVersion.count({ where: { menuSelectionId: selection.id } });
     expect(versionCount).toBe(0);
@@ -249,6 +249,22 @@ describe("MenuSelection item versioning (Chunk 11 Group 11.3, PRD §30)", () => 
     const after = await getMenuSelection(org.id, selection.id);
     expect(after?.items).toHaveLength(1);
     expect(after?.currentVersion).toBe(1);
+  });
+
+  it("ignores any client-sent quantity — a selected item is always stored once (add/remove only)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const menuItem = await createMenuItem(org.id, { name: "Paneer Tikka", foodType: "VEGETARIAN", price: 150 }, actor.id);
+    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+
+    // A tampered payload still carries `quantity`, even though the type no longer allows it.
+    const forged = [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 50 }] as unknown as Parameters<typeof setMenuSelectionItems>[2];
+    await setMenuSelectionItems(org.id, selection.id, forged);
+
+    const after = await getMenuSelection(org.id, selection.id);
+    expect(after?.items.map((i) => i.quantity)).toEqual([1]);
   });
 
   it("snapshots the prior items into a new MenuVersion once past CUSTOMER_APPROVED, never mutating in place", async () => {
@@ -260,10 +276,10 @@ describe("MenuSelection item versioning (Chunk 11 Group 11.3, PRD §30)", () => 
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
 
-    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: paneer.id, quantity: 2 }]);
+    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: paneer.id }]);
     await customerApproves(org.id, selection.id); // -> KITCHEN_REVIEWING, past the pre-approval statuses
 
-    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: naan.id, quantity: 5 }], actor.id);
+    await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: naan.id }], actor.id);
 
     const versions = await prisma.menuVersion.findMany({ where: { menuSelectionId: selection.id }, include: { items: true } });
     expect(versions).toHaveLength(1);

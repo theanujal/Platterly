@@ -266,7 +266,7 @@ describe("listStorefrontMenus (Chunk 8 Group 8.3 — public storefront)", () => 
 
     const [storefrontMenu] = await listStorefrontMenus(org.id);
     expect(storefrontMenu.sections).toEqual([
-      { categoryId: null, categoryName: "Other Items", items: [expect.objectContaining({ id: item.id })] },
+      { categoryId: null, categoryName: "Other Items", maxSelection: null, items: [expect.objectContaining({ id: item.id })] },
     ]);
   });
 
@@ -294,7 +294,7 @@ describe("listStorefrontMenus (Chunk 8 Group 8.3 — public storefront)", () => 
 
     const [storefrontMenu] = await listStorefrontMenus(org.id);
     expect(storefrontMenu.sections).toEqual([
-      { categoryId: null, categoryName: "Other Items", items: [expect.objectContaining({ id: item.id })] },
+      { categoryId: null, categoryName: "Other Items", maxSelection: null, items: [expect.objectContaining({ id: item.id })] },
     ]);
   });
 

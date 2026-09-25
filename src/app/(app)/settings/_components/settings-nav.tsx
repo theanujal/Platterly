@@ -26,7 +26,13 @@ const NAV_GROUPS: NavGroup[] = [
   },
   { label: "Team", items: [{ label: "Team Management", href: "/settings/team" }] },
   { label: "Subscription", items: [{ label: "Subscription", href: "/settings/subscription" }] },
-  { label: "Integration", items: [{ label: "Public Menu Link", href: "/settings/integration/public-menu-link" }] },
+  {
+    label: "Integration",
+    items: [
+      { label: "Public Menu Link", href: "/settings/integration/public-menu-link" },
+      { label: "Iframe", href: "/settings/integration/iframe" },
+    ],
+  },
   {
     label: "Communication",
     items: [

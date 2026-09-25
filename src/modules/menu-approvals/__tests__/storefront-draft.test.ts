@@ -1,0 +1,291 @@
+import { describe, it, expect, afterEach } from "vitest";
+import { prisma } from "@/lib/db";
+import {
+  startDraft,
+  saveDraftMenuChoice,
+  saveDraftItems,
+  saveDraftVenue,
+  submitDraft,
+  buildDraftQuote,
+  getDraft,
+  listAbandonedOrders,
+  StorefrontDraftError,
+  type StartDraftInput,
+  type DraftVenue,
+} from "@/modules/menu-approvals/storefront-draft";
+import { setCustomMenuPricePerPlate } from "@/modules/menu-approvals/menu-approval";
+import { splitPicks } from "@/modules/menu-approvals/storefront-selection";
+import { createEventType } from "@/modules/events/event-type";
+import { createMenu } from "@/modules/menus/menu";
+import { createCategory } from "@/modules/menus/category";
+import { createMenuItem } from "@/modules/menus/item";
+import { createAddOn } from "@/modules/addons/addon";
+
+const cleanupOrgIds: string[] = [];
+const cleanupUserIds: string[] = [];
+
+afterEach(async () => {
+  await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.event.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.order.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.organization.deleteMany({ where: { id: { in: cleanupOrgIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
+  cleanupOrgIds.length = 0;
+  cleanupUserIds.length = 0;
+});
+
+function futureDate(days = 60) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+const VENUE: DraftVenue = {
+  venueType: "HOME",
+  venueBuildingName: "Green Villa",
+  venueDoorNumber: "12",
+  venueHallName: "Lawn",
+  completeVenueAddress: "12 Green Villa Road",
+  venueContactName: "Ravi",
+  venueContactPhone: "9000000002",
+  vehicleAccess: "VEHICLE_AND_PARKING",
+  liveCounterAvailable: false,
+};
+
+/** A tenant with one veg Menu (Starters capped at 1, Mains capped at 2), an Event Type using it, and two add-ons. */
+async function setup() {
+  const org = await prisma.organization.create({
+    data: { id: crypto.randomUUID(), name: "Draft Test Kitchen", slug: `draft-${crypto.randomUUID().slice(0, 8)}`, createdAt: new Date() },
+  });
+  cleanupOrgIds.push(org.id);
+  const actor = await prisma.user.create({
+    data: { id: crypto.randomUUID(), name: "Owner", email: `owner-${crypto.randomUUID()}@example.test`, emailVerified: true },
+  });
+  cleanupUserIds.push(actor.id);
+
+  const menu = await createMenu(
+    org.id,
+    { name: "Classic Veg", menuType: "VEGETARIAN", pricePerPlate: 500, child5To10PricingType: "PERCENTAGE", child5To10PriceValue: 50 },
+    actor.id,
+  );
+  const starters = await createCategory(org.id, { name: "Starters", menuAssignments: [{ menuId: menu.id, maxSelection: 1 }] }, actor.id);
+  const mains = await createCategory(org.id, { name: "Mains", menuAssignments: [{ menuId: menu.id, maxSelection: 2 }] }, actor.id);
+  const tikka = await createMenuItem(org.id, { name: "Paneer Tikka", foodType: "VEGETARIAN", price: 100, menuIds: [menu.id], categoryIds: [starters.id] }, actor.id);
+  const kebab = await createMenuItem(org.id, { name: "Veg Kebab", foodType: "VEGETARIAN", price: 120, menuIds: [menu.id], categoryIds: [starters.id] }, actor.id);
+  const dal = await createMenuItem(org.id, { name: "Dal Makhani", foodType: "VEGETARIAN", price: 90, menuIds: [menu.id], categoryIds: [mains.id] }, actor.id);
+  const outsider = await createMenuItem(org.id, { name: "Not On Menu", foodType: "VEGETARIAN", price: 50 }, actor.id);
+  const eventType = await createEventType(org.id, { name: "Wedding", minGuests: 50, menuIds: [menu.id] }, actor.id);
+  const perPlateAddOn = await createAddOn(org.id, { name: "Live Chaat", type: "LIVE_COUNTER", priceType: "PER_PLATE", price: 10 }, actor.id);
+  const fixedAddOn = await createAddOn(org.id, { name: "Premium Crockery", type: "SPECIAL_ADD_ON", priceType: "FIXED", price: 1000 }, actor.id);
+
+  const details = (over?: Partial<StartDraftInput>): StartDraftInput => ({
+    name: "Asha Rao",
+    email: "asha@example.test",
+    phone: "9876543210",
+    marketingConsent: true,
+    eventTypeId: eventType.id,
+    eventDate: futureDate(),
+    guestCount: 60,
+    childBelow5Count: 0,
+    child5To10Count: 2,
+    eventMealType: "DINNER",
+    menuPreference: "VEGETARIAN",
+    ...over,
+  });
+
+  return { org, actor, menu, tikka, kebab, dal, outsider, eventType, perPlateAddOn, fixedAddOn, details };
+}
+
+describe("startDraft (step 1 — saves the visitor as a Lead)", () => {
+  it("creates a Lead Customer with consent recorded and no Order", async () => {
+    const t = await setup();
+    const { customer, draft } = await startDraft(t.org.id, t.details());
+
+    expect(customer.phone).toBe("+919876543210");
+    expect(customer.isEnquiry).toBe(true);
+    expect(customer.leadSource).toBe("STOREFRONT");
+    expect(customer.marketingConsent).toBe(true);
+    expect(customer.marketingConsentAt).not.toBeNull();
+    expect(draft.currentStep).toBe(2);
+    expect(await prisma.order.count({ where: { organizationId: t.org.id } })).toBe(0);
+  });
+
+  it("an unticked consent box is stored as not consented", async () => {
+    const t = await setup();
+    const { customer } = await startDraft(t.org.id, t.details({ marketingConsent: false }));
+    expect(customer.marketingConsent).toBe(false);
+  });
+
+  it("a returning phone reuses the Customer and honours a withdrawn consent", async () => {
+    const t = await setup();
+    const first = await startDraft(t.org.id, t.details());
+    const second = await startDraft(t.org.id, t.details({ marketingConsent: false }));
+    expect(second.customer.id).toBe(first.customer.id);
+    expect(second.customer.marketingConsent).toBe(false);
+  });
+
+  it("accepts a valid non-Indian number as-is (E.164) and rejects one that's the wrong length for its country", async () => {
+    const t = await setup();
+    const china = await startDraft(t.org.id, t.details({ phone: "+86 138 1234 5678" }));
+    expect(china.customer.phone).toBe("+8613812345678");
+    await expect(startDraft(t.org.id, t.details({ phone: "+86 138 1234 567" }))).rejects.toThrow(/valid phone number/);
+  });
+
+  it("rejects fewer guests than the Event Type's minimum, a past date, and a bad phone", async () => {
+    const t = await setup();
+    await expect(startDraft(t.org.id, t.details({ guestCount: 49 }))).rejects.toThrow(/at least 50/);
+    await expect(startDraft(t.org.id, t.details({ eventDate: "2020-01-01" }))).rejects.toThrow(/past/);
+    await expect(startDraft(t.org.id, t.details({ phone: "12345" }))).rejects.toBeInstanceOf(StorefrontDraftError);
+  });
+});
+
+describe("menu + items steps (server-side rules)", () => {
+  it("rejects a menu that isn't assigned to the event type, and one that doesn't match the preference", async () => {
+    const t = await setup();
+    const other = await createMenu(t.org.id, { name: "Unassigned", menuType: "VEGETARIAN", pricePerPlate: 300 }, t.actor.id);
+    const { draft } = await startDraft(t.org.id, t.details());
+    await expect(saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: other.id })).rejects.toThrow(/isn't available/);
+
+    const nonVeg = await startDraft(t.org.id, t.details({ phone: "9876500000", menuPreference: "NON_VEGETARIAN" }));
+    await expect(saveDraftMenuChoice(t.org.id, nonVeg.draft.id, { kind: "MENU", menuId: t.menu.id })).rejects.toThrow(/isn't available/);
+  });
+
+  it("rejects items that aren't on the chosen menu or an empty selection", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [t.outsider.id], addOnIds: [] })).rejects.toThrow(/isn't on the chosen menu/);
+    await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [], addOnIds: [] })).rejects.toThrow(/at least one/);
+  });
+
+  it("another tenant's draft id is simply not found", async () => {
+    const a = await setup();
+    const b = await setup();
+    const { draft } = await startDraft(a.org.id, a.details());
+    await expect(saveDraftMenuChoice(b.org.id, draft.id, { kind: "CUSTOM" })).rejects.toThrow(/couldn't find/);
+    expect(await getDraft(b.org.id, draft.id)).toBeNull();
+  });
+
+  it("splitPicks marks picks beyond a category's cap as extras, in pick order", () => {
+    const sections = [
+      { maxSelection: 1, items: [{ id: "a" }, { id: "b" }] },
+      { maxSelection: null, items: [{ id: "c" }] },
+    ];
+    const split = splitPicks(sections, ["a", "b", "c", "zzz"]);
+    expect(split.regularIds).toEqual(["a", "c"]);
+    expect(split.extraIds).toEqual(["b"]);
+    expect(split.unknownIds).toEqual(["zzz"]);
+  });
+});
+
+describe("quote + final submit (Order created only here)", () => {
+  async function completeDraft(t: Awaited<ReturnType<typeof setup>>, overrides?: Partial<StartDraftInput>) {
+    const { draft, customer } = await startDraft(t.org.id, t.details(overrides));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    // Two starters against a cap of 1: the second (kebab) is an extra.
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.dal.id], addOnIds: [t.perPlateAddOn.id, t.fixedAddOn.id] });
+    await saveDraftVenue(t.org.id, draft.id, VENUE);
+    return { draft, customer };
+  }
+
+  it("prices menu x guests + extras x guests + add-ons + kids, entirely server-side", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+    const data = (await getDraft(t.org.id, draft.id))!.data;
+    const quote = await buildDraftQuote(t.org.id, data);
+
+    expect(quote.menuAmount).toBe(500 * 60);
+    expect(quote.extras).toEqual([expect.objectContaining({ name: "Veg Kebab", amount: 120 * 60 })]);
+    expect(quote.addOns.map((a) => a.amount)).toEqual([10 * 60, 1000]);
+    expect(quote.childrenCharge).toBe(2 * 250); // 5-10 yrs at 50% of the 500 plate
+    expect(quote.total).toBe(30000 + 7200 + 600 + 1000 + 500);
+  });
+
+  it("creates the Order/Event/MenuSelection at submit, at the quoted total, with quantity 1 and the extra flagged", async () => {
+    const t = await setup();
+    const { draft, customer } = await completeDraft(t);
+    expect(await prisma.order.count({ where: { organizationId: t.org.id } })).toBe(0); // nothing yet
+
+    const result = await submitDraft(t.org.id, draft.id, "Please call before delivery");
+    expect(result.isCustomMenu).toBe(false);
+
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
+    expect(order.customerId).toBe(customer.id);
+    expect(Number(order.total)).toBe(39300);
+    expect(order.venueHallName).toBe("Lawn");
+    expect(order.notes).toBe("Please call before delivery");
+
+    const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
+    expect(selection.status).toBe("KITCHEN_REVIEWING");
+    expect(selection.chosenMenuId).toBe(t.menu.id);
+    expect(selection.items.every((i) => i.quantity === 1)).toBe(true);
+    expect(selection.items.filter((i) => i.isExtra).map((i) => i.name)).toEqual(["Veg Kebab"]);
+    expect(selection.items.filter((i) => i.itemType === "ADD_ON")).toHaveLength(2);
+
+    const done = await getDraft(t.org.id, draft.id);
+    expect(done?.status).toBe("COMPLETED");
+    expect(done?.orderId).toBe(order.id);
+  });
+
+  it("a second submit of the same draft is refused (no duplicate Order)", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+    await submitDraft(t.org.id, draft.id);
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow(/already been submitted/);
+    expect(await prisma.order.count({ where: { organizationId: t.org.id } })).toBe(1);
+  });
+
+  it("refuses to submit before every step is done", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow(/complete every step/);
+  });
+
+  it("Custom Menu: no prices shown or booked; the kitchen's per-plate quote then sets the Order total", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details({ child5To10Count: 0 }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "CUSTOM" });
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.outsider.id], addOnIds: [] }); // no caps, any dish
+    await saveDraftVenue(t.org.id, draft.id, VENUE);
+
+    const result = await submitDraft(t.org.id, draft.id);
+    expect(result.isCustomMenu).toBe(true);
+    const before = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
+    expect(Number(before.total)).toBe(0);
+    const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
+    expect(selection.isCustomMenu).toBe(true);
+    expect(selection.chosenMenuId).toBeNull();
+    expect(selection.items.some((i) => i.isExtra)).toBe(false);
+
+    await setCustomMenuPricePerPlate(t.org.id, selection.id, 400, t.actor.id);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
+    expect(Number(after.total)).toBe(400 * 60);
+    expect(Number((await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } })).customPricePerPlate)).toBe(400);
+  });
+});
+
+describe("abandoned orders (30-minute idle, 90-day retention)", () => {
+  it("lists an idle draft as abandoned and a fresh one as in progress", async () => {
+    const t = await setup();
+    const idle = await startDraft(t.org.id, t.details({ phone: "9111111111" }));
+    await startDraft(t.org.id, t.details({ phone: "9222222222" }));
+    await prisma.storefrontDraft.update({ where: { id: idle.draft.id }, data: { lastActivityAt: new Date(Date.now() - 31 * 60 * 1000) } });
+
+    const abandoned = await listAbandonedOrders(t.org.id, "ABANDONED");
+    expect(abandoned.map((d) => d.id)).toEqual([idle.draft.id]);
+    expect(abandoned[0].isAbandoned).toBe(true);
+    expect(abandoned[0].eventTypeName).toBe("Wedding");
+
+    expect((await listAbandonedOrders(t.org.id, "ACTIVE")).map((d) => d.isAbandoned)).toEqual([false]);
+    expect(await listAbandonedOrders(t.org.id, "ALL")).toHaveLength(2);
+  });
+
+  it("a submitted draft never appears, and a 91-day-old one is purged while the Lead stays", async () => {
+    const t = await setup();
+    const old = await startDraft(t.org.id, t.details({ phone: "9333333333" }));
+    await prisma.storefrontDraft.update({ where: { id: old.draft.id }, data: { lastActivityAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000) } });
+
+    expect(await listAbandonedOrders(t.org.id, "ALL")).toHaveLength(0);
+    expect(await prisma.storefrontDraft.count({ where: { id: old.draft.id } })).toBe(0);
+    const lead = await prisma.customer.findUniqueOrThrow({ where: { id: old.customer.id }, include: { _count: { select: { orders: true } } } });
+    expect(lead._count.orders).toBe(0); // still a Lead with 0 orders
+  });
+});

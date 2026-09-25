@@ -63,6 +63,10 @@ export const TENANT_SCOPED_DELEGATES = [
   // Order.quotationId is the reverse direction (SetNull) — no constraint
   // between "order" and "quotation" either way.
   "quotation",
+  // Chunk 12 — storefrontDraft.customerId cascades (not Restrict), so
+  // order relative to "customer" doesn't matter; listed explicitly because it
+  // carries its own organizationId.
+  "storefrontDraft",
   "customer",
 ] as const;
 

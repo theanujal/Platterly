@@ -13,6 +13,7 @@ import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
 import type { ActionResult } from "../actions";
 
 const LEAD_SOURCE_OPTIONS = [
+  { value: "STOREFRONT", label: "Public Menu Link" },
   { value: "MANUAL_ENTRY", label: "Manual Entry" },
   { value: "REFERRAL", label: "Referral" },
   { value: "WEBSITE", label: "Website" },

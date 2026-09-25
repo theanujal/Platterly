@@ -29,6 +29,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "quotations",
   "quote",
   "orders",
+  "abandoned-orders",
   "events",
   "menu-approvals",
   "kitchen-dashboard",

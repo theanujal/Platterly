@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
-import { createOrder, createEventForOrder, resolveCatalogItem, type OrderItemCatalogInput } from "@/modules/orders/order";
+import { createOrder, createEventForOrder, resolveCatalogItem, recalculateOrderTotals, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
@@ -134,8 +134,14 @@ const VALID_TRANSITIONS: Record<MenuSelectionStatus, MenuSelectionStatus[]> = {
 // `setMenuSelectionItems`).
 const PRE_APPROVAL_STATUSES: MenuSelectionStatus[] = ["DRAFT", "SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING", "CHANGES_REQUESTED"];
 
-export async function createMenuSelection(organizationId: string, eventId: string) {
-  const menuSelection = await prisma.menuSelection.create({ data: { organizationId, eventId } });
+export async function createMenuSelection(
+  organizationId: string,
+  eventId: string,
+  options?: { chosenMenuId?: string | null; isCustomMenu?: boolean },
+) {
+  const menuSelection = await prisma.menuSelection.create({
+    data: { organizationId, eventId, chosenMenuId: options?.chosenMenuId ?? null, isCustomMenu: options?.isCustomMenu ?? false },
+  });
 
   await audit({
     organizationId,
@@ -237,7 +243,12 @@ export async function lockMenuSelection(organizationId: string, id: string, acto
  * items into a new MenuVersion before applying the change, rather than
  * mutating in place.
  */
-export async function setMenuSelectionItems(organizationId: string, menuSelectionId: string, items: OrderItemCatalogInput[], actorUserId?: string) {
+export type MenuSelectionItemInput = Pick<OrderItemCatalogInput, "itemType" | "catalogId"> & {
+  /** Picked beyond its category's max-selection (priced price x guests). Set by the storefront submit, which derives it server-side. */
+  isExtra?: boolean;
+};
+
+export async function setMenuSelectionItems(organizationId: string, menuSelectionId: string, items: MenuSelectionItemInput[], actorUserId?: string) {
   const menuSelection = await prisma.menuSelection.findFirstOrThrow({
     where: { id: menuSelectionId, organizationId },
     include: { items: true },
@@ -270,7 +281,9 @@ export async function setMenuSelectionItems(organizationId: string, menuSelectio
       items.map(async (item) => ({
         menuSelectionId,
         itemType: item.itemType,
-        quantity: item.quantity,
+        // Menu Selection is add/remove only — quantity is never client-controlled (AJ, 2026-09-25).
+        quantity: 1,
+        isExtra: item.isExtra ?? false,
         ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
       })),
     );
@@ -294,9 +307,43 @@ export async function getMenuSelection(organizationId: string, id: string) {
     where: { id, organizationId },
     include: {
       items: true,
+      chosenMenu: true,
       versions: { include: { items: true }, orderBy: { versionNumber: "desc" } },
       event: { include: { customer: true, eventType: true, assignedKitchen: true, order: true } },
     },
+  });
+}
+
+/**
+ * Custom Menu (Chunk 12) — the customer hand-picked dishes with no price
+ * shown, so the kitchen quotes a per-plate price during review. Stored on the
+ * MenuSelection for the review form to prefill, and pushed onto the Order's
+ * single meal-plan entry (price x guests) so its totals reflect the quote.
+ */
+export async function setCustomMenuPricePerPlate(organizationId: string, menuSelectionId: string, pricePerPlate: number, actorUserId: string) {
+  if (!Number.isFinite(pricePerPlate) || pricePerPlate < 0) throw new Error("Price per plate must be zero or more.");
+  const selection = await prisma.menuSelection.findFirstOrThrow({
+    where: { id: menuSelectionId, organizationId },
+    include: { event: { include: { order: { include: { mealPlanEntries: true } } } } },
+  });
+  if (!selection.isCustomMenu) throw new Error("Only a Custom Menu selection takes a per-plate quote.");
+  const order = selection.event.order;
+  if (!order) throw new Error("This selection has no Order to price.");
+
+  await prisma.menuSelection.update({ where: { id: menuSelectionId }, data: { customPricePerPlate: pricePerPlate } });
+  const guests = order.totalParticipants ?? 0;
+  for (const entry of order.mealPlanEntries) {
+    await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate * guests } });
+  }
+  await recalculateOrderTotals(order.id);
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "menu_selection.custom_price_set",
+    recordType: "MenuSelection",
+    recordId: menuSelectionId,
+    after: { pricePerPlate, guests },
   });
 }
 

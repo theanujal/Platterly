@@ -16,6 +16,7 @@ export const metadata: Metadata = {
 };
 
 const LEAD_SOURCE_LABEL: Record<string, string> = {
+  STOREFRONT: "Public Menu Link",
   MANUAL_ENTRY: "Manual Entry",
   REFERRAL: "Referral",
   WEBSITE: "Website",

@@ -2,34 +2,30 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { UtensilsCrossed } from "lucide-react";
+import { Check, Plus, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import type { StorefrontMenu } from "@/modules/menus/menu";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { StorefrontMenuSection } from "@/modules/menus/menu";
+import type { MenuSelectionItemInput } from "@/modules/menu-approvals/menu-approval";
 import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 import {
   updateMenuApprovalItemsAction,
+  setCustomMenuPriceAction,
   kitchenApprovesAction,
   kitchenRequestsChangesAction,
   resumeKitchenReviewAction,
   lockMenuSelectionAction,
 } from "../../actions";
 
-interface SelectedItem {
-  itemType: "MENU_ITEM";
-  catalogId: string;
-  quantity: number;
-}
-
 interface VersionSummary {
   versionNumber: number;
   status: MenuSelectionStatus;
   createdAt: Date;
-  items: { name: string; quantity: number; unitPrice: number }[];
+  items: { name: string }[];
 }
 
 interface MenuApprovalReviewProps {
@@ -38,8 +34,12 @@ interface MenuApprovalReviewProps {
   customerRequestNote: string | null;
   kitchenRequestNote: string | null;
   lockedAt: Date | null;
-  menus: StorefrontMenu[];
-  initialItems: { itemType: string; catalogId: string; quantity: number }[];
+  groups: { key: string; name: string; sections: StorefrontMenuSection[] }[];
+  isCustomMenu: boolean;
+  chosenMenuName: string | null;
+  guests: number;
+  customPricePerPlate: number | null;
+  initialItems: { itemType: string; catalogId: string; name: string; isExtra: boolean }[];
   versions: VersionSummary[];
 }
 
@@ -63,28 +63,41 @@ export function MenuApprovalReview({
   customerRequestNote,
   kitchenRequestNote,
   lockedAt,
-  menus,
+  groups,
+  isCustomMenu,
+  chosenMenuName,
+  guests,
+  customPricePerPlate,
   initialItems,
   versions,
 }: MenuApprovalReviewProps) {
   const router = useRouter();
-  const [quantities, setQuantities] = useState<Record<string, number>>(
-    Object.fromEntries(initialItems.filter((item) => item.itemType === "MENU_ITEM").map((item) => [item.catalogId, item.quantity])),
-  );
+  // Menu Selection is add/remove only — a picked dish is in or out, never a quantity.
+  const [pickedIds, setPickedIds] = useState<Set<string>>(new Set(initialItems.filter((i) => i.itemType === "MENU_ITEM").map((i) => i.catalogId)));
+  const extraIds = new Set(initialItems.filter((i) => i.isExtra).map((i) => i.catalogId));
+  const addOns = initialItems.filter((i) => i.itemType === "ADD_ON");
+  const [pricePerPlate, setPricePerPlate] = useState(customPricePerPlate === null ? "" : String(customPricePerPlate));
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState<"save" | "approve" | "changes" | "resume" | "lock" | null>(null);
+  const [pending, setPending] = useState<"save" | "approve" | "changes" | "resume" | "lock" | "price" | null>(null);
 
   const editable = EDITABLE_STATUSES.includes(status);
 
-  function setQuantity(itemId: string, quantity: number) {
-    setQuantities((prev) => ({ ...prev, [itemId]: Math.max(0, quantity) }));
+  function toggle(itemId: string) {
+    setPickedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId);
+      else next.add(itemId);
+      return next;
+    });
   }
 
-  function currentItems(): SelectedItem[] {
-    return Object.entries(quantities)
-      .filter(([, quantity]) => quantity > 0)
-      .map(([catalogId, quantity]) => ({ itemType: "MENU_ITEM" as const, catalogId, quantity }));
+  function currentItems(): MenuSelectionItemInput[] {
+    return [
+      ...[...pickedIds].map((catalogId) => ({ itemType: "MENU_ITEM" as const, catalogId, isExtra: extraIds.has(catalogId) })),
+      // Add-ons aren't edited here — resend them so a save doesn't drop them.
+      ...addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.catalogId })),
+    ];
   }
 
   async function saveItems() {
@@ -102,6 +115,23 @@ export function MenuApprovalReview({
     const ok = await saveItems();
     setPending(null);
     if (ok) router.refresh();
+  }
+
+  async function handleSavePrice() {
+    setError(null);
+    const value = Number(pricePerPlate);
+    if (pricePerPlate.trim() === "" || !Number.isFinite(value) || value < 0) {
+      setError("Enter a price per plate of zero or more.");
+      return;
+    }
+    setPending("price");
+    const result = await setCustomMenuPriceAction(menuSelectionId, value);
+    setPending(null);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    router.refresh();
   }
 
   async function handleApprove() {
@@ -162,6 +192,8 @@ export function MenuApprovalReview({
     router.refresh();
   }
 
+  const quotedAmount = pricePerPlate.trim() !== "" && Number.isFinite(Number(pricePerPlate)) ? Number(pricePerPlate) * guests : null;
+
   return (
     <div className="flex flex-col gap-6">
       {!editable && status !== "KITCHEN_APPROVED" && status !== "FINAL_LOCKED" && (
@@ -188,47 +220,71 @@ export function MenuApprovalReview({
         </div>
       )}
 
-      <div className="flex flex-col gap-8">
-        {menus.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No menus are available for this event type / preference anymore.</p>
-        ) : (
-          menus.map((menu) => (
-            <section key={menu.id} className="flex flex-col gap-3">
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold">{menu.name}</h2>
-                <Badge variant={menu.menuType === "VEGETARIAN" ? "default" : "outline"}>{menu.menuType === "VEGETARIAN" ? "Veg" : "Non-Veg"}</Badge>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {isCustomMenu ? <Badge variant="warning">Custom Menu</Badge> : chosenMenuName ? <Badge variant="info">{chosenMenuName}</Badge> : null}
+        <span className="text-muted-foreground">{guests} guests</span>
+      </div>
+
+      {isCustomMenu && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Quote the price per plate</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">The customer picked their own dishes and saw no price. Enter your per-plate quote — it becomes this order&apos;s menu amount.</p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ma-price">Price per plate (₹)</Label>
+                <Input id="ma-price" type="number" min={0} className="w-40" value={pricePerPlate} onChange={(e) => setPricePerPlate(e.target.value)} />
               </div>
-              {menu.sections.map((section) => (
+              <Button type="button" size="md" disabled={pending !== null} onClick={handleSavePrice}>
+                {pending === "price" ? "Saving…" : "Save price"}
+              </Button>
+              {quotedAmount !== null && <span className="pb-2 text-sm text-muted-foreground">= {formatCurrency(quotedAmount)} for {guests} guests</span>}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="flex flex-col gap-8">
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">The menu this customer chose is no longer available.</p>
+        ) : (
+          groups.map((group) => (
+            <section key={group.key} className="flex flex-col gap-3">
+              {groups.length > 1 && <h2 className="text-lg font-semibold">{group.name}</h2>}
+              {group.sections.map((section) => (
                 <div key={section.categoryId ?? "other"} className="flex flex-col gap-2">
                   <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{section.categoryName}</h3>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    {section.items.map((item) => (
-                      <Card key={item.id} className="overflow-hidden py-0">
-                        <CardContent className="flex items-center gap-4 p-4">
-                          {item.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={item.image} alt="" className="size-16 shrink-0 rounded-md object-cover" />
-                          ) : (
-                            <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted">
-                              <UtensilsCrossed className="size-5 text-muted-foreground" />
+                    {section.items.map((item) => {
+                      const picked = pickedIds.has(item.id);
+                      return (
+                        <Card key={item.id} className="overflow-hidden py-0">
+                          <CardContent className="flex items-center gap-4 p-4">
+                            {item.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={item.image} alt="" className="size-16 shrink-0 rounded-md object-cover" />
+                            ) : (
+                              <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted">
+                                <UtensilsCrossed className="size-5 text-muted-foreground" />
+                              </div>
+                            )}
+                            <div className="flex flex-1 flex-col gap-1">
+                              <span className="text-sm font-medium">{item.name}</span>
+                              <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                                {formatCurrency(item.price)}
+                                {picked && extraIds.has(item.id) && <Badge variant="warning">Extra</Badge>}
+                              </span>
                             </div>
-                          )}
-                          <div className="flex flex-1 flex-col gap-0.5">
-                            <span className="text-sm font-medium">{item.name}</span>
-                            <span className="text-xs text-muted-foreground">₹{item.price.toFixed(2)}</span>
-                          </div>
-                          <Input
-                            type="number"
-                            min={0}
-                            disabled={!editable}
-                            className="h-10 w-16 shrink-0"
-                            value={quantities[item.id] ?? 0}
-                            onChange={(e) => setQuantity(item.id, Number(e.target.value))}
-                            aria-label={`Quantity for ${item.name}`}
-                          />
-                        </CardContent>
-                      </Card>
-                    ))}
+                            <Button type="button" size="md" variant={picked ? "outline" : "default"} disabled={!editable} onClick={() => toggle(item.id)} aria-pressed={picked} aria-label={`${picked ? "Remove" : "Add"} ${item.name}`}>
+                              {picked ? <Check /> : <Plus />}
+                              {picked ? "Selected" : "Add"}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -236,6 +292,19 @@ export function MenuApprovalReview({
           ))
         )}
       </div>
+
+      {addOns.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-border pt-4">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Add-ons chosen by the customer</h2>
+          <div className="flex flex-wrap gap-2">
+            {addOns.map((a) => (
+              <Badge key={a.catalogId} variant="neutral">
+                {a.name}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
 
       {editable && (
         <div className="flex flex-col gap-2 border-t border-border pt-4">
@@ -294,9 +363,7 @@ export function MenuApprovalReview({
               </div>
               <ul className="mt-1 flex flex-col gap-0.5 text-muted-foreground">
                 {version.items.map((item, index) => (
-                  <li key={index}>
-                    {item.name} × {item.quantity} — {formatCurrency(item.unitPrice * item.quantity)}
-                  </li>
+                  <li key={index}>{item.name}</li>
                 ))}
               </ul>
             </div>

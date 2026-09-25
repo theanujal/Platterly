@@ -1,16 +1,17 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser } from "./db";
+import { cleanupOnboardingTestUser, backdateStorefrontDrafts } from "./db";
 import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
- * Chunk 11 Group 11.3 — Kitchen-side admin review UI (`/menu-approvals`,
- * `/menu-approvals/[id]`). Builds a real Menu Type + Category + Food Item +
- * Event Type (with that Menu Type assigned), submits the public
- * event-details intake form as an anonymous customer (a brand-new
- * cookie-less browser context, same convention as e2e/quotations.spec.ts's
- * customer-side flow), approves the menu selection as that customer
- * (reaching KITCHEN_REVIEWING), then drives the admin side through
- * Approve -> Lock and confirms the final state.
+ * Chunk 11 Group 11.3 + Chunk 12 — the public multi-step order flow and the
+ * kitchen-side review (`/menu-approvals`, `/menu-approvals/[id]`). Builds a
+ * real Menu Type + Category (capped at 1 pick) + two Food Items + Add-on +
+ * Event Type, then walks an anonymous customer (cookie-less browser context)
+ * through Event Details -> Choose Menu -> Choose Items (incl. the View
+ * Details popup and the Extra Item popup) -> Venue -> Review -> Submit, and
+ * drives the admin side through Approve -> Lock. Also covers a second visitor
+ * who abandons after step 1 (Abandoned Orders list) and the Iframe settings
+ * page embedding the live storefront.
  *
  * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`),
  * redesigned 2026-09-19 (AJ, live reference screenshot): a 3-column board
@@ -40,7 +41,7 @@ test.afterEach(async () => {
 });
 
 test("kitchen reviews, approves, and locks a customer's menu selection", async ({ page, browser }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(300_000);
   const email = `e2e-menu-approvals-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
@@ -67,7 +68,7 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await page.getByRole("button", { name: "Save my link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
-  // --- A small real catalog: Menu Type -> Category (assigned to it) -> Food Item (tagged into both) ---
+  // --- A small real catalog: Menu Type -> Category (capped at 1) -> two Food Items, plus an Add-on ---
   await page.goto("/menu-catalog/menus");
   const menuName = `Wedding Menu ${suffix}`;
   await page.getByRole("button", { name: "Add Menu Type" }).click();
@@ -81,20 +82,32 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await page.getByRole("button", { name: "Add Category" }).click();
   await page.getByLabel("Category Name").fill(categoryName);
   await page.getByRole("checkbox", { name: menuName }).check();
+  await page.getByPlaceholder("Max selection").fill("1");
   await page.getByRole("button", { name: "Create category" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const itemName = `Paneer Tikka ${suffix}`;
-  await page.goto("/menu-catalog/items");
-  await page.getByRole("button", { name: "Add Item" }).click();
-  await page.getByLabel("Item Name").fill(itemName);
-  await page.getByLabel("Item Price Per Plate").fill("150");
-  await page.getByRole("checkbox", { name: menuName }).check();
-  await page.getByRole("checkbox", { name: categoryName }).check();
-  await page.getByRole("button", { name: "Create item" }).click();
+  const extraItemName = `Veg Kebab ${suffix}`;
+  for (const [name, price] of [[itemName, "150"], [extraItemName, "120"]] as const) {
+    await page.goto("/menu-catalog/items");
+    await page.getByRole("button", { name: "Add Item" }).click();
+    await page.getByLabel("Item Name").fill(name);
+    await page.getByLabel("Item Price Per Plate").fill(price);
+    await page.getByRole("checkbox", { name: menuName }).check();
+    await page.getByRole("checkbox", { name: categoryName }).check();
+    await page.getByRole("button", { name: "Create item" }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+  }
+
+  const addOnName = `Live Chaat ${suffix}`;
+  await page.goto("/addons");
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  await page.getByLabel("Name").fill(addOnName);
+  await page.getByLabel("Price", { exact: true }).fill("10"); // Per Plate by default
+  await page.getByRole("button", { name: "Create add-on" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
-  // --- Event Type with that Menu assigned (Menu Selection scopes its catalog to this) ---
+  // --- Event Type with that Menu assigned (the storefront scopes its menus to this) ---
   const eventTypeName = `Wedding ${suffix}`;
   await page.goto("/events/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
@@ -102,33 +115,99 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await page.getByRole("button", { name: "Create event" }).click();
   await expect(page).toHaveURL(/\/events$/);
 
-  // --- Customer submits the public intake form (brand-new cookie-less context, no login) ---
+  // --- Customer walks the public flow (brand-new cookie-less context, no login) ---
   const publicContext = await browser.newContext();
   const publicPage = await publicContext.newPage();
   const customerName = `Reyansh Kapoor ${suffix}`;
+
+  // Step 1 — Event Details (+ the pre-ticked WhatsApp/offers consent box)
   await publicPage.goto(`/${slug}`);
   await publicPage.getByLabel("Your Name").fill(customerName);
   await publicPage.getByLabel("Email Address").fill(`customer-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500000");
-  // Today, not a far-future date — the redesigned Kitchen Dashboard board
-  // only shows events in a today-through-+2-days window (AJ, 2026-09-19).
+  // Today, not a far-future date — the Kitchen Dashboard board only shows
+  // events in a today-through-+2-days window (AJ, 2026-09-19).
   await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date()));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
   await publicPage.getByLabel("Number of Guests").fill("100");
   await publicPage.getByLabel("Event Time").click();
   await publicPage.getByRole("option", { name: "Dinner" }).click();
-  await publicPage.getByLabel("Menu Preference").click();
-  await publicPage.getByRole("option", { name: "Vegetarian — Pure veg menu" }).click();
+  await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
+  await expect(publicPage.getByRole("checkbox", { name: /Keep me posted/ })).toBeChecked();
   await publicPage.getByRole("button", { name: "Continue to Menu Selection" }).click();
-  await expect(publicPage).toHaveURL(/\/menu-selection\/.+/);
+  await expect(publicPage).toHaveURL(/\/plan\/.+\?step=menu/);
 
-  // --- Customer selects the item and approves & submits ---
-  await expect(publicPage.getByText(itemName)).toBeVisible();
-  await publicPage.getByLabel(`Quantity for ${itemName}`).fill("100");
-  await publicPage.getByRole("button", { name: "Approve & Submit" }).click();
-  await expect(publicPage.getByText("Thanks — your menu selection is submitted")).toBeVisible();
-  await publicContext.close();
+  // Step 2 — Choose Menu (Custom Menu option is always offered)
+  await expect(publicPage.getByTestId("custom-menu-card")).toBeVisible();
+  const menuCard = publicPage.getByTestId("menu-card").filter({ hasText: menuName });
+  await menuCard.getByRole("button", { name: "View details" }).click();
+  await expect(publicPage.getByRole("dialog").getByText(categoryName)).toBeVisible();
+  await publicPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
+  await menuCard.getByRole("button", { name: "Select this menu" }).click();
+  await expect(publicPage).toHaveURL(/step=items/);
+
+  // Step 3 — Choose Items: add/remove only (no quantity boxes anywhere)
+  await expect(publicPage.getByLabel(/Quantity/)).toHaveCount(0);
+  const counter = publicPage.getByTestId("category-counter");
+  await expect(counter).toHaveText("0/1");
+  const tikkaCard = publicPage.getByTestId("item-card").filter({ hasText: itemName });
+  await tikkaCard.getByRole("button", { name: "Add" }).click();
+  await expect(counter).toHaveText("1/1");
+
+  // The View Details popup, then adding beyond the cap opens the Extra Item popup
+  const kebabCard = publicPage.getByTestId("item-card").filter({ hasText: extraItemName });
+  await kebabCard.getByRole("button", { name: "View details" }).click();
+  await expect(publicPage.getByRole("dialog").getByText("Vegetarian")).toBeVisible();
+  await publicPage.getByRole("button", { name: "Add to Selection" }).click();
+  await expect(publicPage.getByRole("dialog").getByText("Add Extra Item?")).toBeVisible();
+  await expect(publicPage.getByRole("dialog").getByText(/₹120\.00 × 100 guests = ₹12,000\.00/)).toBeVisible();
+  await publicPage.getByRole("button", { name: "Add as Extra Item" }).click();
+  await expect(kebabCard.getByText(/Extra · ₹12,000\.00/)).toBeVisible();
+  await expect(counter).toHaveText("1/1"); // the extra doesn't count toward the cap
+
+  await publicPage.getByRole("button", { name: new RegExp(addOnName) }).click();
+  await expect(publicPage.getByTestId("selection-summary")).toHaveText("2 items selected · 1 add-on");
+  await publicPage.getByRole("button", { name: "Continue" }).click();
+  await expect(publicPage).toHaveURL(/step=venue/);
+
+  // Step 4 — Venue & Delivery
+  await publicPage.getByLabel("Venue Type").click();
+  await publicPage.getByRole("option", { name: "Home" }).click();
+  await publicPage.getByLabel("Venue / Building Name").fill("Green Villa");
+  await publicPage.getByLabel("Door / Flat / House No.").fill("12");
+  await publicPage.getByLabel("Function Area / Hall Name").fill("Lawn");
+  await publicPage.getByLabel("Complete Venue Address").fill("12 Green Villa Road");
+  await publicPage.getByLabel("Venue Contact Person").fill("Ravi");
+  await publicPage.getByRole("textbox", { name: "Contact Number" }).fill("9000000002");
+  await publicPage.getByLabel("Vehicle Access").click();
+  await publicPage.getByRole("option", { name: "Vehicle can enter venue & parking available" }).click();
+  await publicPage.getByRole("button", { name: "Review Order" }).click();
+  await expect(publicPage).toHaveURL(/step=review/);
+
+  // Step 5 — Review: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000
+  await expect(publicPage.getByTestId("review-items")).toContainText(itemName);
+  await expect(publicPage.getByTestId("review-pricing")).toContainText("Extra:");
+  await expect(publicPage.getByTestId("review-total")).toHaveText("₹53,000.00");
+  await publicPage.getByRole("button", { name: "Submit Request" }).click();
+  await expect(publicPage.getByTestId("confirmation")).toContainText("Request Submitted Successfully!");
+
+  // --- A second visitor abandons right after step 1 ---
+  const abandonName = `Abandoner ${suffix}`;
+  await publicPage.goto(`/${slug}`);
+  await publicPage.getByLabel("Your Name").fill(abandonName);
+  await publicPage.getByLabel("Email Address").fill(`abandon-${suffix}@example.test`);
+  await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876511111");
+  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date(Date.now() + 5 * 86_400_000)));
+  await publicPage.getByLabel("Event Type").click();
+  await publicPage.getByRole("option", { name: eventTypeName }).click();
+  await publicPage.getByLabel("Number of Guests").fill("80");
+  await publicPage.getByLabel("Event Time").click();
+  await publicPage.getByRole("option", { name: "Lunch" }).click();
+  await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
+  await publicPage.getByRole("button", { name: "Continue to Menu Selection" }).click();
+  await expect(publicPage).toHaveURL(/step=menu/);
+  await publicContext.close(); // ...and closes the tab without choosing a menu
 
   // --- Admin: the Menu Approvals queue shows it, needing kitchen review ---
   await page.goto("/menu-approvals");
@@ -137,8 +216,12 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page).toHaveURL(/\/menu-approvals\/.+/);
 
-  // --- Kitchen reviews the real selected item, approves, then locks ---
-  await expect(page.getByLabel(`Quantity for ${itemName}`)).toHaveValue("100");
+  // --- Kitchen reviews the real selections (add/remove, no quantity), approves, then locks ---
+  await expect(page.getByLabel(/Quantity/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: `Remove ${itemName}` })).toBeVisible(); // selected
+  await expect(page.getByRole("button", { name: `Remove ${extraItemName}` })).toBeVisible();
+  await expect(page.getByText("Extra", { exact: true })).toBeVisible();
+  await expect(page.getByText(addOnName)).toBeVisible();
   await page.getByRole("button", { name: "Approve" }).click();
   await expect(page.getByRole("button", { name: "Lock Menu" })).toBeVisible();
   await page.getByRole("button", { name: "Lock Menu" }).click();
@@ -179,4 +262,36 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
 
   await page.goto("/kitchen-dashboard/cancelled");
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
+
+  // --- Abandoned Orders: the visitor who stopped after step 1 (already a Lead), not the one who submitted ---
+  await page.goto("/abandoned-orders");
+  await expect(page.getByRole("heading", { name: "Abandoned Orders" })).toBeVisible();
+  await expect(page.getByText(abandonName)).toBeVisible();
+  await expect(page.getByText(customerName, { exact: true })).not.toBeVisible();
+  await expect(page.getByText("In progress").first()).toBeVisible(); // still within the 30-minute window
+
+  await backdateStorefrontDrafts(slug, 45);
+  await page.reload();
+  await expect(page.getByText("Abandoned", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Stopped at").or(page.getByText("Choose Menu")).first()).toBeVisible();
+  await expect(page.locator('a[href*="wa.me/919876511111"]')).toHaveAttribute("href", /text=.*plan/);
+
+  // The abandoned visitor is a Lead in Customers
+  await page.goto("/customers");
+  await page.getByLabel("Search").fill(abandonName);
+  await expect(page.getByText(abandonName)).toBeVisible();
+
+  // --- Iframe settings: code + a live preview that really embeds the storefront ---
+  await page.goto("/settings/integration/iframe");
+  await expect(page.getByRole("heading", { name: "Iframe", level: 1 })).toBeVisible();
+  await expect(page.getByTestId("iframe-code")).toContainText(`localhost:3000/${slug}`);
+  await page.getByRole("button", { name: /Desktop/ }).click();
+  await expect(page.getByTestId("iframe-code")).toContainText('width="800" height="600"');
+  await expect(page.frameLocator('iframe[title="Iframe preview"]').getByLabel("Your Name")).toBeVisible();
+
+  // Only the storefront may be framed — the admin panel refuses (clickjacking guard)
+  const adminHeaders = (await page.request.get("/dashboard")).headers();
+  expect(adminHeaders["content-security-policy"]).toContain("frame-ancestors 'self'");
+  const storefrontHeaders = (await page.request.get(`/${slug}`)).headers();
+  expect(storefrontHeaders["content-security-policy"]).toContain("frame-ancestors *");
 });

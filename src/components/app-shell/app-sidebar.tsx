@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, ClipboardCheck, Flame, Settings2, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Settings2, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -27,6 +27,7 @@ import { UpgradeCard } from "@/components/app-shell/upgrade-card";
 const SALES_AND_CATALOG_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Orders", href: "/orders", icon: ShoppingCart },
+  { label: "Abandoned Orders", href: "/abandoned-orders", icon: ShoppingBasket },
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
