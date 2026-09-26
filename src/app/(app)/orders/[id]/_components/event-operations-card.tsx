@@ -1,0 +1,128 @@
+"use client";
+
+import { useState } from "react";
+import { ChefHat } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { updateEventOperationsAction } from "../../actions";
+import type { EventStatus } from "@/generated/prisma/enums";
+
+const STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
+  { value: "PENDING", label: "Pending" },
+  { value: "PROCESSING", label: "Processing" },
+  { value: "COMPLETED", label: "Completed" },
+  { value: "CANCELLED", label: "Cancelled" },
+];
+
+const NO_KITCHEN = "NONE";
+
+/**
+ * Assigned kitchen + event status (AJ, 2026-09-27), the two operational
+ * fields worth a card of their own. They save the moment they change, so there
+ * is no save button. The Event itself is created and kept in step with the
+ * Order automatically (syncOrderEvent), so there's nothing to "create" here.
+ */
+export function EventOperationsCard({
+  orderId,
+  event,
+  kitchens,
+}: {
+  orderId: string;
+  event: { id: string; assignedKitchenId: string | null; status: EventStatus } | null;
+  kitchens: { id: string; name: string }[];
+}) {
+  const [kitchenId, setKitchenId] = useState(event?.assignedKitchenId ?? NO_KITCHEN);
+  const [status, setStatus] = useState<EventStatus>(event?.status ?? "PENDING");
+  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(patch: { assignedKitchenId?: string | null; status?: EventStatus }) {
+    if (!event) return;
+    setState("saving");
+    setError(null);
+    const result = await updateEventOperationsAction(orderId, event.id, patch);
+    if (!result.ok) {
+      setState("error");
+      setError(result.error);
+      return;
+    }
+    setState("saved");
+  }
+
+  return (
+    <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]" data-testid="event-operations-card">
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <ChefHat className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold">Kitchen &amp; Event Status</h2>
+          <p className="text-xs text-muted-foreground" aria-live="polite">
+            {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Changes save automatically."}
+          </p>
+        </div>
+      </div>
+
+      {!event ? (
+        <p className="text-sm text-muted-foreground">Set an Event Type on this order and save it. The event is created for you, and its kitchen and status show up here.</p>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="event-kitchen">Assigned Kitchen</Label>
+            <Select
+              items={{ [NO_KITCHEN]: "Not assigned", ...Object.fromEntries(kitchens.map((k) => [k.id, k.name])) }}
+              value={kitchenId}
+              onValueChange={(v) => {
+                const next = v ?? NO_KITCHEN;
+                setKitchenId(next);
+                void save({ assignedKitchenId: next === NO_KITCHEN ? null : next });
+              }}
+            >
+              <SelectTrigger id="event-kitchen" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_KITCHEN}>Not assigned</SelectItem>
+                {kitchens.map((k) => (
+                  <SelectItem key={k.id} value={k.id}>
+                    {k.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="event-status">Event Status</Label>
+            <Select
+              items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+              value={status}
+              onValueChange={(v) => {
+                const next = (v ?? status) as EventStatus;
+                setStatus(next);
+                void save({ status: next });
+              }}
+            >
+              <SelectTrigger id="event-status" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </Card>
+  );
+}

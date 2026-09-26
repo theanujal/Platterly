@@ -34,6 +34,15 @@ const badgeVariants = cva(
         success: "bg-success/10 text-success [a]:hover:bg-success/20",
         danger:
           "bg-destructive/10 text-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:focus-visible:ring-destructive/40 [a]:hover:bg-destructive/20",
+        // Accent tones (AJ, 2026-09-27): a hue of their own for states that
+        // would otherwise all read "warning" amber and blur together.
+        violet: "bg-tone-violet/10 text-tone-violet [a]:hover:bg-tone-violet/20",
+        cyan: "bg-tone-cyan/10 text-tone-cyan [a]:hover:bg-tone-cyan/20",
+        pink: "bg-tone-pink/10 text-tone-pink [a]:hover:bg-tone-pink/20",
+        fuchsia: "bg-tone-fuchsia/10 text-tone-fuchsia [a]:hover:bg-tone-fuchsia/20",
+        teal: "bg-tone-teal/10 text-tone-teal [a]:hover:bg-tone-teal/20",
+        yellow: "bg-tone-yellow/10 text-tone-yellow [a]:hover:bg-tone-yellow/20",
+        orange: "bg-tone-orange/10 text-tone-orange [a]:hover:bg-tone-orange/20",
       },
     },
     defaultVariants: {

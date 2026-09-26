@@ -11,6 +11,7 @@ import {
   createEventForOrder,
   getPartialPaymentsOverview,
   OrderEventTypeRequiredError,
+  syncOrderEvent,
 } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
@@ -132,6 +133,21 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
 
     expect((await listOrders(org.id, { status: "APPROVED" })).map((o) => o.id)).toEqual([confirmed.id]);
     expect((await listOrders(org.id, { search: "asha" })).map((o) => o.id).sort()).toEqual([draft.id, confirmed.id].sort());
+  });
+
+  it("listOrders filters by event type", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const wedding = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const birthday = await createEventType(org.id, { name: "Birthday" }, actor.id);
+    const dates = { eventStartDate: new Date(), eventEndDate: new Date() };
+    const weddingOrder = await createOrder(org.id, { customerId: customer.id, eventTypeId: wedding.id, ...dates }, actor.id);
+    await createOrder(org.id, { customerId: customer.id, eventTypeId: birthday.id, ...dates }, actor.id);
+    await createOrder(org.id, { customerId: customer.id, ...dates }, actor.id);
+
+    expect((await listOrders(org.id, { eventTypeId: wedding.id })).map((o) => o.id)).toEqual([weddingOrder.id]);
+    expect(await listOrders(org.id)).toHaveLength(3);
   });
 
   it("listOrders returns each linked Event's menu-approval and kitchen state for the Orders card and list", async () => {
@@ -1004,3 +1020,59 @@ describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () =>
     expect(overview.totalDue).toBe(0);
   });
 });
+
+describe("syncOrderEvent (AJ, 2026-09-27)", () => {
+  it("creates the Event when an order has an Event Type, and only once", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const order = await createOrder(
+      org.id,
+      { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), totalParticipants: 80, venue: "Taj Hall" },
+      actor.id,
+    );
+
+    await syncOrderEvent(org.id, order.id, actor.id);
+    await syncOrderEvent(org.id, order.id, actor.id);
+
+    const events = await prisma.event.findMany({ where: { orderId: order.id } });
+    expect(events).toHaveLength(1);
+    expect(events[0].guestCount).toBe(80);
+    expect(events[0].venue).toBe("Taj Hall");
+  });
+
+  it("does nothing without an Event Type", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") }, actor.id);
+    expect(await syncOrderEvent(org.id, order.id, actor.id)).toBeNull();
+    expect(await prisma.event.count({ where: { orderId: order.id } })).toBe(0);
+  });
+
+  it("copies the order's date, venue and guests onto its Event after an edit, without touching the Event's own fields", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const base = { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") };
+    const order = await createOrder(org.id, base, actor.id);
+    await syncOrderEvent(org.id, order.id, actor.id);
+    const created = await prisma.event.findFirstOrThrow({ where: { orderId: order.id } });
+    await prisma.event.update({ where: { id: created.id }, data: { status: "PROCESSING", notes: "kitchen note" } });
+
+    await updateOrder(org.id, order.id, { ...base, eventStartDate: new Date("2026-12-05"), eventEndDate: new Date("2026-12-06"), venue: "Palace", totalParticipants: 120 }, actor.id);
+    await syncOrderEvent(org.id, order.id, actor.id);
+
+    const synced = await prisma.event.findFirstOrThrow({ where: { orderId: order.id } });
+    expect(synced.id).toBe(created.id);
+    expect(synced.startDate.toISOString().slice(0, 10)).toBe("2026-12-05");
+    expect(synced.endDate.toISOString().slice(0, 10)).toBe("2026-12-06");
+    expect(synced.venue).toBe("Palace");
+    expect(synced.guestCount).toBe(120);
+    expect(synced.status).toBe("PROCESSING");
+    expect(synced.notes).toBe("kitchen note");
+  });
+});
+

@@ -130,9 +130,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await publicPage.getByLabel("Your Name").fill(customerName);
   await publicPage.getByLabel("Email Address").fill(`customer-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500000");
-  // Today, not a far-future date — the Kitchen Dashboard board only shows
-  // events in a today-through-+2-days window (AJ, 2026-09-19).
-  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date()));
+  // Two days out: customers need 2 days' notice (AJ, 2026-09-27), and that is
+  // still inside the Kitchen Dashboard board's today-through-+2-days window.
+  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
   await publicPage.getByLabel("Number of Guests").fill("100");
@@ -268,6 +268,20 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const linkV2 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
   expect(linkV2).not.toBe(linkV1);
   await expect(page.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
+
+  // --- The order page shows the approval next to the kitchen / status card, and the versions open in a popup (AJ, 2026-09-27) ---
+  await page.goto("/orders");
+  await orderCard().getByRole("link", { name: customerName }).click();
+  await expect(page).toHaveURL(/\/orders\/.+/);
+  await expect(page.getByTestId("order-approval-panel")).toBeVisible();
+  await expect(page.getByTestId("event-operations-card")).toBeVisible();
+  await page.getByRole("button", { name: "Version history" }).click();
+  const versions = page.getByRole("dialog", { name: "Menu version history" });
+  await expect(versions.getByTestId("menu-version-row")).toHaveCount(2);
+  await expect(versions.getByTestId("menu-version-row").first()).toContainText("Version 2");
+  await expect(versions.getByTestId("menu-version-row").first()).toContainText("Current");
+  await expect(versions.getByTestId("menu-version-row").nth(1)).toContainText("Replaced");
+  await page.keyboard.press("Escape");
 
   // --- The customer approves the latest version; an outdated link can never approve ---
   await customerPage.goto(linkV1);

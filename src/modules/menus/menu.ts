@@ -317,12 +317,22 @@ export interface OrderPickerSection {
   categoryName: string;
   /** MenuCategoryAssignment.maxSelection — null means no cap for this category on this Menu. */
   maxSelection: number | null;
-  items: { id: string; name: string; price: number }[];
+  items: OrderPickerItem[];
+}
+
+export interface OrderPickerItem {
+  id: string;
+  name: string;
+  price: number;
+  image: string | null;
+  foodType: FoodType;
 }
 
 export interface OrderPickerMenu {
   id: string;
   name: string;
+  description: string | null;
+  image: string | null;
   sections: OrderPickerSection[];
 }
 
@@ -337,6 +347,10 @@ export interface OrderPickerMenu {
  * because the public storefront never needs to cap selection, but the
  * reference "0/2" cap in the admin picker does.
  */
+function toPickerItem(item: { id: string; name: string; price: unknown; image: string | null; foodType: FoodType }): OrderPickerItem {
+  return { id: item.id, name: item.name, price: Number(item.price), image: item.image, foodType: item.foodType };
+}
+
 export async function getMenuForOrderPicker(organizationId: string, menuId: string): Promise<OrderPickerMenu | null> {
   const menu = await prisma.menu.findFirst({
     where: { id: menuId, organizationId },
@@ -366,7 +380,7 @@ export async function getMenuForOrderPicker(organizationId: string, menuId: stri
         categoryId: assignment.categoryId,
         categoryName: assignment.category.name,
         maxSelection: assignment.maxSelection,
-        items: categoryItems.map((item) => ({ id: item.id, name: item.name, price: Number(item.price) })),
+        items: categoryItems.map(toPickerItem),
       };
     })
     .filter((section) => section.items.length > 0);
@@ -377,11 +391,11 @@ export async function getMenuForOrderPicker(organizationId: string, menuId: stri
       categoryId: null,
       categoryName: "Other Items",
       maxSelection: null,
-      items: uncategorized.map((item) => ({ id: item.id, name: item.name, price: Number(item.price) })),
+      items: uncategorized.map(toPickerItem),
     });
   }
 
-  return { id: menu.id, name: menu.name, sections };
+  return { id: menu.id, name: menu.name, description: menu.description, image: menu.image, sections };
 }
 
 /**

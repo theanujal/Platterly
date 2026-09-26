@@ -1,20 +1,39 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { MapPin, Trash2, Plus, PenSquare } from "lucide-react";
+import { createElement, useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  CalendarDays,
+  Coffee,
+  CreditCard,
+  Info,
+  MapPin,
+  Moon,
+  PenSquare,
+  Plus,
+  Sun,
+  Sunrise,
+  Tag,
+  Trash2,
+  User,
+  UtensilsCrossed,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -23,16 +42,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "./customer-combobox";
-import { FoodItemSelectionDialog, type FoodItemSelectionValue } from "./food-item-selection-dialog";
+import { FoodItemSelectionDrawer, type PickedItem } from "./food-item-selection-drawer";
 import { cn } from "cn";
+import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
+import { TONE_SURFACE, TONE_TEXT } from "./order-display";
 import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import { getOrderCountsByDayAction, type ActionResult } from "../actions";
 
-// Mirrors actions.ts's own MIN_DAYS_BEFORE_EVENT/daysUntil/assertEventDateAllowed
-// exactly — this is a live client-side preview of the same server-enforced
-// rule, never the only place it's checked.
-const MIN_DAYS_BEFORE_EVENT = 2;
-
+// Mirrors actions.ts's own past-date check — a live client-side preview of the
+// same server-enforced rule, never the only place it's checked. The team may
+// book today and tomorrow; only a date already gone is refused (AJ, 2026-09-27).
 function daysUntilPreview(iso: string): number | null {
   if (!iso) return null;
   const [y, m, d] = iso.split("-").map(Number);
@@ -49,6 +68,21 @@ const MEAL_TYPES = [
   { value: "DINNER", label: "Dinner" },
   { value: "OTHER", label: "Other" },
 ] as const;
+
+const MEAL_ICON: Record<(typeof MEAL_TYPES)[number]["value"], LucideIcon> = {
+  BREAKFAST: Sunrise,
+  LUNCH: Sun,
+  HITEA: Coffee,
+  DINNER: Moon,
+  OTHER: UtensilsCrossed,
+};
+
+/** "Starts in" wording for the event-date chip and the summary — same tones as the Orders card's countdown. */
+function startsInPreview(days: number | null): { caption: string; label: string; tone: "orange" | "yellow" | "success" } | null {
+  if (days === null || days < 0) return null;
+  if (days === 0) return { caption: "Event", label: "Today", tone: "orange" };
+  return { caption: "Starts in", label: `${days} ${days === 1 ? "day" : "days"}`, tone: days <= 2 ? "yellow" : "success" };
+}
 
 const ORDER_STATUS_OPTIONS = ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }));
 
@@ -80,6 +114,7 @@ const CHILD_PRICING_TYPE_OPTIONS = [
 interface MenuOption {
   id: string;
   name: string;
+  menuType: "VEGETARIAN" | "NON_VEGETARIAN";
   price: number;
   childUnder5Chargeable: boolean;
   childUnder5Price: number | null;
@@ -87,12 +122,8 @@ interface MenuOption {
   child5To10PriceValue: number | null;
 }
 
-interface MealPlanItemRow {
-  key: string;
-  catalogId: string;
-  name: string;
-  unitPrice: number;
-}
+/** A meal's chosen dish, extra dish or add-on — see food-item-selection-drawer.tsx. */
+type MealPlanItemRow = PickedItem;
 
 interface MealSelection {
   date: string;
@@ -107,6 +138,8 @@ interface MealSelection {
 export interface OrderFormValues {
   customerId: string;
   eventTypeId: string;
+  /** "VEGETARIAN" | "NON_VEGETARIAN" | "" (no preference), as on the public form. */
+  menuPreference: string;
   /** SINGLE renders Meal Planning as one continuous event; MULTI groups the same per-day data into "Event 1/Event 2…" blocks. */
   orderKind: string;
   eventStartDate: string;
@@ -148,6 +181,7 @@ export interface OrderFormValues {
 export const EMPTY_ORDER_VALUES: OrderFormValues = {
   customerId: "",
   eventTypeId: "",
+  menuPreference: "",
   orderKind: "SINGLE",
   eventStartDate: "",
   eventEndDate: "",
@@ -243,10 +277,19 @@ function deriveStandardChildPricingMenuIdPreview(entries: MealSelection[]): stri
 
 interface OrderFormProps {
   initialValues?: Partial<OrderFormValues>;
-  customers: { id: string; name: string; phone: string }[];
+  customers: { id: string; name: string; phone: string; email?: string | null }[];
   eventTypes: { id: string; name: string }[];
   menus: MenuOption[];
   showStatus?: boolean;
+  /** Title block (breadcrumb, heading, description) shown top-left; the form owns the top-right actions. */
+  header: React.ReactNode;
+  /** Extra top-right actions before Cancel / Save (e.g. the detail page's Delete). */
+  headerActions?: React.ReactNode;
+  /** Rendered inside the page but above the form's columns (e.g. the approval panel). */
+  beforeContent?: React.ReactNode;
+  /** Rendered after — and outside — the form, so it may hold forms of its own. */
+  afterContent?: React.ReactNode;
+  cancelHref?: string;
   /**
    * The frozen total of any whole-order items carried over from an accepted
    * Quotation (quotation.ts's convertQuotationToOrder) — this form has no
@@ -256,8 +299,6 @@ interface OrderFormProps {
    * persisted order. Zero/omitted for every Order created directly.
    */
   carriedOverItemsSubtotal?: number;
-  /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
-  canBypassDateRestriction: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
@@ -271,8 +312,12 @@ export function OrderForm({
   eventTypes,
   menus,
   showStatus,
+  header,
+  headerActions,
+  beforeContent,
+  afterContent,
+  cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
-  canBypassDateRestriction,
   onSubmit,
   onSuccess,
   submitLabel,
@@ -285,19 +330,14 @@ export function OrderForm({
   const initialSelectedCustomer: SelectedCustomer | null = initialValues?.customerId
     ? (customers.find((c) => c.id === initialValues.customerId) ?? null)
     : null;
-  // Smart default (Order Type toggle): stops re-applying the moment the
-  // admin manually picks Single/Multi, or immediately when editing an
-  // existing order (its orderKind is already an explicit, saved choice).
-  const [orderKindTouched, setOrderKindTouched] = useState(() => initialValues?.orderKind !== undefined);
+  // Who is picked right now — feeds the read-only Email / Phone fields and the Order Summary.
+  const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(initialSelectedCustomer);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"save" | "whatsapp" | null>(null);
-  // Single -> Multi needs an explicit confirmation — this changes how the
-  // page groups the same Meal Planning data (one continuous event vs.
-  // separate "Event N" blocks), so it must never happen from a single click
-  // or an incidental multi-day date pick alone. Multi -> Single has no such
-  // gate.
-  const [showMultiConfirm, setShowMultiConfirm] = useState(false);
-  // Which meal's "Select Food Items" dialog is open — a single shared
+  // Set when the form itself switched the Order Type to Multi Order, so a popup
+  // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
+  const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
+  // Which meal's "Select Food Items" drawer is open — a single shared
   // dialog instance rather than one per meal card.
   const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: (typeof MEAL_TYPES)[number]["value"] } | null>(null);
 
@@ -306,23 +346,22 @@ export function OrderForm({
   }
 
   function setOrderKind(kind: string) {
-    setOrderKindTouched(true);
     setField("orderKind", kind);
   }
 
-  /** Order Type toggle's onClick — gates Single -> Multi behind confirmation; every other transition (including Multi -> Single) applies immediately. */
-  function requestOrderKind(kind: string) {
-    if (kind === "MULTI" && values.orderKind !== "MULTI") {
-      setShowMultiConfirm(true);
-      return;
-    }
-    setOrderKind(kind);
+  /**
+   * Multi Order is automatic (AJ, 2026-09-27): a date range, or more than one
+   * meal type even on a single day, makes it one. The form switches and says
+   * why in a popup. A Multi Order can't be turned back to Single while either
+   * still holds (see `multiRequired`).
+   */
+  function autoMulti(reason: "dates" | "meals") {
+    setValues((prev) => (prev.orderKind === "MULTI" ? prev : { ...prev, orderKind: "MULTI" }));
+    if (values.orderKind !== "MULTI") setMultiNotice(reason);
   }
 
   /**
    * DateRangePicker's onChange — replaces separate start/end date inputs.
-   * The smart Single/Multi default still applies while untouched, routing
-   * through the same confirmation dialog the Order Type buttons use.
    */
   function setEventDateRange(startDate: string, endDate: string) {
     setField("eventStartDate", startDate);
@@ -335,9 +374,7 @@ export function OrderForm({
       "mealPlanEntries",
       values.mealPlanEntries.filter((e) => newDays.has(e.date)),
     );
-    if (!orderKindTouched && startDate && endDate && startDate !== endDate && values.orderKind !== "MULTI") {
-      setShowMultiConfirm(true);
-    }
+    if (startDate && endDate && startDate !== endDate) autoMulti("dates");
   }
 
   const days = useMemo(() => enumerateDates(values.eventStartDate, values.eventEndDate), [values.eventStartDate, values.eventEndDate]);
@@ -348,18 +385,14 @@ export function OrderForm({
     return map;
   }, [values.mealPlanEntries]);
 
-  const totalMealSlots = values.mealPlanEntries.length;
-  const mealSlotsWithMenu = values.mealPlanEntries.filter((e) => e.menuId).length;
-  const mealSlotsPendingMenu = totalMealSlots - mealSlotsWithMenu;
-  const totalMealItemsSelected = values.mealPlanEntries.reduce((sum, e) => sum + e.items.length, 0);
-  const mealTypeCounts = MEAL_TYPES.map((mt) => ({
-    label: mt.label,
-    count: values.mealPlanEntries.filter((e) => e.mealType === mt.value).length,
-  })).filter((mt) => mt.count > 0);
+  /** Applies a new meal plan and, if it now spans more than one meal type, makes the order a Multi Order. */
+  function setMealPlan(entries: MealSelection[]) {
+    setField("mealPlanEntries", entries);
+    if (new Set(entries.map((e) => e.mealType)).size > 1) autoMulti("meals");
+  }
 
   function toggleMeal(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], checked: boolean) {
-    setField(
-      "mealPlanEntries",
+    setMealPlan(
       checked
         ? [...values.mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }]
         : values.mealPlanEntries.filter((e) => !(e.date === date && e.mealType === mealType)),
@@ -376,7 +409,7 @@ export function OrderForm({
   function bulkSelect(mealType: (typeof MEAL_TYPES)[number]["value"]) {
     const withoutThisMeal = values.mealPlanEntries.filter((e) => e.mealType !== mealType);
     const additions = days.map((date) => ({ date, mealType, price: "", menuId: "", items: [] }));
-    setField("mealPlanEntries", [...withoutThisMeal, ...additions]);
+    setMealPlan([...withoutThisMeal, ...additions]);
   }
 
   /** Changing a slot's Menu invalidates whatever was chosen from the old one. */
@@ -387,20 +420,11 @@ export function OrderForm({
     );
   }
 
-  /** Food item dialog's card click — a plain toggle, no quantity entry: picking an item always means "one of these," picking it again removes it. */
-  function toggleMealItem(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], option: FoodItemSelectionValue) {
+  /** The drawer's "Save Items": replaces everything chosen for that meal. */
+  function setMealItems(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], items: PickedItem[]) {
     setField(
       "mealPlanEntries",
-      values.mealPlanEntries.map((e) => {
-        if (e.date !== date || e.mealType !== mealType) return e;
-        const alreadySelected = e.items.some((i) => i.catalogId === option.id);
-        return {
-          ...e,
-          items: alreadySelected
-            ? e.items.filter((i) => i.catalogId !== option.id)
-            : [...e.items, { key: crypto.randomUUID(), catalogId: option.id, name: option.name, unitPrice: option.price }],
-        };
-      }),
+      values.mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, items } : e)),
     );
   }
 
@@ -414,7 +438,12 @@ export function OrderForm({
     );
   }
 
-  const mealItemsSubtotal = values.mealPlanEntries.reduce((sum, e) => sum + e.items.reduce((s, item) => s + item.unitPrice, 0), 0);
+  // Extras and per-plate add-ons are charged for every guest, like on the public form; everything else once.
+  const guestsForPricing = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
+  const mealItemsSubtotal = values.mealPlanEntries.reduce(
+    (sum, e) => sum + e.items.reduce((s, item) => s + item.unitPrice * (item.perGuest ? Math.max(guestsForPricing, 1) : 1), 0),
+    0,
+  );
   const mealsSubtotal = values.individualPricingEnabled
     ? values.mealPlanEntries.reduce((sum, e) => sum + (Number.parseFloat(e.price) || 0), 0)
     : 0;
@@ -434,7 +463,12 @@ export function OrderForm({
       : computeChildrenChargePreview(childPricingMenu, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
   const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge + carriedOverItemsSubtotal;
   const eventDaysUntil = daysUntilPreview(values.eventStartDate);
-  const eventDateRestricted = eventDaysUntil !== null && eventDaysUntil < MIN_DAYS_BEFORE_EVENT;
+  // No backdated orders (AJ, 2026-09-27). An existing order keeps its own past date untouched.
+  const eventDatePast = eventDaysUntil !== null && eventDaysUntil < 0 && values.eventStartDate !== initialValues?.eventStartDate;
+  const distinctMealTypes = new Set(values.mealPlanEntries.map((e) => e.mealType)).size;
+  const multiRequired = days.length > 1 || distinctMealTypes > 1;
+  const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
+  const guestsComputed = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
   const discountNum = Number.parseFloat(values.discount) || 0;
   const transportationCostNum = Number.parseFloat(values.transportationCost) || 0;
   const otherChargesNum = Number.parseFloat(values.otherCharges) || 0;
@@ -447,6 +481,7 @@ export function OrderForm({
     const formData = new FormData();
     formData.set("customerId", values.customerId);
     formData.set("eventTypeId", values.eventTypeId);
+    formData.set("menuPreference", values.menuPreference);
     formData.set("orderKind", values.orderKind);
     formData.set("eventStartDate", values.eventStartDate);
     formData.set("eventEndDate", values.eventEndDate);
@@ -465,8 +500,7 @@ export function OrderForm({
     formData.set("child5To10Count", values.child5To10Count);
     formData.set(
       "totalParticipants",
-      values.totalParticipants ||
-        String((Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0)),
+      String((Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0)),
     );
     formData.set("pricingMethod", values.pricingMethod);
     formData.set("individualChildBelow5Rate", values.individualChildBelow5Rate);
@@ -489,7 +523,7 @@ export function OrderForm({
       formData.append("mealMenuId", entry.menuId || "");
       formData.append(
         "mealItems",
-        JSON.stringify(entry.items.map(({ catalogId }) => ({ itemType: "MENU_ITEM", catalogId, quantity: 1 }))),
+        JSON.stringify(entry.items.map((i) => ({ itemType: i.itemType, catalogId: i.catalogId, quantity: i.perGuest ? Math.max(guestsForPricing, 1) : 1 }))),
       );
     }
     return formData;
@@ -505,8 +539,14 @@ export function OrderForm({
       setError("Event Date is required.");
       return;
     }
-    if (eventDateRestricted && !canBypassDateRestriction) {
-      setError(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner to create this one.`);
+    if (eventDatePast) {
+      setError("Event Date can't be in the past.");
+      return;
+    }
+    const emptyMeal = values.mealPlanEntries.find((e) => e.menuId && !e.items.some((i) => i.itemType === "MENU_ITEM"));
+    if (emptyMeal) {
+      const label = MEAL_TYPES.find((m) => m.value === emptyMeal.mealType)?.label ?? "a meal";
+      setError(`Select food items for ${label}${days.length > 1 ? ` on ${emptyMeal.date}` : ""}, or remove the meal.`);
       return;
     }
     if (values.paymentStatus === "PARTIALLY_PAID" && advanceNum <= 0) {
@@ -557,9 +597,14 @@ export function OrderForm({
                   ? { label: "Food selection required", variant: "neutral" as const }
                   : { label: `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`, variant: "success" as const };
               return (
-                <div key={meal.value} data-testid={`meal-slot-${date}-${meal.value}`} className="flex flex-col gap-2.5 rounded-lg border border-border bg-card p-3">
+                <div key={meal.value} data-testid={`meal-slot-${date}-${meal.value}`} className="flex flex-col gap-2.5 rounded-lg border border-primary/40 bg-accent/40 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold">{meal.label}</span>
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                        {createElement(MEAL_ICON[meal.value], { className: "size-4" })}
+                      </span>
+                      {meal.label}
+                    </span>
                     <Badge variant={status.variant}>{status.label}</Badge>
                   </div>
 
@@ -576,7 +621,9 @@ export function OrderForm({
                         <SelectValue placeholder="Select Menu" />
                       </SelectTrigger>
                       <SelectContent>
-                        {menus.map((m) => (
+                        {menus
+                          .filter((m) => !values.menuPreference || m.menuType === values.menuPreference || m.id === entry.menuId)
+                          .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.name}
                           </SelectItem>
@@ -606,6 +653,7 @@ export function OrderForm({
                           {entry.items.map((item) => (
                             <Badge key={item.key} variant="outline" className="gap-1 pr-1">
                               {item.name}
+                              {item.itemType === "ADD_ON" ? <span className="text-primary">Add-on</span> : item.perGuest ? <span className="text-warning">Extra</span> : null}
                               <button
                                 type="button"
                                 aria-label={`Remove ${item.name}`}
@@ -618,22 +666,6 @@ export function OrderForm({
                           ))}
                         </div>
                       )}
-                    </div>
-                  )}
-
-                  {values.individualPricingEnabled && (
-                    <div className="flex flex-col gap-1.5">
-                      <Label htmlFor={`meal-price-${date}-${meal.value}`} className="text-xs">
-                        Price for this meal
-                      </Label>
-                      <Input
-                        id={`meal-price-${date}-${meal.value}`}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={entry.price}
-                        onChange={(e) => setMealPrice(date, meal.value, e.target.value)}
-                      />
                     </div>
                   )}
 
@@ -652,628 +684,670 @@ export function OrderForm({
   const foodDialogEntry = foodDialogTarget ? mealMap.get(`${foodDialogTarget.date}|${foodDialogTarget.mealType}`) : undefined;
   const foodDialogMenu = foodDialogEntry ? menus.find((m) => m.id === foodDialogEntry.menuId) : undefined;
 
+  const startsIn = startsInPreview(eventDaysUntil);
+  const totalGuests = String(guestsComputed);
+  const orderTypeOptions = [
+    { value: "SINGLE", label: "Single Order", hint: "One event / one meal type" },
+    { value: "MULTI", label: "Multi Order", hint: "Multiple meals across the same event" },
+  ] as const;
+  const formatDay = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", opts);
+  const eventDateText =
+    values.eventStartDate && values.eventEndDate
+      ? values.eventStartDate === values.eventEndDate
+        ? formatDay(values.eventStartDate, { day: "numeric", month: "short", year: "numeric" })
+        : `${formatDay(values.eventStartDate, { day: "numeric", month: "short" })} – ${formatDay(values.eventEndDate, { day: "numeric", month: "short", year: "numeric" })}`
+      : "Not set";
+  const eventTypeName = eventTypes.find((t) => t.id === values.eventTypeId)?.name;
+  const sortedMealEntries = [...values.mealPlanEntries].sort(
+    (a, b) => a.date.localeCompare(b.date) || MEAL_TYPES.findIndex((m) => m.value === a.mealType) - MEAL_TYPES.findIndex((m) => m.value === b.mealType),
+  );
+
+  /** One switch drives both individual-pricing settings the order stores: the per-meal price and the child rates. */
+  function setIndividualPricing(on: boolean) {
+    setValues((prev) => ({ ...prev, individualPricingEnabled: on, pricingMethod: on ? "INDIVIDUAL" : "STANDARD" }));
+  }
+
+  const individualToggle = (
+    <label htmlFor="order-individual-pricing" className="flex cursor-pointer items-center gap-2">
+      <Switch id="order-individual-pricing" checked={individualOn} onCheckedChange={setIndividualPricing} />
+      <span className="text-sm font-medium">Individual Pricing {individualOn ? "On" : "Off"}</span>
+    </label>
+  );
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        void handleSubmit(false);
-      }}
-      className="flex max-w-4xl flex-col gap-8"
-    >
-      {/* Customer */}
-      <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">Customer</h2>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="order-customer" required>Customer</Label>
-          <CustomerCombobox
-            initialCustomer={initialSelectedCustomer}
-            onSelect={(customer) => setField("customerId", customer.id)}
-            onClear={() => setField("customerId", "")}
-          />
-        </div>
-      </section>
-
-      {/* Order Type */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Order Type</h2>
-          <p className="text-sm text-muted-foreground">
-            {values.orderKind === "MULTI"
-              ? "Meal Planning below groups each date into its own event."
-              : "One continuous event — meals across the date range are planned together."}
-          </p>
-        </div>
-        <div className="flex w-fit gap-1 rounded-lg border border-input p-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn("h-10 gap-1.5 px-4 text-sm", values.orderKind === "SINGLE" && "bg-gray-900 text-white hover:bg-gray-900/90")}
-            aria-pressed={values.orderKind === "SINGLE"}
-            onClick={() => requestOrderKind("SINGLE")}
-          >
-            Single Order
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn("h-10 gap-1.5 px-4 text-sm", values.orderKind === "MULTI" && "bg-gray-900 text-white hover:bg-gray-900/90")}
-            aria-pressed={values.orderKind === "MULTI"}
-            onClick={() => requestOrderKind("MULTI")}
-          >
-            Multi Order
-          </Button>
-        </div>
-      </section>
-
-      <AlertDialog
-        open={showMultiConfirm}
-        onOpenChange={(open) => {
-          setShowMultiConfirm(open);
-          // Closing without confirming (Cancel, Escape, outside click) means
-          // "stay on the current Order Type" — mark touched so the smart
-          // default (setEventDateRange) doesn't keep re-prompting for the
-          // same already-declined date range.
-          if (!open) setOrderKindTouched(true);
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSubmit(false);
         }}
+        className="flex flex-col gap-6"
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Switch to Multi Order?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Multi Order groups Meal Planning below into a separate block per date — Event 1, Event 2, and so on — instead of one continuous
-              event. Your meals, menus, and food items already chosen are kept, just regrouped visually.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                setOrderKind("MULTI");
-                setShowMultiConfirm(false);
-              }}
-            >
-              Switch to Multi Order
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Event Information */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Event Information</h2>
-          <p className="text-sm text-muted-foreground">Configure the event type and date.</p>
-        </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-event-type">Event Type</Label>
-            <Select
-              items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
-              value={values.eventTypeId}
-              onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
-            >
-              <SelectTrigger id="order-event-type" className="w-full">
-                <SelectValue placeholder="Not set" />
-              </SelectTrigger>
-              <SelectContent>
-                {eventTypes.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-event-date" required>Event Date</Label>
-            <DateRangePicker
-              id="order-event-date"
-              startDate={values.eventStartDate}
-              endDate={values.eventEndDate}
-              onChange={setEventDateRange}
-              loadOrderCounts={getOrderCountsByDayAction}
-            />
-            {eventDateRestricted && (
-              <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
-                {canBypassDateRestriction
-                  ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still create this order as an Owner.`
-                  : `Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. Ask an Owner to create this one.`}
-              </p>
+        {/* Header: title block on the left, actions on the right */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">{header}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            {headerActions}
+            <Button type="button" variant="outline" render={<Link href={cancelHref} />} nativeButton={false}>
+              Cancel
+            </Button>
+            {onSubmitAndNotify && (
+              <Button type="button" variant="outline" disabled={pending !== null} onClick={() => void handleSubmit(true)}>
+                {pending === "whatsapp" ? "Sending…" : "Create & Send WhatsApp"}
+              </Button>
             )}
+            <Button type="submit" disabled={pending !== null}>
+              {pending === "save" ? "Saving…" : submitLabel}
+            </Button>
           </div>
         </div>
-      </section>
 
-      {/* Guests Information */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Guests Information</h2>
-          <p className="text-sm text-muted-foreground">Guest counts — pricing for children appears once you enter a count.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-adults">Adults</Label>
-            <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-child-below5">Children (Under 5)</Label>
-            <Input
-              id="order-child-below5"
-              type="number"
-              min="0"
-              value={values.childBelow5Count}
-              onChange={(e) => setField("childBelow5Count", e.target.value)}
-            />
-            {values.pricingMethod === "INDIVIDUAL" && Number(values.childBelow5Count) > 0 && (
-              <div className="flex flex-col gap-1.5 rounded-md bg-muted/40 p-2">
-                <Label htmlFor="order-individual-below5-rate" className="text-xs">
-                  Pricing
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="order-individual-below5-rate"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="w-20"
-                    value={values.individualChildBelow5Rate}
-                    onChange={(e) => setField("individualChildBelow5Rate", e.target.value)}
-                  />
-                  <Select
-                    items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                    value={values.individualChildBelow5PricingType}
-                    onValueChange={(v) => setField("individualChildBelow5PricingType", v ?? values.individualChildBelow5PricingType)}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+
+        {beforeContent}
+
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          {/* ---------------- Main column ---------------- */}
+          <div className="flex min-w-0 flex-col gap-4">
+            {/* 1 · Customer */}
+            <FormSection step={1} title="Customer Details" description="Search for an existing customer or add a new one.">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-customer" required>Customer</Label>
+                <CustomerCombobox
+                  initialCustomer={initialSelectedCustomer}
+                  onSelect={(customer) => {
+                    setField("customerId", customer.id);
+                    setSelectedCustomer(customer);
+                  }}
+                  onClear={() => {
+                    setField("customerId", "");
+                    setSelectedCustomer(null);
+                  }}
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-customer-email">Email</Label>
+                  <Input id="order-customer-email" readOnly tabIndex={-1} className="bg-muted/40" value={selectedCustomer?.email ?? ""} placeholder="Filled in from the customer" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-customer-phone">Phone</Label>
+                  <PhoneInput id="order-customer-phone" disabled value={selectedCustomer?.phone ?? ""} onChange={() => {}} />
                 </div>
               </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-child-5to10">Children (5–10)</Label>
-            <Input
-              id="order-child-5to10"
-              type="number"
-              min="0"
-              value={values.child5To10Count}
-              onChange={(e) => setField("child5To10Count", e.target.value)}
-            />
-            {values.pricingMethod === "INDIVIDUAL" && Number(values.child5To10Count) > 0 && (
-              <div className="flex flex-col gap-1.5 rounded-md bg-muted/40 p-2">
-                <Label htmlFor="order-individual-5to10-rate" className="text-xs">
-                  Pricing
-                </Label>
-                <div className="flex gap-1.5">
-                  <Input
-                    id="order-individual-5to10-rate"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="w-20"
-                    value={values.individualChild5To10Rate}
-                    onChange={(e) => setField("individualChild5To10Rate", e.target.value)}
-                  />
-                  <Select
-                    items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                    value={values.individualChild5To10PricingType}
-                    onValueChange={(v) => setField("individualChild5To10PricingType", v ?? values.individualChild5To10PricingType)}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-total-guests">Total Guests</Label>
-            <Input
-              id="order-total-guests"
-              type="number"
-              min="0"
-              placeholder={String(
-                (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0),
-              )}
-              value={values.totalParticipants}
-              onChange={(e) => setField("totalParticipants", e.target.value)}
-            />
-          </div>
-        </div>
-      </section>
+            </FormSection>
 
-      {/* Pricing Information */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Pricing Information</h2>
-          <p className="text-sm text-muted-foreground">Choose how meals and menu items in Meal Planning below are priced.</p>
-        </div>
-        <div className="flex w-fit gap-1 rounded-lg border border-input p-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn("h-10 gap-1.5 px-4 text-sm", values.pricingMethod === "STANDARD" && "bg-gray-900 text-white hover:bg-gray-900/90")}
-            aria-pressed={values.pricingMethod === "STANDARD"}
-            onClick={() => setField("pricingMethod", "STANDARD")}
-          >
-            Standard Menu Rates
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={cn("h-10 gap-1.5 px-4 text-sm", values.pricingMethod === "INDIVIDUAL" && "bg-gray-900 text-white hover:bg-gray-900/90")}
-            aria-pressed={values.pricingMethod === "INDIVIDUAL"}
-            onClick={() => setField("pricingMethod", "INDIVIDUAL")}
-          >
-            Individual Pricing
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {values.pricingMethod === "STANDARD"
-            ? "Children (Under 5) / (5–10) counts above are charged using the child rates of the first Menu assigned in Meal Planning below."
-            : "Set a custom rate for each child age band above — Per Plate or a Percentage of the first assigned Menu's price."}
-        </p>
-      </section>
-
-      {/* Meal Planning */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Meal Planning</h2>
-          <p className="text-sm text-muted-foreground">Select each meal, assign its menu, then pick food items from that menu.</p>
-        </div>
-        <label htmlFor="order-individual-pricing" className="flex w-fit cursor-pointer items-center gap-2">
-          <Checkbox
-            id="order-individual-pricing"
-            checked={values.individualPricingEnabled}
-            onCheckedChange={(checked) => setField("individualPricingEnabled", checked === true)}
-          />
-          <span className="text-sm font-medium">Set a custom price per meal</span>
-        </label>
-        {days.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Set the Event Date above to start planning meals.</p>
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap gap-2">
-              {(["BREAKFAST", "LUNCH", "DINNER"] as const).map((mealType) => (
-                <Button key={mealType} type="button" variant="outline" size="sm" onClick={() => bulkSelect(mealType)}>
-                  All {MEAL_TYPES.find((m) => m.value === mealType)!.label}
-                </Button>
-              ))}
-            </div>
-
-            {values.orderKind === "MULTI" ? (
-              <div className="flex flex-col gap-4">
-                {days.map((date, index) => (
-                  <div key={date} className="flex flex-col gap-3 rounded-xl border border-border p-4">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="info">Event {index + 1}</Badge>
-                      <span className="text-sm font-medium">
-                        {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+            {/* 2 · Order Type */}
+            <FormSection
+              step={2}
+              title="Order Type"
+              description={
+                values.orderKind === "MULTI"
+                  ? multiRequired
+                    ? "More than one date or meal type, so this stays a Multi Order."
+                    : "Meal Planning below groups each date into its own event."
+                  : "One date and one meal type. Adding a date or another meal makes it a Multi Order."
+              }
+            >
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {orderTypeOptions.map((option) => {
+                  const selected = values.orderKind === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setOrderKind(option.value)}
+                      disabled={option.value === "SINGLE" && multiRequired}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+                        selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                      )}
+                    >
+                      <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                        {selected && <span className="size-2.5 rounded-full bg-primary" />}
                       </span>
-                    </div>
-                    {renderDayMeals(date)}
-                  </div>
-                ))}
+                      <span className="flex flex-col">
+                        <span className="text-sm font-semibold">{option.label}</span>
+                        <span className="text-xs text-muted-foreground">{option.hint}</span>
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            ) : (
-              <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
-                {days.map((date) => (
-                  <div key={date} className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0 last:pb-0">
-                    <span className="text-sm font-medium">
-                      {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                    </span>
-                    {renderDayMeals(date)}
-                  </div>
-                ))}
-              </div>
-            )}
+            </FormSection>
 
-            {/* Meal Summary — quick read on how much of the plan is actually finished. */}
-            <div className="flex flex-wrap gap-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Total Meals</span>
-                <span className="font-medium">{totalMealSlots}</span>
-              </div>
-              {mealTypeCounts.map((mt) => (
-                <div key={mt.label} className="flex flex-col">
-                  <span className="text-xs text-muted-foreground">{mt.label}</span>
-                  <span className="font-medium">{mt.count}</span>
+            <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Order Type changed to Multi Order</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {multiNotice === "dates"
+                      ? "You picked more than one date, so this is now a Multi Order. Menu Planning groups each date into its own event."
+                      : "You picked more than one meal type, so this is now a Multi Order — even on a single day. Menu Planning groups the meals into their own events."}{" "}
+                    Your meals, menus and food items are kept.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogAction onClick={() => setMultiNotice(null)}>Got it</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* 3 · Event Information (event, date, venue, delivery) */}
+            <FormSection step={3} title="Event Information" description="Tell us about the event and where it will take place.">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-event-type">Event Type</Label>
+                  <Select
+                    items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+                    value={values.eventTypeId}
+                    onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
+                  >
+                    <SelectTrigger id="order-event-type" className="w-full">
+                      <SelectValue placeholder="Not set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eventTypes.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ))}
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Menu assigned</span>
-                <span className="font-medium">{mealSlotsWithMenu} / {totalMealSlots}</span>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-event-date" required>Event Date</Label>
+                  <div className="flex items-stretch gap-2">
+                    <div className="min-w-0 flex-1">
+                      <DateRangePicker
+                        id="order-event-date"
+                        startDate={values.eventStartDate}
+                        endDate={values.eventEndDate}
+                        onChange={setEventDateRange}
+                        minDate={toLocalIsoDate(new Date())}
+                        loadOrderCounts={getOrderCountsByDayAction}
+                      />
+                    </div>
+                    {startsIn && (
+                      <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[startsIn.tone])}>
+                        <span>{startsIn.caption}</span>
+                        <span className="text-sm font-semibold">{startsIn.label}</span>
+                      </div>
+                    )}
+                  </div>
+                  {eventDatePast && (
+                    <p className="text-xs text-destructive" role="alert">
+                      Event Date can&apos;t be in the past.
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-venue-type">Venue Type</Label>
+                  <Select
+                    items={Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+                    value={values.venueType}
+                    onValueChange={(v) => setField("venueType", v ?? "")}
+                  >
+                    <SelectTrigger id="order-venue-type" className="w-full">
+                      <SelectValue placeholder="Select venue type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VENUE_TYPE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-venue">Venue / Building Name</Label>
+                  <IconInput icon={MapPin} id="order-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
+                </div>
+
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="order-address">Complete Venue Address</Label>
+                  <Textarea id="order-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-venue-landmark">Landmark</Label>
+                  <Input id="order-venue-landmark" value={values.venueLandmark} onChange={(e) => setField("venueLandmark", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-venue-contact-name">Venue Contact Person</Label>
+                  <Input id="order-venue-contact-name" value={values.venueContactName} onChange={(e) => setField("venueContactName", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="order-venue-contact-phone">Contact Number</Label>
+                  <PhoneInput id="order-venue-contact-phone" value={values.venueContactPhone} onChange={(v) => setField("venueContactPhone", v)} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-delivery-instructions">Delivery Instructions</Label>
+                  <Textarea id="order-delivery-instructions" value={values.deliveryInstructions} onChange={(e) => setField("deliveryInstructions", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-cooking-instructions">Cooking Instructions</Label>
+                  <Textarea id="order-cooking-instructions" value={values.cookingInstructions} onChange={(e) => setField("cookingInstructions", e.target.value)} />
+                </div>
+
+                <label htmlFor="order-live-counter" className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-3">
+                  <Checkbox
+                    id="order-live-counter"
+                    checked={values.liveCounterAvailable}
+                    onCheckedChange={(checked) => setField("liveCounterAvailable", checked === true)}
+                  />
+                  <span className="text-sm font-medium">Cooking / live counter facility available?</span>
+                </label>
+                <label htmlFor="order-gas-electric" className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-3">
+                  <Checkbox
+                    id="order-gas-electric"
+                    checked={values.gasElectricAvailable}
+                    onCheckedChange={(checked) => setField("gasElectricAvailable", checked === true)}
+                  />
+                  <span className="text-sm font-medium">Gas / electric connection available at venue?</span>
+                </label>
               </div>
-              {mealSlotsPendingMenu > 0 && (
-                <div className="flex flex-col">
-                  <span className="text-xs text-warning">Pending Menu</span>
-                  <span className="font-medium text-warning">{mealSlotsPendingMenu}</span>
+            </FormSection>
+
+            {/* 4 · Guests */}
+            <FormSection step={4} title="Guest Information" description="Enter the expected guest count. This will be used for all selected meals.">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-adults">Adults</Label>
+                  <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-child-below5">Children (Under 5)</Label>
+                  <Input
+                    id="order-child-below5"
+                    type="number"
+                    min="0"
+                    value={values.childBelow5Count}
+                    onChange={(e) => setField("childBelow5Count", e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-child-5to10">Children (5–10)</Label>
+                  <Input
+                    id="order-child-5to10"
+                    type="number"
+                    min="0"
+                    value={values.child5To10Count}
+                    onChange={(e) => setField("child5To10Count", e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-total-guests">Total Guests</Label>
+                  <Input id="order-total-guests" readOnly tabIndex={-1} className="bg-muted/40" value={String(guestsComputed)} />
+                </div>
+              </div>
+            </FormSection>
+
+            {/* 5 · Menu planning */}
+            <FormSection step={5} title="Menu Planning" description="Select meals and assign menu items for this event." action={individualToggle}>
+              <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
+                <Label>Menu Preference</Label>
+                <div className="flex flex-wrap gap-3">
+                  {(
+                    [
+                      { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only", dot: "bg-success" },
+                      { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish", dot: "bg-destructive" },
+                    ] as const
+                  ).map((option) => {
+                    const selected = values.menuPreference === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => setField("menuPreference", selected ? "" : option.value)}
+                        className={cn(
+                          "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                          selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                        )}
+                      >
+                        <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                          {selected && <span className="size-2.5 rounded-full bg-primary" />}
+                        </span>
+                        <span className="flex flex-col">
+                          <span className="flex items-center gap-2 text-sm font-semibold">
+                            <span className={cn("size-2 rounded-full", option.dot)} />
+                            {option.label}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{option.hint}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {days.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Set the Event Date above to start planning meals.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    {(["BREAKFAST", "LUNCH", "DINNER"] as const).map((mealType) => (
+                      <Button key={mealType} type="button" variant="outline" size="md" onClick={() => bulkSelect(mealType)}>
+                        All {MEAL_TYPES.find((m) => m.value === mealType)!.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {values.orderKind === "MULTI" ? (
+                    <div className="flex flex-col gap-4">
+                      {days.map((date, index) => (
+                        <div key={date} className="flex flex-col gap-3 rounded-xl border border-border p-4">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="info">Event {index + 1}</Badge>
+                            <span className="text-sm font-medium">
+                              {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                            </span>
+                          </div>
+                          {renderDayMeals(date)}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
+                      {days.map((date) => (
+                        <div key={date} className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0 last:pb-0">
+                          <span className="text-sm font-medium">
+                            {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                          </span>
+                          {renderDayMeals(date)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Food items selected</span>
-                <span className="font-medium">{totalMealItemsSelected}</span>
+            </FormSection>
+
+            {foodDialogTarget && foodDialogEntry && foodDialogMenu && (
+              <FoodItemSelectionDrawer
+                open
+                onOpenChange={(open) => !open && setFoodDialogTarget(null)}
+                menuId={foodDialogMenu.id}
+                menuName={foodDialogMenu.name}
+                guests={guestsForPricing}
+                menuPreference={values.menuPreference}
+                initialItems={foodDialogEntry.items}
+                onSave={(items) => setMealItems(foodDialogTarget.date, foodDialogTarget.mealType, items)}
+              />
+            )}
+
+            {/* 6 · Additional details */}
+            <FormSection step={6} title="Additional Details" description="Add any special notes or requirements.">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {showStatus && (
+                  <div className="flex flex-col gap-1.5 sm:col-span-2">
+                    <Label htmlFor="order-status">Status</Label>
+                    <Select
+                      items={Object.fromEntries(ORDER_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+                      value={values.status}
+                      onValueChange={(v) => setField("status", v ?? values.status)}
+                    >
+                      <SelectTrigger id="order-status" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ORDER_STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-notes">Additional Notes</Label>
+                  <Textarea id="order-notes" value={values.notes} onChange={(e) => setField("notes", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-kitchen-notes">Kitchen Notes</Label>
+                  <Textarea id="order-kitchen-notes" value={values.kitchenNotes} onChange={(e) => setField("kitchenNotes", e.target.value)} />
+                  <p className="text-xs text-muted-foreground">Internal — visible to the kitchen team, not the customer.</p>
+                </div>
               </div>
-              <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Meal items subtotal</span>
-                <span className="font-medium">{formatCurrency(mealItemsSubtotal)}</span>
+            </FormSection>
+          </div>
+
+          {/* ---------------- Summary column ---------------- */}
+          <aside className="flex min-w-0 flex-col gap-4">
+            <SummaryCard icon={User} title="Order Summary">
+              <SummaryRow icon={User} label="Customer">
+                <span className="break-words">{selectedCustomer?.name ?? "Not selected"}</span>
+              </SummaryRow>
+              <SummaryRow icon={Users} label="Order Type">
+                {values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}
+              </SummaryRow>
+              <SummaryRow icon={Tag} label="Event Type">
+                {eventTypeName ?? "Not set"}
+              </SummaryRow>
+              <SummaryRow icon={CalendarDays} label="Event Date">
+                <span>{eventDateText}</span>
+                {startsIn && <span className={cn("text-xs", TONE_TEXT[startsIn.tone])}>{startsIn.caption} {startsIn.label}</span>}
+              </SummaryRow>
+              <SummaryRow icon={MapPin} label="Venue">
+                <span className="break-words">{values.venue || "Not set"}</span>
+              </SummaryRow>
+              <SummaryRow icon={Users} label="Guests">
+                <span>{totalGuests}</span>
+                <span className="text-xs font-normal text-muted-foreground">
+                  ({Number(values.adultCount) || 0} Adults, {Number(values.childBelow5Count) || 0} Children &lt;5, {Number(values.child5To10Count) || 0} Children 5–10)
+                </span>
+              </SummaryRow>
+            </SummaryCard>
+
+            <SummaryCard icon={UtensilsCrossed} title="Selected Meals">
+              {sortedMealEntries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No meals selected yet.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {sortedMealEntries.map((entry) => {
+                    const meal = MEAL_TYPES.find((m) => m.value === entry.mealType)!;
+                    const state = !entry.menuId
+                      ? { text: "Menu not assigned", className: "text-warning" }
+                      : entry.items.length === 0
+                        ? { text: "No items selected", className: "text-muted-foreground" }
+                        : { text: `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`, className: "text-success" };
+                    return (
+                      <div key={`${entry.date}|${entry.mealType}`} className="flex items-center gap-3">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          {createElement(MEAL_ICON[entry.mealType], { className: "size-4" })}
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-col text-sm">
+                          <span className="font-semibold">
+                            {meal.label}
+                            {days.length > 1 && (
+                              <span className="font-normal text-muted-foreground"> · {formatDay(entry.date, { day: "numeric", month: "short" })}</span>
+                            )}
+                          </span>
+                          <span className={cn("text-xs", state.className)}>{state.text}</span>
+                        </div>
+                        {entry.menuId && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Edit food items for ${meal.label}${days.length > 1 ? ` on ${formatDay(entry.date, { day: "numeric", month: "short" })}` : ""}`}
+                            onClick={() => setFoodDialogTarget({ date: entry.date, mealType: entry.mealType })}
+                          >
+                            <PenSquare className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </SummaryCard>
+
+            <SummaryCard icon={Wallet} title="Pricing Details">
+              <p className="text-xs text-muted-foreground">
+                {individualOn
+                  ? "Individual Pricing is on (switch it in Menu Planning). Set your own price for each meal and each child age band. Children can be Per Plate or a Percentage of the first assigned Menu's price."
+                  : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
+              </p>
+              {individualOn && (
+                <div className="flex flex-col gap-3">
+                  {sortedMealEntries.map((entry) => {
+                    const meal = MEAL_TYPES.find((m) => m.value === entry.mealType)!;
+                    return (
+                      <div key={`price-${entry.date}|${entry.mealType}`} className="flex flex-col gap-1.5">
+                        <Label htmlFor={`meal-price-${entry.date}-${entry.mealType}`}>
+                          Per plate price · {meal.label}
+                          {days.length > 1 ? ` · ${formatDay(entry.date, { day: "numeric", month: "short" })}` : ""}
+                        </Label>
+                        <Input
+                          id={`meal-price-${entry.date}-${entry.mealType}`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={entry.price}
+                          onChange={(e) => setMealPrice(entry.date, entry.mealType, e.target.value)}
+                        />
+                      </div>
+                    );
+                  })}
+                  {(
+                    [
+                      { id: "order-individual-below5", label: "Children (Under 5) price", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
+                      { id: "order-individual-5to10", label: "Children (5–10) price", rate: "individualChild5To10Rate", type: "individualChild5To10PricingType" },
+                    ] as const
+                  ).map((row) => (
+                    <div key={row.id} className="flex flex-col gap-1.5">
+                      <Label htmlFor={`${row.id}-rate`}>{row.label}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id={`${row.id}-rate`}
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="w-28"
+                          value={values[row.rate]}
+                          onChange={(e) => setField(row.rate, e.target.value)}
+                        />
+                        <Select
+                          items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+                          value={values[row.type]}
+                          onValueChange={(v) => setField(row.type, v ?? values[row.type])}
+                        >
+                          <SelectTrigger className="min-w-0 flex-1" aria-label={`${row.label} type`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
+                              <SelectItem key={o.value} value={o.value}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-col gap-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Total Amount</span>
+                  <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal)}</span>
+                </div>
+                {carriedOverItemsSubtotal > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Carried over from Quotation</span>
+                    <span>{formatCurrency(carriedOverItemsSubtotal)}</span>
+                  </div>
+                )}
+                {childrenCharge > 0 && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Children Charges</span>
+                    <span>{formatCurrency(childrenCharge)}</span>
+                  </div>
+                )}
+                {(
+                  [
+                    { id: "order-transportation-cost", label: "Transportation Cost", key: "transportationCost" },
+                    { id: "order-other-charges", label: "Extra / Service Cost", key: "otherCharges" },
+                    { id: "order-discount", label: "Discount", key: "discount" },
+                  ] as const
+                ).map((row) => (
+                  <div key={row.id} className="flex items-center justify-between gap-3">
+                    <Label htmlFor={row.id} className="font-normal text-muted-foreground">
+                      {row.label}
+                    </Label>
+                    <Input
+                      id={row.id}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="w-32 text-right"
+                      value={values[row.key]}
+                      onChange={(e) => setField(row.key, e.target.value)}
+                    />
+                  </div>
+                ))}
               </div>
-            </div>
-          </div>
-        )}
-      </section>
+              <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
+                <span>Grand Total</span>
+                <span className="text-lg">{formatCurrency(total)}</span>
+              </div>
+            </SummaryCard>
 
-      {foodDialogTarget && foodDialogEntry && foodDialogMenu && (
-        <FoodItemSelectionDialog
-          open
-          onOpenChange={(open) => !open && setFoodDialogTarget(null)}
-          menuId={foodDialogMenu.id}
-          menuName={foodDialogMenu.name}
-          selectedIds={new Set(foodDialogEntry.items.map((i) => i.catalogId))}
-          onToggle={(item) => toggleMealItem(foodDialogTarget.date, foodDialogTarget.mealType, item)}
-        />
-      )}
-
-      {/* Venue & Delivery Details */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Venue &amp; Delivery Details</h2>
-          <p className="text-sm text-muted-foreground">Where the event happens and any special instructions for delivery/cooking.</p>
+            <SummaryCard icon={CreditCard} title="Payment Details">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="order-payment-status">Payment Status</Label>
+                <Select
+                  items={Object.fromEntries(PAYMENT_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
+                  value={values.paymentStatus}
+                  onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}
+                >
+                  <SelectTrigger id="order-payment-status" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {values.paymentStatus === "PARTIALLY_PAID" ? (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-advance" required>Advance Payment Amount</Label>
+                  <Input id="order-advance" type="number" min="0.01" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="order-advance">Advance Received</Label>
+                  <Input id="order-advance" type="number" min="0" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
+                </div>
+              )}
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="text-muted-foreground">Balance</span>
+                <span className="font-semibold">{formatCurrency(balance)}</span>
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
+                <Info className="mt-0.5 size-4 shrink-0" />
+                <span>Payment details can be updated later from the order page.</span>
+              </div>
+            </SummaryCard>
+          </aside>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="order-venue-type">Venue Type</Label>
-              <Select
-                items={Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                value={values.venueType}
-                onValueChange={(v) => setField("venueType", v ?? "")}
-              >
-                <SelectTrigger id="order-venue-type" className="w-full">
-                  <SelectValue placeholder="Select venue type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VENUE_TYPE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="order-venue">Venue / Building Name</Label>
-              <IconInput icon={MapPin} id="order-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="order-venue-landmark">Landmark</Label>
-              <Input id="order-venue-landmark" value={values.venueLandmark} onChange={(e) => setField("venueLandmark", e.target.value)} />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-address">Complete Venue Address</Label>
-            <Textarea id="order-address" className="h-full min-h-32" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-venue-contact-name">Venue Contact Person</Label>
-            <Input id="order-venue-contact-name" value={values.venueContactName} onChange={(e) => setField("venueContactName", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-venue-contact-phone">Contact Number</Label>
-            <PhoneInput id="order-venue-contact-phone" value={values.venueContactPhone} onChange={(v) => setField("venueContactPhone", v)} />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-delivery-instructions">Delivery Instructions</Label>
-            <Textarea id="order-delivery-instructions" value={values.deliveryInstructions} onChange={(e) => setField("deliveryInstructions", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-cooking-instructions">Cooking Instructions</Label>
-            <Textarea id="order-cooking-instructions" value={values.cookingInstructions} onChange={(e) => setField("cookingInstructions", e.target.value)} />
-          </div>
-
-          <label htmlFor="order-live-counter" className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-3">
-            <Checkbox
-              id="order-live-counter"
-              checked={values.liveCounterAvailable}
-              onCheckedChange={(checked) => setField("liveCounterAvailable", checked === true)}
-            />
-            <span className="text-sm font-medium">Cooking / live counter facility available?</span>
-          </label>
-          <label htmlFor="order-gas-electric" className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-3">
-            <Checkbox
-              id="order-gas-electric"
-              checked={values.gasElectricAvailable}
-              onCheckedChange={(checked) => setField("gasElectricAvailable", checked === true)}
-            />
-            <span className="text-sm font-medium">Gas / electric connection available at venue?</span>
-          </label>
-        </div>
-      </section>
-
-      {/* Order Details */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Order Details</h2>
-          <p className="text-sm text-muted-foreground">A recap of what&apos;s been planned above, plus any additional charges.</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-4">
-          <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground">Event Date</span>
-            <span className="font-medium">
-              {values.eventStartDate && values.eventEndDate
-                ? values.eventStartDate === values.eventEndDate
-                  ? new Date(`${values.eventStartDate}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-                  : `${new Date(`${values.eventStartDate}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${new Date(`${values.eventEndDate}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
-                : "Not set"}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground">Total Guests</span>
-            <span className="font-medium">
-              {values.totalParticipants ||
-                String((Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0))}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground">Meals Planned</span>
-            <span className="font-medium">{totalMealSlots}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-muted-foreground">Menus &amp; Items</span>
-            <span className="font-medium">{totalMealItemsSelected}</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {showStatus && (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="order-status">Status</Label>
-              <Select
-                items={Object.fromEntries(ORDER_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
-                value={values.status}
-                onValueChange={(v) => setField("status", v ?? values.status)}
-              >
-                <SelectTrigger id="order-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ORDER_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-discount">Discount</Label>
-            <Input id="order-discount" type="number" min="0" step="0.01" value={values.discount} onChange={(e) => setField("discount", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-transportation-cost">Transportation Cost</Label>
-            <Input
-              id="order-transportation-cost"
-              type="number"
-              min="0"
-              step="0.01"
-              value={values.transportationCost}
-              onChange={(e) => setField("transportationCost", e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-other-charges">Extra / Service Cost</Label>
-            <Input
-              id="order-other-charges"
-              type="number"
-              min="0"
-              step="0.01"
-              value={values.otherCharges}
-              onChange={(e) => setField("otherCharges", e.target.value)}
-            />
-          </div>
-          <div className="col-span-full flex flex-col gap-1.5">
-            <Label htmlFor="order-notes">Additional Notes</Label>
-            <Textarea id="order-notes" value={values.notes} onChange={(e) => setField("notes", e.target.value)} />
-          </div>
-          <div className="col-span-full flex flex-col gap-1.5">
-            <Label htmlFor="order-kitchen-notes">Kitchen Notes</Label>
-            <Textarea id="order-kitchen-notes" value={values.kitchenNotes} onChange={(e) => setField("kitchenNotes", e.target.value)} />
-            <p className="text-xs text-muted-foreground">Internal — visible to the kitchen team, not the customer.</p>
-          </div>
-        </div>
-      </section>
-
-      {/* Payment Status */}
-      <section className="flex flex-col gap-3 border-t border-border pt-6">
-        <div>
-          <h2 className="text-base font-semibold">Payment Status</h2>
-        </div>
-        <Select
-          items={Object.fromEntries(PAYMENT_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
-          value={values.paymentStatus}
-          onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}
-        >
-          <SelectTrigger id="order-payment-status" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAYMENT_STATUS_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {values.paymentStatus === "PARTIALLY_PAID" ? (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-advance" required>Advance Payment Amount</Label>
-            <Input id="order-advance" type="number" min="0.01" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
-          </div>
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="order-advance">Advance Received</Label>
-            <Input id="order-advance" type="number" min="0" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
-          </div>
-        )}
-      </section>
-
-      {/* Order Calculation — live preview, mirrors recalculateOrderTotals server-side */}
-      <section className="flex flex-col gap-1.5 rounded-md border border-border bg-muted/30 p-4 text-sm sm:max-w-sm">
-        <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal)}</span></div>
-        {carriedOverItemsSubtotal > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">Carried over from Quotation</span><span>{formatCurrency(carriedOverItemsSubtotal)}</span></div>
-        )}
-        {childrenCharge > 0 && (
-          <div className="flex justify-between"><span className="text-muted-foreground">Children Charges</span><span>{formatCurrency(childrenCharge)}</span></div>
-        )}
-        <div className="flex justify-between"><span className="text-muted-foreground">Transportation Cost</span><span>+{formatCurrency(transportationCostNum)}</span></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Extra / Service Cost</span><span>+{formatCurrency(otherChargesNum)}</span></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{formatCurrency(discountNum)}</span></div>
-        <div className="flex justify-between border-t border-border pt-1.5 font-semibold"><span>Total</span><span>{formatCurrency(total)}</span></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">Advance</span><span>-{formatCurrency(advanceNum)}</span></div>
-        <div className="flex justify-between font-semibold"><span>Balance</span><span>{formatCurrency(balance)}</span></div>
-      </section>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <div className="flex gap-2">
-        <Button type="submit" disabled={pending !== null}>
-          {pending === "save" ? "Saving…" : submitLabel}
-        </Button>
-        {onSubmitAndNotify && (
-          <Button type="button" variant="outline" disabled={pending !== null} onClick={() => void handleSubmit(true)}>
-            {pending === "whatsapp" ? "Sending…" : "Create & Send WhatsApp"}
-          </Button>
-        )}
-      </div>
-    </form>
+      </form>
+      {afterContent}
+    </>
   );
 }

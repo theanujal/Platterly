@@ -14,6 +14,8 @@ export interface SelectedCustomer {
   id: string;
   name: string;
   phone: string;
+  /** Known for a searched-for or pre-loaded customer; a just-created one carries whatever was typed, or nothing. */
+  email?: string | null;
 }
 
 interface CustomerComboboxProps {
@@ -124,7 +126,7 @@ export function CustomerCombobox({ initialCustomer, onSelect, onClear }: Custome
       setCreateError(result.error);
       return;
     }
-    selectCustomer(result.customer);
+    selectCustomer({ ...result.customer, email: newEmail.trim() || null });
   }
 
   const showDropdown = open && !confirmed && !queryTooShort && !showCreateForm;

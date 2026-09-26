@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 // (the two buttons in the header), see menu-approval.ts's board-vs-queue split.
 const COLUMNS: { key: KitchenProductionStatus; label: string; icon: LucideIcon; header: string; icon_tint: string }[] = [
   { key: "PENDING", label: "Pending", icon: Clock, header: "bg-secondary", icon_tint: "text-foreground" },
-  { key: "IN_PREPARATION", label: "In Preparation", icon: ChefHat, header: "bg-warning/10", icon_tint: "text-warning" },
+  { key: "IN_PREPARATION", label: "In Preparation", icon: ChefHat, header: "bg-tone-teal/10", icon_tint: "text-tone-teal" },
   { key: "READY", label: "Ready", icon: PackageCheck, header: "bg-info/10", icon_tint: "text-info" },
 ];
 

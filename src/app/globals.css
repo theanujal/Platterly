@@ -30,6 +30,13 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-cyan: var(--tone-cyan);
+  --color-tone-pink: var(--tone-pink);
+  --color-tone-fuchsia: var(--tone-fuchsia);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-yellow: var(--tone-yellow);
+  --color-tone-orange: var(--tone-orange);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -73,6 +80,18 @@
   --success: #16a34a;
   --warning: #d97706;
   --info: #2563eb;
+  /* Accent tones (AJ, 2026-09-27) — the 5-tone legend left every "needs
+     attention" state amber, so a card could show four amber badges at once.
+     These seven give each of those states its own hue; the five legend tones
+     above are unchanged. Named tone-* so they never collide with Tailwind's
+     own violet/cyan/pink palette utilities. */
+  --tone-violet: #7c3aed;
+  --tone-cyan: #0e7490;
+  --tone-pink: #db2777;
+  --tone-fuchsia: #c026d3;
+  --tone-teal: #0f766e;
+  --tone-yellow: #a16207;
+  --tone-orange: #ea580c;
   --border: #e5e7eb;
   --input: #e5e7eb;
   --ring: #ff6900;

@@ -137,13 +137,11 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   }
   await datePopover.getByRole("button", { name: "1", exact: true }).click();
   await datePopover.getByRole("button", { name: "2", exact: true }).click();
-  // A multi-day range while Order Type is untouched auto-prompts the Single
-  // -> Multi confirmation (order-form.tsx) — this test isn't about Order
-  // Type at all, so decline it and stay Single, matching the original
-  // (pre-redesign) test's plain single-order intent.
-  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  // A multi-day range switches the order to Multi Order by itself and says so
+  // (AJ, 2026-09-27). This test isn't about Order Type, so just acknowledge it.
+  await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
-  await page.getByRole("button", { name: "Create Order", exact: true }).click();
+  await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
 
   await page.goto(`/customers/${customerId}`);
@@ -152,28 +150,27 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.goto("/orders");
   await page.getByText(leadName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
-  await expect(page.getByText("Create an event for this order?")).toBeVisible();
-  await page.getByRole("button", { name: "Yes, create event" }).click();
-  await expect(page.getByText("Event details", { exact: true })).toBeVisible();
+  // The Event was created when the order was saved; there is nothing to create here (AJ, 2026-09-27).
+  await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
 
-  // The inline editor shares field labels ("Status", "Event Type", ...) with
-  // the Order form on the same page — scope every interaction to it.
-  const eventEditor = page.getByTestId("order-event-editor");
-  await eventEditor.getByLabel("Event Name").fill(`${leadName}'s Wedding`);
-  await eventEditor.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
-  await eventEditor.getByPlaceholder("Quantity").fill("20");
-  await eventEditor.getByLabel("Status").click();
+  const operations = page.getByTestId("event-operations-card");
+  await operations.getByLabel("Event Status").click();
   await page.getByRole("option", { name: "Processing" }).click();
-  await eventEditor.getByRole("button", { name: "Save Event details" }).click();
-  await expect(eventEditor.getByText("Saved.")).toBeVisible();
+  await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
+
+  const inventoryCard = page.getByTestId("required-inventory-card");
+  await inventoryCard.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
+  await expect(inventoryCard.getByText("Saved", { exact: true })).toBeVisible();
+  await inventoryCard.getByLabel(new RegExp(`Quantity of ${inventoryName}`)).fill("20");
+  await inventoryCard.getByLabel(new RegExp(`Quantity of ${inventoryName}`)).blur();
+  await expect(inventoryCard.getByText("Saved", { exact: true })).toBeVisible();
 
   await page.reload();
-  const reloadedEventEditor = page.getByTestId("order-event-editor");
-  await expect(reloadedEventEditor.getByLabel("Event Name")).toHaveValue(`${leadName}'s Wedding`);
-  await expect(reloadedEventEditor.getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
+  await expect(page.getByTestId("required-inventory-card").getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
+  await expect(page.getByTestId("required-inventory-card").getByLabel(new RegExp(`Quantity of ${inventoryName}`))).toHaveValue("20");
 
   // --- Customer timeline now shows both the Order and the Event ---
   await page.goto(`/customers/${customerId}`);
-  await expect(page.getByText(`${leadName}'s Wedding`)).toBeVisible();
+  await expect(page.getByText(`${leadName}'s Event`)).toBeVisible();
   await expect(page.getByText("Processing", { exact: true })).toBeVisible();
 });

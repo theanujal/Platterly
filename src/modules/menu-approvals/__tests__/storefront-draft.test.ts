@@ -135,6 +135,19 @@ describe("startDraft (step 1 — saves the visitor as a Lead)", () => {
     await expect(startDraft(t.org.id, t.details({ eventDate: "2020-01-01" }))).rejects.toThrow(/past/);
     await expect(startDraft(t.org.id, t.details({ phone: "12345" }))).rejects.toBeInstanceOf(StorefrontDraftError);
   });
+
+  it("needs 2 days' notice from a customer: today and tomorrow are refused, the day after is fine (AJ, 2026-09-27)", async () => {
+    const t = await setup();
+    const iso = (offsetDays: number) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    };
+    await expect(startDraft(t.org.id, t.details({ eventDate: iso(0) }))).rejects.toThrow(/at least 2 days/);
+    await expect(startDraft(t.org.id, t.details({ eventDate: iso(1) }))).rejects.toThrow(/at least 2 days/);
+    await expect(startDraft(t.org.id, t.details({ eventDate: iso(-1) }))).rejects.toThrow(/past/);
+    await expect(startDraft(t.org.id, t.details({ eventDate: iso(2) }))).resolves.toBeDefined();
+  });
 });
 
 describe("menu + items steps (server-side rules)", () => {

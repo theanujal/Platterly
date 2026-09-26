@@ -50,12 +50,23 @@ export function getEventCountdown(start: Date, end: Date, orderStatus: OrderStat
     return {
       caption: "Starts in",
       label: `${daysUntil} ${daysUntil === 1 ? "day" : "days"}`,
-      tone: daysUntil <= IMMINENT_DAYS ? "warning" : "success",
+      tone: daysUntil <= IMMINENT_DAYS ? "yellow" : "success",
     };
   }
-  if (daysUntil === 0) return { caption: "Event", label: "Today", tone: "warning" };
+  if (daysUntil === 0) return { caption: "Event", label: "Today", tone: "orange" };
   if (utcDay(end) >= today) return { caption: "Event", label: "Ongoing", tone: "info" };
   return { caption: "Event", label: "Ended", tone: "neutral" };
+}
+
+/**
+ * The countdown as the card shows it (AJ, 2026-09-27): always there for an
+ * order that hasn't ended ("5 days", "1 day", "Today", "Ongoing"), so Starts in
+ * is never missing even when the date cell already reads Today / Tomorrow. Only
+ * "Ended" (and a cancelled order) drops out — AJ asked for that to disappear.
+ */
+export function getCardCountdown(start: Date, end: Date, orderStatus: OrderStatus, now: Date = new Date()): EventCountdown | null {
+  const countdown = getEventCountdown(start, end, orderStatus, now);
+  return countdown?.label === "Ended" ? null : countdown;
 }
 
 export interface MenuApprovalSummary {
@@ -67,13 +78,13 @@ export interface MenuApprovalSummary {
 // Same tone mapping as the Menu Approvals page's own status badges
 // (menu-approvals/page.tsx), so a status never changes color between pages.
 const MENU_APPROVAL_COPY: Record<MenuSelectionStatus, { title: string; detail: string; tone: Tone }> = {
-  DRAFT: { title: "Needs review", detail: "Check the menu, then send it to the customer for approval.", tone: "warning" },
+  DRAFT: { title: "Needs review", detail: "Check the menu, then send it to the customer for approval.", tone: "cyan" },
   SENT_TO_CUSTOMER: { title: "Menu sent", detail: "Waiting for customer approval.", tone: "info" },
   CUSTOMER_REVIEWING: { title: "Customer is reviewing", detail: "Waiting for their approval.", tone: "info" },
-  CHANGES_REQUESTED: { title: "Customer requested changes", detail: "Update the menu and send it again.", tone: "warning" },
+  CHANGES_REQUESTED: { title: "Customer requested changes", detail: "Update the menu and send it again.", tone: "pink" },
   CUSTOMER_APPROVED: { title: "Customer approved the menu", detail: "Waiting for the kitchen team to review.", tone: "success" },
   KITCHEN_REVIEWING: { title: "Kitchen is reviewing", detail: "Waiting for the kitchen team to approve.", tone: "info" },
-  KITCHEN_CHANGES_REQUESTED: { title: "Kitchen requested changes", detail: "Update the menu and send it to the customer again.", tone: "warning" },
+  KITCHEN_CHANGES_REQUESTED: { title: "Kitchen requested changes", detail: "Update the menu and send it to the customer again.", tone: "fuchsia" },
   KITCHEN_APPROVED: { title: "Kitchen approved the menu", detail: "Sending it to the kitchen.", tone: "success" },
   FINAL_LOCKED: { title: "Sent to the kitchen", detail: "The menu is final.", tone: "success" },
 };
@@ -125,7 +136,7 @@ export interface PaymentBreakdown {
  */
 export function getPaymentBreakdown(order: { total: number; advance: number; paymentStatus: OrderPaymentStatus }): PaymentBreakdown {
   if (order.paymentStatus === "PAID") return { label: "Paid", tone: "success", summary: "Paid in full" };
-  if (order.paymentStatus === "UNPAID") return { label: "Unpaid", tone: "warning", summary: `${formatAmount(order.total)} pending` };
+  if (order.paymentStatus === "UNPAID") return { label: "Unpaid", tone: "danger", summary: `${formatAmount(order.total)} pending` };
   const paid = Math.min(order.advance, order.total);
   const pending = Math.max(order.total - paid, 0);
   return { label: "Partially Paid", tone: "info", summary: `${formatAmount(paid)} paid · ${formatAmount(pending)} pending` };
@@ -143,22 +154,36 @@ export function getGuestCount(order: {
   return sum > 0 ? sum : null;
 }
 
-function formatDay(date: Date) {
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+function formatDay(date: Date, withYear = true) {
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
 }
 
-/** "26 Sept 2026", or "5 Dec – 6 Dec 2026" for a multi-day event. */
+/**
+ * "26 Sept 2026", "5–6 Dec 2026" for a multi-day event within one month, else
+ * "28 Nov – 2 Dec 2026".
+ */
 export function formatEventDates(start: Date, end: Date): string {
   if (start.toDateString() === end.toDateString()) return formatDay(start);
-  return `${start.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${formatDay(end)}`;
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) return `${start.getDate()}–${formatDay(end)}`;
+  return `${formatDay(start, false)} – ${formatDay(end)}`;
 }
 
-/** Where the event is: the venue name, else the address, else nothing. */
-export function getOrderLocation(order: { venue: string | null; eventAddress: string | null }): string | null {
-  return order.venue?.trim() || order.eventAddress?.trim() || null;
+/**
+ * "Today" / "Tomorrow" for an event starting then, otherwise the date(s) —
+ * one value, never both (AJ, 2026-09-26). A multi-day event already under way
+ * keeps its range, since "Today" would hide that it started earlier.
+ */
+export function formatEventWhen(start: Date, end: Date, now: Date = new Date()): string {
+  const daysUntil = utcDay(start) - utcDay(now);
+  if (daysUntil === 0) return "Today";
+  if (daysUntil === 1) return "Tomorrow";
+  return formatEventDates(start, end);
 }
 
-/** Countdown wording for a single-line pill ("In 17 days", "Today", "Ongoing"), as used in the list view. */
-export function countdownPillLabel(countdown: EventCountdown): string {
-  return countdown.caption === "Starts in" ? `In ${countdown.label}` : countdown.label;
+/**
+ * The Venue / Building Name only (AJ, 2026-09-26) — never the full address,
+ * which is too long for a card and has its own field on the Order.
+ */
+export function getOrderLocation(order: { venue: string | null }): string | null {
+  return order.venue?.trim() || null;
 }

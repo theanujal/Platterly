@@ -9,6 +9,7 @@ import { getMenuForOrderPicker } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
 import { ABANDONED_AFTER_MS, DRAFT_RETENTION_DAYS } from "./storefront-draft-constants";
 import { splitPicks } from "./storefront-selection";
+import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "./public-lead-time";
 import type { FoodType, MealType, VenueType, VehicleAccessType, Prisma } from "@/generated/prisma/client";
 
 // Chunk 12 (2026-09-25) — the public storefront's multi-step order flow,
@@ -82,8 +83,14 @@ async function validateEventDetails(organizationId: string, details: EventDetail
 
   const date = new Date(details.eventDate);
   if (Number.isNaN(date.getTime())) throw new StorefrontDraftError("Event Date is required.");
-  // One day of slack so a server clock a few hours behind IST doesn't reject "today".
-  if (date.getTime() < Date.now() - 24 * 60 * 60 * 1000) throw new StorefrontDraftError("Event Date can't be in the past.");
+  // Customers need 2 days' notice (AJ, 2026-09-27): today and tomorrow can't be picked, and neither can a past date.
+  const chosen = details.eventDate.slice(0, 10);
+  if (chosen < earliestPublicEventDate(new Date(Date.now() - PUBLIC_MIN_LEAD_DAYS * 86_400_000))) {
+    throw new StorefrontDraftError("Event Date can't be in the past.");
+  }
+  if (chosen < earliestPublicEventDate()) {
+    throw new StorefrontDraftError(`Please pick a date at least ${PUBLIC_MIN_LEAD_DAYS} days from today — we need that much notice.`);
+  }
 
   const isCount = (n: number) => Number.isInteger(n) && n >= 0;
   if (!Number.isInteger(details.guestCount) || details.guestCount < 1) throw new StorefrontDraftError("Number of Guests is required.");

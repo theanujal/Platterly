@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { createEvent } from "@/modules/events/event";
-import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType } from "@/generated/prisma/enums";
+import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -31,6 +31,8 @@ export interface MealPlanEntryInput {
 
 export interface OrderInput {
   customerId: string;
+  /** Vegetarian / Non-Vegetarian, as on the public form (AJ, 2026-09-27). Filters which Menus and dishes are offered. */
+  menuPreference?: FoodType | null;
   eventTypeId?: string | null;
   eventStartDate: Date;
   eventEndDate: Date;
@@ -296,6 +298,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       organizationId,
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      menuPreference: input.menuPreference,
       orderKind,
       orderNumber,
       eventStartDate: input.eventStartDate,
@@ -360,6 +363,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
     data: {
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      menuPreference: input.menuPreference,
       orderKind,
       eventStartDate: input.eventStartDate,
       eventEndDate: input.eventEndDate,
@@ -430,6 +434,7 @@ export async function deleteOrder(organizationId: string, id: string, actorUserI
 export interface OrderListFilter {
   status?: OrderStatus;
   orderKind?: OrderKind;
+  eventTypeId?: string;
   search?: string;
   /** Caps the result count (e.g. the Dashboard's global search bar) — omitted for the full Orders list. */
   take?: number;
@@ -441,6 +446,7 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
       organizationId,
       status: filter?.status,
       orderKind: filter?.orderKind,
+      eventTypeId: filter?.eventTypeId,
       ...(filter?.search
         ? {
             OR: [
@@ -563,6 +569,33 @@ export class OrderEventTypeRequiredError extends Error {}
  * #14): Order and Event stay separate rows, but this is the one place an
  * Order's own snapshot fields seed a real operational Event.
  */
+/**
+ * Keeps an Order's Event in step with it (AJ, 2026-09-27): the Event is no
+ * longer something to "create" by hand. Saving an Order with an Event Type
+ * creates its Event if it has none; if it has one, the fields the Order
+ * owns (type, dates, venue, guest count, customer) are copied across. The
+ * Event's own operational fields (kitchen, status, required inventory) are
+ * never touched here. No Event Type yet means no Event yet, which is fine.
+ */
+export async function syncOrderEvent(organizationId: string, orderId: string, actorUserId?: string) {
+  const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId } });
+  if (!order.eventTypeId) return null;
+  const linked = await prisma.event.findMany({ where: { organizationId, orderId }, select: { id: true } });
+  if (linked.length === 0) return createEventForOrder(organizationId, orderId, actorUserId);
+  await prisma.event.updateMany({
+    where: { organizationId, orderId },
+    data: {
+      customerId: order.customerId,
+      eventTypeId: order.eventTypeId,
+      startDate: order.eventStartDate,
+      endDate: order.eventEndDate,
+      venue: order.venue,
+      guestCount: order.totalParticipants,
+    },
+  });
+  return null;
+}
+
 export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string) {
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { customer: true } });
   if (!order.eventTypeId) {

@@ -12,13 +12,36 @@ type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 // Order status labels/tones live in modules/orders/order-status.ts (shared
 // with the workflow that sets them); only the icons are display-only.
 // Tinted fill + full-strength text per tone (the recipe Badge uses), for the
-// larger surfaces that aren't badges: the card's callout and the list's status icon.
+// larger surfaces that aren't badges: the card's callout.
 export const TONE_SURFACE: Record<Tone, string> = {
   neutral: "bg-muted text-foreground",
   info: "bg-info/10 text-info",
   warning: "bg-warning/10 text-warning",
   success: "bg-success/10 text-success",
   danger: "bg-destructive/10 text-destructive",
+  violet: "bg-tone-violet/10 text-tone-violet",
+  cyan: "bg-tone-cyan/10 text-tone-cyan",
+  pink: "bg-tone-pink/10 text-tone-pink",
+  fuchsia: "bg-tone-fuchsia/10 text-tone-fuchsia",
+  teal: "bg-tone-teal/10 text-tone-teal",
+  yellow: "bg-tone-yellow/10 text-tone-yellow",
+  orange: "bg-tone-orange/10 text-tone-orange",
+};
+
+// Plain colored text (no fill) for a tone — the list's payment status under the amount.
+export const TONE_TEXT: Record<Tone, string> = {
+  neutral: "text-muted-foreground",
+  info: "text-info",
+  warning: "text-warning",
+  success: "text-success",
+  danger: "text-destructive",
+  violet: "text-tone-violet",
+  cyan: "text-tone-cyan",
+  pink: "text-tone-pink",
+  fuchsia: "text-tone-fuchsia",
+  teal: "text-tone-teal",
+  yellow: "text-tone-yellow",
+  orange: "text-tone-orange",
 };
 
 export const STATUS_LABEL = ORDER_STATUS_LABEL;

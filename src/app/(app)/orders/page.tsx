@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listOrders } from "@/modules/orders/order";
+import { listEventTypes } from "@/modules/events/event-type";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -25,18 +26,22 @@ export const metadata: Metadata = {
 };
 
 interface OrdersPageProps {
-  searchParams: Promise<{ status?: string; orderKind?: string }>;
+  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string }>;
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
-  const { status, orderKind } = await searchParams;
+  const { status, orderKind, eventType } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
   const validOrderKind = orderKind && orderKind in ORDER_KIND_LABEL ? (orderKind as OrderKind) : undefined;
 
+  // Resolved before listOrders so an unknown/foreign id in the URL is ignored rather than filtering to nothing.
+  const eventTypes = await listEventTypes(organizationId);
+  const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
+
   const [orders, canEdit, canDelete] = await Promise.all([
-    listOrders(organizationId, { status: validStatus, orderKind: validOrderKind }),
+    listOrders(organizationId, { status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);
@@ -90,16 +95,19 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
           </Link>
         }
-        columns={["Order #", "Customer", "Event", "Guests", "Total", "Payment", "Status", "Open"]}
+        columns={["Order #", "Order Type", "Customer", "Event", "Guests", "Amount", "Status", "Open"]}
         richList
         searchPlaceholder="Search orders by customer, phone, or order #…"
         emptyLabel="No orders yet."
-        filters={<OrdersFilterBar />}
+        filters={<OrdersFilterBar eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}
         sortOptions={sortOptions}
         pageSize={16}
-        // 4 columns from xl (AJ, 2026-09-26) — the catalog default. The card's
-        // own @container queries reflow it for the narrower width.
-        gridColumnsClassName="grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        // The design system's Order card (§09) switches from its stacked layout to
+        // the wide one (status beside the order number, three stat cells, amount
+        // beside payment) once its own inner width reaches 24rem — so every card
+        // is given at least 26.5rem (24rem + p-5 padding). That's 2 columns at
+        // 1440px, 3 on wider screens; `min(…, 100%)` keeps a phone to one column.
+        gridColumnsClassName="grid-cols-[repeat(auto-fill,minmax(min(26.5rem,100%),1fr))]"
       />
     </div>
   );

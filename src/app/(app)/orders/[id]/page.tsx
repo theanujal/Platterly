@@ -9,9 +9,11 @@ import { listKitchens } from "@/modules/events/event";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Receipt, Layers } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { EditOrderClient } from "./_components/edit-order-client";
 import { DeleteOrderButton } from "./_components/delete-order-button";
-import { OrderEventSection } from "./_components/order-event-section";
+import { EventOperationsCard } from "./_components/event-operations-card";
+import { RequiredInventoryCard } from "./_components/required-inventory-card";
 import { OrderApprovalPanel } from "./_components/order-approval-panel";
 import type { OrderFormValues } from "../_components/order-form";
 import type { OrderKind } from "@/generated/prisma/enums";
@@ -45,14 +47,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
-  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canBypassDateRestriction, canManageApproval, menuApproval] = await Promise.all([
+  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
     listMenus(organizationId),
     listKitchens(organizationId),
     listInventoryItems(organizationId),
-    hasPermission({ orders: ["bypass_date_restriction"] }, organizationId),
     hasPermission({ menus: ["approve"] }, organizationId),
     getOrderMenuApproval(organizationId, id),
   ]);
@@ -61,6 +62,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const initialValues: OrderFormValues = {
     customerId: order.customerId,
     eventTypeId: order.eventTypeId ?? "",
+    menuPreference: order.menuPreference ?? "",
     orderKind: order.orderKind,
     eventStartDate: toDateInputValue(order.eventStartDate),
     eventEndDate: toDateInputValue(order.eventEndDate),
@@ -99,76 +101,91 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       menuId: entry.menuId ?? "",
       items: entry.items.map((item) => ({
         key: item.id,
-        catalogId: item.menuItemId ?? "",
+        itemType: item.itemType === "ADD_ON" ? ("ADD_ON" as const) : ("MENU_ITEM" as const),
+        catalogId: (item.itemType === "ADD_ON" ? item.addOnId : item.menuItemId) ?? "",
         name: item.name,
         unitPrice: Number(item.unitPrice),
+        // Extras and per-plate add-ons were saved with a per-guest quantity.
+        perGuest: item.quantity > 1,
       })),
     })),
   };
 
+  const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
+  // An Order's Event is created and kept in step automatically; a normal order has exactly one.
+  const event = order.events[0] ?? null;
+
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-medium text-muted-foreground">{order.orderNumber ?? "Order"}</p>
-          <h1 className="text-lg font-semibold">Order for {order.customer.name}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            {(() => {
-              const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
-              return (
+      <EditOrderClient
+        orderId={order.id}
+        initialValues={initialValues}
+        header={
+          <div className="flex flex-col gap-4">
+            <PageBreadcrumb items={[{ label: "Orders", href: "/orders" }, { label: order.orderNumber ?? "Order" }]} />
+            <div>
+              <h1 className="text-2xl font-semibold">Order for {order.customer.name}</h1>
+              <div className="mt-1 flex items-center gap-2">
                 <Badge variant={ORDER_KIND_VARIANT[order.orderKind]}>
                   <OrderKindIcon data-icon="inline-start" />
                   {ORDER_KIND_LABEL[order.orderKind]}
                 </Badge>
-              );
-            })()}
-            <p className="text-sm text-muted-foreground">
-              {order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-            </p>
-          </div>
-        </div>
-        <DeleteOrderButton orderId={order.id} name={order.customer.name} />
-      </div>
-
-      <OrderApprovalPanel orderId={order.id} approval={menuApproval} canManage={canManageApproval} />
-
-      {/*
-        Whole-order items (mealPlanEntryId: null) only exist on an Order
-        converted from an accepted Quotation (quotation.ts's
-        convertQuotationToOrder writes them directly, copying the
-        Quotation's own frozen item snapshots) — the Create Order form
-        itself no longer has a whole-order item picker as of the
-        2026-09-20 redesign (food items are only ever picked per meal in
-        Meal Planning), so this read-only recap is the only place these
-        carried-over items are still visible/editable-adjacent.
-      */}
-      {order.items.length > 0 && (
-        <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
-          <h2 className="text-sm font-semibold">Carried over from the original Quotation</h2>
-          <div className="flex flex-col gap-1.5">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <span>{item.name}</span>
-                  <span className="text-muted-foreground">× {item.quantity}</span>
-                </div>
-                <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+                <p className="text-sm text-muted-foreground">
+                  {order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                </p>
               </div>
-            ))}
+            </div>
           </div>
-        </section>
-      )}
+        }
+        headerActions={<DeleteOrderButton orderId={order.id} name={order.customer.name} />}
+        beforeContent={
+          <>
+            {/* Menu approval (with its version history) and the kitchen / event status sit side by side (AJ, 2026-09-27). */}
+            <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
+              <OrderApprovalPanel orderId={order.id} approval={menuApproval} canManage={canManageApproval} />
+              <EventOperationsCard
+                orderId={order.id}
+                event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId, status: event.status } : null}
+                kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
+              />
+            </div>
 
-      <EditOrderClient
-        orderId={order.id}
-        initialValues={initialValues}
-        customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
+            {/*
+              Whole-order items (mealPlanEntryId: null) only exist on an Order
+              converted from an accepted Quotation (quotation.ts's
+              convertQuotationToOrder writes them directly, copying the
+              Quotation's own frozen item snapshots) — the Create Order form
+              itself no longer has a whole-order item picker as of the
+              2026-09-20 redesign (food items are only ever picked per meal in
+              Meal Planning), so this read-only recap is the only place these
+              carried-over items are still visible/editable-adjacent.
+            */}
+            {order.items.length > 0 && (
+              <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
+                <h2 className="text-sm font-semibold">Carried over from the original Quotation</h2>
+                <div className="flex flex-col gap-1.5">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span>{item.name}</span>
+                        <span className="text-muted-foreground">× {item.quantity}</span>
+                      </div>
+                      <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        }
+        customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email }))}
         eventTypes={eventTypes.filter((t) => t.isActive || t.id === order.eventTypeId).map((t) => ({ id: t.id, name: t.name }))}
         menus={menus
           .filter((m) => m.isActive)
           .map((m) => ({
             id: m.id,
             name: m.name,
+            menuType: m.menuType,
             price: Number(m.pricePerPlate),
             childUnder5Chargeable: m.childUnder5Chargeable,
             childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
@@ -176,28 +193,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
           }))}
         carriedOverItemsSubtotal={order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0)}
-        canBypassDateRestriction={canBypassDateRestriction}
-      />
-
-      <OrderEventSection
-        orderId={order.id}
-        events={order.events.map((e) => ({
-          id: e.id,
-          eventTypeId: e.eventTypeId,
-          assignedKitchenId: e.assignedKitchenId,
-          guestCount: e.guestCount,
-          venue: e.venue,
-          status: e.status,
-          name: e.name,
-          startDate: toDateInputValue(e.startDate),
-          endDate: toDateInputValue(e.endDate),
-          notes: e.notes ?? "",
-          requiredInventory: e.requiredInventory.map((r) => ({ inventoryId: r.inventoryId, quantity: Number(r.quantity) })),
-        }))}
-        eventTypes={eventTypes.filter((t) => t.isActive).map((t) => ({ id: t.id, name: t.name }))}
-        kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
-        inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
-        canBypassDateRestriction={canBypassDateRestriction}
+        afterContent={
+          <RequiredInventoryCard
+            orderId={order.id}
+            event={event ? { id: event.id, requiredInventory: event.requiredInventory.map((r) => ({ inventoryId: r.inventoryId, quantity: Number(r.quantity) })) } : null}
+            inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+          />
+        }
       />
     </div>
   );

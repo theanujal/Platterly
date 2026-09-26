@@ -1,12 +1,14 @@
 import { describe, it, expect } from "vitest";
+import { KITCHEN_STATUS_TONE, MENU_SELECTION_STATUS_TONE, ORDER_STATUS_TONE } from "@/modules/orders/order-status";
 import {
-  countdownPillLabel,
   formatAmountExact,
   formatEventDates,
+  formatEventWhen,
   getEventCountdown,
   getGuestCount,
   getOrderLocation,
   getPaymentBreakdown,
+  getCardCountdown,
   summarizeMenuApproval,
 } from "@/modules/orders/order-card";
 
@@ -20,13 +22,13 @@ describe("getEventCountdown", () => {
   });
 
   it("singularizes 1 day and turns warning once the event is within 2 days", () => {
-    expect(getEventCountdown(day("2026-09-27"), day("2026-09-27"), "AWAITING_CUSTOMER_APPROVAL", NOW)).toEqual({ caption: "Starts in", label: "1 day", tone: "warning" });
-    expect(getEventCountdown(day("2026-09-28"), day("2026-09-28"), "AWAITING_CUSTOMER_APPROVAL", NOW)?.tone).toBe("warning");
+    expect(getEventCountdown(day("2026-09-27"), day("2026-09-27"), "AWAITING_CUSTOMER_APPROVAL", NOW)).toEqual({ caption: "Starts in", label: "1 day", tone: "yellow" });
+    expect(getEventCountdown(day("2026-09-28"), day("2026-09-28"), "AWAITING_CUSTOMER_APPROVAL", NOW)?.tone).toBe("yellow");
     expect(getEventCountdown(day("2026-09-29"), day("2026-09-29"), "AWAITING_CUSTOMER_APPROVAL", NOW)?.tone).toBe("success");
   });
 
   it("says Today on the event day regardless of the time of day", () => {
-    expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)).toMatchObject({ label: "Today", tone: "warning" });
+    expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)).toMatchObject({ label: "Today", tone: "orange" });
     expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", new Date("2026-09-26T23:59:59.000Z"))?.label).toBe("Today");
   });
 
@@ -58,9 +60,9 @@ describe("summarizeMenuApproval", () => {
   });
 
   it("uses the same tone as the Menu Approvals page badges", () => {
-    expect(summarizeMenuApproval([sel("DRAFT")], "PENDING_REVIEW")).toMatchObject({ title: "Needs review", tone: "warning" });
-    expect(summarizeMenuApproval([sel("CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("warning");
-    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("warning");
+    expect(summarizeMenuApproval([sel("DRAFT")], "PENDING_REVIEW")).toMatchObject({ title: "Needs review", tone: "cyan" });
+    expect(summarizeMenuApproval([sel("CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("pink");
+    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("fuchsia");
     expect(summarizeMenuApproval([sel("KITCHEN_REVIEWING")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("info");
     expect(summarizeMenuApproval([sel("FINAL_LOCKED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("success");
   });
@@ -72,7 +74,7 @@ describe("summarizeMenuApproval", () => {
   it("describes each step of the new team -> customer -> kitchen flow", () => {
     expect(summarizeMenuApproval([sel("CUSTOMER_APPROVED")], "KITCHEN_REVIEW")).toMatchObject({ title: "Customer approved the menu", tone: "success" });
     expect(summarizeMenuApproval([sel("KITCHEN_REVIEWING")], "KITCHEN_REVIEW")).toMatchObject({ title: "Kitchen is reviewing", tone: "info" });
-    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "PENDING_REVIEW")).toMatchObject({ title: "Kitchen requested changes", tone: "warning" });
+    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "PENDING_REVIEW")).toMatchObject({ title: "Kitchen requested changes", tone: "fuchsia" });
     expect(summarizeMenuApproval([sel("FINAL_LOCKED")], "SENT_TO_KITCHEN")).toMatchObject({ title: "Sent to the kitchen", tone: "success" });
   });
 
@@ -96,7 +98,7 @@ describe("getPaymentBreakdown", () => {
   });
 
   it("shows the whole total as pending when unpaid", () => {
-    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID" })).toEqual({ label: "Unpaid", tone: "warning", summary: "₹5,000 pending" });
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID" })).toEqual({ label: "Unpaid", tone: "danger", summary: "₹5,000 pending" });
   });
 
   it("never reports a negative pending amount if the advance exceeds the total", () => {
@@ -119,28 +121,63 @@ describe("getGuestCount", () => {
 });
 
 describe("list view helpers", () => {
-  it("phrases the countdown for a one-line pill", () => {
-    const pill = (start: string, end: string) => countdownPillLabel(getEventCountdown(day(start), day(end), "AWAITING_CUSTOMER_APPROVAL", NOW)!);
-    expect(pill("2026-10-13", "2026-10-13")).toBe("In 17 days");
-    expect(pill("2026-09-27", "2026-09-27")).toBe("In 1 day");
-    expect(pill("2026-09-26", "2026-09-26")).toBe("Today");
-    expect(pill("2026-09-25", "2026-09-27")).toBe("Ongoing");
-    expect(pill("2026-09-20", "2026-09-25")).toBe("Ended");
-  });
-
   it("always shows two decimals with Indian grouping in the Total column", () => {
     expect(formatAmountExact(64440)).toBe("₹64,440.00");
     expect(formatAmountExact(121558.14)).toBe("₹1,21,558.14");
   });
 
-  it("formats a single-day and a multi-day event", () => {
+  it("formats a single-day and a multi-day event, compactly when it stays within one month", () => {
     expect(formatEventDates(day("2026-12-05"), day("2026-12-05"))).toMatch(/5 Dec(?:t)? 2026|5 Dec 2026/);
-    expect(formatEventDates(day("2026-12-05"), day("2026-12-06"))).toContain("–");
+    expect(formatEventDates(day("2026-12-05"), day("2026-12-06"))).toMatch(/^5–6 Dec 2026$/);
+    expect(formatEventDates(day("2026-11-28"), day("2026-12-02"))).toMatch(/^28 Nov – 2 Dec 2026$/);
   });
 
-  it("uses the venue, else the address, else nothing for the location", () => {
-    expect(getOrderLocation({ venue: " Ghas Mandi, Bangalore ", eventAddress: "12 Road" })).toBe("Ghas Mandi, Bangalore");
-    expect(getOrderLocation({ venue: "  ", eventAddress: "12 Road" })).toBe("12 Road");
-    expect(getOrderLocation({ venue: null, eventAddress: null })).toBeNull();
+  it("uses only the Venue / Building Name for the location — never the address", () => {
+    expect(getOrderLocation({ venue: " Ghas Mandi, Bangalore " })).toBe("Ghas Mandi, Bangalore");
+    expect(getOrderLocation({ venue: "  " })).toBeNull();
+    expect(getOrderLocation({ venue: null })).toBeNull();
+  });
+
+  it("shows Today / Tomorrow for an event starting then, otherwise the date — one value, never both", () => {
+    expect(formatEventWhen(day("2026-09-26"), day("2026-09-26"), NOW)).toBe("Today");
+    expect(formatEventWhen(day("2026-09-27"), day("2026-09-27"), NOW)).toBe("Tomorrow");
+    expect(formatEventWhen(day("2026-09-27"), day("2026-09-28"), NOW)).toBe("Tomorrow");
+    expect(formatEventWhen(day("2026-09-28"), day("2026-09-28"), NOW)).toBe(formatEventDates(day("2026-09-28"), day("2026-09-28")));
+    expect(formatEventWhen(day("2026-10-13"), day("2026-10-13"), NOW)).not.toMatch(/Today|Tomorrow/);
+    expect(formatEventWhen(day("2026-09-20"), day("2026-09-25"), NOW)).toBe(formatEventDates(day("2026-09-20"), day("2026-09-25")));
+  });
+});
+
+describe("getCardCountdown", () => {
+  const countdown = (start: string, end: string, status: Parameters<typeof getCardCountdown>[2] = "AWAITING_CUSTOMER_APPROVAL") =>
+    getCardCountdown(day(start), day(end), status, NOW);
+
+  it("is always there while the event hasn't ended, including Today and Tomorrow", () => {
+    expect(countdown("2026-10-13", "2026-10-13")).toMatchObject({ caption: "Starts in", label: "17 days" });
+    expect(countdown("2026-09-27", "2026-09-27")).toMatchObject({ caption: "Starts in", label: "1 day" });
+    expect(countdown("2026-09-26", "2026-09-26")).toMatchObject({ label: "Today" });
+    expect(countdown("2026-09-25", "2026-09-27")).toMatchObject({ label: "Ongoing" });
+  });
+
+  it("drops Ended and cancelled", () => {
+    expect(countdown("2026-09-20", "2026-09-25", "COMPLETED")).toBeNull();
+    expect(countdown("2026-10-13", "2026-10-13", "CANCELLED")).toBeNull();
+  });
+});
+
+describe("distinct 'needs attention' tones (AJ, 2026-09-27)", () => {
+  it("gives every state that used to share amber its own tone, so they can be told apart on one card", () => {
+    const tones = {
+      pendingReview: ORDER_STATUS_TONE.PENDING_REVIEW,
+      needsReview: MENU_SELECTION_STATUS_TONE.DRAFT,
+      changesRequested: MENU_SELECTION_STATUS_TONE.CHANGES_REQUESTED,
+      kitchenChangesRequested: MENU_SELECTION_STATUS_TONE.KITCHEN_CHANGES_REQUESTED,
+      inPreparation: KITCHEN_STATUS_TONE.IN_PREPARATION,
+      oneDay: getEventCountdown(day("2026-09-27"), day("2026-09-27"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,
+      today: getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,
+      unpaid: getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID" }).tone,
+    };
+    expect(new Set(Object.values(tones)).size).toBe(Object.keys(tones).length);
+    expect(Object.values(tones)).not.toContain("warning");
   });
 });

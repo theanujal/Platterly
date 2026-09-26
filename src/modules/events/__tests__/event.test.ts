@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createEvent, updateEvent, deleteEvent, listEvents, getEvent, listKitchens } from "@/modules/events/event";
+import { updateEventOperations, createEvent, updateEvent, deleteEvent, listEvents, getEvent, listKitchens } from "@/modules/events/event";
 import { createEventType } from "@/modules/events/event-type";
 import { createCustomer } from "@/modules/customers/customer";
 import { createInventoryItem } from "@/modules/inventory/inventory";
@@ -190,3 +190,47 @@ describe("listKitchens (Chunk 9 — feeds the Events Dashboard location filter a
     expect(list.map((k) => k.name).slice(1)).toEqual(["Alpha Kitchen", "Zeta Kitchen"]);
   });
 });
+
+describe("updateEventOperations (AJ, 2026-09-27)", () => {
+  async function setup() {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210" }, actor.id);
+    const event = await createEvent(
+      org.id,
+      { customerId: customer.id, eventTypeId: eventType.id, name: "Asha's Event", startDate: new Date("2026-12-01"), endDate: new Date("2026-12-01"), notes: "keep me" },
+      actor.id,
+    );
+    return { org, actor, event };
+  }
+
+  it("changes only what it is given: kitchen, status, and the required-inventory list", async () => {
+    const { org, actor, event } = await setup();
+    const kitchen = await makeKitchen(org.id);
+    const rice = await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg" }, actor.id, 100);
+
+    await updateEventOperations(org.id, event.id, { assignedKitchenId: kitchen.id }, actor.id);
+    await updateEventOperations(org.id, event.id, { status: "PROCESSING" }, actor.id);
+    await updateEventOperations(org.id, event.id, { requiredInventory: [{ inventoryId: rice.id, quantity: 20 }] }, actor.id);
+
+    const after = await getEvent(org.id, event.id);
+    expect(after?.assignedKitchenId).toBe(kitchen.id);
+    expect(after?.status).toBe("PROCESSING");
+    expect(after?.name).toBe("Asha's Event");
+    expect(after?.notes).toBe("keep me");
+    expect(after?.requiredInventory.map((r) => Number(r.quantity))).toEqual([20]);
+
+    await updateEventOperations(org.id, event.id, { assignedKitchenId: null }, actor.id);
+    expect((await getEvent(org.id, event.id))?.assignedKitchenId).toBeNull();
+    expect((await getEvent(org.id, event.id))?.requiredInventory).toHaveLength(1);
+  });
+
+  it("refuses a kitchen from another organization", async () => {
+    const { org, actor, event } = await setup();
+    const otherOrg = await makeOrg();
+    const foreignKitchen = await makeKitchen(otherOrg.id);
+    await expect(updateEventOperations(org.id, event.id, { assignedKitchenId: foreignKitchen.id }, actor.id)).rejects.toThrow(/doesn't exist/);
+  });
+});
+

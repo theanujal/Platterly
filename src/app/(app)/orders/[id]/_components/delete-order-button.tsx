@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { deleteOrderAction } from "../../actions";
 
@@ -37,7 +38,10 @@ export function DeleteOrderButton({ orderId, name }: { orderId: string; name: st
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>Delete</AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button type="button" variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" />}>
+        <Trash2 data-icon="inline-start" />
+        Delete Order
+      </AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this order for &quot;{name}&quot;?</AlertDialogTitle>

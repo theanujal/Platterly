@@ -3,9 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Send, Undo2 } from "lucide-react";
+import { ClipboardCheck, History, Send, Undo2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CopyButton } from "@/components/ui/copy-button";
 import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import { sendMenuForApprovalAction, recallMenuAction } from "../../../menu-approvals/actions";
@@ -14,7 +16,14 @@ import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 interface OrderApprovalPanelProps {
   orderId: string;
   /** Null until the order has been sent for approval once. */
-  approval: { menuSelectionId: string; status: MenuSelectionStatus; currentVersion: number; versionCount: number; approvalUrl: string | null } | null;
+  approval: {
+    menuSelectionId: string;
+    status: MenuSelectionStatus;
+    currentVersion: number;
+    versionCount: number;
+    approvalUrl: string | null;
+    versions: { versionNumber: number; status: MenuSelectionStatus; note: string | null; sentAt: Date | null; supersededAt: Date | null }[];
+  } | null;
   /** Sending/recalling needs the same permission as the Menu Approvals page. */
   canManage: boolean;
 }
@@ -32,6 +41,7 @@ export function OrderApprovalPanel({ orderId, approval, canManage }: OrderApprov
   const [pending, setPending] = useState<"send" | "recall" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sentUrl, setSentUrl] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const status = approval?.status ?? null;
   const canSend = canManage && (status === null || SENDABLE.includes(status));
@@ -65,11 +75,16 @@ export function OrderApprovalPanel({ orderId, approval, canManage }: OrderApprov
     router.refresh();
   }
 
+  const fmt = (d: Date | null) => (d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null);
+
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-border p-4" data-testid="order-approval-panel">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-col gap-0.5">
-          <h2 className="text-sm font-semibold">Menu Approval</h2>
+    <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]" data-testid="order-approval-panel">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <ClipboardCheck className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold">Menu Approval</h2>
           <p className="text-xs text-muted-foreground">
             {status === null
               ? "This order hasn't been sent to the customer for approval yet."
@@ -105,12 +120,54 @@ export function OrderApprovalPanel({ orderId, approval, canManage }: OrderApprov
             {pending === "recall" ? "Recalling…" : "Recall to Edit"}
           </Button>
         )}
+        {approval && approval.versions.length > 0 && (
+          <Button type="button" size="md" variant="outline" onClick={() => setHistoryOpen(true)}>
+            <History data-icon="inline-start" />
+            Version history
+          </Button>
+        )}
         {canManage && approval && (
           <Button size="md" variant="outline" render={<Link href={`/menu-approvals/${approval.menuSelectionId}`} />} nativeButton={false}>
             Open in Menu Approvals
           </Button>
         )}
       </div>
-    </section>
+
+      <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Menu version history</DialogTitle>
+            <DialogDescription>
+              Every time the menu is sent to the customer, that version is saved as it was sent. Only the latest version can be approved.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+            {(approval?.versions ?? []).map((version) => {
+              const isCurrent = version.versionNumber === approval?.currentVersion;
+              return (
+                <div key={version.versionNumber} className="flex flex-col gap-1.5 rounded-lg border border-border p-3" data-testid="menu-version-row">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold">
+                      Version {version.versionNumber}
+                      {isCurrent && <span className="ml-2 text-xs font-normal text-muted-foreground">Current</span>}
+                    </span>
+                    {version.supersededAt ? (
+                      <Badge variant="neutral">Replaced</Badge>
+                    ) : (
+                      <Badge variant={MENU_SELECTION_STATUS_TONE[version.status]}>{MENU_SELECTION_STATUS_LABEL[version.status]}</Badge>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {version.sentAt ? `Sent ${fmt(version.sentAt)}` : "Not sent"}
+                    {version.supersededAt ? ` · Replaced ${fmt(version.supersededAt)}` : ""}
+                  </p>
+                  {version.note && <p className="text-sm">{version.note}</p>}
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
 }

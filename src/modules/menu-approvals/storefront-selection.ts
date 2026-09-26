@@ -47,3 +47,27 @@ export function splitPicks(sections: SelectableSection[], pickedIds: string[]): 
   }
   return { regularIds, extraIds, unknownIds, sectionOfItem };
 }
+
+/**
+ * The "selection is compulsory" rule for the admin picker (AJ, 2026-09-27):
+ * every category with a limit must have its full count of included dishes
+ * picked (or every dish it has, when it has fewer) before the meal can be
+ * saved. Extras don't count towards it. Returns one entry per category still
+ * short, in section order.
+ */
+export function requiredShortfalls(
+  sections: (SelectableSection & { categoryName: string })[],
+  pickedIds: string[],
+): { name: string; missing: number }[] {
+  const { extraIds, sectionOfItem } = splitPicks(sections, pickedIds);
+  const extras = new Set(extraIds);
+  const result: { name: string; missing: number }[] = [];
+  sections.forEach((section, index) => {
+    if (section.maxSelection === null) return;
+    const regular = pickedIds.filter((id) => sectionOfItem.get(id) === index && !extras.has(id)).length;
+    const needed = Math.min(section.maxSelection, section.items.length);
+    if (regular < needed) result.push({ name: section.categoryName, missing: needed - regular });
+  });
+  return result;
+}
+

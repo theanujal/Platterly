@@ -26,7 +26,7 @@ describe("Order status labels (AJ, 2026-09-26)", () => {
   });
 
   it("gives every status a tone from the shared legend", () => {
-    expect(ORDER_STATUS_ORDER.map((s) => ORDER_STATUS_TONE[s])).toEqual(["warning", "info", "info", "success", "info", "success", "danger"]);
+    expect(ORDER_STATUS_ORDER.map((s) => ORDER_STATUS_TONE[s])).toEqual(["violet", "info", "info", "success", "info", "success", "danger"]);
   });
 
   it("labels every menu-approval status, including the queue's 'Needs Review' and 'Awaiting Customer Approval'", () => {

@@ -18,7 +18,8 @@ function formatDate(date: Date) {
 function priority(eventDate: Date): { label: string; variant: NonNullable<VariantProps<typeof badgeVariants>["variant"]> } {
   const days = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { label: "Overdue", variant: "danger" };
-  if (days === 0) return { label: "Today", variant: "warning" };
+  // Same orange as "Today" on the Orders card (AJ, 2026-09-27).
+  if (days === 0) return { label: "Today", variant: "orange" };
   if (days === 1) return { label: "Tomorrow", variant: "info" };
   return { label: `In ${days} days`, variant: "neutral" };
 }

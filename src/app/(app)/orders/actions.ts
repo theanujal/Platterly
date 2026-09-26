@@ -1,22 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
   createOrder,
   updateOrder,
   deleteOrder,
+  getOrder,
   sendOrderWhatsApp,
-  createEventForOrder,
+  syncOrderEvent,
   type OrderInput,
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
-import { getEvent, updateEvent, deleteEvent, type RequiredInventoryInput } from "@/modules/events/event";
+import { getEvent, updateEventOperations, type RequiredInventoryInput } from "@/modules/events/event";
 import { listCustomers, createCustomer } from "@/modules/customers/customer";
+import { listAddOns } from "@/modules/addons/addon";
 import { getMenuForOrderPicker, type OrderPickerMenu } from "@/modules/menus/menu";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
-import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, EventStatus, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
+import { isBackdated } from "@/modules/orders/event-date-rule";
+import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, EventStatus, FoodType, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -82,6 +85,7 @@ function buildInput(formData: FormData): OrderInput {
   return {
     customerId,
     eventTypeId: stringField(formData, "eventTypeId") ?? null,
+    menuPreference: (stringField(formData, "menuPreference") as FoodType | undefined) ?? null,
     orderKind: (stringField(formData, "orderKind") as OrderKind | undefined) ?? "SINGLE",
     eventStartDate,
     eventEndDate,
@@ -128,26 +132,9 @@ function buildInput(formData: FormData): OrderInput {
   };
 }
 
-// Create Order's "Event Date" validation (2026-09-19) — never trust the
-// client-side copy of this same check in order-form.tsx alone. Measured in
-// calendar days (midnight to midnight), not exact 48h, matching how the rest
-// of the form already treats dates.
-const MIN_DAYS_BEFORE_EVENT = 2;
-
-function daysUntil(date: Date): number {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfEvent = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  return Math.round((startOfEvent.getTime() - startOfToday.getTime()) / 86_400_000);
-}
-
-/** Owner only (permissions.ts's `orders: ["bypass_date_restriction"]`) — see RULES.md-style rationale in order-form.tsx's own client-side copy of this check. */
-async function assertEventDateAllowed(organizationId: string, eventStartDate: Date) {
-  if (daysUntil(eventStartDate) >= MIN_DAYS_BEFORE_EVENT) return;
-  const canBypass = await hasPermission({ orders: ["bypass_date_restriction"] }, organizationId);
-  if (!canBypass) {
-    throw new Error(`Orders can't normally be created less than ${MIN_DAYS_BEFORE_EVENT} days before the event. An Owner can override this.`);
-  }
+/** No backdated orders (AJ, 2026-09-27) — the server-side copy of order-form.tsx's own check; see modules/orders/event-date-rule.ts. */
+function assertEventDateAllowed(eventStartDate: Date, unchangedFrom?: Date) {
+  if (isBackdated(eventStartDate, unchangedFrom)) throw new Error("Event Date can't be in the past.");
 }
 
 export async function createOrderAction(formData: FormData): Promise<ActionResult> {
@@ -155,8 +142,9 @@ export async function createOrderAction(formData: FormData): Promise<ActionResul
   await requirePermission({ orders: ["create"] }, organizationId);
   try {
     const input = buildInput(formData);
-    await assertEventDateAllowed(organizationId, input.eventStartDate);
-    await createOrder(organizationId, input, session.user.id);
+    assertEventDateAllowed(input.eventStartDate);
+    const order = await createOrder(organizationId, input, session.user.id);
+    await syncOrderEvent(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -169,8 +157,9 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
   await requirePermission({ orders: ["create"] }, organizationId);
   try {
     const input = buildInput(formData);
-    await assertEventDateAllowed(organizationId, input.eventStartDate);
+    assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, input, session.user.id);
+    await syncOrderEvent(organizationId, order.id, session.user.id);
     await sendOrderWhatsApp(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -184,8 +173,9 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
   await requirePermission({ orders: ["edit"] }, organizationId);
   try {
     const input = buildInput(formData);
-    await assertEventDateAllowed(organizationId, input.eventStartDate);
+    assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
+    await syncOrderEvent(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -199,8 +189,9 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
   await requirePermission({ orders: ["edit"] }, organizationId);
   try {
     const input = buildInput(formData);
-    await assertEventDateAllowed(organizationId, input.eventStartDate);
+    assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
+    await syncOrderEvent(organizationId, id, session.user.id);
     await sendOrderWhatsApp(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -222,87 +213,22 @@ export async function deleteOrderAction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Group 10.6 — the inline "Yes, create event" action on the Order detail page. */
-export async function createEventForOrderAction(orderId: string): Promise<ActionResult> {
-  const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ orders: ["edit"], events: ["create"] }, organizationId);
-  try {
-    await createEventForOrder(organizationId, orderId, session.user.id);
-  } catch (error) {
-    return toErrorResult(error);
-  }
-  revalidatePath(`/orders/${orderId}`);
-  return { ok: true };
-}
-
-function buildRequiredInventory(formData: FormData): RequiredInventoryInput[] {
-  const ids = formData.getAll("requiredInventoryId").filter((v): v is string => typeof v === "string");
-  const quantities = formData.getAll("requiredInventoryQuantity").filter((v): v is string => typeof v === "string");
-  return ids.map((inventoryId, index) => ({
-    inventoryId,
-    quantity: Number.parseFloat(quantities[index] ?? "0") || 0,
-  }));
-}
-
 /**
- * The Order/Event judgment call (dev plans/index.md #14): a linked Event is
- * now fully editable inline from the Order detail page — the standalone
- * `/events/[id]` page (Chunk 9) was removed once every Event started coming
- * from an Order (AJ, 2026-09-16), so this is the only place left that edits
- * an Event's own fields, including what a smaller draft of this form used
- * to leave untouched (name, dates, status, required inventory) and what the
- * standalone page alone used to expose (status, required inventory, delete
- * — see deleteOrderEventAction below). Customer reassignment is deliberately
- * NOT exposed here — an Event's customer follows its Order's.
+ * The Order page's kitchen / event status / required inventory cards
+ * (AJ, 2026-09-27). They save as you change them, so this takes one field at
+ * a time; the rest of an Event follows its Order (see syncOrderEvent).
  */
-export async function updateOrderEventAction(eventId: string, formData: FormData): Promise<ActionResult> {
+export async function updateEventOperationsAction(
+  orderId: string,
+  eventId: string,
+  patch: { assignedKitchenId?: string | null; status?: EventStatus; requiredInventory?: RequiredInventoryInput[] },
+): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ events: ["edit"] }, organizationId);
   try {
-    const current = await getEvent(organizationId, eventId);
-    if (!current) throw new Error("Event not found.");
-    const eventTypeId = stringField(formData, "eventTypeId");
-    if (!eventTypeId) throw new Error("Event Type is required.");
-    const name = stringField(formData, "name");
-    if (!name) throw new Error("Event Name is required.");
-    const startDate = dateField(formData, "startDate");
-    if (!startDate) throw new Error("A valid Start Date is required.");
-    const endDate = dateField(formData, "endDate");
-    if (!endDate) throw new Error("A valid End Date is required.");
-    if (endDate < startDate) throw new Error("End Date can't be before Start Date.");
-    await assertEventDateAllowed(organizationId, startDate);
-
-    await updateEvent(
-      organizationId,
-      eventId,
-      {
-        customerId: current.customerId,
-        eventTypeId,
-        assignedKitchenId: stringField(formData, "assignedKitchenId") ?? null,
-        name,
-        startDate,
-        endDate,
-        venue: stringField(formData, "venue"),
-        guestCount: numberField(formData, "guestCount") ?? null,
-        notes: stringField(formData, "notes"),
-        status: stringField(formData, "status") as EventStatus | undefined,
-        requiredInventory: buildRequiredInventory(formData),
-      },
-      session.user.id,
-    );
-  } catch (error) {
-    return toErrorResult(error);
-  }
-  revalidatePath("/orders");
-  return { ok: true };
-}
-
-/** Folded in from the deleted standalone `/events/[id]` page's DeleteEventButton. */
-export async function deleteOrderEventAction(orderId: string, eventId: string): Promise<ActionResult> {
-  const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["delete"] }, organizationId);
-  try {
-    await deleteEvent(organizationId, eventId, session.user.id);
+    const event = await getEvent(organizationId, eventId);
+    if (!event || event.orderId !== orderId) throw new Error("Event not found.");
+    await updateEventOperations(organizationId, eventId, patch, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -363,10 +289,29 @@ export async function createCustomerForOrderAction(formData: FormData): Promise<
  * data source, fetched on demand once a meal assigns a Menu rather than
  * preloading every Menu's items up front for every Order form load.
  */
-export async function getMenuForOrderPickerAction(menuId: string): Promise<OrderPickerMenu | null> {
+export interface OrderPickerAddOn {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  price: number;
+  priceType: "PER_PLATE" | "FIXED";
+}
+
+/** The picker drawer's data: the Menu's category-grouped items plus the active Add-ons (AJ, 2026-09-27). */
+export type OrderPickerData = OrderPickerMenu & { addOns: OrderPickerAddOn[] };
+
+export async function getMenuForOrderPickerAction(menuId: string): Promise<OrderPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
-  return getMenuForOrderPicker(organizationId, menuId);
+  const [menu, addOns] = await Promise.all([getMenuForOrderPicker(organizationId, menuId), listAddOns(organizationId)]);
+  if (!menu) return null;
+  return {
+    ...menu,
+    addOns: addOns
+      .filter((a) => a.isActive)
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, price: Number(a.price), priceType: a.priceType })),
+  };
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

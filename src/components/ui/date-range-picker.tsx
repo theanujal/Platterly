@@ -42,6 +42,8 @@ interface DateRangePickerProps {
   onChange: (startDate: string, endDate: string) => void;
   placeholder?: string;
   className?: string;
+  /** "YYYY-MM-DD" — days before this are shown greyed out and can't be picked (no backdated orders). Omit to allow any day. */
+  minDate?: string;
   /**
    * Optional busy-ness data (Chunk 13 Group 13.1): given a "YYYY-MM-DD"
    * window, resolves how many orders fall on each day. When provided, dates
@@ -56,12 +58,11 @@ interface DateRangePickerProps {
  * separate Event Start Date / End Date inputs with one field. Built from
  * scratch (Popover + a plain month grid) rather than a new dependency, per
  * AJ's explicit choice — no calendar/date-range component existed anywhere
- * in the repo before this. Deliberately does not disable or grey out any
- * date: the "can't create an order <2 days before the event" rule is a
- * soft, message-based validation (owner/admin can bypass it), not a calendar
- * restriction — see order-form.tsx's own validation next to this field.
+ * in the repo before this. Days are only greyed out when the caller passes
+ * `minDate` (Create Order does, so nothing can be booked in the past); any
+ * other rule stays a message-based validation next to the field.
  */
-export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, loadOrderCounts }: DateRangePickerProps) {
+export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, minDate, loadOrderCounts }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [viewMonth, setViewMonth] = useState(() => (startDate ? parseIsoDate(startDate) : new Date()));
@@ -201,14 +202,16 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
             // own legend colour; every other busy date gets a line instead.
             // A selected endpoint is already filled, so it shows no line.
             const todayFill = !inRange && isToday && band;
+            const isPastMin = Boolean(minDate && iso < minDate);
             return (
               <button
                 key={iso}
                 type="button"
                 title={count > 0 ? `${count} order${count === 1 ? "" : "s"}` : undefined}
+                disabled={isPastMin}
                 onClick={() => handleDayClick(iso)}
                 className={cn(
-                  "relative flex size-8 items-center justify-center rounded-md text-sm transition-colors hover:bg-muted",
+                  "relative flex size-8 items-center justify-center rounded-md text-sm transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
                   inRange && !isEndpoint && "bg-accent text-accent-foreground",
                   isEndpoint && "bg-primary text-primary-foreground hover:bg-primary/90",
                   !inRange && isToday && !band && "font-semibold text-primary",

@@ -296,10 +296,17 @@ export async function getOrderMenuApproval(organizationId: string, orderId: stri
   const selection = await prisma.menuSelection.findFirst({
     where: { organizationId, event: { orderId } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, status: true, currentVersion: true, _count: { select: { versions: true } } },
+    select: {
+      id: true,
+      status: true,
+      currentVersion: true,
+      _count: { select: { versions: true } },
+      versions: { orderBy: { versionNumber: "desc" }, select: { versionNumber: true, status: true, note: true, sentAt: true, supersededAt: true } },
+    },
   });
   if (!selection) return null;
   return {
+    versions: selection.versions,
     menuSelectionId: selection.id,
     status: selection.status,
     currentVersion: selection.currentVersion,

@@ -12,8 +12,11 @@ import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "
  * still be overridden by hand on the order form.
  */
 
-/** Shared Badge legend (badge.tsx): neutral = not started, info = in progress, warning = needs attention, success = approved/done, danger = cancelled. */
-export type Tone = "neutral" | "info" | "warning" | "success" | "danger";
+/**
+ * Shared Badge legend (badge.tsx): neutral = not started, info = in progress, warning = needs attention, success = approved/done, danger = cancelled.
+ * The accent tones (violet…orange, AJ 2026-09-27) split the "needs attention" states so they can be told apart on one card.
+ */
+export type Tone = "neutral" | "info" | "warning" | "success" | "danger" | "violet" | "cyan" | "pink" | "fuchsia" | "teal" | "yellow" | "orange";
 
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING_REVIEW: "Pending Review",
@@ -26,7 +29,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 };
 
 export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
-  PENDING_REVIEW: "warning",
+  PENDING_REVIEW: "violet",
   AWAITING_CUSTOMER_APPROVAL: "info",
   KITCHEN_REVIEW: "info",
   APPROVED: "success",
@@ -48,7 +51,7 @@ export const ORDER_STATUS_ORDER: OrderStatus[] = [
 
 export const KITCHEN_STATUS_TONE: Record<KitchenProductionStatus, Tone> = {
   PENDING: "neutral",
-  IN_PREPARATION: "warning",
+  IN_PREPARATION: "teal",
   READY: "info",
   DELIVERED: "success",
   CANCELLED: "danger",
@@ -106,13 +109,13 @@ export const MENU_SELECTION_STATUS_LABEL: Record<MenuSelectionStatus, string> = 
 };
 
 export const MENU_SELECTION_STATUS_TONE: Record<MenuSelectionStatus, Tone> = {
-  DRAFT: "warning",
+  DRAFT: "cyan",
   SENT_TO_CUSTOMER: "info",
   CUSTOMER_REVIEWING: "info",
-  CHANGES_REQUESTED: "warning",
+  CHANGES_REQUESTED: "pink",
   CUSTOMER_APPROVED: "success",
   KITCHEN_REVIEWING: "info",
-  KITCHEN_CHANGES_REQUESTED: "warning",
+  KITCHEN_CHANGES_REQUESTED: "fuchsia",
   KITCHEN_APPROVED: "success",
   FINAL_LOCKED: "success",
 };

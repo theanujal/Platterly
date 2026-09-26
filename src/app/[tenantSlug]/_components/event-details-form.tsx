@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MARKETING_CONSENT_DEFAULT_CHECKED } from "@/modules/menu-approvals/storefront-draft-constants";
 import { startDraftAction, saveDetailsAction } from "../actions";
 import { cn } from "cn";
+import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "@/modules/menu-approvals/public-lead-time";
 
 const MEAL_TYPE_OPTIONS = [
   { value: "BREAKFAST", label: "Breakfast" },
@@ -72,7 +73,8 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
 
   const selectedEventType = eventTypes.find((et) => et.id === values.eventTypeId);
   const minGuests = selectedEventType?.minGuests ?? null;
-  const today = new Date().toISOString().slice(0, 10);
+  // 2 days' notice for customers (AJ, 2026-09-27): today and tomorrow are not selectable.
+  const earliestDate = earliestPublicEventDate();
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -135,7 +137,8 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-date" required>Event Date</Label>
-              <Input id="ed-date" type="date" required min={today} value={values.eventDate} onChange={(e) => setField("eventDate", e.target.value)} />
+              <Input id="ed-date" type="date" required min={earliestDate} value={values.eventDate} onChange={(e) => setField("eventDate", e.target.value)} />
+              <p className="text-xs text-muted-foreground">We need at least {PUBLIC_MIN_LEAD_DAYS} days&apos; notice, so today and tomorrow can&apos;t be booked.</p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-event-type" required>Event Type</Label>

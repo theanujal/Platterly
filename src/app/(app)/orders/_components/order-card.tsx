@@ -5,7 +5,7 @@ import { getEventTypeIcon } from "@/lib/event-type-icons";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "cn";
 import type { listOrders } from "@/modules/orders/order";
-import { formatAmount, formatEventDates, getEventCountdown, getGuestCount, getOrderLocation, getPaymentBreakdown, summarizeMenuApproval } from "@/modules/orders/order-card";
+import { formatAmount, formatEventWhen, getGuestCount, getOrderLocation, getPaymentBreakdown, getCardCountdown, summarizeMenuApproval } from "@/modules/orders/order-card";
 import { OrderCardMenu } from "./order-card-menu";
 import { ORDER_KIND_ICON, ORDER_KIND_LABEL, ORDER_KIND_VARIANT, STATUS_ICON, STATUS_LABEL, STATUS_VARIANT, TONE_SURFACE } from "./order-display";
 
@@ -47,7 +47,8 @@ export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
 
   const total = Number(order.total);
   const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus });
-  const countdown = getEventCountdown(order.eventStartDate, order.eventEndDate, order.status, now);
+  // Null only once the event has ended (AJ, 2026-09-26); Today / Tomorrow still show their countdown.
+  const countdown = getCardCountdown(order.eventStartDate, order.eventEndDate, order.status, now);
   const menuApproval = summarizeMenuApproval(
     order.events.flatMap((event) => (event.menuSelection ? [event.menuSelection] : [])),
     order.status,
@@ -107,9 +108,14 @@ export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
       </div>
 
       {/* Wide: three columns, Event Date widest (a multi-day range is the longest value). Narrow: Event Date on its own row, Guests and countdown below. */}
-      <div className="grid grid-cols-2 items-center gap-x-3 gap-y-3 @sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] @sm:gap-x-0 @sm:divide-x @sm:divide-border">
+      <div
+        className={cn(
+          "grid grid-cols-2 items-center gap-x-3 gap-y-3 @sm:gap-x-0 @sm:divide-x @sm:divide-border",
+          countdown ? "@sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)]" : "@sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]",
+        )}
+      >
         <StatCell icon={CalendarDays} caption="Event Date" className="col-span-2 @sm:col-span-1">
-          <span className="text-sm font-semibold">{formatEventDates(order.eventStartDate, order.eventEndDate)}</span>
+          <span className="text-sm font-semibold">{formatEventWhen(order.eventStartDate, order.eventEndDate, now)}</span>
         </StatCell>
         <StatCell icon={Users} caption="Guests">
           <span className="text-sm font-semibold">
@@ -118,9 +124,11 @@ export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
             {guests ? <span className="hidden @lg:inline"> {guests === 1 ? "Guest" : "Guests"}</span> : null}
           </span>
         </StatCell>
-        <StatCell icon={Clock} caption={countdown?.caption ?? "Event"}>
-          {countdown ? <Badge variant={countdown.tone}>{countdown.label}</Badge> : <span className="text-sm font-semibold">—</span>}
-        </StatCell>
+        {countdown && (
+          <StatCell icon={Clock} caption={countdown.caption}>
+            <Badge variant={countdown.tone}>{countdown.label}</Badge>
+          </StatCell>
+        )}
       </div>
 
       {menuApproval && (
