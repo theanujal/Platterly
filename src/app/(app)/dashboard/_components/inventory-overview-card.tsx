@@ -22,7 +22,7 @@ export async function InventoryOverviewCard({ organizationId }: { organizationId
       progressPercent={stats.totalItems === 0 ? 0 : (stats.inStock / stats.totalItems) * 100}
       redChip={{ icon: TriangleAlert, label: "Low Stock", value: stats.lowStock }}
       orangeChip={{ icon: CircleX, label: "Expired", value: stats.expired }}
-      rows={lowStockItems.slice(0, 2).map((item) => ({
+      rows={lowStockItems.slice(0, 3).map((item) => ({
         key: item.id,
         title: item.name,
         subtitle: `${Number(item.stockCount)} ${item.unit}`,

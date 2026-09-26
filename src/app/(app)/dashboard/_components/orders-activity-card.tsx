@@ -1,45 +1,8 @@
 import Link from "next/link";
 import { ShoppingCart, ArrowRight } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardAction, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RevenueTrendChart } from "./revenue-trend-chart";
-import type { OrderStatus, OrderPaymentStatus } from "@/generated/prisma/enums";
-
-// Same status → badge-variant/label mapping as the Orders list page
-// (src/app/(app)/orders/page.tsx) — kept in sync deliberately so a status
-// reads identically wherever it appears.
-const STATUS_VARIANT: Record<OrderStatus, "neutral" | "info" | "success" | "danger"> = {
-  DRAFT: "neutral",
-  CONFIRMED: "info",
-  IN_PREPARATION: "info",
-  READY: "success",
-  COMPLETED: "success",
-  CANCELLED: "danger",
-};
-
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Draft",
-  CONFIRMED: "Confirmed",
-  IN_PREPARATION: "In Preparation",
-  READY: "Ready",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
-
-interface OrderRow {
-  id: string;
-  orderNumber: string | null;
-  status: OrderStatus;
-  paymentStatus: OrderPaymentStatus;
-  total: number;
-  eventStartDate: Date;
-  customerName: string;
-}
 
 interface RevenueTrendPoint {
   date: string;
@@ -50,15 +13,14 @@ interface RevenueTrendPoint {
 
 interface OrdersActivityCardProps {
   revenueTrend: RevenueTrendPoint[];
-  recentOrders: OrderRow[];
   totalOrders: number;
 }
 
 // The dashboard's dominant module — a real revenue trend (order value per
-// day, last 30 days) plus the most recent orders, each one a direct link
-// into that order. Status breakdown lives in the KPI grid above this card,
-// so it isn't repeated here.
-export function OrdersActivityCard({ revenueTrend, recentOrders, totalOrders }: OrdersActivityCardProps) {
+// day). AJ, 2026-09-26: the recent-orders list under the graph was removed;
+// the full list lives on /orders ("View all"). Status breakdown lives in the
+// KPI grid above this card, so it isn't repeated here.
+export function OrdersActivityCard({ revenueTrend, totalOrders }: OrdersActivityCardProps) {
   return (
     <Card className="h-full">
       <CardHeader>
@@ -90,31 +52,7 @@ export function OrdersActivityCard({ revenueTrend, recentOrders, totalOrders }: 
             </Button>
           </div>
         ) : (
-          <>
-            <RevenueTrendChart data={revenueTrend} />
-            <div className="flex flex-col divide-y divide-border">
-              {recentOrders.map((order) => (
-                <Link
-                  key={order.id}
-                  href={`/orders/${order.id}`}
-                  className="-mx-2 flex items-center justify-between gap-3 rounded-lg px-2 py-2.5 transition-colors first:pt-0 last:pb-0 hover:bg-muted/40"
-                >
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-sm font-medium">{order.customerName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {order.orderNumber ?? "—"} · {order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-0.5">
-                    <span className="text-sm font-semibold">{formatCurrency(order.total)}</span>
-                    <Badge variant={STATUS_VARIANT[order.status]} className="w-fit">
-                      {STATUS_LABEL[order.status]}
-                    </Badge>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </>
+          <RevenueTrendChart data={revenueTrend} />
         )}
       </CardContent>
     </Card>

@@ -44,14 +44,22 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
               <div className="flex min-w-0 flex-1 flex-col gap-2">
                 <p className="min-w-0 truncate text-sm text-muted-foreground">{url}</p>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="md" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
-                    <ExternalLink className="size-4" />
-                    View
-                  </Button>
-                  <CopyButton value={url} size="md" />
                   <Button
                     variant="outline"
-                    size="md"
+                    size="icon-sm"
+                    aria-label="View public menu"
+                    title="View public menu"
+                    render={<a href={url} target="_blank" rel="noopener" />}
+                    nativeButton={false}
+                  >
+                    <ExternalLink className="size-4" />
+                  </Button>
+                  <CopyButton value={url} label="Copy link" iconOnly />
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Share on WhatsApp"
+                    title="Share on WhatsApp"
                     render={
                       <a
                         href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
@@ -62,16 +70,16 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
                     nativeButton={false}
                   >
                     <WhatsAppIcon className="size-4 text-emerald-600" />
-                    Share
                   </Button>
                   <Button
                     variant="outline"
-                    size="md"
+                    size="icon-sm"
+                    aria-label="Manage public link"
+                    title="Manage public link"
                     render={<Link href="/settings/integration/public-menu-link" />}
                     nativeButton={false}
                   >
                     <Settings2 className="size-4" />
-                    Manage
                   </Button>
                 </div>
               </div>

@@ -40,7 +40,6 @@ export async function getDashboardSnapshot(organizationId: string) {
   const [
     statusCounts,
     dueAgg,
-    recentOrdersRaw,
     upcomingEventsRaw,
     quotationsAwaitingResponse,
     inventory,
@@ -52,21 +51,6 @@ export async function getDashboardSnapshot(organizationId: string) {
       where: { organizationId, status: { not: "CANCELLED" }, balance: { gt: 0 } },
       _sum: { balance: true },
       _count: { _all: true },
-    }),
-    prisma.order.findMany({
-      where: { organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 6,
-      select: {
-        id: true,
-        orderNumber: true,
-        status: true,
-        paymentStatus: true,
-        total: true,
-        eventStartDate: true,
-        eventEndDate: true,
-        customer: { select: { name: true } },
-      },
     }),
     prisma.event.findMany({
       where: { organizationId, startDate: { gte: startOfToday }, status: { not: "CANCELLED" } },
@@ -137,16 +121,6 @@ export async function getDashboardSnapshot(organizationId: string) {
     draftOrders,
     outstandingBalance: Number(dueAgg._sum.balance ?? 0),
     outstandingOrdersCount: dueAgg._count._all,
-    recentOrders: recentOrdersRaw.map((o) => ({
-      id: o.id,
-      orderNumber: o.orderNumber,
-      status: o.status,
-      paymentStatus: o.paymentStatus,
-      total: Number(o.total),
-      eventStartDate: o.eventStartDate,
-      eventEndDate: o.eventEndDate,
-      customerName: o.customer.name,
-    })),
     upcomingEvents: upcomingEventsRaw.map((e) => ({
       id: e.id,
       name: e.name,

@@ -29,6 +29,12 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(0)}`;
 }
 
+// Compact Indian-style axis labels (12K, 1.2L, 1Cr) so the tick column stays narrow.
+const compactRupees = new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 });
+function formatAxisCurrency(amount: number) {
+  return `₹${compactRupees.format(amount)}`;
+}
+
 function formatDateLabel(dateKey: string) {
   const [y, m, d] = dateKey.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
@@ -89,7 +95,15 @@ export function RevenueTrendChart({ data }: RevenueTrendChartProps) {
                 tickLine={false}
                 interval={Math.ceil(visible.length / 6)}
               />
-              <YAxis hide domain={[0, (max: number) => (max === 0 ? 100 : max * 1.2)]} />
+              <YAxis
+                width={52}
+                tickCount={5}
+                tickFormatter={formatAxisCurrency}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                axisLine={false}
+                tickLine={false}
+                domain={[0, "auto"]}
+              />
               <Tooltip
                 formatter={(value, name) => [formatCurrency(Number(value ?? 0)), name]}
                 labelFormatter={(label) => formatDateLabel(String(label))}

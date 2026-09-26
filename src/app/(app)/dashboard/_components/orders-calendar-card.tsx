@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
-import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CardFooterLink } from "./card-footer-link";
 import { DensityLegend, DensityLine, densityBand } from "@/components/calendar/order-density";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -97,12 +97,8 @@ export function OrdersCalendarCard({ orderCountsByDay }: OrdersCalendarCardProps
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-3">
-          <DensityLegend />
-          <Link href="/calendar" className="text-xs font-semibold text-primary hover:underline">
-            View full calendar
-          </Link>
-        </div>
+        <DensityLegend className="border-t border-border pt-3" />
+        <CardFooterLink href="/calendar" label="View full calendar" />
       </CardContent>
     </Card>
   );

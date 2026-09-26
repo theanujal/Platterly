@@ -1,10 +1,8 @@
-import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { ArrowRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { cn } from "cn";
 import { DashboardCardHeader } from "./dashboard-card-header";
+import { CardFooterLink } from "./card-footer-link";
 
 type StatusTone = "teal" | "indigo";
 
@@ -133,23 +131,7 @@ export function StatusOverviewCard({
           </div>
         )}
 
-        {/* Base UI's Button + nativeButton={false} sets role="button" on the
-            rendered <a> — deliberate, not a style choice: a bare <Link> here
-            keeps native role="link", which collides under accessible-name
-            substring matching with the sidebar's own "Inventory" nav link
-            (e.g. this card's "Manage inventory" vs. the sidebar's
-            "Inventory") — caught by inventory.spec.ts's real strict-mode
-            failure, not hypothetical. */}
-        <Button
-          variant="ghost"
-          size="sm"
-          render={<Link href={footerHref} />}
-          nativeButton={false}
-          className="h-auto justify-start gap-1 self-start p-0 text-xs font-medium text-muted-foreground hover:bg-transparent hover:text-foreground"
-        >
-          {footerLabel}
-          <ArrowRight className="size-3.5" />
-        </Button>
+        <CardFooterLink href={footerHref} label={footerLabel} />
       </CardContent>
     </Card>
   );

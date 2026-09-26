@@ -73,7 +73,6 @@ export default async function DashboardPage() {
         <div className="lg:col-span-2">
           <OrdersActivityCard
             revenueTrend={snapshot.revenueTrend}
-            recentOrders={snapshot.recentOrders}
             totalOrders={snapshot.totalOrders}
           />
         </div>

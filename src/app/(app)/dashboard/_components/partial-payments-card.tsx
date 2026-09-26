@@ -30,7 +30,7 @@ export async function PartialPaymentsCard({ organizationId }: { organizationId: 
       progressPercent={totalValue === 0 ? 0 : (overview.totalCollected / totalValue) * 100}
       redChip={{ icon: Hourglass, label: "Partially Paid", value: overview.partialCount }}
       orangeChip={{ icon: Clock, label: "Overdue", value: overview.overdueCount }}
-      rows={overview.orders.slice(0, 2).map((order) => ({
+      rows={overview.orders.slice(0, 3).map((order) => ({
         key: order.id,
         title: order.customerName,
         subtitle: `${order.orderNumber ?? "—"} · ${formatCurrency(order.balance)} due`,
