@@ -25,7 +25,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "./customer-combobox";
 import { FoodItemSelectionDialog, type FoodItemSelectionValue } from "./food-item-selection-dialog";
 import { cn } from "cn";
-import type { ActionResult } from "../actions";
+import { getOrderCountsByDayAction, type ActionResult } from "../actions";
 
 // Mirrors actions.ts's own MIN_DAYS_BEFORE_EVENT/daysUntil/assertEventDateAllowed
 // exactly — this is a live client-side preview of the same server-enforced
@@ -779,6 +779,7 @@ export function OrderForm({
               startDate={values.eventStartDate}
               endDate={values.eventEndDate}
               onChange={setEventDateRange}
+              loadOrderCounts={getOrderCountsByDayAction}
             />
             {eventDateRestricted && (
               <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>

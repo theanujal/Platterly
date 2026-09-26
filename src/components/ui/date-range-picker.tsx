@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "cn";
+import { DensityLegend, DensityLine, densityBand } from "@/components/calendar/order-density";
 
 const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
@@ -41,6 +42,13 @@ interface DateRangePickerProps {
   onChange: (startDate: string, endDate: string) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Optional busy-ness data (Chunk 13 Group 13.1): given a "YYYY-MM-DD"
+   * window, resolves how many orders fall on each day. When provided, dates
+   * with orders get a short density line under them, today is filled with its
+   * own band colour, and a legend is shown. Omit for a plain picker.
+   */
+  loadOrderCounts?: (fromIso: string, toIso: string) => Promise<Record<string, number>>;
 }
 
 /**
@@ -53,10 +61,33 @@ interface DateRangePickerProps {
  * soft, message-based validation (owner/admin can bypass it), not a calendar
  * restriction — see order-form.tsx's own validation next to this field.
  */
-export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className }: DateRangePickerProps) {
+export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, loadOrderCounts }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [viewMonth, setViewMonth] = useState(() => (startDate ? parseIsoDate(startDate) : new Date()));
+  const [orderCounts, setOrderCounts] = useState<Record<string, number>>({});
+
+  // Fetch the visible month's counts whenever the popover opens or the month
+  // changes. Results merge into what's already loaded so navigating back to a
+  // month doesn't flash empty; a stale response is dropped via `cancelled`.
+  const viewYear = viewMonth.getFullYear();
+  const viewMonthIndex = viewMonth.getMonth();
+  useEffect(() => {
+    if (!open || !loadOrderCounts) return;
+    let cancelled = false;
+    const from = toIsoDate(new Date(viewYear, viewMonthIndex, 1));
+    const to = toIsoDate(new Date(viewYear, viewMonthIndex + 1, 0));
+    loadOrderCounts(from, to)
+      .then((counts) => {
+        if (!cancelled) setOrderCounts((prev) => ({ ...prev, ...counts }));
+      })
+      .catch(() => {
+        // Busy-ness lines are a hint, never a blocker — the picker still works without them.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, loadOrderCounts, viewYear, viewMonthIndex]);
 
   function handleOpenChange(next: boolean) {
     setOpen(next);
@@ -107,25 +138,45 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
         <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate">{label}</span>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-3">
+      <PopoverContent align="start" className="w-[21rem] p-3">
         <div className="flex items-center justify-between pb-2">
-          <button
-            type="button"
-            aria-label="Previous month"
-            className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
-            onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
-          >
-            <ChevronLeft className="size-4" />
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-label="Previous year"
+              className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+              onClick={() => setViewMonth((m) => new Date(m.getFullYear() - 1, m.getMonth(), 1))}
+            >
+              <ChevronsLeft className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Previous month"
+              className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+              onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+          </div>
           <span className="text-sm font-medium">{viewMonth.toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</span>
-          <button
-            type="button"
-            aria-label="Next month"
-            className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
-            onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
-          >
-            <ChevronRight className="size-4" />
-          </button>
+          <div className="flex items-center">
+            <button
+              type="button"
+              aria-label="Next month"
+              className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+              onClick={() => setViewMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+            >
+              <ChevronRight className="size-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Next year"
+              className="flex size-7 items-center justify-center rounded-md hover:bg-muted"
+              onClick={() => setViewMonth((m) => new Date(m.getFullYear() + 1, m.getMonth(), 1))}
+            >
+              <ChevronsRight className="size-4" />
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted-foreground">
           {WEEKDAY_LABELS.map((label) => (
@@ -144,23 +195,33 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
             const inRange = pendingStart ? iso === pendingStart : Boolean(startDate && endDate && iso >= startDate && iso <= endDate);
             const isEndpoint = pendingStart ? iso === pendingStart : iso === startDate || iso === endDate;
             const isToday = iso === todayIso;
+            const count = orderCounts[iso] ?? 0;
+            const band = densityBand(count);
+            // Same rule as the Dashboard card: today alone is filled, in its
+            // own legend colour; every other busy date gets a line instead.
+            // A selected endpoint is already filled, so it shows no line.
+            const todayFill = !inRange && isToday && band;
             return (
               <button
                 key={iso}
                 type="button"
+                title={count > 0 ? `${count} order${count === 1 ? "" : "s"}` : undefined}
                 onClick={() => handleDayClick(iso)}
                 className={cn(
-                  "flex size-8 items-center justify-center rounded-md text-sm transition-colors hover:bg-muted",
+                  "relative flex size-8 items-center justify-center rounded-md text-sm transition-colors hover:bg-muted",
                   inRange && !isEndpoint && "bg-accent text-accent-foreground",
                   isEndpoint && "bg-primary text-primary-foreground hover:bg-primary/90",
-                  !inRange && isToday && "font-semibold text-primary",
+                  !inRange && isToday && !band && "font-semibold text-primary",
+                  todayFill && band && `${band.fill} font-semibold hover:opacity-90`,
                 )}
               >
                 {date.getDate()}
+                {!isEndpoint && !todayFill && <DensityLine count={count} className="bottom-0.5" />}
               </button>
             );
           })}
         </div>
+        {loadOrderCounts && <DensityLegend className="mt-3 border-t border-border pt-3" />}
       </PopoverContent>
     </Popover>
   );

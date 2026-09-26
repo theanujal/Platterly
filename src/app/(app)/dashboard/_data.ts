@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getInventoryOverviewStats } from "@/modules/inventory/inventory";
+import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
 const ORDER_STATUSES: OrderStatus[] = ["DRAFT", "CONFIRMED", "IN_PREPARATION", "READY", "COMPLETED", "CANCELLED"];
@@ -30,10 +31,11 @@ export async function getDashboardSnapshot(organizationId: string) {
   // same dense array client-side, no extra round trip per range.
   const REVENUE_TREND_DAYS = 365;
   const revenueTrendStart = new Date(startOfToday.getTime() - (REVENUE_TREND_DAYS - 1) * 86400000);
-  // Calendar window: 1 month back to 3 months forward — enough range for
-  // the Orders Calendar's in-browser month navigation without refetching.
-  const calendarStart = new Date(startOfToday.getFullYear(), startOfToday.getMonth() - 1, 1);
-  const calendarEnd = new Date(startOfToday.getFullYear(), startOfToday.getMonth() + 4, 1);
+  // Calendar window: 1 month back to 3 months forward (+/- a week so the
+  // faded adjacent-month days at each edge have counts too) — enough range
+  // for the Orders Calendar's in-browser month navigation without refetching.
+  const calendarStart = new Date(startOfToday.getFullYear(), startOfToday.getMonth() - 1, -6);
+  const calendarEnd = new Date(startOfToday.getFullYear(), startOfToday.getMonth() + 4, 8);
 
   const [
     statusCounts,
@@ -43,7 +45,7 @@ export async function getDashboardSnapshot(organizationId: string) {
     quotationsAwaitingResponse,
     inventory,
     revenueOrdersRaw,
-    calendarOrdersRaw,
+    orderCountsByDay,
   ] = await Promise.all([
     prisma.order.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true }, _sum: { total: true } }),
     prisma.order.aggregate({
@@ -87,10 +89,7 @@ export async function getDashboardSnapshot(organizationId: string) {
       where: { organizationId, createdAt: { gte: revenueTrendStart }, status: { not: "CANCELLED" } },
       select: { createdAt: true, total: true, status: true },
     }),
-    prisma.order.findMany({
-      where: { organizationId, eventStartDate: { gte: calendarStart, lt: calendarEnd }, status: { not: "CANCELLED" } },
-      select: { eventStartDate: true },
-    }),
+    getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd)),
   ]);
 
   const countFor = (status: OrderStatus) => statusCounts.find((s) => s.status === status)?._count._all ?? 0;
@@ -130,12 +129,6 @@ export async function getDashboardSnapshot(organizationId: string) {
       completedValue: completedByDay.get(key) ?? 0,
       pendingValue: pendingByDay.get(key) ?? 0,
     });
-  }
-
-  const orderCountsByDay: Record<string, number> = {};
-  for (const order of calendarOrdersRaw) {
-    const key = dateKey(order.eventStartDate);
-    orderCountsByDay[key] = (orderCountsByDay[key] ?? 0) + 1;
   }
 
   return {

@@ -15,6 +15,7 @@ import {
 import { getEvent, updateEvent, deleteEvent, type RequiredInventoryInput } from "@/modules/events/event";
 import { listCustomers, createCustomer } from "@/modules/customers/customer";
 import { getMenuForOrderPicker, type OrderPickerMenu } from "@/modules/menus/menu";
+import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, EventStatus, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -366,4 +367,21 @@ export async function getMenuForOrderPickerAction(menuId: string): Promise<Order
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
   return getMenuForOrderPicker(organizationId, menuId);
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Feeds the Create Order date picker's busy-ness lines (Chunk 13 Group 13.1)
+ * for whichever month the picker is showing. Same aggregation as the
+ * Dashboard card and /calendar page (`getOrderCountsByDay`), so all three
+ * always agree. Window is capped so a forged range can't scan the whole table.
+ */
+export async function getOrderCountsByDayAction(fromIso: string, toIso: string): Promise<Record<string, number>> {
+  const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ orders: ["view"] }, organizationId);
+  if (!ISO_DAY.test(fromIso) || !ISO_DAY.test(toIso)) return {};
+  const spanDays = (new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000;
+  if (spanDays < 0 || spanDays > 62) return {};
+  return getOrderCountsByDay(organizationId, fromIso, toIso);
 }

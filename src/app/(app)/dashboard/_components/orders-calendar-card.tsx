@@ -2,21 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { DensityLegend, DensityLine, densityBand } from "@/components/calendar/order-density";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
 function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Order-density color band, matching the legend rendered below the grid. */
-function densityClass(count: number): string {
-  if (count === 0) return "";
-  if (count === 1) return "bg-emerald-500 text-white";
-  if (count <= 3) return "bg-amber-400 text-white";
-  if (count <= 6) return "bg-orange-500 text-white";
-  return "bg-rose-600 text-white";
 }
 
 interface OrdersCalendarCardProps {
@@ -30,14 +23,13 @@ export function OrdersCalendarCard({ orderCountsByDay }: OrdersCalendarCardProps
   const today = useMemo(() => new Date(), []);
   const [cursor, setCursor] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
 
+  // Fixed 6-week (42-cell) grid so the card doesn't change height between
+  // months; leading/trailing cells are the adjacent months' real dates.
   const cells = useMemo(() => {
     const year = cursor.getFullYear();
     const month = cursor.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstWeekday = new Date(year, month, 1).getDay();
-    const leading: null[] = Array(firstWeekday).fill(null);
-    const days = Array.from({ length: daysInMonth }, (_, i) => new Date(year, month, i + 1));
-    return [...leading, ...days];
+    return Array.from({ length: 42 }, (_, i) => new Date(year, month, i - firstWeekday + 1));
   }, [cursor]);
 
   const todayKey = dateKey(today);
@@ -82,37 +74,34 @@ export function OrdersCalendarCard({ orderCountsByDay }: OrdersCalendarCardProps
               {label}
             </span>
           ))}
-          {cells.map((day, i) => {
-            if (!day) return <span key={i} />;
+          {cells.map((day) => {
             const key = dateKey(day);
             const count = orderCountsByDay[key] ?? 0;
+            const band = densityBand(count);
             const isToday = key === todayKey;
+            const inMonth = day.getMonth() === cursor.getMonth();
+            // Today is the only date that gets a filled highlight, in its own
+            // legend colour; every other date just gets a line under it.
+            const todayClass = isToday ? (band ? band.fill : "bg-primary/10 font-semibold text-primary") : "";
             return (
               <span
-                key={i}
+                key={key}
                 title={count > 0 ? `${count} order${count === 1 ? "" : "s"}` : undefined}
-                className={`flex aspect-square items-center justify-center rounded-md text-[13px] ${
-                  count > 0 ? densityClass(count) : isToday ? "bg-primary/10 font-semibold text-primary" : "text-foreground"
+                className={`relative flex aspect-square items-center justify-center rounded-md text-[13px] ${
+                  isToday ? todayClass : inMonth ? "text-foreground" : "text-muted-foreground/50"
                 }`}
               >
                 {day.getDate()}
+                {!isToday && <DensityLine count={count} faded={!inMonth} />}
               </span>
             );
           })}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <span className="size-2 rounded-full bg-emerald-500" /> 1 order
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="size-2 rounded-full bg-amber-400" /> 2-3 orders
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="size-2 rounded-full bg-orange-500" /> 4-6 orders
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="size-2 rounded-full bg-rose-600" /> 7+ orders
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-border pt-3">
+          <DensityLegend />
+          <Link href="/calendar" className="text-xs font-semibold text-primary hover:underline">
+            View full calendar
+          </Link>
         </div>
       </CardContent>
     </Card>

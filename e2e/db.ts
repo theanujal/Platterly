@@ -160,3 +160,61 @@ export async function backdateStorefrontDrafts(slug: string, minutesAgo: number)
     [slug, String(minutesAgo)],
   );
 }
+
+export interface CalendarFixtureOrder {
+  /** "YYYY-MM-DD" */
+  start: string;
+  end: string;
+  status?: "DRAFT" | "CONFIRMED" | "IN_PREPARATION" | "READY" | "COMPLETED" | "CANCELLED";
+  guests?: number;
+}
+
+export interface CalendarFixtureEvent {
+  name: string;
+  start: string;
+  end: string;
+  /** Index into `orders` this Event belongs to; omit for a standalone Event. */
+  orderIndex?: number;
+}
+
+/**
+ * Chunk 13 — seeds a signed-up tenant with a Customer, an Event Type, and
+ * the given Orders/Events by raw SQL (building this many orders through the
+ * UI would dwarf what the calendar spec is actually checking). Dates are
+ * stored as UTC midnight, exactly like the real app's `new Date("YYYY-MM-DD")`.
+ * `cleanupOnboardingTestUser` already removes all of it.
+ */
+export async function seedCalendarFixtures(
+  email: string,
+  fixtures: { orders: CalendarFixtureOrder[]; events: CalendarFixtureEvent[] },
+): Promise<void> {
+  const { rows } = await pool.query<{ organizationId: string }>(
+    `SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1`,
+    [email],
+  );
+  const orgId = rows[0]?.organizationId;
+  if (!orgId) throw new Error(`No organization found for ${email}`);
+
+  const customerId = crypto.randomUUID();
+  const eventTypeId = crypto.randomUUID();
+  await pool.query(`INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, 'Calendar Customer', '+919800000001', now())`, [customerId, orgId]);
+  await pool.query(`INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, 'Calendar Wedding', now())`, [eventTypeId, orgId]);
+
+  const orderIds: string[] = [];
+  for (const o of fixtures.orders) {
+    const id = crypto.randomUUID();
+    orderIds.push(id);
+    await pool.query(
+      `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "eventStartDate", "eventEndDate", status, "totalParticipants", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5::timestamp, $6::timestamp, $7::"OrderStatus", $8, now())`,
+      [id, orgId, customerId, eventTypeId, o.start, o.end, o.status ?? "CONFIRMED", o.guests ?? null],
+    );
+  }
+  for (const e of fixtures.events) {
+    await pool.query(
+      `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", name, "startDate", "endDate", "orderId", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6::timestamp, $7::timestamp, $8, now())`,
+      [crypto.randomUUID(), orgId, customerId, eventTypeId, e.name, e.start, e.end, e.orderIndex === undefined ? null : orderIds[e.orderIndex]],
+    );
+  }
+}
