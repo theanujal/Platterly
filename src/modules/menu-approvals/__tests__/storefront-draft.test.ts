@@ -214,7 +214,9 @@ describe("quote + final submit (Order created only here)", () => {
     expect(order.notes).toBe("Please call before delivery");
 
     const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
-    expect(selection.status).toBe("KITCHEN_REVIEWING");
+    // Placed, not approved: the team reviews it and sends it to the customer (AJ, 2026-09-26).
+    expect(selection.status).toBe("DRAFT");
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } })).status).toBe("PENDING_REVIEW");
     expect(selection.chosenMenuId).toBe(t.menu.id);
     expect(selection.items.every((i) => i.quantity === 1)).toBe(true);
     expect(selection.items.filter((i) => i.isExtra).map((i) => i.name)).toEqual(["Veg Kebab"]);

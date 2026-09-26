@@ -73,6 +73,13 @@ export interface CatalogEntry {
    * detail page left to link to).
    */
   href?: string;
+  /**
+   * The grid `card` supplies its own link (a stretched `<Link>` inside it) and
+   * has interactive controls of its own, so it can't be wrapped in the
+   * `href` Link — an anchor can't contain a button. `href` still drives the
+   * list-view row click.
+   */
+  cardOwnsLink?: boolean;
   searchText: string;
   /** Grid-mode card body — image/name/description/meta. */
   card: React.ReactNode;
@@ -125,6 +132,13 @@ interface CatalogBrowserProps {
   pageSize?: number;
   /** Which view renders first — Grid suits visual catalogs, List suits tabular data (e.g. Inventory). Defaults to "grid". */
   defaultView?: "grid" | "list";
+  /** Grid column classes, for cards too wide for the default 1-2-3-4 columns (e.g. Orders). */
+  gridColumnsClassName?: string;
+  /**
+   * List view as a rounded card with small uppercase column headings, for
+   * rows that carry richer two-line cells (e.g. Orders). Default is the plain table.
+   */
+  richList?: boolean;
 }
 
 function matchesFilter(entry: CatalogEntry, key: string, selected: string): boolean {
@@ -160,6 +174,8 @@ export function CatalogBrowser({
   sortOptions,
   pageSize,
   defaultView = "grid",
+  gridColumnsClassName = "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
+  richList = false,
 }: CatalogBrowserProps) {
   const [view, setView] = useState<"grid" | "list">(defaultView);
   const [query, setQuery] = useState("");
@@ -300,10 +316,10 @@ export function CatalogBrowser({
       <Separator />
 
       {view === "grid" ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className={`grid gap-4 ${gridColumnsClassName}`}>
           {currentPage === 1 && addTile}
           {paged.map((entry) =>
-            entry.href ? (
+            entry.href && !entry.cardOwnsLink ? (
               <Link key={entry.id} href={entry.href} className="block">
                 <Card className="h-full overflow-hidden py-0 transition-shadow hover:shadow-md">{entry.card}</Card>
               </Link>
@@ -319,38 +335,43 @@ export function CatalogBrowser({
         </div>
       ) : (
         <>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {columns.map((column, index) =>
-                  index === columns.length - 1 ? (
-                    <TableHead key={column}>
-                      <span className="sr-only">{column}</span>
-                    </TableHead>
-                  ) : (
-                    <TableHead key={column}>{column}</TableHead>
-                  ),
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paged.map((entry) => (
-                <TableRow
-                  key={entry.id}
-                  className={entry.href ? "cursor-pointer" : undefined}
-                  onClick={
-                    entry.href
-                      ? () => {
-                          window.location.href = entry.href!;
-                        }
-                      : undefined
-                  }
-                >
-                  {entry.listRow}
+          <div className={richList ? "overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10" : undefined}>
+            <Table>
+              <TableHeader className={richList ? "bg-muted/40" : undefined}>
+                <TableRow>
+                  {columns.map((column, index) => {
+                    const headClassName = richList ? "h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase" : undefined;
+                    return index === columns.length - 1 ? (
+                      <TableHead key={column} className={headClassName}>
+                        <span className="sr-only">{column}</span>
+                      </TableHead>
+                    ) : (
+                      <TableHead key={column} className={headClassName}>
+                        {column}
+                      </TableHead>
+                    );
+                  })}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {paged.map((entry) => (
+                  <TableRow
+                    key={entry.id}
+                    className={entry.href ? "cursor-pointer" : undefined}
+                    onClick={
+                      entry.href
+                        ? () => {
+                            window.location.href = entry.href!;
+                          }
+                        : undefined
+                    }
+                  >
+                    {entry.listRow}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
           {entries.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{emptyLabel}</p>}
           {entries.length > 0 && filtered.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">No matches for &quot;{query}&quot;.</p>

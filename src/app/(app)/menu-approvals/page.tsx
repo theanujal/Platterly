@@ -3,15 +3,15 @@ import Link from "next/link";
 import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listMenuSelectionsForKitchen } from "@/modules/menu-approvals/menu-approval";
-import { Badge, type badgeVariants } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableHeader, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { MenuApprovalsFilterBar } from "./_components/menu-approvals-filter-bar";
+import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import type { MenuSelectionStatus } from "@/generated/prisma/enums";
-import type { VariantProps } from "class-variance-authority";
 import type { LucideIcon } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -19,33 +19,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS_LABEL: Record<MenuSelectionStatus, string> = {
-  DRAFT: "Draft",
-  SENT_TO_CUSTOMER: "Sent to Customer",
-  CUSTOMER_REVIEWING: "Customer Reviewing",
-  CHANGES_REQUESTED: "Changes Requested",
-  CUSTOMER_APPROVED: "Customer Approved",
-  KITCHEN_REVIEWING: "Needs Kitchen Review",
-  KITCHEN_CHANGES_REQUESTED: "Kitchen Changes Requested",
-  KITCHEN_APPROVED: "Kitchen Approved",
-  FINAL_LOCKED: "Final / Locked",
-};
+const STATUS_LABEL = MENU_SELECTION_STATUS_LABEL;
 
-// Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19) — was
-// "default"/"secondary"/"outline"/"destructive" picked ad hoc per status,
-// which left Kitchen Reviewing and Kitchen Approved rendering as the exact
-// same orange badge despite meaning very different things.
-const STATUS_VARIANT: Record<MenuSelectionStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
-  DRAFT: "neutral",
-  SENT_TO_CUSTOMER: "info",
-  CUSTOMER_REVIEWING: "info",
-  CHANGES_REQUESTED: "warning",
-  CUSTOMER_APPROVED: "success",
-  KITCHEN_REVIEWING: "info",
-  KITCHEN_CHANGES_REQUESTED: "warning",
-  KITCHEN_APPROVED: "success",
-  FINAL_LOCKED: "success",
-};
+// Shared neutral/info/warning/success legend (modules/orders/order-status.ts) — one vocabulary across the queue, this page and the Order page.
+const STATUS_VARIANT = MENU_SELECTION_STATUS_TONE;
 
 const STATUS_ICON: Record<MenuSelectionStatus, LucideIcon> = {
   DRAFT: Circle,

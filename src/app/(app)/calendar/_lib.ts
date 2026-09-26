@@ -1,6 +1,7 @@
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
 import type { OrderStatus } from "@/generated/prisma/enums";
+import { ORDER_STATUS_LABEL as ORDER_STATUS_LABEL_SHARED, ORDER_STATUS_TONE } from "@/modules/orders/order-status";
 
 const DAY_MS = 86_400_000;
 
@@ -41,24 +42,9 @@ export function monthGrid(monthKey: string): string[] {
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
 
-export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Draft",
-  CONFIRMED: "Confirmed",
-  IN_PREPARATION: "In Preparation",
-  READY: "Ready",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
-
-// Shared neutral/info/warning/success/danger legend — same mapping as orders/page.tsx.
-export const ORDER_STATUS_VARIANT: Record<OrderStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = {
-  DRAFT: "neutral",
-  CONFIRMED: "info",
-  IN_PREPARATION: "info",
-  READY: "success",
-  COMPLETED: "success",
-  CANCELLED: "danger",
-};
+// Same labels/tones as the Orders page (modules/orders/order-status.ts).
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = ORDER_STATUS_LABEL_SHARED;
+export const ORDER_STATUS_VARIANT: Record<OrderStatus, NonNullable<VariantProps<typeof badgeVariants>["variant"]>> = ORDER_STATUS_TONE;
 
 export function coversDay(startDate: string, endDate: string, day: string): boolean {
   return startDate <= day && day <= endDate;

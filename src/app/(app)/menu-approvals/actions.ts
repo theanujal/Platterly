@@ -7,17 +7,16 @@ import {
   setCustomMenuPricePerPlate,
   kitchenApproves,
   kitchenRequestsChanges,
-  resumeKitchenReview,
-  lockMenuSelection,
   InvalidMenuSelectionTransitionError,
   type MenuSelectionItemInput,
 } from "@/modules/menu-approvals/menu-approval";
+import { sendMenuForApproval, recallMenuFromCustomer } from "@/modules/menu-approvals/approval-link";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 function toErrorResult(error: unknown): ActionResult {
   if (error instanceof InvalidMenuSelectionTransitionError) {
-    return { ok: false, error: "This menu selection can no longer make that move." };
+    return { ok: false, error: error.message || "This menu selection can no longer make that move." };
   }
   return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
 }
@@ -63,27 +62,34 @@ export async function kitchenRequestsChangesAction(id: string, note: string): Pr
   return { ok: true };
 }
 
-export async function resumeKitchenReviewAction(id: string): Promise<ActionResult> {
+export type SendMenuResult = { ok: true; url: string; versionNumber: number } | { ok: false; error: string };
+
+/** "Send Menu for Approval" — from the Menu Approvals detail page (by selection) or the Order page (by order, creating the event/selection if needed). */
+export async function sendMenuForApprovalAction(target: { orderId: string } | { menuSelectionId: string }): Promise<SendMenuResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   try {
-    await resumeKitchenReview(organizationId, id, session.user.id);
+    const sent = await sendMenuForApproval(organizationId, target, session.user.id);
+    revalidate(sent.menuSelectionId);
+    revalidatePath("/orders");
+    if ("orderId" in target) revalidatePath(`/orders/${target.orderId}`);
+    return { ok: true, url: sent.url, versionNumber: sent.versionNumber };
   } catch (error) {
-    return toErrorResult(error);
+    const failed = toErrorResult(error);
+    return failed.ok ? { ok: false, error: "Something went wrong." } : failed;
   }
-  revalidate(id);
-  return { ok: true };
 }
 
-export async function lockMenuSelectionAction(id: string): Promise<ActionResult> {
+export async function recallMenuAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   try {
-    await lockMenuSelection(organizationId, id, session.user.id);
+    await recallMenuFromCustomer(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidate(id);
+  revalidatePath("/orders");
   return { ok: true };
 }
 

@@ -78,7 +78,7 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
       actor.id,
     );
 
-    expect(order.status).toBe("DRAFT");
+    expect(order.status).toBe("PENDING_REVIEW");
     expect(order.paymentStatus).toBe("UNPAID");
     expect(order.venue).toBe("Taj Hall");
     expect(order.adultCount).toBe(100);
@@ -93,8 +93,8 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     const customer = await makeCustomer(org.id, actor.id);
     const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
 
-    const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "CONFIRMED" }, actor.id);
-    expect(updated.status).toBe("CONFIRMED");
+    const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "APPROVED" }, actor.id);
+    expect(updated.status).toBe("APPROVED");
 
     const log = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "order.update", recordId: order.id } });
     expect(log).not.toBeNull();
@@ -128,10 +128,25 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
     const draft = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
-    const confirmed = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "CONFIRMED" }, actor.id);
+    const confirmed = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "APPROVED" }, actor.id);
 
-    expect((await listOrders(org.id, { status: "CONFIRMED" })).map((o) => o.id)).toEqual([confirmed.id]);
+    expect((await listOrders(org.id, { status: "APPROVED" })).map((o) => o.id)).toEqual([confirmed.id]);
     expect((await listOrders(org.id, { search: "asha" })).map((o) => o.id).sort()).toEqual([draft.id, confirmed.id].sort());
+  });
+
+  it("listOrders returns each linked Event's menu-approval and kitchen state for the Orders card and list", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const withMenu = await createOrder(org.id, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    const withoutEvent = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    const event = await createEventForOrder(org.id, withMenu.id, actor.id);
+    await prisma.menuSelection.create({ data: { organizationId: org.id, eventId: event.id, status: "SENT_TO_CUSTOMER", currentVersion: 2 } });
+
+    const listed = await listOrders(org.id);
+    expect(listed.find((o) => o.id === withMenu.id)?.events.map((e) => e.menuSelection)).toEqual([{ status: "SENT_TO_CUSTOMER", currentVersion: 2, kitchenProductionStatus: "PENDING" }]);
+    expect(listed.find((o) => o.id === withoutEvent.id)?.events).toEqual([]);
   });
 });
 
@@ -926,7 +941,7 @@ describe("Order Numbering (per-tenant prefix/counter/padding)", () => {
     const customer = await makeCustomer(org.id, actor.id);
     const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
 
-    const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "CONFIRMED" }, actor.id);
+    const updated = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date(), status: "APPROVED" }, actor.id);
 
     expect(updated.orderNumber).toBe(order.orderNumber);
   });
@@ -945,12 +960,12 @@ describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () =>
     // recalculateOrderTotals.
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: future, eventEndDate: future, otherCharges: 10000, advance: 4000, paymentStatus: "PARTIALLY_PAID", status: "CONFIRMED" },
+      { customerId: customer.id, eventStartDate: future, eventEndDate: future, otherCharges: 10000, advance: 4000, paymentStatus: "PARTIALLY_PAID", status: "APPROVED" },
       actor.id,
     );
     await createOrder(
       org.id,
-      { customerId: customer.id, eventStartDate: past, eventEndDate: past, otherCharges: 5000, advance: 0, paymentStatus: "UNPAID", status: "CONFIRMED" },
+      { customerId: customer.id, eventStartDate: past, eventEndDate: past, otherCharges: 5000, advance: 0, paymentStatus: "UNPAID", status: "APPROVED" },
       actor.id,
     );
     // Fully paid — excluded by paymentStatus AND balance filters.
@@ -982,7 +997,7 @@ describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () =>
     const actor = await makeActor();
     const customerB = await makeCustomer(orgB.id, actor.id);
 
-    await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date(), otherCharges: 9000, paymentStatus: "UNPAID", status: "CONFIRMED" }, actor.id);
+    await createOrder(orgB.id, { customerId: customerB.id, eventStartDate: new Date(), eventEndDate: new Date(), otherCharges: 9000, paymentStatus: "UNPAID", status: "APPROVED" }, actor.id);
 
     const overview = await getPartialPaymentsOverview(orgA.id);
     expect(overview.totalOrders).toBe(0);

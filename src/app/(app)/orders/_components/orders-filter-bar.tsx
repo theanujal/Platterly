@@ -1,17 +1,13 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
-  { value: "DRAFT", label: "Draft" },
-  { value: "CONFIRMED", label: "Confirmed" },
-  { value: "IN_PREPARATION", label: "In Preparation" },
-  { value: "READY", label: "Ready" },
-  { value: "COMPLETED", label: "Completed" },
-  { value: "CANCELLED", label: "Cancelled" },
-] as const;
+  ...ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] })),
+];
 
 const ORDER_KIND_OPTIONS = [
   { value: "ALL", label: "All Types" },

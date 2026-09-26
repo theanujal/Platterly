@@ -3,12 +3,12 @@ import { prisma } from "@/lib/db";
 import {
   submitEventDetails,
   createMenuSelection,
-  beginCustomerSelection,
+  sendToCustomer,
+  recallMenu,
   customerRequestsChanges,
   customerResumesReviewing,
   customerApproves,
   kitchenRequestsChanges,
-  resumeKitchenReview,
   kitchenApproves,
   lockMenuSelection,
   setMenuSelectionItems,
@@ -17,9 +17,11 @@ import {
   listKitchenProductionQueue,
   listKitchenProductionBoard,
   setKitchenProductionStatus,
+  syncOrderStatus,
   InvalidMenuSelectionTransitionError,
   type EventDetailsIntakeInput,
 } from "@/modules/menu-approvals/menu-approval";
+import { sendMenuForApproval } from "@/modules/menu-approvals/approval-link";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenuItem } from "@/modules/menus/item";
 
@@ -73,8 +75,21 @@ function intakeInput(orgEventTypeId: string, overrides?: Partial<EventDetailsInt
   };
 }
 
+/** Team sends the menu -> customer approves -> kitchen team approves (which auto-locks it). Returns the selection id. */
+async function lockThroughWorkflow(orgId: string, eventId: string, actorId: string) {
+  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId } });
+  await sendMenuForApproval(orgId, { menuSelectionId: selection.id }, actorId);
+  await customerApproves(orgId, selection.id);
+  await kitchenApproves(orgId, selection.id, actorId);
+  return selection;
+}
+
+async function orderStatusOf(orderId: string) {
+  return (await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).status;
+}
+
 describe("submitEventDetails (Chunk 11 Group 11.2)", () => {
-  it("creates a new Customer, Order, Event, and a CUSTOMER_REVIEWING MenuSelection", async () => {
+  it("creates a new Customer, Order, Event, and a DRAFT (Needs Review) MenuSelection — nothing is sent to the customer yet", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
@@ -86,7 +101,8 @@ describe("submitEventDetails (Chunk 11 Group 11.2)", () => {
     expect(result.order.customerId).toBe(result.customer.id);
     expect(result.event.orderId).toBe(result.order.id);
     expect(result.menuSelection.eventId).toBe(result.event.id);
-    expect(result.menuSelection.status).toBe("CUSTOMER_REVIEWING");
+    expect(result.menuSelection.status).toBe("DRAFT");
+    expect(result.order.status).toBe("PENDING_REVIEW");
   });
 
   it("a repeat customer (same phone) gets a brand-new Order/Event, never mapped to their existing one", async () => {
@@ -128,62 +144,89 @@ describe("submitEventDetails (Chunk 11 Group 11.2)", () => {
   });
 });
 
-describe("MenuSelection state machine (Chunk 11 Group 11.3, PRD §29)", () => {
-  it("walks the full happy path: DRAFT -> ... -> KITCHEN_REVIEWING -> KITCHEN_APPROVED -> FINAL_LOCKED", async () => {
+describe("MenuSelection state machine (team -> customer -> kitchen, AJ 2026-09-26)", () => {
+  it("walks the full happy path, and the kitchen team's approval locks the menu automatically", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
-    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const { event, order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(selection.status).toBe("DRAFT");
 
-    const selection = await getMenuSelection(org.id, (await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } })).id);
-    expect(selection?.status).toBe("CUSTOMER_REVIEWING");
+    const sent = await sendToCustomer(org.id, selection.id, actor.id);
+    expect(sent.status).toBe("SENT_TO_CUSTOMER");
 
-    const approved = await customerApproves(org.id, selection!.id);
-    expect(approved.status).toBe("KITCHEN_REVIEWING");
+    const approved = await customerApproves(org.id, selection.id);
+    expect(approved.status).toBe("KITCHEN_REVIEWING"); // customer approval hands straight to the kitchen team's review
     expect(approved.submittedAt).not.toBeNull();
 
-    const kitchenApproved = await kitchenApproves(org.id, selection!.id, actor.id);
-    expect(kitchenApproved.status).toBe("KITCHEN_APPROVED");
-
-    const locked = await lockMenuSelection(org.id, selection!.id, actor.id);
-    expect(locked.status).toBe("FINAL_LOCKED");
-    expect(locked.lockedAt).not.toBeNull();
+    // No separate "lock" step: kitchen approval IS the hand-off to the Kitchen Dashboard.
+    const done = await kitchenApproves(org.id, selection.id, actor.id);
+    expect(done.status).toBe("FINAL_LOCKED");
+    expect(done.lockedAt).not.toBeNull();
+    expect(done.kitchenProductionStatus).toBe("PENDING");
+    expect(await orderStatusOf(order.id)).toBe("SENT_TO_KITCHEN");
   });
 
-  it("supports the customer changes-requested detour before approving", async () => {
+  it("supports the customer changes-requested loop: request changes, team re-sends, customer approves", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    await sendToCustomer(org.id, selection.id, actor.id);
+
+    const viewed = await customerResumesReviewing(org.id, selection.id);
+    expect(viewed.status).toBe("CUSTOMER_REVIEWING");
 
     const changesRequested = await customerRequestsChanges(org.id, selection.id, "Need more starters");
     expect(changesRequested.status).toBe("CHANGES_REQUESTED");
     expect(changesRequested.customerRequestNote).toBe("Need more starters");
 
-    const backToReviewing = await customerResumesReviewing(org.id, selection.id);
-    expect(backToReviewing.status).toBe("CUSTOMER_REVIEWING");
+    // The customer can't approve their own change request — the team must send an updated menu first.
+    await expect(customerApproves(org.id, selection.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
-    // CHANGES_REQUESTED can also go straight to CUSTOMER_APPROVED.
-    await customerRequestsChanges(org.id, selection.id, "Actually fine");
+    await sendToCustomer(org.id, selection.id, actor.id);
     const approved = await customerApproves(org.id, selection.id);
     expect(approved.status).toBe("KITCHEN_REVIEWING");
   });
 
-  it("supports the kitchen changes-requested detour before kitchen-approving", async () => {
+  it("sends kitchen-requested changes back through the customer instead of resuming the kitchen review", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    await sendToCustomer(org.id, selection.id, actor.id);
     await customerApproves(org.id, selection.id);
 
     const kitchenChanges = await kitchenRequestsChanges(org.id, selection.id, actor.id, "Out of stock item");
     expect(kitchenChanges.status).toBe("KITCHEN_CHANGES_REQUESTED");
     expect(kitchenChanges.kitchenRequestNote).toBe("Out of stock item");
 
-    const resumed = await resumeKitchenReview(org.id, selection.id, actor.id);
-    expect(resumed.status).toBe("KITCHEN_REVIEWING");
+    // The customer never approved a menu that later changed: it goes back to them.
+    const resent = await sendToCustomer(org.id, selection.id, actor.id);
+    expect(resent.status).toBe("SENT_TO_CUSTOMER");
+  });
+
+  it("lets the team recall a sent menu to edit it, and only then", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event, order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+
+    await expect(recallMenu(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError); // nothing sent yet
+    await sendToCustomer(org.id, selection.id, actor.id);
+    expect(await orderStatusOf(order.id)).toBe("AWAITING_CUSTOMER_APPROVAL");
+
+    const recalled = await recallMenu(org.id, selection.id, actor.id);
+    expect(recalled.status).toBe("DRAFT");
+    expect(await orderStatusOf(order.id)).toBe("PENDING_REVIEW");
+
+    await sendToCustomer(org.id, selection.id, actor.id);
+    await customerApproves(org.id, selection.id);
+    await expect(recallMenu(org.id, selection.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError); // too late once the customer approved
   });
 
   it("rejects every invalid transition exhaustively", async () => {
@@ -204,31 +247,97 @@ describe("MenuSelection state machine (Chunk 11 Group 11.3, PRD §29)", () => {
 
     // DRAFT cannot skip straight to any customer/kitchen state.
     await expect(customerApproves(org.id, draft.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(customerRequestsChanges(org.id, draft.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
     await expect(kitchenApproves(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
     await expect(lockMenuSelection(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
-    const reviewing = await beginCustomerSelection(org.id, draft.id);
-    expect(reviewing.status).toBe("CUSTOMER_REVIEWING");
+    await sendToCustomer(org.id, draft.id, actor.id);
 
-    // Can't jump straight to KITCHEN_REVIEWING or FINAL_LOCKED from CUSTOMER_REVIEWING.
+    // Can't jump straight to the kitchen's states from the customer's.
     await expect(kitchenApproves(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
     await expect(lockMenuSelection(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    // ...and can't be sent twice.
+    await expect(sendToCustomer(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
     await customerApproves(org.id, draft.id); // -> KITCHEN_REVIEWING
 
     // Once handed to the kitchen, the customer-side actions are no longer valid.
     await expect(customerRequestsChanges(org.id, draft.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
     await expect(customerApproves(org.id, draft.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
-    await expect(lockMenuSelection(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(sendToCustomer(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
-    await kitchenApproves(org.id, draft.id, actor.id);
-    await expect(kitchenRequestsChanges(org.id, draft.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
-
-    const locked = await lockMenuSelection(org.id, draft.id, actor.id);
+    const locked = await kitchenApproves(org.id, draft.id, actor.id);
 
     // FINAL_LOCKED is terminal — nothing transitions out of it.
     await expect(kitchenApproves(org.id, locked.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(kitchenRequestsChanges(org.id, locked.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
     await expect(lockMenuSelection(org.id, locked.id, actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+  });
+});
+
+describe("Order status follows the workflow (syncOrderStatus)", () => {
+  it("moves the Order through every status from placed to Completed", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event, order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+
+    expect(await orderStatusOf(order.id)).toBe("PENDING_REVIEW");
+    await sendToCustomer(org.id, selection.id, actor.id);
+    expect(await orderStatusOf(order.id)).toBe("AWAITING_CUSTOMER_APPROVAL");
+    await customerRequestsChanges(org.id, selection.id, "Swap the starter");
+    expect(await orderStatusOf(order.id)).toBe("PENDING_REVIEW"); // team has to act again
+    await sendToCustomer(org.id, selection.id, actor.id);
+    await customerApproves(org.id, selection.id);
+    expect(await orderStatusOf(order.id)).toBe("KITCHEN_REVIEW");
+    await kitchenApproves(org.id, selection.id, actor.id);
+    expect(await orderStatusOf(order.id)).toBe("SENT_TO_KITCHEN");
+
+    await setKitchenProductionStatus(org.id, selection.id, "IN_PREPARATION", actor.id);
+    await setKitchenProductionStatus(org.id, selection.id, "READY", actor.id);
+    expect(await orderStatusOf(order.id)).toBe("SENT_TO_KITCHEN"); // still the kitchen's until it leaves
+    await setKitchenProductionStatus(org.id, selection.id, "DELIVERED", actor.id);
+    expect(await orderStatusOf(order.id)).toBe("COMPLETED");
+  });
+
+  it("records the transient Approved status in the audit trail on the way to Sent to Kitchen", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event, order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    await lockThroughWorkflow(org.id, event.id, actor.id);
+
+    const logs = await prisma.auditLog.findMany({ where: { organizationId: org.id, action: "order.status_synced", recordId: order.id } });
+    const reached = logs.map((l) => (l.after as { status?: string } | null)?.status);
+    expect(reached).toEqual(expect.arrayContaining(["AWAITING_CUSTOMER_APPROVAL", "KITCHEN_REVIEW", "APPROVED", "SENT_TO_KITCHEN"]));
+  });
+
+  it("cancels the Order when the kitchen cancels, and a hand-set status is overwritten by the next transition", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event, order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "COMPLETED" } }); // manual override on the order form
+    await sendToCustomer(org.id, selection.id, actor.id);
+    expect(await orderStatusOf(order.id)).toBe("AWAITING_CUSTOMER_APPROVAL");
+
+    await customerApproves(org.id, selection.id);
+    await kitchenApproves(org.id, selection.id, actor.id);
+    await setKitchenProductionStatus(org.id, selection.id, "CANCELLED", actor.id);
+    expect(await orderStatusOf(order.id)).toBe("CANCELLED");
+  });
+
+  it("leaves an Order with no menu selection alone", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { order } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+    await syncOrderStatus(org.id, crypto.randomUUID());
+    expect(await orderStatusOf(order.id)).toBe("APPROVED");
   });
 });
 
@@ -267,7 +376,7 @@ describe("MenuSelection item versioning (Chunk 11 Group 11.3, PRD §30)", () => 
     expect(after?.items.map((i) => i.quantity)).toEqual([1]);
   });
 
-  it("snapshots the prior items into a new MenuVersion once past CUSTOMER_APPROVED, never mutating in place", async () => {
+  it("refuses to edit items once the menu has been sent, so the customer approves exactly what the kitchen cooks", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
@@ -277,21 +386,18 @@ describe("MenuSelection item versioning (Chunk 11 Group 11.3, PRD §30)", () => 
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
 
     await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: paneer.id }]);
-    await customerApproves(org.id, selection.id); // -> KITCHEN_REVIEWING, past the pre-approval statuses
+    await sendToCustomer(org.id, selection.id, actor.id);
+    await expect(setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: naan.id }], actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
+    // Recalling reopens it for editing.
+    await recallMenu(org.id, selection.id, actor.id);
     await setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: naan.id }], actor.id);
-
-    const versions = await prisma.menuVersion.findMany({ where: { menuSelectionId: selection.id }, include: { items: true } });
-    expect(versions).toHaveLength(1);
-    expect(versions[0].versionNumber).toBe(1);
-    expect(versions[0].status).toBe("KITCHEN_REVIEWING");
-    expect(versions[0].items).toHaveLength(1);
-    expect(versions[0].items[0].name).toBe("Paneer Tikka");
-
     const after = await getMenuSelection(org.id, selection.id);
-    expect(after?.currentVersion).toBe(2);
-    expect(after?.items).toHaveLength(1);
-    expect(after?.items[0].name).toBe("Butter Naan");
+    expect(after?.items.map((i) => i.name)).toEqual(["Butter Naan"]);
+
+    await sendToCustomer(org.id, selection.id, actor.id);
+    await customerApproves(org.id, selection.id);
+    await expect(setMenuSelectionItems(org.id, selection.id, [{ itemType: "MENU_ITEM", catalogId: paneer.id }], actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
   });
 });
 
@@ -303,6 +409,7 @@ describe("listMenuSelectionsForKitchen (Chunk 11 Group 11.5)", () => {
     const { event: eventA } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const { event: eventB } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "9999999999", eventDate: new Date("2027-01-01") }));
     const selectionB = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: eventB.id } });
+    await sendToCustomer(org.id, selectionB.id, actor.id);
     await customerApproves(org.id, selectionB.id);
 
     const kitchenReviewing = await listMenuSelectionsForKitchen(org.id, ["KITCHEN_REVIEWING"]);
@@ -321,18 +428,12 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
 
     const { event: eventNear } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000001", eventDate: new Date("2026-12-05") }));
-    const nearSelection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: eventNear.id } });
-    await customerApproves(org.id, nearSelection.id);
-    await kitchenApproves(org.id, nearSelection.id, actor.id);
-    await lockMenuSelection(org.id, nearSelection.id, actor.id);
+    const nearSelection = await lockThroughWorkflow(org.id, eventNear.id, actor.id);
 
     const { event: eventFar } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000002", eventDate: new Date("2027-01-20") }));
-    const farSelection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: eventFar.id } });
-    await customerApproves(org.id, farSelection.id);
-    await kitchenApproves(org.id, farSelection.id, actor.id);
-    await lockMenuSelection(org.id, farSelection.id, actor.id);
+    const farSelection = await lockThroughWorkflow(org.id, eventFar.id, actor.id);
 
-    // Still KITCHEN_REVIEWING — not locked, so it should never appear.
+    // Still DRAFT (Needs Review) — not locked, so it should never appear.
     await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "1000000003", eventDate: new Date("2026-12-01") }));
 
     const queue = await listKitchenProductionQueue(org.id);
@@ -345,10 +446,7 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
-    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
-    await customerApproves(org.id, selection.id);
-    await kitchenApproves(org.id, selection.id, actor.id);
-    await lockMenuSelection(org.id, selection.id, actor.id);
+    const selection = await lockThroughWorkflow(org.id, event.id, actor.id);
 
     const ready = await setKitchenProductionStatus(org.id, selection.id, "READY", actor.id);
     expect(ready.kitchenProductionStatus).toBe("READY");
@@ -378,10 +476,7 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
-    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
-    await customerApproves(org.id, selection.id);
-    await kitchenApproves(org.id, selection.id, actor.id);
-    await lockMenuSelection(org.id, selection.id, actor.id);
+    const selection = await lockThroughWorkflow(org.id, event.id, actor.id);
 
     const result = await setKitchenProductionStatus(org.id, selection.id, "PENDING", actor.id);
     expect(result.kitchenProductionStatus).toBe("PENDING");
@@ -399,10 +494,11 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
     const { event } = await submitEventDetails(org.id, intakeInput(eventType.id));
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
 
-    await expect(setKitchenProductionStatus(org.id, selection.id, "PREPARING", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(setKitchenProductionStatus(org.id, selection.id, "IN_PREPARATION", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
 
+    await sendToCustomer(org.id, selection.id, actor.id);
     await customerApproves(org.id, selection.id);
-    await expect(setKitchenProductionStatus(org.id, selection.id, "PREPARING", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
+    await expect(setKitchenProductionStatus(org.id, selection.id, "IN_PREPARATION", actor.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);
   });
 });
 
@@ -416,22 +512,18 @@ describe("listKitchenProductionBoard (Chunk 11 Group 11.5 redesign, AJ 2026-09-1
       const eventDate = new Date();
       eventDate.setDate(eventDate.getDate() + daysFromNow);
       const { event } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone, eventDate }));
-      const selection = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
-      await customerApproves(org.id, selection.id);
-      await kitchenApproves(org.id, selection.id, actor.id);
-      await lockMenuSelection(org.id, selection.id, actor.id);
-      return selection;
+      return lockThroughWorkflow(org.id, event.id, actor.id);
     }
 
     const inWindow = await lockedToday("2000000001", 2);
     const tooFar = await lockedToday("2000000002", 5);
     const completedInWindow = await lockedToday("2000000003", 1);
-    await setKitchenProductionStatus(org.id, completedInWindow.id, "COMPLETED", actor.id);
+    await setKitchenProductionStatus(org.id, completedInWindow.id, "DELIVERED", actor.id);
 
     const board = await listKitchenProductionBoard(org.id);
     const boardIds = board.map((s) => s.id);
     expect(boardIds).toContain(inWindow.id);
     expect(boardIds).not.toContain(tooFar.id); // outside the +2-day window
-    expect(boardIds).not.toContain(completedInWindow.id); // COMPLETED never shows on the board, even in-window
+    expect(boardIds).not.toContain(completedInWindow.id); // DELIVERED never shows on the board, even in-window
   });
 });

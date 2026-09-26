@@ -8,10 +8,10 @@ import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 // safe for both sides.
 export const KITCHEN_PRODUCTION_STATUS_LABEL: Record<KitchenProductionStatus, string> = {
   PENDING: "Pending",
-  PREPARING: "Preparing",
+  IN_PREPARATION: "In Preparation",
   READY: "Ready",
-  COMPLETED: "Completed",
+  DELIVERED: "Delivered",
   CANCELLED: "Cancelled",
 };
 
-export const KITCHEN_PRODUCTION_BOARD_STAGES = ["PENDING", "PREPARING", "READY"] as const satisfies readonly KitchenProductionStatus[];
+export const KITCHEN_PRODUCTION_BOARD_STAGES = ["PENDING", "IN_PREPARATION", "READY"] as const satisfies readonly KitchenProductionStatus[];

@@ -6,7 +6,7 @@ import { findCustomerByPhone, createCustomer } from "@/modules/customers/custome
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
 import { getMenuForOrderPicker } from "@/modules/menus/menu";
-import { createMenuSelection, beginCustomerSelection, setMenuSelectionItems, customerApproves, type MenuSelectionItemInput } from "./menu-approval";
+import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
 import { ABANDONED_AFTER_MS, DRAFT_RETENTION_DAYS } from "./storefront-draft-constants";
 import { splitPicks } from "./storefront-selection";
 import type { FoodType, MealType, VenueType, VehicleAccessType, Prisma } from "@/generated/prisma/client";
@@ -332,8 +332,10 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
 
 /**
  * The final Submit. Claims the draft atomically (a double-click can't create
- * two Orders), then builds Customer-linked Order -> Event -> MenuSelection and
- * hands the selection straight to the kitchen queue. The chosen Menu's plate
+ * two Orders), then builds Customer-linked Order -> Event -> MenuSelection. The
+ * order lands as Pending Review (AJ, 2026-09-26): the team checks it and sends
+ * the menu to the customer for approval — the visitor doesn't approve their own
+ * submission any more. The chosen Menu's plate
  * price rides on the Order's one meal-plan entry (Individual Pricing), extras
  * and per-plate add-ons as guest-count-quantity items, so the Order's own
  * totals engine produces the same figure the Review step showed. Anonymous —
@@ -412,7 +414,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       chosenMenuId: data.menuChoice.kind === "MENU" ? data.menuChoice.menuId : null,
       isCustomMenu: data.menuChoice.kind === "CUSTOM",
     });
-    await beginCustomerSelection(organizationId, menuSelection.id);
 
     const selectionItems: MenuSelectionItemInput[] = [
       ...regularIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id })),
@@ -420,7 +421,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       ...quote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id })),
     ];
     await setMenuSelectionItems(organizationId, menuSelection.id, selectionItems);
-    await customerApproves(organizationId, menuSelection.id);
 
     await prisma.storefrontDraft.update({ where: { id: draftId }, data: { orderId: order.id } });
     await audit({

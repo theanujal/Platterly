@@ -371,6 +371,8 @@ enum SecureAccessResourceType {
   QUOTATION
   INVOICE
   PAYMENT_LINK
+  // resourceId = a MenuVersion id, so a link is tied to one specific version.
+  MENU_APPROVAL
 }
 
 model SecureAccessToken {
@@ -1051,13 +1053,16 @@ model EventRequiredInventory {
 // of this same table whenever Quotation lands, same "leave it out until the
 // referenced model exists" convention as Chunk 9's `Event.orderId`).
 
-// PRD §21's own state machine, not the updated doc's shorter dashboard-filter
-// list — this dev plan's own chunk-10 file already made that call.
+// Order lifecycle (AJ, 2026-09-26). Driven by the menu-approval and kitchen
+// workflow (see menu-approval.ts's syncOrderStatus), and still overridable
+// by hand on the order form. Menu Approvals is a work queue on top of this,
+// not a lifecycle of its own.
 enum OrderStatus {
-  DRAFT
-  CONFIRMED
-  IN_PREPARATION
-  READY
+  PENDING_REVIEW
+  AWAITING_CUSTOMER_APPROVAL
+  KITCHEN_REVIEW
+  APPROVED
+  SENT_TO_KITCHEN
   COMPLETED
   CANCELLED
 }
@@ -1274,7 +1279,7 @@ model Order {
   balance            Decimal @default(0) @db.Decimal(12, 2)
 
   paymentStatus OrderPaymentStatus @default(UNPAID)
-  status        OrderStatus        @default(DRAFT)
+  status        OrderStatus        @default(PENDING_REVIEW)
   notes         String?
   // "Order Details" section — a second, kitchen-facing note distinct from
   // the customer/admin-facing `notes` above.
@@ -1483,9 +1488,9 @@ enum MenuSelectionStatus {
 // one stage at a time, from the Kitchen Dashboard.
 enum KitchenProductionStatus {
   PENDING
-  PREPARING
+  IN_PREPARATION
   READY
-  COMPLETED
+  DELIVERED
   CANCELLED
 }
 
@@ -1578,6 +1583,15 @@ model MenuVersion {
   versionNumber Int
   status        MenuSelectionStatus
   note          String?
+
+  // Created each time the team sends the menu to the customer. `snapshot` is
+  // exactly what the customer's approval page shows (meals, items, guests,
+  // total) — approving a version approves that frozen content, not whatever
+  // the order looks like later. `supersededAt` is set when a newer version is
+  // sent; only the latest version can be approved.
+  snapshot     Json?
+  sentAt       DateTime?
+  supersededAt DateTime?
 
   items MenuVersionItem[]
 

@@ -15,9 +15,9 @@ import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 // pill it merely LOOKS related to (fixed 2026-09-19, was rounded-full).
 const STAGE_STYLE: Record<KitchenProductionStatus, string> = {
   PENDING: "bg-secondary text-secondary-foreground",
-  PREPARING: "bg-warning/10 text-warning",
+  IN_PREPARATION: "bg-warning/10 text-warning",
   READY: "bg-info/10 text-info",
-  COMPLETED: "bg-success/10 text-success",
+  DELIVERED: "bg-success/10 text-success",
   CANCELLED: "bg-destructive/10 text-destructive",
 };
 

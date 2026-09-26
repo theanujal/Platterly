@@ -25,6 +25,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "./customer-combobox";
 import { FoodItemSelectionDialog, type FoodItemSelectionValue } from "./food-item-selection-dialog";
 import { cn } from "cn";
+import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import { getOrderCountsByDayAction, type ActionResult } from "../actions";
 
 // Mirrors actions.ts's own MIN_DAYS_BEFORE_EVENT/daysUntil/assertEventDateAllowed
@@ -49,14 +50,7 @@ const MEAL_TYPES = [
   { value: "OTHER", label: "Other" },
 ] as const;
 
-const ORDER_STATUS_OPTIONS = [
-  { value: "DRAFT", label: "Draft" },
-  { value: "CONFIRMED", label: "Confirmed" },
-  { value: "IN_PREPARATION", label: "In Preparation" },
-  { value: "READY", label: "Ready" },
-  { value: "COMPLETED", label: "Completed" },
-  { value: "CANCELLED", label: "Cancelled" },
-] as const;
+const ORDER_STATUS_OPTIONS = ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }));
 
 const PAYMENT_STATUS_OPTIONS = [
   { value: "UNPAID", label: "Unpaid" },
@@ -182,7 +176,7 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   otherCharges: "0",
   advance: "0",
   paymentStatus: "UNPAID",
-  status: "DRAFT",
+  status: "PENDING_REVIEW",
   notes: "",
   kitchenNotes: "",
   mealPlanEntries: [],

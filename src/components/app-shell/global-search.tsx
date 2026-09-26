@@ -4,17 +4,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Loader2 } from "lucide-react";
 import { searchOrdersAction, type GlobalSearchResult } from "@/app/(app)/actions";
-import type { OrderStatus } from "@/generated/prisma/enums";
+import { ORDER_STATUS_LABEL } from "@/modules/orders/order-status";
 import { formatPhoneDisplay } from "@/lib/phone";
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Draft",
-  CONFIRMED: "Confirmed",
-  IN_PREPARATION: "In Preparation",
-  READY: "Ready",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
+const STATUS_LABEL = ORDER_STATUS_LABEL;
 
 function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;

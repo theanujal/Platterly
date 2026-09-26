@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, resolveCatalogItem, recalculateOrderTotals, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
+import { deriveOrderStatus } from "@/modules/orders/order-status";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export class InvalidMenuSelectionTransitionError extends Error {}
@@ -50,8 +51,10 @@ export interface EventDetailsIntakeInput {
 /**
  * Group 11.2's whole intake flow in one transaction-adjacent sequence:
  * find-or-create Customer by phone -> always a brand-new Order -> its Event
- * (auto-assigned to the org's default Kitchen) -> a DRAFT MenuSelection
- * auto-advanced to CUSTOMER_REVIEWING. No `actorUserId` anywhere here — this
+ * (auto-assigned to the org's default Kitchen) -> a DRAFT MenuSelection. The
+ * menu is NOT sent to the customer here (AJ, 2026-09-26): a placed order lands
+ * as Pending Review, and the team sends it for approval. No `actorUserId`
+ * anywhere here — this
  * is a fully anonymous, public submission (AJ, 2026-09-17), unlike every
  * other create-Order/create-Event call site in the app.
  */
@@ -102,7 +105,6 @@ export async function submitEventDetails(organizationId: string, input: EventDet
   }
 
   const menuSelection = await createMenuSelection(organizationId, event.id);
-  const ready = await beginCustomerSelection(organizationId, menuSelection.id);
 
   await audit({
     organizationId,
@@ -112,27 +114,69 @@ export async function submitEventDetails(organizationId: string, input: EventDet
     after: { customerId: customer.id, orderId: order.id, eventId: event.id },
   });
 
-  return { customer, order, event, menuSelection: ready };
+  return { customer, order, event, menuSelection };
 }
 
 // --- Group 11.3 — Approval State Machine + Versioning (PRD §29/§30) ---
 
+// Team -> customer -> kitchen (AJ, 2026-09-26). The customer only ever
+// answers the *latest sent version*, so anything that changes the menu goes
+// back through SENT_TO_CUSTOMER as a new version — including changes the
+// kitchen asked for. DRAFT is also where a sent menu is recalled to for editing.
 const VALID_TRANSITIONS: Record<MenuSelectionStatus, MenuSelectionStatus[]> = {
   DRAFT: ["SENT_TO_CUSTOMER"],
-  SENT_TO_CUSTOMER: ["CUSTOMER_REVIEWING"],
-  CUSTOMER_REVIEWING: ["CHANGES_REQUESTED", "CUSTOMER_APPROVED"],
-  CHANGES_REQUESTED: ["CUSTOMER_REVIEWING", "CUSTOMER_APPROVED"],
+  SENT_TO_CUSTOMER: ["CUSTOMER_REVIEWING", "CHANGES_REQUESTED", "CUSTOMER_APPROVED", "DRAFT"],
+  CUSTOMER_REVIEWING: ["CHANGES_REQUESTED", "CUSTOMER_APPROVED", "DRAFT"],
+  CHANGES_REQUESTED: ["SENT_TO_CUSTOMER"],
   CUSTOMER_APPROVED: ["KITCHEN_REVIEWING"],
   KITCHEN_REVIEWING: ["KITCHEN_CHANGES_REQUESTED", "KITCHEN_APPROVED"],
-  KITCHEN_CHANGES_REQUESTED: ["KITCHEN_REVIEWING"],
+  KITCHEN_CHANGES_REQUESTED: ["SENT_TO_CUSTOMER"],
   KITCHEN_APPROVED: ["FINAL_LOCKED"],
   FINAL_LOCKED: [],
 };
 
-// A MenuSelection's items are freely mutated in place while in any of these
-// statuses. Once past them, §30 requires a MenuVersion snapshot first (see
-// `setMenuSelectionItems`).
-const PRE_APPROVAL_STATUSES: MenuSelectionStatus[] = ["DRAFT", "SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING", "CHANGES_REQUESTED"];
+// The team may only edit a menu's items while no version of it is in front of
+// the customer or the kitchen — otherwise the customer would approve a
+// snapshot that no longer matches what the kitchen then cooks. (To change a
+// sent menu, recall it to DRAFT first.)
+const EDITABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUESTED", "KITCHEN_CHANGES_REQUESTED"];
+
+/**
+ * Recomputes an Order's status from its menu selection(s) and kitchen stage
+ * (deriveOrderStatus) and writes it if it changed. Called after every menu-
+ * approval / kitchen transition, so the Orders list always reflects the
+ * workflow. A hand-set status on the order form is simply overwritten by the
+ * next transition. No-op for an Order with no menu selection.
+ */
+export async function syncOrderStatus(organizationId: string, menuSelectionId: string, actorUserId?: string) {
+  const selection = await prisma.menuSelection.findFirst({
+    where: { id: menuSelectionId, organizationId },
+    select: { event: { select: { orderId: true } } },
+  });
+  const orderId = selection?.event.orderId;
+  if (!orderId) return;
+
+  const selections = await prisma.menuSelection.findMany({
+    where: { organizationId, event: { orderId } },
+    select: { status: true, kitchenProductionStatus: true },
+  });
+  const next = deriveOrderStatus(selections);
+  if (!next) return;
+
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { status: true } });
+  if (!order || order.status === next) return;
+
+  await prisma.order.update({ where: { id: orderId }, data: { status: next } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "order.status_synced",
+    recordType: "Order",
+    recordId: orderId,
+    before: { status: order.status },
+    after: { status: next },
+  });
+}
 
 export async function createMenuSelection(
   organizationId: string,
@@ -185,19 +229,14 @@ async function transitionMenuSelection(organizationId: string, id: string, to: M
     before: { status: before.status },
     after: { status: after.status },
   });
+  await syncOrderStatus(organizationId, id, options?.actorUserId);
 
   return after;
 }
 
-/**
- * DRAFT -> SENT_TO_CUSTOMER -> CUSTOMER_REVIEWING in one call — there's no
- * admin "send" step in this redesign (see dev plans/chunk-11.md Group 11.3),
- * so a freshly-created MenuSelection is made available to the customer
- * immediately, as one auto-advanced sequence rather than a manual send.
- */
-export async function beginCustomerSelection(organizationId: string, id: string) {
-  await transitionMenuSelection(organizationId, id, "SENT_TO_CUSTOMER", "menu_selection.sent_to_customer");
-  return transitionMenuSelection(organizationId, id, "CUSTOMER_REVIEWING", "menu_selection.customer_reviewing");
+/** Team-triggered: DRAFT / CHANGES_REQUESTED / KITCHEN_CHANGES_REQUESTED -> SENT_TO_CUSTOMER. Use approval-link.ts's sendMenuForApproval, which also freezes the version and issues the link. */
+export async function sendToCustomer(organizationId: string, id: string, actorUserId: string) {
+  return transitionMenuSelection(organizationId, id, "SENT_TO_CUSTOMER", "menu_selection.sent_to_customer", { actorUserId });
 }
 
 /** Customer-triggered, via the public flow — no actorUserId, same convention as quotation.ts's customer actions. */
@@ -224,12 +263,25 @@ export async function kitchenRequestsChanges(organizationId: string, id: string,
   return transitionMenuSelection(organizationId, id, "KITCHEN_CHANGES_REQUESTED", "menu_selection.kitchen_request_changes", { actorUserId, note });
 }
 
-export async function resumeKitchenReview(organizationId: string, id: string, actorUserId: string) {
-  return transitionMenuSelection(organizationId, id, "KITCHEN_REVIEWING", "menu_selection.kitchen_resume_review", { actorUserId });
+/**
+ * Pulls a menu that's out with the customer back to DRAFT so the team can edit
+ * it (and later send a fresh version). Revoking the outstanding approval link
+ * is the caller's job — see approval-link.ts's recallMenuFromCustomer.
+ */
+export async function recallMenu(organizationId: string, id: string, actorUserId: string) {
+  return transitionMenuSelection(organizationId, id, "DRAFT", "menu_selection.recalled", { actorUserId });
 }
 
+/**
+ * The kitchen team's approval is the last gate: it locks the menu in the same
+ * call, which is the automatic hand-off to the Kitchen Dashboard (the locked
+ * selection appears there as Pending) and moves the Order to Sent to Kitchen.
+ * The Order passes through Approved on the way (recorded by the sync's audit
+ * log), so the transient status is never lost from history.
+ */
 export async function kitchenApproves(organizationId: string, id: string, actorUserId: string) {
-  return transitionMenuSelection(organizationId, id, "KITCHEN_APPROVED", "menu_selection.kitchen_approved", { actorUserId });
+  await transitionMenuSelection(organizationId, id, "KITCHEN_APPROVED", "menu_selection.kitchen_approved", { actorUserId });
+  return lockMenuSelection(organizationId, id, actorUserId);
 }
 
 export async function lockMenuSelection(organizationId: string, id: string, actorUserId: string) {
@@ -238,10 +290,10 @@ export async function lockMenuSelection(organizationId: string, id: string, acto
 
 /**
  * Full replacement of a MenuSelection's items (same resolve-server-side-
- * price convention as Order/Quotation's own item-replace functions). Once
- * past the pre-approval statuses, §30 requires snapshotting the *current*
- * items into a new MenuVersion before applying the change, rather than
- * mutating in place.
+ * price convention as Order/Quotation's own item-replace functions). Only
+ * allowed while no version is with the customer or the kitchen (see
+ * EDITABLE_STATUSES) — versions are frozen snapshots taken when the menu is
+ * sent, so an edit always precedes a new send rather than mutating a sent one.
  */
 export type MenuSelectionItemInput = Pick<OrderItemCatalogInput, "itemType" | "catalogId"> & {
   /** Picked beyond its category's max-selection (priced price x guests). Set by the storefront submit, which derives it server-side. */
@@ -254,25 +306,8 @@ export async function setMenuSelectionItems(organizationId: string, menuSelectio
     include: { items: true },
   });
 
-  if (!PRE_APPROVAL_STATUSES.includes(menuSelection.status)) {
-    const version = await prisma.menuVersion.create({
-      data: { menuSelectionId, versionNumber: menuSelection.currentVersion, status: menuSelection.status },
-    });
-    if (menuSelection.items.length > 0) {
-      await prisma.menuVersionItem.createMany({
-        data: menuSelection.items.map((item) => ({
-          menuVersionId: version.id,
-          itemType: item.itemType,
-          menuId: item.menuId,
-          menuItemId: item.menuItemId,
-          addOnId: item.addOnId,
-          name: item.name,
-          unitPrice: item.unitPrice,
-          quantity: item.quantity,
-        })),
-      });
-    }
-    await prisma.menuSelection.update({ where: { id: menuSelectionId }, data: { currentVersion: { increment: 1 } } });
+  if (!EDITABLE_STATUSES.includes(menuSelection.status)) {
+    throw new InvalidMenuSelectionTransitionError("This menu has been sent, so it can't be edited. Recall it to edit it first.");
   }
 
   await prisma.menuSelectionItem.deleteMany({ where: { menuSelectionId } });
@@ -368,8 +403,8 @@ export async function listMenuSelectionsForKitchen(organizationId: string, statu
 // Redesigned 2026-09-19 (AJ, live reference screenshot): the board is now a
 // free-choice status dropdown (any of the 5 stages, any direction — not the
 // original forward-only single-step advance) plus a `CANCELLED` stage. The
-// 3 "in flight" stages (Pending/Preparing/Ready) are the board's own 3
-// columns; Completed and Cancelled move off the board entirely and are only
+// 3 "in flight" stages (Pending/In Preparation/Ready) are the board's own 3
+// columns; Delivered and Cancelled move off the board entirely and are only
 // reachable via their own "Delivered Orders"/"Cancelled Orders" list pages —
 // see `listKitchenProductionQueue` below, unchanged, for those.
 
@@ -456,6 +491,8 @@ export async function setKitchenProductionStatus(
     before: { kitchenProductionStatus: before.kitchenProductionStatus },
     after: { kitchenProductionStatus: after.kitchenProductionStatus },
   });
+  // Delivered completes the Order; Cancelled cancels it (see orderStatusForSelection).
+  await syncOrderStatus(organizationId, id, actorUserId);
 
   return after;
 }

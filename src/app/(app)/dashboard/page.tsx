@@ -79,7 +79,7 @@ export default async function DashboardPage() {
         <div className="flex flex-col gap-4">
           <PublicMenuShortcutCard slug={organization.slug} slugChangeCount={organization.slugChangeCount} />
           <NeedsAttentionCard
-            draftOrders={snapshot.draftOrders}
+            pendingReviewOrders={snapshot.pendingReviewOrders}
             outstandingOrdersCount={snapshot.outstandingOrdersCount}
             outstandingBalance={snapshot.outstandingBalance}
             quotationsAwaitingResponse={snapshot.quotationsAwaitingResponse}

@@ -194,7 +194,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByRole("button", { name: "Create Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
   await expect(page.getByText(customerName)).toBeVisible();
-  await expect(page.getByText("₹400.00")).toBeVisible();
+  await expect(page.getByText("₹400", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
 
   // --- Orders Dashboard filters ---
   await page.getByLabel("Search").fill("no-such-customer-xyz");
@@ -203,7 +203,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByText(customerName)).toBeVisible();
 
   await page.getByLabel("Order status filter").click();
-  await page.getByRole("option", { name: "Confirmed" }).click();
+  await page.getByRole("option", { name: "Approved", exact: true }).click();
   await expect(page.getByText(customerName)).not.toBeVisible();
   await page.getByLabel("Order status filter").click();
   await page.getByRole("option", { name: "All Status" }).click();
@@ -347,9 +347,15 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
 
   await page.getByRole("button", { name: "Create Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
-  const orderCard = page.getByRole("link", { name: new RegExp(`AJ-0001.*${customerName}`) });
+  // Orders card (2026-09-26): the customer name is the card's stretched link,
+  // not the whole card, so find the card by test id rather than as one link.
+  const orderCard = page.getByTestId("order-card").filter({ hasText: customerName });
   await expect(orderCard).toBeVisible();
+  await expect(orderCard.getByText("AJ-0001", { exact: true })).toBeVisible();
   await expect(orderCard.getByText("Multi Order", { exact: true })).toBeVisible();
+  await expect(orderCard.getByText("Event Date", { exact: true })).toBeVisible();
+  await expect(orderCard.getByText("Starts in", { exact: true })).toBeVisible(); // Dec 2026 event is in the future
+  await expect(orderCard.getByText("Order Amount", { exact: true })).toBeVisible();
 
   // --- Reopen the order — per-meal Menu/items survived the round trip ---
   await page.getByText(customerName).click();
@@ -366,4 +372,31 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await page.getByLabel("Order type filter").click();
   await page.getByRole("option", { name: "Multi Order" }).click();
   await expect(page.getByText(customerName)).toBeVisible();
+
+  // --- List view (AJ, 2026-09-26): order # + type, customer, event + countdown, guests, total, payment, status + description ---
+  await page.getByRole("button", { name: "List view" }).click();
+  const listRow = page.getByRole("row").filter({ hasText: customerName });
+  await expect(listRow).toContainText("AJ-0001");
+  await expect(listRow).toContainText("Multi Order");
+  await expect(listRow).toContainText("Pending Review");
+  await expect(listRow).toContainText("Team to review menu & items.");
+  await expect(listRow.getByRole("link", { name: customerName })).toBeVisible();
+  await page.getByRole("button", { name: "Grid view" }).click();
+
+  // --- The card's 3-dot menu: View / Edit navigates, Delete asks first and then removes the card ---
+  await page.goto("/orders");
+  const card = page.getByTestId("order-card").filter({ hasText: customerName });
+  await card.getByRole("button", { name: "Actions for AJ-0001" }).click();
+  await page.getByRole("menuitem", { name: "View / Edit Order" }).click();
+  await expect(page).toHaveURL(/\/orders\/.+/);
+
+  await page.goto("/orders");
+  await card.getByRole("button", { name: "Actions for AJ-0001" }).click();
+  await page.getByRole("menuitem", { name: "Delete Order" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(card).toBeVisible(); // cancelling deletes nothing
+  await card.getByRole("button", { name: "Actions for AJ-0001" }).click();
+  await page.getByRole("menuitem", { name: "Delete Order" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card).toHaveCount(0);
 });

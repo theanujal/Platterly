@@ -165,7 +165,7 @@ export interface CalendarFixtureOrder {
   /** "YYYY-MM-DD" */
   start: string;
   end: string;
-  status?: "DRAFT" | "CONFIRMED" | "IN_PREPARATION" | "READY" | "COMPLETED" | "CANCELLED";
+  status?: "PENDING_REVIEW" | "AWAITING_CUSTOMER_APPROVAL" | "KITCHEN_REVIEW" | "APPROVED" | "SENT_TO_KITCHEN" | "COMPLETED" | "CANCELLED";
   guests?: number;
 }
 
@@ -207,7 +207,7 @@ export async function seedCalendarFixtures(
     await pool.query(
       `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "eventStartDate", "eventEndDate", status, "totalParticipants", "updatedAt")
        VALUES ($1, $2, $3, $4, $5::timestamp, $6::timestamp, $7::"OrderStatus", $8, now())`,
-      [id, orgId, customerId, eventTypeId, o.start, o.end, o.status ?? "CONFIRMED", o.guests ?? null],
+      [id, orgId, customerId, eventTypeId, o.start, o.end, o.status ?? "APPROVED", o.guests ?? null],
     );
   }
   for (const e of fixtures.events) {

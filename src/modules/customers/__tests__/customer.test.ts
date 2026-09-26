@@ -176,7 +176,7 @@ describe("getCustomerTimeline (Chunk 9 Group 9.2, now sourced from Order + Event
     const timeline = await getCustomerTimeline(org.id, customer.id);
     expect(timeline).toHaveLength(2);
     expect(timeline.map((t) => t.id).sort()).toEqual([order.id, event.id].sort());
-    expect(timeline.find((t) => t.type === "order")).toMatchObject({ status: "DRAFT" });
+    expect(timeline.find((t) => t.type === "order")).toMatchObject({ status: "PENDING_REVIEW" });
     expect(timeline.find((t) => t.type === "event")).toMatchObject({ name: "Priya's Wedding", status: "PENDING" });
   });
 

@@ -1,24 +1,19 @@
 import Link from "next/link";
-import { FileEdit, CheckCircle2, ChefHat, PackageCheck, CircleCheckBig, XCircle, IndianRupee, ClipboardList, Wallet } from "lucide-react";
+import { CheckCircle2, ChefHat, CircleCheckBig, ClipboardCheck, ClipboardList, Hourglass, IndianRupee, Send, Wallet, XCircle } from "lucide-react";
+import { ORDER_STATUS_LABEL } from "@/modules/orders/order-status";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
-const STATUS_LABEL: Record<OrderStatus, string> = {
-  DRAFT: "Draft",
-  CONFIRMED: "Confirmed",
-  IN_PREPARATION: "In Preparation",
-  READY: "Ready",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-};
+const STATUS_LABEL = ORDER_STATUS_LABEL;
 
 // Same warm/cool accent hues already used throughout the app for icon chips
 // (DashboardCardHeader's colorClassName, badge colors) — applied here as
 // solid card fills instead of soft tints, for the bolder KPI-card look.
-const STATUS_STYLE: Record<OrderStatus, { icon: typeof FileEdit; bg: string }> = {
-  DRAFT: { icon: FileEdit, bg: "bg-slate-500" },
-  CONFIRMED: { icon: CheckCircle2, bg: "bg-blue-600" },
-  IN_PREPARATION: { icon: ChefHat, bg: "bg-amber-500" },
-  READY: { icon: PackageCheck, bg: "bg-violet-600" },
+const STATUS_STYLE: Record<OrderStatus, { icon: typeof ClipboardCheck; bg: string }> = {
+  PENDING_REVIEW: { icon: ClipboardCheck, bg: "bg-amber-500" },
+  AWAITING_CUSTOMER_APPROVAL: { icon: Hourglass, bg: "bg-blue-600" },
+  KITCHEN_REVIEW: { icon: ChefHat, bg: "bg-violet-600" },
+  APPROVED: { icon: CheckCircle2, bg: "bg-teal-600" },
+  SENT_TO_KITCHEN: { icon: Send, bg: "bg-slate-600" },
   COMPLETED: { icon: CircleCheckBig, bg: "bg-emerald-600" },
   CANCELLED: { icon: XCircle, bg: "bg-rose-600" },
 };
@@ -38,12 +33,12 @@ interface DashboardKpisProps {
 // at a glance), plus a secondary row translating the two most active
 // statuses and the outstanding balance into real money.
 export function DashboardKpis({ statusBreakdown, outstandingBalance, outstandingOrdersCount }: DashboardKpisProps) {
-  const confirmedValue = statusBreakdown.find((s) => s.status === "CONFIRMED")?.totalValue ?? 0;
+  const inKitchenValue = statusBreakdown.find((s) => s.status === "SENT_TO_KITCHEN")?.totalValue ?? 0;
   const completedValue = statusBreakdown.find((s) => s.status === "COMPLETED")?.totalValue ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
         {statusBreakdown.map(({ status, count }) => {
           const { icon: Icon, bg } = STATUS_STYLE[status];
           return (
@@ -80,15 +75,15 @@ export function DashboardKpis({ statusBreakdown, outstandingBalance, outstanding
           </div>
         </Link>
         <Link
-          href="/orders?status=CONFIRMED"
+          href="/orders?status=SENT_TO_KITCHEN"
           className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 transition-colors hover:bg-blue-100"
         >
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-700">
             <ClipboardList className="size-4" />
           </div>
           <div>
-            <div className="text-xs font-medium text-blue-800">Confirmed Orders Value</div>
-            <div className="text-lg font-semibold text-blue-900">{formatCurrency(confirmedValue)}</div>
+            <div className="text-xs font-medium text-blue-800">Orders in Kitchen Value</div>
+            <div className="text-lg font-semibold text-blue-900">{formatCurrency(inKitchenValue)}</div>
           </div>
         </Link>
         <Link

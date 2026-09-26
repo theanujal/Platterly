@@ -66,7 +66,7 @@ describe("daysInRange / countByDay (pure)", () => {
 describe("getOrderCountsByDay / getCalendarData (Chunk 13)", () => {
   it("counts a multi-day order on every day, skips CANCELLED, and matches the Orders table exactly", async () => {
     const { org, actor, customer } = await setup();
-    const make = (start: string, end: string, status?: "CANCELLED" | "CONFIRMED") =>
+    const make = (start: string, end: string, status?: "CANCELLED" | "APPROVED") =>
       createOrder(org.id, { customerId: customer.id, eventStartDate: d(start), eventEndDate: d(end), status }, actor.id);
 
     await make("2026-10-05", "2026-10-05");

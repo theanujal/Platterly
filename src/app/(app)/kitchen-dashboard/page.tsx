@@ -17,11 +17,11 @@ export const metadata: Metadata = {
 };
 
 // Only the 3 "in flight" stages get a board column (AJ, 2026-09-19) —
-// Completed/Cancelled move off the board entirely onto their own list pages
+// Delivered/Cancelled move off the board entirely onto their own list pages
 // (the two buttons in the header), see menu-approval.ts's board-vs-queue split.
 const COLUMNS: { key: KitchenProductionStatus; label: string; icon: LucideIcon; header: string; icon_tint: string }[] = [
   { key: "PENDING", label: "Pending", icon: Clock, header: "bg-secondary", icon_tint: "text-foreground" },
-  { key: "PREPARING", label: "Preparing", icon: ChefHat, header: "bg-warning/10", icon_tint: "text-warning" },
+  { key: "IN_PREPARATION", label: "In Preparation", icon: ChefHat, header: "bg-warning/10", icon_tint: "text-warning" },
   { key: "READY", label: "Ready", icon: PackageCheck, header: "bg-info/10", icon_tint: "text-info" },
 ];
 
@@ -73,7 +73,7 @@ export default async function KitchenDashboardPage() {
 
       {menuSelections.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">
-          Nothing in production for today through the next 2 days — confirmed menus show up here once the kitchen locks them in Menu Approvals.
+          Nothing in production for today through the next 2 days — confirmed menus show up here once the kitchen team approves them in Menu Approvals.
         </p>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

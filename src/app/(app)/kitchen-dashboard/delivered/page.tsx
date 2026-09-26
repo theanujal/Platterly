@@ -14,7 +14,7 @@ export default async function DeliveredOrdersPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["view"] }, organizationId);
 
-  const menuSelections = await listKitchenProductionQueue(organizationId, ["COMPLETED"]);
+  const menuSelections = await listKitchenProductionQueue(organizationId, ["DELIVERED"]);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -23,7 +23,7 @@ export default async function DeliveredOrdersPage() {
       />
       <div>
         <h1 className="text-2xl font-semibold">Delivered Orders</h1>
-        <p className="text-sm text-muted-foreground">Every menu the kitchen has marked Completed, across all dates.</p>
+        <p className="text-sm text-muted-foreground">Every menu the kitchen has marked Delivered, across all dates.</p>
       </div>
       <Separator />
 

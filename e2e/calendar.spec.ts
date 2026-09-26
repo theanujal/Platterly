@@ -67,7 +67,7 @@ test("calendar page + order-count date picker agree with the Orders/Events table
 
   const orders: CalendarFixtureOrder[] = [
     { start: iso(y, m, 10), end: iso(y, m, 10), guests: 100 }, // 0 — has a linked Event
-    { start: iso(y, m, 10), end: iso(y, m, 12), status: "DRAFT" }, // 1 — multi-day: counts on 10, 11, 12
+    { start: iso(y, m, 10), end: iso(y, m, 12), status: "PENDING_REVIEW" }, // 1 — multi-day: counts on 10, 11, 12
     { start: iso(y, m, 20), end: iso(y, m, 20), status: "CANCELLED" }, // 2 — never counted
     { start: today, end: today }, // 3 — makes today busy
     { start: iso(ny, nm, 5), end: iso(ny, nm, 5) }, // 4 — next month

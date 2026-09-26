@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getOrder } from "@/modules/orders/order";
+import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { EditOrderClient } from "./_components/edit-order-client";
 import { DeleteOrderButton } from "./_components/delete-order-button";
 import { OrderEventSection } from "./_components/order-event-section";
+import { OrderApprovalPanel } from "./_components/order-approval-panel";
 import type { OrderFormValues } from "../_components/order-form";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
@@ -43,7 +45,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
-  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canBypassDateRestriction] = await Promise.all([
+  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canBypassDateRestriction, canManageApproval, menuApproval] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
@@ -51,6 +53,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     listKitchens(organizationId),
     listInventoryItems(organizationId),
     hasPermission({ orders: ["bypass_date_restriction"] }, organizationId),
+    hasPermission({ menus: ["approve"] }, organizationId),
+    getOrderMenuApproval(organizationId, id),
   ]);
   if (!order) notFound();
 
@@ -125,6 +129,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </div>
         <DeleteOrderButton orderId={order.id} name={order.customer.name} />
       </div>
+
+      <OrderApprovalPanel orderId={order.id} approval={menuApproval} canManage={canManageApproval} />
 
       {/*
         Whole-order items (mealPlanEntryId: null) only exist on an Order

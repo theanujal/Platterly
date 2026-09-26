@@ -5,12 +5,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
+  { value: "DRAFT", label: "Needs Review" },
+  { value: "SENT_TO_CUSTOMER", label: "Awaiting Customer Approval" },
   { value: "CUSTOMER_REVIEWING", label: "Customer Reviewing" },
   { value: "CHANGES_REQUESTED", label: "Changes Requested" },
   { value: "KITCHEN_REVIEWING", label: "Needs Kitchen Review" },
   { value: "KITCHEN_CHANGES_REQUESTED", label: "Kitchen Changes Requested" },
-  { value: "KITCHEN_APPROVED", label: "Kitchen Approved" },
-  { value: "FINAL_LOCKED", label: "Final / Locked" },
+  { value: "FINAL_LOCKED", label: "Approved & Sent to Kitchen" },
 ] as const;
 
 export function MenuApprovalsFilterBar() {

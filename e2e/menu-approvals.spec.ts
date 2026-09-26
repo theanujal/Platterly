@@ -9,14 +9,19 @@ import { verifyEmailViaOtp } from "./auth-helpers";
  * Event Type, then walks an anonymous customer (cookie-less browser context)
  * through Event Details -> Choose Menu -> Choose Items (incl. the View
  * Details popup and the Extra Item popup) -> Venue -> Review -> Submit, and
- * drives the admin side through Approve -> Lock. Also covers a second visitor
+ * drives the team -> customer -> kitchen approval workflow (AJ, 2026-09-26):
+ * the placed order lands as Pending Review, the team sends the menu, the
+ * customer requests a change through the public no-login link, the team
+ * sends version 2 (version 1's link dies), the customer approves, the kitchen
+ * team approves (automatic hand-off to the Kitchen Dashboard) and the Order
+ * status follows every step through Completed / Cancelled. Also covers a second visitor
  * who abandons after step 1 (Abandoned Orders list) and the Iframe settings
  * page embedding the live storefront.
  *
  * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`),
  * redesigned 2026-09-19 (AJ, live reference screenshot): a 3-column board
- * (Pending/Preparing/Ready only, windowed to today-through-+2-days) with a
- * free-choice status dropdown per card, plus Completed/Cancelled moving off
+ * (Pending/In Preparation/Ready only, windowed to today-through-+2-days) with a
+ * free-choice status dropdown per card, plus Delivered/Cancelled moving off
  * the board entirely onto their own `/kitchen-dashboard/delivered` and
  * `/kitchen-dashboard/cancelled` list pages.
  */
@@ -40,7 +45,7 @@ test.afterEach(async () => {
   await cleanupOnboardingTestUser(email);
 });
 
-test("kitchen reviews, approves, and locks a customer's menu selection", async ({ page, browser }) => {
+test("team sends a placed order for approval, the customer approves via a no-login link, and the kitchen team hands it to the kitchen", async ({ page, browser }) => {
   test.setTimeout(300_000);
   const email = `e2e-menu-approvals-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -209,25 +214,82 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   await expect(publicPage).toHaveURL(/step=menu/);
   await publicContext.close(); // ...and closes the tab without choosing a menu
 
-  // --- Admin: the Menu Approvals queue shows it, needing kitchen review ---
+  // --- Placed, not approved: the order lands as Pending Review, and the queue says the menu Needs Review ---
+  const orderCard = () => page.getByTestId("order-card").filter({ hasText: customerName });
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Pending Review");
+
   await page.goto("/menu-approvals");
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
-  await expect(page.getByText("Needs Kitchen Review")).toBeVisible();
+  await expect(page.getByText("Needs Review")).toBeVisible();
   await page.getByRole("button", { name: "Review" }).click();
   await expect(page).toHaveURL(/\/menu-approvals\/.+/);
 
-  // --- Kitchen reviews the real selections (add/remove, no quantity), approves, then locks ---
+  // --- The team checks the real selections (add/remove, no quantity), then sends the menu for approval ---
   await expect(page.getByLabel(/Quantity/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: `Remove ${itemName}` })).toBeVisible(); // selected
+  await expect(page.getByRole("button", { name: `Remove ${itemName}` })).toBeVisible(); // selected, and editable while Needs Review
   await expect(page.getByRole("button", { name: `Remove ${extraItemName}` })).toBeVisible();
   await expect(page.getByText("Extra", { exact: true })).toBeVisible();
   await expect(page.getByText(addOnName)).toBeVisible();
-  await page.getByRole("button", { name: "Approve" }).click();
-  await expect(page.getByRole("button", { name: "Lock Menu" })).toBeVisible();
-  await page.getByRole("button", { name: "Lock Menu" }).click();
-  await expect(page.getByText(/Locked on/)).toBeVisible();
+  await page.getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(page.getByText(/Version 1 is with the customer/)).toBeVisible();
+  const linkV1 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
-  // --- Kitchen Dashboard: the freshly-locked menu starts Pending, in a real board column ---
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Awaiting Customer Approval");
+  await expect(orderCard()).toContainText("Menu sent");
+
+  // --- The customer opens the link: no login, no account — and asks for a change ---
+  const customerContext = await browser.newContext();
+  const customerPage = await customerContext.newPage();
+  await customerPage.goto(linkV1);
+  await expect(customerPage.getByRole("heading", { name: "Review & Approve Menu" })).toBeVisible();
+  await expect(customerPage.getByText(customerName)).toBeVisible();
+  await expect(customerPage.getByText(/Guests:\s*100/)).toBeVisible();
+  await expect(customerPage.getByText(itemName)).toBeVisible();
+  await customerPage.getByRole("button", { name: "Request Changes" }).click();
+  await customerPage.getByLabel("What would you like to change?").fill("Please swap the starter for something lighter.");
+  await customerPage.getByRole("button", { name: "Submit Request" }).click();
+  await expect(customerPage.getByText("Request sent — thank you!")).toBeVisible();
+
+  // The link is single-use: it now reads as inactive, revealing nothing else.
+  await customerPage.goto(linkV1);
+  await expect(customerPage.getByRole("heading", { name: "This link is no longer active" })).toBeVisible();
+
+  // --- Back to the team: Pending Review again, with the customer's note; they send an updated version ---
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Pending Review");
+  await expect(orderCard()).toContainText("Customer requested changes");
+  await page.goto("/menu-approvals");
+  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByText("Please swap the starter for something lighter.")).toBeVisible();
+  await page.getByRole("button", { name: "Send Updated Menu for Approval" }).click();
+  await expect(page.getByText(/Version 2 is with the customer/)).toBeVisible();
+  const linkV2 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+  expect(linkV2).not.toBe(linkV1);
+  await expect(page.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
+
+  // --- The customer approves the latest version; an outdated link can never approve ---
+  await customerPage.goto(linkV1);
+  await expect(customerPage.getByRole("heading", { name: "This link is no longer active" })).toBeVisible();
+  await customerPage.goto(linkV2);
+  await customerPage.getByRole("button", { name: "Approve Menu" }).click();
+  await expect(customerPage.getByText("Menu approved — thank you!")).toBeVisible();
+  await customerContext.close();
+
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Kitchen Review");
+
+  // --- The kitchen team approves: that IS the hand-off — no separate lock step ---
+  await page.goto("/menu-approvals");
+  await expect(page.getByText("Needs Kitchen Review")).toBeVisible();
+  await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
+  await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Sent to Kitchen");
+
+  // --- Kitchen Dashboard: the freshly-approved order starts Pending, in a real board column ---
   await page.goto("/kitchen-dashboard");
   const pendingColumn = page.locator('[data-stage="PENDING"]');
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
@@ -236,8 +298,8 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   // the 5 stages, not a forward-only single-step advance.
   const stageDropdown = pendingColumn.getByRole("combobox", { name: "Kitchen production stage" });
   await stageDropdown.click();
-  await page.getByRole("option", { name: "Preparing" }).click();
-  const preparingColumn = page.locator('[data-stage="PREPARING"]');
+  await page.getByRole("option", { name: "In Preparation" }).click();
+  const preparingColumn = page.locator('[data-stage="IN_PREPARATION"]');
   await expect(preparingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
   await preparingColumn.getByRole("combobox", { name: "Kitchen production stage" }).click();
@@ -245,23 +307,29 @@ test("kitchen reviews, approves, and locks a customer's menu selection", async (
   const readyColumn = page.locator('[data-stage="READY"]');
   await expect(readyColumn.getByText(customerName, { exact: true })).toBeVisible();
 
-  // Completed moves it off the board entirely (AJ's screenshot has no
-  // Completed column) — only reachable via "Delivered Orders" from here on.
+  // Delivered moves it off the board entirely (AJ's screenshot has no
+  // Delivered column) — only reachable via "Delivered Orders" from here on —
+  // and completes the Order.
   await readyColumn.getByRole("combobox", { name: "Kitchen production stage" }).click();
-  await page.getByRole("option", { name: "Completed" }).click();
+  await page.getByRole("option", { name: "Delivered" }).click();
   await expect(page.locator('[data-stage]').getByText(customerName, { exact: true })).not.toBeVisible();
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Completed");
 
+  await page.goto("/kitchen-dashboard");
   await page.getByRole("button", { name: "Delivered Orders" }).click();
   await expect(page).toHaveURL(/\/kitchen-dashboard\/delivered$/);
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
 
-  // Cancelling from the Delivered list moves it again, to Cancelled Orders.
+  // Cancelling from the Delivered list moves it again, to Cancelled Orders, and cancels the Order.
   await page.getByRole("combobox", { name: "Kitchen production stage" }).click();
   await page.getByRole("option", { name: "Cancelled" }).click();
   await expect(page.getByText(customerName, { exact: true })).not.toBeVisible();
 
   await page.goto("/kitchen-dashboard/cancelled");
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Rejected / Cancelled");
 
   // --- Abandoned Orders: the visitor who stopped after step 1 (already a Lead), not the one who submitted ---
   await page.goto("/abandoned-orders");

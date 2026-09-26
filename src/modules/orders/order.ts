@@ -328,7 +328,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       otherCharges: input.otherCharges ?? 0,
       advance: input.advance ?? 0,
       paymentStatus: input.paymentStatus ?? "UNPAID",
-      status: input.status ?? "DRAFT",
+      status: input.status ?? "PENDING_REVIEW",
       notes: input.notes,
       kitchenNotes: input.kitchenNotes,
     },
@@ -451,7 +451,12 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
           }
         : {}),
     },
-    include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true, icon: true } } },
+    include: {
+      customer: { select: { id: true, name: true, phone: true } },
+      eventType: { select: { id: true, name: true, icon: true } },
+      // Feeds the Orders card's menu-approval callout (order-card.ts).
+      events: { select: { menuSelection: { select: { status: true, currentVersion: true, kitchenProductionStatus: true } } } },
+    },
     orderBy: { createdAt: "desc" },
     take: filter?.take,
   });

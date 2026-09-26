@@ -32,6 +32,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "abandoned-orders",
   "events",
   "menu-approvals",
+  "menu-approval",
   "kitchen-dashboard",
   "calendar",
 ] as const;

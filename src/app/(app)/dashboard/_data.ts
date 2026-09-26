@@ -1,9 +1,10 @@
 import { prisma } from "@/lib/db";
 import { getInventoryOverviewStats } from "@/modules/inventory/inventory";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
+import { ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
-const ORDER_STATUSES: OrderStatus[] = ["DRAFT", "CONFIRMED", "IN_PREPARATION", "READY", "COMPLETED", "CANCELLED"];
+const ORDER_STATUSES = ORDER_STATUS_ORDER;
 
 /**
  * Local calendar-day key (YYYY-MM-DD) built from a Date's own local
@@ -78,7 +79,7 @@ export async function getDashboardSnapshot(organizationId: string) {
 
   const countFor = (status: OrderStatus) => statusCounts.find((s) => s.status === status)?._count._all ?? 0;
   const totalOrders = statusCounts.reduce((sum, s) => sum + s._count._all, 0);
-  const draftOrders = countFor("DRAFT");
+  const pendingReviewOrders = countFor("PENDING_REVIEW");
 
   const statusBreakdown = ORDER_STATUSES.map((status) => {
     const row = statusCounts.find((s) => s.status === status);
@@ -118,7 +119,7 @@ export async function getDashboardSnapshot(organizationId: string) {
   return {
     totalOrders,
     statusBreakdown,
-    draftOrders,
+    pendingReviewOrders,
     outstandingBalance: Number(dueAgg._sum.balance ?? 0),
     outstandingOrdersCount: dueAgg._count._all,
     upcomingEvents: upcomingEventsRaw.map((e) => ({

@@ -3,10 +3,12 @@ import { notFound } from "next/navigation";
 import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
+import { getActiveApprovalUrl } from "@/modules/menu-approvals/approval-link";
 import { listStorefrontMenus, listCustomMenuSections, type StorefrontMenuSection } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { MenuApprovalReview } from "./_components/menu-approval-review";
+import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
@@ -14,31 +16,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const STATUS_LABEL: Record<MenuSelectionStatus, string> = {
-  DRAFT: "Draft",
-  SENT_TO_CUSTOMER: "Sent to Customer",
-  CUSTOMER_REVIEWING: "Customer Reviewing",
-  CHANGES_REQUESTED: "Changes Requested",
-  CUSTOMER_APPROVED: "Customer Approved",
-  KITCHEN_REVIEWING: "Needs Kitchen Review",
-  KITCHEN_CHANGES_REQUESTED: "Kitchen Changes Requested",
-  KITCHEN_APPROVED: "Kitchen Approved",
-  FINAL_LOCKED: "Final / Locked",
-};
+const STATUS_LABEL = MENU_SELECTION_STATUS_LABEL;
 
-// Kept in sync with the same legend in ../page.tsx (AJ, 2026-09-19) — was
-// hardcoded "outline" for every status here, unlike the queue page.
-const STATUS_VARIANT: Record<MenuSelectionStatus, "neutral" | "info" | "warning" | "success"> = {
-  DRAFT: "neutral",
-  SENT_TO_CUSTOMER: "info",
-  CUSTOMER_REVIEWING: "info",
-  CHANGES_REQUESTED: "warning",
-  CUSTOMER_APPROVED: "success",
-  KITCHEN_REVIEWING: "info",
-  KITCHEN_CHANGES_REQUESTED: "warning",
-  KITCHEN_APPROVED: "success",
-  FINAL_LOCKED: "success",
-};
+// Shared neutral/info/warning/success legend (modules/orders/order-status.ts) — one vocabulary across the queue, this page and the Order page.
+const STATUS_VARIANT = MENU_SELECTION_STATUS_TONE;
 
 const STATUS_ICON = {
   DRAFT: Circle,
@@ -61,6 +42,7 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
   if (!menuSelection) notFound();
 
   const StatusIcon = STATUS_ICON[menuSelection.status];
+  const approvalUrl = await getActiveApprovalUrl(organizationId, menuSelection.id);
 
   // What the kitchen can add/remove from: the Menu the customer chose, the
   // open dish list for a Custom Menu, or (older selections that predate the
@@ -114,10 +96,14 @@ export default async function MenuApprovalDetailPage({ params }: { params: Promi
         }))}
         versions={menuSelection.versions.map((version) => ({
           versionNumber: version.versionNumber,
-          status: version.status,
           createdAt: version.createdAt,
+          sentAt: version.sentAt,
+          superseded: version.supersededAt !== null,
           items: version.items.map((item) => ({ name: item.name })),
         }))}
+        currentVersion={menuSelection.currentVersion}
+        approvalUrl={approvalUrl}
+        statusLabel={STATUS_LABEL[menuSelection.status]}
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 interface NeedsAttentionCardProps {
-  draftOrders: number;
+  pendingReviewOrders: number;
   outstandingOrdersCount: number;
   outstandingBalance: number;
   quotationsAwaitingResponse: number;
@@ -22,15 +22,15 @@ function formatCurrency(amount: number) {
 // given the same tinted-border/background treatment Quick Actions got in
 // the previous round, so it reads as the more prominent of the two.
 export function NeedsAttentionCard({
-  draftOrders,
+  pendingReviewOrders,
   outstandingOrdersCount,
   outstandingBalance,
   quotationsAwaitingResponse,
 }: NeedsAttentionCardProps) {
   const items = [
-    draftOrders > 0 && {
-      href: "/orders?status=DRAFT",
-      label: `${draftOrders} draft order${draftOrders === 1 ? "" : "s"} awaiting confirmation`,
+    pendingReviewOrders > 0 && {
+      href: "/orders?status=PENDING_REVIEW",
+      label: `${pendingReviewOrders} order${pendingReviewOrders === 1 ? "" : "s"} pending review`,
     },
     outstandingOrdersCount > 0 && {
       href: "/orders",
