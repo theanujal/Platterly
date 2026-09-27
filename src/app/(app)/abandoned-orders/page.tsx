@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import { ShoppingBasket, MessageCircle } from "lucide-react";
+import { ShoppingBasket, MessageCircle, Phone, CalendarDays, Users } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { formatPhoneDisplay, whatsappDigits } from "@/lib/phone";
 import { listAbandonedOrders } from "@/modules/menu-approvals/storefront-draft";
 import { stepLabel, DRAFT_RETENTION_DAYS } from "@/modules/menu-approvals/storefront-draft-constants";
+import { formatEventWhen } from "@/modules/orders/order-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
@@ -40,6 +41,7 @@ export default async function AbandonedOrdersPage() {
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, slug: true } }),
     listAbandonedOrders(organizationId, "ALL"),
   ]);
+  const now = new Date();
 
   const entries: CatalogEntry[] = drafts.map((draft) => {
     const { customer } = draft;
@@ -49,6 +51,7 @@ export default async function AbandonedOrdersPage() {
     const status = draft.isAbandoned ? "ABANDONED" : "ACTIVE";
     const statusBadge = <Badge variant={draft.isAbandoned ? "warning" : "info"}>{draft.isAbandoned ? "Abandoned" : "In progress"}</Badge>;
     const consentBadge = <Badge variant={customer.marketingConsent ? "success" : "neutral"}>{customer.marketingConsent ? "Offers OK" : "Order updates only"}</Badge>;
+    const eventWhen = formatEventWhen(new Date(draft.eventDate), new Date(draft.eventDate), now);
     const actions = (
       <div className="flex items-center gap-2">
         <Button render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />} nativeButton={false} size="md" variant="outline">
@@ -63,8 +66,13 @@ export default async function AbandonedOrdersPage() {
       searchText: `${customer.name} ${customer.phone} ${customer.email ?? ""} ${draft.eventTypeName ?? ""}`,
       filterValues: { state: status },
       sortValues: { recent: draft.lastActivityAt.getTime(), name: customer.name },
+      // Entity Card (design system §08, Proposed — AJ approved 2026-09-27 to
+      // build it here first): icon+title head with the status badge, a
+      // step-progress eyebrow, the phone as meta, consent + event type as the
+      // badge row, and a footer pairing guest/date info with the recency, same
+      // slots the doc's Customer/Quotation example fills.
       card: (
-        <div className="flex flex-col gap-2 p-4">
+        <div className="flex h-full flex-col gap-3 p-4">
           <div className="flex items-start justify-between gap-2">
             <span className="flex items-center gap-1.5 font-medium">
               <ShoppingBasket className="size-4 text-muted-foreground" />
@@ -72,29 +80,67 @@ export default async function AbandonedOrdersPage() {
             </span>
             {statusBadge}
           </div>
-          <span className="text-sm text-muted-foreground">{formatPhoneDisplay(customer.phone)}</span>
           <span className="text-xs text-muted-foreground">
-            {draft.eventTypeName ?? "Event"} · {draft.guestCount} guests · {draft.eventDate}
+            Stopped at <span className="font-medium text-foreground">{stepLabel(draft.currentStep)}</span>
           </span>
-          <span className="text-xs text-muted-foreground">
-            Stopped at <span className="font-medium text-foreground">{stepLabel(draft.currentStep)}</span> · {timeAgo(draft.lastActivityAt)}
+          <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Phone className="size-3.5 shrink-0" />
+            {formatPhoneDisplay(customer.phone)}
           </span>
-          <div className="flex flex-wrap items-center gap-2">{consentBadge}</div>
-          {actions}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {consentBadge}
+            {draft.eventTypeName && <Badge variant="outline">{draft.eventTypeName}</Badge>}
+          </div>
+          <div className="mt-auto flex flex-col gap-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">
+                {draft.guestCount} guests · {eventWhen}
+              </span>
+              <span className="text-xs text-muted-foreground">{timeAgo(draft.lastActivityAt)}</span>
+            </div>
+            {actions}
+          </div>
         </div>
       ),
+      // Rich list (design system §09) — a Customer cell (avatar, name, phone)
+      // and an Event cell (date, event type below) merged the same way
+      // Orders' list merges cells, instead of separate Name/Phone columns.
       listRow: (
         <>
-          <TableCell className="font-medium">{customer.name}</TableCell>
-          <TableCell>{formatPhoneDisplay(customer.phone)}</TableCell>
-          <TableCell className="text-muted-foreground">
-            {draft.eventTypeName ?? "—"} · {draft.eventDate}
+          <TableCell className="px-3 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ShoppingBasket className="size-5" />
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="max-w-44 truncate font-semibold">{customer.name}</span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Phone className="size-3.5 shrink-0" />
+                  {formatPhoneDisplay(customer.phone)}
+                </span>
+              </div>
+            </div>
           </TableCell>
-          <TableCell>{stepLabel(draft.currentStep)}</TableCell>
-          <TableCell className="text-muted-foreground">{timeAgo(draft.lastActivityAt)}</TableCell>
-          <TableCell>{statusBadge}</TableCell>
-          <TableCell>{consentBadge}</TableCell>
-          <TableCell>{actions}</TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex items-center gap-3">
+              <CalendarDays className="size-5 shrink-0 text-muted-foreground" />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium whitespace-nowrap">{eventWhen}</span>
+                {draft.eventTypeName && <span className="max-w-40 truncate text-xs text-muted-foreground">{draft.eventTypeName}</span>}
+              </div>
+            </div>
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <span className="flex items-center gap-2 text-sm font-medium">
+              <Users className="size-5 shrink-0 text-muted-foreground" />
+              {draft.guestCount}
+            </span>
+          </TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{stepLabel(draft.currentStep)}</TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{timeAgo(draft.lastActivityAt)}</TableCell>
+          <TableCell className="px-3 py-3">{statusBadge}</TableCell>
+          <TableCell className="px-3 py-3">{consentBadge}</TableCell>
+          <TableCell className="px-3 py-3">{actions}</TableCell>
         </>
       ),
     };
@@ -126,12 +172,17 @@ export default async function AbandonedOrdersPage() {
       <CatalogBrowser
         entries={entries}
         addTile={null}
-        columns={["Name", "Phone", "Event", "Stopped at", "Last activity", "Status", "Consent", "Follow up"]}
+        columns={["Customer", "Event", "Guests", "Stopped at", "Last activity", "Status", "Consent", "Follow up"]}
         searchPlaceholder="Search abandoned orders…"
         emptyLabel="No abandoned orders — everyone who started an order has finished it."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
         defaultView="list"
+        richList
+        // The default grid columns are too narrow for the WhatsApp + Copy
+        // link buttons to sit side by side without clipping — same reasoning
+        // as Orders' own override (CatalogBrowser's gridColumnsClassName doc).
+        gridColumnsClassName="grid-cols-[repeat(auto-fill,minmax(min(19rem,100%),1fr))]"
         pageSize={16}
       />
     </div>
