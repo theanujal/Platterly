@@ -277,7 +277,7 @@ describe("quote + final submit (Order created only here)", () => {
   });
 });
 
-describe("abandoned orders (30-minute idle, 90-day retention)", () => {
+describe("abandoned orders (30-minute idle, 30-day expiry, 90-day purge)", () => {
   it("lists an idle draft as abandoned and a fresh one as in progress", async () => {
     const t = await setup();
     const idle = await startDraft(t.org.id, t.details({ phone: "9111111111" }));
@@ -287,20 +287,34 @@ describe("abandoned orders (30-minute idle, 90-day retention)", () => {
     const abandoned = await listAbandonedOrders(t.org.id, "ABANDONED");
     expect(abandoned.map((d) => d.id)).toEqual([idle.draft.id]);
     expect(abandoned[0].isAbandoned).toBe(true);
+    expect(abandoned[0].isExpired).toBe(false);
     expect(abandoned[0].eventTypeName).toBe("Wedding");
 
     expect((await listAbandonedOrders(t.org.id, "ACTIVE")).map((d) => d.isAbandoned)).toEqual([false]);
     expect(await listAbandonedOrders(t.org.id, "ALL")).toHaveLength(2);
   });
 
-  it("a submitted draft never appears, and a 91-day-old one is purged while the Lead stays", async () => {
+  it("a submitted draft never appears, and a 31-day-old one is marked expired without being deleted", async () => {
     const t = await setup();
     const old = await startDraft(t.org.id, t.details({ phone: "9333333333" }));
-    await prisma.storefrontDraft.update({ where: { id: old.draft.id }, data: { lastActivityAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000) } });
+    await prisma.storefrontDraft.update({ where: { id: old.draft.id }, data: { lastActivityAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) } });
+
+    const all = await listAbandonedOrders(t.org.id, "ALL");
+    expect(all).toHaveLength(1);
+    expect(all[0].isExpired).toBe(true);
+    expect(await prisma.storefrontDraft.count({ where: { id: old.draft.id } })).toBe(1); // kept, not purged
+    const lead = await prisma.customer.findUniqueOrThrow({ where: { id: old.customer.id }, include: { _count: { select: { orders: true } } } });
+    expect(lead._count.orders).toBe(0); // still a Lead with 0 orders
+  });
+
+  it("a 91-day-old draft is purged on the next read, while the Lead stays", async () => {
+    const t = await setup();
+    const ancient = await startDraft(t.org.id, t.details({ phone: "9444444444" }));
+    await prisma.storefrontDraft.update({ where: { id: ancient.draft.id }, data: { lastActivityAt: new Date(Date.now() - 91 * 24 * 60 * 60 * 1000) } });
 
     expect(await listAbandonedOrders(t.org.id, "ALL")).toHaveLength(0);
-    expect(await prisma.storefrontDraft.count({ where: { id: old.draft.id } })).toBe(0);
-    const lead = await prisma.customer.findUniqueOrThrow({ where: { id: old.customer.id }, include: { _count: { select: { orders: true } } } });
+    expect(await prisma.storefrontDraft.count({ where: { id: ancient.draft.id } })).toBe(0);
+    const lead = await prisma.customer.findUniqueOrThrow({ where: { id: ancient.customer.id }, include: { _count: { select: { orders: true } } } });
     expect(lead._count.orders).toBe(0); // still a Lead with 0 orders
   });
 });

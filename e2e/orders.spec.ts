@@ -618,7 +618,9 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await extraDialog.getByRole("button", { name: "Add as Extra Item" }).click();
   await expect(drawer.getByText("Extra · ₹1,500")).toBeVisible();
 
-  // Add-ons are optional: 20 per plate x 10 guests.
+  // Add-ons are optional: 20 per plate x 10 guests. No "All Items" tab any more (AJ, 2026-09-28) —
+  // categories are mutually exclusive, so Add-ons has to be selected as its own tab first.
+  await drawer.getByRole("button", { name: "Add-ons" }).click();
   await drawer.getByRole("button", { name: new RegExp(addOnName) }).click();
   await drawer.getByRole("button", { name: "Save Items" }).click();
   await expect(drawer).not.toBeVisible();

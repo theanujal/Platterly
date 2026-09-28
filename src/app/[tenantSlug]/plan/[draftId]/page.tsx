@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Clock } from "lucide-react";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listAddOns } from "@/modules/addons/addon";
 import { listStorefrontMenus, listCustomMenuSections } from "@/modules/menus/menu";
 import { getDraft, buildDraftQuote, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
-import { WIZARD_STEPS, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
+import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { prisma } from "@/lib/db";
 import { StorefrontHeader } from "../../_components/storefront-header";
@@ -63,6 +63,22 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           ) : (
             <p className="max-w-md text-sm text-muted-foreground">Our team will review your menu and follow up with you shortly over WhatsApp or email to finalise everything.</p>
           )}
+        </div>
+      </Shell>
+    );
+  }
+
+  // Idle 30+ days (AJ, 2026-09-28): the draft itself is kept, but the link no
+  // longer resumes — menu/pricing this stale shouldn't be silently honoured.
+  if (isDraftExpired(draft.lastActivityAt)) {
+    return (
+      <Shell organization={organization}>
+        <div className="flex flex-col items-center gap-4 py-12 text-center" data-testid="expired">
+          <Clock className="size-14 text-muted-foreground" />
+          <h2 className="text-2xl font-semibold">This link has expired</h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            This booking request is no longer available online. Please contact {organization.name} directly to start a new one.
+          </p>
         </div>
       </Shell>
     );

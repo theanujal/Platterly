@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Check, LayoutGrid, Loader2, Puzzle, Search, UtensilsCrossed } from "lucide-react";
+import { Check, Loader2, Puzzle, Search, UtensilsCrossed } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -82,7 +82,8 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
   const [data, setData] = useState<OrderPickerData | null>(null);
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string>("ALL");
+  // No "All Items" tab (AJ, 2026-09-28) — categories are mutually exclusive now; `effectiveCategory` below picks a default.
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [picked, setPicked] = useState<string[]>(() => initialItems.filter((i) => i.itemType === "MENU_ITEM").map((i) => i.catalogId));
   const [addOnIds, setAddOnIds] = useState<string[]>(() => initialItems.filter((i) => i.itemType === "ADD_ON").map((i) => i.catalogId));
   const [extraPrompt, setExtraPrompt] = useState<{ id: string; name: string; price: number; categoryName: string; cap: number } | null>(null);
@@ -105,6 +106,17 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
   const split = useMemo(() => splitPicks(sections, picked), [sections, picked]);
   const extraSet = new Set(split.extraIds);
   const guestCount = Math.max(guests, 1);
+
+  // Falls back to the first category (or Add-ons if there are none) whenever the explicitly-picked
+  // tab isn't valid for the current data — memoized so it settles once data loads instead of
+  // recomputing (and re-filtering the whole item list) on every unrelated re-render.
+  const addOnCount = data?.addOns.length ?? 0;
+  const effectiveCategory = useMemo(() => {
+    const isValid = activeCategory !== null && (sections.some((s) => (s.categoryId ?? "other") === activeCategory) || (activeCategory === "ADDONS" && addOnCount > 0));
+    if (isValid) return activeCategory;
+    if (sections.length > 0) return sections[0].categoryId ?? "other";
+    return addOnCount > 0 ? "ADDONS" : null;
+  }, [activeCategory, sections, addOnCount]);
 
   const trimmed = search.trim().toLowerCase();
   const matches = (name: string) => !trimmed || name.toLowerCase().includes(trimmed);
@@ -133,8 +145,8 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
 
   const visibleSections = sections
     .map((section, index) => ({ section, index, items: section.items.filter((i) => matches(i.name)) }))
-    .filter(({ section, items }) => items.length > 0 && (activeCategory === "ALL" || (section.categoryId ?? "other") === activeCategory));
-  const visibleAddOns = activeCategory === "ALL" || activeCategory === "ADDONS" ? (data?.addOns ?? []).filter((a) => matches(a.name)) : [];
+    .filter(({ section, items }) => items.length > 0 && (section.categoryId ?? "other") === effectiveCategory);
+  const visibleAddOns = effectiveCategory === "ADDONS" ? (data?.addOns ?? []).filter((a) => matches(a.name)) : [];
   const visibleItems = visibleSections.flatMap(({ items, index }) => items.map((item) => ({ item, index })));
   const allVisibleSelected = visibleItems.length > 0 && visibleItems.every(({ item }) => picked.includes(item.id));
 
@@ -197,7 +209,7 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 p-0 data-[side=right]:sm:max-w-2xl">
+      <SheetContent className="w-full gap-0 p-0 data-[side=right]:sm:max-w-4xl">
         <SheetHeader className="gap-3 border-b border-border p-5 pr-14">
           <SheetTitle className="text-lg">Select Menu Items</SheetTitle>
           <SheetDescription className="sr-only">Choose the dishes and add-ons for {menuName}.</SheetDescription>
@@ -247,15 +259,10 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[11rem_minmax(0,1fr)] gap-4 p-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
             <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto" aria-label="Categories">
-              <button type="button" onClick={() => setActiveCategory("ALL")} className={railItemClass(activeCategory === "ALL")}>
-                <LayoutGrid className="size-4 shrink-0" />
-                <span className="flex-1 truncate">All Items</span>
-                <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{sections.reduce((n, s) => n + s.items.length, 0)}</span>
-              </button>
               {sections.map((section) => {
                 const key = section.categoryId ?? "other";
                 return (
-                  <button key={key} type="button" onClick={() => setActiveCategory(key)} className={railItemClass(activeCategory === key)}>
+                  <button key={key} type="button" onClick={() => setActiveCategory(key)} className={railItemClass(effectiveCategory === key)}>
                     <UtensilsCrossed className="size-4 shrink-0" />
                     <span className="flex-1 truncate">{section.categoryName}</span>
                     <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{section.items.length}</span>
@@ -263,7 +270,7 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
                 );
               })}
               {data.addOns.length > 0 && (
-                <button type="button" onClick={() => setActiveCategory("ADDONS")} className={railItemClass(activeCategory === "ADDONS")}>
+                <button type="button" onClick={() => setActiveCategory("ADDONS")} className={railItemClass(effectiveCategory === "ADDONS")}>
                   <Puzzle className="size-4 shrink-0" />
                   <span className="flex-1 truncate">Add-ons</span>
                   <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{data.addOns.length}</span>
@@ -272,9 +279,9 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
             </nav>
 
             <div className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border p-4">
-              {activeCategory !== "ADDONS" && (
+              {effectiveCategory !== "ADDONS" && (
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold">{activeCategory === "ALL" ? "All Items" : (sections.find((s) => (s.categoryId ?? "other") === activeCategory)?.categoryName ?? "Items")}</h3>
+                  <h3 className="text-base font-semibold">{sections.find((s) => (s.categoryId ?? "other") === effectiveCategory)?.categoryName ?? "Items"}</h3>
                   <button type="button" onClick={toggleSelectAll} className="flex items-center gap-2 text-sm font-medium" disabled={visibleItems.length === 0}>
                     <Box checked={allVisibleSelected} />
                     Select All
@@ -314,12 +321,13 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
                         >
                           <Box checked={selected} />
                           <Thumb src={item.image} alt="" />
-                          <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="flex min-w-0 flex-1 flex-col gap-1">
                             <span className="truncate text-sm font-medium">{item.name}</span>
-                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              {formatInr(item.price)}/plate
-                              {isExtra && <Badge variant="warning">Extra · {formatInr(item.price * guestCount)}</Badge>}
-                            </span>
+                            {isExtra && (
+                              <span>
+                                <Badge variant="warning">Extra · {formatInr(item.price * guestCount)}</Badge>
+                              </span>
+                            )}
                           </span>
                           <FoodTypeBadge foodType={item.foodType} />
                         </button>

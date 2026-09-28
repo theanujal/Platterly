@@ -11,12 +11,13 @@ interface CopyButtonProps {
   size?: "sm" | "md";
   /** Icon only (no text). `label` becomes the tooltip and accessible name. */
   iconOnly?: boolean;
+  className?: string;
 }
 
 // Small, generic "copy this to the clipboard" control — not tied to the
 // storefront link specifically, so any future screen needing the same
 // pattern (e.g. a QR/secure-access link) can reuse it as-is.
-export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = false }: CopyButtonProps) {
+export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = false, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
   async function handleCopy() {
@@ -31,6 +32,7 @@ export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = fals
       variant="outline"
       size={iconOnly ? "icon-sm" : size}
       onClick={handleCopy}
+      className={className}
       aria-label={iconOnly ? (copied ? "Copied" : label) : undefined}
       title={iconOnly ? (copied ? "Copied!" : label) : undefined}
     >

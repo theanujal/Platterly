@@ -4,8 +4,21 @@
 /** A draft idle this long counts as abandoned (AJ, 2026-09-25). Derived at read time — no cron. */
 export const ABANDONED_AFTER_MS = 30 * 60 * 1000;
 
-/** Drafts older than this are purged; the Customer (a Lead with 0 orders) stays. */
-export const DRAFT_RETENTION_DAYS = 90;
+/**
+ * A draft idle this long (AJ, 2026-09-28) has its resume link expire — the
+ * customer's link shows "This link has expired" instead of resuming, and the
+ * admin card drops WhatsApp/Copy Link for a "Link expired" note. The record
+ * itself is kept (no auto-delete); this only gates the link and the actions.
+ */
+export const DRAFT_EXPIRY_DAYS = 30;
+
+/** Whether a draft's resume link has lapsed. Shared by the public wizard and the admin Abandoned Orders list, so neither can disagree on the cutoff. */
+export function isDraftExpired(lastActivityAt: Date, now: Date = new Date()): boolean {
+  return now.getTime() - lastActivityAt.getTime() > DRAFT_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+}
+
+/** A draft idle this long (AJ, 2026-09-28, "purge after 3 months") is hard-deleted — well past DRAFT_EXPIRY_DAYS, so it's already long expired and never resurfaced. The Customer (a Lead with 0 orders) stays. */
+export const DRAFT_PURGE_DAYS = 90;
 
 /** The wizard's steps, in order. `currentStep` on a draft is the 1-based index of the step the visitor is on. */
 export const WIZARD_STEPS = [

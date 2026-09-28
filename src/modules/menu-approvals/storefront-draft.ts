@@ -7,7 +7,7 @@ import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItem
 import { listKitchens } from "@/modules/events/event";
 import { getMenuForOrderPicker } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
-import { ABANDONED_AFTER_MS, DRAFT_RETENTION_DAYS } from "./storefront-draft-constants";
+import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
 import { splitPicks } from "./storefront-selection";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "./public-lead-time";
 import type { FoodType, MealType, VenueType, VehicleAccessType, Prisma } from "@/generated/prisma/client";
@@ -455,7 +455,7 @@ export async function getDraft(organizationId: string, draftId: string) {
 }
 
 async function purgeExpiredDrafts(organizationId: string) {
-  const cutoff = new Date(Date.now() - DRAFT_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const cutoff = new Date(Date.now() - DRAFT_PURGE_DAYS * 24 * 60 * 60 * 1000);
   await prisma.storefrontDraft.deleteMany({ where: { organizationId, lastActivityAt: { lt: cutoff } } });
 }
 
@@ -464,8 +464,10 @@ export type AbandonedOrderState = "ABANDONED" | "ACTIVE" | "ALL";
 /**
  * Admin's "Abandoned Orders" list: unfinished drafts, newest activity first.
  * "Abandoned" = idle for 30+ minutes; anything more recent is still "In
- * progress" (the visitor may just be choosing). Purges 90-day-old drafts on
- * the way through, so no scheduler is needed.
+ * progress" (the visitor may just be choosing). Past DRAFT_EXPIRY_DAYS idle,
+ * `isExpired` says the resume link no longer works, but the record stays
+ * visible here; only past DRAFT_PURGE_DAYS (AJ, 2026-09-28: "purge after 3
+ * months") is it actually deleted, on the way through this query.
  */
 export async function listAbandonedOrders(organizationId: string, state: AbandonedOrderState = "ABANDONED") {
   await purgeExpiredDrafts(organizationId);
@@ -481,20 +483,28 @@ export async function listAbandonedOrders(organizationId: string, state: Abandon
   });
 
   const eventTypeIds = [...new Set(drafts.map((d) => readData(d).eventTypeId))];
-  const eventTypes = await prisma.eventType.findMany({ where: { id: { in: eventTypeIds }, organizationId }, select: { id: true, name: true } });
-  const eventTypeName = new Map(eventTypes.map((e) => [e.id, e.name]));
+  const eventTypes = await prisma.eventType.findMany({ where: { id: { in: eventTypeIds }, organizationId }, select: { id: true, name: true, icon: true } });
+  const eventTypeById = new Map(eventTypes.map((e) => [e.id, e]));
 
   return drafts.map((draft) => {
     const data = readData(draft);
+    const eventType = eventTypeById.get(data.eventTypeId);
     return {
       id: draft.id,
       customer: draft.customer,
       currentStep: draft.currentStep,
       lastActivityAt: draft.lastActivityAt,
       isAbandoned: draft.lastActivityAt < idleBefore,
-      eventTypeName: eventTypeName.get(data.eventTypeId) ?? null,
+      isExpired: isDraftExpired(draft.lastActivityAt),
+      eventTypeName: eventType?.name ?? null,
+      // Same icon the Order card looks up via getEventTypeIcon() — kept as the raw stored key here (client-safe), not resolved to a component.
+      eventTypeIcon: eventType?.icon ?? null,
       eventDate: data.eventDate,
       guestCount: data.guestCount,
+      eventMealType: data.eventMealType,
+      menuPreference: data.menuPreference,
+      // Only set once the visitor reaches the Venue & Delivery step.
+      venueName: data.venue?.venueBuildingName ?? null,
     };
   });
 }
