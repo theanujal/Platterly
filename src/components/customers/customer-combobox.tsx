@@ -8,7 +8,6 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { formatPhoneDisplay } from "@/lib/phone";
-import { searchCustomersAction, createCustomerForOrderAction, type CustomerSearchResult } from "../actions";
 
 export interface SelectedCustomer {
   id: string;
@@ -18,12 +17,27 @@ export interface SelectedCustomer {
   email?: string | null;
 }
 
+export interface CustomerSearchResult {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+}
+
+export type CreateCustomerResult = { ok: true; customer: { id: string; name: string; phone: string } } | { ok: false; error: string };
+
 interface CustomerComboboxProps {
+  /** Field id, so a page can have more than one of these without a duplicate-id collision. */
+  id?: string;
   /** Edit mode's already-selected customer — shown as the input's starting text until the user searches for someone else. */
   initialCustomer?: SelectedCustomer | null;
   onSelect: (customer: SelectedCustomer) => void;
   /** Fires when the user edits the search text away from a confirmed selection, so the parent's customerId doesn't silently stay stale. */
   onClear: () => void;
+  /** Debounced search-by-name/phone — Order and Quotation both call the same underlying `customers` module, just through their own feature's server action. */
+  onSearch: (query: string) => Promise<CustomerSearchResult[]>;
+  /** Inline "this customer doesn't exist yet" create flow. */
+  onCreate: (formData: FormData) => Promise<CreateCustomerResult>;
 }
 
 /**
@@ -34,8 +48,16 @@ interface CustomerComboboxProps {
  * `src/components/app-shell/global-search.tsx` exactly — deliberately a
  * plain input + absolutely-positioned list, no `cmdk` dependency, same as
  * that component's own precedent.
+ *
+ * Item-picker parity with Quotation (2026-09-28) — moved out of
+ * `orders/_components/` into this shared directory once Quotation needed
+ * the same customer field; `onSearch`/`onCreate` are now props instead of
+ * hardcoded imports, so each feature wires its own server action (both
+ * happen to check only the generic `customers` permission today, not an
+ * `orders`- or `quotations`-specific one, but the component itself no
+ * longer assumes that).
  */
-export function CustomerCombobox({ initialCustomer, onSelect, onClear }: CustomerComboboxProps) {
+export function CustomerCombobox({ id = "customer", initialCustomer, onSelect, onClear, onSearch, onCreate }: CustomerComboboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState(initialCustomer ? `${initialCustomer.name} (${formatPhoneDisplay(initialCustomer.phone)})` : "");
   const [confirmed, setConfirmed] = useState(Boolean(initialCustomer));
@@ -61,13 +83,13 @@ export function CustomerCombobox({ initialCustomer, onSelect, onClear }: Custome
     if (confirmed || queryTooShort) return;
     const timeout = setTimeout(() => {
       startTransition(async () => {
-        const data = await searchCustomersAction(trimmedQuery);
+        const data = await onSearch(trimmedQuery);
         setResults(data);
         setOpen(true);
       });
     }, 250);
     return () => clearTimeout(timeout);
-  }, [trimmedQuery, queryTooShort, confirmed]);
+  }, [trimmedQuery, queryTooShort, confirmed, onSearch]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -120,7 +142,7 @@ export function CustomerCombobox({ initialCustomer, onSelect, onClear }: Custome
     formData.set("name", newName.trim());
     formData.set("phone", newPhone.trim());
     if (newEmail.trim()) formData.set("email", newEmail.trim());
-    const result = await createCustomerForOrderAction(formData);
+    const result = await onCreate(formData);
     setCreating(false);
     if (!result.ok) {
       setCreateError(result.error);
@@ -136,7 +158,7 @@ export function CustomerCombobox({ initialCustomer, onSelect, onClear }: Custome
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          id="order-customer"
+          id={id}
           type="search"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
@@ -191,16 +213,16 @@ export function CustomerCombobox({ initialCustomer, onSelect, onClear }: Custome
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-customer-name" required>Customer Name</Label>
-              <IconInput icon={User} id="new-customer-name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <Label htmlFor={`${id}-new-name`} required>Customer Name</Label>
+              <IconInput icon={User} id={`${id}-new-name`} value={newName} onChange={(e) => setNewName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-customer-phone" required>Phone</Label>
-              <PhoneInput id="new-customer-phone" value={newPhone} onChange={setNewPhone} />
+              <Label htmlFor={`${id}-new-phone`} required>Phone</Label>
+              <PhoneInput id={`${id}-new-phone`} value={newPhone} onChange={setNewPhone} />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="new-customer-email">Email</Label>
-              <IconInput icon={Mail} id="new-customer-email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+              <Label htmlFor={`${id}-new-email`}>Email</Label>
+              <IconInput icon={Mail} id={`${id}-new-email`} type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
             </div>
           </div>
           {createError && (

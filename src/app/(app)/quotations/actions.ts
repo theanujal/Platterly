@@ -11,8 +11,9 @@ import {
   convertQuotationToOrder,
   type QuotationInput,
 } from "@/modules/quotations/quotation";
-import type { OrderItemCatalogInput } from "@/modules/orders/order";
-import type { OrderItemType } from "@/generated/prisma/enums";
+import type { OrderItemCatalogInput, MealPlanEntryInput } from "@/modules/orders/order";
+import { getMenuPickerData, type MenuPickerData } from "@/modules/menus/menu";
+import type { OrderKind, MealType, FoodType, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -39,15 +40,29 @@ function dateField(formData: FormData, name: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-function buildItems(formData: FormData): OrderItemCatalogInput[] {
-  const itemTypes = formData.getAll("itemType").filter((v): v is string => typeof v === "string");
-  const catalogIds = formData.getAll("catalogId").filter((v): v is string => typeof v === "string");
-  const quantities = formData.getAll("quantity").filter((v): v is string => typeof v === "string");
-  return itemTypes.map((itemType, index) => ({
-    itemType: itemType as OrderItemType,
-    catalogId: catalogIds[index],
-    quantity: Number.parseInt(quantities[index] ?? "1", 10) || 1,
-  }));
+/** Mirrors orders/actions.ts's own `buildMealPlanEntries` exactly — same field names, same per-slot JSON-encoded items. */
+function buildMealPlanEntries(formData: FormData): MealPlanEntryInput[] {
+  const dates = formData.getAll("mealDate").filter((v): v is string => typeof v === "string");
+  const mealTypes = formData.getAll("mealType").filter((v): v is string => typeof v === "string");
+  const prices = formData.getAll("mealPrice").filter((v): v is string => typeof v === "string");
+  const menuIds = formData.getAll("mealMenuId").filter((v): v is string => typeof v === "string");
+  const itemsJson = formData.getAll("mealItems").filter((v): v is string => typeof v === "string");
+  return dates.map((date, index) => {
+    let items: OrderItemCatalogInput[] = [];
+    try {
+      const parsed = JSON.parse(itemsJson[index] ?? "[]");
+      if (Array.isArray(parsed)) items = parsed;
+    } catch {
+      items = [];
+    }
+    return {
+      date: new Date(date),
+      mealType: mealTypes[index] as MealType,
+      price: Number.parseFloat(prices[index] ?? "0") || undefined,
+      menuId: menuIds[index] || null,
+      items,
+    };
+  });
 }
 
 function buildInput(formData: FormData): QuotationInput {
@@ -57,10 +72,22 @@ function buildInput(formData: FormData): QuotationInput {
   return {
     customerId,
     eventTypeId: stringField(formData, "eventTypeId") ?? null,
+    menuPreference: (stringField(formData, "menuPreference") as FoodType | undefined) ?? null,
+    orderKind: (stringField(formData, "orderKind") as OrderKind | undefined) ?? "SINGLE",
     eventStartDate: dateField(formData, "eventStartDate") ?? null,
     eventEndDate: dateField(formData, "eventEndDate") ?? null,
     venue: stringField(formData, "venue"),
     eventAddress: stringField(formData, "eventAddress"),
+    adultCount: numberField(formData, "adultCount") ?? null,
+    childBelow5Count: numberField(formData, "childBelow5Count") ?? null,
+    child5To10Count: numberField(formData, "child5To10Count") ?? null,
+    totalParticipants: numberField(formData, "totalParticipants") ?? null,
+    pricingMethod: (stringField(formData, "pricingMethod") as PricingMethod | undefined) ?? "STANDARD",
+    individualChildBelow5Rate: numberField(formData, "individualChildBelow5Rate") ?? null,
+    individualChildBelow5PricingType: (stringField(formData, "individualChildBelow5PricingType") as ChildPricingType | undefined) ?? null,
+    individualChild5To10Rate: numberField(formData, "individualChild5To10Rate") ?? null,
+    individualChild5To10PricingType: (stringField(formData, "individualChild5To10PricingType") as ChildPricingType | undefined) ?? null,
+    individualPricingEnabled: formData.get("individualPricingEnabled") === "true",
     validUntil: dateField(formData, "validUntil") ?? null,
     terms: stringField(formData, "terms"),
     notes: stringField(formData, "notes"),
@@ -68,8 +95,15 @@ function buildInput(formData: FormData): QuotationInput {
     taxes: numberField(formData, "taxes") ?? 0,
     additionalCharges: numberField(formData, "additionalCharges") ?? 0,
     deliveryCharges: numberField(formData, "deliveryCharges") ?? 0,
-    items: buildItems(formData),
+    mealPlanEntries: buildMealPlanEntries(formData),
   };
+}
+
+/** Item-picker parity with Order (2026-09-28) — same shared `getMenuPickerData` as orders/actions.ts's `getMenuForOrderPickerAction`, gated on the `quotations` resource instead of `orders`. */
+export async function getMenuForQuotationPickerAction(menuId: string): Promise<MenuPickerData | null> {
+  const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ quotations: ["view"] }, organizationId);
+  return getMenuPickerData(organizationId, menuId);
 }
 
 // Same rule as Create Order's own (orders/actions.ts) — applied consistently

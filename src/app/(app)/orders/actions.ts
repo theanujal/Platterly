@@ -15,8 +15,7 @@ import {
 } from "@/modules/orders/order";
 import { getEvent, updateEventOperations, type RequiredInventoryInput } from "@/modules/events/event";
 import { listCustomers, createCustomer } from "@/modules/customers/customer";
-import { listAddOns } from "@/modules/addons/addon";
-import { getMenuForOrderPicker, type OrderPickerMenu } from "@/modules/menus/menu";
+import { getMenuPickerData, type MenuPickerData, type MenuPickerAddOn } from "@/modules/menus/menu";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import { isBackdated } from "@/modules/orders/event-date-rule";
 import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, EventStatus, FoodType, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
@@ -288,30 +287,19 @@ export async function createCustomerForOrderAction(formData: FormData): Promise<
  * Create Order redesign (2026-09-20) — the "Select Food Items" dialog's
  * data source, fetched on demand once a meal assigns a Menu rather than
  * preloading every Menu's items up front for every Order form load.
+ * Item-picker parity with Order (2026-09-28) — the actual fetch now lives in
+ * `getMenuPickerData` (menus/menu.ts), shared with Quotation's own
+ * `getMenuForQuotationPickerAction`; these two type aliases stay so existing
+ * callers of `OrderPickerData`/`OrderPickerAddOn` don't need an import-path
+ * ripple.
  */
-export interface OrderPickerAddOn {
-  id: string;
-  name: string;
-  description: string | null;
-  image: string | null;
-  price: number;
-  priceType: "PER_PLATE" | "FIXED";
-}
-
-/** The picker drawer's data: the Menu's category-grouped items plus the active Add-ons (AJ, 2026-09-27). */
-export type OrderPickerData = OrderPickerMenu & { addOns: OrderPickerAddOn[] };
+export type OrderPickerAddOn = MenuPickerAddOn;
+export type OrderPickerData = MenuPickerData;
 
 export async function getMenuForOrderPickerAction(menuId: string): Promise<OrderPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
-  const [menu, addOns] = await Promise.all([getMenuForOrderPicker(organizationId, menuId), listAddOns(organizationId)]);
-  if (!menu) return null;
-  return {
-    ...menu,
-    addOns: addOns
-      .filter((a) => a.isActive)
-      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, price: Number(a.price), priceType: a.priceType })),
-  };
+  return getMenuPickerData(organizationId, menuId);
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

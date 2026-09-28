@@ -7,9 +7,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "cn";
 import { requiredShortfalls, splitPicks } from "@/modules/menu-approvals/storefront-selection";
-import { getMenuForOrderPickerAction, type OrderPickerData } from "../actions";
+import type { MenuPickerData } from "@/modules/menus/menu";
 
 /** One chosen line for a meal: a dish, an extra dish, or an add-on. */
 export interface PickedItem {
@@ -33,6 +34,13 @@ interface FoodItemSelectionDrawerProps {
   menuPreference: string;
   initialItems: PickedItem[];
   onSave: (items: PickedItem[]) => void;
+  /**
+   * Item-picker parity with Order (2026-09-28) — the drawer itself has no
+   * Order/Quotation-specific logic; each feature passes its own server
+   * action (e.g. `getMenuForOrderPickerAction`, `getMenuForQuotationPickerAction`)
+   * so the permission check stays per-feature while this component stays shared.
+   */
+  loadPickerData: (menuId: string) => Promise<MenuPickerData | null>;
 }
 
 const formatInr = (amount: number) => `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
@@ -75,11 +83,25 @@ function Box({ checked }: { checked: boolean }) {
  * them away. Extras are derived from pick order by the same `splitPicks` the
  * storefront uses, so the two can't disagree.
  *
+ * Item-picker parity with Order (2026-09-28) — moved out of orders/_components
+ * into this shared catalog directory once Quotation needed the same drawer;
+ * the only feature-specific piece is the `loadPickerData` prop.
+ *
  * The parent renders this only while a meal is targeted, so a fresh mount
  * means fresh draft state; the only effect is the one fetch per `menuId`.
  */
-export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, guests, menuPreference, initialItems, onSave }: FoodItemSelectionDrawerProps) {
-  const [data, setData] = useState<OrderPickerData | null>(null);
+export function FoodItemSelectionDrawer({
+  open,
+  onOpenChange,
+  menuId,
+  menuName,
+  guests,
+  menuPreference,
+  initialItems,
+  onSave,
+  loadPickerData,
+}: FoodItemSelectionDrawerProps) {
+  const [data, setData] = useState<MenuPickerData | null>(null);
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   // No "All Items" tab (AJ, 2026-09-28) — categories are mutually exclusive now; `effectiveCategory` below picks a default.
@@ -90,9 +112,9 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
 
   useEffect(() => {
     startTransition(async () => {
-      setData(await getMenuForOrderPickerAction(menuId));
+      setData(await loadPickerData(menuId));
     });
-  }, [menuId]);
+  }, [menuId, loadPickerData]);
 
   const vegOnly = menuPreference === "VEGETARIAN";
   const sections = useMemo(
@@ -206,6 +228,8 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
       "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
       active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-foreground hover:bg-muted",
     );
+  // The active tab's own count carries the accent tone too (matching the reference), not just its label.
+  const railBadgeClass = (active: boolean) => cn("rounded-full px-2 py-0.5 text-xs font-semibold", active ? "bg-background text-accent-foreground" : "bg-background text-muted-foreground font-normal");
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -258,14 +282,22 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
           <p className="flex-1 py-10 text-center text-sm text-muted-foreground">This menu has no food items yet.</p>
         ) : (
           <div className="grid min-h-0 flex-1 grid-cols-[11rem_minmax(0,1fr)] gap-4 p-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
-            <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto" aria-label="Categories">
+            {/*
+              `overflow-y-auto` alone forces the browser to also compute
+              overflow-x as `auto` (a scroll container can't have one axis
+              clip and the other stay visible) — without padding here, that
+              silently clipped the active tab's `ring-1` box-shadow along
+              this container's own edges, since the ring paints outside the
+              button's border box. `p-1` gives it room.
+            */}
+            <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto p-1" aria-label="Categories">
               {sections.map((section) => {
                 const key = section.categoryId ?? "other";
                 return (
                   <button key={key} type="button" onClick={() => setActiveCategory(key)} className={railItemClass(effectiveCategory === key)}>
                     <UtensilsCrossed className="size-4 shrink-0" />
                     <span className="flex-1 truncate">{section.categoryName}</span>
-                    <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{section.items.length}</span>
+                    <span className={railBadgeClass(effectiveCategory === key)}>{section.items.length}</span>
                   </button>
                 );
               })}
@@ -273,7 +305,7 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
                 <button type="button" onClick={() => setActiveCategory("ADDONS")} className={railItemClass(effectiveCategory === "ADDONS")}>
                   <Puzzle className="size-4 shrink-0" />
                   <span className="flex-1 truncate">Add-ons</span>
-                  <span className="rounded-full bg-background px-2 py-0.5 text-xs text-muted-foreground">{data.addOns.length}</span>
+                  <span className={railBadgeClass(effectiveCategory === "ADDONS")}>{data.addOns.length}</span>
                 </button>
               )}
             </nav>
@@ -308,31 +340,45 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
                         </Badge>
                       )}
                     </div>
-                    {items.map((item) => {
-                      const selected = picked.includes(item.id);
-                      const isExtra = extraSet.has(item.id);
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => toggleItem(item, index)}
-                          aria-pressed={selected}
-                          className="flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
-                        >
-                          <Box checked={selected} />
-                          <Thumb src={item.image} alt="" />
-                          <span className="flex min-w-0 flex-1 flex-col gap-1">
-                            <span className="truncate text-sm font-medium">{item.name}</span>
-                            {isExtra && (
-                              <span>
-                                <Badge variant="warning">Extra · {formatInr(item.price * guestCount)}</Badge>
-                              </span>
-                            )}
-                          </span>
-                          <FoodTypeBadge foodType={item.foodType} />
-                        </button>
-                      );
-                    })}
+                    <Table className="rounded-lg border border-border">
+                      <TableBody>
+                        {items.map((item) => {
+                          const selected = picked.includes(item.id);
+                          const isExtra = extraSet.has(item.id);
+                          return (
+                            <TableRow
+                              key={item.id}
+                              role="button"
+                              tabIndex={0}
+                              aria-pressed={selected}
+                              onClick={() => toggleItem(item, index)}
+                              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggleItem(item, index))}
+                              className="cursor-pointer"
+                            >
+                              <TableCell className="w-10">
+                                <Box checked={selected} />
+                              </TableCell>
+                              <TableCell className="w-14">
+                                <Thumb src={item.image} alt="" />
+                              </TableCell>
+                              <TableCell className="w-full max-w-0 whitespace-normal">
+                                <span className="flex min-w-0 flex-col gap-1">
+                                  <span className="truncate text-sm font-medium">{item.name}</span>
+                                  {isExtra && (
+                                    <span>
+                                      <Badge variant="warning">Extra · {formatInr(item.price * guestCount)}</Badge>
+                                    </span>
+                                  )}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <FoodTypeBadge foodType={item.foodType} />
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </div>
                 );
               })}
@@ -342,27 +388,39 @@ export function FoodItemSelectionDrawer({ open, onOpenChange, menuId, menuName, 
                   <div className="py-1">
                     <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Add-ons (Optional)</span>
                   </div>
-                  {visibleAddOns.map((addOn) => {
-                    const selected = addOnIds.includes(addOn.id);
-                    return (
-                      <button
-                        key={addOn.id}
-                        type="button"
-                        onClick={() => toggleAddOn(addOn.id)}
-                        aria-pressed={selected}
-                        className="flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
-                      >
-                        <Box checked={selected} />
-                        <Thumb src={addOn.image} alt="" />
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-sm font-medium">{addOn.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
+                  <Table className="rounded-lg border border-border">
+                    <TableBody>
+                      {visibleAddOns.map((addOn) => {
+                        const selected = addOnIds.includes(addOn.id);
+                        return (
+                          <TableRow
+                            key={addOn.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-pressed={selected}
+                            onClick={() => toggleAddOn(addOn.id)}
+                            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggleAddOn(addOn.id))}
+                            className="cursor-pointer"
+                          >
+                            <TableCell className="w-10">
+                              <Box checked={selected} />
+                            </TableCell>
+                            <TableCell className="w-14">
+                              <Thumb src={addOn.image} alt="" />
+                            </TableCell>
+                            <TableCell colSpan={2} className="w-full max-w-0 whitespace-normal">
+                              <span className="flex min-w-0 flex-col">
+                                <span className="truncate text-sm font-medium">{addOn.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
+                                </span>
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </div>

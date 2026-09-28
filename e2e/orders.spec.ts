@@ -76,6 +76,25 @@ async function pickEventDate(page: Page, startIso: string, endIso: string) {
 }
 
 /**
+ * Menu Planning's "Event Dates" sidebar (2026-09-29) — only rendered when
+ * the event spans more than one day; one date is "focused" at a time and
+ * only its own meal tabs/cards are in the DOM. Label format must match
+ * menu-planning-section.tsx's own `formatDay` call for the sidebar row exactly.
+ */
+function formatSidebarDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+async function focusDate(page: Page, iso: string) {
+  await page.getByRole("navigation", { name: "Event Dates" }).getByText(formatSidebarDate(iso)).click();
+}
+
+/** Matches the Copy-to-other-dates popover's own (year-less) row label format. */
+function formatCopyRowDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+}
+
+/**
  * Meal Planning's per-meal "Select Food Items" dialog — opens from a meal
  * card once that meal has a Menu assigned, shows the Menu's own items
  * grouped by category (uncategorized items fall under "Other Items"),
@@ -162,24 +181,25 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByLabel("Children (5–10)").fill("15");
 
   // Meal Planning — a custom per-meal price, plus Menu assignment + the
-  // food-item dialog (the section's actual core now).
+  // food-item dialog (the section's actual core now). Meal-type checkboxes
+  // became tappable tabs (2026-09-29): clicking an unselected one both
+  // selects and expands it; a single-day event has no Event Dates sidebar.
   await page.getByRole("switch", { name: /Individual Pricing/ }).click();
   await expect(page.getByText("Individual Pricing On")).toBeVisible();
-  await page.getByRole("button", { name: "All Lunch" }).click();
+  await page.getByRole("button", { name: "Lunch" }).click();
   const lunchSlot = page.getByTestId("meal-slot-2026-12-01-LUNCH");
-  await expect(lunchSlot, "Lunch meal card should appear once checked").toBeVisible();
-  await expect(lunchSlot.getByText("Menu not assigned")).toBeVisible();
+  await expect(lunchSlot, "Lunch meal card should appear once selected").toBeVisible();
 
   await lunchSlot.getByLabel("Menu").click();
   await page.getByRole("option", { name: menuName }).click();
-  await expect(lunchSlot.getByText("Food selection required")).toBeVisible();
+  await expect(lunchSlot.getByText("No items selected")).toBeVisible();
 
   await selectFoodItem(page, lunchSlot, itemName);
   await expect(lunchSlot.getByText("1 item selected")).toBeVisible();
   await expect(lunchSlot.getByText(itemName, { exact: true })).toBeVisible();
 
-  // Individual Pricing puts each meal's price, and the child prices, in Pricing Details.
-  await page.getByLabel("Per plate price · Lunch").fill("300");
+  // Individual Pricing puts each meal's own price inline on its card (2026-09-29 — no longer a separate Pricing Details list).
+  await lunchSlot.getByLabel("Price").fill("300");
 
   // Selected Meals (right column) can reopen the same drawer to edit a meal's items.
   await page.getByRole("button", { name: "Edit food items for Lunch" }).click();
@@ -187,7 +207,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(drawer).toBeVisible();
   await drawer.getByRole("button", { name: "Cancel" }).click();
   await expect(drawer).not.toBeVisible();
-  await page.getByLabel("Per plate price · Lunch").scrollIntoViewIfNeeded();
+  await lunchSlot.getByLabel("Price").scrollIntoViewIfNeeded();
 
   // Venue & Delivery Details
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
@@ -331,7 +351,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
-  // --- Create a Multi Order across two days: each day is its own "Event" block ---
+  // --- Create a Multi Order across two days: the Event Dates sidebar focuses one date at a time (2026-09-29) ---
   await page.goto("/orders/new");
   await pickCustomer(page, customerName);
   await pickEventDate(page, "2026-12-05", "2026-12-06");
@@ -339,32 +359,47 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("alertdialog")).toContainText("more than one date");
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
   await expect(page.getByRole("button", { name: "Multi Order" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Event 1")).toBeVisible();
-  await expect(page.getByText("Event 2")).toBeVisible();
+  const sidebar = page.getByRole("navigation", { name: "Event Dates" });
+  await expect(sidebar).toBeVisible();
+  await expect(sidebar.getByText(formatSidebarDate("2026-12-05"))).toBeVisible();
+  await expect(sidebar.getByText(formatSidebarDate("2026-12-06"))).toBeVisible();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
 
-  // "All Lunch"/"All Dinner" above are global bulk-select buttons (every day
-  // at once) — picking a *different* meal per day means checking each
-  // Event block's own meal checkbox directly instead.
-  const event1 = page.getByText("Event 1").locator("..").locator("..");
-  const event2 = page.getByText("Event 2").locator("..").locator("..");
-  await event1.getByRole("checkbox", { name: "Lunch" }).check();
-  await event2.getByRole("checkbox", { name: "Dinner" }).check();
-
+  // Day 1 (already focused by default) gets Lunch; switching focus to Day 2 for Dinner.
+  await page.getByRole("button", { name: "Lunch" }).click();
   const lunchSlot = page.getByTestId("meal-slot-2026-12-05-LUNCH");
-  await expect(lunchSlot, "Lunch meal card should render in Event 1").toBeVisible();
+  await expect(lunchSlot, "Lunch meal card should render for the focused date").toBeVisible();
   await lunchSlot.getByLabel("Menu").click();
   await page.getByRole("option", { name: lunchMenuName }).click();
   await selectFoodItem(page, lunchSlot, lunchItemName);
   await expect(lunchSlot.getByText(lunchItemName, { exact: true })).toBeVisible();
 
+  await focusDate(page, "2026-12-06");
+  await page.getByRole("button", { name: "Dinner" }).click();
   const dinnerSlot = page.getByTestId("meal-slot-2026-12-06-DINNER");
-  await expect(dinnerSlot, "Dinner meal card should render in Event 2").toBeVisible();
+  await expect(dinnerSlot, "Dinner meal card should render once Day 2 is focused").toBeVisible();
   await dinnerSlot.getByLabel("Menu").click();
   await page.getByRole("option", { name: dinnerMenuName }).click();
   await selectFoodItem(page, dinnerSlot, dinnerItemName);
   await expect(dinnerSlot.getByText(dinnerItemName, { exact: true })).toBeVisible();
+
+  // Copy to other dates (new, 2026-09-29): Day 2's Dinner selection copies onto Day 1 too, without disturbing Day 1's own Lunch.
+  // Scoped to the popover content — its own checkbox-row date format has no
+  // year (menu-planning-section.tsx), unlike the sidebar's own row label, and
+  // the sidebar's day-1 button sits directly behind the open popover, so an
+  // unscoped locator can match (or block on) the wrong, obscured element.
+  await page.getByRole("button", { name: "Copy to other dates" }).click();
+  const copyPopover = page.locator('[data-slot="popover-content"]');
+  await expect(copyPopover).toBeVisible();
+  await copyPopover.getByText(formatCopyRowDate("2026-12-05")).click();
+  await copyPopover.getByRole("button", { name: /Apply to 1 date/ }).click();
+  await focusDate(page, "2026-12-05");
+  await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH")).toBeVisible();
+  await expect(page.getByTestId("meal-slot-2026-12-05-DINNER").getByText(dinnerItemName, { exact: true })).toBeVisible();
+  // Remove it again so the rest of this test's totals/assertions match the original Lunch-only/Dinner-only plan.
+  await page.getByTestId("meal-slot-2026-12-05-DINNER").getByRole("button", { name: "Remove Dinner", exact: true }).click();
+  await expect(page.getByTestId("meal-slot-2026-12-05-DINNER")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
@@ -387,7 +422,9 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByText("AJ-0001")).toBeVisible();
+  // The sidebar defaults to focusing Day 1 on a fresh page load.
   await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH").getByText(lunchItemName)).toBeVisible();
+  await focusDate(page, "2026-12-06");
   await expect(page.getByTestId("meal-slot-2026-12-06-DINNER").getByText(dinnerItemName)).toBeVisible();
 
   // --- Order Type filter ---
@@ -477,14 +514,16 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   // Today is allowed, as a single day: still a Single Order with one meal type.
   await pickEventDate(page, toLocalIso(new Date()), toLocalIso(new Date()));
   await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("checkbox", { name: "Breakfast" }).check();
+  await page.getByRole("button", { name: "Breakfast" }).click();
   await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
 
-  // A second meal type on the same day turns it into a Multi Order, with a popup.
-  await page.getByRole("checkbox", { name: "Dinner" }).check();
+  // A second meal type on the same day turns it into a Multi Order, with a popup —
+  // but it's still one day, so no Event Dates sidebar appears (2026-09-29).
+  await page.getByRole("button", { name: "Dinner" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("more than one meal type");
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
   await expect(page.getByRole("button", { name: /Multi Order/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("navigation", { name: "Event Dates" })).toHaveCount(0);
   // ...and it can't be turned back to Single while both meals are there.
   await expect(page.getByRole("button", { name: /Single Order/ })).toBeDisabled();
 
@@ -588,7 +627,7 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await pickEventDate(page, toLocalIso(tomorrow), toLocalIso(tomorrow));
   await page.getByLabel("Adults").fill("10");
   await page.getByRole("button", { name: /^Vegetarian/ }).click();
-  await page.getByRole("checkbox", { name: "Lunch" }).check();
+  await page.getByRole("button", { name: "Lunch" }).click();
   const slot = page.getByTestId(`meal-slot-${toLocalIso(tomorrow)}-LUNCH`);
   await slot.getByLabel("Menu").click();
   await page.getByRole("option", { name: menuName }).click();

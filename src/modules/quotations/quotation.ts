@@ -4,8 +4,17 @@ import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
-import { resolveCatalogItem, createOrder, type OrderItemCatalogInput } from "@/modules/orders/order";
-import type { QuotationStatus } from "@/generated/prisma/enums";
+import {
+  resolveCatalogItem,
+  createOrder,
+  recalculateOrderTotals,
+  computeChildrenCharge,
+  computeIndividualChildrenCharge,
+  deriveStandardChildPricingMenuId,
+  type OrderItemCatalogInput,
+  type MealPlanEntryInput,
+} from "@/modules/orders/order";
+import type { QuotationStatus, FoodType, OrderKind, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
 
 export class InvalidQuotationTransitionError extends Error {}
 export class QuotationEventDatesRequiredError extends Error {}
@@ -13,10 +22,31 @@ export class QuotationEventDatesRequiredError extends Error {}
 export interface QuotationInput {
   customerId: string;
   eventTypeId?: string | null;
+  /** Vegetarian / Non-Vegetarian, same as Order's — filters which Menus and dishes are offered in the food-item drawer. */
+  menuPreference?: FoodType | null;
   eventStartDate?: Date | null;
   eventEndDate?: Date | null;
   venue?: string;
   eventAddress?: string;
+  /** SINGLE renders Meal Planning as one continuous event; MULTI groups the same per-day data into "Event 1/Event 2…" blocks — same meaning as Order's own. */
+  orderKind?: OrderKind;
+  adultCount?: number | null;
+  childBelow5Count?: number | null;
+  child5To10Count?: number | null;
+  totalParticipants?: number | null;
+  /**
+   * STANDARD auto-derives childPricingMenuId from the first Meal Planning
+   * entry's own assigned Menu (see deriveStandardChildPricingMenuId, shared
+   * with Order); INDIVIDUAL uses the flat-or-percentage individualChild*
+   * overrides below instead.
+   */
+  pricingMethod?: PricingMethod;
+  individualChildBelow5Rate?: number | null;
+  individualChildBelow5PricingType?: ChildPricingType | null;
+  individualChild5To10Rate?: number | null;
+  individualChild5To10PricingType?: ChildPricingType | null;
+  /** When true, each MealPlanEntry's own `price` is added into `subtotal`; when false, meal selections are purely operational. */
+  individualPricingEnabled?: boolean;
   validUntil?: Date | null;
   terms?: string;
   notes?: string;
@@ -24,17 +54,22 @@ export interface QuotationInput {
   taxes?: number;
   additionalCharges?: number;
   deliveryCharges?: number;
-  /** Full replacement of this Quotation's line items. */
-  items?: OrderItemCatalogInput[];
+  /** Sync (not blind replace — see replaceQuotationMealPlanEntries) of this Quotation's Meal Planning selections. */
+  mealPlanEntries?: MealPlanEntryInput[];
 }
 
-async function replaceQuotationItems(organizationId: string, quotationId: string, items: OrderItemCatalogInput[] | undefined) {
-  if (items === undefined) return;
-  await prisma.quotationItem.deleteMany({ where: { quotationId } });
+/**
+ * Replaces this entry's own scoped items (each meal's own Menu items) — a
+ * narrow, slot-scoped delete-then-recreate, never touching another meal's
+ * items. Mirrors order.ts's `replaceMealPlanEntryItems` exactly.
+ */
+async function replaceQuotationMealPlanEntryItems(organizationId: string, quotationId: string, mealPlanEntryId: string, items: OrderItemCatalogInput[]) {
+  await prisma.quotationItem.deleteMany({ where: { mealPlanEntryId } });
   if (items.length === 0) return;
   const resolved = await Promise.all(
     items.map(async (item) => ({
       quotationId,
+      mealPlanEntryId,
       itemType: item.itemType,
       quantity: item.quantity,
       ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
@@ -43,26 +78,98 @@ async function replaceQuotationItems(organizationId: string, quotationId: string
   await prisma.quotationItem.createMany({ data: resolved });
 }
 
-/** The one place `subtotal`/`total` get computed for a Quotation — mirrors order.ts's `recalculateOrderTotals`. */
-export async function recalculateQuotationTotals(quotationId: string) {
-  const quotation = await prisma.quotation.findUniqueOrThrow({ where: { id: quotationId }, include: { items: true } });
+/**
+ * Upsert-by-(date,mealType) sync, NOT a blind delete+recreate — mirrors
+ * order.ts's `replaceMealPlanEntries` exactly, retargeted at
+ * QuotationMealPlanEntry/QuotationItem. Existing (date, mealType) rows are
+ * updated in place (id preserved) so their items don't cascade-delete on
+ * every unrelated save; only genuinely removed slots are deleted.
+ */
+async function replaceQuotationMealPlanEntries(organizationId: string, quotationId: string, entries: MealPlanEntryInput[] | undefined) {
+  if (entries === undefined) return;
+  const existing = await prisma.quotationMealPlanEntry.findMany({ where: { quotationId } });
+  const existingByKey = new Map(existing.map((e) => [`${e.date.toISOString()}|${e.mealType}`, e]));
+  const keepIds = new Set<string>();
 
-  const subtotal = quotation.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
+  for (const entry of entries) {
+    const menuId = entry.menuId ?? null;
+    if (menuId) {
+      await prisma.menu.findFirstOrThrow({ where: { id: menuId, organizationId } });
+    }
+    const key = `${entry.date.toISOString()}|${entry.mealType}`;
+    const match = existingByKey.get(key);
+    const entryId = match
+      ? (await prisma.quotationMealPlanEntry.update({ where: { id: match.id }, data: { price: entry.price, menuId } })).id
+      : (await prisma.quotationMealPlanEntry.create({ data: { quotationId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
+    keepIds.add(entryId);
+
+    await replaceQuotationMealPlanEntryItems(organizationId, quotationId, entryId, entry.items ?? []);
+  }
+
+  const toDelete = existing.filter((e) => !keepIds.has(e.id));
+  if (toDelete.length > 0) {
+    await prisma.quotationMealPlanEntry.deleteMany({ where: { id: { in: toDelete.map((e) => e.id) } } });
+  }
+}
+
+/**
+ * The one place `subtotal`/`total` get computed for a Quotation — mirrors
+ * order.ts's `recalculateOrderTotals` formula exactly (itemsSubtotal +
+ * mealsSubtotal-when-individualPricingEnabled + childrenCharge), except the
+ * final charge line reuses Quotation's own 4 fields (discount/taxes/
+ * additionalCharges/deliveryCharges) rather than Order's leaner set.
+ */
+export async function recalculateQuotationTotals(quotationId: string) {
+  const quotation = await prisma.quotation.findUniqueOrThrow({
+    where: { id: quotationId },
+    include: { mealPlanEntries: { include: { items: true } }, childPricingMenu: true },
+  });
+
+  const itemsSubtotal = quotation.mealPlanEntries.reduce(
+    (sum, entry) => sum + entry.items.reduce((s, item) => s + Number(item.unitPrice) * item.quantity, 0),
+    0,
+  );
+  const mealsSubtotal = quotation.individualPricingEnabled
+    ? quotation.mealPlanEntries.reduce((sum, entry) => sum + Number(entry.price ?? 0), 0)
+    : 0;
+  const referenceMenuPrice = quotation.childPricingMenu ? Number(quotation.childPricingMenu.pricePerPlate) : 0;
+  const childrenCharge =
+    quotation.pricingMethod === "INDIVIDUAL"
+      ? computeIndividualChildrenCharge(quotation, referenceMenuPrice, quotation.childBelow5Count, quotation.child5To10Count)
+      : computeChildrenCharge(quotation.childPricingMenu, quotation.childBelow5Count, quotation.child5To10Count);
+  const subtotal = itemsSubtotal + mealsSubtotal + childrenCharge;
   const total = subtotal - Number(quotation.discount) + Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges);
 
-  return prisma.quotation.update({ where: { id: quotationId }, data: { subtotal, total } });
+  return prisma.quotation.update({ where: { id: quotationId }, data: { subtotal, childrenCharge, total } });
 }
 
 export async function createQuotation(organizationId: string, input: QuotationInput, actorUserId: string) {
+  const orderKind = input.orderKind ?? "SINGLE";
+  const pricingMethod = input.pricingMethod ?? "STANDARD";
+  const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
+
   const quotation = await prisma.quotation.create({
     data: {
       organizationId,
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      menuPreference: input.menuPreference,
+      orderKind,
       eventStartDate: input.eventStartDate,
       eventEndDate: input.eventEndDate,
       venue: input.venue,
       eventAddress: input.eventAddress,
+      adultCount: input.adultCount,
+      childBelow5Count: input.childBelow5Count,
+      child5To10Count: input.child5To10Count,
+      totalParticipants: input.totalParticipants,
+      childPricingMenuId,
+      pricingMethod,
+      individualChildBelow5Rate: input.individualChildBelow5Rate,
+      individualChildBelow5PricingType: input.individualChildBelow5PricingType,
+      individualChild5To10Rate: input.individualChild5To10Rate,
+      individualChild5To10PricingType: input.individualChild5To10PricingType,
+      individualPricingEnabled: input.individualPricingEnabled ?? false,
       validUntil: input.validUntil,
       terms: input.terms,
       notes: input.notes,
@@ -72,7 +179,7 @@ export async function createQuotation(organizationId: string, input: QuotationIn
       deliveryCharges: input.deliveryCharges ?? 0,
     },
   });
-  await replaceQuotationItems(organizationId, quotation.id, input.items);
+  await replaceQuotationMealPlanEntries(organizationId, quotation.id, input.mealPlanEntries);
   const withTotals = await recalculateQuotationTotals(quotation.id);
 
   await audit({
@@ -89,16 +196,32 @@ export async function createQuotation(organizationId: string, input: QuotationIn
 
 export async function updateQuotation(organizationId: string, id: string, input: QuotationInput, actorUserId: string) {
   const before = await prisma.quotation.findFirstOrThrow({ where: { id, organizationId } });
+  const orderKind = input.orderKind ?? before.orderKind;
+  const pricingMethod = input.pricingMethod ?? before.pricingMethod;
+  const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
 
   await prisma.quotation.update({
     where: { id },
     data: {
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
+      menuPreference: input.menuPreference,
+      orderKind,
       eventStartDate: input.eventStartDate,
       eventEndDate: input.eventEndDate,
       venue: input.venue,
       eventAddress: input.eventAddress,
+      adultCount: input.adultCount,
+      childBelow5Count: input.childBelow5Count,
+      child5To10Count: input.child5To10Count,
+      totalParticipants: input.totalParticipants,
+      childPricingMenuId,
+      pricingMethod,
+      individualChildBelow5Rate: input.individualChildBelow5Rate ?? before.individualChildBelow5Rate,
+      individualChildBelow5PricingType: input.individualChildBelow5PricingType ?? before.individualChildBelow5PricingType,
+      individualChild5To10Rate: input.individualChild5To10Rate ?? before.individualChild5To10Rate,
+      individualChild5To10PricingType: input.individualChild5To10PricingType ?? before.individualChild5To10PricingType,
+      individualPricingEnabled: input.individualPricingEnabled ?? before.individualPricingEnabled,
       validUntil: input.validUntil,
       terms: input.terms,
       notes: input.notes,
@@ -108,7 +231,7 @@ export async function updateQuotation(organizationId: string, id: string, input:
       deliveryCharges: input.deliveryCharges ?? before.deliveryCharges,
     },
   });
-  await replaceQuotationItems(organizationId, id, input.items);
+  await replaceQuotationMealPlanEntries(organizationId, id, input.mealPlanEntries);
   const withTotals = await recalculateQuotationTotals(id);
 
   await audit({
@@ -124,7 +247,7 @@ export async function updateQuotation(organizationId: string, id: string, input:
   return withTotals;
 }
 
-/** Hard delete — items cascade; nothing else references a Quotation with Restrict (Order.quotationId is SetNull). */
+/** Hard delete — items/mealPlanEntries cascade; nothing else references a Quotation with Restrict (Order.quotationId is SetNull). */
 export async function deleteQuotation(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.quotation.findFirstOrThrow({ where: { id, organizationId } });
   await prisma.quotation.delete({ where: { id } });
@@ -153,7 +276,13 @@ export async function getQuotation(organizationId: string, id: string) {
     include: {
       customer: true,
       eventType: true,
-      items: { orderBy: { createdAt: "asc" } },
+      mealPlanEntries: {
+        orderBy: [{ date: "asc" }, { mealType: "asc" }],
+        include: { menu: { select: { id: true, name: true } }, items: { orderBy: { createdAt: "asc" } } },
+      },
+      // Legacy/carried-over only (pre-parity artifacts) — mirrors getOrder's own split.
+      items: { where: { mealPlanEntryId: null }, orderBy: { createdAt: "asc" } },
+      childPricingMenu: { select: { id: true, name: true } },
       order: { select: { id: true } },
     },
   });
@@ -316,19 +445,30 @@ export const requestQuotationChanges = (organizationId: string, id: string, mess
 
 /**
  * Converts an Accepted Quotation into a real Order (Group 10.2's "generated
- * from an Accepted Quotation **or** created directly"). Copies each
- * QuotationItem's own frozen snapshot onto the new OrderItem rows directly
- * (never re-resolved from the live catalog) — an accepted quotation's price
- * must never silently drift from a later catalog change. Quotation's
+ * from an Accepted Quotation **or** created directly"). Item-picker parity
+ * (2026-09-28) rewrote this to map each QuotationMealPlanEntry 1:1 onto a
+ * real Order MealPlanEntry, instead of flattening everything into
+ * whole-order items — a converted Order now has the identical per-day/
+ * per-meal structure a natively-created one would. Every OrderItem copies
+ * its QuotationItem's frozen snapshot directly (name/unitPrice/quantity),
+ * never through `resolveCatalogItem` — an accepted quotation's price must
+ * never silently drift from a later catalog change. Quotation's
  * taxes/additionalCharges/deliveryCharges (no direct Order equivalent since
  * Create Order's 2026-09-20 redesign dropped Order.taxes) are folded into
- * the new Order's `otherCharges` so the converted total still matches
- * exactly.
+ * the new Order's `otherCharges` so the converted total still matches.
  */
 export async function convertQuotationToOrder(organizationId: string, quotationId: string, actorUserId: string) {
   const quotation = await prisma.quotation.findFirstOrThrow({
     where: { id: quotationId, organizationId },
-    include: { items: true },
+    include: {
+      // Legacy/carried-over only — pre-parity artifacts left with no meal
+      // slot. Dead weight for every Quotation created after this shipped.
+      items: { where: { mealPlanEntryId: null }, orderBy: { createdAt: "asc" } },
+      mealPlanEntries: {
+        orderBy: [{ date: "asc" }, { mealType: "asc" }],
+        include: { items: { orderBy: { createdAt: "asc" } } },
+      },
+    },
   });
   if (quotation.status !== "ACCEPTED") {
     throw new InvalidQuotationTransitionError("Only an Accepted Quotation can be converted to an Order.");
@@ -342,16 +482,53 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
     {
       customerId: quotation.customerId,
       eventTypeId: quotation.eventTypeId,
+      menuPreference: quotation.menuPreference,
+      orderKind: quotation.orderKind,
       eventStartDate: quotation.eventStartDate,
       eventEndDate: quotation.eventEndDate,
       venue: quotation.venue ?? undefined,
       eventAddress: quotation.eventAddress ?? undefined,
+      adultCount: quotation.adultCount,
+      childBelow5Count: quotation.childBelow5Count,
+      child5To10Count: quotation.child5To10Count,
+      totalParticipants: quotation.totalParticipants,
+      pricingMethod: quotation.pricingMethod,
+      individualChildBelow5Rate: quotation.individualChildBelow5Rate === null ? null : Number(quotation.individualChildBelow5Rate),
+      individualChildBelow5PricingType: quotation.individualChildBelow5PricingType,
+      individualChild5To10Rate: quotation.individualChild5To10Rate === null ? null : Number(quotation.individualChild5To10Rate),
+      individualChild5To10PricingType: quotation.individualChild5To10PricingType,
+      individualPricingEnabled: quotation.individualPricingEnabled,
       discount: Number(quotation.discount),
       otherCharges: Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges),
       notes: quotation.notes ?? undefined,
+      // mealPlanEntries deliberately omitted — createOrder's own
+      // replaceMealPlanEntries no-ops on undefined, so this just creates the
+      // Order shell; the real structure is written directly below so each
+      // OrderItem copies its QuotationItem snapshot untouched.
     },
     actorUserId,
   );
+
+  for (const entry of quotation.mealPlanEntries) {
+    const mealPlanEntry = await prisma.mealPlanEntry.create({
+      data: { orderId: order.id, date: entry.date, mealType: entry.mealType, price: entry.price, menuId: entry.menuId },
+    });
+    if (entry.items.length > 0) {
+      await prisma.orderItem.createMany({
+        data: entry.items.map((item) => ({
+          orderId: order.id,
+          mealPlanEntryId: mealPlanEntry.id,
+          itemType: item.itemType,
+          menuId: item.menuId,
+          menuItemId: item.menuItemId,
+          addOnId: item.addOnId,
+          name: item.name,
+          unitPrice: item.unitPrice,
+          quantity: item.quantity,
+        })),
+      });
+    }
+  }
 
   if (quotation.items.length > 0) {
     await prisma.orderItem.createMany({
@@ -368,19 +545,13 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
     });
   }
 
-  const linkedOrder = await prisma.order.update({
-    where: { id: order.id },
-    data: { quotationId },
-    include: { items: true, mealPlanEntries: true },
-  });
-  // Re-sums now that the whole-order items above have landed (createOrder's
-  // own recalculateOrderTotals ran before they existed) — mirrors that same
-  // formula (subtotal - discount + transportationCost + otherCharges),
-  // taxes removed from Order entirely (2026-09-20), already folded into
-  // otherCharges above.
-  const subtotal = linkedOrder.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0);
-  const total = subtotal - Number(linkedOrder.discount) + Number(linkedOrder.transportationCost) + Number(linkedOrder.otherCharges);
-  const finalOrder = await prisma.order.update({ where: { id: order.id }, data: { subtotal, total, balance: total } });
+  // childPricingMenuId re-derived over the real written structure (createOrder's
+  // own derivation saw `undefined` mealPlanEntries above and returned null).
+  const childPricingMenuId = deriveStandardChildPricingMenuId(
+    quotation.mealPlanEntries.map((entry) => ({ date: entry.date, mealType: entry.mealType, menuId: entry.menuId })),
+  );
+  await prisma.order.update({ where: { id: order.id }, data: { quotationId, childPricingMenuId } });
+  const finalOrder = await recalculateOrderTotals(order.id);
 
   await audit({
     organizationId,

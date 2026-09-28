@@ -23,7 +23,11 @@ export function FormSection({
   children: React.ReactNode;
 }) {
   return (
-    <Card className="gap-5 px-5 [--card-spacing:--spacing(5)]">
+    // overflow-visible overrides Card's default overflow-hidden (there for
+    // rounded-corner image clipping, which no step card ever has) — without
+    // it, CustomerCombobox's absolutely-positioned results dropdown gets
+    // clipped the moment it would extend past this card's own box.
+    <Card className="gap-5 overflow-visible px-5 [--card-spacing:--spacing(5)]">
       <div className="flex items-start gap-3">
         <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{step}</span>
         <div className="min-w-0 flex-1">

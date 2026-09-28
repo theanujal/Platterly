@@ -2,25 +2,7 @@
 
 import { createElement, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  CalendarDays,
-  Coffee,
-  CreditCard,
-  Info,
-  MapPin,
-  Moon,
-  PenSquare,
-  Plus,
-  Sun,
-  Sunrise,
-  Tag,
-  Trash2,
-  User,
-  UtensilsCrossed,
-  Users,
-  Wallet,
-  type LucideIcon,
-} from "lucide-react";
+import { CalendarDays, CreditCard, Info, MapPin, PenSquare, Tag, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
@@ -29,7 +11,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
@@ -41,13 +22,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
-import { CustomerCombobox, type SelectedCustomer } from "./customer-combobox";
-import { FoodItemSelectionDrawer, type PickedItem } from "./food-item-selection-drawer";
+import { CustomerCombobox, type SelectedCustomer } from "@/components/customers/customer-combobox";
+import { MenuPlanningSection, MEAL_TYPES, MEAL_ICON, type MealSelection, type MenuOption, type MealTypeValue } from "@/components/catalog/menu-planning-section";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
 import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
-import { getOrderCountsByDayAction, type ActionResult } from "../actions";
+import { getOrderCountsByDayAction, getMenuForOrderPickerAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
 
 // Mirrors actions.ts's own past-date check — a live client-side preview of the
 // same server-enforced rule, never the only place it's checked. The team may
@@ -60,22 +41,6 @@ function daysUntilPreview(iso: string): number | null {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((eventDate.getTime() - startOfToday.getTime()) / 86_400_000);
 }
-
-const MEAL_TYPES = [
-  { value: "BREAKFAST", label: "Breakfast" },
-  { value: "LUNCH", label: "Lunch" },
-  { value: "HITEA", label: "Hi-Tea" },
-  { value: "DINNER", label: "Dinner" },
-  { value: "OTHER", label: "Other" },
-] as const;
-
-const MEAL_ICON: Record<(typeof MEAL_TYPES)[number]["value"], LucideIcon> = {
-  BREAKFAST: Sunrise,
-  LUNCH: Sun,
-  HITEA: Coffee,
-  DINNER: Moon,
-  OTHER: UtensilsCrossed,
-};
 
 /** "Starts in" wording for the event-date chip and the summary — same tones as the Orders card's countdown. */
 function startsInPreview(days: number | null): { caption: string; label: string; tone: "orange" | "yellow" | "success" } | null {
@@ -110,30 +75,6 @@ const CHILD_PRICING_TYPE_OPTIONS = [
   { value: "FIXED", label: "Per Plate" },
   { value: "PERCENTAGE", label: "Percentage" },
 ] as const;
-
-interface MenuOption {
-  id: string;
-  name: string;
-  menuType: "VEGETARIAN" | "NON_VEGETARIAN";
-  price: number;
-  childUnder5Chargeable: boolean;
-  childUnder5Price: number | null;
-  child5To10PricingType: "PERCENTAGE" | "FIXED";
-  child5To10PriceValue: number | null;
-}
-
-/** A meal's chosen dish, extra dish or add-on — see food-item-selection-drawer.tsx. */
-type MealPlanItemRow = PickedItem;
-
-interface MealSelection {
-  date: string;
-  mealType: (typeof MEAL_TYPES)[number]["value"];
-  price: string;
-  /** Required before food items can be picked — every meal assigns its own Menu, regardless of Order Type. */
-  menuId: string;
-  /** Items chosen from that meal's own Menu. */
-  items: MealPlanItemRow[];
-}
 
 export interface OrderFormValues {
   customerId: string;
@@ -337,9 +278,10 @@ export function OrderForm({
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
   const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
-  // Which meal's "Select Food Items" drawer is open — a single shared
-  // dialog instance rather than one per meal card.
-  const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: (typeof MEAL_TYPES)[number]["value"] } | null>(null);
+  // Which meal's "Select/Edit Food Items" drawer is open — lifted here (not
+  // internal to MenuPlanningSection) so the "Selected Meals" summary card
+  // can also open it directly for any date, not just the sidebar-focused one.
+  const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
 
   function setField<K extends keyof OrderFormValues>(key: K, value: OrderFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -379,63 +321,10 @@ export function OrderForm({
 
   const days = useMemo(() => enumerateDates(values.eventStartDate, values.eventEndDate), [values.eventStartDate, values.eventEndDate]);
 
-  const mealMap = useMemo(() => {
-    const map = new Map<string, MealSelection>();
-    for (const entry of values.mealPlanEntries) map.set(`${entry.date}|${entry.mealType}`, entry);
-    return map;
-  }, [values.mealPlanEntries]);
-
-  /** Applies a new meal plan and, if it now spans more than one meal type, makes the order a Multi Order. */
+  /** Applies a new meal plan and, if it now spans more than one meal type, makes the order a Multi Order. Passed straight into MenuPlanningSection as its onChange. */
   function setMealPlan(entries: MealSelection[]) {
     setField("mealPlanEntries", entries);
     if (new Set(entries.map((e) => e.mealType)).size > 1) autoMulti("meals");
-  }
-
-  function toggleMeal(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], checked: boolean) {
-    setMealPlan(
-      checked
-        ? [...values.mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }]
-        : values.mealPlanEntries.filter((e) => !(e.date === date && e.mealType === mealType)),
-    );
-  }
-
-  function setMealPrice(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], price: string) {
-    setField(
-      "mealPlanEntries",
-      values.mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, price } : e)),
-    );
-  }
-
-  function bulkSelect(mealType: (typeof MEAL_TYPES)[number]["value"]) {
-    const withoutThisMeal = values.mealPlanEntries.filter((e) => e.mealType !== mealType);
-    const additions = days.map((date) => ({ date, mealType, price: "", menuId: "", items: [] }));
-    setMealPlan([...withoutThisMeal, ...additions]);
-  }
-
-  /** Changing a slot's Menu invalidates whatever was chosen from the old one. */
-  function setMealMenu(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], menuId: string) {
-    setField(
-      "mealPlanEntries",
-      values.mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, menuId, items: [] } : e)),
-    );
-  }
-
-  /** The drawer's "Save Items": replaces everything chosen for that meal. */
-  function setMealItems(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], items: PickedItem[]) {
-    setField(
-      "mealPlanEntries",
-      values.mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, items } : e)),
-    );
-  }
-
-  /** Chip-list "x" — removes by row key rather than re-deriving the catalog option. */
-  function removeMealItem(date: string, mealType: (typeof MEAL_TYPES)[number]["value"], itemKey: string) {
-    setField(
-      "mealPlanEntries",
-      values.mealPlanEntries.map((e) =>
-        e.date === date && e.mealType === mealType ? { ...e, items: e.items.filter((i) => i.key !== itemKey) } : e,
-      ),
-    );
   }
 
   // Extras and per-plate add-ons are charged for every guest, like on the public form; everything else once.
@@ -565,125 +454,6 @@ export function OrderForm({
     onSuccess();
   }
 
-  // Renders one date's "Select Meal" checkboxes + the resulting meal cards —
-  // shared between Single Order's flat list and Multi Order's per-"Event"
-  // grouping below, so the two never drift into two implementations.
-  function renderDayMeals(date: string) {
-    const selectedMeals = MEAL_TYPES.filter((m) => mealMap.has(`${date}|${m.value}`));
-    return (
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-3">
-          {MEAL_TYPES.map((meal) => {
-            const key = `${date}|${meal.value}`;
-            const checked = mealMap.has(key);
-            return (
-              <label key={meal.value} htmlFor={`meal-${date}-${meal.value}`} className="flex cursor-pointer items-center gap-1.5">
-                <Checkbox id={`meal-${date}-${meal.value}`} checked={checked} onCheckedChange={(c) => toggleMeal(date, meal.value, c === true)} />
-                <span className="text-sm">{meal.label}</span>
-              </label>
-            );
-          })}
-        </div>
-
-        {selectedMeals.length > 0 && (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {selectedMeals.map((meal) => {
-              const key = `${date}|${meal.value}`;
-              const entry = mealMap.get(key)!;
-              const assignedMenu = menus.find((m) => m.id === entry.menuId);
-              const status = !entry.menuId
-                ? { label: "Menu not assigned", variant: "warning" as const }
-                : entry.items.length === 0
-                  ? { label: "Food selection required", variant: "neutral" as const }
-                  : { label: `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`, variant: "success" as const };
-              return (
-                <div key={meal.value} data-testid={`meal-slot-${date}-${meal.value}`} className="flex flex-col gap-2.5 rounded-lg border border-primary/40 bg-accent/40 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        {createElement(MEAL_ICON[meal.value], { className: "size-4" })}
-                      </span>
-                      {meal.label}
-                    </span>
-                    <Badge variant={status.variant}>{status.label}</Badge>
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor={`meal-menu-${date}-${meal.value}`} required className="text-xs">
-                      Menu
-                    </Label>
-                    <Select
-                      items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
-                      value={entry.menuId}
-                      onValueChange={(v) => setMealMenu(date, meal.value, v ?? "")}
-                    >
-                      <SelectTrigger id={`meal-menu-${date}-${meal.value}`} className="w-full">
-                        <SelectValue placeholder="Select Menu" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {menus
-                          .filter((m) => !values.menuPreference || m.menuType === values.menuPreference || m.id === entry.menuId)
-                          .map((m) => (
-                          <SelectItem key={m.id} value={m.id}>
-                            {m.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {entry.menuId && (
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {entry.items.length === 0 ? "No food items selected" : `Food Items — ${entry.items.length} selected`}
-                        </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setFoodDialogTarget({ date, mealType: meal.value })}
-                        >
-                          {entry.items.length === 0 ? <Plus className="size-3.5" /> : <PenSquare className="size-3.5" />}
-                          {entry.items.length === 0 ? "Select Food Items" : "Edit Food Items"}
-                        </Button>
-                      </div>
-                      {entry.items.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {entry.items.map((item) => (
-                            <Badge key={item.key} variant="outline" className="gap-1 pr-1">
-                              {item.name}
-                              {item.itemType === "ADD_ON" ? <span className="text-primary">Add-on</span> : item.perGuest ? <span className="text-warning">Extra</span> : null}
-                              <button
-                                type="button"
-                                aria-label={`Remove ${item.name}`}
-                                onClick={() => removeMealItem(date, meal.value, item.key)}
-                                className="rounded-full p-0.5 hover:bg-muted"
-                              >
-                                <Trash2 className="size-3" />
-                              </button>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {assignedMenu && (
-                    <span className="text-xs text-muted-foreground">₹{assignedMenu.price.toFixed(2)}/plate</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const foodDialogEntry = foodDialogTarget ? mealMap.get(`${foodDialogTarget.date}|${foodDialogTarget.mealType}`) : undefined;
-  const foodDialogMenu = foodDialogEntry ? menus.find((m) => m.id === foodDialogEntry.menuId) : undefined;
-
   const startsIn = startsInPreview(eventDaysUntil);
   const totalGuests = String(guestsComputed);
   const orderTypeOptions = [
@@ -758,6 +528,7 @@ export function OrderForm({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="order-customer" required>Customer</Label>
                 <CustomerCombobox
+                  id="order-customer"
                   initialCustomer={initialSelectedCustomer}
                   onSelect={(customer) => {
                     setField("customerId", customer.id);
@@ -767,6 +538,8 @@ export function OrderForm({
                     setField("customerId", "");
                     setSelectedCustomer(null);
                   }}
+                  onSearch={searchCustomersAction}
+                  onCreate={createCustomerForOrderAction}
                 />
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -993,96 +766,22 @@ export function OrderForm({
 
             {/* 5 · Menu planning */}
             <FormSection step={5} title="Menu Planning" description="Select meals and assign menu items for this event." action={individualToggle}>
-              <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
-                <Label>Menu Preference</Label>
-                <div className="flex flex-wrap gap-3">
-                  {(
-                    [
-                      { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only", dot: "bg-success" },
-                      { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish", dot: "bg-destructive" },
-                    ] as const
-                  ).map((option) => {
-                    const selected = values.menuPreference === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => setField("menuPreference", selected ? "" : option.value)}
-                        className={cn(
-                          "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                          selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
-                        )}
-                      >
-                        <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
-                          {selected && <span className="size-2.5 rounded-full bg-primary" />}
-                        </span>
-                        <span className="flex flex-col">
-                          <span className="flex items-center gap-2 text-sm font-semibold">
-                            <span className={cn("size-2 rounded-full", option.dot)} />
-                            {option.label}
-                          </span>
-                          <span className="text-xs text-muted-foreground">{option.hint}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              {days.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Set the Event Date above to start planning meals.</p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-wrap gap-2">
-                    {(["BREAKFAST", "LUNCH", "DINNER"] as const).map((mealType) => (
-                      <Button key={mealType} type="button" variant="outline" size="md" onClick={() => bulkSelect(mealType)}>
-                        All {MEAL_TYPES.find((m) => m.value === mealType)!.label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  {values.orderKind === "MULTI" ? (
-                    <div className="flex flex-col gap-4">
-                      {days.map((date, index) => (
-                        <div key={date} className="flex flex-col gap-3 rounded-xl border border-border p-4">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="info">Event {index + 1}</Badge>
-                            <span className="text-sm font-medium">
-                              {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                            </span>
-                          </div>
-                          {renderDayMeals(date)}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
-                      {days.map((date) => (
-                        <div key={date} className="flex flex-col gap-3 border-b border-border/60 pb-4 last:border-0 last:pb-0">
-                          <span className="text-sm font-medium">
-                            {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                          </span>
-                          {renderDayMeals(date)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </FormSection>
-
-            {foodDialogTarget && foodDialogEntry && foodDialogMenu && (
-              <FoodItemSelectionDrawer
-                open
-                onOpenChange={(open) => !open && setFoodDialogTarget(null)}
-                menuId={foodDialogMenu.id}
-                menuName={foodDialogMenu.name}
-                guests={guestsForPricing}
+              <MenuPlanningSection
+                idPrefix="order"
+                days={days}
+                mealPlanEntries={values.mealPlanEntries}
+                onChange={setMealPlan}
+                menus={menus}
                 menuPreference={values.menuPreference}
-                initialItems={foodDialogEntry.items}
-                onSave={(items) => setMealItems(foodDialogTarget.date, foodDialogTarget.mealType, items)}
+                onMenuPreferenceChange={(v) => setField("menuPreference", v)}
+                individualPricingEnabled={individualOn}
+                guestsForPricing={guestsForPricing}
+                loadPickerData={getMenuForOrderPickerAction}
+                foodDialogTarget={foodDialogTarget}
+                onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
+                onCloseFoodDialog={() => setFoodDialogTarget(null)}
               />
-            )}
+            </FormSection>
 
             {/* 6 · Additional details */}
             <FormSection step={6} title="Additional Details" description="Add any special notes or requirements.">
@@ -1180,7 +879,7 @@ export function OrderForm({
                             variant="ghost"
                             size="icon-sm"
                             aria-label={`Edit food items for ${meal.label}${days.length > 1 ? ` on ${formatDay(entry.date, { day: "numeric", month: "short" })}` : ""}`}
-                            onClick={() => setFoodDialogTarget({ date: entry.date, mealType: entry.mealType })}
+                            onClick={() => setFoodDialogTarget({ date: entry.date, mealType: entry.mealType as MealTypeValue })}
                           >
                             <PenSquare className="size-4" />
                           </Button>
@@ -1200,25 +899,7 @@ export function OrderForm({
               </p>
               {individualOn && (
                 <div className="flex flex-col gap-3">
-                  {sortedMealEntries.map((entry) => {
-                    const meal = MEAL_TYPES.find((m) => m.value === entry.mealType)!;
-                    return (
-                      <div key={`price-${entry.date}|${entry.mealType}`} className="flex flex-col gap-1.5">
-                        <Label htmlFor={`meal-price-${entry.date}-${entry.mealType}`}>
-                          Per plate price · {meal.label}
-                          {days.length > 1 ? ` · ${formatDay(entry.date, { day: "numeric", month: "short" })}` : ""}
-                        </Label>
-                        <Input
-                          id={`meal-price-${entry.date}-${entry.mealType}`}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={entry.price}
-                          onChange={(e) => setMealPrice(entry.date, entry.mealType, e.target.value)}
-                        />
-                      </div>
-                    );
-                  })}
+                  {/* Each meal's own price is set inline on its card in Menu Planning above, not duplicated here (AJ's reference, 2026-09-29). */}
                   {(
                     [
                       { id: "order-individual-below5", label: "Children (Under 5) price", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },

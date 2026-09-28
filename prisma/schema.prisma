@@ -684,16 +684,18 @@ model Menu {
   child5To10PricingType ChildPricingType @default(FIXED)
   child5To10PriceValue  Decimal?         @db.Decimal(10, 2)
 
-  items               MenuMenuItem[]
-  categoryAssignments MenuCategoryAssignment[]
-  eventTypes          EventTypeMenu[]
-  orderItems          OrderItem[]
-  quotationItems      QuotationItem[]
-  mealPlanEntries     MealPlanEntry[]
-  childPricingOrders  Order[]
-  menuSelectionItems  MenuSelectionItem[]
-  chosenInSelections  MenuSelection[]          @relation("MenuSelectionChosenMenu")
-  menuVersionItems    MenuVersionItem[]
+  items                    MenuMenuItem[]
+  categoryAssignments      MenuCategoryAssignment[]
+  eventTypes               EventTypeMenu[]
+  orderItems               OrderItem[]
+  quotationItems           QuotationItem[]
+  mealPlanEntries          MealPlanEntry[]
+  quotationMealPlanEntries QuotationMealPlanEntry[]
+  childPricingOrders       Order[]
+  childPricingQuotations   Quotation[]
+  menuSelectionItems       MenuSelectionItem[]
+  chosenInSelections       MenuSelection[]          @relation("MenuSelectionChosenMenu")
+  menuVersionItems         MenuVersionItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1404,6 +1406,36 @@ model Quotation {
   venue          String?
   eventAddress   String?
 
+  // Item-picker parity with Order (2026-09-28) — same fields, same meaning,
+  // as Order's own (see that model's comments for the full rationale).
+  // Deliberately excluded: Order's structured venue/delivery block
+  // (venueType/venueDoorNumber/.../vehicleAccess/gasElectricAvailable/
+  // deliveryInstructions/cookingInstructions) — Quotation keeps only the
+  // plain venue/eventAddress text fields above. Also excluded:
+  // adultNonVegCount/adultVegCount (unwritten on Order itself) and
+  // individualAdultRate (declared on Order but never read/written anywhere).
+  orderKind OrderKind @default(SINGLE)
+
+  menuPreference FoodType?
+
+  adultCount        Int?
+  childBelow5Count  Int?
+  child5To10Count   Int?
+  totalParticipants Int?
+
+  // Server-derived (deriveStandardChildPricingMenuId, shared with Order) from
+  // the first Meal Planning entry's own menuId — never client-submitted.
+  childPricingMenuId String?
+  childPricingMenu   Menu?   @relation(fields: [childPricingMenuId], references: [id], onDelete: SetNull)
+
+  pricingMethod                    PricingMethod     @default(STANDARD)
+  individualChildBelow5Rate        Decimal?          @db.Decimal(12, 2)
+  individualChildBelow5PricingType ChildPricingType?
+  individualChild5To10Rate         Decimal?          @db.Decimal(12, 2)
+  individualChild5To10PricingType  ChildPricingType?
+
+  individualPricingEnabled Boolean @default(false)
+
   status          QuotationStatus @default(DRAFT)
   validUntil      DateTime?
   terms           String?
@@ -1416,15 +1448,19 @@ model Quotation {
   // additionalCharges/deliveryCharges have no Order equivalent, matching
   // Order's leaner PRD §21 field list; convertQuotationToOrder folds both
   // into the new Order's `taxes` so the converted total still matches).
+  // childrenCharge mirrors Order's — the live Children Guests & Pricing
+  // contribution folded into subtotal by recalculateQuotationTotals.
   subtotal          Decimal @default(0) @db.Decimal(12, 2)
+  childrenCharge    Decimal @default(0) @db.Decimal(12, 2)
   discount          Decimal @default(0) @db.Decimal(12, 2)
   taxes             Decimal @default(0) @db.Decimal(12, 2)
   additionalCharges Decimal @default(0) @db.Decimal(12, 2)
   deliveryCharges   Decimal @default(0) @db.Decimal(12, 2)
   total             Decimal @default(0) @db.Decimal(12, 2)
 
-  items QuotationItem[]
-  order Order?
+  items           QuotationItem[]
+  mealPlanEntries QuotationMealPlanEntry[]
+  order           Order?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1448,6 +1484,12 @@ model QuotationItem {
   addOnId    String?
   addOn      AddOn?    @relation(fields: [addOnId], references: [id], onDelete: SetNull)
 
+  // Item-picker parity with Order (2026-09-28) — mirrors OrderItem.mealPlanEntryId.
+  // Null only for pre-parity rows left over from the old flat picker; every
+  // item added through the new Meal Planning UI belongs to a meal slot.
+  mealPlanEntryId String?
+  mealPlanEntry   QuotationMealPlanEntry? @relation(fields: [mealPlanEntryId], references: [id], onDelete: Cascade)
+
   // Snapshotted at add-time, same convention as OrderItem — and the exact
   // values `convertQuotationToOrder` copies onto the new OrderItem rows
   // untouched, so an accepted quotation's price can never silently drift
@@ -1460,6 +1502,29 @@ model QuotationItem {
 
   @@index([quotationId])
   @@map("quotation_item")
+}
+
+// Item-picker parity with Order (2026-09-28) — exact mirror of MealPlanEntry,
+// scoped to Quotation instead of Order. No `organizationId` of its own —
+// cascades off its parent Quotation row, same precedent as MealPlanEntry.
+model QuotationMealPlanEntry {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  date        DateTime
+  mealType    MealType
+  // Only meaningful (and only ever set) when Quotation.individualPricingEnabled.
+  price       Decimal?  @db.Decimal(10, 2)
+
+  menuId String?
+  menu   Menu?           @relation(fields: [menuId], references: [id], onDelete: SetNull)
+  items  QuotationItem[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([quotationId, date, mealType])
+  @@index([quotationId])
+  @@map("quotation_meal_plan_entry")
 }
 
 // Chunk 11 Groups 11.2/11.3 (2026-09-17) — Menu Selection + Approval

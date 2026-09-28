@@ -176,7 +176,7 @@ async function nextOrderNumber(organizationId: string): Promise<string> {
   return `${org.orderNumberPrefix}-${String(assigned).padStart(org.orderNumberPadding, "0")}`;
 }
 
-interface ChildPricingRates {
+export interface ChildPricingRates {
   childUnder5Chargeable: boolean;
   childUnder5Price: unknown;
   child5To10PricingType: ChildPricingType;
@@ -203,7 +203,7 @@ export function computeChildrenCharge(menu: ChildPricingRates | null, below5Coun
   return under5Charge + child5to10 * perChild5to10;
 }
 
-interface IndividualChildRates {
+export interface IndividualChildRates {
   individualChildBelow5Rate: unknown;
   individualChildBelow5PricingType: ChildPricingType | null;
   individualChild5To10Rate: unknown;
@@ -217,7 +217,7 @@ interface IndividualChildRates {
  * (the same first-assigned-Menu `pricePerPlate` STANDARD derives — see
  * deriveStandardChildPricingMenuId); a FIXED rate ignores it entirely.
  */
-function computeIndividualChildrenCharge(
+export function computeIndividualChildrenCharge(
   rates: IndividualChildRates | null,
   referenceMenuPrice: number,
   below5Count: number | null,
@@ -282,7 +282,7 @@ export async function recalculateOrderTotals(orderId: string) {
  * reference price (computeIndividualChildrenCharge) — so this is derived
  * regardless of pricingMethod. Null if no meal has a Menu assigned yet.
  */
-function deriveStandardChildPricingMenuId(entries: MealPlanEntryInput[] | undefined): string | null {
+export function deriveStandardChildPricingMenuId(entries: MealPlanEntryInput[] | undefined): string | null {
   if (!entries || entries.length === 0) return null;
   const sorted = [...entries].sort((a, b) => a.date.getTime() - b.date.getTime());
   return sorted.find((e) => e.menuId)?.menuId ?? null;

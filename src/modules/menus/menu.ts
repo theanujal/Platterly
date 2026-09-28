@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { listAddOns } from "@/modules/addons/addon";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 
 export interface MenuInput {
@@ -396,6 +397,37 @@ export async function getMenuForOrderPicker(organizationId: string, menuId: stri
   }
 
   return { id: menu.id, name: menu.name, description: menu.description, image: menu.image, sections };
+}
+
+export interface MenuPickerAddOn {
+  id: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  price: number;
+  priceType: "PER_PLATE" | "FIXED";
+}
+
+/** The food-item-selection drawer's data: the Menu's category-grouped items plus the active Add-ons. */
+export type MenuPickerData = OrderPickerMenu & { addOns: MenuPickerAddOn[] };
+
+/**
+ * Item-picker parity with Order (2026-09-28) — the shared data source behind
+ * the drawer, regardless of which feature (Order, Quotation) opened it.
+ * Lifted out of orders/actions.ts's `getMenuForOrderPickerAction`, which
+ * duplicated this exact addOn-combining logic; each feature's own action
+ * wrapper applies its own `requirePermission` check before calling this, so
+ * the permission boundary stays per-feature even though the fetch is shared.
+ */
+export async function getMenuPickerData(organizationId: string, menuId: string): Promise<MenuPickerData | null> {
+  const [menu, addOns] = await Promise.all([getMenuForOrderPicker(organizationId, menuId), listAddOns(organizationId)]);
+  if (!menu) return null;
+  return {
+    ...menu,
+    addOns: addOns
+      .filter((a) => a.isActive)
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, price: Number(a.price), priceType: a.priceType })),
+  };
 }
 
 /**

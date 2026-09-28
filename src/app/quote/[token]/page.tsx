@@ -5,7 +5,15 @@ import { resolveQuotationToken, getQuotation, markQuotationViewed, isQuotationPa
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { QuotationResponseActions } from "./_components/quotation-response-actions";
-import type { QuotationStatus } from "@/generated/prisma/enums";
+import type { QuotationStatus, MealType } from "@/generated/prisma/enums";
+
+const MEAL_TYPE_LABEL: Record<MealType, string> = {
+  BREAKFAST: "Breakfast",
+  LUNCH: "Lunch",
+  HITEA: "Hi-Tea",
+  DINNER: "Dinner",
+  OTHER: "Other",
+};
 
 export const metadata: Metadata = {
   title: "Quotation — Platterly",
@@ -107,20 +115,56 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
         </Card>
       )}
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Items</h2>
-        {quotation.items.map((item) => (
-          <div key={item.id} className="flex items-center justify-between text-sm">
-            <span>
-              <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
-            </span>
-            <span>{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
-          </div>
-        ))}
-      </div>
+      {/*
+        Item-picker parity with Order (2026-09-28) — a Quotation's items now
+        live per meal slot (quotation.mealPlanEntries[].items), grouped here
+        by meal so a multi-day/multi-meal quotation reads clearly rather than
+        one interleaved flat list. `quotation.items` (mealPlanEntryId: null)
+        only holds pre-parity legacy rows now and renders separately below,
+        only when present.
+      */}
+      {quotation.mealPlanEntries.length > 0 && (
+        <div className="flex flex-col gap-4">
+          {quotation.mealPlanEntries.map((entry) => (
+            <div key={entry.id} className="flex flex-col gap-2">
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                {MEAL_TYPE_LABEL[entry.mealType]}
+                {quotation.mealPlanEntries.length > 1 ? ` · ${entry.date.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
+              </h2>
+              {entry.items.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No items yet.</p>
+              ) : (
+                entry.items.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm">
+                    <span>
+                      <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
+                    </span>
+                    <span>{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {quotation.items.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Items</h2>
+          {quotation.items.map((item) => (
+            <div key={item.id} className="flex items-center justify-between text-sm">
+              <span>
+                <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
+              </span>
+              <span>{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-col gap-1 rounded-md border border-border bg-muted/30 p-4 text-sm">
         <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(Number(quotation.subtotal))}</span></div>
+        {Number(quotation.childrenCharge) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Children Guests &amp; Pricing</span><span>+{formatCurrency(Number(quotation.childrenCharge))}</span></div>}
         {Number(quotation.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{formatCurrency(Number(quotation.discount))}</span></div>}
         {Number(quotation.taxes) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Taxes</span><span>+{formatCurrency(Number(quotation.taxes))}</span></div>}
         {Number(quotation.additionalCharges) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Additional Charges</span><span>+{formatCurrency(Number(quotation.additionalCharges))}</span></div>}
