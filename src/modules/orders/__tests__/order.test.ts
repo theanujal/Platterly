@@ -135,6 +135,29 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     expect((await listOrders(org.id, { search: "asha" })).map((o) => o.id).sort()).toEqual([draft.id, confirmed.id].sort());
   });
 
+  it("listOrders `when` splits on the event's last day and ignores status", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const day = (offset: number) => {
+      const n = new Date();
+      return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + offset));
+    };
+    const make = (start: Date, end: Date, status: "PENDING_REVIEW" | "CANCELLED" = "PENDING_REVIEW") =>
+      prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, eventStartDate: start, eventEndDate: end, status } });
+    const today = await make(day(0), day(0));
+    const future = await make(day(5), day(6));
+    const underway = await make(day(-1), day(1)); // multi-day: its last day is still ahead
+    const over = await make(day(-10), day(-9));
+    const cancelledFuture = await make(day(3), day(3), "CANCELLED");
+    const cancelledOver = await make(day(-4), day(-4), "CANCELLED");
+
+    const ids = async (when?: "upcoming" | "past") => (await listOrders(org.id, { when })).map((o) => o.id).sort();
+    expect(await ids("upcoming")).toEqual([today.id, future.id, underway.id, cancelledFuture.id].sort());
+    expect(await ids("past")).toEqual([over.id, cancelledOver.id].sort());
+    expect(await ids()).toHaveLength(6);
+  });
+
   it("listOrders filters by event type", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

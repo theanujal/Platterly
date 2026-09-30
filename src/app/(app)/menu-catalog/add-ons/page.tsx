@@ -7,6 +7,7 @@ import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell, formatRupees } from "@/components/catalog/catalog-display";
 import { AddAddOnDialog } from "./_components/add-addon-dialog";
 import { AddOnCardActions } from "./_components/addon-card-actions";
 import type { AddOnFormValues } from "./_components/addon-form";
@@ -16,8 +17,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+function AddOnTypeBadge({ type }: { type: "LIVE_COUNTER" | "SPECIAL_ADD_ON" }) {
+  return type === "LIVE_COUNTER" ? <Badge variant="violet">Live Counter</Badge> : <Badge variant="neutral">Special Add-on</Badge>;
+}
+
 function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED") {
-  const amount = `₹${Number(price).toFixed(2)}`;
+  const amount = formatRupees(price);
   return priceType === "PER_PLATE" ? `${amount} / plate` : `${amount} flat`;
 }
 
@@ -44,46 +49,37 @@ export default async function AddOnsPage() {
       sortValues: { name: addOn.name, price: Number(addOn.price), newest: addOn.createdAt.getTime() },
       card: (
         <>
-          {addOn.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={addOn.image} alt="" className="aspect-video w-full object-cover" />
-          ) : (
-            <div className="flex aspect-video w-full items-center justify-center bg-muted">
-              <Sparkles className="size-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{addOn.name}</span>
-              <div className="flex shrink-0 items-center gap-0.5">
+          <CatalogCardMedia src={addOn.image} icon={Sparkles} />
+          <CatalogCardBody
+            title={addOn.name}
+            trailing={
+              <>
                 {!addOn.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
-              </div>
-            </div>
-            {addOn.description && <p className="line-clamp-2 text-xs text-muted-foreground">{addOn.description}</p>}
-            <div className="flex items-center gap-1.5 pt-1">
-              <Badge variant={addOn.type === "LIVE_COUNTER" ? "default" : "outline"}>
-                {addOn.type === "LIVE_COUNTER" ? "Live Counter" : "Special Add-on"}
-              </Badge>
-            </div>
-            <span className="pt-1 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</span>
-          </div>
+              </>
+            }
+            description={addOn.description}
+            tags={<AddOnTypeBadge type={addOn.type} />}
+            footer={<span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</span>}
+          />
         </>
       ),
       listRow: (
         <>
-          <TableCell className="font-medium">{addOn.name}</TableCell>
-          <TableCell>
-            <Badge variant={addOn.type === "LIVE_COUNTER" ? "default" : "outline"}>
-              {addOn.type === "LIVE_COUNTER" ? "Live Counter" : "Special Add-on"}
-            </Badge>
+          <TableCell className="px-3 py-3">
+            <CatalogNameCell name={addOn.name} description={addOn.description} src={addOn.image} icon={Sparkles} />
           </TableCell>
-          <TableCell>{formatPrice(Number(addOn.price), addOn.priceType)}</TableCell>
-          <TableCell>
-            <Badge variant={addOn.isActive ? "success" : "neutral"}>{addOn.isActive ? "Active" : "Inactive"}</Badge>
+          <TableCell className="px-3 py-3">
+            <AddOnTypeBadge type={addOn.type} />
           </TableCell>
-          <TableCell>
-            <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
+          <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</TableCell>
+          <TableCell className="px-3 py-3">
+            <ActiveBadge active={addOn.isActive} />
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
+            </div>
           </TableCell>
         </>
       ),
@@ -123,7 +119,9 @@ export default async function AddOnsPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddAddOnDialog variant="tile" />}
-        columns={["Name", "Type", "Price", "Status", "Actions"]}
+        columns={["Add-on", "Type", "Price", "Status", ""]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search add-ons…"
         emptyLabel="No add-ons yet."
         filterOptions={filterOptions}

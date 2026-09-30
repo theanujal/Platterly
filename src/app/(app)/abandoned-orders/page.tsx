@@ -114,8 +114,12 @@ export default async function AbandonedOrdersPage() {
     listAbandonedOrders(organizationId, "ALL"),
   ]);
   const now = new Date();
+  // Only live follow-ups (AJ, 2026-09-30): a draft whose link expired, or whose event date has
+  // passed, drops off this page and stays in the customer's history (profile > Abandoned Orders).
+  const todayIso = now.toISOString().slice(0, 10);
+  const liveDrafts = drafts.filter((draft) => !draft.isExpired && draft.eventDate.slice(0, 10) >= todayIso);
 
-  const entries: CatalogEntry[] = drafts.map((draft) => {
+  const entries: CatalogEntry[] = liveDrafts.map((draft) => {
     const { customer } = draft;
     const resumeUrl = canonicalUrl(`/${organization.slug}/plan/${draft.id}`);
     const message = `Hi ${customer.name}, this is ${organization.name}. We saw you started planning ${draft.eventTypeName ? `your ${draft.eventTypeName}` : "your event"} but didn't get to finish — pick up right where you left off: ${resumeUrl}`;
@@ -312,7 +316,7 @@ export default async function AbandonedOrdersPage() {
             </div>
           </TableCell>
           <TableCell className="px-3 py-3">
-            <div className="flex flex-col items-start gap-1">
+            <div className="flex items-center gap-1.5">
               {statusBadge}
               {consentBadge}
             </div>
@@ -330,7 +334,6 @@ export default async function AbandonedOrdersPage() {
       options: [
         { value: "ABANDONED", label: "Abandoned" },
         { value: "ACTIVE", label: "In progress" },
-        { value: "EXPIRED", label: "Link expired" },
       ],
     },
   ];
@@ -342,7 +345,7 @@ export default async function AbandonedOrdersPage() {
       <div>
         <h1 className="text-2xl font-semibold">Abandoned Orders</h1>
         <p className="text-sm text-muted-foreground">
-          People who started an order on your public menu link but didn&apos;t submit it. They&apos;re already saved as Leads — reach out and help them finish. After {DRAFT_EXPIRY_DAYS} days of inactivity their resume link expires, though the record stays here.
+          People who started an order on your public menu link but didn&apos;t submit it. They&apos;re already saved as Leads — reach out and help them finish. After {DRAFT_EXPIRY_DAYS} days of inactivity the link expires, and expired or past-date ones move to the customer&apos;s history.
         </p>
       </div>
       <Separator />

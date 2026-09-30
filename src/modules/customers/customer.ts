@@ -72,13 +72,59 @@ export async function updateCustomer(organizationId: string, id: string, input: 
   return after;
 }
 
+/** Notes only, for the profile page's Notes box — leaves every other field untouched. Blank clears the notes. */
+export async function updateCustomerNotes(organizationId: string, id: string, notes: string, actorUserId: string) {
+  const before = await prisma.customer.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.customer.update({ where: { id }, data: { notes: notes.trim() === "" ? null : notes.trim() } });
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "customer.update",
+    recordType: "Customer",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
+
+  return after;
+}
+
 /**
- * No hard-delete UI/action — a CRM record with a real Event/Order history
- * shouldn't disappear outright (PRD §54's audit-trail principle, same
- * rationale as Organization's own soft-only lifecycle). The Active checkbox
- * on `updateCustomer` is the only lifecycle control this chunk ships; a real
- * "merge duplicate customers" tool is out of scope here.
+ * Hard delete, only for a customer with no history (AJ, 2026-09-30). Orders,
+ * Quotations and Events reference Customer with `onDelete: Restrict`, and a
+ * CRM record with real history shouldn't disappear outright (PRD §54's
+ * audit-trail principle), so anyone with orders/quotations/events is refused
+ * with a message pointing at the Inactive switch instead. Abandoned-order
+ * drafts cascade with the customer.
  */
+export async function deleteCustomer(organizationId: string, id: string, actorUserId: string) {
+  const before = await prisma.customer.findFirstOrThrow({ where: { id, organizationId } });
+  const [orders, quotations, events] = await Promise.all([
+    prisma.order.count({ where: { organizationId, customerId: id } }),
+    prisma.quotation.count({ where: { organizationId, customerId: id } }),
+    prisma.event.count({ where: { organizationId, customerId: id } }),
+  ]);
+  const parts = [
+    orders > 0 && `${orders} order${orders === 1 ? "" : "s"}`,
+    quotations > 0 && `${quotations} quotation${quotations === 1 ? "" : "s"}`,
+    events > 0 && `${events} event${events === 1 ? "" : "s"}`,
+  ].filter(Boolean);
+  if (parts.length > 0) {
+    throw new Error(`${before.name} has ${parts.join(", ")}, so they can't be deleted. Mark them Inactive instead.`);
+  }
+
+  await prisma.customer.delete({ where: { id } });
+
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "customer.delete",
+    recordType: "Customer",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+  });
+}
 
 /**
  * Lead vs Customer is derived from Order ownership, not a stored/synced

@@ -7,8 +7,8 @@ import { getStorageDriver } from "@/lib/storage/storage";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
-const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg" };
+const MAX_LOGO_BYTES = 4 * 1024 * 1024;
+const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
 function stringField(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);
@@ -50,10 +50,10 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
   if (logo instanceof File && logo.size > 0) {
     const extension = ALLOWED_LOGO_TYPES[logo.type];
     if (!extension) {
-      return { ok: false, error: "Logo must be a PNG or JPG image." };
+      return { ok: false, error: "Logo must be a PNG, JPG or WebP image." };
     }
     if (logo.size > MAX_LOGO_BYTES) {
-      return { ok: false, error: "Logo must be 2MB or smaller." };
+      return { ok: false, error: "Logo must be 4MB or smaller." };
     }
     const buffer = Buffer.from(await logo.arrayBuffer());
     const uploaded = await getStorageDriver().upload(

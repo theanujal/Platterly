@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function MenuCatalogIndexPage() {
-  redirect("/menu-catalog/items");
+  redirect("/menu-catalog/event-types");
 }

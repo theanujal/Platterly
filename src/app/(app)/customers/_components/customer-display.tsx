@@ -99,10 +99,14 @@ export function CustomerCard({ customer, menuHref, editAction }: { customer: Cus
         <CustomerAvatar name={customer.name} className="size-14" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex items-start justify-between gap-2">
-            <Link href={`/customers/${customer.id}`} className="truncate text-base font-semibold hover:underline">
+            <Link href={`/customers/${customer.id}`} className="min-w-0 truncate text-base font-semibold hover:underline">
               {customer.name}
             </Link>
-            <div className="-mt-1 -mr-2 shrink-0">{editAction}</div>
+            <div className="-mt-1 -mr-2 flex shrink-0 items-center gap-1.5">
+              <CustomerStatusBadge status={customer.status} />
+              {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}
+              {editAction}
+            </div>
           </div>
           <a href={`tel:${customer.phone}`} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <Phone className="size-4 shrink-0" />
@@ -114,10 +118,6 @@ export function CustomerCard({ customer, menuHref, editAction }: { customer: Cus
               <span className="truncate">{customer.email}</span>
             </a>
           )}
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            <CustomerStatusBadge status={customer.status} />
-            {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}
-          </div>
         </div>
       </div>
 

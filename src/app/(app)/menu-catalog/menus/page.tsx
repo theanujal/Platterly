@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ImageOff } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { listMenus } from "@/modules/menus/menu";
 import { listCategories } from "@/modules/menus/category";
@@ -13,6 +13,7 @@ import {
   type CatalogFilterOption,
   type CatalogSortOption,
 } from "@/components/catalog/catalog-browser";
+import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell, FoodTypeTag, formatRupees } from "@/components/catalog/catalog-display";
 import { AddMenuDialog } from "./_components/add-menu-dialog";
 import { MenuCardActions } from "./_components/menu-card-actions";
 import type { MenuFormValues, AssignedCategory } from "./_components/menu-form";
@@ -21,18 +22,6 @@ export const metadata: Metadata = {
   title: "Menu Types — Platterly",
   robots: { index: false, follow: false },
 };
-
-/** Veg/Non-Veg reads as green/red everywhere it's shown — a dietary signal, not a brand-color one, so it deliberately doesn't reuse Badge's primary/destructive variants (which would make Veg render in the brand orange). Same fix as Food Items' FoodTypeBadge. */
-function MenuTypeBadge({ nonVeg }: { nonVeg: boolean }) {
-  return (
-    <Badge
-      variant="secondary"
-      className={nonVeg ? "border-transparent bg-red-100 text-red-700" : "border-transparent bg-green-100 text-green-700"}
-    >
-      {nonVeg ? "Non-Veg" : "Veg"}
-    </Badge>
-  );
-}
 
 export default async function MenusPage() {
   const { organizationId } = await requireActiveOrganization();
@@ -66,42 +55,47 @@ export default async function MenusPage() {
       sortValues: { name: menu.name, price: Number(menu.pricePerPlate), newest: menu.createdAt.getTime() },
       card: (
         <>
-          {menu.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={menu.image} alt="" className="aspect-video w-full object-cover" />
-          ) : (
-            <div className="flex aspect-video w-full items-center justify-center bg-muted">
-              <ImageOff className="size-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{menu.name}</span>
-              <div className="flex shrink-0 items-center gap-0.5">
+          <CatalogCardMedia src={menu.image} icon={BookOpen} />
+          <CatalogCardBody
+            title={menu.name}
+            trailing={
+              <>
                 {!menu.isActive && <Badge variant="neutral">Inactive</Badge>}
                 <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
-              </div>
-            </div>
-            {menu.description && <p className="line-clamp-2 text-xs text-muted-foreground">{menu.description}</p>}
-            <div className="flex items-center gap-1.5 pt-1">
-              <MenuTypeBadge nonVeg={menu.menuType === "NON_VEGETARIAN"} />
-            </div>
-            <span className="pt-1 text-sm font-semibold">₹{Number(menu.pricePerPlate).toFixed(2)} / plate</span>
-          </div>
+              </>
+            }
+            description={menu.description}
+            tags={<FoodTypeTag nonVeg={menu.menuType === "NON_VEGETARIAN"} />}
+            footer={
+              <>
+                <span className="text-base font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
+                <span className="text-xs text-muted-foreground">per plate</span>
+              </>
+            }
+          />
         </>
       ),
       listRow: (
         <>
-          <TableCell className="font-medium">{menu.name}</TableCell>
-          <TableCell>
-            <MenuTypeBadge nonVeg={menu.menuType === "NON_VEGETARIAN"} />
+          <TableCell className="px-3 py-3">
+            <CatalogNameCell name={menu.name} description={menu.description} src={menu.image} icon={BookOpen} />
           </TableCell>
-          <TableCell>₹{Number(menu.pricePerPlate).toFixed(2)}</TableCell>
-          <TableCell>
-            <Badge variant={menu.isActive ? "success" : "neutral"}>{menu.isActive ? "Active" : "Inactive"}</Badge>
+          <TableCell className="px-3 py-3">
+            <FoodTypeTag nonVeg={menu.menuType === "NON_VEGETARIAN"} />
           </TableCell>
-          <TableCell>
-            <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
+          <TableCell className="px-3 py-3">
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
+              <span className="text-xs text-muted-foreground">per plate</span>
+            </div>
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <ActiveBadge active={menu.isActive} />
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
+            </div>
           </TableCell>
         </>
       ),
@@ -151,7 +145,9 @@ export default async function MenusPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddMenuDialog variant="tile" />}
-        columns={["Name", "Type", "Price", "Status", "Actions"]}
+        columns={["Menu Type", "Diet", "Price", "Status", ""]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search menu types…"
         emptyLabel="No menu types yet."
         filterOptions={filterOptions}

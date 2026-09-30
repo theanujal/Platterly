@@ -342,6 +342,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   await page.goto("/kitchen-dashboard/cancelled");
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
+  // A cancelled order whose event is still ahead stays in Orders (only orders whose event is over are hidden).
   await page.goto("/orders");
   await expect(orderCard()).toContainText("Rejected / Cancelled");
 

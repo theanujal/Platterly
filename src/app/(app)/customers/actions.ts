@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createCustomer, updateCustomer, type CustomerInput } from "@/modules/customers/customer";
+import { createCustomer, updateCustomer, updateCustomerNotes, deleteCustomer, type CustomerInput } from "@/modules/customers/customer";
 import type { EnquiryLeadSource } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -56,6 +56,30 @@ export async function updateCustomerAction(id: string, formData: FormData): Prom
     return toErrorResult(error);
   }
   revalidatePath("/customers");
+  revalidatePath(`/customers/${id}`);
+  return { ok: true };
+}
+
+export async function deleteCustomerAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ customers: ["delete"] }, organizationId);
+  try {
+    await deleteCustomer(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/customers");
+  return { ok: true };
+}
+
+export async function updateCustomerNotesAction(id: string, notes: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ customers: ["edit"] }, organizationId);
+  try {
+    await updateCustomerNotes(organizationId, id, notes, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
   revalidatePath(`/customers/${id}`);
   return { ok: true };
 }

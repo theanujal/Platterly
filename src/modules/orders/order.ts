@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { createEvent } from "@/modules/events/event";
+import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
@@ -431,19 +432,38 @@ export async function deleteOrder(organizationId: string, id: string, actorUserI
   });
 }
 
+export type OrderListWhen = "upcoming" | "past";
+
 export interface OrderListFilter {
   status?: OrderStatus;
   orderKind?: OrderKind;
   eventTypeId?: string;
   search?: string;
+  /**
+   * "upcoming" = the event is not over yet, whatever the status (cancelled ones included); "past" =
+   * the event is over. "Over" means the last day of the event (`eventEndDate`, so a multi-day order
+   * counts by its last day) is before today (UTC, like the calendar and countdowns). AJ, 2026-09-30:
+   * the Orders page shows upcoming only; past orders live in the customer's order history.
+   * Omitted = all, so callers like the global search still see everything.
+   */
+  when?: OrderListWhen;
   /** Caps the result count (e.g. the Dashboard's global search bar) — omitted for the full Orders list. */
   take?: number;
+}
+
+function whenWhere(when: OrderListWhen | undefined): Prisma.OrderWhereInput {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  if (when === "upcoming") return { eventEndDate: { gte: today } };
+  if (when === "past") return { eventEndDate: { lt: today } };
+  return {};
 }
 
 export async function listOrders(organizationId: string, filter?: OrderListFilter) {
   return prisma.order.findMany({
     where: {
       organizationId,
+      AND: [whenWhere(filter?.when)],
       status: filter?.status,
       orderKind: filter?.orderKind,
       eventTypeId: filter?.eventTypeId,

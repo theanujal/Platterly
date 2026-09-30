@@ -215,7 +215,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-image">Image</Label>
-            <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+            <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-food-type">Veg / Non-Veg</Label>

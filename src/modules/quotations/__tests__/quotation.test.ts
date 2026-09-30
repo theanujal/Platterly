@@ -193,6 +193,29 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     expect(await prisma.quotationMealPlanEntry.count({ where: { quotationId: quotation.id } })).toBe(0);
   });
 
+  it("listQuotations `upcoming` hides Expired quotations and those whose event is over", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const day = (offset: number) => {
+      const n = new Date();
+      return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + offset));
+    };
+    const make = (data: { eventStartDate?: Date; eventEndDate?: Date; status?: "DRAFT" | "EXPIRED" }) =>
+      prisma.quotation.create({ data: { organizationId: org.id, customerId: customer.id, ...data } });
+    const noDates = await make({});
+    const future = await make({ eventStartDate: day(4), eventEndDate: day(5) });
+    const underway = await make({ eventStartDate: day(-1), eventEndDate: day(2) });
+    const startOnlyFuture = await make({ eventStartDate: day(1) });
+    await make({ eventStartDate: day(-8), eventEndDate: day(-7) }); // event over
+    await make({ eventStartDate: day(-3) }); // start-only, over
+    await make({ eventStartDate: day(6), eventEndDate: day(6), status: "EXPIRED" }); // expired
+
+    const upcoming = (await listQuotations(org.id, { when: "upcoming" })).map((q) => q.id).sort();
+    expect(upcoming).toEqual([noDates.id, future.id, underway.id, startOnlyFuture.id].sort());
+    expect(await listQuotations(org.id)).toHaveLength(7);
+  });
+
   it("listQuotations filters by status and is tenant-isolated", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

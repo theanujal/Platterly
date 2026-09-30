@@ -98,7 +98,7 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-image">Image</Label>
-          <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+          <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">

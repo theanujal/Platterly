@@ -13,6 +13,7 @@ import {
   type CatalogFilterOption,
   type CatalogSortOption,
 } from "@/components/catalog/catalog-browser";
+import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { AddCategoryDialog } from "./_components/add-category-dialog";
 import { CategoryCardActions } from "./_components/category-card-actions";
 
@@ -36,39 +37,32 @@ export default async function CategoriesPage() {
       sortValues: { name: category.name, newest: category.createdAt.getTime() },
       card: (
         <>
-          <div className="flex aspect-video w-full items-center justify-center bg-muted">
-            <Layers className="size-6 text-muted-foreground" />
-          </div>
-          <div className="flex flex-col gap-1.5 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{category.name}</span>
-              <div className="flex shrink-0 items-center gap-0.5">
+          <CatalogCardMedia src={null} icon={Layers} />
+          <CatalogCardBody
+            title={category.name}
+            trailing={
+              <>
                 {!category.isActive && <Badge variant="neutral">Inactive</Badge>}
-                <CategoryCardActions
-                  categoryId={category.id}
-                  name={category.name}
-                  initialValues={initialValues}
-                  availableMenus={availableMenus}
-                />
-              </div>
-            </div>
-            {category.description && <p className="line-clamp-2 text-xs text-muted-foreground">{category.description}</p>}
-          </div>
+                <CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} />
+              </>
+            }
+            description={category.description}
+            footer={<ActiveBadge active={category.isActive} />}
+          />
         </>
       ),
       listRow: (
         <>
-          <TableCell className="font-medium">{category.name}</TableCell>
-          <TableCell>
-            <Badge variant={category.isActive ? "success" : "neutral"}>{category.isActive ? "Active" : "Inactive"}</Badge>
+          <TableCell className="px-3 py-3">
+            <CatalogNameCell name={category.name} description={category.description} src={null} icon={Layers} />
           </TableCell>
-          <TableCell>
-            <CategoryCardActions
-              categoryId={category.id}
-              name={category.name}
-              initialValues={initialValues}
-              availableMenus={availableMenus}
-            />
+          <TableCell className="px-3 py-3">
+            <ActiveBadge active={category.isActive} />
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} />
+            </div>
           </TableCell>
         </>
       ),
@@ -108,7 +102,9 @@ export default async function CategoriesPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddCategoryDialog availableMenus={availableMenus} variant="tile" />}
-        columns={["Name", "Status", "Actions"]}
+        columns={["Menu Category", "Status", ""]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search menu categories…"
         emptyLabel="No menu categories yet."
         filterOptions={filterOptions}

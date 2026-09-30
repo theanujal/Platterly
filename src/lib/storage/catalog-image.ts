@@ -3,11 +3,11 @@ import { getStorageDriver } from "./storage";
 
 export class InvalidImageError extends Error {}
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg" };
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
 /**
- * Shared by MenuItem/Menu/EventType/AddOn image uploads — same 2MB PNG/JPG
+ * Shared by MenuItem/Menu/EventType/AddOn image uploads — same 4MB PNG/JPG/WebP
  * rule as Chunk 4's business-profile logo upload (Chunk 2.3's storage
  * driver). Keyed by a random id rather than the entity's own id: the entity
  * doesn't exist yet at create time, and a fresh key per upload means an
@@ -25,10 +25,10 @@ export async function uploadCatalogImage(
 ): Promise<string> {
   const extension = ALLOWED_IMAGE_TYPES[file.type];
   if (!extension) {
-    throw new InvalidImageError("Image must be a PNG or JPG file.");
+    throw new InvalidImageError("Image must be a PNG, JPG or WebP file.");
   }
   if (file.size > MAX_IMAGE_BYTES) {
-    throw new InvalidImageError("Image must be 2MB or smaller.");
+    throw new InvalidImageError("Image must be 4MB or smaller.");
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   const key = `organizations/${organizationId}/catalog/${kind}/${crypto.randomUUID()}.${extension}`;

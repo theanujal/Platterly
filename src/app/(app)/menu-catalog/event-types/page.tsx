@@ -10,6 +10,7 @@ import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
+import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { EventTypeReorderButtons } from "./_components/event-type-reorder-buttons";
 
 export const metadata: Metadata = {
@@ -32,43 +33,34 @@ export default async function EventTypesPage() {
       filterValues: { status: eventType.isActive ? "ACTIVE" : "INACTIVE" },
       card: (
         <>
-          {eventType.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={eventType.image} alt="" className="aspect-video w-full object-cover" />
-          ) : (
-            <div className="flex aspect-video w-full items-center justify-center bg-muted">
-              <Icon className="size-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="flex items-center gap-1.5 font-medium">
-                <Icon className="size-4 text-muted-foreground" />
-                {eventType.name}
-              </span>
-              {!eventType.isActive && <Badge variant="neutral">Inactive</Badge>}
-            </div>
-            {eventType.description && <p className="line-clamp-2 text-xs text-muted-foreground">{eventType.description}</p>}
-            {eventType.minGuests != null && (
-              <span className="pt-1 text-xs text-muted-foreground">Min {eventType.minGuests} guests</span>
-            )}
-          </div>
+          <CatalogCardMedia src={eventType.image} icon={Icon} />
+          <CatalogCardBody
+            title={eventType.name}
+            titleIcon={Icon}
+            trailing={!eventType.isActive ? <Badge variant="neutral">Inactive</Badge> : undefined}
+            description={eventType.description}
+            footer={
+              <>
+                <span className="text-sm text-muted-foreground">{eventType.minGuests != null ? `Min ${eventType.minGuests} guests` : "No guest minimum"}</span>
+                <ActiveBadge active={eventType.isActive} />
+              </>
+            }
+          />
         </>
       ),
       listRow: (
         <>
-          <TableCell className="font-medium">
-            <span className="flex items-center gap-1.5">
-              <Icon className="size-4 text-muted-foreground" />
-              {eventType.name}
-            </span>
+          <TableCell className="px-3 py-3">
+            <CatalogNameCell name={eventType.name} description={eventType.description} src={eventType.image} icon={Icon} />
           </TableCell>
-          <TableCell className="text-muted-foreground">{eventType.minGuests ?? "—"}</TableCell>
-          <TableCell>
-            <Badge variant={eventType.isActive ? "success" : "neutral"}>{eventType.isActive ? "Active" : "Inactive"}</Badge>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{eventType.minGuests ?? "—"}</TableCell>
+          <TableCell className="px-3 py-3">
+            <ActiveBadge active={eventType.isActive} />
           </TableCell>
-          <TableCell>
-            <EventTypeReorderButtons orderedIds={orderedIds} eventTypeId={eventType.id} />
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <EventTypeReorderButtons orderedIds={orderedIds} eventTypeId={eventType.id} />
+            </div>
           </TableCell>
         </>
       ),
@@ -97,7 +89,9 @@ export default async function EventTypesPage() {
             <CatalogAddTileContent label="Add New Event Type" description="e.g. Wedding, Corporate Lunch" />
           </Link>
         }
-        columns={["Name", "Min Guests", "Status", "Reorder"]}
+        columns={["Event Type", "Min Guests", "Status", "Reorder"]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search event types…"
         emptyLabel="No event types yet."
         filterOptions={[

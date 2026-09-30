@@ -14,6 +14,7 @@ import {
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
+import type { Prisma } from "@/generated/prisma/client";
 import type { QuotationStatus, FoodType, OrderKind, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
 
 export class InvalidQuotationTransitionError extends Error {}
@@ -262,9 +263,23 @@ export async function deleteQuotation(organizationId: string, id: string, actorU
   });
 }
 
-export async function listQuotations(organizationId: string, filter?: { status?: QuotationStatus }) {
+/**
+ * "upcoming" hides quotations that are Expired or whose event is over (AJ, 2026-09-30): they live in
+ * the customer's history only. Over = the event's last day (`eventEndDate`, else `eventStartDate`)
+ * is before today (UTC); a quotation with no dates yet is never over. Omitted = all.
+ */
+export async function listQuotations(organizationId: string, filter?: { status?: QuotationStatus; when?: "upcoming" }) {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const upcoming: Prisma.QuotationWhereInput[] =
+    filter?.when === "upcoming"
+      ? [
+          { status: { not: "EXPIRED" } },
+          { OR: [{ eventEndDate: { gte: today } }, { eventEndDate: null, eventStartDate: { gte: today } }, { eventEndDate: null, eventStartDate: null }] },
+        ]
+      : [];
   return prisma.quotation.findMany({
-    where: { organizationId, status: filter?.status },
+    where: { organizationId, status: filter?.status, AND: upcoming },
     include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true, icon: true } } },
     orderBy: { createdAt: "desc" },
   });

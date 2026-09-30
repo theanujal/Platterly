@@ -85,7 +85,7 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
 
   // --- List view headings are visible (not screen-reader-only) ---
   await page.getByLabel("List view").click();
-  await expect(page.getByRole("columnheader", { name: "Name" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Menu Category" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
   await page.getByLabel("Grid view").click();
 

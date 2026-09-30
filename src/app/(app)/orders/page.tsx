@@ -41,7 +41,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
 
   const [orders, canEdit, canDelete] = await Promise.all([
-    listOrders(organizationId, { status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
+    // Orders whose event is over never show here, under any status (AJ, 2026-09-30); they appear in the customer's order history.
+    listOrders(organizationId, { when: "upcoming", status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);

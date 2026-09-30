@@ -11,7 +11,6 @@ const STATUS_OPTIONS = [
   { value: "CHANGES_REQUESTED", label: "Changes Requested" },
   { value: "ACCEPTED", label: "Accepted" },
   { value: "REJECTED", label: "Rejected" },
-  { value: "EXPIRED", label: "Expired" },
 ] as const;
 
 export function QuotationsFilterBar() {

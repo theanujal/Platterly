@@ -28,8 +28,8 @@ export function ImageDropzone({
   id,
   value,
   onFileSelect,
-  accept = "image/png,image/jpeg",
-  maxSizeMB = 2,
+  accept = "image/png,image/jpeg,image/webp",
+  maxSizeMB = 4,
   error,
   className,
 }: ImageDropzoneProps) {
@@ -97,7 +97,7 @@ export function ImageDropzone({
             <UploadCloud className="size-8 text-muted-foreground" />
             <span className="text-sm font-medium">Click to upload image</span>
             <span className="text-xs text-muted-foreground">or drag and drop</span>
-            <span className="text-xs text-muted-foreground">PNG or JPG, up to {maxSizeMB}MB</span>
+            <span className="text-xs text-muted-foreground">PNG, JPG or WebP, up to {maxSizeMB}MB</span>
           </>
         )}
         <input

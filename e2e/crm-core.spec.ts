@@ -181,8 +181,47 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByTestId("required-inventory-card").getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
   await expect(page.getByTestId("required-inventory-card").getByLabel(new RegExp(`Quantity of ${inventoryName}`))).toHaveValue("20");
 
-  // --- Customer timeline now shows both the Order and the Event ---
+  // --- Profile: the order is under Orders, the tabs replaced the old Events timeline, and delete is refused ---
   await page.goto(`/customers/${customerId}`);
-  await expect(page.getByText(`${leadName}'s Event`)).toBeVisible();
-  await expect(page.getByText("Processing", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Orders/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Events" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: /^Abandoned Orders/ })).toBeVisible();
+  await expect(page.getByText(eventTypeName).first()).toBeVisible();
+  await page.getByRole("tab", { name: "Activity" }).click();
+  await expect(page.getByRole("tabpanel").getByText("Customer added")).toBeVisible();
+
+  // Header actions: WhatsApp, then Edit (opens the edit popup), then Delete; no Customer Details box any more.
+  await expect(page.getByRole("heading", { name: "Customer Details" })).toHaveCount(0);
+  await page.getByRole("button", { name: `Edit ${leadName}` }).first().click();
+  await expect(page.getByRole("dialog").getByLabel("Name")).toHaveValue(leadName);
+  await expect(page.getByRole("dialog").getByRole("note")).toContainText("everywhere in Platterly");
+  await page.keyboard.press("Escape");
+
+  // Notes box: type, save, and it is still there after a reload.
+  await page.getByRole("textbox", { name: "Notes" }).fill("Prefers a live dosa counter.");
+  await page.getByRole("button", { name: "Save note" }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("textbox", { name: "Notes" })).toHaveValue("Prefers a live dosa counter.");
+
+  await page.getByRole("button", { name: `Delete ${leadName}` }).click();
+  const confirm = page.getByRole("alertdialog");
+  await confirm.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(confirm.getByRole("alert")).toContainText("1 order");
+  await confirm.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(new RegExp(`/customers/${customerId}$`));
+
+  // --- A customer with no history can be deleted from their profile ---
+  const throwawayName = `Delete Me ${suffix}`;
+  await page.goto("/customers");
+  await page.getByRole("button", { name: "Add Customer" }).click();
+  await page.getByLabel("Name").fill(throwawayName);
+  await page.getByLabel("Phone", { exact: true }).fill("9123456780");
+  await page.getByRole("button", { name: "Create customer" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: `View ${throwawayName}` }).click();
+  await page.getByRole("button", { name: `Delete ${throwawayName}` }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page).toHaveURL(/\/customers$/);
+  await expect(page.getByText(throwawayName)).toHaveCount(0);
 });

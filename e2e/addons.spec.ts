@@ -78,12 +78,20 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByLabel("Price Type").click();
   await page.getByRole("option", { name: "Fixed" }).click();
   await page.getByLabel("Price", { exact: true }).fill("5000");
+  // A 3.5MB WebP: over Next's default 1MB Server Action body limit and not a PNG/JPG, both of
+  // which used to reject an image upload (AJ, 2026-09-30).
+  await page.getByRole("dialog").locator('input[type="file"]').setInputFiles({
+    name: "topper.webp",
+    mimeType: "image/webp",
+    buffer: Buffer.alloc(3.5 * 1024 * 1024, 1),
+  });
   await page.getByRole("button", { name: "Create add-on" }).click();
 
   await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.locator('img[src$=".webp"]')).toBeVisible();
   await expect(page.getByText(specialAddonName)).toBeVisible();
   await expect(page.getByText("Special Add-on").first()).toBeVisible();
-  await expect(page.getByText("₹5000.00 flat")).toBeVisible();
+  await expect(page.getByText("₹5,000.00 flat")).toBeVisible();
 
   // --- Search + grid/list toggle (shared CatalogBrowser) ---
   await page.getByLabel("Search").fill("no-such-addon-xyz");
@@ -91,7 +99,7 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByLabel("Search").fill("");
   await expect(page.getByText(liveCounterName)).toBeVisible();
   await page.getByLabel("List view").click();
-  await expect(page.getByRole("cell", { name: liveCounterName, exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: new RegExp(`^${liveCounterName}`) })).toBeVisible();
   await page.getByLabel("Grid view").click();
 
   // --- Edit via the pencil-icon popup: confirm fields persisted, then update and verify ---

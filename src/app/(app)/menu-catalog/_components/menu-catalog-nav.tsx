@@ -8,10 +8,10 @@ import { cn } from "cn";
 // Display order/labels only (AJ, 2026-09-14) — routes/model names are
 // unchanged: /menu-catalog/menus is still "Menu Types", etc.
 const NAV_ITEMS = [
+  { label: "Event Types", href: "/menu-catalog/event-types", icon: PartyPopper },
   { label: "Menu Types", href: "/menu-catalog/menus", icon: BookOpen },
   { label: "Menu Categories", href: "/menu-catalog/categories", icon: LayoutGrid },
   { label: "Food Items", href: "/menu-catalog/items", icon: UtensilsCrossed },
-  { label: "Event Types", href: "/menu-catalog/event-types", icon: PartyPopper },
   { label: "Add-ons", href: "/menu-catalog/add-ons", icon: Sparkles },
 ] as const;
 
@@ -38,11 +38,12 @@ export function MenuCatalogNav() {
             className={cn(
               // h-11, matching the primary sidebar's own nav-item height
               // (AJ, 2026-09-17) — was noticeably more compact before.
-              "flex h-11 items-center gap-2.5 rounded-lg border-l-2 border-transparent px-3 text-sm font-medium transition-colors",
+              "flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               // hover:bg-background (white), not hover:bg-muted/secondary —
               // the panel itself is bg-secondary, so a same-tone hover would
               // be invisible against it.
-              active ? "border-primary bg-accent text-accent-foreground" : "text-foreground hover:bg-background",
+              // Same fill and ring as the active category tab in the food item drawer (AJ, 2026-09-30).
+              active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-foreground hover:bg-background",
             )}
           >
             <item.icon className="size-4" />

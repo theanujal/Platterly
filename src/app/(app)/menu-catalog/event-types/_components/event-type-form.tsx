@@ -91,7 +91,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-image">Event Image</Label>
-        <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+        <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-icon">Icon</Label>

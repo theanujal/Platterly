@@ -147,7 +147,7 @@ export function MenuForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="menu-image">Menu Image</Label>
-            <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+            <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="menu-type">Menu Type</Label>

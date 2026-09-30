@@ -49,9 +49,11 @@ interface CustomerFormProps {
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  /** Shown above the fields, e.g. the edit popup's "changes apply everywhere" note. */
+  notice?: React.ReactNode;
 }
 
-export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }: CustomerFormProps) {
+export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, notice }: CustomerFormProps) {
   const [values, setValues] = useState<CustomerFormValues>({ ...EMPTY_CUSTOMER_VALUES, ...initialValues });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -87,16 +89,17 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+      {notice}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="customer-name">Name</Label>
           <IconInput icon={User} id="customer-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="customer-phone">Phone</Label>
           <PhoneInput id="customer-phone" required value={values.phone} onChange={(v) => setField("phone", v)} />
         </div>
-        <div className="flex flex-col gap-1.5">
+        <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="customer-email">Email</Label>
           <IconInput icon={Mail} id="customer-email" type="email" value={values.email} onChange={(e) => setField("email", e.target.value)} />
         </div>

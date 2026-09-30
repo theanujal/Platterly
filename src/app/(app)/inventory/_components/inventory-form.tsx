@@ -111,7 +111,7 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="inv-image">Image</Label>
-          <ImageDropzone id="inv-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={2} />
+          <ImageDropzone id="inv-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
         </div>
 
         <div className="flex flex-col gap-1.5">

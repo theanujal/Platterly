@@ -249,7 +249,7 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         <h2 className="text-sm font-semibold text-muted-foreground">Brand identity</h2>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="logo">Logo</Label>
-          <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} maxSizeMB={2} />
+          <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} maxSizeMB={4} />
         </div>
       </div>
 

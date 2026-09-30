@@ -13,7 +13,7 @@ export function BrandIdentityStep({ onLogoSelect, logoError }: BrandIdentityStep
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="logo">Logo</Label>
-        <ImageDropzone id="logo" value={null} onFileSelect={onLogoSelect} maxSizeMB={2} error={logoError} />
+        <ImageDropzone id="logo" value={null} onFileSelect={onLogoSelect} maxSizeMB={4} error={logoError} />
       </div>
     </div>
   );

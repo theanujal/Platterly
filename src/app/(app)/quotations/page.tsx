@@ -48,7 +48,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
   const { status } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as QuotationStatus) : undefined;
 
-  const quotations = await listQuotations(organizationId, { status: validStatus });
+  const quotations = await listQuotations(organizationId, { status: validStatus, when: "upcoming" });
   const now = new Date();
 
   const sortOptions: CatalogSortOption[] = [

@@ -13,7 +13,7 @@ import { OnlinePresenceStep } from "./steps/online-presence-step";
 import { BrandIdentityStep } from "./steps/brand-identity-step";
 import { EMPTY_WIZARD_STATE, STEP_LABELS, type WizardState, type StageStatus } from "./types";
 
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 
 const STEP_CONTENT = [
   { heading: "Tell us about your business", supportingText: "This appears across Platterly and, eventually, your public storefront." },
@@ -51,12 +51,12 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
 
   function handleLogoSelect(file: File | null) {
     if (file && file.size > MAX_LOGO_BYTES) {
-      setLogoError("Logo must be 2MB or smaller.");
+      setLogoError("Logo must be 4MB or smaller.");
       setLogo(null);
       return;
     }
-    if (file && file.type !== "image/png" && file.type !== "image/jpeg") {
-      setLogoError("Logo must be a PNG or JPG image.");
+    if (file && file.type !== "image/png" && file.type !== "image/jpeg" && file.type !== "image/webp") {
+      setLogoError("Logo must be a PNG, JPG or WebP image.");
       setLogo(null);
       return;
     }

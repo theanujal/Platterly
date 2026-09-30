@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createCustomer, updateCustomer, listCustomers, getCustomer, getCustomerTimeline } from "@/modules/customers/customer";
+import { createCustomer, updateCustomer, deleteCustomer, updateCustomerNotes, listCustomers, getCustomer, getCustomerTimeline } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { createEvent } from "@/modules/events/event";
 
@@ -186,5 +186,50 @@ describe("getCustomerTimeline (Chunk 9 Group 9.2, now sourced from Order + Event
     const customer = await createCustomer(org.id, { name: "Fresh Customer", phone: "7000000000" }, actor.id);
 
     expect(await getCustomerTimeline(org.id, customer.id)).toEqual([]);
+  });
+
+  it("deleteCustomer removes a customer with no history and writes an AuditLog row", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Delete Me", phone: "7111111111" }, actor.id);
+
+    await deleteCustomer(org.id, customer.id, actor.id);
+
+    expect(await getCustomer(org.id, customer.id)).toBeNull();
+    expect(await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "customer.delete", recordId: customer.id } })).not.toBeNull();
+  });
+
+  it("deleteCustomer refuses a customer that has an order and leaves them in place", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Has History", phone: "7222222222" }, actor.id);
+    await prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() } });
+
+    await expect(deleteCustomer(org.id, customer.id, actor.id)).rejects.toThrow(/1 order.*Inactive/);
+    expect(await getCustomer(org.id, customer.id)).not.toBeNull();
+  });
+
+  it("deleteCustomer can't touch another tenant's customer", async () => {
+    const org = await makeOrg();
+    const otherOrg = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(otherOrg.id, { name: "Not Yours", phone: "7333333333" }, actor.id);
+
+    await expect(deleteCustomer(org.id, customer.id, actor.id)).rejects.toThrow();
+    expect(await getCustomer(otherOrg.id, customer.id)).not.toBeNull();
+  });
+
+  it("updateCustomerNotes saves trimmed notes without touching other fields, and blank clears them", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Note Taker", phone: "7444444444", email: "n@example.test" }, actor.id);
+
+    const saved = await updateCustomerNotes(org.id, customer.id, "  Prefers vegetarian menus.  ", actor.id);
+    expect(saved.notes).toBe("Prefers vegetarian menus.");
+    expect(saved.name).toBe("Note Taker");
+    expect(saved.email).toBe("n@example.test");
+
+    const cleared = await updateCustomerNotes(org.id, customer.id, "   ", actor.id);
+    expect(cleared.notes).toBeNull();
   });
 });
