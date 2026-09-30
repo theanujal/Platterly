@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 
 export class CannotDisableOwnerError extends Error {}
 
@@ -29,6 +30,18 @@ export async function listPendingInvitations(organizationId: string) {
   return prisma.invitation.findMany({
     where: { organizationId, status: "pending" },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+/**
+ * Better Auth only sees *unexpired* invitations as "already invited", so
+ * re-inviting an address whose old invite lapsed would leave the expired row
+ * in the Pending list next to the new one. Retire the stale row first.
+ */
+export async function retireExpiredInvitations(organizationId: string, email: string) {
+  await prisma.invitation.updateMany({
+    where: { organizationId, email: { equals: email, mode: "insensitive" }, status: "pending", expiresAt: { lte: new Date() } },
+    data: { status: "canceled" },
   });
 }
 
@@ -67,4 +80,54 @@ export async function enableMember(organizationId: string, memberId: string, act
   });
 
   return after;
+}
+
+/**
+ * Team seats: the plan's `maxUsers` (null = unlimited) against enabled
+ * members plus invitations that could still be accepted — an unexpired
+ * pending invite already holds a seat, so a full team can't over-invite.
+ */
+export async function getSeatUsage(organizationId: string) {
+  const [members, pendingInvites, subscription] = await Promise.all([
+    prisma.member.count({ where: { organizationId, disabledAt: null } }),
+    prisma.invitation.count({ where: { organizationId, status: "pending", expiresAt: { gt: new Date() } } }),
+    getCurrentSubscription(organizationId),
+  ]);
+  const limit = subscription?.subscriptionPlan.maxUsers ?? null;
+  return { members, pendingInvites, limit, full: limit !== null && members + pendingInvites >= limit };
+}
+
+export interface TeamPrivacyView {
+  allowTeamVisibility: boolean;
+  showName: boolean;
+  showEmail: boolean;
+  showAvatar: boolean;
+}
+
+/**
+ * What one member sees of another under the Privacy tab. Owners always see
+ * everyone in full; a member always sees themselves in full. Otherwise
+ * "Allow team visibility" off hides the person entirely, and each show-flag
+ * blanks the matching field.
+ */
+export function applyTeamPrivacy<T extends { userId: string; role: string; user: { name: string; email: string; image: string | null } }>(
+  members: T[],
+  viewer: { userId: string; role: string },
+  privacy: TeamPrivacyView,
+): T[] {
+  if (viewer.role === "owner") return members;
+  return members
+    .filter((m) => m.userId === viewer.userId || m.role === "owner" || privacy.allowTeamVisibility)
+    .map((m) => {
+      if (m.userId === viewer.userId || m.role === "owner") return m;
+      return {
+        ...m,
+        user: {
+          ...m.user,
+          name: privacy.showName ? m.user.name : "Team member",
+          email: privacy.showEmail ? m.user.email : "",
+          image: privacy.showAvatar ? m.user.image : null,
+        },
+      };
+    });
 }

@@ -44,7 +44,7 @@ describe("Owner is the only top-tier role; Staff stays read-only (Team Admin rem
   it("only owner can bypass the <2-days-before-event restriction", () => {
     expect(roles.owner.authorize({ orders: ["bypass_date_restriction"] }).success).toBe(true);
     expect(roles.manager.authorize({ orders: ["bypass_date_restriction"] }).success).toBe(false);
-    expect(roles.sales.authorize({ orders: ["bypass_date_restriction"] }).success).toBe(false);
+    expect(roles.salesEvents.authorize({ orders: ["bypass_date_restriction"] }).success).toBe(false);
   });
 
   it("a Staff-preset user cannot mutate any record across every business module (Group 5.2's explicit verify requirement)", () => {
@@ -73,7 +73,7 @@ describe("Owner is the only top-tier role; Staff stays read-only (Team Admin rem
 });
 
 describe("PRD §5 department roles (added 2026-09-20)", () => {
-  const departmentRoles = ["sales", "kitchen", "inventoryTeam", "accounts", "eventTeam"] as const;
+  const departmentRoles = ["salesEvents", "kitchen", "inventoryTeam", "accounts"] as const;
 
   it("none of the department roles can reach tenant, users, settings, or team management (owner/manager only)", () => {
     for (const role of departmentRoles) {
@@ -85,14 +85,16 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     }
   });
 
-  it("Sales Team can work customers/quotations/orders but not approve menus or touch inventory/finance", () => {
-    expect(roles.sales.authorize({ customers: ["create", "edit"] }).success).toBe(true);
-    expect(roles.sales.authorize({ quotations: ["create", "edit"] }).success).toBe(true);
-    expect(roles.sales.authorize({ orders: ["create", "edit"] }).success).toBe(true);
-    expect(roles.sales.authorize({ menus: ["view"] }).success).toBe(true);
-    expect(roles.sales.authorize({ menus: ["approve"] }).success).toBe(false);
-    expect(roles.sales.authorize({ inventory: ["view"] }).success).toBe(false);
-    expect(roles.sales.authorize({ invoices: ["view"] }).success).toBe(false);
+  it("Sales & Event Team works customers/quotations/orders/events and owns menu approval, but not menu editing, inventory or finance", () => {
+    expect(roles.salesEvents.authorize({ customers: ["create", "edit"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ quotations: ["create", "edit"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ orders: ["create", "edit"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ events: ["create", "edit"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ menus: ["view", "approve"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ menus: ["create", "delete", "edit"] }).success).toBe(false);
+    expect(roles.salesEvents.authorize({ orders: ["delete"] }).success).toBe(false);
+    expect(roles.salesEvents.authorize({ inventory: ["view"] }).success).toBe(false);
+    expect(roles.salesEvents.authorize({ invoices: ["view"] }).success).toBe(false);
   });
 
   it("Kitchen Team can view/edit menus for production but cannot approve them or reach the sales/finance modules", () => {
@@ -115,15 +117,5 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.accounts.authorize({ reports: ["view", "export"] }).success).toBe(true);
     expect(roles.accounts.authorize({ orders: ["view"] }).success).toBe(false);
     expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(false);
-  });
-
-  it("Event Team drives the menu approval workflow end to end, but stays out of customers/quotations/inventory/finance", () => {
-    expect(roles.eventTeam.authorize({ events: ["create", "edit"] }).success).toBe(true);
-    expect(roles.eventTeam.authorize({ menus: ["view", "approve"] }).success).toBe(true);
-    expect(roles.eventTeam.authorize({ menus: ["create", "delete", "edit"] }).success).toBe(false);
-    expect(roles.eventTeam.authorize({ customers: ["view"] }).success).toBe(false);
-    expect(roles.eventTeam.authorize({ quotations: ["view"] }).success).toBe(false);
-    expect(roles.eventTeam.authorize({ inventory: ["view"] }).success).toBe(false);
-    expect(roles.eventTeam.authorize({ invoices: ["view"] }).success).toBe(false);
   });
 });

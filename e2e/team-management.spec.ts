@@ -70,11 +70,30 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   // --- Owner invites a staff member ---
   await page.goto("/settings/team");
-  await page.getByRole("button", { name: "Invite" }).click();
-  const inviteDialog = page.getByRole("dialog");
-  await inviteDialog.getByLabel("Email").fill(staffEmail);
-  // Role select already defaults to "Staff" — leave as-is.
-  await inviteDialog.getByRole("button", { name: "Send invitation" }).click();
+  await expect(page.getByText("Team members: 1", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Invite Member" }).click();
+  await page.getByLabel("Email Address").fill(staffEmail);
+  // Role select already defaults to "Staff" — its card lists what Staff can do.
+  await expect(page.getByText("Permissions included:")).toBeVisible();
+  await expect(page.getByText("Invitations expire after 48 hours.")).toBeVisible();
+  await page.getByRole("button", { name: "Send Invitation" }).click();
+  // A successful invite lands on the Pending Invitations tab, expiring in 48 hours.
+  await expect(page.getByRole("tab", { name: /Pending Invitations/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText(staffEmail)).toBeVisible();
+  await expect(page.getByText(/Expires in (47|48)h/)).toBeVisible();
+
+  // Resend keeps it to one row; Cancel removes only the invitation it's on.
+  const extraEmail = `e2e-extra-${Date.now()}@example.test`;
+  await page.getByRole("tab", { name: "Invite Member" }).click();
+  await page.getByLabel("Email Address").fill(extraEmail);
+  await page.getByRole("button", { name: "Send Invitation" }).click();
+  const extraRow = page.getByRole("listitem").filter({ hasText: extraEmail });
+  await expect(extraRow).toBeVisible();
+  await extraRow.getByRole("button", { name: "Resend" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: extraEmail })).toHaveCount(1);
+  await extraRow.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Cancel invitation" }).click();
+  await expect(page.getByText(extraEmail)).toHaveCount(0);
   await expect(page.getByText(staffEmail)).toBeVisible();
 
   const invitationId = await getPendingInvitationId(staffEmail);
@@ -127,8 +146,8 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
 
   // --- Owner sees the new member and disables them ---
   await page.goto("/settings/team");
-  await expect(page.getByRole("cell", { name: "Staff Person" })).toBeVisible();
-  const staffRow = page.getByRole("row", { name: /Staff Person/ });
+  await expect(page.getByText("Staff Person")).toBeVisible();
+  const staffRow = page.getByRole("listitem").filter({ hasText: "Staff Person" });
   await staffRow.getByRole("button", { name: "Disable" }).click();
   await page.getByRole("button", { name: "Disable", exact: true }).last().click();
   await expect(staffRow.getByText("Disabled")).toBeVisible();

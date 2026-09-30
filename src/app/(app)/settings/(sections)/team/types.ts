@@ -15,6 +15,6 @@ export interface TeamPrivacySettings {
 export const DEFAULT_TEAM_PRIVACY: TeamPrivacySettings = {
   allowTeamVisibility: true,
   showName: true,
-  showEmail: false,
+  showEmail: true,
   showAvatar: true,
 };

@@ -4,7 +4,7 @@ import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth/auth";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { disableMember, enableMember } from "@/modules/team/team";
+import { disableMember, enableMember, getSeatUsage, retireExpiredInvitations } from "@/modules/team/team";
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import { audit } from "@/lib/audit/audit";
 import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
@@ -35,6 +35,13 @@ export async function inviteMemberAction(email: string, role: string): Promise<A
     return { ok: false, error: "Invalid role." };
   }
 
+  const seats = await getSeatUsage(organizationId);
+  if (seats.full) {
+    return { ok: false, error: `Your plan allows ${seats.limit} team members, including pending invitations. Cancel an invitation or upgrade to add more.` };
+  }
+
+  await retireExpiredInvitations(organizationId, email);
+
   try {
     await auth.api.createInvitation({
       headers: await nextHeaders(),
@@ -55,6 +62,8 @@ export async function resendInvitationAction(email: string, role: string): Promi
   if (!isInvitableRole(role)) {
     return { ok: false, error: "Invalid role." };
   }
+
+  await retireExpiredInvitations(organizationId, email);
 
   try {
     await auth.api.createInvitation({

@@ -2,96 +2,70 @@ import type { roles } from "./permissions";
 
 /**
  * The single source of truth for role display info (invite dropdown,
- * role-change dropdown, member/invitation table labels). `permissions.ts`
- * owns *grants*; this file owns *labels and copy* — kept separate so
- * permission logic and UI text don't live in the same place. Every `id`
- * here must match a key of `roles` in permissions.ts (enforced by the
- * `keyof typeof roles` type below).
+ * role-change dropdown, member/invitation labels, the role card on the
+ * invite form). `permissions.ts` owns *grants*; this file owns *labels and
+ * copy* — kept separate so permission logic and UI text don't live in the
+ * same place. The bullet lists ("Permissions included" / "No access to")
+ * are not written here: `role-permissions.ts` derives them from the real
+ * grants, so the copy can never claim more or less than the role can do.
+ * Every `id` here must match a key of `roles` in permissions.ts (enforced by
+ * the `keyof typeof roles` type below).
  *
- * Adding a future role is a two-file touch: a new entry in `roles`
- * (permissions.ts) for the grants, and a new entry here for the label/
- * invite-dropdown preview. Nothing else needs to change.
+ * Adding a future role: a new entry in `roles` (permissions.ts) for the
+ * grants, one here for the label/description, and one in
+ * `team/_components/role-icons.ts` for its icon.
  */
 type RoleDefinition = {
   id: keyof typeof roles;
   label: string;
+  /** One line under the role name on the invite form's role card. */
+  description: string;
   /** false = not offered in the invite/role-change dropdowns (owner is assigned at tenant creation, never invited). */
   invitable: boolean;
-  /** Bullet points shown under "Show what this role can do" in the invite dialog. Omitted for non-invitable roles. */
-  previews?: string[];
 };
 
 export const ROLE_DEFINITIONS = [
-  { id: "owner", label: "Owner", invitable: false },
+  {
+    id: "owner",
+    label: "Owner",
+    description: "Full access to everything, including the team, settings and deleting business data.",
+    invitable: false,
+  },
   {
     id: "manager",
     label: "Manager",
+    description: "Runs day-to-day operations: creates and edits most records, but can't delete, manage the team or change settings.",
     invitable: true,
-    previews: [
-      "Can view and create/edit customers, events, orders, menus, inventory",
-      "Can view invoices and payments, create new ones",
-      "Cannot delete records, cannot manage the team, cannot edit settings",
-    ],
   },
   {
     id: "staff",
     label: "Staff",
+    description: "Read-only access to view orders, inventory and basic information.",
     invitable: true,
-    previews: [
-      "View-only across customers, events, orders, menus, inventory, reports",
-      "No access to invoices, payments, team management, or settings",
-    ],
-  },
-  {
-    id: "sales",
-    label: "Sales Team",
-    invitable: true,
-    previews: [
-      "Can view and create/edit customers, quotations, and orders",
-      "Read-only on events and the menu catalog",
-      "No access to inventory, invoices, payments, team management, or settings",
-    ],
   },
   {
     id: "kitchen",
     label: "Kitchen Team",
+    description: "Works the Kitchen Dashboard and updates production status on approved menus.",
     invitable: true,
-    previews: [
-      "Can view and update kitchen production status on the Kitchen Dashboard",
-      "Read-only on events and orders",
-      "Cannot approve menus (that's Event Team) or access customers, inventory, invoices, or payments",
-    ],
   },
   {
     id: "inventoryTeam",
     label: "Store / Inventory Team",
+    description: "Owns stock, ingredients and purchases.",
     invitable: true,
-    previews: [
-      "Full access to inventory — view, create, edit, and delete stock records",
-      "Can view reports",
-      "No access to customers, events, orders, menus, invoices, or payments",
-    ],
   },
   {
     id: "accounts",
     label: "Accounts Team (Finance)",
+    description: "Owns invoices, payments and financial reports.",
     invitable: true,
-    previews: [
-      "Can view, create, edit, and export invoices",
-      "Can view, create, and manage payments",
-      "Can view and export reports",
-      "No access to customers, events, orders, menus, or inventory",
-    ],
   },
   {
-    id: "eventTeam",
-    label: "Event Team",
+    id: "salesEvents",
+    label: "Sales & Event Team",
+    description: "Handles enquiries, customers, quotations, orders and events, and runs the menu approval workflow from sending a menu to the customer through kitchen approval.",
     invitable: true,
-    previews: [
-      "Can view and create/edit events; read-only on orders",
-      "Owns the menu approval workflow — sending menus to customers and driving approval through to Kitchen Approved/Final",
-      "No access to customers, quotations, inventory, invoices, or payments",
-    ],
   },
 ] as const satisfies readonly RoleDefinition[];
 

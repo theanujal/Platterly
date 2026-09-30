@@ -50,7 +50,7 @@ export const ac = createAccessControl(statement);
  * `owner` is the only top-tier role — there is deliberately no second
  * owner-level "admin" role (AJ, 2026-09-20: removed the Chunk 5 "Team Admin"
  * preset). Below owner sit `manager`/`staff` plus PRD §5's five named
- * department teams (`sales`/`kitchen`/`inventoryTeam`/`accounts`/`eventTeam`).
+ * department teams (`salesEvents`/`kitchen`/`inventoryTeam`/`accounts`).
  * None of the non-owner roles get `tenant`, `users`, `settings`, or Better
  * Auth's own org-management grants (invite/manage teammates stays owner or
  * `manager` only, via `...memberAc.statements` below) — team management is
@@ -103,33 +103,13 @@ export const roles = {
     settings: [],
   }),
   /**
-   * PRD §5 "Sales Team" — Enquiries/Customers/Quotations/Orders/Follow-ups.
-   * Needs read access to `events` (to attach orders) and `menus` (to quote
-   * against the catalog), but no approval authority and no deletes.
-   */
-  sales: ac.newRole({
-    ...memberAc.statements,
-    tenant: [],
-    users: [],
-    customers: ["view", "create", "edit"],
-    events: ["view"],
-    orders: ["view", "create", "edit"],
-    quotations: ["view", "create", "edit"],
-    menus: ["view"],
-    inventory: [],
-    invoices: [],
-    payments: [],
-    reports: ["view"],
-    settings: [],
-  }),
-  /**
    * PRD §5 "Kitchen Team" — Approved menus/Kitchen production/Preparation/
    * Kitchen status. Gets `menus:edit` (Kitchen Dashboard's own status-update
    * actions, kitchen-dashboard/actions.ts) and `menus:view` (both the
    * dashboard and its own query already scope to orders that reached the
    * Kitchen Reviewing/Approved stage). Deliberately NO `menus:approve` — AJ,
    * 2026-09-20: Kitchen Team executes production against already-approved
-   * menus, they don't run the approval pipeline itself (that's `eventTeam`
+   * menus, they don't run the approval pipeline itself (that's `salesEvents`
    * below), so `/menu-approvals` (gated on `menus:["approve"]`) stays closed
    * to this role.
    */
@@ -189,26 +169,27 @@ export const roles = {
     settings: [],
   }),
   /**
-   * PRD §5 "Event Team" — Event requirements/Staff/Equipment/Logistics,
-   * **plus menu-approval ownership** (AJ, 2026-09-20, explicit ask beyond
-   * the PRD's own department description): `menu-approvals/actions.ts`'s
-   * entire Draft→...→Final/Locked pipeline is already uniformly gated on
-   * `menus:["approve"]`, so granting it here gives this role the full
-   * customer-approval-through-lock flow end to end.
+   * PRD §5 "Sales Team" + "Event Team", merged into one role (AJ, 2026-09-30):
+   * the same people sell an order and run its event. Enquiries/Customers/
+   * Quotations/Orders/Follow-ups plus Event requirements, **and menu-approval
+   * ownership** (AJ, 2026-09-20): `menu-approvals/actions.ts`'s entire
+   * Draft→...→Final/Locked pipeline is uniformly gated on `menus:["approve"]`,
+   * so granting it here gives this role the full customer-approval-through-
+   * lock flow end to end. No menu create/edit/delete, no deletes anywhere.
    */
-  eventTeam: ac.newRole({
+  salesEvents: ac.newRole({
     ...memberAc.statements,
     tenant: [],
     users: [],
-    customers: [],
+    customers: ["view", "create", "edit"],
     events: ["view", "create", "edit"],
-    orders: ["view"],
-    quotations: [],
+    orders: ["view", "create", "edit"],
+    quotations: ["view", "create", "edit"],
     menus: ["view", "approve"],
     inventory: [],
     invoices: [],
     payments: [],
-    reports: [],
+    reports: ["view"],
     settings: [],
   }),
 };

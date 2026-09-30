@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { notify } from "@/lib/notifications/notify";
+import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
 import { canonicalUrl } from "@/lib/seo/canonical";
 
 /**
@@ -89,8 +90,8 @@ export const auth = betterAuth({
       ac,
       roles,
       creatorRole: "owner",
-      // Chunk 5 Group 5.2 — spec asks for a 7-day expiry (default is 48h).
-      invitationExpiresIn: 60 * 60 * 24 * 7,
+      // AJ, 2026-09-30: invitation links are valid for 48 hours only.
+      invitationExpiresIn: INVITATION_EXPIRES_IN_SECONDS,
       // Log-only today via notify() (Chunk 2's "interface now, integration
       // later" pattern) — real delivery is Chunk 16's job. better-auth
       // doesn't generate an accept URL itself; canonicalUrl() builds ours.
@@ -106,6 +107,7 @@ export const auth = betterAuth({
             organizationName: data.organization.name,
             inviterName: data.inviter.user.name,
             acceptUrl: canonicalUrl(`/invitations/${data.id}/accept`),
+            expiresInHours: INVITATION_EXPIRY_HOURS,
           },
         });
       },
