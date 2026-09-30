@@ -174,8 +174,14 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   // --- Send it ---
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/quotations\/.+/);
-  await page.getByRole("button", { name: "Send Quotation" }).click();
-  await expect(page.getByText("Sent", { exact: true }).first()).toBeVisible();
+  // Under load the button can be on screen before its click handler is attached (the page is still
+  // hydrating), so the first click does nothing. Retry until the status changes; once it has, the
+  // button is gone, so a retry can never send twice.
+  await expect(async () => {
+    const send = page.getByRole("button", { name: "Send Quotation" });
+    if (await send.isVisible()) await send.click();
+    await expect(page.getByText("Sent", { exact: true }).first()).toBeVisible({ timeout: 4_000 });
+  }).toPass({ timeout: 40_000 });
 
   const linkLocator = page.getByRole("link", { name: /\/quote\// });
   await expect(linkLocator).toBeVisible();

@@ -91,9 +91,18 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
-  await page.getByRole("button", { name: `Actions for ${menuName}` }).click();
-  await page.getByRole("menuitem", { name: "Edit Menu Type" }).click();
-  await expect(selectedCategories.locator("> div").first()).toContainText(mainsName);
+  // The list refreshes just after the save, so under load the drawer can reopen on the old order
+  // for a moment. Close and reopen until it shows the saved one.
+  await expect(async () => {
+    const dialog = page.getByRole("dialog");
+    if (await dialog.isVisible()) {
+      await page.keyboard.press("Escape");
+      await expect(dialog).not.toBeVisible();
+    }
+    await page.getByRole("button", { name: `Actions for ${menuName}` }).click();
+    await page.getByRole("menuitem", { name: "Edit Menu Type" }).click();
+    await expect(selectedCategories.locator("> div").first()).toContainText(mainsName, { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 
   // Remove a category, add it back with a new limit: it lands at the end.
   await page.getByRole("button", { name: `Remove ${startersName}` }).click();

@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { getLatestEmailOtp } from "./db";
 
@@ -51,4 +51,18 @@ export async function signUpCaterer(page: Page, email: string, options: SignUpOp
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   if (closeClaimDialog) await page.getByRole("button", { name: "Close" }).click();
+}
+
+/**
+ * Open a dropdown and pick an option, retrying until it works. With several workers sharing one dev
+ * server a page can be on screen before its click handlers are attached, so the first click on the
+ * trigger does nothing and a plain `click()` then waits for an option that never appears. The option
+ * is only clicked once it is showing, and the trigger only clicked while it is not.
+ */
+export async function selectOption(page: Page, trigger: Locator, optionName: string | RegExp): Promise<void> {
+  await expect(async () => {
+    const option = page.getByRole("option", { name: optionName });
+    if (!(await option.first().isVisible())) await trigger.click();
+    await option.first().click({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 }

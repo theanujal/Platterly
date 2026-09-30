@@ -22,6 +22,9 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   // "list" prints each test and its time in the terminal; the HTML report is still written but never auto-opened (it used to hang the terminal on a failure).
   reporter: [["list"], ["html", { open: "never" }]],
+  // Four workers share one dev server that compiles each page on first visit, so the default
+  // 5s assertion wait is too tight in fast mode (two specs flaked on it). Headed runs keep 5s.
+  expect: { timeout: fast ? 15_000 : 5_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",

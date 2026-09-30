@@ -44,7 +44,9 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByRole("button", { name: "Add Item" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Item Name").fill(itemName);
-  await page.getByLabel("Category", { exact: true }).fill("Grains");
+  // Category is a dropdown now (AJ, 2026-09-30).
+  await page.getByLabel("Category", { exact: true }).click();
+  await page.getByRole("option", { name: "Grains & Cereals" }).click();
   // Unit is a dropdown now, not free text (AJ, 2026-09-19).
   await page.getByLabel("Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();

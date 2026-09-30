@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { signUpCaterer } from "./auth-helpers";
+import { selectOption, signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 9 — CRM Core. Drives the full Lead -> Customer -> Event lifecycle
@@ -51,7 +51,9 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.goto("/inventory");
   await page.getByRole("button", { name: "Add Item" }).click();
   await page.getByLabel("Item Name").fill(inventoryName);
-  await page.getByLabel("Category", { exact: true }).fill("Grains");
+  // Category is a dropdown now (AJ, 2026-09-30).
+  await page.getByLabel("Category", { exact: true }).click();
+  await page.getByRole("option", { name: "Grains & Cereals" }).click();
   // Unit is a dropdown now, not free text (AJ, 2026-09-19).
   await page.getByLabel("Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
@@ -96,14 +98,11 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.getByRole("button", { name: /grid/i }).first().click();
 
   // --- Leads-only filter shows this person; Customers-only filter doesn't (yet) ---
-  await page.getByLabel("Filter by All").click();
-  await page.getByRole("option", { name: "Leads" }).click();
+  await selectOption(page, page.getByLabel("Filter by All"), "Leads");
   await expect(page.getByText(leadName)).toBeVisible();
-  await page.getByLabel("Filter by All").click();
-  await page.getByRole("option", { name: "Customers" }).click();
+  await selectOption(page, page.getByLabel("Filter by All"), "Customers");
   await expect(page.getByText(leadName)).not.toBeVisible();
-  await page.getByLabel("Filter by All").click();
-  await page.getByRole("option", { name: "All" }).click();
+  await selectOption(page, page.getByLabel("Filter by All"), "All");
 
   await page.getByRole("button", { name: `View ${leadName}` }).click();
   await expect(page).toHaveURL(/\/customers\/.+/);
@@ -153,9 +152,17 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
 
   const operations = page.getByTestId("event-operations-card");
-  await operations.getByLabel("Event Status").click();
-  await page.getByRole("option", { name: "Processing" }).click();
-  await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
+  // The Event Status dropdown was removed (2026-09-30); the card is the assigned kitchen only, and saves as it changes.
+  await operations.getByLabel("Assigned Kitchen", { exact: true }).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+  const kitchenOptions = page.getByRole("listbox").getByRole("option").filter({ hasNotText: "Not assigned" });
+  if ((await kitchenOptions.count()) > 0) {
+    await kitchenOptions.first().click();
+    await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
+  } else {
+    await page.keyboard.press("Escape");
+  }
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Inventory" }).click();
   const inventoryCard = page.getByTestId("required-inventory-card");
@@ -187,11 +194,11 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.keyboard.press("Escape");
 
   // Notes box: type, save, and it is still there after a reload.
-  await page.getByRole("textbox", { name: "Notes" }).fill("Prefers a live dosa counter.");
+  await page.locator("#side-notes").fill("Prefers a live dosa counter.");
   await page.getByRole("button", { name: "Save note" }).click();
   await expect(page.getByText("Saved", { exact: true })).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Notes" })).toHaveValue("Prefers a live dosa counter.");
+  await expect(page.locator("#side-notes")).toHaveValue("Prefers a live dosa counter.");
 
   await page.getByRole("button", { name: `Delete ${leadName}` }).click();
   const confirm = page.getByRole("alertdialog");
