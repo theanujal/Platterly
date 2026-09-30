@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 export default async function EventTypesPage() {
   const { organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["view"] }, organizationId);
+  await requirePermission({ eventTypes: ["view"] }, organizationId);
   const [eventTypes, menus] = await Promise.all([listEventTypes(organizationId), listMenus(organizationId)]);
   const availableMenus = menus.map((m) => ({ id: m.id, name: m.name }));
   const orderedIds = eventTypes.map((e) => e.id);

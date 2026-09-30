@@ -230,7 +230,7 @@ export async function updateEventOperationsAction(
   patch: { assignedKitchenId?: string | null; requiredInventory?: RequiredInventoryInput[] },
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["edit"] }, organizationId);
+  await requirePermission({ orders: ["edit"] }, organizationId);
   try {
     const event = await getEvent(organizationId, eventId);
     if (!event || event.orderId !== orderId) throw new Error("Event not found.");

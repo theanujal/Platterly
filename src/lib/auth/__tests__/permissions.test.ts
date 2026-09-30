@@ -51,7 +51,7 @@ describe("Owner is the only top-tier role; Staff stays read-only (Team Admin rem
     const mutatingChecks: { resource: string; actions: string[] }[] = [
       { resource: "users", actions: ["create", "edit", "delete"] },
       { resource: "customers", actions: ["create", "edit", "delete"] },
-      { resource: "events", actions: ["create", "edit", "delete", "approve"] },
+      { resource: "eventTypes", actions: ["create", "edit", "delete"] },
       { resource: "orders", actions: ["create", "edit", "delete"] },
       { resource: "menus", actions: ["create", "edit", "delete", "approve"] },
       { resource: "inventory", actions: ["create", "edit", "delete"] },
@@ -89,7 +89,7 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.salesEvents.authorize({ customers: ["create", "edit"] }).success).toBe(true);
     expect(roles.salesEvents.authorize({ quotations: ["create", "edit"] }).success).toBe(true);
     expect(roles.salesEvents.authorize({ orders: ["create", "edit"] }).success).toBe(true);
-    expect(roles.salesEvents.authorize({ events: ["create", "edit"] }).success).toBe(true);
+    expect(roles.salesEvents.authorize({ eventTypes: ["create", "edit"] }).success).toBe(true);
     expect(roles.salesEvents.authorize({ menus: ["view", "approve"] }).success).toBe(true);
     expect(roles.salesEvents.authorize({ menus: ["create", "delete", "edit"] }).success).toBe(false);
     expect(roles.salesEvents.authorize({ orders: ["delete"] }).success).toBe(false);
@@ -117,5 +117,35 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.accounts.authorize({ reports: ["view", "export"] }).success).toBe(true);
     expect(roles.accounts.authorize({ orders: ["view"] }).success).toBe(false);
     expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(false);
+  });
+});
+
+describe("eventTypes permission (renamed from `events`, 2026-09-30)", () => {
+  // The rename must not change who can do what: these are the exact grants
+  // the `events` permission had before.
+  const expected: Record<string, string[]> = {
+    owner: ["view", "create", "edit", "delete"],
+    manager: ["view", "create", "edit"],
+    staff: ["view"],
+    salesEvents: ["view", "create", "edit"],
+    kitchen: ["view"],
+    inventoryTeam: [],
+    accounts: [],
+  };
+
+  for (const [role, granted] of Object.entries(expected)) {
+    it(`${role} keeps exactly ${granted.length ? granted.join("/") : "no"} access to Event Types`, () => {
+      for (const action of ["view", "create", "edit", "delete"] as const) {
+        expect(
+          (roles as Record<string, { authorize: (r: object) => { success: boolean } }>)[role].authorize({ eventTypes: [action] }).success,
+          `${role}:eventTypes:${action}`,
+        ).toBe(granted.includes(action));
+      }
+    });
+  }
+
+  it("the order's kitchen / inventory cards (orders:edit) are open to exactly the roles that could edit events before", () => {
+    const canEditOrders = Object.keys(expected).filter((r) => (roles as never as Record<string, { authorize: (x: object) => { success: boolean } }>)[r].authorize({ orders: ["edit"] }).success);
+    expect(canEditOrders.sort()).toEqual(["manager", "owner", "salesEvents"]);
   });
 });

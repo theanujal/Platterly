@@ -12,7 +12,7 @@ import {
  * Everything below is Platterly's own module/action matrix — a representative
  * starting set proving the deny-by-default mechanism works end to end. Each
  * later chunk extends this statement with its own module's actions as that
- * module gets built (e.g. Chunk 9 adds `customers`/`events` actions beyond the
+ * module gets built (e.g. Chunk 9 adds `customers`/`eventTypes` actions beyond the
  * placeholders below, Chunk 14 adds `invoices`/`payments`, etc.). The role
  * presets in `roles` below (PRD §5's Owner/Manager/Staff plus its five named
  * department teams) are a UI layer on top of this engine, never a
@@ -25,7 +25,11 @@ export const statement = {
   tenant: ["view", "edit", "delete"],
   users: ["view", "create", "edit", "delete"],
   customers: ["view", "create", "edit", "delete"],
-  events: ["view", "create", "edit", "delete", "approve"],
+  // `eventTypes` was `events` until 2026-09-30: Events and Orders are merged in
+  // the UI (an Event is a hidden record synced from each Order), so the only
+  // thing this permission ever guarded was the Event Types pages. The order's
+  // kitchen / required-inventory cards follow `orders:["edit"]` instead.
+  eventTypes: ["view", "create", "edit", "delete"],
   // "bypass_date_restriction" — Create Order's own <2-days-before-event
   // guard (order-form.tsx / order.ts, 2026-09-19); owner-only, see
   // the `roles` grants below.
@@ -62,7 +66,7 @@ export const roles = {
     tenant: ["view", "edit", "delete"],
     users: ["view", "create", "edit", "delete"],
     customers: ["view", "create", "edit", "delete"],
-    events: ["view", "create", "edit", "delete", "approve"],
+    eventTypes: ["view", "create", "edit", "delete"],
     orders: ["view", "create", "edit", "delete", "bypass_date_restriction"],
     quotations: ["view", "create", "edit", "delete"],
     menus: ["view", "create", "edit", "delete", "approve"],
@@ -77,7 +81,7 @@ export const roles = {
     tenant: ["view"],
     users: ["view"],
     customers: ["view", "create", "edit"],
-    events: ["view", "create", "edit"],
+    eventTypes: ["view", "create", "edit"],
     orders: ["view", "create", "edit"],
     quotations: ["view", "create", "edit"],
     menus: ["view", "create", "edit"],
@@ -92,7 +96,7 @@ export const roles = {
     tenant: [],
     users: [],
     customers: ["view"],
-    events: ["view"],
+    eventTypes: ["view"],
     orders: ["view"],
     quotations: ["view"],
     menus: ["view"],
@@ -118,7 +122,7 @@ export const roles = {
     tenant: [],
     users: [],
     customers: [],
-    events: ["view"],
+    eventTypes: ["view"],
     orders: ["view"],
     quotations: [],
     menus: ["view", "edit"],
@@ -138,7 +142,7 @@ export const roles = {
     tenant: [],
     users: [],
     customers: [],
-    events: [],
+    eventTypes: [],
     orders: [],
     quotations: [],
     menus: [],
@@ -158,7 +162,7 @@ export const roles = {
     tenant: [],
     users: [],
     customers: [],
-    events: [],
+    eventTypes: [],
     orders: [],
     quotations: [],
     menus: [],
@@ -182,7 +186,7 @@ export const roles = {
     tenant: [],
     users: [],
     customers: ["view", "create", "edit"],
-    events: ["view", "create", "edit"],
+    eventTypes: ["view", "create", "edit"],
     orders: ["view", "create", "edit"],
     quotations: ["view", "create", "edit"],
     menus: ["view", "approve"],

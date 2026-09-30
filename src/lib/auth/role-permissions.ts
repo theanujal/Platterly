@@ -12,7 +12,7 @@ const AREAS = [
   ["customers", "customers"],
   ["quotations", "quotations"],
   ["orders", "orders"],
-  ["events", "events"],
+  ["eventTypes", "event types"],
   ["menus", "menus"],
   ["inventory", "inventory"],
   ["invoices", "invoices"],

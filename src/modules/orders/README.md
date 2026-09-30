@@ -96,7 +96,7 @@ guest count/venue): Event name, start/end dates, status, notes, required
 inventory (checklist + quantities, reusing `event.ts`'s existing
 `replaceRequiredInventory` via `updateEvent`'s `requiredInventory` input),
 and a Delete action (new `deleteOrderEventAction`, gated by the same
-`events: ["delete"]` permission the old standalone `DeleteEventButton`
+`events: ["delete"]` permission (now renamed `eventTypes`, 2026-09-30; the order event cards use `orders:["edit"]`) the old standalone `DeleteEventButton`
 used). Customer reassignment is deliberately **not** exposed here — an
 Event's customer follows its Order's; there is no independent Event
 customer once every Event has an Order.

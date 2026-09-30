@@ -43,7 +43,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
 
 export async function createEventTypeAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["create"] }, organizationId);
+  await requirePermission({ eventTypes: ["create"] }, organizationId);
   try {
     const input = await buildInput(organizationId, formData);
     await createEventType(organizationId, input, session.user.id);
@@ -60,7 +60,7 @@ export async function updateEventTypeAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["edit"] }, organizationId);
+  await requirePermission({ eventTypes: ["edit"] }, organizationId);
   try {
     const input = await buildInput(organizationId, formData, existingImage);
     await updateEventType(organizationId, id, input, session.user.id);
@@ -74,7 +74,7 @@ export async function updateEventTypeAction(
 
 export async function deleteEventTypeAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["delete"] }, organizationId);
+  await requirePermission({ eventTypes: ["delete"] }, organizationId);
   try {
     await deleteEventType(organizationId, id, session.user.id);
   } catch (error) {
@@ -86,7 +86,7 @@ export async function deleteEventTypeAction(id: string): Promise<ActionResult> {
 
 export async function reorderEventTypesAction(orderedIds: string[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["edit"] }, organizationId);
+  await requirePermission({ eventTypes: ["edit"] }, organizationId);
   try {
     await reorderEventTypes(organizationId, orderedIds, session.user.id);
   } catch (error) {
@@ -98,7 +98,7 @@ export async function reorderEventTypesAction(orderedIds: string[]): Promise<Act
 
 export async function duplicateEventTypeAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["create"] }, organizationId);
+  await requirePermission({ eventTypes: ["create"] }, organizationId);
   try {
     await duplicateEventType(organizationId, id, session.user.id);
   } catch (error) {
@@ -110,7 +110,7 @@ export async function duplicateEventTypeAction(id: string): Promise<ActionResult
 
 export async function setEventTypeActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ events: ["edit"] }, organizationId);
+  await requirePermission({ eventTypes: ["edit"] }, organizationId);
   try {
     await setEventTypeActive(organizationId, id, isActive, session.user.id);
   } catch (error) {
