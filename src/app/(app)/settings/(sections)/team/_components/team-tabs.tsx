@@ -24,14 +24,17 @@ export function TeamTabs({ tabs, active }: { tabs: TeamTab[]; active: string }) 
           key={id}
           role="tab"
           aria-selected={active === id}
+          aria-label={label}
+          title={label}
           href={id === "members" ? "/settings/team" : `/settings/team?tab=${id}`}
           className={cn(
-            "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+            "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 sm:px-4 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
             active === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
           <Icon className="size-4" />
-          {label}
+          {/* On a phone only the active tab shows its name, so all four fit without sideways scrolling. */}
+          <span className={active === id ? undefined : "hidden sm:inline"}>{label}</span>
           {count ? <span className="rounded-full bg-muted px-1.5 text-xs text-muted-foreground">{count}</span> : null}
         </Link>
       ))}
