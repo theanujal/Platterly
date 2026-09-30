@@ -28,7 +28,8 @@ function AddOnTypeBadge({ type, onImage = false }: { type: "LIVE_COUNTER" | "SPE
   );
 }
 
-function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED") {
+function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED", included = false) {
+  if (included) return "Included";
   const amount = formatRupees(price);
   return priceType === "PER_PLATE" ? `${amount} / plate` : `${amount} flat`;
 }
@@ -45,6 +46,7 @@ export default async function AddOnsPage() {
       type: addOn.type,
       priceType: addOn.priceType,
       price: addOn.price.toString(),
+      includedInPackage: addOn.includedInPackage,
       imageUrl: addOn.image,
       isActive: addOn.isActive,
     };
@@ -69,7 +71,7 @@ export default async function AddOnsPage() {
           <CatalogCardBody
             title={addOn.name}
             description={addOn.description}
-            footer={<span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</span>}
+            footer={<span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</span>}
             active={addOn.isActive}
           />
         </>
@@ -82,7 +84,7 @@ export default async function AddOnsPage() {
           <TableCell className="px-3 py-3">
             <AddOnTypeBadge type={addOn.type} />
           </TableCell>
-          <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</TableCell>
+          <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</TableCell>
           <TableCell className="px-3 py-3">
             <ActiveBadge active={addOn.isActive} />
           </TableCell>

@@ -86,7 +86,7 @@ export function QuotationResponseActions({ token }: { token: string }) {
           {error}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" disabled={pending !== null} onClick={handleAccept}>
           {pending === "accept" ? "Accepting…" : "Accept Quotation"}
         </Button>

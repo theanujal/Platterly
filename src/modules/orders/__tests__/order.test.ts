@@ -73,8 +73,6 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
         adultCount: 100,
         childBelow5Count: 5,
         child5To10Count: 15,
-        adultNonVegCount: 60,
-        adultVegCount: 40,
       },
       actor.id,
     );

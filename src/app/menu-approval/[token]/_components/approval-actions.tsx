@@ -36,9 +36,11 @@ export function ApprovalActions({ token }: { token: string }) {
   // refreshing into the neutral "no longer active" page.
   if (done) {
     return (
-      <div role="status" className="flex flex-col items-center gap-2 rounded-lg border border-border bg-muted/30 p-6 text-center">
-        {done === "approved" ? <CircleCheck className="size-8 text-success" /> : <MessageSquareText className="size-8 text-info" />}
-        <h2 className="text-base font-semibold">{done === "approved" ? "Menu approved — thank you!" : "Request sent — thank you!"}</h2>
+      <div role="status" className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10">
+        <span className={done === "approved" ? "flex size-14 items-center justify-center rounded-full bg-success/10 text-success" : "flex size-14 items-center justify-center rounded-full bg-info/10 text-info"}>
+          {done === "approved" ? <CircleCheck className="size-8" /> : <MessageSquareText className="size-8" />}
+        </span>
+        <h2 className="text-xl font-semibold">{done === "approved" ? "Menu approved — thank you!" : "Request sent — thank you!"}</h2>
         <p className="text-sm text-muted-foreground">
           {done === "approved"
             ? "We've received your approval and will take it from here."

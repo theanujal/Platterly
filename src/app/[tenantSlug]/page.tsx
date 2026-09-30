@@ -5,7 +5,8 @@ import { listEventTypes } from "@/modules/events/event-type";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
 import { EventDetailsForm } from "./_components/event-details-form";
-import { StorefrontHeader } from "./_components/storefront-header";
+import { PublicShell } from "@/components/public/public-shell";
+import { StorefrontContact } from "./_components/storefront-contact";
 
 interface StorefrontPageProps {
   params: Promise<{ tenantSlug: string }>;
@@ -65,21 +66,20 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
   });
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-8 px-4 py-10 md:px-8">
+    <PublicShell
+      brand={{ name: organization.name, logo: organization.logo }}
+      title="Plan Your Event"
+      subtitle="Tell us a few details and we'll help you find the right menu."
+    >
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
-      <StorefrontHeader organization={organization} />
-
-      <div className="flex flex-col gap-1 text-center">
-        <h2 className="text-xl font-semibold">Plan Your Event</h2>
-        <p className="text-sm text-muted-foreground">Tell us about your special occasion</p>
-      </div>
+      <StorefrontContact organization={organization} />
 
       <EventDetailsForm
         tenantSlug={tenantSlug}
         businessName={organization.name}
         eventTypes={eventTypes.map((et) => ({ id: et.id, name: et.name, minGuests: et.minGuests }))}
       />
-    </main>
+    </PublicShell>
   );
 }

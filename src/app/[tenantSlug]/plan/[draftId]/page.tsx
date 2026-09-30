@@ -8,12 +8,12 @@ import { listStorefrontMenus, listCustomMenuSections } from "@/modules/menus/men
 import { getDraft, buildDraftQuote, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
 import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
-import { prisma } from "@/lib/db";
-import { StorefrontHeader } from "../../_components/storefront-header";
+import { PublicShell } from "@/components/public/public-shell";
 import { WizardStepper } from "../../_components/wizard-stepper";
 import { EventDetailsForm } from "../../_components/event-details-form";
 import { MenuStep } from "../../_components/menu-step";
 import { ItemsStep } from "../../_components/items-step";
+import { AddOnsStep } from "../../_components/addons-step";
 import { VenueStep } from "../../_components/venue-step";
 import { ReviewStep } from "../../_components/review-step";
 
@@ -49,12 +49,14 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
     const isCustom = data.menuChoice?.kind === "CUSTOM";
     return (
       <Shell organization={organization}>
-        <div className="flex flex-col items-center gap-4 py-12 text-center" data-testid="confirmation">
-          <CheckCircle2 className="size-14 text-success" />
+        <div className="flex flex-col items-center gap-4 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12" data-testid="confirmation">
+          <span className="flex size-16 items-center justify-center rounded-full bg-success/10 text-success">
+            <CheckCircle2 className="size-9" />
+          </span>
           <h2 className="text-2xl font-semibold">Request Submitted Successfully!</h2>
           <p className="text-muted-foreground">Thank you for choosing {organization.name} for your special event.</p>
           {isCustom ? (
-            <div className="max-w-md rounded-xl bg-muted p-4 text-sm">
+            <div className="max-w-md rounded-xl bg-accent p-4 text-left text-sm">
               <p className="font-semibold">Thank you for submitting your custom menu selection.</p>
               <p className="mt-2 text-muted-foreground">
                 Since this is a personalised menu, pricing is finalised based on your requirements and event details. One of our team members will contact you shortly to discuss the menu and confirm the price per plate.
@@ -73,8 +75,10 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
   if (isDraftExpired(draft.lastActivityAt)) {
     return (
       <Shell organization={organization}>
-        <div className="flex flex-col items-center gap-4 py-12 text-center" data-testid="expired">
-          <Clock className="size-14 text-muted-foreground" />
+        <div className="flex flex-col items-center gap-4 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12" data-testid="expired">
+          <span className="flex size-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Clock className="size-9" />
+          </span>
           <h2 className="text-2xl font-semibold">This link has expired</h2>
           <p className="max-w-md text-sm text-muted-foreground">
             This booking request is no longer available online. Please contact {organization.name} directly to start a new one.
@@ -108,7 +112,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
             guestCount: String(data.guestCount),
             childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
             child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
-            eventMealType: data.eventMealType,
+            eventMealTypes: data.eventMealTypes,
             menuPreference: data.menuPreference,
           },
         }}
@@ -131,22 +135,23 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
     } else {
       sections = await listCustomMenuSections(organization.id, data.menuPreference);
     }
-    const addOns = (await listAddOns(organization.id))
-      .filter((a) => a.isActive)
-      .map((a) => ({ id: a.id, name: a.name, description: a.description, priceType: a.priceType, price: Number(a.price) }));
     content = (
       <ItemsStep
         tenantSlug={tenantSlug}
         draftId={draft.id}
         menuName={menuName}
         sections={sections}
-        addOns={addOns}
         guests={data.guestCount}
         isCustomMenu={isCustom}
         initialItemIds={data.itemIds ?? []}
-        initialAddOnIds={data.addOnIds ?? []}
       />
     );
+  } else if (step === "addons") {
+    if (!data.itemIds?.length) notFound();
+    const addOns = (await listAddOns(organization.id))
+      .filter((a) => a.isActive)
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, type: a.type, priceType: a.priceType, price: Number(a.price), included: a.includedInPackage }));
+    content = <AddOnsStep tenantSlug={tenantSlug} draftId={draft.id} addOns={addOns} guests={data.guestCount} initialAddOnIds={data.addOnIds ?? []} />;
   } else if (step === "venue") {
     content = <VenueStep tenantSlug={tenantSlug} draftId={draft.id} initial={data.venue} />;
   } else {
@@ -159,7 +164,21 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
       throw error;
     }
     const eventTypes = await listEventTypes(organization.id);
-    const items = await itemNames(organization.id, data);
+    // The same sections the Choose Items step shows, so dishes are listed under their own category.
+    const reviewSections =
+      data.menuChoice?.kind === "MENU"
+        ? (await listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference })).find((m) => m.id === (data.menuChoice as { menuId: string }).menuId)?.sections ?? []
+        : await listCustomMenuSections(organization.id, data.menuPreference);
+    const extraIds = new Set(quote.extras.map((e) => e.id));
+    const picked = new Set(data.itemIds ?? []);
+    const extraCategories: Record<string, string> = {};
+    const selectedSections = reviewSections
+      .map((section) => {
+        const inSection = section.items.filter((i) => picked.has(i.id));
+        for (const item of inSection) if (extraIds.has(item.id) && !extraCategories[item.id]) extraCategories[item.id] = section.categoryName;
+        return { categoryName: section.categoryName, items: inSection.filter((i) => !extraIds.has(i.id)).map((i) => i.name) };
+      })
+      .filter((section) => section.items.length > 0);
     content = (
       <ReviewStep
         tenantSlug={tenantSlug}
@@ -170,37 +189,50 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           phone: formatPhoneDisplay(draft.customer.phone),
           eventTypeName: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
           eventDate: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
-          mealType: MEAL_LABEL[data.eventMealType] ?? data.eventMealType,
+          mealType: data.eventMealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
           menuPreferenceLabel: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
           guests: data.guestCount,
           childBelow5Count: data.childBelow5Count,
           child5To10Count: data.child5To10Count,
-          itemNames: items,
-          venueLine: [data.venue.venueBuildingName, data.venue.venueHallName, data.venue.completeVenueAddress].filter(Boolean).join(", "),
+          selectedSections,
+          extraCategories,
+          itemIds: data.itemIds ?? [],
+          addOnIds: data.addOnIds ?? [],
+          placedAt: new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).replace(/, (?=\d{1,2}:)/, " | "),
+          venueLine: [data.venue.venueBuildingName, data.venue.completeVenueAddress].filter(Boolean).join(", "),
         }}
       />
     );
   }
 
   return (
-    <Shell organization={organization}>
+    <Shell
+      organization={organization}
+      title={step === "details" ? "Plan Your Event" : undefined}
+      subtitle={step === "details" ? "Check your details, then continue to your menu." : undefined}
+    >
       <WizardStepper tenantSlug={tenantSlug} draftId={draft.id} current={step} reachedStep={draft.currentStep} />
       {content}
     </Shell>
   );
 }
 
-async function itemNames(organizationId: string, data: { itemIds?: string[] }): Promise<string[]> {
-  const rows = await prisma.menuItem.findMany({ where: { id: { in: data.itemIds ?? [] }, organizationId }, select: { id: true, name: true } });
-  const byId = new Map(rows.map((r) => [r.id, r.name]));
-  return (data.itemIds ?? []).map((id) => byId.get(id)).filter((n): n is string => !!n);
-}
-
-function Shell({ organization, children }: { organization: React.ComponentProps<typeof StorefrontHeader>["organization"]; children: React.ReactNode }) {
+function Shell({
+  organization,
+  title,
+  subtitle,
+  width,
+  children,
+}: {
+  organization: { name: string; logo: string | null };
+  title?: string;
+  subtitle?: string;
+  width?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-8 md:px-8">
-      <StorefrontHeader organization={organization} compact />
+    <PublicShell brand={{ name: organization.name, logo: organization.logo }} title={title} subtitle={subtitle} width={width}>
       {children}
-    </main>
+    </PublicShell>
   );
 }

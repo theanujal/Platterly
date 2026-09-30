@@ -51,8 +51,6 @@ export interface EventDetailsIntakeInput {
   venueLandmark?: string;
   venueContactName?: string;
   venueContactPhone?: string;
-  venueLatitude?: number;
-  venueLongitude?: number;
   venueAccessInstructions?: string;
   vehicleAccess?: VehicleAccessType;
   liveCounterAvailable?: boolean;
@@ -99,8 +97,6 @@ export async function submitEventDetails(organizationId: string, input: EventDet
       venueLandmark: input.venueLandmark,
       venueContactName: input.venueContactName,
       venueContactPhone: input.venueContactPhone,
-      venueLatitude: input.venueLatitude,
-      venueLongitude: input.venueLongitude,
       venueAccessInstructions: input.venueAccessInstructions,
       vehicleAccess: input.vehicleAccess,
       liveCounterAvailable: input.liveCounterAvailable,

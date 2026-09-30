@@ -4,8 +4,10 @@ import {
   startDraft,
   saveDraftMenuChoice,
   saveDraftItems,
+  saveDraftAddOns,
   saveDraftVenue,
   submitDraft,
+  saveDraftDetails,
   buildDraftQuote,
   getDraft,
   listAbandonedOrders,
@@ -42,12 +44,13 @@ const VENUE: DraftVenue = {
   venueType: "HOME",
   venueBuildingName: "Green Villa",
   venueDoorNumber: "12",
-  venueHallName: "Lawn",
   completeVenueAddress: "12 Green Villa Road",
   venueContactName: "Ravi",
   venueContactPhone: "9000000002",
   vehicleAccess: "VEHICLE_AND_PARKING",
   liveCounterAvailable: false,
+  gasElectricAvailable: true,
+  cookingInstructions: "No onion or garlic",
 };
 
 /** A tenant with one veg Menu (Starters capped at 1, Mains capped at 2), an Event Type using it, and two add-ons. */
@@ -86,7 +89,7 @@ async function setup() {
     guestCount: 60,
     childBelow5Count: 0,
     child5To10Count: 2,
-    eventMealType: "DINNER",
+    eventMealTypes: ["DINNER"],
     menuPreference: "VEGETARIAN",
     ...over,
   });
@@ -169,6 +172,37 @@ describe("menu + items steps (server-side rules)", () => {
     await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [], addOnIds: [] })).rejects.toThrow(/at least one/);
   });
 
+  it("a category with a limit must have its minimum picked before the dishes save (extras never count)", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    // Starters is satisfied, Mains (one dish on the menu) is still empty.
+    await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id] })).rejects.toThrow(/at least 1 more item from Mains/);
+    // A second starter is an extra, so it cannot stand in for a missing main.
+    await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id] })).rejects.toThrow(/Mains/);
+    const saved = await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+    expect(saved.currentStep).toBe(4); // the add-ons step is now unlocked
+  });
+
+  it("step 4 saves optional add-ons, unlocks the venue step, and rejects one that isn't available", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    await expect(saveDraftAddOns(t.org.id, draft.id, [])).rejects.toThrow(/menu items first/);
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+
+    await expect(saveDraftAddOns(t.org.id, draft.id, ["not-an-add-on"])).rejects.toThrow(/isn't available/);
+    const saved = await saveDraftAddOns(t.org.id, draft.id, [t.perPlateAddOn.id, t.perPlateAddOn.id]);
+    expect(saved.currentStep).toBe(5);
+    expect((await getDraft(t.org.id, draft.id))!.data.addOnIds).toEqual([t.perPlateAddOn.id]); // repeats collapse
+
+    // None at all is fine, and saving the dishes again keeps the chosen add-ons.
+    await saveDraftAddOns(t.org.id, draft.id, []);
+    await saveDraftAddOns(t.org.id, draft.id, [t.fixedAddOn.id]);
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+    expect((await getDraft(t.org.id, draft.id))!.data.addOnIds).toEqual([t.fixedAddOn.id]);
+  });
+
   it("another tenant's draft id is simply not found", async () => {
     const a = await setup();
     const b = await setup();
@@ -223,7 +257,12 @@ describe("quote + final submit (Order created only here)", () => {
     const order = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
     expect(order.customerId).toBe(customer.id);
     expect(Number(order.total)).toBe(39300);
-    expect(order.venueHallName).toBe("Lawn");
+    // "Number of Guests" is the adults; the two 5-10 kids sit on top.
+    expect(order.venueDoorNumber).toBe("12");
+    expect(order.adultCount).toBe(60);
+    expect(order.totalParticipants).toBe(62);
+    expect(order.gasElectricAvailable).toBe(true);
+    expect(order.cookingInstructions).toBe("No onion or garlic");
     expect(order.notes).toBe("Please call before delivery");
 
     const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
@@ -238,6 +277,33 @@ describe("quote + final submit (Order created only here)", () => {
     const done = await getDraft(t.org.id, draft.id);
     expect(done?.status).toBe("COMPLETED");
     expect(done?.orderId).toBe(order.id);
+  });
+
+  it("several meals repeat the menu, extras and add-ons for each, as a Multi Order with one entry per meal", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+    const before = (await getDraft(t.org.id, draft.id))!.data;
+    await saveDraftDetails(t.org.id, draft.id, { ...before, eventMealTypes: ["LUNCH", "DINNER", "LUNCH"] });
+    const data = (await getDraft(t.org.id, draft.id))!.data;
+    expect(data.eventMealTypes).toEqual(["LUNCH", "DINNER"]);
+
+    const quote = await buildDraftQuote(t.org.id, data);
+    expect(quote.meals).toBe(2);
+    expect(quote.menuAmount).toBe(500 * 60 * 2);
+    expect(quote.total).toBe(2 * (30000 + 7200 + 600 + 1000) + 500); // the kids' charge is not repeated
+
+    const result = await submitDraft(t.org.id, draft.id);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId }, include: { mealPlanEntries: true } });
+    expect(order.orderKind).toBe("MULTI");
+    expect(order.mealPlanEntries.map((m) => m.mealType).sort()).toEqual(["DINNER", "LUNCH"]);
+    expect(Number(order.total)).toBe(quote.total);
+  });
+
+  it("needs at least one meal", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+    const before = (await getDraft(t.org.id, draft.id))!.data;
+    await expect(saveDraftDetails(t.org.id, draft.id, { ...before, eventMealTypes: [] })).rejects.toThrow(/at least one meal/);
   });
 
   it("a second submit of the same draft is refused (no duplicate Order)", async () => {

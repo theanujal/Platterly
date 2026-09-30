@@ -673,6 +673,9 @@ model Menu {
   menuType       FoodType
   pricePerPlate  Decimal      @db.Decimal(10, 2)
   isActive       Boolean      @default(true)
+  // Display order on the public storefront and in Menu Types (AJ, 2026-10-01): the owner or a manager shuffles it
+  // with the move up / down buttons, the same convention as EventType.sortOrder.
+  sortOrder      Int          @default(0)
 
   // Children Guests & Pricing — under-5 is complimentary unless explicitly
   // opted into being charged; 5-10 always prices, either as a percentage of
@@ -829,6 +832,8 @@ model AddOn {
   type           AddOnType
   priceType      AddOnPriceType
   price          Decimal        @db.Decimal(10, 2)
+  // Part of the package: the customer can still pick it, but it adds nothing to the bill (resolveCatalogItem prices it at 0).
+  includedInPackage Boolean     @default(false)
   isActive       Boolean        @default(true)
 
   orderItems         OrderItem[]
@@ -1200,8 +1205,6 @@ model Order {
   venueLandmark           String?
   venueContactName        String?
   venueContactPhone       String?
-  venueLatitude           Float?
-  venueLongitude          Float?
   venueAccessInstructions String?
   vehicleAccess           VehicleAccessType?
   liveCounterAvailable    Boolean?
@@ -1224,8 +1227,6 @@ model Order {
   childBelow5Count  Int?
   child5To10Count   Int?
   totalParticipants Int?
-  adultNonVegCount  Int?
-  adultVegCount     Int?
 
   // Children Guests & Pricing (order-level, all order kinds) — which Menu's
   // child rates apply to childBelow5Count/child5To10Count above when
@@ -1418,7 +1419,6 @@ model Quotation {
   // (venueType/venueDoorNumber/.../vehicleAccess/gasElectricAvailable/
   // deliveryInstructions/cookingInstructions) — Quotation keeps only the
   // plain venue/eventAddress text fields above. Also excluded:
-  // adultNonVegCount/adultVegCount (unwritten on Order itself) and
   // individualAdultRate (declared on Order but never read/written anywhere).
   orderKind OrderKind @default(SINGLE)
 

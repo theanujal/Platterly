@@ -48,7 +48,7 @@ test("claim a custom link, then view the real public storefront page (unauthenti
   const response = await publicPage.goto(`/${slug}`);
   expect(response?.status()).toBe(200);
 
-  await expect(publicPage.getByRole("heading", { name: "Plan Your Event", level: 2 })).toBeVisible();
+  await expect(publicPage.getByRole("heading", { name: "Plan Your Event", level: 1 })).toBeVisible();
   await expect(publicPage.getByLabel("Your Name")).toBeVisible();
   await expect(publicPage.getByRole("textbox", { name: "Phone Number" })).toBeVisible();
 

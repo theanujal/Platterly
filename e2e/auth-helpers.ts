@@ -66,3 +66,20 @@ export async function selectOption(page: Page, trigger: Locator, optionName: str
     await option.first().click({ timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
 }
+
+/**
+ * Pick one day in the app's calendar popover (the same `DateRangePicker` the Create Order page uses; on the
+ * public form it is single-day). Steps the month forward until the target month shows, then clicks the day.
+ */
+export async function pickCalendarDate(page: Page, trigger: Locator, isoDate: string): Promise<void> {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  await trigger.click();
+  const popover = page.locator('[data-slot="popover-content"]');
+  await expect(popover).toBeVisible();
+  for (let i = 0; i < 24 && (await popover.locator("span.font-medium").textContent()) !== monthLabel; i++) {
+    await popover.getByRole("button", { name: "Next month" }).click();
+  }
+  await popover.getByRole("button", { name: String(day), exact: true }).click();
+  await expect(popover).not.toBeVisible();
+}

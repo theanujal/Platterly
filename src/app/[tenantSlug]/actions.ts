@@ -8,6 +8,7 @@ import {
   saveDraftDetails,
   saveDraftMenuChoice,
   saveDraftItems,
+  saveDraftAddOns,
   saveDraftVenue,
   submitDraft,
   StorefrontDraftError,
@@ -61,7 +62,7 @@ function readEventDetails(formData: FormData): EventDetailsInput {
     guestCount: count(formData, "guestCount"),
     childBelow5Count: count(formData, "childBelow5Count"),
     child5To10Count: count(formData, "child5To10Count"),
-    eventMealType: text(formData, "eventMealType") as MealType,
+    eventMealTypes: formData.getAll("eventMealTypes").map(String) as MealType[],
     menuPreference: text(formData, "menuPreference") as FoodType,
   };
 }
@@ -103,10 +104,20 @@ export async function saveMenuChoiceAction(tenantSlug: string, draftId: string, 
   }
 }
 
-export async function saveItemsAction(tenantSlug: string, draftId: string, itemIds: string[], addOnIds: string[]): Promise<StepResult> {
+export async function saveItemsAction(tenantSlug: string, draftId: string, itemIds: string[]): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    await saveDraftItems(organization.id, draftId, { itemIds, addOnIds });
+    await saveDraftItems(organization.id, draftId, { itemIds });
+    return { ok: true };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function saveAddOnsAction(tenantSlug: string, draftId: string, addOnIds: string[]): Promise<StepResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    await saveDraftAddOns(organization.id, draftId, addOnIds);
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -122,7 +133,6 @@ export async function saveVenueAction(tenantSlug: string, draftId: string, formD
       venueDoorNumber: text(formData, "venueDoorNumber"),
       venueTower: text(formData, "venueTower"),
       venueFloor: text(formData, "venueFloor"),
-      venueHallName: text(formData, "venueHallName"),
       completeVenueAddress: text(formData, "completeVenueAddress"),
       venueLandmark: text(formData, "venueLandmark"),
       venueContactName: text(formData, "venueContactName"),
@@ -130,6 +140,8 @@ export async function saveVenueAction(tenantSlug: string, draftId: string, formD
       venueAccessInstructions: text(formData, "venueAccessInstructions"),
       vehicleAccess: text(formData, "vehicleAccess") as VehicleAccessType,
       liveCounterAvailable: text(formData, "liveCounterAvailable") === "true",
+      gasElectricAvailable: text(formData, "gasElectricAvailable") === "true",
+      cookingInstructions: text(formData, "cookingInstructions"),
     };
     await saveDraftVenue(organization.id, draftId, venue);
     return { ok: true };

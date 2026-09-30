@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Search, LayoutGrid, List as ListIcon, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ViewToggle } from "@/components/catalog/view-toggle";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -286,32 +287,7 @@ export function CatalogBrowser({
           </div>
         )}
 
-        <div className="flex shrink-0 gap-1 rounded-lg border border-input p-0.5">
-          <Button
-            type="button"
-            variant={view === "grid" ? "default" : "ghost"}
-            size="sm"
-            className="h-10 gap-1.5 px-3 text-sm"
-            aria-pressed={view === "grid"}
-            aria-label="Grid view"
-            onClick={() => setView("grid")}
-          >
-            <LayoutGrid className="size-4" />
-            Grid
-          </Button>
-          <Button
-            type="button"
-            variant={view === "list" ? "default" : "ghost"}
-            size="sm"
-            className="h-10 gap-1.5 px-3 text-sm"
-            aria-pressed={view === "list"}
-            aria-label="List view"
-            onClick={() => setView("list")}
-          >
-            <ListIcon className="size-4" />
-            List
-          </Button>
-        </div>
+        <ViewToggle view={view} onChange={setView} />
       </div>
       <Separator />
 

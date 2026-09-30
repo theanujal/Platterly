@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { resolveApprovalLink } from "@/modules/menu-approvals/approval-link";
 import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
 import { formatAmount } from "@/modules/orders/order-card";
-import { Card, CardContent } from "@/components/ui/card";
+import { CalendarDays, Check, MapPin, UtensilsCrossed, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { PublicShell } from "@/components/public/public-shell";
+import { FormCard } from "@/components/public/form-section";
 import { ApprovalActions } from "./_components/approval-actions";
 
 export const metadata: Metadata = {
@@ -22,92 +25,102 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
   // One neutral page for every failure (wrong, expired, revoked, superseded or already answered) — no way to tell them apart.
   if (!link.ok) {
     return (
-      <main className="flex flex-1 items-center justify-center p-8">
-        <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-          <h1 className="text-xl font-semibold">This link is no longer active</h1>
+      <PublicShell brand={{ name: "Platterly", logo: null }} width="max-w-xl">
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12">
+          <h1 className="text-2xl font-semibold">This link is no longer active</h1>
           <p className="text-sm text-muted-foreground">
             If you&apos;ve already responded, there&apos;s nothing more to do. Otherwise, please contact your caterer — they can send you a new one.
           </p>
         </div>
-      </main>
+      </PublicShell>
     );
   }
 
   const { snapshot } = link;
   const sameDay = snapshot.eventStartDate === snapshot.eventEndDate;
+  const dateText = sameDay ? formatDay(snapshot.eventStartDate) : `${formatDay(snapshot.eventStartDate)} – ${formatDay(snapshot.eventEndDate)}`;
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10 md:px-8">
-      <header className="flex flex-col items-center gap-1 text-center">
-        <p className="text-sm text-muted-foreground">{link.organizationName}</p>
-        <h1 className="text-xl font-semibold">Review &amp; Approve Menu</h1>
-        <p className="text-xs text-muted-foreground">Version {link.versionNumber}</p>
-      </header>
-
-      <Card>
-        <CardContent className="flex flex-col gap-1 text-sm">
+    <PublicShell
+      brand={{ name: link.organizationName, logo: link.organizationLogo }}
+      title="Review & Approve Menu"
+      subtitle={`Version ${link.versionNumber} · Please check your menu below, then approve it or ask us for changes.`}
+      width="max-w-2xl"
+    >
+      <FormCard className="gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-base font-semibold">{snapshot.customerName}</p>
-          {snapshot.eventTypeName && <p className="text-muted-foreground">{snapshot.eventTypeName}</p>}
-          <p>
-            <span className="text-muted-foreground">Date: </span>
-            {sameDay ? formatDay(snapshot.eventStartDate) : `${formatDay(snapshot.eventStartDate)} – ${formatDay(snapshot.eventEndDate)}`}
-          </p>
-          {snapshot.guests !== null && (
-            <p>
-              <span className="text-muted-foreground">Guests: </span>
-              {snapshot.guests}
-            </p>
-          )}
+          {snapshot.eventTypeName && <Badge variant="outline">{snapshot.eventTypeName}</Badge>}
+        </div>
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <Detail icon={<CalendarDays className="size-4" />} label="Date" value={dateText} />
+          {snapshot.guests !== null && <Detail icon={<Users className="size-4" />} label="Guests" value={String(snapshot.guests)} />}
           {snapshot.venue && (
-            <p>
-              <span className="text-muted-foreground">Venue: </span>
-              {snapshot.venue}
-            </p>
+            <div className="sm:col-span-2">
+              <Detail icon={<MapPin className="size-4" />} label="Venue" value={snapshot.venue} />
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </dl>
+      </FormCard>
 
       {snapshot.meals.length > 0 && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {snapshot.meals.map((meal) => (
-            <div key={`${meal.date}-${meal.mealType}`} className="flex flex-col gap-1 rounded-lg border border-border p-4 text-sm">
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-semibold">{MEAL_TYPE_LABEL[meal.mealType]}</span>
-                <span className="text-xs text-muted-foreground">{formatDay(meal.date)}</span>
+            <section key={`${meal.date}-${meal.mealType}`} className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+              <div className="flex items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <UtensilsCrossed className="size-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[15px] font-semibold leading-tight">{MEAL_TYPE_LABEL[meal.mealType]}</h2>
+                  {meal.menuName && <p className="text-sm text-muted-foreground">{meal.menuName}</p>}
+                </div>
+                <span className="text-sm text-muted-foreground">{formatDay(meal.date)}</span>
               </div>
-              {meal.menuName && <span className="text-muted-foreground">{meal.menuName}</span>}
-              {meal.items.length > 0 && (
-                <ul className="mt-1 flex flex-col gap-0.5">
-                  {meal.items.map((item, index) => (
-                    <li key={index}>{item.name}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
+              {meal.items.length > 0 && <ItemList names={meal.items.map((item) => item.name)} />}
+            </section>
           ))}
         </div>
       )}
 
       {snapshot.selectedItems.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-lg border border-border p-4 text-sm">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{snapshot.isCustomMenu ? "Your custom menu" : "Selected items"}</h2>
-          <ul className="flex flex-col gap-0.5">
-            {snapshot.selectedItems.map((item, index) => (
-              <li key={index}>
-                {item.name}
-                {item.isExtra && <span className="text-muted-foreground"> (extra)</span>}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <section className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+          <h2 className="text-[15px] font-semibold">{snapshot.isCustomMenu ? "Your custom menu" : "Selected items"}</h2>
+          <ItemList names={snapshot.selectedItems.map((item) => (item.isExtra ? `${item.name} (extra)` : item.name))} />
+        </section>
       )}
 
-      <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 p-4 text-sm font-semibold">
+      <div className="flex items-center justify-between rounded-lg bg-accent px-5 py-3 font-semibold text-accent-foreground">
         <span>Total</span>
         <span>{formatAmount(snapshot.total)}</span>
       </div>
 
       <ApprovalActions token={token} />
-    </main>
+    </PublicShell>
+  );
+}
+
+function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 text-muted-foreground">{icon}</span>
+      <div>
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd className="font-medium">{value}</dd>
+      </div>
+    </div>
+  );
+}
+
+function ItemList({ names }: { names: string[] }) {
+  return (
+    <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+      {names.map((name, index) => (
+        <li key={index} className="flex items-start gap-2">
+          <Check className="mt-0.5 size-4 shrink-0 text-success" />
+          {name}
+        </li>
+      ))}
+    </ul>
   );
 }

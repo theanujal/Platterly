@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, backdateStorefrontDrafts } from "./db";
-import { signUpCaterer } from "./auth-helpers";
+import { pickCalendarDate, selectOption, signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 11 Group 11.3 + Chunk 12 — the public multi-step order flow and the
@@ -98,6 +98,16 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.getByRole("button", { name: "Create add-on" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
+  // A second add-on, marked included in the package: it is chosen like any other but adds nothing to the bill.
+  const includedName = `Welcome Drink ${suffix}`;
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  await page.getByLabel("Name").fill(includedName);
+  await selectOption(page, page.getByLabel("Type", { exact: true }), "Special Add-on");
+  await page.getByLabel("Price", { exact: true }).fill("50");
+  await page.getByRole("checkbox", { name: "Included in the package" }).check();
+  await page.getByRole("button", { name: "Create add-on" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
   // --- Event Type with that Menu assigned (the storefront scopes its menus to this) ---
   const eventTypeName = `Wedding ${suffix}`;
   await page.goto("/menu-catalog/event-types");
@@ -108,7 +118,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Customer walks the public flow (brand-new cookie-less context, no login) ---
-  const publicContext = await browser.newContext();
+  // The public form limits draft starts to 15 an hour per address (an in-memory counter in the dev server), and
+  // every run of this suite shares one address, so each run presents its own.
+  const publicContext = await browser.newContext({
+    extraHTTPHeaders: { "x-forwarded-for": `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` },
+  });
   const publicPage = await publicContext.newPage();
   const customerName = `Reyansh Kapoor ${suffix}`;
 
@@ -119,12 +133,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500000");
   // Two days out: customers need 2 days' notice (AJ, 2026-09-27), and that is
   // still inside the Kitchen Dashboard board's today-through-+2-days window.
-  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));
+  await pickCalendarDate(publicPage, publicPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
   await publicPage.getByLabel("Number of Guests").fill("100");
-  await publicPage.getByLabel("Event Time").click();
-  await publicPage.getByRole("option", { name: "Dinner" }).click();
+  await publicPage.getByRole("checkbox", { name: "Dinner" }).click();
   await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
   await expect(publicPage.getByRole("checkbox", { name: /Keep me posted/ })).toBeChecked();
   await publicPage.getByRole("button", { name: "Continue to Menu Selection" }).click();
@@ -133,54 +146,136 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // Step 2 — Choose Menu (Custom Menu option is always offered)
   await expect(publicPage.getByTestId("custom-menu-card")).toBeVisible();
   const menuCard = publicPage.getByTestId("menu-card").filter({ hasText: menuName });
+  // Search narrows the menus (the Custom Menu option stays), and clearing it brings them back.
+  await publicPage.getByLabel("Search menus").fill("no such menu");
+  await expect(publicPage.getByTestId("menu-card")).toHaveCount(0);
+  await expect(publicPage.getByTestId("custom-menu-card")).toBeVisible();
+  await publicPage.getByLabel("Search menus").fill(menuName.slice(0, 8).toLowerCase());
+  await expect(menuCard).toBeVisible();
   await menuCard.getByRole("button", { name: "View details" }).click();
+  // The popup names the categories only, never the dishes under them.
   await expect(publicPage.getByRole("dialog").getByText(categoryName)).toBeVisible();
+  await expect(publicPage.getByRole("dialog").getByText(itemName)).toHaveCount(0);
   await publicPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
-  await menuCard.getByRole("button", { name: "Select this menu" }).click();
+  // The menu step is always a grid: no Grid / List switch.
+  await expect(publicPage.getByLabel("Grid view")).toHaveCount(0);
+  // Nothing is picked for the customer: Continue stays off until they choose, and Select only marks the choice.
+  await publicPage.getByLabel("Search menus").fill("");
+  const continueButton = publicPage.getByRole("button", { name: "Continue to Menu Items" });
+  await expect(continueButton).toBeDisabled();
+  await menuCard.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(menuCard.getByRole("button", { name: "Selected" })).toBeVisible();
+  await expect(publicPage).toHaveURL(/step=menu/);
+  await continueButton.click();
   await expect(publicPage).toHaveURL(/step=items/);
 
-  // Step 3 — Choose Items: add/remove only (no quantity boxes anywhere)
+  // Step 3 — Choose Items: Select / Selected only (no quantity boxes anywhere)
   await expect(publicPage.getByLabel(/Quantity/)).toHaveCount(0);
   const counter = publicPage.getByTestId("category-counter");
-  await expect(counter).toHaveText("0/1");
-  const tikkaCard = publicPage.getByTestId("item-card").filter({ hasText: itemName });
-  await tikkaCard.getByRole("button", { name: "Add" }).click();
-  await expect(counter).toHaveText("1/1");
+  await expect(counter).toHaveText("0/1 selected");
+  // The limit is a minimum, and there is no "Show All" tab: one tab per category, the first one chosen.
+  await expect(publicPage.getByText("Select at least 1 item from this category", { exact: false })).toBeVisible();
+  await expect(publicPage.getByRole("tab", { name: /Show All/ })).toHaveCount(0);
+  await expect(publicPage.getByRole("tab", { name: new RegExp(categoryName) })).toHaveAttribute("aria-selected", "true");
+  // Finding dishes: search narrows the list, and a category can be folded.
+  await publicPage.getByLabel("Search dishes").fill("zzzz");
+  await expect(publicPage.getByText("No dishes match your search.")).toBeVisible();
+  await publicPage.getByLabel("Search dishes").fill("");
+  await expect(publicPage.getByTestId("item-card")).toHaveCount(2);
+  const categoryHeader = publicPage.getByTestId("item-section").first().getByRole("button", { expanded: true }).first();
+  await categoryHeader.click();
+  await expect(publicPage.getByTestId("item-card")).toHaveCount(0);
+  await publicPage.getByTestId("item-section").first().getByRole("button", { expanded: false }).first().click();
+  await expect(publicPage.getByTestId("item-card")).toHaveCount(2);
 
-  // The View Details popup, then adding beyond the cap opens the Extra Item popup
+  // The dishes are a table (Dish, Type, Status), and this step has no Grid / List switch.
+  await expect(publicPage.getByLabel("Grid view")).toHaveCount(0);
+  for (const heading of ["Dish", "Type", "Status"]) await expect(publicPage.getByText(heading, { exact: true })).toBeVisible();
+
+  const tikkaCard = publicPage.getByTestId("item-card").filter({ hasText: itemName });
   const kebabCard = publicPage.getByTestId("item-card").filter({ hasText: extraItemName });
+  // While a slot is free, every dish says it is included; nothing is chosen for the customer.
+  await expect(tikkaCard.getByText("Included", { exact: true })).toBeVisible();
+  await expect(tikkaCard.getByText("₹150.00")).toHaveCount(0); // an included dish shows no price, only extras do
+  // Continuing without the category's minimum opens the Selection Required popup naming the missing category.
+  await publicPage.getByRole("button", { name: "Continue to Add-ons" }).click();
+  const required = publicPage.getByRole("dialog").filter({ hasText: "Selection Required" });
+  await expect(required.getByText(new RegExp(`Please select at least one item from: .*${categoryName}`))).toBeVisible();
+  await expect(publicPage).toHaveURL(/step=items/);
+  await required.getByRole("button", { name: "OK" }).click();
+  await tikkaCard.getByRole("button", { name: "Select", exact: true }).click();
+  await expect(tikkaCard.getByRole("button", { name: "Selected" })).toBeVisible();
+  await expect(counter).toHaveText("1/1 selected");
+  // With the included pick used up, the other dish now says what it would add to the bill.
+  await expect(kebabCard.getByText("Extra", { exact: true })).toBeVisible();
+  await expect(kebabCard.getByText(/₹[\d,.]+ per plate/)).toBeVisible();
+
+  // The View Details popup, then adding beyond the limit opens the Additional Option popup
   await kebabCard.getByRole("button", { name: "View details" }).click();
   await expect(publicPage.getByRole("dialog").getByText("Vegetarian")).toBeVisible();
   await publicPage.getByRole("button", { name: "Add to Selection" }).click();
-  await expect(publicPage.getByRole("dialog").getByText("Add Extra Item?")).toBeVisible();
-  await expect(publicPage.getByRole("dialog").getByText(/₹120\.00 × 100 guests = ₹12,000\.00/)).toBeVisible();
-  await publicPage.getByRole("button", { name: "Add as Extra Item" }).click();
-  await expect(kebabCard.getByText(/Extra · ₹12,000\.00/)).toBeVisible();
-  await expect(counter).toHaveText("1/1"); // the extra doesn't count toward the cap
+  await expect(publicPage.getByRole("dialog").getByText(/is an Additional Option/)).toBeVisible();
+  await expect(publicPage.getByRole("dialog").getByText(/additional charge of ₹12,000\.00/)).toBeVisible();
+  await publicPage.getByRole("button", { name: "Go Back" }).click();
+  await expect(kebabCard.getByRole("button", { name: "Select", exact: true })).toBeVisible(); // not selected automatically
+  await kebabCard.getByRole("button", { name: "Select", exact: true }).click();
+  await publicPage.getByRole("button", { name: /^Add .* \(\+₹12,000\.00\)$/ }).click();
+  await expect(kebabCard.getByText("Extra", { exact: true })).toBeVisible();
+  await expect(counter).toHaveText("1/1 selected"); // the extra doesn't count toward the cap
+  await expect(publicPage.getByTestId("selection-summary")).toHaveText("2 items selected");
+  await expect(publicPage.getByTestId("extras-summary")).toHaveText("Extras: ₹12,000.00");
+  await publicPage.getByRole("button", { name: "Continue to Add-ons" }).click();
 
-  await publicPage.getByRole("button", { name: new RegExp(addOnName) }).click();
-  await expect(publicPage.getByTestId("selection-summary")).toHaveText("2 items selected · 1 add-on");
-  await publicPage.getByRole("button", { name: "Continue" }).click();
+  // Step 4 — Add-ons & Live Counters (optional, its own step)
+  await expect(publicPage).toHaveURL(/step=addons/);
+  await expect(publicPage.getByRole("heading", { name: "Add-ons & Live Counters" })).toBeVisible();
+  await expect(publicPage.getByTestId("addon-summary")).toHaveText("0 add-ons selected");
+  await publicPage.getByRole("button", { name: `Select ${addOnName}` }).click();
+  await expect(publicPage.getByTestId("addon-summary")).toHaveText("1 add-on selected");
+  // The two groups are tabs; an add-on marked included says so and shows no price.
+  await expect(publicPage.getByRole("tab", { name: /Live Counters/ })).toHaveAttribute("aria-selected", "true");
+  await publicPage.getByRole("tab", { name: /^Add-ons/ }).click();
+  const includedCard = publicPage.getByTestId("addon-card").filter({ hasText: includedName });
+  await expect(includedCard.getByText("Included in Package")).toBeVisible();
+  await expect(includedCard.getByText("₹50.00")).toHaveCount(0);
+  await publicPage.getByLabel("Search add-ons").fill("zzzz");
+  await expect(publicPage.getByText("Nothing matches your search.")).toBeVisible();
+  await publicPage.getByLabel("Search add-ons").fill("");
+  await publicPage.getByRole("button", { name: `Select ${includedName}` }).click();
+  await expect(publicPage.getByTestId("addon-summary")).toHaveText("2 add-ons selected");
+  await publicPage.getByRole("button", { name: "Continue to Venue & Delivery" }).click();
   await expect(publicPage).toHaveURL(/step=venue/);
 
-  // Step 4 — Venue & Delivery
+  // Step 5 — Venue & Delivery
   await publicPage.getByLabel("Venue Type").click();
   await publicPage.getByRole("option", { name: "Home" }).click();
   await publicPage.getByLabel("Venue / Building Name").fill("Green Villa");
   await publicPage.getByLabel("Door / Flat / House No.").fill("12");
-  await publicPage.getByLabel("Function Area / Hall Name").fill("Lawn");
+  await publicPage.getByLabel("Tower / Block").fill("Tower B");
+  await publicPage.getByLabel("Floor").fill("2nd Floor");
+  await expect(publicPage.getByLabel("Function Area / Hall Name")).toHaveCount(0); // the hall name is not asked of the customer
   await publicPage.getByLabel("Complete Venue Address").fill("12 Green Villa Road");
   await publicPage.getByLabel("Venue Contact Person").fill("Ravi");
   await publicPage.getByRole("textbox", { name: "Contact Number" }).fill("9000000002");
   await publicPage.getByLabel("Vehicle Access").click();
   await publicPage.getByRole("option", { name: "Vehicle can enter venue & parking available" }).click();
+  await publicPage.getByLabel("Cooking Instructions (Optional)").fill("No onion or garlic");
+  await publicPage.getByRole("checkbox", { name: "Gas / electric connection available at venue?" }).check();
   await publicPage.getByRole("button", { name: "Review Order" }).click();
   await expect(publicPage).toHaveURL(/step=review/);
 
-  // Step 5 — Review: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000
+  // Step 6 — Review: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000
   await expect(publicPage.getByTestId("review-items")).toContainText(itemName);
-  await expect(publicPage.getByTestId("review-pricing")).toContainText("Extra:");
+  await expect(publicPage.getByTestId("review-pricing")).toContainText("Extra Items");
+  await expect(publicPage.getByText("Children Guests & Pricing")).toHaveCount(0);
+  await expect(publicPage.getByRole("heading", { name: "Selected Menu Items" })).toBeVisible();
+  // An add-on can be taken off right here; the total only moves by what it cost (the included one cost nothing).
+  await expect(publicPage.getByTestId("review-addon")).toHaveCount(2);
+  await expect(publicPage.getByTestId("review-pricing")).toContainText("Included in package"); // the included add-on adds nothing
+  await publicPage.getByRole("button", { name: `Remove ${includedName}` }).click();
+  await expect(publicPage.getByTestId("review-addon")).toHaveCount(1);
   await expect(publicPage.getByTestId("review-total")).toHaveText("₹53,000.00");
+  await publicPage.getByLabel("Additional Notes (Optional)").fill("Please call before delivery");
   await publicPage.getByRole("button", { name: "Submit Request" }).click();
   await expect(publicPage.getByTestId("confirmation")).toContainText("Request Submitted Successfully!");
 
@@ -190,12 +285,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await publicPage.getByLabel("Your Name").fill(abandonName);
   await publicPage.getByLabel("Email Address").fill(`abandon-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876511111");
-  await publicPage.getByLabel("Event Date").fill(toLocalIsoDate(new Date(Date.now() + 5 * 86_400_000)));
+  await pickCalendarDate(publicPage, publicPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 5 * 86_400_000)));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
   await publicPage.getByLabel("Number of Guests").fill("80");
-  await publicPage.getByLabel("Event Time").click();
-  await publicPage.getByRole("option", { name: "Lunch" }).click();
+  await publicPage.getByRole("checkbox", { name: "Lunch" }).click();
   await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
   await publicPage.getByRole("button", { name: "Continue to Menu Selection" }).click();
   await expect(publicPage).toHaveURL(/step=menu/);
@@ -206,6 +300,17 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.goto("/orders");
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Pending Review");
+
+  // --- What the customer typed is what the kitchen sees on the order (the fields stay in sync) ---
+  await orderCard().getByRole("link").first().click();
+  await expect(page).toHaveURL(/\/orders\/.+/);
+  await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
+  await expect(page.getByLabel("Tower / Block")).toHaveValue("Tower B");
+  await expect(page.getByLabel("Floor")).toHaveValue("2nd Floor");
+  await expect(page.getByLabel("Cooking Instructions")).toHaveValue("No onion or garlic");
+  await expect(page.getByRole("checkbox", { name: "Gas / electric connection available at venue?" })).toBeChecked();
+  await expect(page.getByLabel("Vehicle Access")).toContainText("Vehicle can enter venue & parking available");
+  await expect(page.getByLabel("Additional Notes")).toHaveValue("Please call before delivery");
 
   await page.goto("/menu-approvals");
   await expect(page.getByText(customerName, { exact: true })).toBeVisible();
@@ -234,7 +339,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await customerPage.goto(linkV1);
   await expect(customerPage.getByRole("heading", { name: "Review & Approve Menu" })).toBeVisible();
   await expect(customerPage.getByText(customerName)).toBeVisible();
-  await expect(customerPage.getByText(/Guests:\s*100/)).toBeVisible();
+  await expect(customerPage.getByText("Guests", { exact: true })).toBeVisible();
+  await expect(customerPage.getByText("100", { exact: true })).toBeVisible();
   await expect(customerPage.getByText(itemName)).toBeVisible();
   await customerPage.getByRole("button", { name: "Request Changes" }).click();
   await customerPage.getByLabel("What would you like to change?").fill("Please swap the starter for something lighter.");

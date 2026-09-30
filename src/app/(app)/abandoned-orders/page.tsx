@@ -248,7 +248,7 @@ export default async function AbandonedOrdersPage() {
               <StatCell icon={Users} tone="bg-info/10 text-info" caption="Guests" value={draft.guestCount} />
             </div>
             <div className="pl-3">
-              <StatCell icon={Dome} tone="bg-tone-violet/10 text-tone-violet" caption="Meal" value={MEAL_TYPE_LABEL[draft.eventMealType]} />
+              <StatCell icon={Dome} tone="bg-tone-violet/10 text-tone-violet" caption="Meal" value={draft.eventMealTypes.map((m) => MEAL_TYPE_LABEL[m]).join(", ") || "—"} />
             </div>
           </div>
 

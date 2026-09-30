@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { FileText } from "lucide-react";
+import { CalendarDays, MapPin, PartyPopper, UtensilsCrossed } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { resolveQuotationToken, getQuotation, markQuotationViewed, isQuotationPastValidity } from "@/modules/quotations/quotation";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { PublicShell } from "@/components/public/public-shell";
+import { FormCard } from "@/components/public/form-section";
 import { QuotationResponseActions } from "./_components/quotation-response-actions";
 import type { QuotationStatus, MealType } from "@/generated/prisma/enums";
 
@@ -54,12 +55,12 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
 
   if (!resolved) {
     return (
-      <main className="flex flex-1 items-center justify-center p-8">
-        <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-          <h1 className="text-xl font-semibold">This link is no longer valid</h1>
+      <PublicShell brand={{ name: "Platterly", logo: null }} width="max-w-xl">
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12">
+          <h1 className="text-2xl font-semibold">This link is no longer valid</h1>
           <p className="text-sm text-muted-foreground">It may have been revoked or expired. Ask your caterer to resend it.</p>
         </div>
-      </main>
+      </PublicShell>
     );
   }
 
@@ -72,47 +73,40 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
   ]);
   if (!quotation) {
     return (
-      <main className="flex flex-1 items-center justify-center p-8">
-        <div className="flex max-w-sm flex-col items-center gap-2 text-center">
-          <h1 className="text-xl font-semibold">This quotation is no longer available</h1>
+      <PublicShell brand={{ name: organization.name, logo: organization.logo }} width="max-w-xl">
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12">
+          <h1 className="text-2xl font-semibold">This quotation is no longer available</h1>
         </div>
-      </main>
+      </PublicShell>
     );
   }
 
   const isExpiredByDate = isQuotationPastValidity(quotation.validUntil);
 
+  const dayFormat = { day: "numeric", month: "short", year: "numeric" } as const;
+  const dateText =
+    quotation.eventStartDate && quotation.eventEndDate
+      ? quotation.eventStartDate.toLocaleDateString("en-IN", dayFormat) +
+        (quotation.eventStartDate.getTime() !== quotation.eventEndDate.getTime() ? ` – ${quotation.eventEndDate.toLocaleDateString("en-IN", dayFormat)}` : "")
+      : null;
+
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-6 px-4 py-10 md:px-8">
-      <header className="flex flex-col items-center gap-2 text-center">
-        {organization.logo ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={organization.logo} alt={organization.name} className="h-12 w-auto" />
-        ) : (
-          <div className="flex size-12 items-center justify-center rounded-full bg-muted">
-            <FileText className="size-5 text-muted-foreground" />
-          </div>
-        )}
-        <h1 className="text-xl font-semibold">{organization.name}</h1>
-        <p className="text-sm text-muted-foreground">Quotation for {quotation.customer.name}</p>
+    <PublicShell
+      brand={{ name: organization.name, logo: organization.logo }}
+      title="Your Quotation"
+      subtitle={`Quotation for ${quotation.customer.name}`}
+      width="max-w-2xl"
+    >
+      <div className="flex justify-center">
         <Badge variant={STATUS_VARIANT[quotation.status]}>{STATUS_LABEL[quotation.status]}</Badge>
-      </header>
+      </div>
 
       {(quotation.venue || quotation.eventType) && (
-        <Card>
-          <CardContent className="flex flex-col gap-1 text-sm">
-            {quotation.eventType && <p><span className="text-muted-foreground">Event Type: </span>{quotation.eventType.name}</p>}
-            {quotation.eventStartDate && quotation.eventEndDate && (
-              <p>
-                <span className="text-muted-foreground">Date: </span>
-                {quotation.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                {quotation.eventStartDate.getTime() !== quotation.eventEndDate.getTime() &&
-                  ` – ${quotation.eventEndDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}
-              </p>
-            )}
-            {quotation.venue && <p><span className="text-muted-foreground">Venue: </span>{quotation.venue}</p>}
-          </CardContent>
-        </Card>
+        <FormCard className="gap-3 text-sm">
+          {quotation.eventType && <Detail icon={<PartyPopper className="size-4" />} label="Event Type" value={quotation.eventType.name} />}
+          {dateText && <Detail icon={<CalendarDays className="size-4" />} label="Date" value={dateText} />}
+          {quotation.venue && <Detail icon={<MapPin className="size-4" />} label="Venue" value={quotation.venue} />}
+        </FormCard>
       )}
 
       {/*
@@ -123,64 +117,69 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
         only holds pre-parity legacy rows now and renders separately below,
         only when present.
       */}
-      {quotation.mealPlanEntries.length > 0 && (
-        <div className="flex flex-col gap-4">
-          {quotation.mealPlanEntries.map((entry) => (
-            <div key={entry.id} className="flex flex-col gap-2">
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                {MEAL_TYPE_LABEL[entry.mealType]}
-                {quotation.mealPlanEntries.length > 1 ? ` · ${entry.date.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
-              </h2>
-              {entry.items.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No items yet.</p>
-              ) : (
-                entry.items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-sm">
-                    <span>
-                      <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
-                    </span>
-                    <span>{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
-                  </div>
-                ))
-              )}
+      {quotation.mealPlanEntries.map((entry) => (
+        <section key={entry.id} className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <UtensilsCrossed className="size-5" />
+            </span>
+            <h2 className="text-[15px] font-semibold">
+              {MEAL_TYPE_LABEL[entry.mealType]}
+              {quotation.mealPlanEntries.length > 1 ? ` · ${entry.date.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}
+            </h2>
+          </div>
+          {entry.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No items yet.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border">
+              {entry.items.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                  <span>
+                    <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
+                  </span>
+                  <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          )}
+        </section>
+      ))}
 
       {quotation.items.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Items</h2>
-          {quotation.items.map((item) => (
-            <div key={item.id} className="flex items-center justify-between text-sm">
-              <span>
-                <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
-              </span>
-              <span>{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
-            </div>
-          ))}
-        </div>
+        <section className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+          <h2 className="text-[15px] font-semibold">Items</h2>
+          <div className="flex flex-col divide-y divide-border">
+            {quotation.items.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                <span>
+                  <span>{item.name}</span> <span className="text-muted-foreground">× {item.quantity}</span>
+                </span>
+                <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      <div className="flex flex-col gap-1 rounded-md border border-border bg-muted/30 p-4 text-sm">
+      <div className="flex flex-col gap-2 rounded-xl bg-card p-5 text-sm ring-1 ring-foreground/10">
         <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{formatCurrency(Number(quotation.subtotal))}</span></div>
         {Number(quotation.childrenCharge) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Children Guests &amp; Pricing</span><span>+{formatCurrency(Number(quotation.childrenCharge))}</span></div>}
         {Number(quotation.discount) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Discount</span><span>-{formatCurrency(Number(quotation.discount))}</span></div>}
         {Number(quotation.taxes) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Taxes</span><span>+{formatCurrency(Number(quotation.taxes))}</span></div>}
         {Number(quotation.additionalCharges) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Additional Charges</span><span>+{formatCurrency(Number(quotation.additionalCharges))}</span></div>}
         {Number(quotation.deliveryCharges) > 0 && <div className="flex justify-between"><span className="text-muted-foreground">Delivery Charges</span><span>+{formatCurrency(Number(quotation.deliveryCharges))}</span></div>}
-        <div className="flex justify-between border-t border-border pt-1.5 font-semibold"><span>Total</span><span>{formatCurrency(Number(quotation.total))}</span></div>
+        <div className="mt-1 flex justify-between rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground"><span>Total</span><span>{formatCurrency(Number(quotation.total))}</span></div>
       </div>
 
       {quotation.terms && (
-        <div className="flex flex-col gap-1">
-          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Terms</h2>
-          <p className="text-sm text-muted-foreground whitespace-pre-line">{quotation.terms}</p>
-        </div>
+        <section className="flex flex-col gap-2 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+          <h2 className="text-[15px] font-semibold">Terms</h2>
+          <p className="whitespace-pre-line text-sm text-muted-foreground">{quotation.terms}</p>
+        </section>
       )}
 
       {quotation.validUntil && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-center text-xs text-muted-foreground">
           Valid until {quotation.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
           {isExpiredByDate && " — this quotation has passed its validity date."}
         </p>
@@ -189,13 +188,25 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
       {ACTIONABLE_STATUSES.includes(quotation.status) ? (
         <QuotationResponseActions token={token} />
       ) : (
-        <p className="text-sm text-muted-foreground">
+        <p className="rounded-xl bg-card p-5 text-center text-sm text-muted-foreground ring-1 ring-foreground/10">
           {quotation.status === "ACCEPTED" && "You've accepted this quotation. Your caterer will follow up shortly."}
           {quotation.status === "REJECTED" && "You've declined this quotation."}
           {quotation.status === "CHANGES_REQUESTED" && "You've requested changes — your caterer will send an updated quotation."}
           {quotation.status === "EXPIRED" && "This quotation has expired."}
         </p>
       )}
-    </main>
+    </PublicShell>
+  );
+}
+
+function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="mt-0.5 text-muted-foreground">{icon}</span>
+      <div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="font-medium">{value}</p>
+      </div>
+    </div>
   );
 }

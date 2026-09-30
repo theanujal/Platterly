@@ -15,6 +15,7 @@ import {
 import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell, FoodTypeTag, formatRupees } from "@/components/catalog/catalog-display";
 import { AddMenuDialog } from "./_components/add-menu-dialog";
 import { MenuCardActions } from "./_components/menu-card-actions";
+import { MenuReorderButtons } from "./_components/menu-reorder-buttons";
 import type { MenuFormValues, AssignedCategory } from "./_components/menu-form";
 
 export const metadata: Metadata = {
@@ -27,6 +28,8 @@ export default async function MenusPage() {
   const [menus, categories] = await Promise.all([listMenus(organizationId), listCategories(organizationId)]);
 
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name }));
+  // The order customers see the menus in on the storefront (listMenus is already sorted by it).
+  const orderedIds = menus.map((m) => m.id);
 
   const entries: CatalogEntry[] = menus.map((menu) => {
     const assignedCategories: AssignedCategory[] = [...menu.categoryAssignments]
@@ -53,7 +56,7 @@ export default async function MenusPage() {
       id: menu.id,
       searchText: `${menu.name} ${menu.description ?? ""}`,
       filterValues: { type: menu.menuType, status: menu.isActive ? "ACTIVE" : "INACTIVE" },
-      sortValues: { name: menu.name, price: Number(menu.pricePerPlate), newest: menu.createdAt.getTime() },
+      sortValues: { order: menu.sortOrder, name: menu.name, price: Number(menu.pricePerPlate), newest: menu.createdAt.getTime() },
       card: (
         <>
           <CatalogCardMedia
@@ -97,7 +100,8 @@ export default async function MenusPage() {
             <ActiveBadge active={menu.isActive} />
           </TableCell>
           <TableCell className="px-3 py-3">
-            <div className="flex justify-end">
+            <div className="flex items-center justify-end gap-1">
+              <MenuReorderButtons orderedIds={orderedIds} menuId={menu.id} name={menu.name} />
               <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} categories={categoryOptions} assignedCategories={assignedCategories} variant="plain" />
             </div>
           </TableCell>
@@ -126,6 +130,7 @@ export default async function MenusPage() {
   ];
 
   const sortOptions: CatalogSortOption[] = [
+    { value: "order", label: "Display Order", key: "order" },
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "name", label: "Name (A–Z)", key: "name" },
     { value: "price-low", label: "Price (Low–High)", key: "price" },
@@ -140,7 +145,7 @@ export default async function MenusPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Menu Types</h1>
-          <p className="text-sm text-muted-foreground">Priced, sellable menu types built from your catalog.</p>
+          <p className="text-sm text-muted-foreground">Priced, sellable menu types built from your catalog. Use the arrows to set the order customers see them in.</p>
         </div>
         <AddMenuDialog categories={categoryOptions} />
       </div>

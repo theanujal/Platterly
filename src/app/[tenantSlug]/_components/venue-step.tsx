@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowRight, Building2, MapPin, Phone, Truck, User } from "lucide-react";
+import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+import { FormCard, FormSection } from "@/components/public/form-section";
 import type { DraftVenue } from "@/modules/menu-approvals/storefront-draft";
 import { saveVenueAction } from "../actions";
 
@@ -39,7 +41,6 @@ const EMPTY: Record<keyof DraftVenue, string> = {
   venueDoorNumber: "",
   venueTower: "",
   venueFloor: "",
-  venueHallName: "",
   completeVenueAddress: "",
   venueLandmark: "",
   venueContactName: "",
@@ -47,6 +48,8 @@ const EMPTY: Record<keyof DraftVenue, string> = {
   venueAccessInstructions: "",
   vehicleAccess: "",
   liveCounterAvailable: "false",
+  gasElectricAvailable: "false",
+  cookingInstructions: "",
 };
 
 interface VenueStepProps {
@@ -81,13 +84,13 @@ export function VenueStep({ tenantSlug, draftId, initial }: VenueStepProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6 pb-28">
       <div className="flex flex-col gap-1">
-        <h2 className="text-xl font-semibold">Venue & Delivery Details</h2>
+        <h2 className="text-2xl font-semibold">Venue & Delivery Details</h2>
         <p className="text-sm text-muted-foreground">Where should we deliver and set up?</p>
       </div>
-      <Card>
-        <CardContent className="flex flex-col gap-4 pt-6">
+      <FormCard>
+        <FormSection icon={Building2} title="Venue" description="Where the event is happening.">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="vd-type" required>Venue Type</Label>
             <Select items={toItems(VENUE_TYPE_OPTIONS)} value={values.venueType} onValueChange={(v) => set("venueType", v ?? "")}>
@@ -105,9 +108,12 @@ export function VenueStep({ tenantSlug, draftId, initial }: VenueStepProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="vd-building" required>Venue / Building Name</Label>
-            <Input id="vd-building" required placeholder="Enter venue / building name" value={values.venueBuildingName} onChange={(e) => set("venueBuildingName", e.target.value)} />
+            <IconInput icon={Building2} id="vd-building" required placeholder="Enter venue / building name" value={values.venueBuildingName} onChange={(e) => set("venueBuildingName", e.target.value)} />
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        </FormSection>
+
+        <FormSection icon={MapPin} title="Address" description="Help our team find the spot.">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="vd-door" required>Door / Flat / House No.</Label>
               <Input id="vd-door" required placeholder="e.g. B-1204" value={values.venueDoorNumber} onChange={(e) => set("venueDoorNumber", e.target.value)} />
@@ -122,31 +128,29 @@ export function VenueStep({ tenantSlug, draftId, initial }: VenueStepProps) {
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="vd-hall" required>Function Area / Hall Name</Label>
-            <Input id="vd-hall" required placeholder="e.g. Clubhouse" value={values.venueHallName} onChange={(e) => set("venueHallName", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label htmlFor="vd-address" required>Complete Venue Address</Label>
             <Textarea id="vd-address" required placeholder="Enter complete venue address" value={values.completeVenueAddress} onChange={(e) => set("completeVenueAddress", e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="vd-landmark">Landmark (Optional)</Label>
-            <Input id="vd-landmark" placeholder="e.g. Near Varthur Lake" value={values.venueLandmark} onChange={(e) => set("venueLandmark", e.target.value)} />
+            <IconInput icon={MapPin} id="vd-landmark" placeholder="e.g. Near Varthur Lake" value={values.venueLandmark} onChange={(e) => set("venueLandmark", e.target.value)} />
           </div>
+        </FormSection>
+
+        <FormSection icon={Phone} title="Venue Contact" description="Someone we can call on the day.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="vd-contact-name" required>Venue Contact Person</Label>
-              <Input id="vd-contact-name" required placeholder="Enter contact person name" value={values.venueContactName} onChange={(e) => set("venueContactName", e.target.value)} />
+              <IconInput icon={User} id="vd-contact-name" required placeholder="Enter contact person name" value={values.venueContactName} onChange={(e) => set("venueContactName", e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="vd-contact-phone" required>Contact Number</Label>
               <PhoneInput id="vd-contact-phone" value={values.venueContactPhone} onChange={(v) => set("venueContactPhone", v)} />
             </div>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="vd-access">Catering Access / Loading Instructions (Optional)</Label>
-            <Textarea id="vd-access" placeholder="Enter loading / access instructions" value={values.venueAccessInstructions} onChange={(e) => set("venueAccessInstructions", e.target.value)} />
-          </div>
+        </FormSection>
+
+        <FormSection icon={Truck} title="Access & Logistics" description="How our vehicle reaches you.">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="vd-vehicle" required>Vehicle Access</Label>
             <Select items={toItems(VEHICLE_ACCESS_OPTIONS)} value={values.vehicleAccess} onValueChange={(v) => set("vehicleAccess", v ?? "")}>
@@ -162,29 +166,40 @@ export function VenueStep({ tenantSlug, draftId, initial }: VenueStepProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border p-3">
-            <Checkbox id="vd-live-counter" checked={values.liveCounterAvailable === "true"} onCheckedChange={(c) => set("liveCounterAvailable", c === true ? "true" : "false")} />
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="vd-access">Catering Access / Loading Instructions (Optional)</Label>
+            <Textarea id="vd-access" placeholder="Enter loading / access instructions" value={values.venueAccessInstructions} onChange={(e) => set("venueAccessInstructions", e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="vd-cooking">Cooking Instructions (Optional)</Label>
+            <Textarea id="vd-cooking" placeholder="e.g. Jain food to be cooked separately, or no onion and garlic" value={values.cookingInstructions} onChange={(e) => set("cookingInstructions", e.target.value)} />
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/60 p-3">
+            <Checkbox id="vd-gas-electric" className="border-foreground/40" checked={values.gasElectricAvailable === "true"} onCheckedChange={(c) => set("gasElectricAvailable", c === true ? "true" : "false")} />
+            <Label htmlFor="vd-gas-electric" className="cursor-pointer font-normal">
+              Gas / electric connection available at venue?
+            </Label>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg bg-muted/60 p-3">
+            <Checkbox id="vd-live-counter" className="border-foreground/40" checked={values.liveCounterAvailable === "true"} onCheckedChange={(c) => set("liveCounterAvailable", c === true ? "true" : "false")} />
             <Label htmlFor="vd-live-counter" className="cursor-pointer font-normal">
               Cooking live counter facility available?
             </Label>
           </div>
-        </CardContent>
-      </Card>
+        </FormSection>
+      </FormCard>
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <div className="flex justify-between gap-3">
-        <Button type="button" variant="outline" onClick={() => router.push(`/${tenantSlug}/plan/${draftId}?step=items`)}>
-          <ArrowLeft /> Back
-        </Button>
+      <StepFooter onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=items`)}>
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Review Order"}
           <ArrowRight />
         </Button>
-      </div>
+      </StepFooter>
     </form>
   );
 }

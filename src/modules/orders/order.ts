@@ -5,7 +5,7 @@ import { notify } from "@/lib/notifications/notify";
 import { createEvent } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
 import type { Prisma } from "@/generated/prisma/client";
-import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, FoodType } from "@/generated/prisma/enums";
+import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -44,6 +44,12 @@ export interface OrderInput {
   eventAddress?: string;
   /** "Venue & Delivery Details" section, Create Order redesign (2026-09-19) — mirrors the customer-facing intake form's own fields of the same name on Order. */
   venueType?: VenueType | null;
+  vehicleAccess?: VehicleAccessType | null;
+  /** The customer's "Catering Access / Loading Instructions" from the public form. */
+  venueAccessInstructions?: string;
+  venueDoorNumber?: string;
+  venueTower?: string;
+  venueFloor?: string;
   venueLandmark?: string;
   venueContactName?: string;
   venueContactPhone?: string;
@@ -55,8 +61,6 @@ export interface OrderInput {
   childBelow5Count?: number | null;
   child5To10Count?: number | null;
   totalParticipants?: number | null;
-  adultNonVegCount?: number | null;
-  adultVegCount?: number | null;
   /** SINGLE renders Meal Planning as one continuous event; MULTI groups the same per-day data into "Event 1/Event 2…" blocks. Doesn't gate what a meal may store — see MealPlanEntryInput. */
   orderKind?: OrderKind;
   /**
@@ -104,7 +108,8 @@ export async function resolveCatalogItem(organizationId: string, itemType: Order
     return { name: item.name, unitPrice: item.price, menuId: null, menuItemId: catalogId, addOnId: null };
   }
   const addOn = await prisma.addOn.findFirstOrThrow({ where: { id: catalogId, organizationId } });
-  return { name: addOn.name, unitPrice: addOn.price, menuId: null, menuItemId: null, addOnId: catalogId };
+  // An add-on that is part of the package is on the order but costs nothing.
+  return { name: addOn.name, unitPrice: addOn.includedInPackage ? 0 : addOn.price, menuId: null, menuItemId: null, addOnId: catalogId };
 }
 
 /**
@@ -314,6 +319,11 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       venue: input.venue,
       eventAddress: input.eventAddress,
       venueType: input.venueType,
+      vehicleAccess: input.vehicleAccess,
+      venueAccessInstructions: input.venueAccessInstructions,
+      venueDoorNumber: input.venueDoorNumber,
+      venueTower: input.venueTower,
+      venueFloor: input.venueFloor,
       venueLandmark: input.venueLandmark,
       venueContactName: input.venueContactName,
       venueContactPhone: input.venueContactPhone,
@@ -331,8 +341,6 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       individualChild5To10Rate: input.individualChild5To10Rate,
       individualChild5To10PricingType: input.individualChild5To10PricingType,
       totalParticipants: input.totalParticipants,
-      adultNonVegCount: input.adultNonVegCount,
-      adultVegCount: input.adultVegCount,
       individualPricingEnabled: input.individualPricingEnabled ?? false,
       discount: input.discount ?? 0,
       transportationCost: input.transportationCost ?? 0,
@@ -379,6 +387,11 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       venue: input.venue,
       eventAddress: input.eventAddress,
       venueType: input.venueType,
+      vehicleAccess: input.vehicleAccess,
+      venueAccessInstructions: input.venueAccessInstructions,
+      venueDoorNumber: input.venueDoorNumber,
+      venueTower: input.venueTower,
+      venueFloor: input.venueFloor,
       venueLandmark: input.venueLandmark,
       venueContactName: input.venueContactName,
       venueContactPhone: input.venueContactPhone,
@@ -396,8 +409,6 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       individualChild5To10Rate: input.individualChild5To10Rate ?? before.individualChild5To10Rate,
       individualChild5To10PricingType: input.individualChild5To10PricingType ?? before.individualChild5To10PricingType,
       totalParticipants: input.totalParticipants,
-      adultNonVegCount: input.adultNonVegCount,
-      adultVegCount: input.adultVegCount,
       individualPricingEnabled: input.individualPricingEnabled ?? before.individualPricingEnabled,
       discount: input.discount ?? before.discount,
       transportationCost: input.transportationCost ?? before.transportationCost,

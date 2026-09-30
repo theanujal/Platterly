@@ -59,6 +59,13 @@ const PAYMENT_STATUS_OPTIONS = [
 
 // Mirrors the customer-facing intake form's own VENUE_TYPE_OPTIONS
 // (event-details-form.tsx) exactly — same Order.venueType enum, same labels.
+const VEHICLE_ACCESS_OPTIONS = [
+  { value: "VEHICLE_AND_PARKING", label: "Vehicle can enter venue & parking available" },
+  { value: "VEHICLE_NO_PARKING", label: "Vehicle can enter but no parking" },
+  { value: "NO_VEHICLE_ACCESS", label: "Vehicle cannot enter venue" },
+  { value: "MANUAL_LOADING_REQUIRED", label: "Manual loading required" },
+] as const;
+
 const VENUE_TYPE_OPTIONS = [
   { value: "CLUBHOUSE", label: "Clubhouse" },
   { value: "HOTEL", label: "Hotel" },
@@ -89,6 +96,11 @@ export interface OrderFormValues {
   venue: string;
   eventAddress: string;
   venueType: string;
+  vehicleAccess: string;
+  venueAccessInstructions: string;
+  venueDoorNumber: string;
+  venueTower: string;
+  venueFloor: string;
   venueLandmark: string;
   venueContactName: string;
   venueContactPhone: string;
@@ -129,6 +141,11 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   venue: "",
   eventAddress: "",
   venueType: "",
+  vehicleAccess: "",
+  venueAccessInstructions: "",
+  venueDoorNumber: "",
+  venueTower: "",
+  venueFloor: "",
   venueLandmark: "",
   venueContactName: "",
   venueContactPhone: "",
@@ -411,6 +428,11 @@ export function OrderForm({
     formData.set("venue", values.venue);
     formData.set("eventAddress", values.eventAddress);
     formData.set("venueType", values.venueType);
+    formData.set("vehicleAccess", values.vehicleAccess);
+    formData.set("venueAccessInstructions", values.venueAccessInstructions);
+    formData.set("venueDoorNumber", values.venueDoorNumber);
+    formData.set("venueTower", values.venueTower);
+    formData.set("venueFloor", values.venueFloor);
     formData.set("venueLandmark", values.venueLandmark);
     formData.set("venueContactName", values.venueContactName);
     formData.set("venueContactPhone", values.venueContactPhone);
@@ -675,6 +697,21 @@ export function OrderForm({
         <Textarea id="order-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
       </div>
 
+      <div className="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-3">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="order-venue-door">Door / Flat / House No.</Label>
+          <Input id="order-venue-door" value={values.venueDoorNumber} onChange={(e) => setField("venueDoorNumber", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="order-venue-tower">Tower / Block</Label>
+          <Input id="order-venue-tower" value={values.venueTower} onChange={(e) => setField("venueTower", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="order-venue-floor">Floor</Label>
+          <Input id="order-venue-floor" value={values.venueFloor} onChange={(e) => setField("venueFloor", e.target.value)} />
+        </div>
+      </div>
+
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-venue-landmark">Landmark</Label>
         <Input id="order-venue-landmark" value={values.venueLandmark} onChange={(e) => setField("venueLandmark", e.target.value)} />
@@ -686,6 +723,30 @@ export function OrderForm({
       <div className="flex flex-col gap-1.5 sm:col-span-2">
         <Label htmlFor="order-venue-contact-phone">Contact Number</Label>
         <PhoneInput id="order-venue-contact-phone" value={values.venueContactPhone} onChange={(v) => setField("venueContactPhone", v)} />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="order-vehicle-access">Vehicle Access</Label>
+        <Select
+          items={Object.fromEntries(VEHICLE_ACCESS_OPTIONS.map((o) => [o.value, o.label]))}
+          value={values.vehicleAccess}
+          onValueChange={(v) => setField("vehicleAccess", v ?? values.vehicleAccess)}
+        >
+          <SelectTrigger id="order-vehicle-access" className="w-full">
+            <SelectValue placeholder="Not set" />
+          </SelectTrigger>
+          <SelectContent>
+            {VEHICLE_ACCESS_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="order-access-instructions">Catering Access / Loading Instructions</Label>
+        <Textarea id="order-access-instructions" value={values.venueAccessInstructions} onChange={(e) => setField("venueAccessInstructions", e.target.value)} />
       </div>
 
       <div className="flex flex-col gap-1.5">

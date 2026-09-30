@@ -258,6 +258,7 @@ export type ResolvedApprovalLink =
       ok: true;
       organizationId: string;
       organizationName: string;
+      organizationLogo: string | null;
       menuSelectionId: string;
       versionId: string;
       versionNumber: number;
@@ -277,7 +278,7 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
 
   const version = await prisma.menuVersion.findUnique({
     where: { id: resolved.resourceId },
-    include: { menuSelection: { select: { id: true, organizationId: true, status: true, currentVersion: true, organization: { select: { name: true } } } } },
+    include: { menuSelection: { select: { id: true, organizationId: true, status: true, currentVersion: true, organization: { select: { name: true, logo: true } } } } },
   });
   if (!version || !version.snapshot) return { ok: false };
 
@@ -290,6 +291,7 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
     ok: true,
     organizationId: selection.organizationId,
     organizationName: selection.organization.name,
+    organizationLogo: selection.organization.logo,
     menuSelectionId: selection.id,
     versionId: version.id,
     versionNumber: version.versionNumber,

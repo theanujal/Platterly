@@ -51,6 +51,8 @@ interface DateRangePickerProps {
    * own band colour, and a legend is shown. Omit for a plain picker.
    */
   loadOrderCounts?: (fromIso: string, toIso: string) => Promise<Record<string, number>>;
+  /** One day instead of a range: a single click picks it and closes (the public event form). `onChange` gets the same day twice. */
+  single?: boolean;
 }
 
 /**
@@ -62,7 +64,7 @@ interface DateRangePickerProps {
  * `minDate` (Create Order does, so nothing can be booked in the past); any
  * other rule stays a message-based validation next to the field.
  */
-export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, minDate, loadOrderCounts }: DateRangePickerProps) {
+export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, minDate, loadOrderCounts, single }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [viewMonth, setViewMonth] = useState(() => (startDate ? parseIsoDate(startDate) : new Date()));
@@ -99,6 +101,11 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
   }
 
   function handleDayClick(iso: string) {
+    if (single) {
+      onChange(iso, iso);
+      setOpen(false);
+      return;
+    }
     // First click only previews (via pendingStart, below) — it deliberately
     // does NOT call onChange yet. It used to fire a transient single-day
     // range immediately, which callers (order-form.tsx's setEventDateRange)

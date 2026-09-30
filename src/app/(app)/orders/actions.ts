@@ -20,7 +20,7 @@ import { listCustomers, createCustomer } from "@/modules/customers/customer";
 import { getMenuPickerData, type MenuPickerData, type MenuPickerAddOn } from "@/modules/menus/menu";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import { isBackdated } from "@/modules/orders/event-date-rule";
-import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, FoodType, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
+import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, FoodType, PricingMethod, ChildPricingType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -93,6 +93,11 @@ function buildInput(formData: FormData): OrderInput {
     venue: stringField(formData, "venue"),
     eventAddress: stringField(formData, "eventAddress"),
     venueType: (stringField(formData, "venueType") as VenueType | undefined) ?? null,
+    vehicleAccess: (stringField(formData, "vehicleAccess") as VehicleAccessType | undefined) ?? null,
+    venueAccessInstructions: stringField(formData, "venueAccessInstructions"),
+    venueDoorNumber: stringField(formData, "venueDoorNumber"),
+    venueTower: stringField(formData, "venueTower"),
+    venueFloor: stringField(formData, "venueFloor"),
     venueLandmark: stringField(formData, "venueLandmark"),
     venueContactName: stringField(formData, "venueContactName"),
     venueContactPhone: stringField(formData, "venueContactPhone"),
@@ -113,13 +118,6 @@ function buildInput(formData: FormData): OrderInput {
     individualChild5To10Rate: numberField(formData, "individualChild5To10Rate") ?? null,
     individualChild5To10PricingType: (stringField(formData, "individualChild5To10PricingType") as ChildPricingType | undefined) ?? null,
     totalParticipants: numberField(formData, "totalParticipants") ?? null,
-    // adultNonVegCount/adultVegCount deliberately NOT read here (AJ,
-    // 2026-09-19 — removed from the order flow entirely). Leaving these keys
-    // out of OrderInput (rather than setting them to `null`) means Prisma's
-    // update() leaves any pre-existing values untouched instead of wiping
-    // them — no backend/data-structure change, just no longer written from
-    // this form. createOrder still defaults an omitted key to the column's
-    // own null default on insert.
     individualPricingEnabled: formData.get("individualPricingEnabled") === "true",
     discount: numberField(formData, "discount") ?? 0,
     transportationCost: numberField(formData, "transportationCost") ?? 0,

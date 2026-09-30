@@ -44,7 +44,7 @@ export function PhoneInput({ id, value, onChange, required, disabled, className 
       disabled={disabled}
       inputComponent={Input}
       numberInputProps={{
-        className: "h-8 rounded-none border-0 px-1.5 shadow-none focus-visible:ring-0",
+        className: "h-8 rounded-none border-0 px-0 shadow-none focus-visible:ring-0",
         // The country's own length rule (not a fixed 10): once the number is
         // already a complete, valid number for the selected country, one more
         // digit that would make it invalid is refused — so India stops at 10,
@@ -60,7 +60,9 @@ export function PhoneInput({ id, value, onChange, required, disabled, className 
         },
       }}
       className={cn(
-        "flex h-10 items-center gap-1.5 rounded-lg border border-input bg-transparent pl-2.5 has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50",
+        // The flag and chevron are sized and toned like the leading icon of the other fields (16px, muted), and the
+        // text starts where an IconInput's text does, so a phone field sits in a form like its neighbours.
+        "flex h-10 items-center gap-2 rounded-lg border border-input bg-transparent px-3 [--PhoneInputCountryFlag-borderColor:rgb(0_0_0/0.12)] [--PhoneInputCountryFlag-height:0.8125rem] [--PhoneInputCountrySelectArrow-color:var(--color-muted-foreground)] [--PhoneInputCountrySelectArrow-opacity:0.9] has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50",
         className,
       )}
     />

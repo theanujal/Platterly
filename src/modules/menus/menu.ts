@@ -35,10 +35,33 @@ async function replaceMenuCategoryAssignments(organizationId: string, menuId: st
   });
 }
 
+/** A new Menu goes to the end of the display order (same convention as Event Types). */
+async function nextMenuSortOrder(organizationId: string): Promise<number> {
+  const { _max } = await prisma.menu.aggregate({ where: { organizationId }, _max: { sortOrder: true } });
+  return _max.sortOrder != null ? _max.sortOrder + 1 : 0;
+}
+
+/**
+ * Shuffle the order Menus appear in — on the public storefront and in Menu Types (AJ, 2026-10-01). Move up / down
+ * only, no drag, like Event Types. `orderedIds` must be exactly this tenant's Menus.
+ */
+export async function reorderMenus(organizationId: string, orderedIds: string[], actorUserId: string) {
+  const existing = await prisma.menu.findMany({ where: { organizationId }, select: { id: true } });
+  const existingIds = new Set(existing.map((m) => m.id));
+  if (existingIds.size !== orderedIds.length || new Set(orderedIds).size !== orderedIds.length || orderedIds.some((id) => !existingIds.has(id))) {
+    throw new Error("orderedIds must exactly match the tenant's current Menus.");
+  }
+
+  await prisma.$transaction(orderedIds.map((id, index) => prisma.menu.update({ where: { id }, data: { sortOrder: index } })));
+
+  await audit({ organizationId, actorUserId, action: "menu.reorder", recordType: "Menu", recordId: organizationId, after: { orderedIds } });
+}
+
 export async function createMenu(organizationId: string, input: MenuInput, actorUserId: string) {
   const menu = await prisma.menu.create({
     data: {
       organizationId,
+      sortOrder: await nextMenuSortOrder(organizationId),
       name: input.name,
       description: input.description,
       image: input.image,
@@ -163,7 +186,7 @@ export async function listMenus(organizationId: string) {
     // Scalar-only — menus/page.tsx resolves each categoryId to a name via
     // the `categories` list it already fetches, same pattern as before.
     include: { categoryAssignments: true },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
   });
 }
 
@@ -297,7 +320,7 @@ export async function listStorefrontMenus(organizationId: string, filter?: Store
         orderBy: { sortOrder: "asc" },
       },
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }],
   });
 
   return menus.map((menu) => {
@@ -485,6 +508,7 @@ export async function duplicateMenu(organizationId: string, id: string, actorUse
   const copy = await prisma.menu.create({
     data: {
       organizationId,
+      sortOrder: await nextMenuSortOrder(organizationId),
       name: `${source.name} (Copy)`,
       description: source.description,
       image: source.image,

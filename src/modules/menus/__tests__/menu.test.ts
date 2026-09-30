@@ -10,6 +10,7 @@ import {
   listMenus,
   listStorefrontMenus,
   reorderMenuCategoryAssignments,
+  reorderMenus,
 } from "@/modules/menus/menu";
 
 const cleanupOrgIds: string[] = [];
@@ -319,5 +320,41 @@ describe("listStorefrontMenus (Chunk 8 Group 8.3 — public storefront)", () => 
 
     const storefront = await listStorefrontMenus(orgA.id);
     expect(storefront.map((m) => m.id)).toEqual([menuA.id]);
+  });
+});
+
+describe("Menu display order (AJ, 2026-10-01)", () => {
+  const menuInput = (name: string) => ({ name, menuType: "VEGETARIAN" as const, pricePerPlate: 300, categoryAssignments: [] });
+
+  it("new menus go to the end, and the admin list and the storefront both follow the order", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const a = await createMenu(org.id, menuInput("Alpha"), actor.id);
+    const b = await createMenu(org.id, menuInput("Bravo"), actor.id);
+    const c = await createMenu(org.id, menuInput("Charlie"), actor.id);
+
+    expect((await listMenus(org.id)).map((m) => m.name)).toEqual(["Alpha", "Bravo", "Charlie"]);
+    expect((await listStorefrontMenus(org.id)).map((m) => m.name)).toEqual(["Alpha", "Bravo", "Charlie"]);
+
+    await reorderMenus(org.id, [c.id, a.id, b.id], actor.id);
+
+    expect((await listMenus(org.id)).map((m) => m.name)).toEqual(["Charlie", "Alpha", "Bravo"]);
+    expect((await listStorefrontMenus(org.id)).map((m) => m.name)).toEqual(["Charlie", "Alpha", "Bravo"]);
+    expect(await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "menu.reorder" } })).not.toBeNull();
+  });
+
+  it("refuses an order that is not exactly this tenant's menus (missing, extra, repeated or another tenant's)", async () => {
+    const org = await makeOrg();
+    const other = await makeOrg();
+    const actor = await makeActor();
+    const a = await createMenu(org.id, menuInput("Alpha"), actor.id);
+    const b = await createMenu(org.id, menuInput("Bravo"), actor.id);
+    const foreign = await createMenu(other.id, menuInput("Foreign"), actor.id);
+
+    await expect(reorderMenus(org.id, [a.id], actor.id)).rejects.toThrow();
+    await expect(reorderMenus(org.id, [a.id, a.id], actor.id)).rejects.toThrow();
+    await expect(reorderMenus(org.id, [a.id, foreign.id], actor.id)).rejects.toThrow();
+    // Nothing changed.
+    expect((await listMenus(org.id)).map((m) => m.id)).toEqual([a.id, b.id]);
   });
 });

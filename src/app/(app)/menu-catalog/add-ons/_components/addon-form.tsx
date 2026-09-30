@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Sparkles, IndianRupee } from "lucide-react";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawerForm } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -26,6 +27,7 @@ export interface AddOnFormValues {
   type: string;
   priceType: string;
   price: string;
+  includedInPackage: boolean;
   imageUrl: string | null;
   isActive: boolean;
 }
@@ -36,6 +38,7 @@ export const EMPTY_ADDON_VALUES: AddOnFormValues = {
   type: "LIVE_COUNTER",
   priceType: "PER_PLATE",
   price: "",
+  includedInPackage: false,
   imageUrl: null,
   isActive: true,
 };
@@ -69,6 +72,7 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onC
     formData.set("type", values.type);
     formData.set("priceType", values.priceType);
     formData.set("price", values.price);
+    formData.set("includedInPackage", String(values.includedInPackage));
     formData.set("isActive", String(values.isActive));
     if (image) formData.set("image", image);
 
@@ -161,6 +165,13 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onC
             value={values.price}
             onChange={(e) => setField("price", e.target.value)}
           />
+        </div>
+        <div className="flex items-start gap-3 rounded-lg border border-border p-3">
+          <Checkbox id="addon-included" checked={values.includedInPackage} onCheckedChange={(checked) => setField("includedInPackage", checked === true)} className="mt-0.5" />
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="addon-included">Included in the package</Label>
+            <p className="text-xs text-muted-foreground">Customers still choose it, but it adds nothing to their bill. Leave off to charge the price above.</p>
+          </div>
         </div>
       </div>
 

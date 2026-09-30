@@ -44,6 +44,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     type,
     priceType,
     price,
+    includedInPackage: formData.get("includedInPackage") === "true",
     isActive: formData.get("isActive") === "true",
   };
 }

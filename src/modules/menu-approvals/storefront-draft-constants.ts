@@ -25,6 +25,7 @@ export const WIZARD_STEPS = [
   { key: "details", label: "Event Details" },
   { key: "menu", label: "Choose Menu" },
   { key: "items", label: "Choose Items" },
+  { key: "addons", label: "Add-ons & Live Counters" },
   { key: "venue", label: "Venue & Delivery" },
   { key: "review", label: "Review & Submit" },
 ] as const;

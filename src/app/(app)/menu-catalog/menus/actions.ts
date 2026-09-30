@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, type MenuInput } from "@/modules/menus/menu";
+import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 
@@ -150,6 +150,19 @@ export async function setMenuActiveAction(id: string, isActive: boolean): Promis
     await setMenuActive(organizationId, id, isActive, session.user.id);
   } catch (error) {
     return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/menus");
+  return { ok: true };
+}
+
+/** Owner and Manager (anyone who can edit menus) shuffle the order menus show in on the storefront and here. */
+export async function reorderMenusAction(orderedIds: string[]): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await reorderMenus(organizationId, orderedIds, session.user.id);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not reorder menus." };
   }
   revalidatePath("/menu-catalog/menus");
   return { ok: true };

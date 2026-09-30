@@ -5,10 +5,10 @@ import { normalizePhone, isValidPhone } from "@/lib/phone";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
-import { getMenuForOrderPicker } from "@/modules/menus/menu";
+import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
 import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
-import { splitPicks } from "./storefront-selection";
+import { requiredShortfalls, splitPicks } from "./storefront-selection";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "./public-lead-time";
 import type { FoodType, MealType, VenueType, VehicleAccessType, Prisma } from "@/generated/prisma/client";
 
@@ -30,7 +30,8 @@ export interface EventDetailsInput {
   guestCount: number;
   childBelow5Count: number;
   child5To10Count: number;
-  eventMealType: MealType;
+  /** "Meals Required" — one or more meals on the event day. The menu, dishes and add-ons repeat for each. */
+  eventMealTypes: MealType[];
   menuPreference: FoodType;
 }
 
@@ -47,7 +48,6 @@ export interface DraftVenue {
   venueDoorNumber: string;
   venueTower?: string;
   venueFloor?: string;
-  venueHallName: string;
   completeVenueAddress: string;
   venueLandmark?: string;
   venueContactName: string;
@@ -55,6 +55,8 @@ export interface DraftVenue {
   venueAccessInstructions?: string;
   vehicleAccess: VehicleAccessType;
   liveCounterAvailable: boolean;
+  gasElectricAvailable: boolean;
+  cookingInstructions?: string;
 }
 
 export type MenuChoice = { kind: "MENU"; menuId: string } | { kind: "CUSTOM" };
@@ -97,13 +99,19 @@ async function validateEventDetails(organizationId: string, details: EventDetail
   if (eventType.minGuests && details.guestCount < eventType.minGuests) {
     throw new StorefrontDraftError(`${eventType.name} needs at least ${eventType.minGuests} guests.`);
   }
+  const meals = [...new Set(details.eventMealTypes ?? [])];
+  if (meals.length === 0) throw new StorefrontDraftError("Please choose at least one meal.");
+
   if (!isCount(details.childBelow5Count) || !isCount(details.child5To10Count)) throw new StorefrontDraftError("Kids counts must be zero or more.");
 
-  return { ...details, eventDate: details.eventDate.slice(0, 10) };
+  return { ...details, eventMealTypes: meals, eventDate: details.eventDate.slice(0, 10) };
 }
 
 function readData(draft: { data: Prisma.JsonValue }): DraftData {
-  return draft.data as unknown as DraftData;
+  const data = draft.data as unknown as DraftData & { eventMealType?: MealType };
+  // Drafts saved before "Meals Required" held a single meal.
+  if (!data.eventMealTypes) data.eventMealTypes = data.eventMealType ? [data.eventMealType] : [];
+  return data;
 }
 
 async function loadEditableDraft(organizationId: string, draftId: string) {
@@ -213,11 +221,13 @@ async function classifyItems(organizationId: string, data: DraftData, itemIds: s
   const items = new Map<string, PickableItem>();
   const regularIds: string[] = [];
   const extraIds: string[] = [];
+  let menuSections: OrderPickerSection[] | null = null;
 
   if (data.menuChoice?.kind === "MENU") {
     const menu = await getMenuForOrderPicker(organizationId, data.menuChoice.menuId);
     if (!menu) throw new StorefrontDraftError("That menu is no longer available.");
 
+    menuSections = menu.sections;
     for (const section of menu.sections) for (const item of section.items) items.set(item.id, item);
 
     const split = splitPicks(menu.sections, itemIds);
@@ -240,28 +250,57 @@ async function classifyItems(organizationId: string, data: DraftData, itemIds: s
     throw new StorefrontDraftError("Please choose a menu first.");
   }
 
-  return { items, regularIds, extraIds };
+  return { items, regularIds, extraIds, menuSections };
 }
 
-export async function saveDraftItems(organizationId: string, draftId: string, input: { itemIds: string[]; addOnIds: string[] }) {
+/**
+ * Step 3: the dishes. Every category with a limit needs its full count of included dishes picked (or every dish it
+ * has, when it has fewer) before this saves, the same "compulsory" rule the admin picker uses (`requiredShortfalls`),
+ * so the customer and the team cannot end up with different ideas of a complete menu. Extras do not count.
+ * `addOnIds` stays as it was unless it is passed (kept for callers that still send both).
+ */
+export async function saveDraftItems(organizationId: string, draftId: string, input: { itemIds: string[]; addOnIds?: string[] }) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const before = readData(draft);
 
   const itemIds = [...new Set(input.itemIds)];
-  const addOnIds = [...new Set(input.addOnIds)];
   if (itemIds.length === 0) throw new StorefrontDraftError("Please select at least one menu item.");
 
-  await classifyItems(organizationId, before, itemIds);
-
-  if (addOnIds.length > 0) {
-    const count = await prisma.addOn.count({ where: { id: { in: addOnIds }, organizationId, isActive: true } });
-    if (count !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
+  const { menuSections } = await classifyItems(organizationId, before, itemIds);
+  if (menuSections) {
+    const short = requiredShortfalls(menuSections, itemIds);
+    if (short.length > 0) {
+      const first = short[0];
+      throw new StorefrontDraftError(`Please choose at least ${first.missing} more item${first.missing === 1 ? "" : "s"} from ${first.name}.`);
+    }
   }
+
+  const addOnIds = input.addOnIds ? [...new Set(input.addOnIds)] : before.addOnIds;
+  if (addOnIds && addOnIds.length > 0) await assertAddOnsAvailable(organizationId, addOnIds);
 
   return saveDraft(draftId, { ...before, itemIds, addOnIds }, 4, draft.currentStep);
 }
 
-// --- step 4: venue ------------------------------------------------------
+async function assertAddOnsAvailable(organizationId: string, addOnIds: string[]) {
+  const count = await prisma.addOn.count({ where: { id: { in: addOnIds }, organizationId, isActive: true } });
+  if (count !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
+}
+
+// --- step 4: add-ons and live counters ------------------------------------
+
+/** Step 4: optional add-ons and live counters. May be empty; unlocks the venue step. */
+export async function saveDraftAddOns(organizationId: string, draftId: string, addOnIds: string[]) {
+  const draft = await loadEditableDraft(organizationId, draftId);
+  const before = readData(draft);
+  if (!before.itemIds?.length) throw new StorefrontDraftError("Please choose your menu items first.");
+
+  const unique = [...new Set(addOnIds)];
+  if (unique.length > 0) await assertAddOnsAvailable(organizationId, unique);
+
+  return saveDraft(draftId, { ...before, addOnIds: unique }, 5, draft.currentStep);
+}
+
+// --- step 5: venue ------------------------------------------------------
 
 export async function saveDraftVenue(organizationId: string, draftId: string, venue: DraftVenue) {
   const draft = await loadEditableDraft(organizationId, draftId);
@@ -274,7 +313,6 @@ export async function saveDraftVenue(organizationId: string, draftId: string, ve
     venueDoorNumber: requireText(venue.venueDoorNumber, "Door / Flat / House No."),
     venueTower: venue.venueTower?.trim() || undefined,
     venueFloor: venue.venueFloor?.trim() || undefined,
-    venueHallName: requireText(venue.venueHallName, "Function Area / Hall Name"),
     completeVenueAddress: requireText(venue.completeVenueAddress, "Complete Venue Address"),
     venueLandmark: venue.venueLandmark?.trim() || undefined,
     venueContactName: requireText(venue.venueContactName, "Venue Contact Person"),
@@ -282,11 +320,13 @@ export async function saveDraftVenue(organizationId: string, draftId: string, ve
     venueAccessInstructions: venue.venueAccessInstructions?.trim() || undefined,
     vehicleAccess: venue.vehicleAccess,
     liveCounterAvailable: venue.liveCounterAvailable === true,
+    gasElectricAvailable: venue.gasElectricAvailable === true,
+    cookingInstructions: venue.cookingInstructions?.trim() || undefined,
   };
   if (!cleaned.venueType) throw new StorefrontDraftError("Venue Type is required.");
   if (!cleaned.vehicleAccess) throw new StorefrontDraftError("Vehicle Access is required.");
 
-  return saveDraft(draftId, { ...before, venue: cleaned }, 5, draft.currentStep);
+  return saveDraft(draftId, { ...before, venue: cleaned }, 6, draft.currentStep);
 }
 
 // --- step 5: quote + submit ---------------------------------------------
@@ -295,11 +335,14 @@ export interface DraftQuote {
   isCustomMenu: boolean;
   menuName: string | null;
   pricePerPlate: number | null;
+  /** Adults (the "Number of Guests" on the form); the menu price applies to them. */
   guests: number;
-  /** Menu price x guests (0 for a Custom Menu — the kitchen quotes it). */
+  /** How many meals were asked for; every amount below already covers all of them. */
+  meals: number;
+  /** Menu price x guests x meals (0 for a Custom Menu — the kitchen quotes it). */
   menuAmount: number;
   extras: { id: string; name: string; price: number; amount: number }[];
-  addOns: { id: string; name: string; priceType: "PER_PLATE" | "FIXED"; price: number; amount: number }[];
+  addOns: { id: string; name: string; type: "LIVE_COUNTER" | "SPECIAL_ADD_ON"; priceType: "PER_PLATE" | "FIXED"; price: number; included: boolean; amount: number }[];
   childrenCharge: number;
   total: number;
 }
@@ -307,6 +350,7 @@ export interface DraftQuote {
 /** The one pricing calculation — the Review step displays it and `submitDraft` books it, so they can't disagree. */
 export async function buildDraftQuote(organizationId: string, data: DraftData): Promise<DraftQuote> {
   const guests = data.guestCount;
+  const meals = data.eventMealTypes.length || 1;
   const isCustomMenu = data.menuChoice?.kind === "CUSTOM";
   const menu =
     data.menuChoice?.kind === "MENU" ? await prisma.menu.findFirst({ where: { id: data.menuChoice.menuId, organizationId } }) : null;
@@ -315,7 +359,7 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
   const { items, extraIds } = await classifyItems(organizationId, data, data.itemIds ?? []);
   const extras = extraIds.map((id) => {
     const item = items.get(id)!;
-    return { id, name: item.name, price: item.price, amount: item.price * guests };
+    return { id, name: item.name, price: item.price, amount: item.price * guests * meals };
   });
 
   const addOnRecords = data.addOnIds?.length
@@ -324,17 +368,19 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
   const addOns = addOnRecords.map((addOn) => ({
     id: addOn.id,
     name: addOn.name,
+    type: addOn.type,
     priceType: addOn.priceType,
     price: Number(addOn.price),
-    amount: addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price),
+    included: addOn.includedInPackage,
+    amount: (addOn.includedInPackage ? 0 : addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price)) * meals,
   }));
 
   const pricePerPlate = menu ? Number(menu.pricePerPlate) : null;
-  const menuAmount = pricePerPlate !== null ? pricePerPlate * guests : 0;
+  const menuAmount = pricePerPlate !== null ? pricePerPlate * guests * meals : 0;
   const childrenCharge = computeChildrenCharge(menu, data.childBelow5Count, data.child5To10Count);
   const total = menuAmount + extras.reduce((s, e) => s + e.amount, 0) + addOns.reduce((s, a) => s + a.amount, 0) + childrenCharge;
 
-  return { isCustomMenu, menuName: menu?.name ?? null, pricePerPlate, guests, menuAmount, extras, addOns, childrenCharge, total };
+  return { isCustomMenu, menuName: menu?.name ?? null, pricePerPlate, guests, meals, menuAmount, extras, addOns, childrenCharge, total };
 }
 
 /**
@@ -374,39 +420,44 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       ...quote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id, quantity: a.priceType === "PER_PLATE" ? guests : 1 })),
     ];
 
+    // Each meal is its own entry on the event day, carrying the same menu, dishes and add-ons (AJ, 2026-10-01).
+    const mealTypes = data.eventMealTypes;
+    const perMealMenuAmount = quote.menuAmount / mealTypes.length;
     const order = await createOrder(organizationId, {
       customerId: draft.customerId,
       eventTypeId: data.eventTypeId,
       eventStartDate: eventDate,
       eventEndDate: eventDate,
+      orderKind: mealTypes.length > 1 ? "MULTI" : "SINGLE",
       venue: venue.venueBuildingName,
       eventAddress: venue.completeVenueAddress,
-      totalParticipants: guests,
+      // "Number of Guests" on the form is the adults; children are counted on top.
+      adultCount: guests,
+      totalParticipants: guests + data.childBelow5Count + data.child5To10Count,
       childBelow5Count: data.childBelow5Count,
       child5To10Count: data.child5To10Count,
+      gasElectricAvailable: venue.gasElectricAvailable,
+      cookingInstructions: venue.cookingInstructions,
       individualPricingEnabled: true,
       notes: notes?.trim() || undefined,
-      mealPlanEntries: [
-        {
-          date: eventDate,
-          mealType: data.eventMealType,
-          menuId: data.menuChoice.kind === "MENU" ? data.menuChoice.menuId : null,
-          price: quote.menuAmount,
-          items: mealItems,
-        },
-      ],
+      mealPlanEntries: mealTypes.map((mealType) => ({
+        date: eventDate,
+        mealType,
+        menuId: data.menuChoice!.kind === "MENU" ? data.menuChoice!.menuId : null,
+        price: perMealMenuAmount,
+        items: mealItems,
+      })),
     });
 
     await prisma.order.update({
       where: { id: order.id },
       data: {
         menuPreference: data.menuPreference,
-        eventMealType: data.eventMealType,
+        eventMealType: mealTypes[0],
         venueType: venue.venueType,
         venueDoorNumber: venue.venueDoorNumber,
         venueTower: venue.venueTower,
         venueFloor: venue.venueFloor,
-        venueHallName: venue.venueHallName,
         venueLandmark: venue.venueLandmark,
         venueContactName: venue.venueContactName,
         venueContactPhone: venue.venueContactPhone,
@@ -504,7 +555,7 @@ export async function listAbandonedOrders(organizationId: string, state: Abandon
       eventTypeIcon: eventType?.icon ?? null,
       eventDate: data.eventDate,
       guestCount: data.guestCount,
-      eventMealType: data.eventMealType,
+      eventMealTypes: data.eventMealTypes,
       menuPreference: data.menuPreference,
       // Only set once the visitor reaches the Venue & Delivery step.
       venueName: data.venue?.venueBuildingName ?? null,

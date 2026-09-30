@@ -10,6 +10,7 @@ export interface AddOnInput {
   type: AddOnType;
   priceType: AddOnPriceType;
   price: number;
+  includedInPackage?: boolean;
   isActive?: boolean;
 }
 
@@ -23,6 +24,7 @@ export async function createAddOn(organizationId: string, input: AddOnInput, act
       type: input.type,
       priceType: input.priceType,
       price: input.price,
+      includedInPackage: input.includedInPackage ?? false,
       isActive: input.isActive ?? true,
     },
   });
@@ -51,6 +53,7 @@ export async function updateAddOn(organizationId: string, id: string, input: Add
       type: input.type,
       priceType: input.priceType,
       price: input.price,
+      includedInPackage: input.includedInPackage ?? before.includedInPackage,
       isActive: input.isActive ?? before.isActive,
     },
   });
@@ -104,6 +107,7 @@ export async function duplicateAddOn(organizationId: string, id: string, actorUs
       type: source.type,
       priceType: source.priceType,
       price: Number(source.price),
+      includedInPackage: source.includedInPackage,
       isActive: source.isActive,
     },
     actorUserId,

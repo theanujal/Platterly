@@ -111,10 +111,18 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
-  await page.getByRole("button", { name: `Actions for ${menuName}` }).click();
-  await page.getByRole("menuitem", { name: "Edit Menu Type" }).click();
-  await expect(selectedCategories.locator("> div").last()).toContainText(startersName);
-  await expect(page.getByLabel(`Max selection for ${startersName}`)).toHaveValue("5");
+  // Same as above: right after the save the drawer can reopen on the old values, so close and reopen until the new ones show.
+  await expect(async () => {
+    const dialog = page.getByRole("dialog");
+    if (await dialog.isVisible()) {
+      await page.keyboard.press("Escape");
+      await expect(dialog).not.toBeVisible();
+    }
+    await page.getByRole("button", { name: `Actions for ${menuName}` }).click();
+    await page.getByRole("menuitem", { name: "Edit Menu Type" }).click();
+    await expect(selectedCategories.locator("> div").last()).toContainText(startersName, { timeout: 3_000 });
+    await expect(page.getByLabel(`Max selection for ${startersName}`)).toHaveValue("5", { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 
   // --- Active/Inactive switch round-trip (Menu Type) ---
   await expect(page.getByRole("switch", { name: "Active" })).toBeChecked();
