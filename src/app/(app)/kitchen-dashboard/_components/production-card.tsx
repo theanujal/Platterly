@@ -57,7 +57,7 @@ function Field({ icon: Icon, children }: { icon: typeof Calendar; children: Reac
   );
 }
 
-export function ProductionCard({ menuSelection, showPriority = true }: { menuSelection: ProductionCardMenuSelection; showPriority?: boolean }) {
+export function ProductionCard({ menuSelection }: { menuSelection: ProductionCardMenuSelection }) {
   const pr = priority(menuSelection.event.startDate);
   const menu = menuName(menuSelection.event.eventType.menus);
 
@@ -73,7 +73,7 @@ export function ProductionCard({ menuSelection, showPriority = true }: { menuSel
       <CardHeader>
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="font-semibold">{menuSelection.event.customer.name}</CardTitle>
-          {showPriority && <Badge variant={pr.variant}>{pr.label}</Badge>}
+          <Badge variant={pr.variant}>{pr.label}</Badge>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
@@ -115,7 +115,7 @@ export function ProductionCard({ menuSelection, showPriority = true }: { menuSel
             variant="link"
             size="sm"
             className="h-auto gap-1 p-0 font-semibold"
-            render={<Link href={`/menu-approvals/${menuSelection.id}`} />}
+            render={<Link href={`/kitchen-dashboard/${menuSelection.id}`} />}
             nativeButton={false}
           >
             View Details
@@ -123,6 +123,24 @@ export function ProductionCard({ menuSelection, showPriority = true }: { menuSel
           </Button>
           <StageSelect menuSelectionId={menuSelection.id} currentStage={menuSelection.kitchenProductionStatus} />
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Delivered column's small info card (AJ, 2026-09-30): order number, customer, guests and event type — no actions. */
+export function DeliveredCard({ menuSelection }: { menuSelection: ProductionCardMenuSelection & { event: { order: { orderNumber: string | null } | null } } }) {
+  const { event } = menuSelection;
+  return (
+    <Card size="sm" className="border border-border ring-0">
+      <CardContent className="flex items-center justify-between gap-3 text-sm">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate font-semibold">{event.customer.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {event.eventType.name} · {event.guestCount ?? 0} guests
+          </span>
+        </div>
+        {event.order?.orderNumber && <Badge variant="neutral">{event.order.orderNumber}</Badge>}
       </CardContent>
     </Card>
   );

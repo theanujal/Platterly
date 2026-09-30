@@ -20,7 +20,7 @@ import { listCustomers, createCustomer } from "@/modules/customers/customer";
 import { getMenuPickerData, type MenuPickerData, type MenuPickerAddOn } from "@/modules/menus/menu";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import { isBackdated } from "@/modules/orders/event-date-rule";
-import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, EventStatus, FoodType, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
+import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, FoodType, PricingMethod, ChildPricingType, VenueType } from "@/generated/prisma/enums";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -220,14 +220,14 @@ export async function deleteOrderAction(id: string): Promise<ActionResult> {
 }
 
 /**
- * The Order page's kitchen / event status / required inventory cards
+ * The Order page's kitchen / required inventory cards
  * (AJ, 2026-09-27). They save as you change them, so this takes one field at
  * a time; the rest of an Event follows its Order (see syncOrderEvent).
  */
 export async function updateEventOperationsAction(
   orderId: string,
   eventId: string,
-  patch: { assignedKitchenId?: string | null; status?: EventStatus; requiredInventory?: RequiredInventoryInput[] },
+  patch: { assignedKitchenId?: string | null; requiredInventory?: RequiredInventoryInput[] },
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ events: ["edit"] }, organizationId);

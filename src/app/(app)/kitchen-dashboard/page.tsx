@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Clock, ChefHat, PackageCheck, Truck, Ban } from "lucide-react";
+import { Clock, ChefHat, PackageCheck, Truck } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listKitchenProductionBoard } from "@/modules/menu-approvals/menu-approval";
+import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { ProductionCard } from "./_components/production-card";
+import { ProductionCard, DeliveredCard } from "./_components/production-card";
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
@@ -16,20 +15,20 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Only the 3 "in flight" stages get a board column (AJ, 2026-09-19) —
-// Delivered/Cancelled move off the board entirely onto their own list pages
-// (the two buttons in the header), see menu-approval.ts's board-vs-queue split.
+// Four columns (AJ, 2026-09-30): the 3 in-flight stages plus Delivered, which shows a small info card.
 const COLUMNS: { key: KitchenProductionStatus; label: string; icon: LucideIcon; header: string; icon_tint: string }[] = [
   { key: "PENDING", label: "Pending", icon: Clock, header: "bg-secondary", icon_tint: "text-foreground" },
   { key: "IN_PREPARATION", label: "In Preparation", icon: ChefHat, header: "bg-tone-teal/10", icon_tint: "text-tone-teal" },
   { key: "READY", label: "Ready", icon: PackageCheck, header: "bg-info/10", icon_tint: "text-info" },
+  { key: "DELIVERED", label: "Delivered", icon: Truck, header: "bg-success/10", icon_tint: "text-success" },
 ];
 
 export default async function KitchenDashboardPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["view"] }, organizationId);
 
-  const menuSelections = await listKitchenProductionBoard(organizationId);
+  const [menuSelections, { daysBeforeEvent }] = await Promise.all([listKitchenProductionBoard(organizationId), getKitchenRules(organizationId)]);
+  const windowText = daysBeforeEvent === 0 ? "today" : `today through the next ${daysBeforeEvent} ${daysBeforeEvent === 1 ? "day" : "days"}`;
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -37,46 +36,17 @@ export default async function KitchenDashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Kitchen Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Every confirmed menu, from today&apos;s production through to completed events.</p>
-        </div>
-        <div className="flex gap-2">
-          {/*
-            size="md" (h-[38px]), not default (AJ, 2026-09-19) — these are
-            secondary tab-style navigation into the Delivered/Cancelled
-            sub-views, not the one dominant page action the way "Create
-            Order" is elsewhere; reserve default (h-11) for that role and use
-            the same medium size every other secondary/card action uses.
-          */}
-          <Button
-            variant="outline"
-            size="md"
-            className="border-success/30 bg-success/10 text-success hover:bg-success/20"
-            render={<Link href="/kitchen-dashboard/delivered" />}
-            nativeButton={false}
-          >
-            <Truck data-icon="inline-start" />
-            Delivered Orders
-          </Button>
-          <Button
-            variant="outline"
-            size="md"
-            className="border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20"
-            render={<Link href="/kitchen-dashboard/cancelled" />}
-            nativeButton={false}
-          >
-            <Ban data-icon="inline-start" />
-            Cancelled Orders
-          </Button>
+          <p className="text-sm text-muted-foreground">Confirmed menus in production from {windowText}, through to delivery.</p>
         </div>
       </div>
       <Separator />
 
       {menuSelections.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted-foreground">
-          Nothing in production for today through the next 2 days — confirmed menus show up here once the kitchen team approves them in Menu Approvals.
+          Nothing in production for {windowText} — confirmed menus show up here once the kitchen team approves them in Menu Approvals.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map((column) => {
             const staged = menuSelections.filter((menuSelection) => menuSelection.kitchenProductionStatus === column.key);
             const Icon = column.icon;
@@ -93,7 +63,13 @@ export default async function KitchenDashboardPage() {
                   {staged.length === 0 ? (
                     <p className="text-xs text-muted-foreground">Nothing here.</p>
                   ) : (
-                    staged.map((menuSelection) => <ProductionCard key={menuSelection.id} menuSelection={menuSelection} />)
+                    staged.map((menuSelection) =>
+                      column.key === "DELIVERED" ? (
+                        <DeliveredCard key={menuSelection.id} menuSelection={menuSelection} />
+                      ) : (
+                        <ProductionCard key={menuSelection.id} menuSelection={menuSelection} />
+                      ),
+                    )
                   )}
                 </div>
               </div>

@@ -151,7 +151,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <span className="size-2.5 rounded-sm bg-info/20" /> Event
         </span>
-        <span className="text-[11px] text-muted-foreground">A multi-day order counts on every day it runs. Cancelled orders and events are left out.</span>
+        <span className="text-[11px] text-muted-foreground">A multi-day order counts on every day it runs. Only approved, sent-to-kitchen and completed orders are shown.</span>
       </div>
 
       <Card>

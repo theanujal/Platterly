@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, Tag, IndianRupee } from "lucide-react";
+import { Boxes, IndianRupee, PackagePlus, BellRing, CalendarDays, MapPin, Store, Phone } from "lucide-react";
 import { DrawerForm } from "@/components/catalog/form-drawer";
-import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +22,26 @@ const UNIT_OPTIONS = [
   { value: "bag", label: "Bag" },
   { value: "bottle", label: "Bottle" },
 ] as const;
+
+const CATEGORY_OPTIONS = [
+  "Grains & Cereals",
+  "Pulses & Lentils",
+  "Flours",
+  "Spices & Masalas",
+  "Oils & Ghee",
+  "Dairy",
+  "Vegetables",
+  "Fruits",
+  "Meat & Poultry",
+  "Seafood",
+  "Dry Fruits & Nuts",
+  "Sugar & Sweeteners",
+  "Beverages",
+  "Packaging & Disposables",
+  "Cleaning Supplies",
+  "Fuel & Gas",
+  "Other",
+];
 
 export interface InventoryFormValues {
   name: string;
@@ -121,7 +140,24 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-category">Category</Label>
-          <IconInput icon={Tag} id="inv-category" required value={values.category} onChange={(e) => setField("category", e.target.value)} />
+          {/* An item saved before this was a dropdown may hold a free-typed category — keep it selectable rather than blanking it. */}
+          {(() => {
+            const options = values.category && !CATEGORY_OPTIONS.includes(values.category) ? [values.category, ...CATEGORY_OPTIONS] : CATEGORY_OPTIONS;
+            return (
+              <Select items={Object.fromEntries(options.map((c) => [c, c]))} value={values.category} onValueChange={(v) => setField("category", v ?? "")}>
+                <SelectTrigger id="inv-category" className="w-full">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            );
+          })()}
         </div>
 
         <div className="col-span-2 flex flex-col gap-1.5">
@@ -147,7 +183,8 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         {showOpeningStock ? (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="inv-opening-stock">Opening Stock</Label>
-            <Input
+            <IconInput
+              icon={PackagePlus}
               id="inv-opening-stock"
               type="number"
               step="0.01"
@@ -162,7 +199,8 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-low-stock">Low Stock Alert</Label>
-          <Input
+          <IconInput
+            icon={BellRing}
             id="inv-low-stock"
             type="number"
             step="0.01"
@@ -173,7 +211,7 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-expiry">Expiry Date</Label>
-          <Input id="inv-expiry" type="date" value={values.expiryDate} onChange={(e) => setField("expiryDate", e.target.value)} />
+          <IconInput icon={CalendarDays} id="inv-expiry" type="date" value={values.expiryDate} onChange={(e) => setField("expiryDate", e.target.value)} />
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -190,16 +228,16 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-location">Storage Location</Label>
-          <Input id="inv-location" value={values.storageLocation} onChange={(e) => setField("storageLocation", e.target.value)} />
+          <IconInput icon={MapPin} id="inv-location" value={values.storageLocation} onChange={(e) => setField("storageLocation", e.target.value)} />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-supplier-name">Supplier Name</Label>
-          <Input id="inv-supplier-name" value={values.supplierName} onChange={(e) => setField("supplierName", e.target.value)} />
+          <IconInput icon={Store} id="inv-supplier-name" value={values.supplierName} onChange={(e) => setField("supplierName", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-supplier-contact">Supplier Contact</Label>
-          <Input id="inv-supplier-contact" value={values.supplierContact} onChange={(e) => setField("supplierContact", e.target.value)} />
+          <IconInput icon={Phone} id="inv-supplier-contact" type="tel" value={values.supplierContact} onChange={(e) => setField("supplierContact", e.target.value)} />
         </div>
       </div>
 

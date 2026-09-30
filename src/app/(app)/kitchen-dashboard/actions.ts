@@ -19,7 +19,5 @@ export async function setKitchenProductionStatusAction(id: string, status: Kitch
     return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
   }
   revalidatePath("/kitchen-dashboard");
-  revalidatePath("/kitchen-dashboard/delivered");
-  revalidatePath("/kitchen-dashboard/cancelled");
   return { ok: true };
 }

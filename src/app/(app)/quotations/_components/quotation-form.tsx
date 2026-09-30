@@ -261,17 +261,24 @@ export function QuotationForm({
     mealType: MealTypeValue;
   } | null>(null);
 
+  // True while Multi was chosen by the form itself (not clicked), so it can flip back to Single on its own.
+  const [autoSwitchedToMulti, setAutoSwitchedToMulti] = useState(false);
+
   function setField<K extends keyof QuotationFormValues>(key: K, value: QuotationFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
   function setOrderKind(kind: string) {
+    setAutoSwitchedToMulti(false);
     setField("orderKind", kind);
   }
 
   function autoMulti(reason: "dates" | "meals") {
     setValues((prev) => (prev.orderKind === "MULTI" ? prev : { ...prev, orderKind: "MULTI" }));
-    if (values.orderKind !== "MULTI") setMultiNotice(reason);
+    if (values.orderKind !== "MULTI") {
+      setMultiNotice(reason);
+      setAutoSwitchedToMulti(true);
+    }
   }
 
   function setEventDateRange(startDate: string, endDate: string) {
@@ -330,6 +337,11 @@ export function QuotationForm({
   const eventDateRestricted = eventDaysUntil !== null && eventDaysUntil < MIN_DAYS_BEFORE_EVENT;
   const distinctMealTypes = new Set(values.mealPlanEntries.map((e) => e.mealType)).size;
   const multiRequired = days.length > 1 || distinctMealTypes > 1;
+  // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
+  if (autoSwitchedToMulti && !multiRequired) {
+    setAutoSwitchedToMulti(false);
+    if (values.orderKind === "MULTI") setField("orderKind", "SINGLE");
+  }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = guestsForPricing;
   const discountNum = Number.parseFloat(values.discount) || 0;

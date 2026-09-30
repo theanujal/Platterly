@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, EventStatus } from "@/generated/prisma/enums";
 
 /**
@@ -13,8 +14,12 @@ import type { OrderStatus, EventStatus } from "@/generated/prisma/enums";
  *
  * An Order counts on EVERY day of its [eventStartDate, eventEndDate] range,
  * not only its first: a 3-day wedding makes all 3 days busy. Cancelled
- * Orders/Events never count.
+ * Orders/Events never count. From 2026-09-30 only confirmed Orders show at all:
+ * Approved, Sent to Kitchen or Completed (see CALENDAR_ORDER_STATUSES).
  */
+
+/** The only Order statuses the calendar surfaces — an order still in review or awaiting the customer is not a booking yet. */
+const CALENDAR_ORDER_STATUSES: OrderStatus[] = ["APPROVED", "SENT_TO_KITCHEN", "COMPLETED"];
 
 const DAY_MS = 86_400_000;
 /** Hard ceiling so a corrupt/huge range can't spin the loop for years. */
@@ -52,16 +57,28 @@ export function countByDay(ranges: { start: Date; end: Date }[], fromIso: string
   return counts;
 }
 
-/** Orders overlapping [fromIso, toIso] (inclusive), non-cancelled only. */
+/** Orders overlapping [fromIso, toIso] (inclusive). */
 function overlapsWindow(fromIso: string, toIso: string) {
   return { lte: parseIsoDay(toIso), gte: parseIsoDay(fromIso) };
 }
 
-/** "YYYY-MM-DD" -> number of (non-cancelled) Orders happening that day. */
+/**
+ * An Event follows its Order (AJ, 2026-09-30): one linked to an Order shows
+ * only while that Order is confirmed (Approved, Sent to Kitchen, Completed),
+ * so cancelling one, or sending it back to review, clears it from the
+ * Calendar with no separate step. An Event with no Order (created
+ * on its own) falls back to its own status.
+ */
+const liveEvent: Prisma.EventWhereInput = {
+  status: { not: "CANCELLED" },
+  OR: [{ orderId: null }, { order: { status: { in: CALENDAR_ORDER_STATUSES } } }],
+};
+
+/** "YYYY-MM-DD" -> number of confirmed Orders happening that day. */
 export async function getOrderCountsByDay(organizationId: string, fromIso: string, toIso: string): Promise<Record<string, number>> {
   const w = overlapsWindow(fromIso, toIso);
   const orders = await prisma.order.findMany({
-    where: { organizationId, status: { not: "CANCELLED" }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
+    where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
     select: { eventStartDate: true, eventEndDate: true },
   });
   return countByDay(
@@ -121,7 +138,7 @@ export async function getCalendarData(organizationId: string, fromIso: string, t
   const w = overlapsWindow(fromIso, toIso);
   const [orders, events, required] = await Promise.all([
     prisma.order.findMany({
-      where: { organizationId, status: { not: "CANCELLED" }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
+      where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
       select: {
         id: true,
         orderNumber: true,
@@ -137,7 +154,7 @@ export async function getCalendarData(organizationId: string, fromIso: string, t
       orderBy: [{ eventStartDate: "asc" }, { createdAt: "asc" }],
     }),
     prisma.event.findMany({
-      where: { organizationId, status: { not: "CANCELLED" }, startDate: { lte: w.lte }, endDate: { gte: w.gte } },
+      where: { organizationId, ...liveEvent, startDate: { lte: w.lte }, endDate: { gte: w.gte } },
       select: {
         id: true,
         name: true,
@@ -152,7 +169,18 @@ export async function getCalendarData(organizationId: string, fromIso: string, t
       orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     }),
     prisma.eventRequiredInventory.findMany({
-      where: { event: { organizationId, status: { in: ["PENDING", "PROCESSING"] }, startDate: { lte: w.lte }, endDate: { gte: w.gte } } },
+      // Still to be cooked: an Order that is Completed or Cancelled no longer needs its stock held back.
+      where: {
+        event: {
+          organizationId,
+          startDate: { lte: w.lte },
+          endDate: { gte: w.gte },
+          OR: [
+            { orderId: null, status: { in: ["PENDING", "PROCESSING"] } },
+            { order: { status: { in: ["APPROVED", "SENT_TO_KITCHEN"] } } },
+          ],
+        },
+      },
       select: { quantity: true, inventory: { select: { id: true, name: true, unit: true, stockCount: true } } },
     }),
   ]);

@@ -444,7 +444,8 @@ export async function listMenuSelectionsForKitchen(organizationId: string, statu
 // see `listKitchenProductionQueue` below, unchanged, for those.
 
 export { KITCHEN_PRODUCTION_STATUS_LABEL, KITCHEN_PRODUCTION_BOARD_STAGES } from "./kitchen-production-status";
-import { KITCHEN_PRODUCTION_BOARD_STAGES } from "./kitchen-production-status";
+import { KITCHEN_PRODUCTION_BOARD_STAGES, cookQuantity } from "./kitchen-production-status";
+import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 
 // The board's "Menu name" (bell/utensils icon, AJ's reference screenshot)
 // comes from the Event Type's own assigned Menu(s), not from individual
@@ -455,7 +456,7 @@ import { KITCHEN_PRODUCTION_BOARD_STAGES } from "./kitchen-production-status";
 // following" is actually recorded.
 const KITCHEN_PRODUCTION_INCLUDE = {
   items: true,
-  event: { include: { customer: true, assignedKitchen: true, eventType: { include: { menus: { include: { menu: true } } } } } },
+  event: { include: { customer: true, assignedKitchen: true, order: { select: { orderNumber: true } }, eventType: { include: { menus: { include: { menu: true } } } } } },
 } as const;
 
 /** Every locked menu, nearest event first — no date window. Used by the Delivered/Cancelled list pages, and by tests. */
@@ -472,17 +473,19 @@ export async function listKitchenProductionQueue(organizationId: string, product
 }
 
 /**
- * The board's own listing (AJ, 2026-09-19): only the 3 "in flight" stages,
- * and only events happening today through 2 days from now — a kitchen
+ * The board's own listing (AJ, 2026-09-19; Delivered added as the 4th column
+ * 2026-09-30 — Cancelled is not the kitchen's concern): Pending, In
+ * Preparation, Ready and Delivered, and only events happening today through the Kitchen Rules' "days before the event" (2 by default) — a kitchen
  * doesn't need to see next month's locked menus mixed in with today's
  * production. The window is computed from the current date on every call,
  * so it rolls forward on its own with no separate refresh job.
  */
 export async function listKitchenProductionBoard(organizationId: string) {
+  const { daysBeforeEvent } = await getKitchenRules(organizationId);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   const endOfWindow = new Date(startOfToday);
-  endOfWindow.setDate(endOfWindow.getDate() + 3); // exclusive upper bound: today + 2 full days
+  endOfWindow.setDate(endOfWindow.getDate() + daysBeforeEvent + 1); // exclusive upper bound: today + `daysBeforeEvent` full days
 
   return prisma.menuSelection.findMany({
     where: {
@@ -494,6 +497,79 @@ export async function listKitchenProductionBoard(organizationId: string) {
     include: KITCHEN_PRODUCTION_INCLUDE,
     orderBy: { event: { startDate: "asc" } },
   });
+}
+
+/**
+ * What the kitchen has to prepare for one locked menu (AJ, 2026-09-30): the
+ * order's meal plan, each meal's dishes grouped by the dish's Menu Category
+ * (a dish tagged with several lands under its first, alphabetically), add-ons
+ * on their own, each with the guest quantity and the quantity to cook. Read-only
+ * and gated on `menus:view` by the caller — the kitchen role has no
+ * `menus:approve`, so it can't use the Menu Approvals page.
+ */
+export async function getKitchenPrepSheet(organizationId: string, id: string) {
+  const selection = await prisma.menuSelection.findFirst({
+    where: { id, organizationId, status: "FINAL_LOCKED" },
+    include: {
+      event: {
+        include: {
+          customer: true,
+          eventType: true,
+          assignedKitchen: true,
+          order: {
+            include: {
+              mealPlanEntries: {
+                orderBy: [{ date: "asc" }, { mealType: "asc" }],
+                include: {
+                  menu: { select: { name: true } },
+                  items: {
+                    orderBy: { createdAt: "asc" },
+                    include: {
+                      menuItem: { select: { image: true, categories: { select: { category: { select: { name: true } } } } } },
+                      addOn: { select: { image: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!selection) return null;
+
+  const order = selection.event.order;
+  const guests = selection.event.guestCount ?? order?.totalParticipants ?? 0;
+  const { extraPercent } = await getKitchenRules(organizationId);
+
+  const meals = (order?.mealPlanEntries ?? []).map((entry) => {
+    const groups = new Map<string, { name: string; image: string | null; guestQuantity: number; cookQuantity: number }[]>();
+    for (const item of entry.items) {
+      const isAddOn = item.itemType === "ADD_ON";
+      const category = isAddOn ? "Add-ons" : ([...(item.menuItem?.categories ?? [])].map((c) => c.category.name).sort()[0] ?? "Uncategorised");
+      // A dish is cooked for every guest; an add-on for the quantity ordered (1 = one for the whole event, not buffered).
+      const guestQuantity = isAddOn ? item.quantity : guests;
+      const row = {
+        name: item.isExtra ? `${item.name} (Extra)` : item.name,
+        image: (isAddOn ? item.addOn?.image : item.menuItem?.image) ?? null,
+        guestQuantity,
+        cookQuantity: isAddOn && item.quantity <= 1 ? guestQuantity : cookQuantity(guestQuantity, extraPercent),
+      };
+      groups.set(category, [...(groups.get(category) ?? []), row]);
+    }
+    return {
+      date: entry.date,
+      mealType: entry.mealType,
+      menuName: entry.menu?.name ?? null,
+      // Named categories alphabetically, then Uncategorised and Add-ons last.
+      categories: [...groups.entries()]
+        .map(([name, items]) => ({ name, items }))
+        .sort((a, b) => Number(["Uncategorised", "Add-ons"].includes(a.name)) - Number(["Uncategorised", "Add-ons"].includes(b.name)) || a.name.localeCompare(b.name)),
+    };
+  });
+
+  return { selection, meals, guests, extraPercent, isMultiOrder: order?.orderKind === "MULTI", kitchenNotes: order?.kitchenNotes ?? null };
 }
 
 /**

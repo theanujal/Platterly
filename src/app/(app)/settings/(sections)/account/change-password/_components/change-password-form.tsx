@@ -6,6 +6,7 @@ import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { FormFooter } from "../../../../_components/settings-ui";
 
 // Chunk 5 Group 5.1 — thin wrapper on better-auth's own changePassword
 // endpoint (already available via emailAndPassword: {enabled:true} in
@@ -19,6 +20,14 @@ export function ChangePasswordForm() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
+
+  function reset() {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setError(null);
+    setSuccess(false);
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -44,9 +53,9 @@ export function ChangePasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-sm flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="currentPassword">Current password</Label>
+        <Label htmlFor="currentPassword">Current Password</Label>
         <PasswordInput
           icon={Lock}
           id="currentPassword"
@@ -57,7 +66,7 @@ export function ChangePasswordForm() {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="newPassword">New password</Label>
+        <Label htmlFor="newPassword">New Password</Label>
         <PasswordInput
           icon={Lock}
           id="newPassword"
@@ -69,7 +78,7 @@ export function ChangePasswordForm() {
         />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="confirmPassword">Confirm new password</Label>
+        <Label htmlFor="confirmPassword">Confirm New Password</Label>
         <PasswordInput
           icon={Lock}
           id="confirmPassword"
@@ -80,15 +89,14 @@ export function ChangePasswordForm() {
           onChange={(e) => setConfirmPassword(e.target.value)}
         />
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {success && <p className="text-sm text-emerald-600">Password changed.</p>}
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Changing…" : "Change password"}
-      </Button>
+      <FormFooter error={error} success={success ? "Password changed." : null}>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Changing…" : "Change Password"}
+        </Button>
+        <Button type="button" variant="outline" onClick={reset}>
+          Cancel
+        </Button>
+      </FormFooter>
     </form>
   );
 }

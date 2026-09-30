@@ -6,21 +6,13 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateEventOperationsAction } from "../../actions";
-import type { EventStatus } from "@/generated/prisma/enums";
-
-const STATUS_OPTIONS: { value: EventStatus; label: string }[] = [
-  { value: "PENDING", label: "Pending" },
-  { value: "PROCESSING", label: "Processing" },
-  { value: "COMPLETED", label: "Completed" },
-  { value: "CANCELLED", label: "Cancelled" },
-];
 
 const NO_KITCHEN = "NONE";
 
 /**
- * Assigned kitchen + event status (AJ, 2026-09-27), the two operational
- * fields worth a card of their own. They save the moment they change, so there
- * is no save button. The Event itself is created and kept in step with the
+ * Assigned kitchen (AJ, 2026-09-27). Saves the moment it changes, so there
+ * is no save button. The Event Status dropdown was removed 2026-09-30: the
+ * order's own status already tracks the workflow. The Event itself is created and kept in step with the
  * Order automatically (syncOrderEvent), so there's nothing to "create" here.
  */
 export function EventOperationsCard({
@@ -29,15 +21,14 @@ export function EventOperationsCard({
   kitchens,
 }: {
   orderId: string;
-  event: { id: string; assignedKitchenId: string | null; status: EventStatus } | null;
+  event: { id: string; assignedKitchenId: string | null } | null;
   kitchens: { id: string; name: string }[];
 }) {
   const [kitchenId, setKitchenId] = useState(event?.assignedKitchenId ?? NO_KITCHEN);
-  const [status, setStatus] = useState<EventStatus>(event?.status ?? "PENDING");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  async function save(patch: { assignedKitchenId?: string | null; status?: EventStatus }) {
+  async function save(patch: { assignedKitchenId?: string | null }) {
     if (!event) return;
     setState("saving");
     setError(null);
@@ -57,7 +48,7 @@ export function EventOperationsCard({
           <ChefHat className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold">Kitchen &amp; Event Status</h2>
+          <h2 className="text-base font-semibold">Assigned Kitchen</h2>
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Changes save automatically."}
           </p>
@@ -66,7 +57,7 @@ export function EventOperationsCard({
 
       {!event ? (
         <p className="text-sm text-muted-foreground">
-          Set an Event Type on this order and save it. The event is created for you, and its kitchen and status show up here.
+          Set an Event Type on this order and save it. The event is created for you, and its kitchen shows up here.
         </p>
       ) : (
         <div className="flex flex-col gap-3">
@@ -91,31 +82,6 @@ export function EventOperationsCard({
                 {kitchens.map((k) => (
                   <SelectItem key={k.id} value={k.id}>
                     {k.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <Label htmlFor="event-status" className="shrink-0 font-normal text-muted-foreground">
-              Event Status
-            </Label>
-            <Select
-              items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
-              value={status}
-              onValueChange={(v) => {
-                const next = (v ?? status) as EventStatus;
-                setStatus(next);
-                void save({ status: next });
-              }}
-            >
-              <SelectTrigger id="event-status" className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
                   </SelectItem>
                 ))}
               </SelectContent>

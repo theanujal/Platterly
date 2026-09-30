@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building, Globe, Link as LinkIcon } from "lucide-react";
+import { Building, FileText, Globe, Hash, Link as LinkIcon, MapPin, Palette, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { useStopEditing } from "../../../../_components/editable-panel";
+import { FormFooter, SettingsSection } from "../../../../_components/settings-ui";
 import { updateBusinessProfileAction } from "../actions";
 
 export interface BusinessProfileFormValues {
@@ -36,10 +38,10 @@ export interface BusinessProfileFormValues {
 // again here for a caterer who skipped it or wants to make changes later.
 export function BusinessProfileForm({ initialValues }: { initialValues: BusinessProfileFormValues }) {
   const router = useRouter();
+  const stopEditing = useStopEditing();
   const [values, setValues] = useState(initialValues);
   const [logo, setLogo] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
   function setField<K extends keyof BusinessProfileFormValues>(key: K, value: BusinessProfileFormValues[K]) {
@@ -49,7 +51,6 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setSuccess(false);
     setPending(true);
 
     const formData = new FormData();
@@ -79,14 +80,13 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
       setError(result.error);
       return;
     }
-    setSuccess(true);
     router.refresh();
+    stopEditing();
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-lg flex-col gap-6">
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Business</h2>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <SettingsSection icon={Store} title="Basic Information">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="businessName">Company / business name</Label>
           <IconInput
@@ -105,10 +105,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             onChange={(e) => setField("businessDescription", e.target.value)}
           />
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Contact & address</h2>
+      <SettingsSection icon={MapPin} title="Contact & Address">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addressLine1">Street address</Label>
           <Input
@@ -117,7 +116,7 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             onChange={(e) => setField("addressLine1", e.target.value)}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="city">City</Label>
             <Input id="city" value={values.city} onChange={(e) => setField("city", e.target.value)} />
@@ -147,10 +146,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             onChange={(value) => setField("mobileNumber", value)}
           />
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">GST</h2>
+      <SettingsSection icon={FileText} title="GST">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="gstNumber">GST number (optional)</Label>
           <Input
@@ -168,10 +166,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
           />
           <Label htmlFor="gstShowOnInvoices">Show GST details on invoices</Label>
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Online presence</h2>
+      <SettingsSection icon={Globe} title="Online Presence">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="websiteUrl">Website URL</Label>
           <IconInput
@@ -204,14 +201,13 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             onChange={(e) => setField("facebookUrl", e.target.value)}
           />
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Order Numbering</h2>
+      <SettingsSection icon={Hash} title="Order Numbering">
         <p className="text-xs text-muted-foreground">
           Every new order gets a number like <span className="font-mono">{values.orderNumberPrefix || "ORD"}-{values.orderNumberNextValue.padStart(Number(values.orderNumberPadding) || 4, "0")}</span>, incrementing by 1 each time. Changing the starting number resets the counter going forward — it never affects orders already created.
         </p>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="orderNumberPrefix">Prefix</Label>
             <Input
@@ -243,25 +239,23 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             />
           </div>
         </div>
-      </div>
+      </SettingsSection>
 
-      <div className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-muted-foreground">Brand identity</h2>
+      <SettingsSection icon={Palette} title="Brand Identity">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="logo">Logo</Label>
           <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} maxSizeMB={4} />
         </div>
-      </div>
+      </SettingsSection>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {success && <p className="text-sm text-emerald-600">Saved.</p>}
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Saving…" : "Save changes"}
-      </Button>
+      <FormFooter error={error}>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save Changes"}
+        </Button>
+        <Button type="button" variant="outline" onClick={stopEditing}>
+          Cancel
+        </Button>
+      </FormFooter>
     </form>
   );
 }

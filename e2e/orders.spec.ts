@@ -211,6 +211,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(page.getByText(customerName)).toBeVisible();
   await expect(page.getByText("₹250", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
 
@@ -244,10 +245,8 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save Event details" })).toHaveCount(0);
   const operations = page.getByTestId("event-operations-card");
-  await expect(operations.getByLabel("Event Status")).toBeVisible();
-  await operations.getByLabel("Event Status").click();
-  await page.getByRole("option", { name: "Processing" }).click();
-  await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(operations.getByLabel("Assigned Kitchen")).toBeVisible();
+  await expect(operations.getByLabel("Event Status")).toHaveCount(0); // removed 2026-09-30
   await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card")).toBeVisible();
 
@@ -276,6 +275,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
 
   // --- Configure Order Numbering (Business Profile settings) ---
   await page.goto("/settings/account/business-profile");
+  await page.getByRole("button", { name: "Edit Profile" }).click(); // opens in view mode (AJ, 2026-09-30)
   // Onboarding was skipped, so the business name starts blank (the "Unnamed
   // Business" placeholder is never shown back in the field) — required to save.
   await page.getByLabel("Company / business name").fill(`Multi Order Test Co ${suffix}`);
@@ -283,7 +283,8 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await page.getByLabel("Starting number").fill("1");
   await page.getByLabel("Digits").fill("4");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Profile" })).toBeVisible(); // back to the read-only view
+  await expect(page.getByText("AJ-0001", { exact: true })).toBeVisible(); // Next Order Number
 
   // --- Customer ---
   const customerName = `Meera Shah ${suffix}`;
@@ -386,6 +387,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   // Orders card (2026-09-26): the customer name is the card's stretched link,
   // not the whole card, so find the card by test id rather than as one link.
   const orderCard = page.getByTestId("order-card").filter({ hasText: customerName });
@@ -413,6 +415,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
 
   // --- Order Type filter ---
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await page.getByLabel("Order type filter").click();
   await page.getByRole("option", { name: "Single Order" }).click();
   await expect(page.getByText(customerName)).not.toBeVisible();
@@ -449,12 +452,14 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
 
   // --- The card's 3-dot menu: View / Edit navigates, Delete asks first and then removes the card ---
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   const card = page.getByTestId("order-card").filter({ hasText: customerName });
   await card.getByRole("button", { name: "Actions for AJ-0001" }).click();
   await page.getByRole("menuitem", { name: "View / Edit Order" }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
 
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await card.getByRole("button", { name: "Actions for AJ-0001" }).click();
   await page.getByRole("menuitem", { name: "Delete Order" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
@@ -501,8 +506,14 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   // ...and it can't be turned back to Single while both meals are there.
   await expect(page.getByRole("button", { name: /Single Order/ })).toBeDisabled();
 
-  // Total Guests is computed and read-only.
+  // Removing the second meal brings it back to Single on its own (AJ, 2026-09-30).
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await page.getByRole("button", { name: "Remove Dinner", exact: true }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+
+  // Total Guests is computed and read-only.
   await page.getByLabel("Adults").fill("10");
   await page.getByLabel("Children (5–10)").fill("4");
   await expect(page.getByLabel("Total Guests")).toHaveValue("14");

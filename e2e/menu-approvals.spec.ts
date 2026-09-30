@@ -19,11 +19,10 @@ import { signUpCaterer } from "./auth-helpers";
  * page embedding the live storefront.
  *
  * Also covers Group 11.5 — the Kitchen Dashboard (`/kitchen-dashboard`),
- * redesigned 2026-09-19 (AJ, live reference screenshot): a 3-column board
- * (Pending/In Preparation/Ready only, windowed to today-through-+2-days) with a
- * free-choice status dropdown per card, plus Delivered/Cancelled moving off
- * the board entirely onto their own `/kitchen-dashboard/delivered` and
- * `/kitchen-dashboard/cancelled` list pages.
+ * redesigned 2026-09-19 (AJ, live reference screenshot): a 4-column
+ * board (Pending/In Preparation/Ready/Delivered, windowed to today-through-+2-days)
+ * with a free-choice status dropdown per card; Delivered (4th column, 2026-09-30)
+ * shows a small info card, and the kitchen has no Cancelled stage.
  */
 
 // Local-date formatting, not `toISOString().slice(0, 10)` — that round-trips
@@ -205,6 +204,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // --- Placed, not approved: the order lands as Pending Review, and the queue says the menu Needs Review ---
   const orderCard = () => page.getByTestId("order-card").filter({ hasText: customerName });
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Pending Review");
 
   await page.goto("/menu-approvals");
@@ -224,6 +224,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const linkV1 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Awaiting Customer Approval");
   await expect(orderCard()).toContainText("Menu sent");
 
@@ -246,6 +247,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- Back to the team: Pending Review again, with the customer's note; they send an updated version ---
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Pending Review");
   await expect(orderCard()).toContainText("Customer requested changes");
   await page.goto("/menu-approvals");
@@ -273,6 +275,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- The order page shows the approval next to the kitchen / status card, and the versions open in a popup (AJ, 2026-09-27) ---
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await orderCard().getByRole("link", { name: customerName }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByTestId("order-approval-panel")).toBeVisible();
@@ -295,6 +298,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // The customer approving makes the order Approved; the team then sends it to the kitchen itself (no kitchen review step).
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Approved");
   await page.goto("/menu-approvals");
   await expect(page.getByText("Customer Approved")).toBeVisible();
@@ -302,6 +306,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
   await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Sent to Kitchen");
 
   // --- A status can be set by hand, but only with a reason, and the change is recorded (AJ, 2026-09-30) ---
@@ -332,12 +337,44 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
   await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Sent to Kitchen");
 
   // --- Kitchen Dashboard: the freshly-approved order starts Pending, in a real board column ---
   await page.goto("/kitchen-dashboard");
   const pendingColumn = page.locator('[data-stage="PENDING"]');
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
+
+  // View Details opens the kitchen's own prep sheet (not Menu Approvals, which the kitchen role can't open).
+  await pendingColumn.getByRole("button", { name: "View Details" }).click();
+  await expect(page).toHaveURL(/\/kitchen-dashboard\/.+/);
+  await expect(page.getByRole("heading", { name: customerName })).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Meals" })).toHaveCount(0); // meal tabs are for Multi Orders only
+  await expect(page.getByText("Guest Qty").first()).toBeVisible();
+  await expect(page.getByText("Cook for 110 portions (10% extra)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Preparation Notes" })).toBeVisible();
+  await expect(page.getByText("No preparation notes for this order.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Print" })).toBeVisible();
+  const pdfLink = page.getByRole("button", { name: "Download PDF" });
+  await expect(pdfLink).toHaveAttribute("href", /\/kitchen-dashboard\/.+\/pdf\?download=1$/);
+  const pdf = await page.request.get((await pdfLink.getAttribute("href"))!);
+  expect(pdf.headers()["content-type"]).toContain("application/pdf");
+  expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
+
+  // Kitchen Rules (Settings): the defaults show, and a change saves.
+  await page.goto("/settings/kitchen/kitchen-rules");
+  await expect(page.getByText("10% more than the guest count")).toBeVisible();
+  await expect(page.getByText("2 days before the event")).toBeVisible();
+  await page.getByRole("button", { name: "Edit Rules" }).click();
+  await page.getByLabel("Send to the kitchen (days before the event)").fill("3");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("3 days before the event")).toBeVisible({ timeout: 20_000 }); // first save compiles the route in dev
+  await page.getByRole("button", { name: "Edit Rules" }).click();
+  await page.getByLabel("Send to the kitchen (days before the event)").fill("2");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("2 days before the event")).toBeVisible();
+
+  await page.goto("/kitchen-dashboard");
 
   // Free-choice dropdown (AJ, 2026-09-19) — jumps directly between any of
   // the 5 stages, not a forward-only single-step advance.
@@ -352,30 +389,15 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const readyColumn = page.locator('[data-stage="READY"]');
   await expect(readyColumn.getByText(customerName, { exact: true })).toBeVisible();
 
-  // Delivered moves it off the board entirely (AJ's screenshot has no
-  // Delivered column) — only reachable via "Delivered Orders" from here on —
-  // and completes the Order.
+  // Delivered is the 4th column (AJ, 2026-09-30) with a small info card, and completes the Order.
   await readyColumn.getByRole("combobox", { name: "Kitchen production stage" }).click();
   await page.getByRole("option", { name: "Delivered" }).click();
-  await expect(page.locator('[data-stage]').getByText(customerName, { exact: true })).not.toBeVisible();
+  const deliveredColumn = page.locator('[data-stage="DELIVERED"]');
+  await expect(deliveredColumn.getByText(customerName, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancelled Orders" })).toHaveCount(0);
   await page.goto("/orders");
+  await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Completed");
-
-  await page.goto("/kitchen-dashboard");
-  await page.getByRole("button", { name: "Delivered Orders" }).click();
-  await expect(page).toHaveURL(/\/kitchen-dashboard\/delivered$/);
-  await expect(page.getByText(customerName, { exact: true })).toBeVisible();
-
-  // Cancelling from the Delivered list moves it again, to Cancelled Orders, and cancels the Order.
-  await page.getByRole("combobox", { name: "Kitchen production stage" }).click();
-  await page.getByRole("option", { name: "Cancelled" }).click();
-  await expect(page.getByText(customerName, { exact: true })).not.toBeVisible();
-
-  await page.goto("/kitchen-dashboard/cancelled");
-  await expect(page.getByText(customerName, { exact: true })).toBeVisible();
-  // A cancelled order whose event is still ahead stays in Orders (only orders whose event is over are hidden).
-  await page.goto("/orders");
-  await expect(orderCard()).toContainText("Rejected / Cancelled");
 
   // --- Abandoned Orders: the visitor who stopped after step 1 (already a Lead), not the one who submitted ---
   await page.goto("/abandoned-orders");

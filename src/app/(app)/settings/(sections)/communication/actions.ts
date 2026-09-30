@@ -3,47 +3,49 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getSetting, setSetting } from "@/lib/settings/settings";
+import {
+  ChannelProviderNotConnectedError,
+  InvalidChannelTemplateError,
+  setChannelActive,
+  setChannelMessages,
+  setChannelTemplate,
+} from "@/modules/notifications/channel-settings";
+import type { MessageKey, SettingsChannel } from "@/modules/notifications/channel-settings-config";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-const SMS_KEY = "communication.sms";
-const PUSH_KEY = "communication.push";
 const INVOICE_TERMS_KEY = "communication.invoiceTerms";
 
-interface ChannelToggle {
-  enabled: boolean;
-}
+const PAGE: Record<SettingsChannel, string> = {
+  whatsapp: "/settings/communication/whatsapp-settings",
+  email: "/settings/communication/email-settings",
+  push: "/settings/communication/push-notifications",
+};
 
-/**
- * Chunk 5 Group 5.4 — placeholder toggles for channels `notify()` (Chunk 2)
- * already supports selecting by `channel`, but has no real SMS/Push
- * provider behind it yet (Chunk 16's job). Stored via `TenantSetting` so a
- * later chunk has somewhere to read the preference from.
- */
-export async function getSmsToggleAction(organizationId: string): Promise<boolean> {
-  const stored = await getSetting<ChannelToggle>(organizationId, SMS_KEY);
-  return stored?.enabled ?? false;
-}
-
-export async function getPushToggleAction(organizationId: string): Promise<boolean> {
-  const stored = await getSetting<ChannelToggle>(organizationId, PUSH_KEY);
-  return stored?.enabled ?? false;
-}
-
-export async function updateSmsToggleAction(formData: FormData): Promise<ActionResult> {
+async function guarded(channel: SettingsChannel, run: (organizationId: string) => Promise<void>): Promise<ActionResult> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["edit"] }, organizationId);
-  await setSetting(organizationId, SMS_KEY, { enabled: formData.get("enabled") === "true" });
-  revalidatePath("/settings/communication/sms-settings");
+  try {
+    await run(organizationId);
+  } catch (error) {
+    if (error instanceof ChannelProviderNotConnectedError || error instanceof InvalidChannelTemplateError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath(PAGE[channel]);
   return { ok: true };
 }
 
-export async function updatePushToggleAction(formData: FormData): Promise<ActionResult> {
-  const { organizationId } = await requireActiveOrganization();
-  await requirePermission({ settings: ["edit"] }, organizationId);
-  await setSetting(organizationId, PUSH_KEY, { enabled: formData.get("enabled") === "true" });
-  revalidatePath("/settings/communication/push-notifications");
-  return { ok: true };
+/** The caterer's activate / deactivate switch. Connecting the provider itself is the Platterly team's job. */
+export async function setChannelActiveAction(channel: SettingsChannel, active: boolean): Promise<ActionResult> {
+  return guarded(channel, (organizationId) => setChannelActive(organizationId, channel, active));
+}
+
+export async function saveChannelMessagesAction(channel: SettingsChannel, messages: Partial<Record<MessageKey, boolean>>): Promise<ActionResult> {
+  return guarded(channel, (organizationId) => setChannelMessages(organizationId, channel, messages));
+}
+
+export async function saveChannelTemplateAction(channel: SettingsChannel, templateKey: string, body: string): Promise<ActionResult> {
+  return guarded(channel, (organizationId) => setChannelTemplate(organizationId, channel, templateKey, body));
 }
 
 export async function getInvoiceTermsAction(organizationId: string): Promise<string> {

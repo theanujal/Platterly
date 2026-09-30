@@ -66,26 +66,27 @@ describe("daysInRange / countByDay (pure)", () => {
 describe("getOrderCountsByDay / getCalendarData (Chunk 13)", () => {
   it("counts a multi-day order on every day, skips CANCELLED, and matches the Orders table exactly", async () => {
     const { org, actor, customer } = await setup();
-    const make = (start: string, end: string, status?: "CANCELLED" | "APPROVED") =>
+    const make = (start: string, end: string, status: "CANCELLED" | "APPROVED" | "PENDING_REVIEW" = "APPROVED") =>
       createOrder(org.id, { customerId: customer.id, eventStartDate: d(start), eventEndDate: d(end), status }, actor.id);
 
     await make("2026-10-05", "2026-10-05");
     await make("2026-10-05", "2026-10-07");
     await make("2026-10-06", "2026-10-06", "CANCELLED");
     await make("2026-11-15", "2026-11-15"); // outside the window
+    await make("2026-10-06", "2026-10-06", "PENDING_REVIEW"); // not confirmed yet, so not on the calendar
 
     const counts = await getOrderCountsByDay(org.id, "2026-10-01", "2026-10-31");
     expect(counts).toEqual({ "2026-10-05": 2, "2026-10-06": 1, "2026-10-07": 1 });
 
     // Cross-check against the raw table: sum of per-day counts == sum of each live order's in-window days.
-    const live = await prisma.order.findMany({ where: { organizationId: org.id, status: { not: "CANCELLED" } } });
+    const live = await prisma.order.findMany({ where: { organizationId: org.id, status: { in: ["APPROVED", "SENT_TO_KITCHEN", "COMPLETED"] } } });
     const expected = live.reduce((n, o) => n + daysInRange(o.eventStartDate, o.eventEndDate, "2026-10-01", "2026-10-31").length, 0);
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(expected);
   });
 
   it("counts an order that starts before the window but runs into it", async () => {
     const { org, actor, customer } = await setup();
-    await createOrder(org.id, { customerId: customer.id, eventStartDate: d("2026-09-29"), eventEndDate: d("2026-10-02") }, actor.id);
+    await createOrder(org.id, { customerId: customer.id, eventStartDate: d("2026-09-29"), eventEndDate: d("2026-10-02"), status: "APPROVED" }, actor.id);
     const counts = await getOrderCountsByDay(org.id, "2026-10-01", "2026-10-31");
     expect(counts).toEqual({ "2026-10-01": 1, "2026-10-02": 1 });
   });
@@ -103,7 +104,7 @@ describe("getOrderCountsByDay / getCalendarData (Chunk 13)", () => {
     const { org, actor, customer, eventType } = await setup();
     const order = await createOrder(
       org.id,
-      { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: d("2026-10-05"), eventEndDate: d("2026-10-06"), totalParticipants: 120 },
+      { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: d("2026-10-05"), eventEndDate: d("2026-10-06"), totalParticipants: 120, status: "APPROVED" },
       actor.id,
     );
     const linked = await createEvent(
@@ -139,5 +140,28 @@ describe("getOrderCountsByDay / getCalendarData (Chunk 13)", () => {
     const data = await getCalendarData(org.id, "2026-10-01", "2026-10-31");
     // 6 + 6 = 12 chafing dishes needed vs 10 in stock -> flagged; plates are fine.
     expect(data.inventoryConstraints).toEqual([{ inventoryId: chafing.id, name: "Chafing dish", unit: "pcs", required: 12, inStock: 10 }]);
+  });
+
+  it("follows the linked Order: a cancelled Order drops its Event, and a completed one stops holding stock", async () => {
+    const { org, actor, customer, eventType } = await setup();
+    const chafing = await createInventoryItem(org.id, { name: "Chafing dish", category: "Equipment", unit: "pcs" }, actor.id, 10);
+    const linkedEvent = async (start: string, quantity: number) => {
+      const order = await createOrder(org.id, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: d(start), eventEndDate: d(start), status: "APPROVED" }, actor.id);
+      const event = await createEvent(
+        org.id,
+        { customerId: customer.id, eventTypeId: eventType.id, name: `E ${start}`, startDate: d(start), endDate: d(start), requiredInventory: [{ inventoryId: chafing.id, quantity }] },
+        actor.id,
+      );
+      await prisma.event.update({ where: { id: event.id }, data: { orderId: order.id } });
+      return order;
+    };
+    const cancelled = await linkedEvent("2026-10-05", 8);
+    const completed = await linkedEvent("2026-10-06", 8);
+    await prisma.order.update({ where: { id: cancelled.id }, data: { status: "CANCELLED" } });
+    await prisma.order.update({ where: { id: completed.id }, data: { status: "COMPLETED" } });
+
+    const data = await getCalendarData(org.id, "2026-10-01", "2026-10-31");
+    expect(data.events.map((e) => e.name)).toEqual(["E 2026-10-06"]); // the cancelled Order's Event is gone, the completed one stays visible
+    expect(data.inventoryConstraints).toEqual([]); // neither still needs stock held back
   });
 });

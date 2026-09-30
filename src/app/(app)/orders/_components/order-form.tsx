@@ -296,11 +296,15 @@ export function OrderForm({
   // can also open it directly for any date, not just the sidebar-focused one.
   const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
 
+  // True while Multi was chosen by the form itself (not clicked), so it can flip back to Single on its own.
+  const [autoSwitchedToMulti, setAutoSwitchedToMulti] = useState(false);
+
   function setField<K extends keyof OrderFormValues>(key: K, value: OrderFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
   function setOrderKind(kind: string) {
+    setAutoSwitchedToMulti(false);
     setField("orderKind", kind);
   }
 
@@ -312,7 +316,10 @@ export function OrderForm({
    */
   function autoMulti(reason: "dates" | "meals") {
     setValues((prev) => (prev.orderKind === "MULTI" ? prev : { ...prev, orderKind: "MULTI" }));
-    if (values.orderKind !== "MULTI") setMultiNotice(reason);
+    if (values.orderKind !== "MULTI") {
+      setMultiNotice(reason);
+      setAutoSwitchedToMulti(true);
+    }
   }
 
   /**
@@ -378,6 +385,11 @@ export function OrderForm({
   const eventDatePast = eventDaysUntil !== null && eventDaysUntil < 0 && values.eventStartDate !== initialValues?.eventStartDate;
   const distinctMealTypes = new Set(values.mealPlanEntries.map((e) => e.mealType)).size;
   const multiRequired = days.length > 1 || distinctMealTypes > 1;
+  // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
+  if (autoSwitchedToMulti && !multiRequired) {
+    setAutoSwitchedToMulti(false);
+    if (values.orderKind === "MULTI") setField("orderKind", "SINGLE");
+  }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
   const discountNum = Number.parseFloat(values.discount) || 0;

@@ -98,6 +98,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         }
         columns={["Order #", "Order Type", "Customer", "Event", "Guests", "Amount", "Status", "Open"]}
         richList
+        defaultView="list"
         searchPlaceholder="Search orders by customer, phone, or order #…"
         emptyLabel="No orders yet."
         filters={<OrdersFilterBar eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}

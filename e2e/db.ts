@@ -218,3 +218,21 @@ export async function seedCalendarFixtures(
     );
   }
 }
+
+/**
+ * Stands in for the Platterly admin dashboard (not built yet), which is what
+ * connects a caterer's WhatsApp/Email provider: marks the channel's provider connected.
+ */
+export async function connectNotificationProvider(email: string, channel: "whatsapp" | "email"): Promise<void> {
+  const { rows } = await pool.query<{ organizationId: string }>(
+    `SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1`,
+    [email],
+  );
+  const orgId = rows[0]?.organizationId;
+  if (!orgId) throw new Error(`No organization found for ${email}`);
+  await pool.query(
+    `INSERT INTO tenant_setting (id, "organizationId", key, value, "updatedAt") VALUES ($1, $2, $3, '{"connected": true}', now())
+     ON CONFLICT ("organizationId", key) DO UPDATE SET value = '{"connected": true}', "updatedAt" = now()`,
+    [crypto.randomUUID(), orgId, `notifications.${channel}.provider`],
+  );
+}

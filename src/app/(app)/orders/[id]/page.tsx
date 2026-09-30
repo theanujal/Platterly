@@ -213,7 +213,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
             <EventOperationsCard
               orderId={order.id}
-              event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId, status: event.status } : null}
+              event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
               kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
             />
           </>

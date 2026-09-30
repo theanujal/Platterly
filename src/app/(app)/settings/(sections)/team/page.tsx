@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import { ShieldCheck, UserPlus, Users } from "lucide-react";
+import { SettingsCard, SettingsPanel, SettingsSection } from "../../_components/settings-ui";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { roleLabel } from "@/lib/auth/role-metadata";
 import { listMembers, listPendingInvitations } from "@/modules/team/team";
@@ -27,20 +28,10 @@ export default async function TeamPage() {
   ]);
 
   return (
-    <div className="flex flex-col gap-8">
-      <PageBreadcrumb
-        items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Team Management" }]}
-      />
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Team Management</h1>
-          <p className="text-sm text-muted-foreground">Invite teammates and manage their access.</p>
-        </div>
-        <InviteMemberDialog />
-      </div>
+    <SettingsCard title="Team Management" description="Invite teammates and manage their access." action={<InviteMemberDialog />}>
+      <SettingsPanel>
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">Members</h2>
+      <SettingsSection icon={Users} title="Members">
         <Table>
           <TableHeader>
             <TableRow>
@@ -67,11 +58,10 @@ export default async function TeamPage() {
             ))}
           </TableBody>
         </Table>
-      </div>
+      </SettingsSection>
 
       {invitations.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold text-muted-foreground">Pending Invitations</h2>
+        <SettingsSection icon={UserPlus} title="Pending Invitations">
           <Table>
             <TableHeader>
               <TableRow>
@@ -100,16 +90,13 @@ export default async function TeamPage() {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </SettingsSection>
       )}
 
-      <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-muted-foreground">Team Privacy</h2>
-        <p className="max-w-lg text-xs text-muted-foreground">
-          Controls what teammates see about each other — this never restricts what Owners can see.
-        </p>
+      <SettingsSection icon={ShieldCheck} title="Team Privacy" description="Controls what teammates see about each other — this never restricts what Owners can see.">
         <TeamPrivacyForm initialValues={teamPrivacy} />
-      </div>
-    </div>
+      </SettingsSection>
+      </SettingsPanel>
+    </SettingsCard>
   );
 }

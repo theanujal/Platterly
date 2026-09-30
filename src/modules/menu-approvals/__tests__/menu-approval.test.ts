@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { setKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { prisma } from "@/lib/db";
 import {
   submitEventDetails,
@@ -13,6 +14,7 @@ import {
   listMenuSelectionsForKitchen,
   listKitchenProductionQueue,
   listKitchenProductionBoard,
+  getKitchenPrepSheet,
   setKitchenProductionStatus,
   syncOrderStatus,
   updateMenuApprovalMealPlan,
@@ -605,7 +607,7 @@ describe("Kitchen Dashboard production status (Chunk 11 Group 11.5, PRD §34)", 
 });
 
 describe("listKitchenProductionBoard (Chunk 11 Group 11.5 redesign, AJ 2026-09-19)", () => {
-  it("only includes the 3 in-flight stages, within a today-through-+2-days window", async () => {
+  it("includes the 3 in-flight stages plus Delivered, within a today-through-+2-days window", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
@@ -621,12 +623,36 @@ describe("listKitchenProductionBoard (Chunk 11 Group 11.5 redesign, AJ 2026-09-1
     const tooFar = await lockedToday("2000000002", 5);
     const completedInWindow = await lockedToday("2000000003", 1);
     await setKitchenProductionStatus(org.id, completedInWindow.id, "DELIVERED", actor.id);
+    const cancelledInWindow = await lockedToday("2000000004", 1);
+    await setKitchenProductionStatus(org.id, cancelledInWindow.id, "CANCELLED", actor.id);
 
     const board = await listKitchenProductionBoard(org.id);
     const boardIds = board.map((s) => s.id);
+    // Kitchen Rules' "days before the event" (default 2) sets the window.
+    await setKitchenRules(org.id, { extraPercent: 10, daysBeforeEvent: 5 });
+    expect((await listKitchenProductionBoard(org.id)).map((s) => s.id)).toContain(tooFar.id);
+    await setKitchenRules(org.id, { extraPercent: 10, daysBeforeEvent: 0 });
+    expect((await listKitchenProductionBoard(org.id)).map((s) => s.id)).not.toContain(inWindow.id);
     expect(boardIds).toContain(inWindow.id);
     expect(boardIds).not.toContain(tooFar.id); // outside the +2-day window
-    expect(boardIds).not.toContain(completedInWindow.id); // DELIVERED never shows on the board, even in-window
+    expect(boardIds).toContain(completedInWindow.id); // DELIVERED is the 4th column (AJ, 2026-09-30)
+    expect(boardIds).not.toContain(cancelledInWindow.id); // Cancelled is not the kitchen's concern
+  });
+});
+
+describe("getKitchenPrepSheet (AJ, 2026-09-30)", () => {
+  it("returns null for a selection that is not locked yet, and groups a locked one's dishes by category", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const { event } = await submitEventDetails(org.id, intakeInput(eventType.id, { phone: "2000000009" }));
+    const open = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event.id } });
+    expect(await getKitchenPrepSheet(org.id, open.id)).toBeNull();
+
+    const locked = await lockThroughWorkflow(org.id, event.id, actor.id);
+    const sheet = await getKitchenPrepSheet(org.id, locked.id);
+    expect(sheet?.selection.id).toBe(locked.id);
+    expect(await getKitchenPrepSheet("another-org", locked.id)).toBeNull();
   });
 });
 

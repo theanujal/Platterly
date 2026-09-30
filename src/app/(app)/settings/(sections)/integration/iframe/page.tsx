@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import { SettingsCard } from "../../../_components/settings-ui";
 import { Button } from "@/components/ui/button";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
@@ -18,12 +18,7 @@ export default async function IframeSettingsPage() {
   const claimed = organization.slugChangeCount > 0;
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Iframe" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Iframe</h1>
-        <p className="text-sm text-muted-foreground">Embed your public menu and ordering flow on your own website.</p>
-      </div>
+    <SettingsCard title="Iframe" description="Embed your public menu and ordering flow on your own website.">
       {claimed ? (
         <IframeGenerator url={canonicalUrl(`/${organization.slug}`)} />
       ) : (
@@ -34,6 +29,6 @@ export default async function IframeSettingsPage() {
           </Button>
         </div>
       )}
-    </div>
+    </SettingsCard>
   );
 }

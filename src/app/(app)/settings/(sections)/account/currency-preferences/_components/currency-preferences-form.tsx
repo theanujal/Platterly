@@ -6,29 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useStopEditing } from "../../../../_components/editable-panel";
+import { FormFooter, InfoBox } from "../../../../_components/settings-ui";
 import { updateCurrencyPreferencesAction } from "../actions";
-import type { CurrencyPreferences } from "../types";
-
-const ROUNDING_OPTIONS: { value: CurrencyPreferences["roundingMode"]; label: string }[] = [
-  { value: "none", label: "No rounding" },
-  { value: "nearest_1", label: "Nearest 1" },
-  { value: "nearest_5", label: "Nearest 5" },
-  { value: "nearest_10", label: "Nearest 10" },
-];
+import { ROUNDING_OPTIONS, type CurrencyPreferences } from "../types";
 
 export function CurrencyPreferencesForm({ initialValues }: { initialValues: CurrencyPreferences }) {
   const router = useRouter();
+  const stopEditing = useStopEditing();
   const [symbol, setSymbol] = useState(initialValues.symbol);
   const [decimalPlaces, setDecimalPlaces] = useState(initialValues.decimalPlaces);
   const [roundingMode, setRoundingMode] = useState(initialValues.roundingMode);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setSuccess(false);
     setPending(true);
 
     const formData = new FormData();
@@ -41,22 +35,18 @@ export function CurrencyPreferencesForm({ initialValues }: { initialValues: Curr
       setError(result.error);
       return;
     }
-    setSuccess(true);
     router.refresh();
+    stopEditing();
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-sm flex-col gap-4">
-      <p className="text-xs text-muted-foreground">
-        Display and formatting only — this doesn&apos;t change any calculations. India GST remains the only tax
-        engine.
-      </p>
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="symbol">Currency symbol</Label>
+        <Label htmlFor="symbol">Currency Symbol</Label>
         <Input id="symbol" required maxLength={3} value={symbol} onChange={(e) => setSymbol(e.target.value)} />
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="decimalPlaces">Decimal places</Label>
+        <Label htmlFor="decimalPlaces">Decimal Places</Label>
         <Input
           id="decimalPlaces"
           type="number"
@@ -73,7 +63,7 @@ export function CurrencyPreferencesForm({ initialValues }: { initialValues: Curr
           value={roundingMode}
           onValueChange={(value) => setRoundingMode(value as CurrencyPreferences["roundingMode"])}
         >
-          <SelectTrigger id="roundingMode">
+          <SelectTrigger id="roundingMode" className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -85,15 +75,17 @@ export function CurrencyPreferencesForm({ initialValues }: { initialValues: Curr
           </SelectContent>
         </Select>
       </div>
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {success && <p className="text-sm text-emerald-600">Saved.</p>}
-      <Button type="submit" disabled={pending} className="self-start">
-        {pending ? "Saving…" : "Save changes"}
-      </Button>
+      <FormFooter error={error}>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save Changes"}
+        </Button>
+        <Button type="button" variant="outline" onClick={stopEditing}>
+          Cancel
+        </Button>
+      </FormFooter>
+      <InfoBox tone="neutral">
+        <p>Display and formatting only — this doesn&apos;t change any calculations. India GST remains the only tax engine.</p>
+      </InfoBox>
     </form>
   );
 }

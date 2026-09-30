@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
-import { getPushToggleAction } from "../actions";
-import { PushToggleForm } from "./_components/push-toggle-form";
+import { getChannelSettings } from "@/modules/notifications/channel-settings";
+import { ChannelPreferences } from "../../../_components/channel-settings-ui";
+import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
   title: "Push Notifications — Platterly",
@@ -11,16 +11,17 @@ export const metadata: Metadata = {
 
 export default async function PushNotificationsPage() {
   const { organizationId } = await requireActiveOrganization();
-  const enabled = await getPushToggleAction(organizationId);
+  const settings = await getChannelSettings(organizationId, "push");
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Settings", href: "/settings" }, { label: "Push Notifications" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Push Notifications</h1>
-        <p className="text-sm text-muted-foreground">Control whether push notifications are sent.</p>
-      </div>
-      <PushToggleForm initialEnabled={enabled} />
-    </div>
+    <SettingsCard title="Push Notifications" description="Configure push notifications to stay updated on your catering events.">
+      <ChannelPreferences
+        channel="push"
+        title="Push Notification Preferences"
+        description="Choose which push notifications you want to receive"
+        messages={settings.messages}
+        saveLabel="Save Notification Settings"
+      />
+    </SettingsCard>
   );
 }

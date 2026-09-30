@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { FormFooter } from "../../../_components/settings-ui";
 import { updateTeamPrivacyAction } from "../actions";
 import type { TeamPrivacySettings } from "../types";
 
@@ -40,7 +41,7 @@ export function TeamPrivacyForm({ initialValues }: { initialValues: TeamPrivacyS
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       {TOGGLES.map(({ key, label }) => (
         <div key={key} className="flex items-center gap-2">
           <Checkbox
@@ -51,10 +52,11 @@ export function TeamPrivacyForm({ initialValues }: { initialValues: TeamPrivacyS
           <Label htmlFor={key}>{label}</Label>
         </div>
       ))}
-      {success && <p className="text-sm text-emerald-600">Saved.</p>}
-      <Button type="submit" disabled={pending} size="sm" className="self-start">
-        {pending ? "Saving…" : "Save privacy settings"}
-      </Button>
+      <FormFooter success={success ? "Saved." : null}>
+        <Button type="submit" disabled={pending}>
+          {pending ? "Saving…" : "Save Privacy Settings"}
+        </Button>
+      </FormFooter>
     </form>
   );
 }

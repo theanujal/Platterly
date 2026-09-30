@@ -21,7 +21,8 @@ const STAGE_STYLE: Record<KitchenProductionStatus, string> = {
   CANCELLED: "bg-destructive/10 text-destructive",
 };
 
-const STAGE_OPTIONS = Object.keys(KITCHEN_PRODUCTION_STATUS_LABEL) as KitchenProductionStatus[];
+// Cancelling an order is not the kitchen's call (AJ, 2026-09-30) — it is never offered here.
+const STAGE_OPTIONS: KitchenProductionStatus[] = ["PENDING", "IN_PREPARATION", "READY", "DELIVERED"];
 
 interface StageSelectProps {
   menuSelectionId: string;

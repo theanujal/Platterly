@@ -51,12 +51,15 @@ test("calendar page + order-count date picker agree with the Orders/Events table
   const ny = next.getFullYear();
   const nm = next.getMonth() + 1;
 
+  // Only Approved / Sent to Kitchen / Completed orders are on the calendar (AJ, 2026-09-30).
+  const CONFIRMED = ["APPROVED", "SENT_TO_KITCHEN", "COMPLETED"];
   const orders: CalendarFixtureOrder[] = [
-    { start: iso(y, m, 10), end: iso(y, m, 10), guests: 100 }, // 0 — has a linked Event
-    { start: iso(y, m, 10), end: iso(y, m, 12), status: "PENDING_REVIEW" }, // 1 — multi-day: counts on 10, 11, 12
+    { start: iso(y, m, 10), end: iso(y, m, 10), guests: 100, status: "APPROVED" }, // 0 — has a linked Event
+    { start: iso(y, m, 10), end: iso(y, m, 12), status: "SENT_TO_KITCHEN" }, // 1 — multi-day: counts on 10, 11, 12
     { start: iso(y, m, 20), end: iso(y, m, 20), status: "CANCELLED" }, // 2 — never counted
-    { start: today, end: today }, // 3 — makes today busy
-    { start: iso(ny, nm, 5), end: iso(ny, nm, 5) }, // 4 — next month
+    { start: today, end: today, status: "COMPLETED" }, // 3 — makes today busy
+    { start: iso(ny, nm, 5), end: iso(ny, nm, 5), status: "APPROVED" }, // 4 — next month
+    { start: iso(y, m, 22), end: iso(y, m, 22), status: "PENDING_REVIEW" }, // 5 — not confirmed yet, so not shown
   ];
   await signUpSkipOnboarding(page, email);
   await seedCalendarFixtures(email, {
@@ -69,7 +72,7 @@ test("calendar page + order-count date picker agree with the Orders/Events table
 
   // What the grid must show, computed independently from the seeded rows.
   const expected: Record<string, number> = {};
-  for (const o of orders.filter((o) => o.status !== "CANCELLED")) for (const d of daysBetween(o.start, o.end)) expected[d] = (expected[d] ?? 0) + 1;
+  for (const o of orders.filter((o) => CONFIRMED.includes(o.status!))) for (const d of daysBetween(o.start, o.end)) expected[d] = (expected[d] ?? 0) + 1;
 
   // --- Sidebar entry ---
   // Already on /dashboard from sign-up — a fresh goto would re-open the "Claim your custom link" dialog.
@@ -97,8 +100,9 @@ test("calendar page + order-count date picker agree with the Orders/Events table
   const quietDay = iso(y, m, 28);
   await expect(page.getByTestId(`calendar-day-${quietDay}`).locator('span[aria-hidden="true"]')).toHaveCount(0);
 
-  // The cancelled order's day is not counted and shows no line.
+  // The cancelled and the still-in-review orders' days are not counted and show no line.
   await expect(page.getByTestId(`calendar-day-${iso(y, m, 20)}`)).toHaveAttribute("data-order-count", String(expected[iso(y, m, 20)] ?? 0));
+  await expect(page.getByTestId(`calendar-day-${iso(y, m, 22)}`)).toHaveAttribute("data-order-count", "0");
 
   // --- Event overlays ---
   await expect(page.getByTestId(`calendar-day-${iso(y, m, 25)}`).getByText("Standalone Tasting")).toBeVisible();
@@ -107,7 +111,7 @@ test("calendar page + order-count date picker agree with the Orders/Events table
   await expect(page.getByTestId(`calendar-day-${iso(y, m, 10)}`).getByLabel("Has an Event")).toBeVisible();
 
   // --- Insights ---
-  const liveThisMonth = orders.filter((o) => o.status !== "CANCELLED" && o.start.startsWith(`${y}-${pad(m)}`)).length;
+  const liveThisMonth = orders.filter((o) => CONFIRMED.includes(o.status!) && o.start.startsWith(`${y}-${pad(m)}`)).length;
   await expect(page.getByTestId("stat-orders-this-month")).toHaveText(String(liveThisMonth));
   await expect(page.getByTestId("stat-days-with-events")).toHaveText("2");
   await expect(page.getByTestId("watch-heavy-days")).toContainText("None in");
