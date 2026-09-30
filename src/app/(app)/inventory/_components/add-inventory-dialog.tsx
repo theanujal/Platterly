@@ -1,44 +1,27 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
+import { AddDrawer } from "@/components/catalog/form-drawer";
 import { InventoryForm } from "./inventory-form";
 import { createInventoryItemAction } from "../actions";
 
 export function AddInventoryDialog({ variant = "button" }: { variant?: "button" | "tile" }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {variant === "tile" ? (
-        <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <CatalogAddTileContent label="Add New Item" description="Track a new item in stock" />
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger render={<Button />}>
-          <Plus className="size-4" />
-          Add Item
-        </DialogTrigger>
-      )}
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>New Inventory Item</DialogTitle>
-        </DialogHeader>
+    <AddDrawer variant={variant} buttonLabel="Add Item" tileLabel="Add New Item" tileDescription="Track a new item in stock" title="New Inventory Item">
+      {(close) => (
         <InventoryForm
           showOpeningStock
           submitLabel="Create item"
           onSubmit={createInventoryItemAction}
+          onCancel={close}
           onSuccess={() => {
-            setOpen(false);
+            close();
             router.refresh();
           }}
         />
-      </DialogContent>
-    </Dialog>
+      )}
+    </AddDrawer>
   );
 }

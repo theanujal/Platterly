@@ -80,12 +80,9 @@ export interface MenuApprovalSummary {
 const MENU_APPROVAL_COPY: Record<MenuSelectionStatus, { title: string; detail: string; tone: Tone }> = {
   DRAFT: { title: "Needs review", detail: "Check the menu, then send it to the customer for approval.", tone: "cyan" },
   SENT_TO_CUSTOMER: { title: "Menu sent", detail: "Waiting for customer approval.", tone: "info" },
-  CUSTOMER_REVIEWING: { title: "Customer is reviewing", detail: "Waiting for their approval.", tone: "info" },
+  CUSTOMER_REVIEWING: { title: "Updated menu sent", detail: "Waiting for the customer to review it.", tone: "info" },
   CHANGES_REQUESTED: { title: "Customer requested changes", detail: "Update the menu and send it again.", tone: "pink" },
-  CUSTOMER_APPROVED: { title: "Customer approved the menu", detail: "Waiting for the kitchen team to review.", tone: "success" },
-  KITCHEN_REVIEWING: { title: "Kitchen is reviewing", detail: "Waiting for the kitchen team to approve.", tone: "info" },
-  KITCHEN_CHANGES_REQUESTED: { title: "Kitchen requested changes", detail: "Update the menu and send it to the customer again.", tone: "fuchsia" },
-  KITCHEN_APPROVED: { title: "Kitchen approved the menu", detail: "Sending it to the kitchen.", tone: "success" },
+  CUSTOMER_APPROVED: { title: "Customer approved the menu", detail: "Send it to the kitchen when everything is ready.", tone: "success" },
   FINAL_LOCKED: { title: "Sent to the kitchen", detail: "The menu is final.", tone: "success" },
 };
 
@@ -98,9 +95,6 @@ const MENU_APPROVAL_ORDER: MenuSelectionStatus[] = [
   "CUSTOMER_REVIEWING",
   "CHANGES_REQUESTED",
   "CUSTOMER_APPROVED",
-  "KITCHEN_REVIEWING",
-  "KITCHEN_CHANGES_REQUESTED",
-  "KITCHEN_APPROVED",
   "FINAL_LOCKED",
 ];
 
@@ -115,9 +109,6 @@ export function summarizeMenuApproval(
     MENU_APPROVAL_ORDER.indexOf(s.status) < MENU_APPROVAL_ORDER.indexOf(least.status) ? s : least,
   );
   const copy = MENU_APPROVAL_COPY[current.status];
-  // currentVersion only bumps when an already-approved menu is changed, so a
-  // re-sent menu (version > 1) is a revision, not the first send.
-  if (current.status === "SENT_TO_CUSTOMER" && current.currentVersion > 1) return { ...copy, title: "Revised menu sent" };
   return copy;
 }
 

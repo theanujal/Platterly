@@ -181,3 +181,47 @@ export async function getMenuItem(organizationId: string, id: string) {
     },
   });
 }
+
+/** Copies a food item with its category tags and menu assignments (AJ, 2026-09-30 — the card menu's Duplicate). */
+export async function duplicateMenuItem(organizationId: string, id: string, actorUserId: string) {
+  const source = await getMenuItem(organizationId, id);
+  if (!source) throw new Error("Food item not found.");
+  return createMenuItem(
+    organizationId,
+    {
+      name: `${source.name} (Copy)`,
+      description: source.description ?? undefined,
+      image: source.image ?? undefined,
+      foodType: source.foodType,
+      price: Number(source.price),
+      isActive: source.isActive,
+      categoryIds: source.categories.map((c) => c.categoryId),
+      menuIds: source.menus.map((m) => m.menuId),
+      origin: source.origin,
+      baseType: source.baseType,
+      preparationMethod: source.preparationMethod,
+      spiceLevel: source.spiceLevel,
+      onionGarlic: source.onionGarlic,
+      vegFriendly: source.vegFriendly,
+      nonVegFriendly: source.nonVegFriendly,
+      texture: source.texture,
+      tasteProfile: source.tasteProfile,
+      keyIngredients: source.keyIngredients,
+    },
+    actorUserId,
+  );
+}
+
+export async function setMenuItemActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {
+  const before = await prisma.menuItem.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.menuItem.update({ where: { id }, data: { isActive } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "menu_item.update",
+    recordType: "MenuItem",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
+}

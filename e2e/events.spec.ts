@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Event Types (pulled forward from dev plans/chunk-09-crm-core.md §9.1,
@@ -31,20 +31,7 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Events");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await signUpCaterer(page, email, { firstName: "Events", lastName: "Tester", closeClaimDialog: false });
   // A fresh account's Dashboard auto-opens the "Claim your custom link" dialog.
   await page.getByRole("button", { name: "Close" }).click();
 
@@ -66,8 +53,8 @@ test("create an event type with an icon assigning a menu, then edit it", async (
 
   // --- Create Event Type, with an icon (Chunk 9 Group 9.1) ---
   const eventTypeName = `Wedding Event ${suffix}`;
-  await page.getByRole("link", { name: "Add New Event Type" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types\/new$/);
+  await page.getByRole("button", { name: "Add Event Type" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByLabel("Description").fill("Full wedding catering package");
   await page.getByLabel("Icon").click();
@@ -76,18 +63,20 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await page.getByText(menuName).click();
   await page.getByRole("button", { name: "Create event" }).click();
 
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(eventTypeName)).toBeVisible();
+  await page.getByLabel("Grid view").click(); // pages open in List view by default (AJ, 2026-09-30)
   await expect(page.getByText("Min 50 guests")).toBeVisible();
 
-  // --- Edit: confirm the menu assignment and icon round-trip ---
-  await page.getByText(eventTypeName).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types\/.+/);
+  // --- Edit (a drawer now, not a page): confirm the menu assignment and icon round-trip ---
+  await page.getByRole("button", { name: `Actions for ${eventTypeName}` }).click();
+  await page.getByRole("menuitem", { name: "Edit Event Type" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByLabel("Event Name")).toHaveValue(eventTypeName);
-  await expect(page.getByText(menuName)).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: menuName })).toBeChecked();
 
   await page.getByLabel("Event Name").fill(`${eventTypeName} Updated`);
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(`${eventTypeName} Updated`)).toBeVisible();
 });

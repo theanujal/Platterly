@@ -3,7 +3,6 @@ import { BookOpen } from "lucide-react";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { listMenus } from "@/modules/menus/menu";
 import { listCategories } from "@/modules/menus/category";
-import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -26,6 +25,8 @@ export const metadata: Metadata = {
 export default async function MenusPage() {
   const { organizationId } = await requireActiveOrganization();
   const [menus, categories] = await Promise.all([listMenus(organizationId), listCategories(organizationId)]);
+
+  const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name }));
 
   const entries: CatalogEntry[] = menus.map((menu) => {
     const assignedCategories: AssignedCategory[] = [...menu.categoryAssignments]
@@ -55,23 +56,26 @@ export default async function MenusPage() {
       sortValues: { name: menu.name, price: Number(menu.pricePerPlate), newest: menu.createdAt.getTime() },
       card: (
         <>
-          <CatalogCardMedia src={menu.image} icon={BookOpen} />
-          <CatalogCardBody
-            title={menu.name}
-            trailing={
+          <CatalogCardMedia
+            src={menu.image}
+            icon={BookOpen}
+            overlay={
               <>
-                {!menu.isActive && <Badge variant="neutral">Inactive</Badge>}
-                <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
+                <FoodTypeTag nonVeg={menu.menuType === "NON_VEGETARIAN"} onImage />
+                <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} categories={categoryOptions} assignedCategories={assignedCategories} />
               </>
             }
+          />
+          <CatalogCardBody
+            title={menu.name}
             description={menu.description}
-            tags={<FoodTypeTag nonVeg={menu.menuType === "NON_VEGETARIAN"} />}
             footer={
               <>
                 <span className="text-base font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
                 <span className="text-xs text-muted-foreground">per plate</span>
               </>
             }
+            active={menu.isActive}
           />
         </>
       ),
@@ -94,7 +98,7 @@ export default async function MenusPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} assignedCategories={assignedCategories} />
+              <MenuCardActions menuId={menu.id} name={menu.name} initialValues={initialValues} categories={categoryOptions} assignedCategories={assignedCategories} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -138,13 +142,14 @@ export default async function MenusPage() {
           <h1 className="text-2xl font-semibold">Menu Types</h1>
           <p className="text-sm text-muted-foreground">Priced, sellable menu types built from your catalog.</p>
         </div>
-        <AddMenuDialog />
+        <AddMenuDialog categories={categoryOptions} />
       </div>
       <Separator />
 
       <CatalogBrowser
         entries={entries}
-        addTile={<AddMenuDialog variant="tile" />}
+        defaultView="list"
+        addTile={<AddMenuDialog categories={categoryOptions} variant="tile" />}
         columns={["Menu Type", "Diet", "Price", "Status", ""]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}

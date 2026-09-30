@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { LayoutGrid } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
+import { DrawerForm } from "@/components/catalog/form-drawer";
 import type { CategoryInput } from "@/modules/menus/category";
 import type { ActionResult } from "../actions";
 
@@ -55,9 +54,10 @@ interface CategoryFormProps {
   onSubmit: (input: CategoryInput) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  onCancel: () => void;
 }
 
-export function CategoryForm({ initialValues, availableMenus, onSubmit, onSuccess, submitLabel }: CategoryFormProps) {
+export function CategoryForm({ initialValues, availableMenus, onSubmit, onSuccess, submitLabel, onCancel }: CategoryFormProps) {
   const [values, setValues] = useState<CategoryFormValues>({
     ...EMPTY_CATEGORY_VALUES,
     menuAssignments: emptyMenuAssignments(availableMenus),
@@ -91,7 +91,15 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <DrawerForm
+      onSubmit={handleSubmit}
+      error={error}
+      pending={pending}
+      submitLabel={submitLabel}
+      onCancel={onCancel}
+      active={{ id: "category-active", checked: values.isActive, onChange: (checked) => setField("isActive", checked), onLabel: "Active – shown in menus", offLabel: "Inactive – hidden from menus" }}
+      className="gap-4"
+    >
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="category-name">Category Name</Label>
         <IconInput icon={LayoutGrid} id="category-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
@@ -104,12 +112,6 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
           onChange={(e) => setField("description", e.target.value)}
         />
       </div>
-      <ActiveToggleCard
-        id="category-active"
-        checked={values.isActive}
-        onCheckedChange={(checked) => setField("isActive", checked)}
-        label="Active (visible to customers)"
-      />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Assign to Menus</Label>
@@ -147,14 +149,6 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
         </div>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={pending} className="self-end">
-        {pending ? "Saving…" : submitLabel}
-      </Button>
-    </form>
+    </DrawerForm>
   );
 }

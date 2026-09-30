@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { UtensilsCrossed, IndianRupee } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
+import { DrawerForm } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -147,9 +146,10 @@ interface ItemFormProps {
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  onCancel: () => void;
 }
 
-export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess, submitLabel }: ItemFormProps) {
+export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess, submitLabel, onCancel }: ItemFormProps) {
   const [values, setValues] = useState<ItemFormValues>({ ...EMPTY_ITEM_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -198,98 +198,98 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-name">Item Name</Label>
-            <IconInput icon={UtensilsCrossed} id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-description">Item Description</Label>
-            <Textarea
-              id="item-description"
-              value={values.description}
-              onChange={(e) => setField("description", e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-image">Image</Label>
-            <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-food-type">Veg / Non-Veg</Label>
-            <Select
-              items={Object.fromEntries(FOOD_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-              value={values.foodType}
-              onValueChange={(v) => setField("foodType", v ?? values.foodType)}
-            >
-              <SelectTrigger id="item-food-type" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FOOD_TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="item-price">Item Price Per Plate</Label>
-            <IconInput
-              icon={IndianRupee}
-              id="item-price"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={values.price}
-              onChange={(e) => setField("price", e.target.value)}
-            />
-          </div>
-          <ActiveToggleCard
-            id="item-active"
-            checked={values.isActive}
-            onCheckedChange={(checked) => setField("isActive", checked)}
-            label="Active (visible to customers)"
+    <DrawerForm
+      onSubmit={handleSubmit}
+      error={error}
+      pending={pending}
+      submitLabel={submitLabel}
+      onCancel={onCancel}
+      active={{
+        id: "item-active",
+        checked: values.isActive,
+        onChange: (checked) => setField("isActive", checked),
+        onLabel: "Active – customers can see it",
+        offLabel: "Inactive – hidden from customers",
+      }}
+      className="grid grid-cols-1 gap-8 lg:grid-cols-2 lg:items-start"
+    >
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-name">Item Name</Label>
+          <IconInput icon={UtensilsCrossed} id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-description">Item Description</Label>
+          <Textarea id="item-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-image">Image</Label>
+          <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-food-type">Veg / Non-Veg</Label>
+          <Select
+            items={Object.fromEntries(FOOD_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+            value={values.foodType}
+            onValueChange={(v) => setField("foodType", v ?? values.foodType)}
+          >
+            <SelectTrigger id="item-food-type" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FOOD_TYPE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="item-price">Item Price Per Plate</Label>
+          <IconInput
+            icon={IndianRupee}
+            id="item-price"
+            type="number"
+            step="0.01"
+            min="0"
+            required
+            value={values.price}
+            onChange={(e) => setField("price", e.target.value)}
           />
         </div>
 
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Label>Assign to Menus</Label>
-            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
-              {menus.map((menu) => (
-                <label key={menu.id} htmlFor={`item-menu-${menu.id}`} className="flex cursor-pointer items-center gap-2 py-1">
-                  <Checkbox
-                    id={`item-menu-${menu.id}`}
-                    checked={values.menuIds.includes(menu.id)}
-                    onCheckedChange={(checked) => toggle("menuIds", menu.id, checked === true)}
-                  />
-                  <span className="text-sm">{menu.name}</span>
-                </label>
-              ))}
-              {menus.length === 0 && <p className="text-sm text-muted-foreground">No menus yet — add some first.</p>}
-            </div>
+        <div className="flex flex-col gap-2">
+          <Label>Assign to Menus</Label>
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
+            {menus.map((menu) => (
+              <label key={menu.id} htmlFor={`item-menu-${menu.id}`} className="flex cursor-pointer items-center gap-2 py-1">
+                <Checkbox
+                  id={`item-menu-${menu.id}`}
+                  checked={values.menuIds.includes(menu.id)}
+                  onCheckedChange={(checked) => toggle("menuIds", menu.id, checked === true)}
+                />
+                <span className="text-sm">{menu.name}</span>
+              </label>
+            ))}
+            {menus.length === 0 && <p className="text-sm text-muted-foreground">No menus yet — add some first.</p>}
           </div>
+        </div>
 
-          <div className="flex flex-col gap-2">
-            <Label>Assign to Categories</Label>
-            <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
-              {categories.map((category) => (
-                <label key={category.id} htmlFor={`item-category-${category.id}`} className="flex cursor-pointer items-center gap-2 py-1">
-                  <Checkbox
-                    id={`item-category-${category.id}`}
-                    checked={values.categoryIds.includes(category.id)}
-                    onCheckedChange={(checked) => toggle("categoryIds", category.id, checked === true)}
-                  />
-                  <span className="text-sm">{category.name}</span>
-                </label>
-              ))}
-              {categories.length === 0 && <p className="text-sm text-muted-foreground">No categories yet — add some first.</p>}
-            </div>
+        <div className="flex flex-col gap-2">
+          <Label>Assign to Categories</Label>
+          <div className="flex max-h-48 flex-col gap-1 overflow-y-auto rounded-md border border-border p-3">
+            {categories.map((category) => (
+              <label key={category.id} htmlFor={`item-category-${category.id}`} className="flex cursor-pointer items-center gap-2 py-1">
+                <Checkbox
+                  id={`item-category-${category.id}`}
+                  checked={values.categoryIds.includes(category.id)}
+                  onCheckedChange={(checked) => toggle("categoryIds", category.id, checked === true)}
+                />
+                <span className="text-sm">{category.name}</span>
+              </label>
+            ))}
+            {categories.length === 0 && <p className="text-sm text-muted-foreground">No categories yet — add some first.</p>}
           </div>
         </div>
       </div>
@@ -297,12 +297,10 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
       <div className="flex flex-col gap-4 rounded-md border border-border p-4">
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-semibold">Additional Details</span>
-          <p className="text-xs text-muted-foreground">
-            Optional — only shown on the customer-facing menu once it&apos;s filled in.
-          </p>
+          <p className="text-xs text-muted-foreground">Optional — only shown on the customer-facing menu once it&apos;s filled in.</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="item-origin">Origin</Label>
             <Select
@@ -456,32 +454,15 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
 
         <div className="flex flex-wrap gap-4">
           <label htmlFor="item-veg-friendly" className="flex w-fit cursor-pointer items-center gap-2">
-            <Checkbox
-              id="item-veg-friendly"
-              checked={values.vegFriendly}
-              onCheckedChange={(checked) => setField("vegFriendly", checked === true)}
-            />
+            <Checkbox id="item-veg-friendly" checked={values.vegFriendly} onCheckedChange={(checked) => setField("vegFriendly", checked === true)} />
             <span className="text-sm font-medium">Veg Friendly</span>
           </label>
           <label htmlFor="item-nonveg-friendly" className="flex w-fit cursor-pointer items-center gap-2">
-            <Checkbox
-              id="item-nonveg-friendly"
-              checked={values.nonVegFriendly}
-              onCheckedChange={(checked) => setField("nonVegFriendly", checked === true)}
-            />
+            <Checkbox id="item-nonveg-friendly" checked={values.nonVegFriendly} onCheckedChange={(checked) => setField("nonVegFriendly", checked === true)} />
             <span className="text-sm font-medium">Non-Veg Friendly</span>
           </label>
         </div>
       </div>
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={pending} className="self-end">
-        {pending ? "Saving…" : submitLabel}
-      </Button>
-    </form>
+    </DrawerForm>
   );
 }

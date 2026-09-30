@@ -1,20 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { PackagePlus } from "lucide-react";
+import { CatalogCardMenu } from "@/components/catalog/catalog-card-menu";
 import { EditInventoryDialog } from "./edit-inventory-dialog";
 import { StockTransactionDialog } from "./stock-transaction-dialog";
 import type { InventoryFormValues } from "./inventory-form";
@@ -26,42 +14,27 @@ interface InventoryCardActionsProps {
   unit: string;
   currentStock: number;
   initialValues: InventoryFormValues;
+  variant?: "overlay" | "plain";
 }
 
-export function InventoryCardActions({ itemId, name, unit, currentStock, initialValues }: InventoryCardActionsProps) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-
-  async function handleDelete() {
-    setPending(true);
-    await deleteInventoryItemAction(itemId);
-    setPending(false);
-    setOpen(false);
-    router.refresh();
-  }
+/** 3-dot menu on an inventory card, or the Stock / Edit / Delete icons on a list row. Stock and Edit open drawers. */
+export function InventoryCardActions({ itemId, name, unit, currentStock, initialValues, variant }: InventoryCardActionsProps) {
+  const [editOpen, setEditOpen] = useState(false);
+  const [stockOpen, setStockOpen] = useState(false);
 
   return (
-    <div className="flex items-center gap-0.5">
-      <StockTransactionDialog itemId={itemId} name={name} unit={unit} currentStock={currentStock} />
-      <EditInventoryDialog itemId={itemId} name={name} initialValues={initialValues} />
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Delete ${name}`} />}>
-          <Trash2 className="size-4" />
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete &quot;{name}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>This inventory item and its stock history will be permanently removed.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={pending} onClick={handleDelete}>
-              {pending ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <>
+      <CatalogCardMenu
+        name={name}
+        entityLabel="Item"
+        variant={variant}
+        extraActions={[{ label: "Stock In / Out", ariaLabel: `Record stock movement for ${name}`, icon: PackagePlus, onClick: () => setStockOpen(true) }]}
+        onEdit={() => setEditOpen(true)}
+        onDelete={() => deleteInventoryItemAction(itemId)}
+        deleteDescription="This inventory item and its stock history will be permanently removed."
+      />
+      <StockTransactionDialog open={stockOpen} onOpenChange={setStockOpen} itemId={itemId} name={name} unit={unit} currentStock={currentStock} />
+      <EditInventoryDialog open={editOpen} onOpenChange={setEditOpen} itemId={itemId} initialValues={initialValues} />
+    </>
   );
 }

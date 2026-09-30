@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
+import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import {
   resolveCatalogItem,
   createOrder,
@@ -73,6 +74,7 @@ async function replaceQuotationMealPlanEntryItems(organizationId: string, quotat
       mealPlanEntryId,
       itemType: item.itemType,
       quantity: item.quantity,
+      isExtra: item.isExtra === true,
       ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
     })),
   );
@@ -123,22 +125,24 @@ async function replaceQuotationMealPlanEntries(organizationId: string, quotation
 export async function recalculateQuotationTotals(quotationId: string) {
   const quotation = await prisma.quotation.findUniqueOrThrow({
     where: { id: quotationId },
-    include: { mealPlanEntries: { include: { items: true } }, childPricingMenu: true },
+    include: { mealPlanEntries: { include: { items: true, menu: true } }, childPricingMenu: true },
   });
 
-  const itemsSubtotal = quotation.mealPlanEntries.reduce(
-    (sum, entry) => sum + entry.items.reduce((s, item) => s + Number(item.unitPrice) * item.quantity, 0),
-    0,
+  const { mealsSubtotal } = priceMeals(
+    quotation.mealPlanEntries.map((entry) => ({
+      price: entry.price === null ? null : Number(entry.price),
+      menuPricePerPlate: entry.menu ? Number(entry.menu.pricePerPlate) : null,
+      items: entry.items.map((item) => ({ itemType: item.itemType, unitPrice: Number(item.unitPrice), quantity: item.quantity, isExtra: item.isExtra })),
+    })),
+    quotation.individualPricingEnabled,
+    menuGuestCount(quotation),
   );
-  const mealsSubtotal = quotation.individualPricingEnabled
-    ? quotation.mealPlanEntries.reduce((sum, entry) => sum + Number(entry.price ?? 0), 0)
-    : 0;
   const referenceMenuPrice = quotation.childPricingMenu ? Number(quotation.childPricingMenu.pricePerPlate) : 0;
   const childrenCharge =
     quotation.pricingMethod === "INDIVIDUAL"
       ? computeIndividualChildrenCharge(quotation, referenceMenuPrice, quotation.childBelow5Count, quotation.child5To10Count)
       : computeChildrenCharge(quotation.childPricingMenu, quotation.childBelow5Count, quotation.child5To10Count);
-  const subtotal = itemsSubtotal + mealsSubtotal + childrenCharge;
+  const subtotal = mealsSubtotal + childrenCharge;
   const total = subtotal - Number(quotation.discount) + Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges);
 
   return prisma.quotation.update({ where: { id: quotationId }, data: { subtotal, childrenCharge, total } });
@@ -268,7 +272,11 @@ export async function deleteQuotation(organizationId: string, id: string, actorU
  * the customer's history only. Over = the event's last day (`eventEndDate`, else `eventStartDate`)
  * is before today (UTC); a quotation with no dates yet is never over. Omitted = all.
  */
-export async function listQuotations(organizationId: string, filter?: { status?: QuotationStatus; when?: "upcoming" }) {
+/**
+ * `excludeConverted` drops a Quotation once it has become an Order (AJ, 2026-09-30): from then on the Order is the
+ * live record, so it shouldn't keep appearing in the Quotations list. The Quotation itself stays (the Order links back to it).
+ */
+export async function listQuotations(organizationId: string, filter?: { status?: QuotationStatus; when?: "upcoming"; excludeConverted?: boolean }) {
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
   const upcoming: Prisma.QuotationWhereInput[] =
@@ -279,7 +287,7 @@ export async function listQuotations(organizationId: string, filter?: { status?:
         ]
       : [];
   return prisma.quotation.findMany({
-    where: { organizationId, status: filter?.status, AND: upcoming },
+    where: { organizationId, status: filter?.status, ...(filter?.excludeConverted ? { order: null } : {}), AND: upcoming },
     include: { customer: { select: { id: true, name: true, phone: true } }, eventType: { select: { id: true, name: true, icon: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -540,6 +548,7 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
           name: item.name,
           unitPrice: item.unitPrice,
           quantity: item.quantity,
+          isExtra: item.isExtra,
         })),
       });
     }

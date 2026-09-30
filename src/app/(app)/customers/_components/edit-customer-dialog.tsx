@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info, Pencil } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { FormDrawer } from "@/components/catalog/form-drawer";
 import { CustomerForm, type CustomerFormValues } from "./customer-form";
 import { updateCustomerAction } from "../actions";
 
@@ -21,22 +21,17 @@ export function EditCustomerDialog({ customerId, name, initialValues, triggerSty
   const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          triggerStyle === "header" ? (
-            <Button variant="outline" size="icon" aria-label={`Edit ${name}`} />
-          ) : (
-            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} />
-          )
-        }
+    <>
+      <Button
+        type="button"
+        variant={triggerStyle === "header" ? "outline" : "ghost"}
+        size={triggerStyle === "header" ? "icon" : "icon-sm"}
+        aria-label={`Edit ${name}`}
+        onClick={() => setOpen(true)}
       >
         <Pencil className="size-4" />
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Edit Customer</DialogTitle>
-        </DialogHeader>
+      </Button>
+      <FormDrawer open={open} onOpenChange={setOpen} title="Edit Customer">
         <CustomerForm
           initialValues={initialValues}
           submitLabel="Save changes"
@@ -49,12 +44,13 @@ export function EditCustomerDialog({ customerId, name, initialValues, triggerSty
             </p>
           }
           onSubmit={(formData) => updateCustomerAction(customerId, formData)}
+          onCancel={() => setOpen(false)}
           onSuccess={() => {
             setOpen(false);
             router.refresh();
           }}
         />
-      </DialogContent>
-    </Dialog>
+      </FormDrawer>
+    </>
   );
 }

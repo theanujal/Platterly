@@ -78,7 +78,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
         taxes: 20,
         additionalCharges: 10,
         deliveryCharges: 5,
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4 }] }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4, isExtra: true }] }],
       },
       actor.id,
     );
@@ -99,14 +99,14 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     const pricier = await createMenuItem(org.id, { name: "Biryani", foodType: "NON_VEGETARIAN", price: 300 }, actor.id);
     const quotation = await createQuotation(
       org.id,
-      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: cheap.id, quantity: 1 }] }] },
+      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: cheap.id, quantity: 1, isExtra: true }] }] },
       actor.id,
     );
 
     const updated = await updateQuotation(
       org.id,
       quotation.id,
-      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: pricier.id, quantity: 2 }] }] },
+      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: pricier.id, quantity: 2, isExtra: true }] }] },
       actor.id,
     );
     expect(Number(updated.subtotal)).toBe(600);
@@ -126,7 +126,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
       {
         customerId: customer.id,
         orderKind: "MULTI",
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1 }] }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1, isExtra: true }] }],
       },
       actor.id,
     );
@@ -146,7 +146,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     const item = await createMenuItem(org.id, { name: "Item", foodType: "VEGETARIAN", price: 10 }, actor.id);
     const quotation = await createQuotation(
       org.id,
-      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1 }] }] },
+      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1, isExtra: true }] }] },
       actor.id,
     );
     const entryId = (await getQuotation(org.id, quotation.id))!.mealPlanEntries[0].id;
@@ -154,7 +154,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     await updateQuotation(
       org.id,
       quotation.id,
-      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1 }] }] },
+      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: item.id, quantity: 1, isExtra: true }] }] },
       actor.id,
     );
 
@@ -182,7 +182,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     const menuItem = await createMenuItem(org.id, { name: "Paneer Tikka", foodType: "VEGETARIAN", price: 150 }, actor.id);
     const quotation = await createQuotation(
       org.id,
-      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 1 }] }] },
+      { customerId: customer.id, mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 1, isExtra: true }] }] },
       actor.id,
     );
 
@@ -214,6 +214,25 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     const upcoming = (await listQuotations(org.id, { when: "upcoming" })).map((q) => q.id).sort();
     expect(upcoming).toEqual([noDates.id, future.id, underway.id, startOnlyFuture.id].sort());
     expect(await listQuotations(org.id)).toHaveLength(7);
+  });
+
+  it("listQuotations `excludeConverted` drops a Quotation once it has become an Order", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const open = await createQuotation(org.id, { customerId: customer.id }, actor.id);
+    const converted = await createQuotation(
+      org.id,
+      { customerId: customer.id, eventStartDate: new Date("2099-12-01"), eventEndDate: new Date("2099-12-01") },
+      actor.id,
+    );
+    await prisma.quotation.update({ where: { id: converted.id }, data: { status: "ACCEPTED" } });
+    await convertQuotationToOrder(org.id, converted.id, actor.id);
+
+    expect((await listQuotations(org.id)).map((q) => q.id).sort()).toEqual([open.id, converted.id].sort());
+    expect((await listQuotations(org.id, { excludeConverted: true })).map((q) => q.id)).toEqual([open.id]);
+    // The Quotation itself is kept, and still points at its Order.
+    expect((await prisma.quotation.findUniqueOrThrow({ where: { id: converted.id }, include: { order: true } })).order).not.toBeNull();
   });
 
   it("listQuotations filters by status and is tenant-isolated", async () => {
@@ -252,8 +271,8 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
         customerId: customer.id,
         orderKind: "MULTI",
         mealPlanEntries: [
-          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: itemA.id, quantity: 1 }] }, // 40
-          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: itemB.id, quantity: 2 }] }, // 120
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: itemA.id, quantity: 1, isExtra: true }] }, // 40
+          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: itemB.id, quantity: 2, isExtra: true }] }, // 120
         ],
       },
       actor.id,
@@ -520,8 +539,8 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
         additionalCharges: 10,
         deliveryCharges: 5,
         mealPlanEntries: [
-          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4 }] },
-          { date: new Date("2026-12-02"), mealType: "DINNER", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2 }] },
+          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4, isExtra: true }] },
+          { date: new Date("2026-12-02"), mealType: "DINNER", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2, isExtra: true }] },
         ],
       },
       actor.id,
@@ -557,11 +576,12 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
     expect(fullOrder.mealPlanEntries[1].mealType).toBe("DINNER");
     expect(fullOrder.mealPlanEntries[1].items).toHaveLength(1);
 
-    // itemsSubtotal = 150*4 + 150*2 = 900; childrenCharge = 0 (Menu has no child rates set);
-    // total = 900 - 50 (discount) + 35 (otherCharges = taxes+additional+delivery)
-    expect(Number(order.subtotal)).toBe(900);
+    // Two meals on a 200/plate Menu for 100 adults = 40000, plus the Extras' frozen 150*4 + 150*2 = 900;
+    // childrenCharge = 0 (Menu has no child rates set);
+    // total = 40900 - 50 (discount) + 35 (otherCharges = taxes+additional+delivery)
+    expect(Number(order.subtotal)).toBe(40900);
     expect(Number(order.otherCharges)).toBe(35);
-    expect(Number(order.total)).toBe(900 - 50 + 35);
+    expect(Number(order.total)).toBe(40900 - 50 + 35);
     expect(Number(order.balance)).toBe(Number(order.total));
 
     const fetched = await getQuotation(org.id, quotation.id);

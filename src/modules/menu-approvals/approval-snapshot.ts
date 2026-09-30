@@ -17,7 +17,10 @@ export interface ApprovalSnapshot {
     date: string;
     mealType: MealType;
     menuName: string | null;
-    items: { name: string; quantity: number }[];
+    /** From 2026-09-30 versions on: what the Menu Approvals page needs to show this version in the planner and compare it. Older snapshots have only the fields above. */
+    menuId?: string | null;
+    price?: number | null;
+    items: { name: string; quantity: number; itemType?: "MENU_ITEM" | "ADD_ON" | "MENU"; catalogId?: string; unitPrice?: number; isExtra?: boolean }[];
   }[];
   /** Dishes/add-ons picked outside a meal slot (storefront orders keep them on the menu selection). */
   selectedItems: { name: string; isExtra: boolean }[];

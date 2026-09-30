@@ -90,3 +90,36 @@ export async function listAddOns(organizationId: string) {
 export async function getAddOn(organizationId: string, id: string) {
   return prisma.addOn.findFirst({ where: { id, organizationId } });
 }
+
+/** Copies an Add-on (AJ, 2026-09-30 — the card menu's Duplicate). */
+export async function duplicateAddOn(organizationId: string, id: string, actorUserId: string) {
+  const source = await getAddOn(organizationId, id);
+  if (!source) throw new Error("Add-on not found.");
+  return createAddOn(
+    organizationId,
+    {
+      name: `${source.name} (Copy)`,
+      description: source.description ?? undefined,
+      image: source.image ?? undefined,
+      type: source.type,
+      priceType: source.priceType,
+      price: Number(source.price),
+      isActive: source.isActive,
+    },
+    actorUserId,
+  );
+}
+
+export async function setAddOnActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {
+  const before = await prisma.addOn.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.addOn.update({ where: { id }, data: { isActive } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "add_on.update",
+    recordType: "AddOn",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
+}

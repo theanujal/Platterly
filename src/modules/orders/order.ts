@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { createEvent } from "@/modules/events/event";
+import { menuGuestCount, priceMeals } from "./meal-pricing";
 import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, FoodType } from "@/generated/prisma/enums";
 
@@ -11,6 +12,8 @@ export interface OrderItemCatalogInput {
   /** menuId, menuItemId, or addOnId, depending on itemType. */
   catalogId: string;
   quantity: number;
+  /** An Extra dish (charged per guest). Only Extra dishes and add-ons move the price — see meal-pricing.ts. */
+  isExtra?: boolean;
 }
 
 export interface MealPlanEntryInput {
@@ -118,6 +121,7 @@ async function replaceMealPlanEntryItems(organizationId: string, orderId: string
       mealPlanEntryId,
       itemType: item.itemType,
       quantity: item.quantity,
+      isExtra: item.isExtra === true,
       ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
     })),
   );
@@ -133,7 +137,7 @@ async function replaceMealPlanEntryItems(organizationId: string, orderId: string
  * with them). Every meal's `menuId`/`items` are stored regardless of
  * `orderKind` (2026-09-20 redesign) — see MealPlanEntryInput's own comment.
  */
-async function replaceMealPlanEntries(organizationId: string, orderId: string, entries: MealPlanEntryInput[] | undefined) {
+export async function replaceMealPlanEntries(organizationId: string, orderId: string, entries: MealPlanEntryInput[] | undefined) {
   if (entries === undefined) return;
   const existing = await prisma.mealPlanEntry.findMany({ where: { orderId } });
   const existingByKey = new Map(existing.map((e) => [`${e.date.toISOString()}|${e.mealType}`, e]));
@@ -252,22 +256,25 @@ export function computeIndividualChildrenCharge(
 export async function recalculateOrderTotals(orderId: string) {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
-    include: { mealPlanEntries: { include: { items: true } }, childPricingMenu: true },
+    include: { mealPlanEntries: { include: { items: true, menu: true } }, childPricingMenu: true },
   });
 
-  const itemsSubtotal = order.mealPlanEntries.reduce(
-    (sum, entry) => sum + entry.items.reduce((s, item) => s + Number(item.unitPrice) * item.quantity, 0),
-    0,
+  // Meal amount (menu price x guests, or the typed price under Individual Pricing) plus Extra dishes and add-ons.
+  const { mealsSubtotal } = priceMeals(
+    order.mealPlanEntries.map((entry) => ({
+      price: entry.price === null ? null : Number(entry.price),
+      menuPricePerPlate: entry.menu ? Number(entry.menu.pricePerPlate) : null,
+      items: entry.items.map((item) => ({ itemType: item.itemType, unitPrice: Number(item.unitPrice), quantity: item.quantity, isExtra: item.isExtra })),
+    })),
+    order.individualPricingEnabled,
+    menuGuestCount(order),
   );
-  const mealsSubtotal = order.individualPricingEnabled
-    ? order.mealPlanEntries.reduce((sum, entry) => sum + Number(entry.price ?? 0), 0)
-    : 0;
   const referenceMenuPrice = order.childPricingMenu ? Number(order.childPricingMenu.pricePerPlate) : 0;
   const childrenCharge =
     order.pricingMethod === "INDIVIDUAL"
       ? computeIndividualChildrenCharge(order, referenceMenuPrice, order.childBelow5Count, order.child5To10Count)
       : computeChildrenCharge(order.childPricingMenu, order.childBelow5Count, order.child5To10Count);
-  const subtotal = itemsSubtotal + mealsSubtotal + childrenCharge;
+  const subtotal = mealsSubtotal + childrenCharge;
   const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges);
   const balance = total - Number(order.advance);
 
@@ -357,7 +364,8 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;
-  const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
+  // Meal plan left untouched (the order page shows it read-only; Menu Approvals edits it) keeps the derived child-pricing Menu.
+  const childPricingMenuId = input.mealPlanEntries === undefined ? before.childPricingMenuId : deriveStandardChildPricingMenuId(input.mealPlanEntries);
 
   await prisma.order.update({
     where: { id },
@@ -402,6 +410,13 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
     },
   });
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries);
+  if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && input.totalParticipants !== before.totalParticipants) {
+    // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity.
+    await prisma.orderItem.updateMany({
+      where: { orderId: id, mealPlanEntryId: { not: null }, OR: [{ isExtra: true }, { itemType: "ADD_ON", quantity: { gt: 1 } }] },
+      data: { quantity: Math.max(input.totalParticipants ?? 0, 1) },
+    });
+  }
   const withTotals = await recalculateOrderTotals(id);
 
   await audit({

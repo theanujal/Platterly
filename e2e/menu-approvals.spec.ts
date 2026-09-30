@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, backdateStorefrontDrafts } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 11 Group 11.3 + Chunk 12 — the public multi-step order flow and the
@@ -52,20 +52,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const suffix = Date.now().toString().slice(-6);
   const slug = `kitchen-${suffix}`;
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Approvals");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await signUpCaterer(page, email, { firstName: "Approvals", lastName: "Tester", closeClaimDialog: false });
 
   // --- Claim the custom link so the storefront (and its intake form) is published ---
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
@@ -114,11 +101,12 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- Event Type with that Menu assigned (the storefront scopes its menus to this) ---
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("checkbox", { name: menuName }).check();
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Customer walks the public flow (brand-new cookie-less context, no login) ---
   const publicContext = await browser.newContext();
@@ -265,9 +253,23 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByText("Please swap the starter for something lighter.")).toBeVisible();
   await page.getByRole("button", { name: "Send Updated Menu for Approval" }).click();
   await expect(page.getByText(/Version 2 is with the customer/)).toBeVisible();
+  // A re-send after the first is "Customer Reviewing", not another "Awaiting Customer Approval" (AJ, 2026-09-30).
+  await expect(page.getByTestId("menu-history-card").getByText("Customer Reviewing").first()).toBeVisible();
   const linkV2 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
   expect(linkV2).not.toBe(linkV1);
   await expect(page.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
+
+  // --- Older versions open read-only in the same planner, with Compare, and history stays a small card (AJ, 2026-09-30) ---
+  await expect(page.getByTestId("menu-note")).toContainText("Please swap the starter for something lighter.");
+  await page.getByRole("button", { name: "View version 1" }).click();
+  await expect(page.getByText(/Viewing Version 1/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send Updated Menu for Approval" })).toHaveCount(0);
+  await expect(page.locator('[data-testid^="meal-slot-"]').first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  await page.getByRole("button", { name: "Compare with current" }).click();
+  await expect(page.getByRole("button", { name: "Hide Compare" })).toBeVisible();
+  await page.getByRole("button", { name: "Back to current" }).click();
+  await expect(page.getByText(/Viewing Version 1/)).toHaveCount(0);
 
   // --- The order page shows the approval next to the kitchen / status card, and the versions open in a popup (AJ, 2026-09-27) ---
   await page.goto("/orders");
@@ -275,7 +277,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByTestId("order-approval-panel")).toBeVisible();
   await expect(page.getByTestId("event-operations-card")).toBeVisible();
-  await page.getByRole("button", { name: "Version history" }).click();
+  await page.getByRole("button", { name: "View History" }).click();
   const versions = page.getByRole("dialog", { name: "Menu version history" });
   await expect(versions.getByTestId("menu-version-row")).toHaveCount(2);
   await expect(versions.getByTestId("menu-version-row").first()).toContainText("Version 2");
@@ -291,13 +293,42 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByText("Menu approved — thank you!")).toBeVisible();
   await customerContext.close();
 
+  // The customer approving makes the order Approved; the team then sends it to the kitchen itself (no kitchen review step).
   await page.goto("/orders");
-  await expect(orderCard()).toContainText("Kitchen Review");
-
-  // --- The kitchen team approves: that IS the hand-off — no separate lock step ---
+  await expect(orderCard()).toContainText("Approved");
   await page.goto("/menu-approvals");
-  await expect(page.getByText("Needs Kitchen Review")).toBeVisible();
+  await expect(page.getByText("Customer Approved")).toBeVisible();
   await page.getByRole("button", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
+  await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
+  await page.goto("/orders");
+  await expect(orderCard()).toContainText("Sent to Kitchen");
+
+  // --- A status can be set by hand, but only with a reason, and the change is recorded (AJ, 2026-09-30) ---
+  await orderCard().getByRole("link", { name: customerName }).click();
+  await expect(page).toHaveURL(/\/orders\/.+/);
+  await page.getByRole("combobox", { name: "Change status" }).click();
+  await page.getByRole("option", { name: "Approved", exact: true }).click();
+  const reasonDialog = page.getByRole("dialog");
+  await expect(reasonDialog).toContainText("Change status to Approved?");
+  await reasonDialog.getByRole("button", { name: "Change status" }).click();
+  await expect(reasonDialog.getByRole("alert")).toContainText("Write a reason"); // no reason, no change
+  await reasonDialog.getByLabel("Reason").fill("Customer asked us to hold it back after a call");
+  await reasonDialog.getByRole("button", { name: "Change status" }).click();
+  await expect(reasonDialog).not.toBeVisible();
+  const history = page.getByTestId("status-history-entry").first();
+  await expect(history).toContainText("Sent to Kitchen");
+  await expect(history).toContainText("Manual");
+  await expect(history).toContainText("Customer asked us to hold it back after a call");
+  await page.reload();
+  await expect(page.getByRole("combobox", { name: "Change status" })).toBeVisible();
+  await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+
+  // The menu approval moved with the order (Approved -> Customer Approved), and it goes to the kitchen again in one click.
+  await page.goto("/menu-approvals");
+  await expect(page.getByText("Customer Approved")).toBeVisible();
+  await page.getByRole("button", { name: "Review" }).click();
+  await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
   await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
   await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");

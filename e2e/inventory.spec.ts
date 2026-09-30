@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 7 — Inventory (Basic). Signs up a fresh throwaway account, skips
@@ -28,20 +28,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Inventory");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await signUpCaterer(page, email, { firstName: "Inventory", lastName: "Tester", closeClaimDialog: false });
 
   // A fresh account's Dashboard auto-opens the "Claim your custom link"
   // dialog, which overlays the whole page (including the sidebar) until
@@ -52,7 +39,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await expect(page).toHaveURL(/\/inventory$/);
   await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
 
-  // --- Add Item with an opening stock, via the "Add Item" popup ---
+  // --- Add Item with an opening stock, via the "Add Item" drawer ---
   const itemName = `Basmati Rice ${suffix}`;
   await page.getByRole("button", { name: "Add Item" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
@@ -69,10 +56,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(itemName)).toBeVisible();
-  // The stock-status badge (In Stock/Low Stock) is Grid-card-only now — List
-  // view's columns are Image/Name/Category/Stock/Cost/Location/Expiry only
-  // (AJ, 2026-09-19), no Status column.
-  await page.getByRole("button", { name: "Grid view" }).click();
+  // List view (the default) has a Status column, so the stock-status badge is visible here (AJ, 2026-09-30).
   await expect(page.getByText(itemName)).toBeVisible();
   await expect(page.getByText("50 kg")).toBeVisible();
   await expect(page.getByText("In Stock", { exact: true }).first()).toBeVisible();
@@ -132,5 +116,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByRole("link", { name: "Inventory" }).click();
   await page.getByRole("button", { name: `Delete ${itemName}` }).click();
   await page.getByRole("button", { name: "Delete" }).click();
+  // The confirm dialog's own title repeats the item name, so wait for it to close first.
+  await expect(page.getByRole("alertdialog")).not.toBeVisible();
   await expect(page.getByText(itemName)).not.toBeVisible();
 });

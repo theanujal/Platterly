@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import { CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
 import { InventoryCardActions } from "./_components/inventory-card-actions";
@@ -64,65 +65,51 @@ export default async function InventoryPage() {
       sortValues: { name: item.name, stock, newest: item.createdAt.getTime() },
       card: (
         <>
-          {item.image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt="" className="aspect-video w-full object-cover" />
-          ) : (
-            <div className="flex aspect-video w-full items-center justify-center bg-muted">
-              <Boxes className="size-6 text-muted-foreground" />
-            </div>
-          )}
-          <div className="flex flex-col gap-1.5 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <span className="font-medium">{item.name}</span>
-              <InventoryCardActions
-                itemId={item.id}
-                name={item.name}
-                unit={item.unit}
-                currentStock={stock}
-                initialValues={initialValues}
-              />
-            </div>
-            <Badge variant="outline" className="w-fit">
-              {item.category}
-            </Badge>
-            <div className="flex items-center gap-1.5 pt-1">
-              <Badge variant={status.variant}>{status.label}</Badge>
-            </div>
-            <span className="pt-1 text-sm font-semibold">
-              {stock} {item.unit}
-            </span>
-          </div>
+          <CatalogCardMedia
+            src={item.image}
+            icon={Boxes}
+            overlay={
+              <>
+                <Badge variant="outline" className="h-10 border-transparent bg-background px-3.5 text-sm text-foreground shadow-sm">
+                  {item.category}
+                </Badge>
+                <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} />
+              </>
+            }
+          />
+          <CatalogCardBody
+            title={item.name}
+            description={item.description}
+            footer={
+              <span className="text-base font-semibold">
+                {stock} {item.unit}
+              </span>
+            }
+            statusBadge={<Badge variant={status.variant}>{status.label}</Badge>}
+          />
         </>
       ),
       listRow: (
         <>
-          <TableCell>
-            {item.image ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={item.image} alt="" className="size-10 rounded-md border border-border object-cover" />
-            ) : (
-              <div className="flex size-10 items-center justify-center rounded-md border border-border bg-muted">
-                <Boxes className="size-4 text-muted-foreground" />
-              </div>
-            )}
+          <TableCell className="px-3 py-3">
+            <CatalogNameCell name={item.name} description={item.description} src={item.image} icon={Boxes} />
           </TableCell>
-          <TableCell className="font-medium">{item.name}</TableCell>
-          <TableCell>{item.category}</TableCell>
-          <TableCell>
+          <TableCell className="px-3 py-3">
+            <Badge variant="outline">{item.category}</Badge>
+          </TableCell>
+          <TableCell className="px-3 py-3 text-sm font-semibold">
             {stock} {item.unit}
           </TableCell>
-          <TableCell>{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
-          <TableCell>{item.storageLocation ?? "—"}</TableCell>
-          <TableCell>{item.expiryDate ? formatDate(item.expiryDate) : "—"}</TableCell>
-          <TableCell>
-            <InventoryCardActions
-              itemId={item.id}
-              name={item.name}
-              unit={item.unit}
-              currentStock={stock}
-              initialValues={initialValues}
-            />
+          <TableCell className="px-3 py-3 text-sm">{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.storageLocation ?? "—"}</TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.expiryDate ? formatDate(item.expiryDate) : "—"}</TableCell>
+          <TableCell className="px-3 py-3">
+            <Badge variant={status.variant}>{status.label}</Badge>
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} variant="plain" />
+            </div>
           </TableCell>
         </>
       ),
@@ -165,7 +152,9 @@ export default async function InventoryPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddInventoryDialog variant="tile" />}
-        columns={["Image", "Name", "Category", "Stock", "Cost/Unit", "Storage Location", "Expiry", "Actions"]}
+        columns={["Item", "Category", "Stock", "Cost / Unit", "Storage", "Expiry", "Status", "Actions"]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search inventory…"
         emptyLabel="No inventory items yet."
         filterOptions={filterOptions}

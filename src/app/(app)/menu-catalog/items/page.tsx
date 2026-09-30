@@ -62,27 +62,31 @@ export default async function ItemsPage() {
       sortValues: { name: item.name, price: Number(item.price), newest: item.createdAt.getTime() },
       card: (
         <>
-          <CatalogCardMedia src={item.image} icon={UtensilsCrossed} />
-          <CatalogCardBody
-            title={item.name}
-            trailing={
+          <CatalogCardMedia
+            src={item.image}
+            icon={UtensilsCrossed}
+            overlay={
               <>
-                {!item.isActive && <Badge variant="neutral">Inactive</Badge>}
+                <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} onImage />
                 <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} />
               </>
             }
+          />
+          <CatalogCardBody
+            title={item.name}
             description={item.description}
             tags={
               <>
-                <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} />
-                {item.categories.map((c) => (
-                  <Badge key={c.categoryId} variant="outline">
-                    {c.category.name}
-                  </Badge>
-                ))}
+                <Badge variant="outline">
+                  Menus: {item.menus.length}
+                </Badge>
+                <Badge variant="outline">
+                  Categories: {item.categories.length}
+                </Badge>
               </>
             }
             footer={<span className="text-base font-semibold">{formatRupees(Number(item.price))}</span>}
+            active={item.isActive}
           />
         </>
       ),
@@ -101,7 +105,7 @@ export default async function ItemsPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} />
+              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -137,6 +141,7 @@ export default async function ItemsPage() {
 
       <CatalogBrowser
         entries={entries}
+        defaultView="list"
         addTile={<AddItemDialog categories={categoryOptions} menus={menuOptions} variant="tile" />}
         columns={["Food Item", "Category", "Type", "Price", "Status", ""]}
         richList

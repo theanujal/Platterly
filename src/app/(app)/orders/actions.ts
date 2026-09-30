@@ -13,6 +13,8 @@ import {
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
+import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
+import { changeStatusManually, ManualStatusChangeError } from "@/modules/menu-approvals/manual-status";
 import { getEvent, updateEventOperations, type RequiredInventoryInput } from "@/modules/events/event";
 import { listCustomers, createCustomer } from "@/modules/customers/customer";
 import { getMenuPickerData, type MenuPickerData, type MenuPickerAddOn } from "@/modules/menus/menu";
@@ -127,7 +129,8 @@ function buildInput(formData: FormData): OrderInput {
     status: stringField(formData, "status") as OrderStatus | undefined,
     notes: stringField(formData, "notes"),
     kitchenNotes: stringField(formData, "kitchenNotes"),
-    mealPlanEntries: buildMealPlanEntries(formData),
+    // The order page shows the meal plan read-only (Menu Approvals edits it), so it sends no meals; leave them as they are.
+    mealPlanEntries: formData.get("mealPlanLocked") === "true" ? undefined : buildMealPlanEntries(formData),
   };
 }
 
@@ -144,6 +147,7 @@ export async function createOrderAction(formData: FormData): Promise<ActionResul
     assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, input, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id);
+    await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -159,6 +163,7 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
     assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, input, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id);
+    await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
     await sendOrderWhatsApp(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -175,6 +180,7 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id);
+    await ensureOrderMenuSelection(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -191,6 +197,7 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id);
+    await ensureOrderMenuSelection(organizationId, id, session.user.id);
     await sendOrderWhatsApp(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -317,4 +324,20 @@ export async function getOrderCountsByDayAction(fromIso: string, toIso: string):
   const spanDays = (new Date(toIso).getTime() - new Date(fromIso).getTime()) / 86_400_000;
   if (spanDays < 0 || spanDays > 62) return {};
   return getOrderCountsByDay(organizationId, fromIso, toIso);
+}
+
+/** Sets the order's status by hand (the menu approval moves to match). A reason is required and kept in the status history. */
+export async function changeOrderStatusAction(orderId: string, status: OrderStatus, reason: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ orders: ["edit"] }, organizationId);
+  try {
+    await changeStatusManually(organizationId, { orderId, target: { kind: "ORDER", status }, reason, actorUserId: session.user.id });
+  } catch (error) {
+    if (error instanceof ManualStatusChangeError) return { ok: false, error: error.message };
+    return toErrorResult(error);
+  }
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/menu-approvals");
+  return { ok: true };
 }

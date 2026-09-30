@@ -141,7 +141,7 @@ describe("sendMenuForApproval", () => {
     expect(await approveViaLink(tokenOf(v1.url))).toEqual({ ok: false });
     expect(await orderStatus(order.id)).toBe("AWAITING_CUSTOMER_APPROVAL");
     expect(await approveViaLink(tokenOf(v2.url))).toEqual({ ok: true });
-    expect(await orderStatus(order.id)).toBe("KITCHEN_REVIEW");
+    expect(await orderStatus(order.id)).toBe("APPROVED");
   });
 
   it("blocks item edits while a version is out, and copies the picked items onto the version", async () => {
@@ -239,8 +239,8 @@ describe("customer responses via the link", () => {
     expect(await approveViaLink(tokenOf(sent.url))).toEqual({ ok: true });
 
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: org.id } });
-    expect(selection.status).toBe("KITCHEN_REVIEWING");
-    expect(await orderStatus(order.id)).toBe("KITCHEN_REVIEW");
+    expect(selection.status).toBe("CUSTOMER_APPROVED");
+    expect(await orderStatus(order.id)).toBe("APPROVED");
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { organizationId: org.id, action: "menu_selection.customer_approved_via_link" } });
     expect(audit.after).toMatchObject({ versionNumber: 1 });
   });

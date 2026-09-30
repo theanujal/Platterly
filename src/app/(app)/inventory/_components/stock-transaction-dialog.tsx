@@ -2,9 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackagePlus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,15 +16,16 @@ const TYPE_OPTIONS = [
 ] as const;
 
 interface StockTransactionDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   itemId: string;
   name: string;
   unit: string;
   currentStock: number;
 }
 
-export function StockTransactionDialog({ itemId, name, unit, currentStock }: StockTransactionDialogProps) {
+export function StockTransactionDialog({ open, onOpenChange, itemId, name, unit, currentStock }: StockTransactionDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [type, setType] = useState<(typeof TYPE_OPTIONS)[number]["value"]>("STOCK_IN");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
@@ -49,71 +48,48 @@ export function StockTransactionDialog({ itemId, name, unit, currentStock }: Sto
       setError(result.error);
       return;
     }
-    setOpen(false);
+    onOpenChange(false);
     setQuantity("");
     setNote("");
     router.refresh();
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Record stock movement for ${name}`} />}>
-        <PackagePlus className="size-4" />
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Stock Movement — {name}</DialogTitle>
-        </DialogHeader>
+    <FormDrawer open={open} onOpenChange={onOpenChange} title={`Stock Movement — ${name}`}>
+      <DrawerForm onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Record movement" onCancel={() => onOpenChange(false)}>
         <p className="text-sm text-muted-foreground">
           Current stock: <span className="font-medium text-foreground">{currentStock}</span> {unit}
         </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="stock-type">Type</Label>
-            <Select
-              items={Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-              value={type}
-              onValueChange={(v) => setType((v as typeof type) ?? type)}
-            >
-              <SelectTrigger id="stock-type" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TYPE_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="stock-quantity">
-              {type === "ADJUSTMENT" ? "Adjustment (+ or -)" : "Quantity"} ({unit})
-            </Label>
-            <Input
-              id="stock-quantity"
-              type="number"
-              step="0.01"
-              required
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="stock-note">Note</Label>
-            <Textarea id="stock-note" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <Button type="submit" disabled={pending} className="self-end">
-            {pending ? "Saving…" : "Record movement"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="stock-type">Type</Label>
+          <Select
+            items={Object.fromEntries(TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+            value={type}
+            onValueChange={(v) => setType((v as typeof type) ?? type)}
+          >
+            <SelectTrigger id="stock-type" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TYPE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="stock-quantity">
+            {type === "ADJUSTMENT" ? "Adjustment (+ or -)" : "Quantity"} ({unit})
+          </Label>
+          <Input id="stock-quantity" type="number" step="0.01" required value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="stock-note">Note</Label>
+          <Textarea id="stock-note" value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+      </DrawerForm>
+    </FormDrawer>
   );
 }

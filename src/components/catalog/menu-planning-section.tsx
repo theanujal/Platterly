@@ -73,6 +73,18 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
 
+/**
+ * Marks for the Menu Approvals version view's Compare toggle: dishes present here but not in the other menu get
+ * `highlightLabel`, and dishes the other menu has that this one lacks are listed struck-through under the meal.
+ * Keys are `date|mealType|catalogId` and `date|mealType`.
+ */
+export interface ComparisonMarks {
+  highlight: Set<string>;
+  highlightLabel: string;
+  missing: Record<string, { name: string; catalogId: string }[]>;
+  missingLabel: string;
+}
+
 interface MenuPlanningSectionProps {
   /** Distinguishes generated element ids ("order-..." / "quote-...") without changing either form's own id conventions. */
   idPrefix: string;
@@ -96,6 +108,12 @@ interface MenuPlanningSectionProps {
   foodDialogTarget: { date: string; mealType: MealTypeValue } | null;
   onOpenFoodDialog: (date: string, mealType: MealTypeValue) => void;
   onCloseFoodDialog: () => void;
+  /**
+   * Shows the plan without editing (Menu Approvals' older-version view, or a menu that is with the customer):
+   * no meal toggles, Remove, Copy to other dates, menu / price inputs or food-item drawer — just the dates, meals and dishes.
+   */
+  readOnly?: boolean;
+  compare?: ComparisonMarks;
 }
 
 export function MenuPlanningSection({
@@ -113,6 +131,8 @@ export function MenuPlanningSection({
   foodDialogTarget,
   onOpenFoodDialog,
   onCloseFoodDialog,
+  readOnly = false,
+  compare,
 }: MenuPlanningSectionProps) {
   const [focusedDate, setFocusedDate] = useState<string | null>(days[0] ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -154,9 +174,7 @@ export function MenuPlanningSection({
 
   /** Chip-list "x" — removes by row key rather than re-deriving the catalog option. */
   function removeMealItem(date: string, mealType: MealTypeValue, itemKey: string) {
-    onChange(
-      mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, items: e.items.filter((i) => i.key !== itemKey) } : e)),
-    );
+    onChange(mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, items: e.items.filter((i) => i.key !== itemKey) } : e)));
   }
 
   function applyCopy() {
@@ -192,10 +210,12 @@ export function MenuPlanningSection({
             </span>
             {meal.label}
           </span>
-          <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => removeMeal(date, mealType)}>
-            <Trash2 className="size-3.5" />
-            Remove {meal.label}
-          </Button>
+          {!readOnly && (
+            <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => removeMeal(date, mealType)}>
+              <Trash2 className="size-3.5" />
+              Remove {meal.label}
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -203,26 +223,34 @@ export function MenuPlanningSection({
             <Label htmlFor={`${idPrefix}-meal-menu-${date}-${mealType}`} required className="text-xs">
               Menu
             </Label>
-            <Select items={Object.fromEntries(menus.map((m) => [m.id, m.name]))} value={entry.menuId} onValueChange={(v) => setMealMenu(date, mealType, v ?? "")}>
-              <SelectTrigger id={`${idPrefix}-meal-menu-${date}-${mealType}`} className="w-full">
-                <SelectValue placeholder="Select Menu" />
-              </SelectTrigger>
-              <SelectContent>
-                {menus
-                  .filter((m) => !menuPreference || m.menuType === menuPreference || m.id === entry.menuId)
-                  .map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            {readOnly ? (
+              <div className="flex h-10 items-center rounded-lg border border-input bg-muted/40 px-3 text-sm">{assignedMenu?.name ?? "No menu assigned"}</div>
+            ) : (
+              <Select
+                items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
+                value={entry.menuId}
+                onValueChange={(v) => setMealMenu(date, mealType, v ?? "")}
+              >
+                <SelectTrigger id={`${idPrefix}-meal-menu-${date}-${mealType}`} className="w-full">
+                  <SelectValue placeholder="Select Menu" />
+                </SelectTrigger>
+                <SelectContent>
+                  {menus
+                    .filter((m) => !menuPreference || m.menuType === menuPreference || m.id === entry.menuId)
+                    .map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${idPrefix}-meal-price-${date}-${mealType}`} className="text-xs">
               Price
             </Label>
-            {individualPricingEnabled ? (
+            {individualPricingEnabled && !readOnly ? (
               <div className="flex items-center gap-2">
                 <Input
                   id={`${idPrefix}-meal-price-${date}-${mealType}`}
@@ -236,14 +264,22 @@ export function MenuPlanningSection({
               </div>
             ) : (
               <div className="flex h-10 items-center justify-between rounded-lg border border-input bg-muted/40 px-3 text-sm">
-                <span>{assignedMenu ? formatCurrency(assignedMenu.price) : "—"}</span>
+                <span>
+                  {individualPricingEnabled
+                    ? entry.price
+                      ? formatCurrency(Number(entry.price))
+                      : "—"
+                    : assignedMenu
+                      ? formatCurrency(assignedMenu.price)
+                      : "—"}
+                </span>
                 <span className="text-xs text-muted-foreground">/ plate</span>
               </div>
             )}
           </div>
         </div>
 
-        {entry.menuId && (
+        {(entry.menuId || (readOnly && entry.items.length > 0)) && (
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm">
@@ -252,35 +288,55 @@ export function MenuPlanningSection({
                   {entry.items.length === 0 ? "No items selected" : `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`}
                 </span>
               </span>
-              <Button type="button" variant="outline" size="sm" onClick={() => onOpenFoodDialog(date, mealType)}>
-                {entry.items.length === 0 ? <Plus className="size-3.5" /> : <PenSquare className="size-3.5" />}
-                {entry.items.length === 0 ? "Select Food Items" : "Edit Items"}
-              </Button>
+              {!readOnly && (
+                <Button type="button" variant="outline" size="sm" onClick={() => onOpenFoodDialog(date, mealType)}>
+                  {entry.items.length === 0 ? <Plus className="size-3.5" /> : <PenSquare className="size-3.5" />}
+                  {entry.items.length === 0 ? "Select Food Items" : "Edit Items"}
+                </Button>
+              )}
             </div>
             {entry.items.length > 0 && (
               <>
                 <div className="flex flex-wrap gap-1.5">
-                  {entry.items.map((item) => (
-                    <Badge key={item.key} variant="outline" className="gap-1 pr-1">
-                      {item.name}
-                      {item.itemType === "ADD_ON" ? <span className="text-primary">Add-on</span> : item.perGuest ? <span className="text-warning">Extra</span> : null}
-                      <button
-                        type="button"
-                        aria-label={`Remove ${item.name}`}
-                        onClick={() => removeMealItem(date, mealType, item.key)}
-                        className="rounded-full p-0.5 hover:bg-muted"
-                      >
-                        <Trash2 className="size-3" />
-                      </button>
+                  {entry.items.map((item) => {
+                    const highlighted = compare?.highlight.has(`${date}|${mealType}|${item.catalogId}`);
+                    return (
+                      <Badge key={item.key} variant="outline" className={cn("gap-1", !readOnly && "pr-1", highlighted && "border-warning/60 bg-warning/10")}>
+                        {item.name}
+                        {item.itemType === "ADD_ON" ? (
+                          <span className="text-primary">Add-on</span>
+                        ) : item.perGuest ? (
+                          <span className="text-warning">Extra</span>
+                        ) : null}
+                        {highlighted && compare && <span className="font-medium text-warning">{compare.highlightLabel}</span>}
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            aria-label={`Remove ${item.name}`}
+                            onClick={() => removeMealItem(date, mealType, item.key)}
+                            className="rounded-full p-0.5 hover:bg-muted"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        )}
+                      </Badge>
+                    );
+                  })}
+                  {(compare?.missing[`${date}|${mealType}`] ?? []).map((gone) => (
+                    <Badge key={`missing-${gone.catalogId}`} variant="outline" className="gap-1 border-dashed border-info/60 text-info">
+                      <span className="line-through opacity-70">{gone.name}</span>
+                      <span className="font-medium">{compare?.missingLabel}</span>
                     </Badge>
                   ))}
                 </div>
-                <div className="flex items-start gap-2 rounded-lg bg-success/10 p-3 text-xs text-success">
-                  <Check className="mt-0.5 size-4 shrink-0" />
-                  <span>
-                    {entry.items.length} food item{entry.items.length === 1 ? "" : "s"} selected for {meal.label}.
-                  </span>
-                </div>
+                {!readOnly && (
+                  <div className="flex items-start gap-2 rounded-lg bg-success/10 p-3 text-xs text-success">
+                    <Check className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      {entry.items.length} food item{entry.items.length === 1 ? "" : "s"} selected for {meal.label}.
+                    </span>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -290,6 +346,7 @@ export function MenuPlanningSection({
   }
 
   function mealTypeTabs(date: string) {
+    if (readOnly) return dayMeals(date).length === 0 ? <p className="text-sm text-muted-foreground">No meals planned for this date.</p> : null;
     return (
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {MEAL_TYPES.map((meal) => {
@@ -328,42 +385,44 @@ export function MenuPlanningSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
-        <Label>Menu Preference</Label>
-        <div className="flex flex-wrap gap-3">
-          {(
-            [
-              { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only", dot: "bg-success" },
-              { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish", dot: "bg-destructive" },
-            ] as const
-          ).map((option) => {
-            const selected = menuPreference === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onMenuPreferenceChange(selected ? "" : option.value)}
-                className={cn(
-                  "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                  selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
-                )}
-              >
-                <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
-                  {selected && <span className="size-2.5 rounded-full bg-primary" />}
-                </span>
-                <span className="flex flex-col">
-                  <span className="flex items-center gap-2 text-sm font-semibold">
-                    <span className={cn("size-2 rounded-full", option.dot)} />
-                    {option.label}
+      {!readOnly && (
+        <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
+          <Label>Menu Preference</Label>
+          <div className="flex flex-wrap gap-3">
+            {(
+              [
+                { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only", dot: "bg-success" },
+                { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish", dot: "bg-destructive" },
+              ] as const
+            ).map((option) => {
+              const selected = menuPreference === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onMenuPreferenceChange(selected ? "" : option.value)}
+                  className={cn(
+                    "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                    selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                  )}
+                >
+                  <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                    {selected && <span className="size-2.5 rounded-full bg-primary" />}
                   </span>
-                  <span className="text-xs text-muted-foreground">{option.hint}</span>
-                </span>
-              </button>
-            );
-          })}
+                  <span className="flex flex-col">
+                    <span className="flex items-center gap-2 text-sm font-semibold">
+                      <span className={cn("size-2 rounded-full", option.dot)} />
+                      {option.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">{option.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {days.length === 0 ? (
         <p className="text-sm text-muted-foreground">Set the Event Date above to start planning meals.</p>
@@ -391,7 +450,9 @@ export function MenuPlanningSection({
                 >
                   <span className="flex items-center gap-2">
                     <span className={cn("size-2 shrink-0 rounded-full", isFocused ? "bg-primary" : meals.length > 0 ? "bg-primary/40" : "bg-border")} />
-                    <span className={cn("text-sm font-medium", isFocused && "text-primary")}>{formatDay(date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span>
+                    <span className={cn("text-sm font-medium", isFocused && "text-primary")}>
+                      {formatDay(date, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                    </span>
                   </span>
                   <span className="pl-4 text-xs text-muted-foreground">{meals.length > 0 ? meals.map((m) => m.label).join(", ") : "No meals selected"}</span>
                 </button>
@@ -404,10 +465,16 @@ export function MenuPlanningSection({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-semibold">{formatDay(activeDate, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</h3>
-                  <p className="text-sm text-muted-foreground">Select and configure meals for this date.</p>
+                  <p className="text-sm text-muted-foreground">{readOnly ? "Meals planned for this date." : "Select and configure meals for this date."}</p>
                 </div>
-                {otherDays.length > 0 && (
-                  <Popover open={copyOpen} onOpenChange={(open) => { setCopyOpen(open); if (!open) setCopyTargets([]); }}>
+                {!readOnly && otherDays.length > 0 && (
+                  <Popover
+                    open={copyOpen}
+                    onOpenChange={(open) => {
+                      setCopyOpen(open);
+                      if (!open) setCopyTargets([]);
+                    }}
+                  >
                     <PopoverTrigger
                       type="button"
                       disabled={!activeDateHasMeals}
@@ -445,7 +512,7 @@ export function MenuPlanningSection({
         </div>
       )}
 
-      {foodDialogTarget && foodDialogEntry && foodDialogMenu && (
+      {!readOnly && foodDialogTarget && foodDialogEntry && foodDialogMenu && (
         <FoodItemSelectionDrawer
           open
           onOpenChange={(open) => !open && onCloseFoodDialog()}

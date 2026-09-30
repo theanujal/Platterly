@@ -1,0 +1,10 @@
+# Third-party agent skill docs installed by Prisma / Windsurf — not Platterly code, and they made
+# up about a quarter of the graph with prisma-cli / prisma-client-api / ... nodes.
+.agents/
+.windsurf/
+skills-lock.json
+# Generated or throwaway output
+test-results/
+playwright-report/
+public/uploads/
+src/generated/

@@ -154,3 +154,37 @@ export async function listCategoryMenuAssignments(organizationId: string, catego
     orderBy: { menu: { name: "asc" } },
   });
 }
+
+/** Copies a Category with its menu assignments; the name gets " (Copy)", or " (Copy 2)"… when that is taken (names are unique per tenant). */
+export async function duplicateCategory(organizationId: string, id: string, actorUserId: string) {
+  const source = await getCategory(organizationId, id);
+  if (!source) throw new Error("Category not found.");
+  const assignments = await listCategoryMenuAssignments(organizationId, id);
+  const taken = new Set((await listCategories(organizationId)).map((c) => c.name));
+  let name = `${source.name} (Copy)`;
+  for (let n = 2; taken.has(name); n++) name = `${source.name} (Copy ${n})`;
+  return createCategory(
+    organizationId,
+    {
+      name,
+      description: source.description ?? undefined,
+      isActive: source.isActive,
+      menuAssignments: assignments.map((a) => ({ menuId: a.menuId, maxSelection: a.maxSelection })),
+    },
+    actorUserId,
+  );
+}
+
+export async function setCategoryActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {
+  const before = await prisma.menuCategory.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.menuCategory.update({ where: { id }, data: { isActive } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "menu_category.update",
+    recordType: "MenuCategory",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
+}

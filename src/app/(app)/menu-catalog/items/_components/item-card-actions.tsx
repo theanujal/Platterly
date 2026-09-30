@@ -1,23 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { CatalogCardMenu } from "@/components/catalog/catalog-card-menu";
 import { EditItemDialog } from "./edit-item-dialog";
 import type { ItemFormValues } from "./item-form";
-import { deleteMenuItemAction } from "../actions";
+import { deleteMenuItemAction, duplicateMenuItemAction, setMenuItemActiveAction } from "../actions";
 
 interface ItemCardActionsProps {
   itemId: string;
@@ -25,41 +12,27 @@ interface ItemCardActionsProps {
   initialValues: ItemFormValues;
   categories: { id: string; name: string }[];
   menus: { id: string; name: string }[];
+  variant?: "overlay" | "plain";
 }
 
-export function ItemCardActions({ itemId, name, initialValues, categories, menus }: ItemCardActionsProps) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-
-  async function handleDelete() {
-    setPending(true);
-    await deleteMenuItemAction(itemId);
-    setPending(false);
-    setOpen(false);
-    router.refresh();
-  }
+/** 3-dot menu for a Food Item card or row: Edit (popup), Duplicate, Activate / Deactivate, Delete. */
+export function ItemCardActions({ itemId, name, initialValues, categories, menus, variant }: ItemCardActionsProps) {
+  const [editOpen, setEditOpen] = useState(false);
 
   return (
-    <div className="flex items-center gap-0.5">
-      <EditItemDialog itemId={itemId} name={name} initialValues={initialValues} categories={categories} menus={menus} />
-      <AlertDialog open={open} onOpenChange={setOpen}>
-        <AlertDialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Delete ${name}`} />}>
-          <Trash2 className="size-4" />
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete &quot;{name}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>The menus/categories referencing it aren&apos;t deleted, only this item.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" disabled={pending} onClick={handleDelete}>
-              {pending ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    <>
+      <CatalogCardMenu
+        name={name}
+        entityLabel="Food Item"
+        isActive={initialValues.isActive}
+        variant={variant}
+        onEdit={() => setEditOpen(true)}
+        onDuplicate={() => duplicateMenuItemAction(itemId)}
+        onSetActive={(active) => setMenuItemActiveAction(itemId, active)}
+        onDelete={() => deleteMenuItemAction(itemId)}
+        deleteDescription="The menus and categories using it aren't deleted, only this item."
+      />
+      <EditItemDialog open={editOpen} onOpenChange={setEditOpen} itemId={itemId} initialValues={initialValues} categories={categories} menus={menus} />
+    </>
   );
 }

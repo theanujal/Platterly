@@ -1,11 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
+import { AddDrawer } from "@/components/catalog/form-drawer";
 import { ItemForm } from "./item-form";
 import { createMenuItemAction } from "../actions";
 
@@ -17,35 +13,29 @@ interface AddItemDialogProps {
 
 export function AddItemDialog({ categories, menus, variant = "button" }: AddItemDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {variant === "tile" ? (
-        <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <CatalogAddTileContent label="Add New Item" description="Add a new dish to your catalog" />
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger render={<Button />}>
-          <Plus className="size-4" />
-          Add Item
-        </DialogTrigger>
-      )}
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>New Food Item</DialogTitle>
-        </DialogHeader>
+    <AddDrawer
+      variant={variant}
+      buttonLabel="Add Item"
+      tileLabel="Add New Item"
+      tileDescription="Add a new dish to your catalog"
+      title="New Food Item"
+      size="xl"
+    >
+      {(close) => (
         <ItemForm
           categories={categories}
           menus={menus}
           submitLabel="Create item"
           onSubmit={createMenuItemAction}
+          onCancel={close}
           onSuccess={() => {
-            setOpen(false);
+            close();
             router.refresh();
           }}
         />
-      </DialogContent>
-    </Dialog>
+      )}
+    </AddDrawer>
   );
 }

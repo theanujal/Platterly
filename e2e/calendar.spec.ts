@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser, seedCalendarFixtures, type CalendarFixtureOrder } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 13 — Calendar & Scheduling Views. Seeds a tenant with a known set of
@@ -27,21 +27,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const iso = (y: number, m: number, d: number) => `${y}-${pad(m)}-${pad(d)}`;
 
 async function signUpSkipOnboarding(page: Page, email: string) {
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Calendar");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000077");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Calendar", lastName: "Tester", phone: "9800000077" });
 }
 
 function daysBetween(start: string, end: string): string[] {
@@ -141,6 +127,9 @@ test("calendar page + order-count date picker agree with the Orders/Events table
 
   // --- Month navigation ---
   await page.getByRole("link", { name: "Month", exact: true }).click();
+  // Wait for the month grid before paging: "Next month" keeps the current view, so clicking it while
+  // the List view is still on screen would page the list instead (only shows up without slowMo).
+  await expect(page.getByTestId(`calendar-day-${iso(y, m, 25)}`)).toBeVisible();
   await page.getByRole("link", { name: "Next month" }).click();
   await expect(page.getByTestId("calendar-month-label")).toContainText(String(ny));
   await expect(page.getByTestId("stat-orders-this-month")).toHaveText("1");

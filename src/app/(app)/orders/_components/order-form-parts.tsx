@@ -11,12 +11,15 @@ import { cn } from "cn";
 /** A numbered step card in the form's main column. */
 export function FormSection({
   step,
+  icon: Icon,
   title,
   description,
   action,
   children,
 }: {
-  step: number;
+  step?: number;
+  /** Tabbed detail page: an icon chip replaces the step number. */
+  icon?: LucideIcon;
   title: string;
   description?: string;
   action?: React.ReactNode;
@@ -29,7 +32,13 @@ export function FormSection({
     // clipped the moment it would extend past this card's own box.
     <Card className="gap-5 overflow-visible px-5 [--card-spacing:--spacing(5)]">
       <div className="flex items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{step}</span>
+        {Icon ? (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon className="size-5" />
+          </span>
+        ) : (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{step}</span>
+        )}
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">{title}</h2>
           {description && <p className="text-sm text-muted-foreground">{description}</p>}
@@ -42,14 +51,15 @@ export function FormSection({
 }
 
 /** A card in the right-hand summary column: icon chip + title, then rows. */
-export function SummaryCard({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: React.ReactNode }) {
+export function SummaryCard({ icon: Icon, title, action, children }: { icon: LucideIcon; title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]">
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Icon className="size-5" />
         </span>
-        <h2 className="text-base font-semibold">{title}</h2>
+        <h2 className="min-w-0 flex-1 text-base font-semibold">{title}</h2>
+        {action}
       </div>
       {children}
     </Card>

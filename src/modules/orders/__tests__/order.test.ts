@@ -190,7 +190,7 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
 });
 
 describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", () => {
-  it("subtotal sums each meal's own items; total/balance derive from discount/transportationCost/otherCharges/advance", async () => {
+  it("subtotal sums each meal's Extra dishes and add-ons; total/balance derive from discount/transportationCost/otherCharges/advance", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -212,7 +212,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
             date: new Date("2026-12-01"),
             mealType: "LUNCH",
             items: [
-              { itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 10 }, // 1500
+              { itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 10, isExtra: true }, // an Extra dish, per guest: 1500
               { itemType: "ADD_ON", catalogId: addOn.id, quantity: 1 }, // 200
             ],
           },
@@ -224,6 +224,41 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     expect(Number(order.subtotal)).toBe(1700);
     expect(Number(order.total)).toBe(1700 - 100 + 30 + 20);
     expect(Number(order.balance)).toBe(1700 - 100 + 30 + 20 - 500);
+  });
+
+  it("a meal costs its Menu's price x adults; dishes inside the menu are included, Extra dishes and add-ons add on top", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Feast", menuType: "VEGETARIAN", pricePerPlate: 400 }, actor.id);
+    const included = await createMenuItem(org.id, { name: "Dal", foodType: "VEGETARIAN", price: 90 }, actor.id);
+    const extra = await createMenuItem(org.id, { name: "Rabdi", foodType: "VEGETARIAN", price: 60 }, actor.id);
+
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventStartDate: new Date("2026-12-01"),
+        eventEndDate: new Date("2026-12-01"),
+        adultCount: 50,
+        totalParticipants: 50,
+        mealPlanEntries: [
+          {
+            date: new Date("2026-12-01"),
+            mealType: "LUNCH",
+            menuId: menu.id,
+            items: [
+              { itemType: "MENU_ITEM", catalogId: included.id, quantity: 1 },
+              { itemType: "MENU_ITEM", catalogId: extra.id, quantity: 50, isExtra: true },
+            ],
+          },
+        ],
+      },
+      actor.id,
+    );
+
+    // 400 x 50 plates + 60 x 50 for the Extra; the included Dal adds nothing.
+    expect(Number(order.subtotal)).toBe(400 * 50 + 60 * 50);
   });
 
   it("individualPricingEnabled adds MealPlanEntry prices into subtotal; disabled ignores them", async () => {
@@ -291,7 +326,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: cheapItem.id, quantity: 1 }] }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: cheapItem.id, quantity: 1, isExtra: true }] }],
       },
       actor.id,
     );
@@ -304,7 +339,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: pricierItem.id, quantity: 2 }] }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: pricierItem.id, quantity: 2, isExtra: true }] }],
       },
       actor.id,
     );
@@ -333,7 +368,8 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
     const item = (await getOrder(org.id, order.id))!.mealPlanEntries[0].items[0];
     expect(item.name).toBe("Wedding Menu");
     expect(Number(item.unitPrice)).toBe(999);
-    expect(Number(order.subtotal)).toBe(999 * 3);
+    // A whole-Menu row is neither an Extra dish nor an add-on, so it adds nothing — the meal itself is priced by its Menu.
+    expect(Number(order.subtotal)).toBe(0);
   });
 
   it("recalculateOrderTotals is idempotent when called directly", async () => {
@@ -642,8 +678,8 @@ describe("Order Kind (Single vs Multi Order) and per-meal-slot Menu items", () =
         eventEndDate: new Date("2026-12-01"),
         orderKind: "MULTI",
         mealPlanEntries: [
-          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: itemA.id, quantity: 1 }] }, // 40
-          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: itemB.id, quantity: 2 }] }, // 120
+          { date: new Date("2026-12-01"), mealType: "BREAKFAST", menuId: menuA.id, items: [{ itemType: "MENU_ITEM", catalogId: itemA.id, quantity: 1, isExtra: true }] }, // 40
+          { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menuB.id, items: [{ itemType: "MENU_ITEM", catalogId: itemB.id, quantity: 2, isExtra: true }] }, // 120
         ],
       },
       actor.id,

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 10 — Sales Pipeline: Order. Create Order redesign (2026-09-20)
@@ -116,21 +116,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Orders");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Orders", lastName: "Tester" });
 
   // --- Setup: a Customer, an Event Type, a Menu, and a Food Item assigned to that Menu ---
   const customerName = `Asha Rao ${suffix}`;
@@ -142,10 +128,11 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menuName = `Wedding Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");
@@ -176,6 +163,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await pickEventDate(page, "2026-12-01", "2026-12-01");
 
   // Guests Information
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByLabel("Adults").fill("80");
   await page.getByLabel("Children (Under 5)").fill("5");
   await page.getByLabel("Children (5–10)").fill("15");
@@ -201,17 +189,12 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // Individual Pricing puts each meal's own price inline on its card (2026-09-29 — no longer a separate Pricing Details list).
   await lunchSlot.getByLabel("Price").fill("300");
 
-  // Selected Meals (right column) can reopen the same drawer to edit a meal's items.
-  await page.getByRole("button", { name: "Edit food items for Lunch" }).click();
-  const drawer = page.getByRole("dialog", { name: /Select Menu Items/ });
-  await expect(drawer).toBeVisible();
-  await drawer.getByRole("button", { name: "Cancel" }).click();
-  await expect(drawer).not.toBeVisible();
-  await lunchSlot.getByLabel("Price").scrollIntoViewIfNeeded();
 
   // Venue & Delivery Details
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
 
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   // Order Details — Taxes is gone; Extra / Service Cost replaces "Other Charges".
   await page.getByLabel("Discount").fill("100");
   await page.getByLabel("Transportation Cost").fill("30");
@@ -220,16 +203,16 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // Payment Status — Advance Received lives here now (not Order Details).
   await page.getByLabel("Advance Received").fill("50");
 
-  // Pricing summary live preview: subtotal = 150 (item) + 300 (custom meal
-  // price) = 450; total = 450-100+30+20 = 400; balance = 400-50 = 350.
-  await expect(page.getByText("₹450.00")).toBeVisible();
-  await expect(page.getByText("₹400.00")).toBeVisible();
-  await expect(page.getByText("₹350.00")).toBeVisible();
+  // Pricing summary live preview (one rule: a dish inside the menu is included, so the 150 Paneer adds nothing):
+  // subtotal = 300 (custom meal price); total = 300-100+30+20 = 250; balance = 250-50 = 200.
+  await expect(page.getByText("₹300.00").first()).toBeVisible();
+  await expect(page.getByText("₹250.00").first()).toBeVisible();
+  await expect(page.getByText("₹200.00")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
   await expect(page.getByText(customerName)).toBeVisible();
-  await expect(page.getByText("₹400", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
+  await expect(page.getByText("₹250", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
 
   // --- Orders Dashboard filters ---
   await page.getByLabel("Search").fill("no-such-customer-xyz");
@@ -248,7 +231,14 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByLabel("Adults")).toHaveValue("80");
+  // The detail page splits the order into tabs (AJ, 2026-09-30).
+  await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await expect(page.getByTestId("meal-slot-2026-12-01-LUNCH").getByText(itemName)).toBeVisible();
+  // The menu is edited in Menu Approvals now, so the order page shows it read-only (AJ, 2026-09-30).
+  await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit Menu" })).toBeVisible();
 
   // --- The Event is created automatically when the order is saved (AJ, 2026-09-27) ---
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
@@ -258,10 +248,15 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await operations.getByLabel("Event Status").click();
   await page.getByRole("option", { name: "Processing" }).click();
   await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card")).toBeVisible();
 
+  // Sidebar summary carries the order number, status, kitchen and timestamps.
+  await expect(page.getByRole("heading", { name: "Order Summary" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy order summary" })).toBeVisible();
+
   // Nothing has been sent to the customer yet, so there is no version history to open.
-  await expect(page.getByRole("button", { name: "Version history" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "View History" })).toHaveCount(0);
 });
 
 /**
@@ -277,21 +272,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Multi");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Multi", lastName: "Tester" });
 
   // --- Configure Order Numbering (Business Profile settings) ---
   await page.goto("/settings/account/business-profile");
@@ -314,10 +295,11 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Reception ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Two Menus, each with its own Food Item assigned to it ---
   const lunchMenuName = `Lunch Menu ${suffix}`;
@@ -359,12 +341,13 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("alertdialog")).toContainText("more than one date");
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
   await expect(page.getByRole("button", { name: "Multi Order" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Event Type").click();
+  await page.getByRole("option", { name: eventTypeName }).click();
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   const sidebar = page.getByRole("navigation", { name: "Event Dates" });
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByText(formatSidebarDate("2026-12-05"))).toBeVisible();
   await expect(sidebar.getByText(formatSidebarDate("2026-12-06"))).toBeVisible();
-  await page.getByLabel("Event Type").click();
-  await page.getByRole("option", { name: eventTypeName }).click();
 
   // Day 1 (already focused by default) gets Lunch; switching focus to Day 2 for Dinner.
   await page.getByRole("button", { name: "Lunch" }).click();
@@ -421,7 +404,8 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   // --- Reopen the order — per-meal Menu/items survived the round trip ---
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
-  await expect(page.getByText("AJ-0001")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "AJ-0001" })).toBeVisible();
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   // The sidebar defaults to focusing Day 1 on a fresh page load.
   await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH").getByText(lunchItemName)).toBeVisible();
   await focusDate(page, "2026-12-06");
@@ -486,21 +470,7 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   const email = `e2e-autokind-${Date.now()}@example.test`;
   cleanupEmails.push(email);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Auto");
-  await page.getByLabel("Last name").fill("Kind");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000077");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Auto", lastName: "Kind", phone: "9800000077" });
 
   await page.goto("/orders/new");
 
@@ -514,20 +484,25 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   // Today is allowed, as a single day: still a Single Order with one meal type.
   await pickEventDate(page, toLocalIso(new Date()), toLocalIso(new Date()));
   await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByRole("button", { name: "Breakfast" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
 
   // A second meal type on the same day turns it into a Multi Order, with a popup —
   // but it's still one day, so no Event Dates sidebar appears (2026-09-29).
   await page.getByRole("button", { name: "Dinner" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("more than one meal type");
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: /Multi Order/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("navigation", { name: "Event Dates" })).toHaveCount(0);
   // ...and it can't be turned back to Single while both meals are there.
   await expect(page.getByRole("button", { name: /Single Order/ })).toBeDisabled();
 
   // Total Guests is computed and read-only.
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByLabel("Adults").fill("10");
   await page.getByLabel("Children (5–10)").fill("4");
   await expect(page.getByLabel("Total Guests")).toHaveValue("14");
@@ -540,21 +515,7 @@ test("the food item drawer: category limits are compulsory, extra items are char
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Drawer");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000055");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Drawer", lastName: "Tester", phone: "9800000055" });
 
   // --- Catalog: a Menu, a Starters category limited to 2 on it, 3 veg dishes + 1 non-veg dish, and one per-plate add-on ---
   const customerName = `Drawer Customer ${suffix}`;
@@ -566,10 +527,11 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Reception ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menuName = `Feast Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");
@@ -625,6 +587,7 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await page.getByRole("option", { name: eventTypeName }).click();
   const tomorrow = new Date(Date.now() + 3 * 86_400_000);
   await pickEventDate(page, toLocalIso(tomorrow), toLocalIso(tomorrow));
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByLabel("Adults").fill("10");
   await page.getByRole("button", { name: /^Vegetarian/ }).click();
   await page.getByRole("button", { name: "Lunch" }).click();
@@ -667,11 +630,11 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await expect(slot.getByText("3 items selected")).toBeVisible().catch(() => undefined);
   await expect(slot.getByText("Extra", { exact: true })).toBeVisible();
   await expect(slot.getByText("Add-on", { exact: true })).toBeVisible();
-  // 100 + 100 (included) + 150 x 10 (extra) + 20 x 10 (add-on) = 1,900.
-  await expect(page.getByText("₹1900.00").first()).toBeVisible();
+  // 300 x 10 adults (the Menu) + the two included dishes (0) + 150 x 10 (extra) + 20 x 10 (add-on) = 4,700.
+  await expect(page.getByRole("complementary").getByText("₹4700.00").first()).toBeVisible();
 
   // Cancel throws away a draft.
-  await page.getByRole("button", { name: "Edit food items for Lunch" }).click();
+  await slot.getByRole("button", { name: "Edit Items" }).click();
   const again = page.getByRole("dialog", { name: /Select Menu Items/ });
   await again.getByRole("button", { name: "Clear All" }).click();
   await again.getByRole("button", { name: "Cancel" }).click();

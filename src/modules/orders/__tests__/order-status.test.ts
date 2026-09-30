@@ -17,7 +17,6 @@ describe("Order status labels (AJ, 2026-09-26)", () => {
     expect(ORDER_STATUS_ORDER.map((s) => ORDER_STATUS_LABEL[s])).toEqual([
       "Pending Review",
       "Awaiting Customer Approval",
-      "Kitchen Review",
       "Approved",
       "Sent to Kitchen",
       "Completed",
@@ -26,13 +25,15 @@ describe("Order status labels (AJ, 2026-09-26)", () => {
   });
 
   it("gives every status a tone from the shared legend", () => {
-    expect(ORDER_STATUS_ORDER.map((s) => ORDER_STATUS_TONE[s])).toEqual(["violet", "info", "info", "success", "info", "success", "danger"]);
+    expect(ORDER_STATUS_ORDER.map((s) => ORDER_STATUS_TONE[s])).toEqual(["violet", "info", "success", "info", "success", "danger"]);
   });
 
   it("labels every menu-approval status, including the queue's 'Needs Review' and 'Awaiting Customer Approval'", () => {
     expect(MENU_SELECTION_STATUS_LABEL.DRAFT).toBe("Needs Review");
     expect(MENU_SELECTION_STATUS_LABEL.SENT_TO_CUSTOMER).toBe("Awaiting Customer Approval");
-    expect(Object.keys(MENU_SELECTION_STATUS_LABEL)).toHaveLength(9);
+    expect(MENU_SELECTION_STATUS_LABEL.CUSTOMER_REVIEWING).toBe("Customer Reviewing");
+    expect(MENU_SELECTION_STATUS_LABEL.FINAL_LOCKED).toBe("Approved & Sent to Kitchen");
+    expect(Object.keys(MENU_SELECTION_STATUS_LABEL)).toHaveLength(6);
   });
 });
 
@@ -40,12 +41,9 @@ describe("orderStatusForSelection", () => {
   it.each([
     ["DRAFT", "PENDING_REVIEW"],
     ["CHANGES_REQUESTED", "PENDING_REVIEW"],
-    ["KITCHEN_CHANGES_REQUESTED", "PENDING_REVIEW"],
     ["SENT_TO_CUSTOMER", "AWAITING_CUSTOMER_APPROVAL"],
     ["CUSTOMER_REVIEWING", "AWAITING_CUSTOMER_APPROVAL"],
-    ["CUSTOMER_APPROVED", "KITCHEN_REVIEW"],
-    ["KITCHEN_REVIEWING", "KITCHEN_REVIEW"],
-    ["KITCHEN_APPROVED", "APPROVED"],
+    ["CUSTOMER_APPROVED", "APPROVED"],
     ["FINAL_LOCKED", "SENT_TO_KITCHEN"],
   ] as const)("menu %s -> order %s", (status, expected) => {
     expect(orderStatusForSelection(sel(status))).toBe(expected);
@@ -60,7 +58,7 @@ describe("orderStatusForSelection", () => {
   });
 
   it("ignores a stale kitchen stage before the menu is locked", () => {
-    expect(orderStatusForSelection(sel("KITCHEN_REVIEWING", "DELIVERED"))).toBe("KITCHEN_REVIEW");
+    expect(orderStatusForSelection(sel("CUSTOMER_APPROVED", "DELIVERED"))).toBe("APPROVED");
   });
 });
 

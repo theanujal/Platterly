@@ -89,7 +89,7 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
         name: item.name,
         unitPrice: Number(item.unitPrice),
         // Extras and per-plate add-ons were saved with a per-guest quantity.
-        perGuest: item.quantity > 1,
+        perGuest: item.itemType === "ADD_ON" ? item.quantity > 1 : item.isExtra,
       })),
     })),
   };

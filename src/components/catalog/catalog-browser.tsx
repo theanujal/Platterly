@@ -108,7 +108,7 @@ interface CatalogBrowserProps {
    * and Next's RSC boundary can't serialize functions from a Server
    * Component parent.
    */
-  addTile: React.ReactNode;
+  addTile?: React.ReactNode;
   searchPlaceholder?: string;
   emptyLabel: string;
   /**

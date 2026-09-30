@@ -142,12 +142,45 @@ export async function deleteEventType(organizationId: string, id: string, actorU
 }
 
 export async function listEventTypes(organizationId: string) {
-  return prisma.eventType.findMany({ where: { organizationId }, orderBy: { sortOrder: "asc" } });
+  return prisma.eventType.findMany({ where: { organizationId }, include: { menus: { select: { menuId: true } } }, orderBy: { sortOrder: "asc" } });
 }
 
 export async function getEventType(organizationId: string, id: string) {
   return prisma.eventType.findFirst({
     where: { id, organizationId },
     include: { menus: { include: { menu: true } } },
+  });
+}
+
+/** Copies an Event Type with its eligible Menus; it lands at the end of the order (AJ, 2026-09-30 — the card menu's Duplicate). */
+export async function duplicateEventType(organizationId: string, id: string, actorUserId: string) {
+  const source = await getEventType(organizationId, id);
+  if (!source) throw new Error("Event type not found.");
+  return createEventType(
+    organizationId,
+    {
+      name: `${source.name} (Copy)`,
+      description: source.description ?? undefined,
+      image: source.image ?? undefined,
+      minGuests: source.minGuests,
+      isActive: source.isActive,
+      icon: source.icon,
+      menuIds: source.menus.map((m) => m.menuId),
+    },
+    actorUserId,
+  );
+}
+
+export async function setEventTypeActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {
+  const before = await prisma.eventType.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.eventType.update({ where: { id }, data: { isActive } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "event_type.update",
+    recordType: "EventType",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
   });
 }

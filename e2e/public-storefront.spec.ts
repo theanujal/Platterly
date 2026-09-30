@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 8 — Public Storefront: Menu Link, Custom Slug & QR (view-only).
@@ -28,20 +28,7 @@ test("claim a custom link, then view the real public storefront page (unauthenti
   const suffix = Date.now().toString().slice(-6);
   const slug = `store-${suffix}`;
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Storefront");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await signUpCaterer(page, email, { firstName: "Storefront", lastName: "Tester", closeClaimDialog: false });
 
   // --- Claim the custom link via the auto-opened Dashboard dialog ---
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();

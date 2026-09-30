@@ -1062,7 +1062,6 @@ model EventRequiredInventory {
 enum OrderStatus {
   PENDING_REVIEW
   AWAITING_CUSTOMER_APPROVAL
-  KITCHEN_REVIEW
   APPROVED
   SENT_TO_KITCHEN
   COMPLETED
@@ -1289,6 +1288,7 @@ model Order {
 
   items           OrderItem[]
   mealPlanEntries MealPlanEntry[]
+  statusChanges   StatusChange[]
   events          Event[]
 
   createdAt DateTime @default(now())
@@ -1328,6 +1328,12 @@ model OrderItem {
   name      String
   unitPrice Decimal @db.Decimal(10, 2)
   quantity  Int     @default(1)
+
+  // Pricing rule (AJ, 2026-09-30): a meal costs its Menu's per-plate price x
+  // guests, so a dish inside the menu is included and adds nothing. Only an
+  // Extra dish (charged per guest) or an add-on moves the price — see
+  // src/modules/orders/meal-pricing.ts.
+  isExtra Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -1498,6 +1504,9 @@ model QuotationItem {
   unitPrice Decimal @db.Decimal(10, 2)
   quantity  Int     @default(1)
 
+  // Mirrors OrderItem.isExtra — copied onto the Order on conversion.
+  isExtra Boolean @default(false)
+
   createdAt DateTime @default(now())
 
   @@index([quotationId])
@@ -1541,9 +1550,6 @@ enum MenuSelectionStatus {
   CUSTOMER_REVIEWING
   CHANGES_REQUESTED
   CUSTOMER_APPROVED
-  KITCHEN_REVIEWING
-  KITCHEN_CHANGES_REQUESTED
-  KITCHEN_APPROVED
   FINAL_LOCKED
 }
 
@@ -1597,12 +1603,75 @@ model MenuSelection {
 
   items    MenuSelectionItem[]
   versions MenuVersion[]
+  notes    MenuApprovalNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("menu_selection")
+}
+
+enum MenuApprovalNoteAuthor {
+  CUSTOMER
+  KITCHEN
+  TEAM
+}
+
+// Every note on a menu approval, kept in order (AJ, 2026-09-30) — the two
+// request-note fields on MenuSelection only ever held the latest one.
+model MenuApprovalNote {
+  id              String        @id @default(cuid())
+  organizationId  String
+  menuSelectionId String
+  menuSelection   MenuSelection @relation(fields: [menuSelectionId], references: [id], onDelete: Cascade)
+
+  // The menu version the note was written against (null if unknown).
+  versionNumber Int?
+  authorType    MenuApprovalNoteAuthor
+  authorName    String?
+  body          String
+
+  createdAt DateTime @default(now())
+
+  @@index([menuSelectionId])
+  @@index([organizationId])
+  @@map("menu_approval_note")
+}
+
+enum StatusChangeSubject {
+  ORDER
+  MENU_APPROVAL
+}
+
+enum StatusChangeSource {
+  AUTOMATIC
+  MANUAL
+}
+
+// Every change of an order's or its menu approval's status, automatic or by hand (AJ, 2026-09-30). A manual change
+// always carries a reason; the record is what shows in the Status history on the Order and Menu Approvals pages.
+model StatusChange {
+  id              String              @id @default(cuid())
+  organizationId  String
+  orderId         String
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuSelectionId String?
+  subject         StatusChangeSubject
+  fromStatus      String?
+  toStatus        String
+  source          StatusChangeSource
+  // What caused an automatic change, e.g. "Menu sent to customer".
+  trigger         String?
+  reason          String?
+  actorUserId     String?
+  actorName       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([organizationId])
+  @@map("status_change")
 }
 
 // No `organizationId` of its own — cascades off its parent MenuSelection

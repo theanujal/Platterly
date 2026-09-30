@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 10 Group 10.1 — Quotation, rebuilt to full item-picker parity with
@@ -91,21 +91,7 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Quotations");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "Quotations", lastName: "Tester" });
 
   // --- Setup: a Customer, an Event Type, a Menu, and a Food Item assigned to that Menu ---
   const customerName = `Zoya Khan ${suffix}`;
@@ -117,10 +103,11 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Birthday ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menuName = `Party Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");
@@ -152,6 +139,7 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await page.getByLabel("Location / Venue").fill("Grand Ballroom");
 
   // Guest Information
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByLabel("Adults").fill("20");
 
   // Menu Planning — same per-meal drawer flow as Create Order.
@@ -169,14 +157,15 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await expect(lunchSlot.getByText(itemName, { exact: true })).toBeVisible();
 
   // Charges
+  await page.getByRole("tab", { name: "Pricing" }).click();
   await page.getByLabel("Discount").fill("20");
   await page.getByLabel("Taxes").fill("10");
   await page.getByLabel("Additional Charges").fill("5");
   await page.getByLabel("Delivery Charges").fill("2");
 
-  // subtotal = 150 (1 x Biryani); total = 150 - 20 + 10 + 5 + 2 = 147
-  await expect(page.getByText("₹150.00").first()).toBeVisible();
-  await expect(page.getByText("₹147.00")).toBeVisible();
+  // subtotal = 6000 (300/plate Menu x 20 adults; the Biryani is included); total = 6000 - 20 + 10 + 5 + 2 = 5997
+  await expect(page.getByText("₹6000.00").first()).toBeVisible();
+  await expect(page.getByText("₹5997.00").first()).toBeVisible();
 
   await page.getByRole("button", { name: "Create Quotation" }).click();
   await expect(page).toHaveURL(/\/quotations$/);
@@ -204,7 +193,7 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   // heading and the item both render, not a flat undifferentiated list.
   await expect(publicPage.getByText("Lunch", { exact: false }).first()).toBeVisible();
   await expect(publicPage.getByText(itemName, { exact: true })).toBeVisible();
-  await expect(publicPage.getByText("₹147.00")).toBeVisible();
+  await expect(publicPage.getByText("₹5997.00")).toBeVisible();
   await expect(publicPage.getByText("Viewed", { exact: true })).toBeVisible();
 
   await publicPage.getByRole("button", { name: "Accept Quotation" }).click();
@@ -218,7 +207,8 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await expect(page).toHaveURL(/\/orders\/.+/);
 
   // The converted Order has a real MealPlanEntry for Lunch, not a flattened whole-order item.
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await expect(page.getByTestId("meal-slot-2026-12-15-LUNCH").getByText(itemName)).toBeVisible();
-  // subtotal = 150 (itemsSubtotal from the real MealPlanEntry); otherCharges = 10+5+2 = 17; total = 150-20+17 = 147
-  await expect(page.getByText("₹147.00").first()).toBeVisible();
+  // subtotal = 6000 (the meal on its Menu); otherCharges = 10+5+2 = 17; total = 6000-20+17 = 5997
+  await expect(page.getByRole("complementary").getByText("₹5997.00")).toBeVisible();
 });

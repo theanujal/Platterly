@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
+import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type {
   FoodType,
@@ -100,6 +100,30 @@ export async function deleteMenuItemAction(id: string): Promise<ActionResult> {
   await requirePermission({ menus: ["delete"] }, organizationId);
   try {
     await deleteMenuItem(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  return { ok: true };
+}
+
+export async function duplicateMenuItemAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["create"] }, organizationId);
+  try {
+    await duplicateMenuItem(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  return { ok: true };
+}
+
+export async function setMenuItemActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await setMenuItemActive(organizationId, id, isActive, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

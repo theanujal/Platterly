@@ -3,7 +3,6 @@ import { Layers } from "lucide-react";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
-import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -26,6 +25,8 @@ export default async function CategoriesPage() {
   const { organizationId } = await requireActiveOrganization();
   const [categories, menus] = await Promise.all([listCategories(organizationId), listMenus(organizationId)]);
   const availableMenus = menus.map((m) => ({ id: m.id, name: m.name }));
+  const assignedMenuCount = (categoryId: string) => menus.filter((m) => m.categoryAssignments.some((a) => a.categoryId === categoryId)).length;
+  const assignedText = (n: number) => (n === 0 ? "Not assigned to a menu" : `Assigned to ${n} ${n === 1 ? "menu" : "menus"}`);
 
   const entries: CatalogEntry[] = categories.map((category) => {
     const initialValues = { name: category.name, description: category.description ?? "", isActive: category.isActive };
@@ -37,17 +38,16 @@ export default async function CategoriesPage() {
       sortValues: { name: category.name, newest: category.createdAt.getTime() },
       card: (
         <>
-          <CatalogCardMedia src={null} icon={Layers} />
+          <CatalogCardMedia
+            src={null}
+            icon={Layers}
+            overlay={<CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} />}
+          />
           <CatalogCardBody
             title={category.name}
-            trailing={
-              <>
-                {!category.isActive && <Badge variant="neutral">Inactive</Badge>}
-                <CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} />
-              </>
-            }
             description={category.description}
-            footer={<ActiveBadge active={category.isActive} />}
+            footer={<span className="text-sm text-muted-foreground">{assignedText(assignedMenuCount(category.id))}</span>}
+            active={category.isActive}
           />
         </>
       ),
@@ -61,7 +61,7 @@ export default async function CategoriesPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} />
+              <CategoryCardActions categoryId={category.id} name={category.name} initialValues={initialValues} availableMenus={availableMenus} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -101,6 +101,7 @@ export default async function CategoriesPage() {
 
       <CatalogBrowser
         entries={entries}
+        defaultView="list"
         addTile={<AddCategoryDialog availableMenus={availableMenus} variant="tile" />}
         columns={["Menu Category", "Status", ""]}
         richList

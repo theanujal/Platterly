@@ -2,11 +2,10 @@
 
 import { useState } from "react";
 import { Sparkles, IndianRupee } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
+import { DrawerForm } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -46,9 +45,10 @@ interface AddOnFormProps {
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  onCancel: () => void;
 }
 
-export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: AddOnFormProps) {
+export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onCancel }: AddOnFormProps) {
   const [values, setValues] = useState<AddOnFormValues>({ ...EMPTY_ADDON_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +82,15 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
+    <DrawerForm
+      onSubmit={handleSubmit}
+      error={error}
+      pending={pending}
+      submitLabel={submitLabel}
+      onCancel={onCancel}
+      active={{ id: "addon-active", checked: values.isActive, onChange: (checked) => setField("isActive", checked), onLabel: "Active – customers can add it", offLabel: "Inactive – hidden from customers" }}
+      className="flex  flex-col gap-6"
+    >
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-name">Name</Label>
@@ -156,20 +164,6 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel }: A
         </div>
       </div>
 
-      <ActiveToggleCard
-        id="addon-active"
-        checked={values.isActive}
-        onCheckedChange={(checked) => setField("isActive", checked)}
-      />
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={pending} className="self-end">
-        {pending ? "Saving…" : submitLabel}
-      </Button>
-    </form>
+    </DrawerForm>
   );
 }

@@ -8,8 +8,10 @@ import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "
  * Orders are the source of truth for the commercial lifecycle; Menu
  * Approvals is a work queue on top of them and the Kitchen Dashboard is the
  * fulfilment workflow. `Order.status` is *derived* from those two (see
- * `deriveOrderStatus`), written by menu-approval.ts's syncOrderStatus, and can
- * still be overridden by hand on the order form.
+ * `deriveOrderStatus`), written by menu-approval.ts's syncOrderStatus. A person can
+ * still set it by hand (AJ, 2026-09-30), but only with a reason, through
+ * menu-approval.ts's changeStatusManually, which moves the menu approval to match
+ * and records the change.
  */
 
 /**
@@ -21,7 +23,6 @@ export type Tone = "neutral" | "info" | "warning" | "success" | "danger" | "viol
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   PENDING_REVIEW: "Pending Review",
   AWAITING_CUSTOMER_APPROVAL: "Awaiting Customer Approval",
-  KITCHEN_REVIEW: "Kitchen Review",
   APPROVED: "Approved",
   SENT_TO_KITCHEN: "Sent to Kitchen",
   COMPLETED: "Completed",
@@ -31,7 +32,6 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
 export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
   PENDING_REVIEW: "violet",
   AWAITING_CUSTOMER_APPROVAL: "info",
-  KITCHEN_REVIEW: "info",
   APPROVED: "success",
   SENT_TO_KITCHEN: "info",
   COMPLETED: "success",
@@ -42,7 +42,6 @@ export const ORDER_STATUS_TONE: Record<OrderStatus, Tone> = {
 export const ORDER_STATUS_ORDER: OrderStatus[] = [
   "PENDING_REVIEW",
   "AWAITING_CUSTOMER_APPROVAL",
-  "KITCHEN_REVIEW",
   "APPROVED",
   "SENT_TO_KITCHEN",
   "COMPLETED",
@@ -60,18 +59,15 @@ export const KITCHEN_STATUS_TONE: Record<KitchenProductionStatus, Tone> = {
 /** One menu selection (+ its kitchen stage once locked) -> the Order status it implies. */
 export function orderStatusForSelection(selection: { status: MenuSelectionStatus; kitchenProductionStatus: KitchenProductionStatus }): OrderStatus {
   switch (selection.status) {
-    // The team has to act: review a placed order, or rework it after changes were requested.
+    // The team has to act: review a placed order, or rework it after the customer asked for changes.
     case "DRAFT":
     case "CHANGES_REQUESTED":
-    case "KITCHEN_CHANGES_REQUESTED":
       return "PENDING_REVIEW";
     case "SENT_TO_CUSTOMER":
     case "CUSTOMER_REVIEWING":
       return "AWAITING_CUSTOMER_APPROVAL";
+    // The customer approved; the team sends it to the kitchen next.
     case "CUSTOMER_APPROVED":
-    case "KITCHEN_REVIEWING":
-      return "KITCHEN_REVIEW";
-    case "KITCHEN_APPROVED":
       return "APPROVED";
     case "FINAL_LOCKED":
       if (selection.kitchenProductionStatus === "DELIVERED") return "COMPLETED";
@@ -102,9 +98,6 @@ export const MENU_SELECTION_STATUS_LABEL: Record<MenuSelectionStatus, string> = 
   CUSTOMER_REVIEWING: "Customer Reviewing",
   CHANGES_REQUESTED: "Changes Requested",
   CUSTOMER_APPROVED: "Customer Approved",
-  KITCHEN_REVIEWING: "Needs Kitchen Review",
-  KITCHEN_CHANGES_REQUESTED: "Kitchen Changes Requested",
-  KITCHEN_APPROVED: "Kitchen Approved",
   FINAL_LOCKED: "Approved & Sent to Kitchen",
 };
 
@@ -114,17 +107,26 @@ export const MENU_SELECTION_STATUS_TONE: Record<MenuSelectionStatus, Tone> = {
   CUSTOMER_REVIEWING: "info",
   CHANGES_REQUESTED: "pink",
   CUSTOMER_APPROVED: "success",
-  KITCHEN_REVIEWING: "info",
-  KITCHEN_CHANGES_REQUESTED: "fuchsia",
-  KITCHEN_APPROVED: "success",
   FINAL_LOCKED: "success",
+};
+
+/** The order of the menu approval statuses in a picker (workflow order). */
+export const MENU_SELECTION_STATUS_ORDER: MenuSelectionStatus[] = ["DRAFT", "SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING", "CHANGES_REQUESTED", "CUSTOMER_APPROVED", "FINAL_LOCKED"];
+
+/** One line on what each menu approval status means, for the banner on the Order's menu tab and the Menu Approvals page. */
+export const MENU_SELECTION_STATUS_HINT: Record<MenuSelectionStatus, string> = {
+  DRAFT: "The team is reviewing the menu. Nothing has gone to the customer yet.",
+  SENT_TO_CUSTOMER: "The menu is with the customer for approval.",
+  CUSTOMER_REVIEWING: "An updated menu is with the customer for approval.",
+  CHANGES_REQUESTED: "The customer asked for changes. The team updates the menu and sends it again.",
+  CUSTOMER_APPROVED: "The customer approved the menu. Send it to the kitchen when everything is ready.",
+  FINAL_LOCKED: "The menu is final and with the kitchen.",
 };
 
 const ORDER_STATUS_HINT: Record<OrderStatus, string> = {
   PENDING_REVIEW: "Team to review menu & items.",
   AWAITING_CUSTOMER_APPROVAL: "Menu sent to customer.",
-  KITCHEN_REVIEW: "Customer approved. Kitchen to review.",
-  APPROVED: "Approved. Sending to kitchen.",
+  APPROVED: "Customer approved. Team to send it to the kitchen.",
   SENT_TO_KITCHEN: "Order sent to kitchen team.",
   COMPLETED: "Event completed successfully.",
   CANCELLED: "Order will not proceed.",

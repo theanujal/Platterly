@@ -1,8 +1,8 @@
 "use client";
 
-import { createElement, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Info, MapPin, PenSquare, Tag, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { CalendarDays, ClipboardList, Info, MapPin, Tag, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
@@ -19,11 +19,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { MenuPlanningSection, MEAL_TYPES, MEAL_ICON, type MealSelection, type MenuOption, type MealTypeValue } from "@/components/catalog/menu-planning-section";
+import {
+  MenuPlanningSection,
+  MEAL_TYPES,
+  type MealSelection,
+  type MenuOption,
+  type MealTypeValue,
+} from "@/components/catalog/menu-planning-section";
 import { CustomerCombobox, type SelectedCustomer } from "@/components/customers/customer-combobox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "../../orders/_components/order-form-parts";
+import { FormTabs, type FormTab } from "../../orders/_components/form-tabs";
+import { priceMeals } from "@/modules/orders/meal-pricing";
 import { TONE_SURFACE, TONE_TEXT } from "../../orders/_components/order-display";
 import { getOrderCountsByDayAction, searchCustomersAction, createCustomerForOrderAction } from "../../orders/actions";
 import { getMenuForQuotationPickerAction, type ActionResult } from "../actions";
@@ -57,10 +65,18 @@ function daysUntilPreview(iso: string): number | null {
 }
 
 /** "Starts in" wording for the event-date chip and the summary — same tones as the Orders card's countdown. */
-function startsInPreview(days: number | null): { caption: string; label: string; tone: "orange" | "yellow" | "success" } | null {
+function startsInPreview(days: number | null): {
+  caption: string;
+  label: string;
+  tone: "orange" | "yellow" | "success";
+} | null {
   if (days === null || days < 0) return null;
   if (days === 0) return { caption: "Event", label: "Today", tone: "orange" };
-  return { caption: "Starts in", label: `${days} ${days === 1 ? "day" : "days"}`, tone: days <= 2 ? "yellow" : "success" };
+  return {
+    caption: "Starts in",
+    label: `${days} ${days === 1 ? "day" : "days"}`,
+    tone: days <= 2 ? "yellow" : "success",
+  };
 }
 
 // Reuses Menu's own ChildPricingType enum (PERCENTAGE | FIXED) — "Per Plate"
@@ -164,8 +180,7 @@ function formatCurrency(amount: number) {
 function computeChildrenChargePreview(menu: MenuOption | undefined, below5Count: number, child5To10Count: number): number {
   if (!menu) return 0;
   const under5Charge = menu.childUnder5Chargeable ? below5Count * (menu.childUnder5Price ?? 0) : 0;
-  const perChild5to10 =
-    menu.child5To10PricingType === "PERCENTAGE" ? (menu.price * (menu.child5To10PriceValue ?? 0)) / 100 : (menu.child5To10PriceValue ?? 0);
+  const perChild5to10 = menu.child5To10PricingType === "PERCENTAGE" ? (menu.price * (menu.child5To10PriceValue ?? 0)) / 100 : (menu.child5To10PriceValue ?? 0);
   return under5Charge + child5To10Count * perChild5to10;
 }
 
@@ -222,7 +237,10 @@ export function QuotationForm({
   onSuccess,
   submitLabel,
 }: QuotationFormProps) {
-  const [values, setValues] = useState<QuotationFormValues>({ ...EMPTY_QUOTATION_VALUES, ...initialValues });
+  const [values, setValues] = useState<QuotationFormValues>({
+    ...EMPTY_QUOTATION_VALUES,
+    ...initialValues,
+  });
   // Edit mode's already-selected Customer, found once from the full list
   // passed down — CustomerCombobox only needs this single row to seed its
   // display text; it does its own server-side search for anything else.
@@ -238,7 +256,10 @@ export function QuotationForm({
   // Which meal's "Select/Edit Food Items" drawer is open — lifted here (not
   // internal to MenuPlanningSection) so the "Selected Meals" summary card
   // can also open it directly for any date, not just the sidebar-focused one.
-  const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
+  const [foodDialogTarget, setFoodDialogTarget] = useState<{
+    date: string;
+    mealType: MealTypeValue;
+  } | null>(null);
 
   function setField<K extends keyof QuotationFormValues>(key: K, value: QuotationFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -272,15 +293,24 @@ export function QuotationForm({
     if (new Set(entries.map((e) => e.mealType)).size > 1) autoMulti("meals");
   }
 
-  // Extras and per-plate add-ons are charged for every guest, like on Order's own form; everything else once.
+  // One pricing rule everywhere (meal-pricing.ts): a meal costs its Menu's price x guests; only Extra dishes and add-ons move the price.
   const guestsForPricing = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
-  const mealItemsSubtotal = values.mealPlanEntries.reduce(
-    (sum, e) => sum + e.items.reduce((s, item) => s + item.unitPrice * (item.perGuest ? Math.max(guestsForPricing, 1) : 1), 0),
-    0,
+  const pricedMeals = priceMeals(
+    values.mealPlanEntries.map((e) => ({
+      price: e.price.trim() === "" ? null : Number.parseFloat(e.price) || 0,
+      menuPricePerPlate: menus.find((m) => m.id === e.menuId)?.price ?? null,
+      items: e.items.map((item) => ({
+        itemType: item.itemType,
+        unitPrice: item.unitPrice,
+        quantity: item.perGuest ? Math.max(guestsForPricing, 1) : 1,
+        isExtra: item.itemType === "MENU_ITEM" && item.perGuest,
+      })),
+    })),
+    values.individualPricingEnabled,
+    Number(values.adultCount) || 0,
   );
-  const mealsSubtotal = values.individualPricingEnabled
-    ? values.mealPlanEntries.reduce((sum, e) => sum + (Number.parseFloat(e.price) || 0), 0)
-    : 0;
+  const mealItemsSubtotal = pricedMeals.extrasAmount;
+  const mealsSubtotal = pricedMeals.menuAmount;
   const childPricingMenuId = deriveStandardChildPricingMenuIdPreview(values.mealPlanEntries);
   const childPricingMenu = menus.find((m) => m.id === childPricingMenuId);
   const childrenCharge =
@@ -343,7 +373,14 @@ export function QuotationForm({
       formData.append("mealMenuId", entry.menuId || "");
       formData.append(
         "mealItems",
-        JSON.stringify(entry.items.map((i) => ({ itemType: i.itemType, catalogId: i.catalogId, quantity: i.perGuest ? Math.max(guestsForPricing, 1) : 1 }))),
+        JSON.stringify(
+          entry.items.map((i) => ({
+            itemType: i.itemType,
+            catalogId: i.catalogId,
+            quantity: i.perGuest ? Math.max(guestsForPricing, 1) : 1,
+            isExtra: i.itemType === "MENU_ITEM" && i.perGuest,
+          })),
+        ),
       );
     }
     return formData;
@@ -381,22 +418,31 @@ export function QuotationForm({
   const totalGuests = String(guestsComputed);
   const orderKindOptions = [
     { value: "SINGLE", label: "Single", hint: "One event / one meal type" },
-    { value: "MULTI", label: "Multi", hint: "Multiple meals across the same event" },
+    {
+      value: "MULTI",
+      label: "Multi",
+      hint: "Multiple meals across the same event",
+    },
   ] as const;
   const formatDay = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", opts);
   const eventDateText =
     values.eventStartDate && values.eventEndDate
       ? values.eventStartDate === values.eventEndDate
-        ? formatDay(values.eventStartDate, { day: "numeric", month: "short", year: "numeric" })
+        ? formatDay(values.eventStartDate, {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })
         : `${formatDay(values.eventStartDate, { day: "numeric", month: "short" })} – ${formatDay(values.eventEndDate, { day: "numeric", month: "short", year: "numeric" })}`
       : "Not set";
   const eventTypeName = eventTypes.find((t) => t.id === values.eventTypeId)?.name;
-  const sortedMealEntries = [...values.mealPlanEntries].sort(
-    (a, b) => a.date.localeCompare(b.date) || MEAL_TYPES.findIndex((m) => m.value === a.mealType) - MEAL_TYPES.findIndex((m) => m.value === b.mealType),
-  );
 
   function setIndividualPricing(on: boolean) {
-    setValues((prev) => ({ ...prev, individualPricingEnabled: on, pricingMethod: on ? "INDIVIDUAL" : "STANDARD" }));
+    setValues((prev) => ({
+      ...prev,
+      individualPricingEnabled: on,
+      pricingMethod: on ? "INDIVIDUAL" : "STANDARD",
+    }));
   }
 
   const individualToggle = (
@@ -405,6 +451,416 @@ export function QuotationForm({
       <span className="text-sm font-medium">Individual Pricing {individualOn ? "On" : "Off"}</span>
     </label>
   );
+
+  const customerSection = (
+    <FormSection icon={User} title="Customer & Event" description="Who this Quotation is for, and where the event will take place.">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="quote-customer" required>
+          Customer
+        </Label>
+        <CustomerCombobox
+          id="quote-customer"
+          initialCustomer={initialSelectedCustomer}
+          onSelect={(customer) => {
+            setField("customerId", customer.id);
+            setSelectedCustomer(customer);
+          }}
+          onClear={() => {
+            setField("customerId", "");
+            setSelectedCustomer(null);
+          }}
+          onSearch={searchCustomersAction}
+          onCreate={createCustomerForOrderAction}
+        />
+        {customers.length === 0 && (
+          <Link href="/customers" className="text-xs text-primary hover:underline">
+            No customers yet — add one first
+          </Link>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-event-type">Event Type</Label>
+          <Select
+            items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
+            value={values.eventTypeId}
+            onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
+          >
+            <SelectTrigger id="quote-event-type" className="w-full">
+              <SelectValue placeholder="Not set" />
+            </SelectTrigger>
+            <SelectContent>
+              {eventTypes.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-event-date">Event Date</Label>
+          <div className="flex items-stretch gap-2">
+            <div className="min-w-0 flex-1">
+              <DateRangePicker
+                id="quote-event-date"
+                startDate={values.eventStartDate}
+                endDate={values.eventEndDate}
+                onChange={setEventDateRange}
+                loadOrderCounts={getOrderCountsByDayAction}
+              />
+            </div>
+            {startsIn && (
+              <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[startsIn.tone])}>
+                <span>{startsIn.caption}</span>
+                <span className="text-sm font-semibold">{startsIn.label}</span>
+              </div>
+            )}
+          </div>
+          {eventDateRestricted && (
+            <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
+              {canBypassDateRestriction
+                ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save this Quotation as an Owner.`
+                : `Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-venue">Location / Venue</Label>
+          <IconInput icon={MapPin} id="quote-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-address">Event Address</Label>
+          <IconInput icon={MapPin} id="quote-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
+        </div>
+      </div>
+    </FormSection>
+  );
+
+  const kindSection = (
+    <FormSection
+      icon={Users}
+      title="Order Kind"
+      description={
+        values.orderKind === "MULTI"
+          ? multiRequired
+            ? "More than one date or meal type, so this stays Multi."
+            : "Meal Planning below groups each date into its own event."
+          : "One date and one meal type. Adding a date or another meal makes it Multi."
+      }
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {orderKindOptions.map((option) => {
+          const selected = values.orderKind === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => setOrderKind(option.value)}
+              disabled={option.value === "SINGLE" && multiRequired}
+              className={cn(
+                "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+              )}
+            >
+              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                {selected && <span className="size-2.5 rounded-full bg-primary" />}
+              </span>
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold">{option.label}</span>
+                <span className="text-xs text-muted-foreground">{option.hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </FormSection>
+  );
+
+  const kindDialog = (
+    <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Order Kind changed to Multi</AlertDialogTitle>
+          <AlertDialogDescription>
+            {multiNotice === "dates"
+              ? "You picked more than one date, so this is now Multi. Menu Planning groups each date into its own event."
+              : "You picked more than one meal type, so this is now Multi — even on a single day. Menu Planning groups the meals into their own events."}{" "}
+            Your meals, menus and food items are kept.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogAction onClick={() => setMultiNotice(null)}>Got it</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
+  const guestSection = (
+    <FormSection icon={Users} title="Guest Information" description="Enter the expected guest count. This will be used for all selected meals.">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-adults">Adults</Label>
+          <Input id="quote-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-child-below5">Children (Under 5)</Label>
+          <Input id="quote-child-below5" type="number" min="0" value={values.childBelow5Count} onChange={(e) => setField("childBelow5Count", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-child-5to10">Children (5–10)</Label>
+          <Input id="quote-child-5to10" type="number" min="0" value={values.child5To10Count} onChange={(e) => setField("child5To10Count", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-total-guests">Total Guests</Label>
+          <Input id="quote-total-guests" readOnly tabIndex={-1} className="bg-muted/40" value={String(guestsComputed)} />
+        </div>
+      </div>
+    </FormSection>
+  );
+
+  const menuSection = (
+    <FormSection icon={UtensilsCrossed} title="Menu Planning" description="Select meals and assign menu items for this event." action={individualToggle}>
+      <MenuPlanningSection
+        idPrefix="quote"
+        mealSlotTestIdPrefix="quote-"
+        days={days}
+        mealPlanEntries={values.mealPlanEntries}
+        onChange={setMealPlan}
+        menus={menus}
+        menuPreference={values.menuPreference}
+        onMenuPreferenceChange={(v) => setField("menuPreference", v)}
+        individualPricingEnabled={individualOn}
+        guestsForPricing={guestsForPricing}
+        loadPickerData={getMenuForQuotationPickerAction}
+        foodDialogTarget={foodDialogTarget}
+        onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
+        onCloseFoodDialog={() => setFoodDialogTarget(null)}
+      />
+    </FormSection>
+  );
+
+  const additionalSection = (
+    <FormSection icon={ClipboardList} title="Additional Details" description="Validity, terms and any special notes.">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="col-span-full flex flex-col gap-1.5">
+          <Label htmlFor="quote-valid-until">Valid Until</Label>
+          <Input id="quote-valid-until" type="date" value={values.validUntil} onChange={(e) => setField("validUntil", e.target.value)} />
+        </div>
+        <div className="col-span-full flex flex-col gap-1.5">
+          <Label htmlFor="quote-terms">Terms</Label>
+          <Textarea id="quote-terms" value={values.terms} onChange={(e) => setField("terms", e.target.value)} />
+        </div>
+        <div className="col-span-full flex flex-col gap-1.5">
+          <Label htmlFor="quote-notes">Notes</Label>
+          <Textarea id="quote-notes" value={values.notes} onChange={(e) => setField("notes", e.target.value)} />
+        </div>
+      </div>
+    </FormSection>
+  );
+
+  const summaryCard = (
+    <SummaryCard icon={User} title="Quotation Summary">
+      <SummaryRow icon={User} label="Customer">
+        <span className="break-words">{selectedCustomer?.name ?? "Not selected"}</span>
+      </SummaryRow>
+      <SummaryRow icon={Users} label="Order Kind">
+        {values.orderKind === "MULTI" ? "Multi" : "Single"}
+      </SummaryRow>
+      <SummaryRow icon={Tag} label="Event Type">
+        {eventTypeName ?? "Not set"}
+      </SummaryRow>
+      <SummaryRow icon={CalendarDays} label="Event Date">
+        <span>{eventDateText}</span>
+        {startsIn && (
+          <span className={cn("text-xs", TONE_TEXT[startsIn.tone])}>
+            {startsIn.caption} {startsIn.label}
+          </span>
+        )}
+      </SummaryRow>
+      <SummaryRow icon={MapPin} label="Venue">
+        <span className="break-words">{values.venue || "Not set"}</span>
+      </SummaryRow>
+      <SummaryRow icon={Users} label="Guests">
+        <span>{totalGuests}</span>
+        <span className="text-xs font-normal text-muted-foreground">
+          ({Number(values.adultCount) || 0} Adults, {Number(values.childBelow5Count) || 0} Children &lt;5, {Number(values.child5To10Count) || 0} Children 5–10)
+        </span>
+      </SummaryRow>
+    </SummaryCard>
+  );
+
+  const pricingEditorCard = (
+    <SummaryCard icon={Wallet} title="Pricing Details">
+      <p className="text-xs text-muted-foreground">
+        {individualOn
+          ? "Individual Pricing is on (switch it in Menu Planning). Each meal's price is set on its own card there; children can be Per Plate or a Percentage of the first assigned Menu's price."
+          : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
+      </p>
+      {individualOn && (
+        <div className="flex flex-col gap-3">
+          {(
+            [
+              {
+                id: "quote-individual-below5",
+                label: "Children (Under 5) price",
+                rate: "individualChildBelow5Rate",
+                type: "individualChildBelow5PricingType",
+              },
+              {
+                id: "quote-individual-5to10",
+                label: "Children (5–10) price",
+                rate: "individualChild5To10Rate",
+                type: "individualChild5To10PricingType",
+              },
+            ] as const
+          ).map((row) => (
+            <div key={row.id} className="flex flex-col gap-1.5">
+              <Label htmlFor={`${row.id}-rate`}>{row.label}</Label>
+              <div className="flex gap-2">
+                <Input
+                  id={`${row.id}-rate`}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="w-28"
+                  value={values[row.rate]}
+                  onChange={(e) => setField(row.rate, e.target.value)}
+                />
+                <Select
+                  items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
+                  value={values[row.type]}
+                  onValueChange={(v) => setField(row.type, v ?? values[row.type])}
+                >
+                  <SelectTrigger className="min-w-0 flex-1" aria-label={`${row.label} type`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-col gap-3 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Total Amount</span>
+          <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
+        </div>
+        {childrenCharge > 0 && (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">Children Charges</span>
+            <span>{formatCurrency(childrenCharge)}</span>
+          </div>
+        )}
+        {(
+          [
+            { id: "quote-taxes", label: "Taxes", key: "taxes" },
+            {
+              id: "quote-additional",
+              label: "Additional Charges",
+              key: "additionalCharges",
+            },
+            {
+              id: "quote-delivery",
+              label: "Delivery Charges",
+              key: "deliveryCharges",
+            },
+            { id: "quote-discount", label: "Discount", key: "discount" },
+          ] as const
+        ).map((row) => (
+          <div key={row.id} className="flex items-center justify-between gap-3">
+            <Label htmlFor={row.id} className="font-normal text-muted-foreground">
+              {row.label}
+            </Label>
+            <Input
+              id={row.id}
+              type="number"
+              min="0"
+              step="0.01"
+              className="w-32 text-right"
+              value={values[row.key]}
+              onChange={(e) => setField(row.key, e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
+        <span>Grand Total</span>
+        <span className="text-lg">{formatCurrency(total)}</span>
+      </div>
+      <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <span>Payment isn&apos;t tracked on a Quotation — once accepted, convert it to an Order to record payment.</span>
+      </div>
+    </SummaryCard>
+  );
+
+  const pricingSummaryCard = (
+    <SummaryCard icon={Wallet} title="Pricing Details">
+      <div className="flex flex-col gap-3 text-sm">
+        {[
+          { label: "Total Amount", amount: mealItemsSubtotal + mealsSubtotal },
+          ...(childrenCharge > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
+          { label: "Taxes", amount: Number.parseFloat(values.taxes) || 0 },
+          {
+            label: "Additional Charges",
+            amount: Number.parseFloat(values.additionalCharges) || 0,
+          },
+          {
+            label: "Delivery Charges",
+            amount: Number.parseFloat(values.deliveryCharges) || 0,
+          },
+          {
+            label: "Discount",
+            amount: Number.parseFloat(values.discount) || 0,
+          },
+        ].map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">{row.label}</span>
+            <span className="font-medium">{formatCurrency(row.amount)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
+        <span>Grand Total</span>
+        <span className="text-lg">{formatCurrency(total)}</span>
+      </div>
+    </SummaryCard>
+  );
+
+  const tabs: FormTab[] = [
+    {
+      id: "details",
+      label: "Quotation Details",
+      panel: (
+        <>
+          {customerSection}
+          {kindSection}
+          {kindDialog}
+        </>
+      ),
+    },
+    {
+      id: "menu",
+      label: "Guests & Menu Planning",
+      panel: (
+        <>
+          {guestSection}
+          {menuSection}
+        </>
+      ),
+    },
+    { id: "additional", label: "Additional Details", panel: additionalSection },
+    { id: "pricing", label: "Pricing", panel: pricingEditorCard },
+  ];
 
   return (
     <>
@@ -433,368 +889,13 @@ export function QuotationForm({
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           {/* ---------------- Main column ---------------- */}
           <div className="flex min-w-0 flex-col gap-4">
-            {/* 1 · Customer & Event */}
-            <FormSection step={1} title="Customer & Event" description="Who this Quotation is for, and where the event will take place.">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="quote-customer" required>Customer</Label>
-                <CustomerCombobox
-                  id="quote-customer"
-                  initialCustomer={initialSelectedCustomer}
-                  onSelect={(customer) => {
-                    setField("customerId", customer.id);
-                    setSelectedCustomer(customer);
-                  }}
-                  onClear={() => {
-                    setField("customerId", "");
-                    setSelectedCustomer(null);
-                  }}
-                  onSearch={searchCustomersAction}
-                  onCreate={createCustomerForOrderAction}
-                />
-                {customers.length === 0 && (
-                  <Link href="/customers" className="text-xs text-primary hover:underline">
-                    No customers yet — add one first
-                  </Link>
-                )}
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-event-type">Event Type</Label>
-                  <Select
-                    items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
-                    value={values.eventTypeId}
-                    onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
-                  >
-                    <SelectTrigger id="quote-event-type" className="w-full">
-                      <SelectValue placeholder="Not set" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {eventTypes.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-event-date">Event Date</Label>
-                  <div className="flex items-stretch gap-2">
-                    <div className="min-w-0 flex-1">
-                      <DateRangePicker
-                        id="quote-event-date"
-                        startDate={values.eventStartDate}
-                        endDate={values.eventEndDate}
-                        onChange={setEventDateRange}
-                        loadOrderCounts={getOrderCountsByDayAction}
-                      />
-                    </div>
-                    {startsIn && (
-                      <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[startsIn.tone])}>
-                        <span>{startsIn.caption}</span>
-                        <span className="text-sm font-semibold">{startsIn.label}</span>
-                      </div>
-                    )}
-                  </div>
-                  {eventDateRestricted && (
-                    <p className={`text-xs ${canBypassDateRestriction ? "text-warning" : "text-destructive"}`} role={canBypassDateRestriction ? undefined : "alert"}>
-                      {canBypassDateRestriction
-                        ? `This event is less than ${MIN_DAYS_BEFORE_EVENT} days away — you can still save this Quotation as an Owner.`
-                        : `Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-venue">Location / Venue</Label>
-                  <IconInput icon={MapPin} id="quote-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-address">Event Address</Label>
-                  <IconInput icon={MapPin} id="quote-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
-                </div>
-              </div>
-            </FormSection>
-
-            {/* 2 · Order Kind */}
-            <FormSection
-              step={2}
-              title="Order Kind"
-              description={
-                values.orderKind === "MULTI"
-                  ? multiRequired
-                    ? "More than one date or meal type, so this stays Multi."
-                    : "Meal Planning below groups each date into its own event."
-                  : "One date and one meal type. Adding a date or another meal makes it Multi."
-              }
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {orderKindOptions.map((option) => {
-                  const selected = values.orderKind === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => setOrderKind(option.value)}
-                      disabled={option.value === "SINGLE" && multiRequired}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-                        selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
-                      )}
-                    >
-                      <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
-                        {selected && <span className="size-2.5 rounded-full bg-primary" />}
-                      </span>
-                      <span className="flex flex-col">
-                        <span className="text-sm font-semibold">{option.label}</span>
-                        <span className="text-xs text-muted-foreground">{option.hint}</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </FormSection>
-
-            <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Order Kind changed to Multi</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {multiNotice === "dates"
-                      ? "You picked more than one date, so this is now Multi. Menu Planning groups each date into its own event."
-                      : "You picked more than one meal type, so this is now Multi — even on a single day. Menu Planning groups the meals into their own events."}{" "}
-                    Your meals, menus and food items are kept.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogAction onClick={() => setMultiNotice(null)}>Got it</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-
-            {/* 3 · Guests */}
-            <FormSection step={3} title="Guest Information" description="Enter the expected guest count. This will be used for all selected meals.">
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-adults">Adults</Label>
-                  <Input id="quote-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-child-below5">Children (Under 5)</Label>
-                  <Input id="quote-child-below5" type="number" min="0" value={values.childBelow5Count} onChange={(e) => setField("childBelow5Count", e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-child-5to10">Children (5–10)</Label>
-                  <Input id="quote-child-5to10" type="number" min="0" value={values.child5To10Count} onChange={(e) => setField("child5To10Count", e.target.value)} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="quote-total-guests">Total Guests</Label>
-                  <Input id="quote-total-guests" readOnly tabIndex={-1} className="bg-muted/40" value={String(guestsComputed)} />
-                </div>
-              </div>
-            </FormSection>
-
-            {/* 4 · Menu planning */}
-            <FormSection step={4} title="Menu Planning" description="Select meals and assign menu items for this event." action={individualToggle}>
-              <MenuPlanningSection
-                idPrefix="quote"
-                mealSlotTestIdPrefix="quote-"
-                days={days}
-                mealPlanEntries={values.mealPlanEntries}
-                onChange={setMealPlan}
-                menus={menus}
-                menuPreference={values.menuPreference}
-                onMenuPreferenceChange={(v) => setField("menuPreference", v)}
-                individualPricingEnabled={individualOn}
-                guestsForPricing={guestsForPricing}
-                loadPickerData={getMenuForQuotationPickerAction}
-                foodDialogTarget={foodDialogTarget}
-                onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
-                onCloseFoodDialog={() => setFoodDialogTarget(null)}
-              />
-            </FormSection>
-
-            {/* 5 · Additional details */}
-            <FormSection step={5} title="Additional Details" description="Validity, terms and any special notes.">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="col-span-full flex flex-col gap-1.5">
-                  <Label htmlFor="quote-valid-until">Valid Until</Label>
-                  <Input id="quote-valid-until" type="date" value={values.validUntil} onChange={(e) => setField("validUntil", e.target.value)} />
-                </div>
-                <div className="col-span-full flex flex-col gap-1.5">
-                  <Label htmlFor="quote-terms">Terms</Label>
-                  <Textarea id="quote-terms" value={values.terms} onChange={(e) => setField("terms", e.target.value)} />
-                </div>
-                <div className="col-span-full flex flex-col gap-1.5">
-                  <Label htmlFor="quote-notes">Notes</Label>
-                  <Textarea id="quote-notes" value={values.notes} onChange={(e) => setField("notes", e.target.value)} />
-                </div>
-              </div>
-            </FormSection>
+            <FormTabs tabs={tabs} idPrefix="quote" />
           </div>
 
           {/* ---------------- Summary column ---------------- */}
           <aside className="flex min-w-0 flex-col gap-4">
-            <SummaryCard icon={User} title="Quotation Summary">
-              <SummaryRow icon={User} label="Customer">
-                <span className="break-words">{selectedCustomer?.name ?? "Not selected"}</span>
-              </SummaryRow>
-              <SummaryRow icon={Users} label="Order Kind">
-                {values.orderKind === "MULTI" ? "Multi" : "Single"}
-              </SummaryRow>
-              <SummaryRow icon={Tag} label="Event Type">
-                {eventTypeName ?? "Not set"}
-              </SummaryRow>
-              <SummaryRow icon={CalendarDays} label="Event Date">
-                <span>{eventDateText}</span>
-                {startsIn && <span className={cn("text-xs", TONE_TEXT[startsIn.tone])}>{startsIn.caption} {startsIn.label}</span>}
-              </SummaryRow>
-              <SummaryRow icon={MapPin} label="Venue">
-                <span className="break-words">{values.venue || "Not set"}</span>
-              </SummaryRow>
-              <SummaryRow icon={Users} label="Guests">
-                <span>{totalGuests}</span>
-                <span className="text-xs font-normal text-muted-foreground">
-                  ({Number(values.adultCount) || 0} Adults, {Number(values.childBelow5Count) || 0} Children &lt;5, {Number(values.child5To10Count) || 0} Children 5–10)
-                </span>
-              </SummaryRow>
-            </SummaryCard>
-
-            <SummaryCard icon={UtensilsCrossed} title="Selected Meals">
-              {sortedMealEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No meals selected yet.</p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {sortedMealEntries.map((entry) => {
-                    const meal = MEAL_TYPES.find((m) => m.value === entry.mealType)!;
-                    const state = !entry.menuId
-                      ? { text: "Menu not assigned", className: "text-warning" }
-                      : entry.items.length === 0
-                        ? { text: "No items selected", className: "text-muted-foreground" }
-                        : { text: `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`, className: "text-success" };
-                    return (
-                      <div key={`${entry.date}|${entry.mealType}`} className="flex items-center gap-3">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          {createElement(MEAL_ICON[entry.mealType], { className: "size-4" })}
-                        </span>
-                        <div className="flex min-w-0 flex-1 flex-col text-sm">
-                          <span className="font-semibold">
-                            {meal.label}
-                            {days.length > 1 && (
-                              <span className="font-normal text-muted-foreground"> · {formatDay(entry.date, { day: "numeric", month: "short" })}</span>
-                            )}
-                          </span>
-                          <span className={cn("text-xs", state.className)}>{state.text}</span>
-                        </div>
-                        {entry.menuId && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={`Edit food items for ${meal.label}${days.length > 1 ? ` on ${formatDay(entry.date, { day: "numeric", month: "short" })}` : ""}`}
-                            onClick={() => setFoodDialogTarget({ date: entry.date, mealType: entry.mealType as MealTypeValue })}
-                          >
-                            <PenSquare className="size-4" />
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </SummaryCard>
-
-            <SummaryCard icon={Wallet} title="Pricing Details">
-              <p className="text-xs text-muted-foreground">
-                {individualOn
-                  ? "Individual Pricing is on (switch it in Menu Planning). Each meal's price is set on its own card there; children can be Per Plate or a Percentage of the first assigned Menu's price."
-                  : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
-              </p>
-              {individualOn && (
-                <div className="flex flex-col gap-3">
-                  {(
-                    [
-                      { id: "quote-individual-below5", label: "Children (Under 5) price", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
-                      { id: "quote-individual-5to10", label: "Children (5–10) price", rate: "individualChild5To10Rate", type: "individualChild5To10PricingType" },
-                    ] as const
-                  ).map((row) => (
-                    <div key={row.id} className="flex flex-col gap-1.5">
-                      <Label htmlFor={`${row.id}-rate`}>{row.label}</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id={`${row.id}-rate`}
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          className="w-28"
-                          value={values[row.rate]}
-                          onChange={(e) => setField(row.rate, e.target.value)}
-                        />
-                        <Select
-                          items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                          value={values[row.type]}
-                          onValueChange={(v) => setField(row.type, v ?? values[row.type])}
-                        >
-                          <SelectTrigger className="min-w-0 flex-1" aria-label={`${row.label} type`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-col gap-3 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-muted-foreground">Total Amount</span>
-                  <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
-                </div>
-                {childrenCharge > 0 && (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-muted-foreground">Children Charges</span>
-                    <span>{formatCurrency(childrenCharge)}</span>
-                  </div>
-                )}
-                {(
-                  [
-                    { id: "quote-taxes", label: "Taxes", key: "taxes" },
-                    { id: "quote-additional", label: "Additional Charges", key: "additionalCharges" },
-                    { id: "quote-delivery", label: "Delivery Charges", key: "deliveryCharges" },
-                    { id: "quote-discount", label: "Discount", key: "discount" },
-                  ] as const
-                ).map((row) => (
-                  <div key={row.id} className="flex items-center justify-between gap-3">
-                    <Label htmlFor={row.id} className="font-normal text-muted-foreground">
-                      {row.label}
-                    </Label>
-                    <Input
-                      id={row.id}
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="w-32 text-right"
-                      value={values[row.key]}
-                      onChange={(e) => setField(row.key, e.target.value)}
-                    />
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
-                <span>Grand Total</span>
-                <span className="text-lg">{formatCurrency(total)}</span>
-              </div>
-              <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
-                <Info className="mt-0.5 size-4 shrink-0" />
-                <span>Payment isn&apos;t tracked on a Quotation — once accepted, convert it to an Order to record payment.</span>
-              </div>
-            </SummaryCard>
+            {summaryCard}
+            {pricingSummaryCard}
           </aside>
         </div>
       </form>

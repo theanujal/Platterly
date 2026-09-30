@@ -7,6 +7,8 @@ import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
 import {
+  addMenuApprovalNote,
+  mirrorSelectionItemsFromMealPlan,
   createMenuSelection,
   customerApproves,
   customerRequestsChanges,
@@ -29,7 +31,7 @@ import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 export const APPROVAL_LINK_DAYS = 14;
 
 /** Statuses from which the team may send (or re-send) a menu to the customer. */
-const SENDABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUESTED", "KITCHEN_CHANGES_REQUESTED"];
+const SENDABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUESTED"];
 /** The only statuses in which the customer's link may still act. */
 const AWAITING_CUSTOMER: MenuSelectionStatus[] = ["SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING"];
 
@@ -47,6 +49,8 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
     prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { items: { orderBy: { createdAt: "asc" } } } }),
   ]);
 
+  const mealItemNames = new Set(order.mealPlanEntries.flatMap((entry) => entry.items.map((item) => item.name)));
+
   return {
     customerName: order.customer.name,
     eventTypeName: order.eventType?.name ?? null,
@@ -59,10 +63,20 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
       date: entry.date.toISOString().slice(0, 10),
       mealType: entry.mealType,
       menuName: entry.menu?.name ?? null,
-      items: entry.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+      menuId: entry.menuId,
+      price: entry.price === null ? null : Number(entry.price),
+      items: entry.items.map((item) => ({
+        name: item.name,
+        quantity: item.quantity,
+        itemType: item.itemType,
+        catalogId: item.menuItemId ?? item.addOnId ?? item.menuId ?? undefined,
+        unitPrice: Number(item.unitPrice),
+        isExtra: item.isExtra,
+      })),
     })),
+    // The meal plan is the source of truth now; a dish already listed under a meal isn't repeated here.
     selectedItems: [
-      ...selection.items.map((item) => ({ name: item.name, isExtra: item.isExtra })),
+      ...selection.items.filter((item) => !mealItemNames.has(item.name)).map((item) => ({ name: item.name, isExtra: item.isExtra })),
       ...order.items.map((item) => ({ name: item.name, isExtra: false })),
     ],
     isCustomMenu: selection.isCustomMenu,
@@ -93,6 +107,20 @@ async function ensureMenuSelection(organizationId: string, orderId: string, acto
 }
 
 /**
+ * Every order with an Event Type gets its Event and a Draft MenuSelection as soon as it is saved, so it always shows up in
+ * Menu Approvals (AJ, 2026-09-30), and the flat selection rows mirror its meal plan. Null for an order with no Event Type yet.
+ */
+export async function ensureOrderMenuSelection(organizationId: string, orderId: string, actorUserId?: string) {
+  const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { eventTypeId: true } });
+  if (!order.eventTypeId) return null;
+  const selection = await ensureMenuSelection(organizationId, orderId, actorUserId);
+  if (["DRAFT", "CHANGES_REQUESTED"].includes(selection.status)) {
+    await mirrorSelectionItemsFromMealPlan(organizationId, selection.id);
+  }
+  return selection;
+}
+
+/**
  * "Send Menu for Approval" / "Send Updated Menu for Approval". Freezes the
  * order's current menu as the next version (v1, v2, …), supersedes and kills
  * the links of every earlier version, moves the order to Awaiting Customer
@@ -100,7 +128,7 @@ async function ensureMenuSelection(organizationId: string, orderId: string, acto
  * only until a provider is wired (Chunk 16), so callers should also show the
  * returned `url` to staff.
  */
-export async function sendMenuForApproval(organizationId: string, target: { orderId: string } | { menuSelectionId: string }, actorUserId: string) {
+export async function sendMenuForApproval(organizationId: string, target: { orderId: string } | { menuSelectionId: string }, actorUserId: string, note?: string) {
   let menuSelection;
   let orderId: string;
   if ("menuSelectionId" in target) {
@@ -153,7 +181,12 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
   await revokeVersionTokens(organizationId, previous.map((v) => v.id));
 
   await prisma.menuSelection.update({ where: { id: menuSelection.id }, data: { currentVersion: versionNumber } });
-  await sendToCustomer(organizationId, menuSelection.id, actorUserId);
+  await sendToCustomer(organizationId, menuSelection.id, actorUserId, versionNumber > 1);
+
+  if (note?.trim()) {
+    const author = await prisma.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
+    await addMenuApprovalNote(organizationId, menuSelection.id, { authorType: "TEAM", authorName: author?.name ?? null, body: note, versionNumber });
+  }
 
   const token = await issueToken({ organizationId, resourceType: "MENU_APPROVAL", resourceId: version.id, expiresInDays: APPROVAL_LINK_DAYS });
   const url = canonicalUrl(`/menu-approval/${token.token}`);
@@ -205,6 +238,18 @@ export async function recallMenuFromCustomer(organizationId: string, menuSelecti
   await prisma.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
   await revokeVersionTokens(organizationId, versions.map((v) => v.id));
   return result;
+}
+
+/**
+ * Kills the live customer link(s) for a menu (the approved or recalled version's link must stop working). `supersede`
+ * also marks the outstanding versions as replaced, as a recall does; without it the last approved version stays current.
+ */
+export async function revokeOutstandingApprovalLinks(organizationId: string, menuSelectionId: string, options?: { supersede?: boolean }) {
+  const versions = await prisma.menuVersion.findMany({ where: { menuSelectionId, supersededAt: null }, select: { id: true } });
+  if (options?.supersede) {
+    await prisma.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
+  }
+  await revokeVersionTokens(organizationId, versions.map((v) => v.id));
 }
 
 export type ResolvedApprovalLink =
@@ -299,6 +344,7 @@ export async function getOrderMenuApproval(organizationId: string, orderId: stri
     select: {
       id: true,
       status: true,
+      kitchenProductionStatus: true,
       currentVersion: true,
       _count: { select: { versions: true } },
       versions: { orderBy: { versionNumber: "desc" }, select: { versionNumber: true, status: true, note: true, sentAt: true, supersededAt: true } },
@@ -309,6 +355,7 @@ export async function getOrderMenuApproval(organizationId: string, orderId: stri
     versions: selection.versions,
     menuSelectionId: selection.id,
     status: selection.status,
+    kitchenProductionStatus: selection.kitchenProductionStatus,
     currentVersion: selection.currentVersion,
     versionCount: selection._count.versions,
     approvalUrl: await getActiveApprovalUrl(organizationId, selection.id),

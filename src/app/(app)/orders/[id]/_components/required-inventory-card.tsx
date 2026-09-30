@@ -68,13 +68,19 @@ export function RequiredInventoryCard({
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-semibold">Required Inventory</h2>
           <p className="text-xs text-muted-foreground" aria-live="polite">
-            {state === "saving" ? "Saving…" : state === "saved" ? "Saved" : "Which inventory items, and how much of each, this event needs. Changes save automatically."}
+            {state === "saving"
+              ? "Saving…"
+              : state === "saved"
+                ? "Saved"
+                : "Which inventory items, and how much of each, this event needs. Changes save automatically."}
           </p>
         </div>
       </div>
 
       {!event ? (
-        <p className="text-sm text-muted-foreground">Set an Event Type on this order and save it. Its event is created for you, and you can list the inventory it needs here.</p>
+        <p className="text-sm text-muted-foreground">
+          Set an Event Type on this order and save it. Its event is created for you, and you can list the inventory it needs here.
+        </p>
       ) : inventoryItems.length === 0 ? (
         <p className="text-sm text-muted-foreground">No inventory items yet.</p>
       ) : (
@@ -85,7 +91,11 @@ export function RequiredInventoryCard({
             return (
               <div key={row.inventoryId} className="flex items-center gap-3 rounded-lg border border-border p-3">
                 <label htmlFor={`inv-${row.inventoryId}`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                  <Checkbox id={`inv-${row.inventoryId}`} checked={row.checked} onCheckedChange={(checked) => update(row.inventoryId, { checked: checked === true }, true)} />
+                  <Checkbox
+                    id={`inv-${row.inventoryId}`}
+                    checked={row.checked}
+                    onCheckedChange={(checked) => update(row.inventoryId, { checked: checked === true }, true)}
+                  />
                   <span className="truncate text-sm font-medium">{item.name}</span>
                 </label>
                 {row.checked && (

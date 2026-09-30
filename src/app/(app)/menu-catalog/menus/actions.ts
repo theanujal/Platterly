@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, type MenuInput } from "@/modules/menus/menu";
+import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, type MenuInput } from "@/modules/menus/menu";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 
@@ -54,10 +54,19 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     throw new Error("Percentage can't exceed 100.");
   }
 
+  const categoryAssignments = formData.getAll("categoryAssignment").flatMap((raw) => {
+    if (typeof raw !== "string") return [];
+    const parsed = JSON.parse(raw) as { categoryId?: unknown; maxSelection?: unknown };
+    if (typeof parsed.categoryId !== "string") return [];
+    const max = typeof parsed.maxSelection === "number" && Number.isInteger(parsed.maxSelection) && parsed.maxSelection > 0 ? parsed.maxSelection : null;
+    return [{ categoryId: parsed.categoryId, maxSelection: max }];
+  });
+
   return {
     name,
     description: stringField(formData, "description"),
     image,
+    categoryAssignments,
     menuType,
     pricePerPlate,
     isActive: formData.get("isActive") === "true",
@@ -115,6 +124,30 @@ export async function reorderMenuCategoriesAction(menuId: string, orderedCategor
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
     await reorderMenuCategoryAssignments(organizationId, menuId, orderedCategoryIds, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/menus");
+  return { ok: true };
+}
+
+export async function duplicateMenuAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["create"] }, organizationId);
+  try {
+    await duplicateMenu(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/menus");
+  return { ok: true };
+}
+
+export async function setMenuActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await setMenuActive(organizationId, id, isActive, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

@@ -1,43 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
+import { AddDrawer } from "@/components/catalog/form-drawer";
 import { AddOnForm } from "./addon-form";
 import { createAddOnAction } from "../actions";
 
 export function AddAddOnDialog({ variant = "button" }: { variant?: "button" | "tile" }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {variant === "tile" ? (
-        <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <CatalogAddTileContent label="Add New Add-on" description="Live counters and special extras" />
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger render={<Button />}>
-          <Plus className="size-4" />
-          Add Add-on
-        </DialogTrigger>
-      )}
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New Add-on</DialogTitle>
-        </DialogHeader>
+    <AddDrawer variant={variant} buttonLabel="Add Add-on" tileLabel="Add New Add-on" tileDescription="Live counters and special extras" title="New Add-on">
+      {(close) => (
         <AddOnForm
           submitLabel="Create add-on"
           onSubmit={createAddOnAction}
+          onCancel={close}
           onSuccess={() => {
-            setOpen(false);
+            close();
             router.refresh();
           }}
         />
-      </DialogContent>
-    </Dialog>
+      )}
+    </AddDrawer>
   );
 }

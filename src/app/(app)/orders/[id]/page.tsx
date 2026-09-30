@@ -2,12 +2,14 @@ import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getOrder } from "@/modules/orders/order";
 import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
+import { listStatusChanges } from "@/modules/menu-approvals/status-history";
+import { getOrderStatusHint } from "@/modules/orders/order-status";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { listKitchens } from "@/modules/events/event";
 import { listInventoryItems } from "@/modules/inventory/inventory";
-import { Receipt, Layers } from "lucide-react";
+import { CalendarDays, Layers, Receipt, Tag, Users, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { EditOrderClient } from "./_components/edit-order-client";
@@ -15,6 +17,9 @@ import { DeleteOrderButton } from "./_components/delete-order-button";
 import { EventOperationsCard } from "./_components/event-operations-card";
 import { RequiredInventoryCard } from "./_components/required-inventory-card";
 import { OrderApprovalPanel } from "./_components/order-approval-panel";
+import { OrderSummaryCard } from "./_components/order-summary-card";
+import { OrderStatusCard } from "./_components/order-status-card";
+import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
@@ -39,6 +44,11 @@ function toDateInputValue(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatEventDates(start: Date, end: Date) {
+  const day = (d: Date, withYear: boolean) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
+  return start.getTime() === end.getTime() ? day(start, true) : `${day(start, false)} – ${day(end, true)}`;
+}
+
 function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
@@ -47,7 +57,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
-  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval] = await Promise.all([
+  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
@@ -56,6 +66,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     listInventoryItems(organizationId),
     hasPermission({ menus: ["approve"] }, organizationId),
     getOrderMenuApproval(organizationId, id),
+    listStatusChanges(organizationId, id, { subject: "ORDER" }),
   ]);
   if (!order) notFound();
 
@@ -106,7 +117,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         name: item.name,
         unitPrice: Number(item.unitPrice),
         // Extras and per-plate add-ons were saved with a per-guest quantity.
-        perGuest: item.quantity > 1,
+        perGuest: item.itemType === "ADD_ON" ? item.quantity > 1 : item.isExtra,
       })),
     })),
   };
@@ -123,43 +134,93 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         header={
           <div className="flex flex-col gap-4">
             <PageBreadcrumb items={[{ label: "Orders", href: "/orders" }, { label: order.orderNumber ?? "Order" }]} />
-            <div>
-              <h1 className="text-2xl font-semibold">Order for {order.customer.name}</h1>
-              <div className="mt-1 flex items-center gap-2">
+            <div className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-semibold">{order.orderNumber ?? "Order"}</h1>
                 <Badge variant={ORDER_KIND_VARIANT[order.orderKind]}>
                   <OrderKindIcon data-icon="inline-start" />
                   {ORDER_KIND_LABEL[order.orderKind]}
                 </Badge>
-                <p className="text-sm text-muted-foreground">
+              </div>
+              <p className="text-base font-medium">Order for {order.customer.name}</p>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-muted-foreground">
+                {order.eventType && (
+                  <span className="flex items-center gap-1.5">
+                    <Tag className="size-4" />
+                    {order.eventType.name}
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="size-4" />
                   {order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                </p>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <UtensilsCrossed className="size-4" />
+                  {order.mealPlanEntries.length} {order.mealPlanEntries.length === 1 ? "Meal" : "Meals"}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="size-4" />
+                  {order.totalParticipants ?? 0} Guests
+                </span>
               </div>
             </div>
           </div>
         }
         headerActions={<DeleteOrderButton orderId={order.id} name={order.customer.name} />}
-        beforeContent={
+        menuPlanBanner={
+          <MenuStatusBanner
+            status={menuApproval?.status ?? null}
+            version={menuApproval?.currentVersion ?? null}
+            editHref={canManageApproval && menuApproval ? `/menu-approvals/${menuApproval.menuSelectionId}` : null}
+          />
+        }
+        sidebarTop={
           <>
-            {/* Menu approval (with its version history) and the kitchen / event status sit side by side (AJ, 2026-09-27). */}
-            <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-              <OrderApprovalPanel orderId={order.id} approval={menuApproval} canManage={canManageApproval} />
-              <EventOperationsCard
-                orderId={order.id}
-                event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId, status: event.status } : null}
-                kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
-              />
-            </div>
-
-            {/*
-              Whole-order items (mealPlanEntryId: null) only exist on an Order
-              converted from an accepted Quotation (quotation.ts's
-              convertQuotationToOrder writes them directly, copying the
-              Quotation's own frozen item snapshots) — the Create Order form
-              itself no longer has a whole-order item picker as of the
-              2026-09-20 redesign (food items are only ever picked per meal in
-              Meal Planning), so this read-only recap is the only place these
-              carried-over items are still visible/editable-adjacent.
-            */}
+            <OrderStatusCard
+              orderId={order.id}
+              status={order.status}
+              hint={getOrderStatusHint(order.status, menuApproval ? [menuApproval.kitchenProductionStatus] : [])}
+              history={statusHistory.map((c) => ({
+                id: c.id,
+                subject: c.subject,
+                fromStatus: c.fromStatus,
+                toStatus: c.toStatus,
+                source: c.source,
+                trigger: c.trigger,
+                reason: c.reason,
+                actorName: c.actorName,
+                createdAt: c.createdAt,
+              }))}
+            />
+            <OrderSummaryCard
+              orderNumber={order.orderNumber}
+              status={order.status}
+              assignedKitchen={event?.assignedKitchen?.name ?? null}
+              createdAt={order.createdAt}
+              updatedAt={order.updatedAt}
+              customer={order.customer.name}
+              orderType={ORDER_KIND_LABEL[order.orderKind]}
+              eventType={order.eventType?.name ?? null}
+              eventDate={formatEventDates(order.eventStartDate, order.eventEndDate)}
+              venue={order.venue}
+              guests={{
+                total: order.totalParticipants ?? 0,
+                adults: order.adultCount ?? 0,
+                below5: order.childBelow5Count ?? 0,
+                from5to10: order.child5To10Count ?? 0,
+              }}
+            />
+            <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
+            <EventOperationsCard
+              orderId={order.id}
+              event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId, status: event.status } : null}
+              kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
+            />
+          </>
+        }
+        pricingExtra={
+          <>
+            {/* Whole-order items only exist on an Order converted from an accepted Quotation (convertQuotationToOrder copies the Quotation's frozen item snapshots); the order form has no picker for them, so this read-only recap is where they show. */}
             {order.items.length > 0 && (
               <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
                 <h2 className="text-sm font-semibold">Carried over from the original Quotation</h2>
@@ -193,10 +254,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
           }))}
         carriedOverItemsSubtotal={order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0)}
-        afterContent={
+        inventoryTab={
           <RequiredInventoryCard
             orderId={order.id}
-            event={event ? { id: event.id, requiredInventory: event.requiredInventory.map((r) => ({ inventoryId: r.inventoryId, quantity: Number(r.quantity) })) } : null}
+            event={
+              event
+                ? { id: event.id, requiredInventory: event.requiredInventory.map((r) => ({ inventoryId: r.inventoryId, quantity: Number(r.quantity) })) }
+                : null
+            }
             inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
           />
         }

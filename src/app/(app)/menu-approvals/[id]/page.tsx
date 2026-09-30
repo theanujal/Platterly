@@ -1,109 +1,153 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Circle, Clock, TriangleAlert, Check, Lock } from "lucide-react";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
+import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { getMenuSelection, listMenuApprovalNotes } from "@/modules/menu-approvals/menu-approval";
+import { listStatusChanges } from "@/modules/menu-approvals/status-history";
 import { getActiveApprovalUrl } from "@/modules/menu-approvals/approval-link";
-import { listStorefrontMenus, listCustomMenuSections, type StorefrontMenuSection } from "@/modules/menus/menu";
-import { Badge } from "@/components/ui/badge";
-import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import type { ApprovalSnapshot } from "@/modules/menu-approvals/approval-snapshot";
+import { getOrder } from "@/modules/orders/order";
+import { menuGuestCount } from "@/modules/orders/meal-pricing";
+import { listMenus } from "@/modules/menus/menu";
+import type { MealSelection } from "@/components/catalog/menu-planning-section";
 import { MenuApprovalReview } from "./_components/menu-approval-review";
-import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
-import type { MenuSelectionStatus } from "@/generated/prisma/enums";
+import { MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
 
 export const metadata: Metadata = {
   title: "Menu Approval — Platterly",
   robots: { index: false, follow: false },
 };
 
-const STATUS_LABEL = MENU_SELECTION_STATUS_LABEL;
+const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
-// Shared neutral/info/warning/success legend (modules/orders/order-status.ts) — one vocabulary across the queue, this page and the Order page.
-const STATUS_VARIANT = MENU_SELECTION_STATUS_TONE;
+/** Every ISO day from start to end, inclusive (UTC, like the order's own dates). */
+function enumerateDays(start: Date, end: Date): string[] {
+  const days: string[] = [];
+  for (let t = start.getTime(); t <= end.getTime() && days.length < 366; t += 86_400_000) days.push(isoDay(new Date(t)));
+  return days;
+}
 
-const STATUS_ICON = {
-  DRAFT: Circle,
-  SENT_TO_CUSTOMER: Clock,
-  CUSTOMER_REVIEWING: Clock,
-  CHANGES_REQUESTED: TriangleAlert,
-  CUSTOMER_APPROVED: Check,
-  KITCHEN_REVIEWING: Clock,
-  KITCHEN_CHANGES_REQUESTED: TriangleAlert,
-  KITCHEN_APPROVED: Check,
-  FINAL_LOCKED: Lock,
-} satisfies Record<MenuSelectionStatus, typeof Circle>;
-
-export default async function MenuApprovalDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MenuApprovalDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ version?: string }>;
+}) {
   const { id } = await params;
+  const { version } = await searchParams;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
 
   const menuSelection = await getMenuSelection(organizationId, id);
-  if (!menuSelection) notFound();
+  if (!menuSelection?.event.orderId) notFound();
 
-  const StatusIcon = STATUS_ICON[menuSelection.status];
-  const approvalUrl = await getActiveApprovalUrl(organizationId, menuSelection.id);
+  const [order, menus, notes, statusChanges, approvalUrl, canOpenOrder] = await Promise.all([
+    getOrder(organizationId, menuSelection.event.orderId),
+    listMenus(organizationId),
+    listMenuApprovalNotes(organizationId, id),
+    listStatusChanges(organizationId, menuSelection.event.orderId, { subject: "MENU_APPROVAL" }),
+    getActiveApprovalUrl(organizationId, menuSelection.id),
+    hasPermission({ orders: ["edit"] }, organizationId),
+  ]);
+  if (!order) notFound();
 
-  // What the kitchen can add/remove from: the Menu the customer chose, the
-  // open dish list for a Custom Menu, or (older selections that predate the
-  // Chunk 12 flow, with no chosen menu) every menu for the event type.
-  const preference = menuSelection.event.order?.menuPreference ?? undefined;
-  let groups: { key: string; name: string; sections: StorefrontMenuSection[] }[];
-  if (menuSelection.isCustomMenu) {
-    groups = [{ key: "custom", name: "Custom Menu", sections: await listCustomMenuSections(organizationId, preference ?? "NON_VEGETARIAN") }];
-  } else if (menuSelection.chosenMenuId) {
-    const menu = (await listStorefrontMenus(organizationId)).find((m) => m.id === menuSelection.chosenMenuId);
-    groups = menu ? [{ key: menu.id, name: menu.name, sections: menu.sections }] : [];
-  } else {
-    const menus = await listStorefrontMenus(organizationId, { eventTypeId: menuSelection.event.eventTypeId, menuType: preference });
-    groups = menus.map((m) => ({ key: m.id, name: m.name, sections: m.sections }));
-  }
+  const entries: MealSelection[] = order.mealPlanEntries.map((entry) => ({
+    date: isoDay(entry.date),
+    mealType: entry.mealType,
+    price: entry.price?.toString() ?? "",
+    menuId: entry.menuId ?? "",
+    items: entry.items.map((item) => ({
+      key: item.id,
+      itemType: item.itemType === "ADD_ON" ? ("ADD_ON" as const) : ("MENU_ITEM" as const),
+      catalogId: (item.itemType === "ADD_ON" ? item.addOnId : item.menuItemId) ?? "",
+      name: item.name,
+      unitPrice: Number(item.unitPrice),
+      // Extra dishes and per-plate add-ons are charged for every guest.
+      perGuest: item.itemType === "ADD_ON" ? item.quantity > 1 : item.isExtra,
+    })),
+  }));
+
+  // The order's date range, plus any day a meal is already planned on.
+  const days = [...new Set([...enumerateDays(order.eventStartDate, order.eventEndDate), ...entries.map((e) => e.date)])].sort();
+  const totalGuests = order.totalParticipants ?? (order.adultCount ?? 0) + (order.childBelow5Count ?? 0) + (order.child5To10Count ?? 0);
+  const eventDate = order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const eventDateText =
+    order.eventStartDate.getTime() === order.eventEndDate.getTime()
+      ? eventDate
+      : `${order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${order.eventEndDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Approvals", href: "/menu-approvals" }, { label: menuSelection.event.customer.name }]} />
-
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-lg font-semibold">Menu Selection for {menuSelection.event.customer.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {menuSelection.event.name} · {menuSelection.event.eventType.name}
-            {menuSelection.event.assignedKitchen ? ` · ${menuSelection.event.assignedKitchen.name}` : ""}
-          </p>
-        </div>
-        <Badge variant={STATUS_VARIANT[menuSelection.status]}>
-          <StatusIcon data-icon="inline-start" />
-          {STATUS_LABEL[menuSelection.status]}
-        </Badge>
-      </div>
-
       <MenuApprovalReview
         menuSelectionId={menuSelection.id}
         status={menuSelection.status}
-        customerRequestNote={menuSelection.customerRequestNote}
-        kitchenRequestNote={menuSelection.kitchenRequestNote}
-        lockedAt={menuSelection.lockedAt}
-        groups={groups}
-        isCustomMenu={menuSelection.isCustomMenu}
-        chosenMenuName={menuSelection.chosenMenu?.name ?? null}
-        guests={menuSelection.event.order?.totalParticipants ?? 0}
-        customPricePerPlate={menuSelection.customPricePerPlate ? Number(menuSelection.customPricePerPlate) : null}
-        initialItems={menuSelection.items.map((item) => ({
-          itemType: item.itemType,
-          catalogId: item.menuId ?? item.menuItemId ?? item.addOnId ?? "",
-          name: item.name,
-          isExtra: item.isExtra,
-        }))}
-        versions={menuSelection.versions.map((version) => ({
-          versionNumber: version.versionNumber,
-          createdAt: version.createdAt,
-          sentAt: version.sentAt,
-          superseded: version.supersededAt !== null,
-          items: version.items.map((item) => ({ name: item.name })),
-        }))}
+        statusLabel={MENU_SELECTION_STATUS_LABEL[menuSelection.status]}
         currentVersion={menuSelection.currentVersion}
+        lockedAt={menuSelection.lockedAt}
+        isCustomMenu={menuSelection.isCustomMenu}
+        customPricePerPlate={menuSelection.customPricePerPlate ? Number(menuSelection.customPricePerPlate) : null}
+        header={{
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          customer: order.customer.name,
+          eventType: order.eventType?.name ?? null,
+          eventDate: eventDateText,
+          guests: totalGuests,
+          kitchen: menuSelection.event.assignedKitchen?.name ?? null,
+          canOpenOrder,
+        }}
+        pricing={{
+          individualPricingEnabled: order.individualPricingEnabled,
+          menuGuests: menuGuestCount(order),
+          totalGuests,
+          childrenCharge: Number(order.childrenCharge),
+          discount: Number(order.discount),
+          transportationCost: Number(order.transportationCost),
+          otherCharges: Number(order.otherCharges),
+        }}
+        menuPreference={order.menuPreference ?? ""}
+        days={days}
+        entries={entries}
+        menus={menus
+          .filter((m) => m.isActive || entries.some((e) => e.menuId === m.id))
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            menuType: m.menuType,
+            price: Number(m.pricePerPlate),
+            childUnder5Chargeable: m.childUnder5Chargeable,
+            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
+            child5To10PricingType: m.child5To10PricingType,
+            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
+          }))}
+        notes={notes.map((n) => ({
+          id: n.id,
+          authorType: n.authorType,
+          authorName: n.authorName,
+          body: n.body,
+          versionNumber: n.versionNumber,
+          createdAt: n.createdAt,
+        }))}
+        versions={menuSelection.versions.map((v) => ({
+          versionNumber: v.versionNumber,
+          createdAt: v.createdAt,
+          sentAt: v.sentAt,
+          superseded: v.supersededAt !== null,
+          snapshot: (v.snapshot as ApprovalSnapshot | null) ?? null,
+        }))}
+        statusHistory={statusChanges.map((c) => ({
+          id: c.id,
+          subject: c.subject,
+          fromStatus: c.fromStatus,
+          toStatus: c.toStatus,
+          source: c.source,
+          trigger: c.trigger,
+          reason: c.reason,
+          actorName: c.actorName,
+          createdAt: c.createdAt,
+        }))}
         approvalUrl={approvalUrl}
-        statusLabel={STATUS_LABEL[menuSelection.status]}
+        viewVersion={version && /^\d+$/.test(version) ? Number(version) : null}
       />
     </div>
   );

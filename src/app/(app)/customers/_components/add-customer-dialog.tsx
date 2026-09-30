@@ -1,43 +1,26 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
+import { AddDrawer } from "@/components/catalog/form-drawer";
 import { CustomerForm } from "./customer-form";
 import { createCustomerAction } from "../actions";
 
 export function AddCustomerDialog({ variant = "button" }: { variant?: "button" | "tile" }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      {variant === "tile" ? (
-        <DialogTrigger className={CATALOG_ADD_TILE_CLASSNAME}>
-          <CatalogAddTileContent label="Add New Customer" description="Add someone you've catered for" />
-        </DialogTrigger>
-      ) : (
-        <DialogTrigger render={<Button />}>
-          <Plus className="size-4" />
-          Add Customer
-        </DialogTrigger>
-      )}
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New Customer</DialogTitle>
-        </DialogHeader>
+    <AddDrawer variant={variant} buttonLabel="Add Customer" tileLabel="Add New Customer" tileDescription="Add someone you've catered for" title="New Customer">
+      {(close) => (
         <CustomerForm
           submitLabel="Create customer"
           onSubmit={createCustomerAction}
+          onCancel={close}
           onSuccess={() => {
-            setOpen(false);
+            close();
             router.refresh();
           }}
         />
-      </DialogContent>
-    </Dialog>
+      )}
+    </AddDrawer>
   );
 }

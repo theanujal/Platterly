@@ -2,14 +2,13 @@
 
 import { useState } from "react";
 import { User, Mail } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ActiveToggleCard } from "@/components/ui/active-toggle-card";
+import { DrawerForm } from "@/components/catalog/form-drawer";
 import type { ActionResult } from "../actions";
 
 const LEAD_SOURCE_OPTIONS = [
@@ -49,11 +48,12 @@ interface CustomerFormProps {
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  onCancel: () => void;
   /** Shown above the fields, e.g. the edit popup's "changes apply everywhere" note. */
   notice?: React.ReactNode;
 }
 
-export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, notice }: CustomerFormProps) {
+export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, onCancel, notice }: CustomerFormProps) {
   const [values, setValues] = useState<CustomerFormValues>({ ...EMPTY_CUSTOMER_VALUES, ...initialValues });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -88,7 +88,15 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <DrawerForm
+      onSubmit={handleSubmit}
+      error={error}
+      pending={pending}
+      submitLabel={submitLabel}
+      onCancel={onCancel}
+      active={{ id: "customer-active", checked: values.isActive, onChange: (checked) => setField("isActive", checked), onLabel: "Active", offLabel: "Inactive – marked as not currently active" }}
+      className="gap-4"
+    >
       {notice}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
@@ -122,7 +130,7 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
               value={values.leadSource}
               onValueChange={(v) => setField("leadSource", v ?? values.leadSource)}
             >
-              <SelectTrigger id="customer-lead-source">
+              <SelectTrigger id="customer-lead-source" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -146,20 +154,6 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
         </div>
       )}
 
-      <ActiveToggleCard
-        id="customer-active"
-        checked={values.isActive}
-        onCheckedChange={(checked) => setField("isActive", checked)}
-      />
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={pending} className="self-end">
-        {pending ? "Saving…" : submitLabel}
-      </Button>
-    </form>
+    </DrawerForm>
   );
 }

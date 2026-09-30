@@ -11,7 +11,8 @@ import {
   convertQuotationToOrder,
   type QuotationInput,
 } from "@/modules/quotations/quotation";
-import type { OrderItemCatalogInput, MealPlanEntryInput } from "@/modules/orders/order";
+import { syncOrderEvent, type OrderItemCatalogInput, type MealPlanEntryInput } from "@/modules/orders/order";
+import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { getMenuPickerData, type MenuPickerData } from "@/modules/menus/menu";
 import type { OrderKind, MealType, FoodType, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
 
@@ -200,6 +201,8 @@ export async function convertQuotationToOrderAction(id: string): Promise<ActionR
   await requirePermission({ quotations: ["edit"], orders: ["create"] }, organizationId);
   try {
     const order = await convertQuotationToOrder(organizationId, id, session.user.id);
+    await syncOrderEvent(organizationId, order.id, session.user.id);
+    await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
     revalidatePath(`/quotations/${id}`);
     revalidatePath("/orders");
     return { ok: true, orderId: order.id };

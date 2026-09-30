@@ -366,8 +366,11 @@ export async function submitDraft(organizationId: string, draftId: string, notes
     const venue = data.venue;
     const guests = data.guestCount;
 
+    // The whole menu goes on the meal so Menu Approvals shows it in the same planner as any order (AJ, 2026-09-30):
+    // dishes inside the menu are included (they add nothing), Extras are charged per guest, add-ons as priced.
     const mealItems: OrderItemCatalogInput[] = [
-      ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: guests })),
+      ...regularIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: 1 })),
+      ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: guests, isExtra: true })),
       ...quote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id, quantity: a.priceType === "PER_PLATE" ? guests : 1 })),
     ];
 

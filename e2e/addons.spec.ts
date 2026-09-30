@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Add-ons Management (2026-09-14, AJ's own field-level spec) — a standalone
@@ -27,20 +27,7 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Addon");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await signUpCaterer(page, email, { firstName: "Addon", lastName: "Tester", closeClaimDialog: false });
 
   // A fresh account's Dashboard auto-opens the "Claim your custom link"
   // dialog, which overlays the whole page (including the sidebar) until
@@ -103,7 +90,8 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByLabel("Grid view").click();
 
   // --- Edit via the pencil-icon popup: confirm fields persisted, then update and verify ---
-  await page.getByRole("button", { name: `Edit ${liveCounterName}` }).click();
+  await page.getByRole("button", { name: `Actions for ${liveCounterName}` }).click();
+  await page.getByRole("menuitem", { name: "Edit Add-on" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue(liveCounterName);
   await expect(page.getByLabel("Price", { exact: true })).toHaveValue("150");
@@ -112,4 +100,19 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(`${liveCounterName} Updated`)).toBeVisible();
+
+  // --- The 3-dot menu also duplicates, deactivates and deletes (AJ, 2026-09-30) ---
+  const updatedName = `${liveCounterName} Updated`;
+  await page.getByRole("button", { name: `Actions for ${updatedName}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  await expect(page.getByText(`${updatedName} (Copy)`, { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: `Actions for ${updatedName} (Copy)` }).click();
+  await page.getByRole("menuitem", { name: "Deactivate" }).click();
+  await expect(page.getByText("Inactive").first()).toBeVisible();
+
+  await page.getByRole("button", { name: `Actions for ${updatedName} (Copy)` }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText(`${updatedName} (Copy)`, { exact: true })).toHaveCount(0);
 });

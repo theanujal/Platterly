@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 9 — CRM Core. Drives the full Lead -> Customer -> Event lifecycle
@@ -44,21 +44,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   cleanupEmails.push(email);
   const suffix = Date.now().toString().slice(-6);
 
-  await page.goto("/kitchenlogin");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("CRM");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
-  await page.getByRole("button", { name: "Skip for now" }).click();
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await page.getByRole("button", { name: "Close" }).click();
+  await signUpCaterer(page, email, { firstName: "CRM", lastName: "Tester" });
 
   // --- Setup: an Inventory item and an Event Type, both needed for Event creation ---
   const inventoryName = `Rice ${suffix}`;
@@ -74,10 +60,11 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/menu-catalog/event-types/new");
+  await page.goto("/menu-catalog/event-types");
+  await page.getByRole("button", { name: "Add Event Type" }).click();
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Add a Lead on the merged Customers page, with Lead Information ---
   const leadName = `Asha Rao ${suffix}`;
@@ -170,6 +157,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.getByRole("option", { name: "Processing" }).click();
   await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
 
+  await page.getByRole("tab", { name: "Inventory" }).click();
   const inventoryCard = page.getByTestId("required-inventory-card");
   await inventoryCard.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
   await expect(inventoryCard.getByText("Saved", { exact: true })).toBeVisible();
@@ -178,6 +166,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(inventoryCard.getByText("Saved", { exact: true })).toBeVisible();
 
   await page.reload();
+  await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card").getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
   await expect(page.getByTestId("required-inventory-card").getByLabel(new RegExp(`Quantity of ${inventoryName}`))).toHaveValue("20");
 

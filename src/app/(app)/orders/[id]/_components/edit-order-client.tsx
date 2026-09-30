@@ -10,8 +10,10 @@ interface EditOrderClientProps {
   customers: { id: string; name: string; phone: string; email: string | null }[];
   header: React.ReactNode;
   headerActions?: React.ReactNode;
-  beforeContent?: React.ReactNode;
-  afterContent?: React.ReactNode;
+  sidebarTop?: React.ReactNode;
+  inventoryTab?: React.ReactNode;
+  pricingExtra?: React.ReactNode;
+  menuPlanBanner?: React.ReactNode;
   eventTypes: { id: string; name: string }[];
   menus: {
     id: string;
@@ -27,21 +29,36 @@ interface EditOrderClientProps {
   carriedOverItemsSubtotal?: number;
 }
 
-export function EditOrderClient({ orderId, initialValues, customers, eventTypes, menus, carriedOverItemsSubtotal, header, headerActions, beforeContent, afterContent }: EditOrderClientProps) {
+export function EditOrderClient({
+  orderId,
+  initialValues,
+  customers,
+  eventTypes,
+  menus,
+  carriedOverItemsSubtotal,
+  header,
+  headerActions,
+  sidebarTop,
+  inventoryTab,
+  pricingExtra,
+  menuPlanBanner,
+}: EditOrderClientProps) {
   const router = useRouter();
 
   return (
     <OrderForm
       header={header}
       headerActions={headerActions}
-      beforeContent={beforeContent}
-      afterContent={afterContent}
+      sidebarTop={sidebarTop}
+      inventoryTab={inventoryTab}
+      pricingExtra={pricingExtra}
+      menuPlanReadOnly
+      menuPlanBanner={menuPlanBanner}
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
       carriedOverItemsSubtotal={carriedOverItemsSubtotal}
       initialValues={initialValues}
-      showStatus
       submitLabel="Save changes"
       onSubmit={(formData) => updateOrderAction(orderId, formData)}
       onSubmitAndNotify={(formData) => updateOrderAndNotifyAction(orderId, formData)}

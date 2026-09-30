@@ -1,42 +1,32 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { FormDrawer } from "@/components/catalog/form-drawer";
 import { InventoryForm, type InventoryFormValues } from "./inventory-form";
 import { updateInventoryItemAction } from "../actions";
 
 interface EditInventoryDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   itemId: string;
-  name: string;
   initialValues: InventoryFormValues;
 }
 
-export function EditInventoryDialog({ itemId, name, initialValues }: EditInventoryDialogProps) {
+export function EditInventoryDialog({ open, onOpenChange, itemId, initialValues }: EditInventoryDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} />}>
-        <Pencil className="size-4" />
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Edit Inventory Item</DialogTitle>
-        </DialogHeader>
-        <InventoryForm
-          initialValues={initialValues}
-          submitLabel="Save changes"
-          onSubmit={(formData) => updateInventoryItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}
-          onSuccess={() => {
-            setOpen(false);
-            router.refresh();
-          }}
-        />
-      </DialogContent>
-    </Dialog>
+    <FormDrawer open={open} onOpenChange={onOpenChange} title="Edit Inventory Item">
+      <InventoryForm
+        initialValues={initialValues}
+        submitLabel="Save changes"
+        onSubmit={(formData) => updateInventoryItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}
+        onCancel={() => onOpenChange(false)}
+        onSuccess={() => {
+          onOpenChange(false);
+          router.refresh();
+        }}
+      />
+    </FormDrawer>
   );
 }

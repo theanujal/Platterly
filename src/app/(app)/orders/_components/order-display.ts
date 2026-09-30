@@ -1,4 +1,4 @@
-import { Check, CircleCheck, ChefHat, ClipboardCheck, Hourglass, Layers, Receipt, Send, X } from "lucide-react";
+import { Check, CircleCheck, ClipboardCheck, Hourglass, Layers, Receipt, Send, X } from "lucide-react";
 import type { VariantProps } from "class-variance-authority";
 import type { LucideIcon } from "lucide-react";
 import type { badgeVariants } from "@/components/ui/badge";
@@ -50,7 +50,6 @@ export const STATUS_VARIANT: Record<OrderStatus, BadgeVariant> = ORDER_STATUS_TO
 export const STATUS_ICON: Record<OrderStatus, LucideIcon> = {
   PENDING_REVIEW: ClipboardCheck,
   AWAITING_CUSTOMER_APPROVAL: Hourglass,
-  KITCHEN_REVIEW: ChefHat,
   APPROVED: Check,
   SENT_TO_KITCHEN: Send,
   COMPLETED: CircleCheck,

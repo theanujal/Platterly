@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, ChefHat, CircleCheckBig, ClipboardCheck, ClipboardList, Hourglass, IndianRupee, Send, Wallet, XCircle } from "lucide-react";
+import { CheckCircle2, CircleCheckBig, ClipboardCheck, ClipboardList, Hourglass, IndianRupee, Send, Wallet, XCircle } from "lucide-react";
 import { ORDER_STATUS_LABEL } from "@/modules/orders/order-status";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
@@ -11,7 +11,6 @@ const STATUS_LABEL = ORDER_STATUS_LABEL;
 const STATUS_STYLE: Record<OrderStatus, { icon: typeof ClipboardCheck; bg: string }> = {
   PENDING_REVIEW: { icon: ClipboardCheck, bg: "bg-amber-500" },
   AWAITING_CUSTOMER_APPROVAL: { icon: Hourglass, bg: "bg-blue-600" },
-  KITCHEN_REVIEW: { icon: ChefHat, bg: "bg-violet-600" },
   APPROVED: { icon: CheckCircle2, bg: "bg-teal-600" },
   SENT_TO_KITCHEN: { icon: Send, bg: "bg-slate-600" },
   COMPLETED: { icon: CircleCheckBig, bg: "bg-emerald-600" },

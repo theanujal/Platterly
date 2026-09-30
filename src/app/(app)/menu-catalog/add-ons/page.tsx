@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listAddOns } from "@/modules/addons/addon";
+import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
@@ -17,8 +18,14 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-function AddOnTypeBadge({ type }: { type: "LIVE_COUNTER" | "SPECIAL_ADD_ON" }) {
-  return type === "LIVE_COUNTER" ? <Badge variant="violet">Live Counter</Badge> : <Badge variant="neutral">Special Add-on</Badge>;
+function AddOnTypeBadge({ type, onImage = false }: { type: "LIVE_COUNTER" | "SPECIAL_ADD_ON"; onImage?: boolean }) {
+  const live = type === "LIVE_COUNTER";
+  // On a photo a tinted badge would wash out, so it sits on a solid pill like the Veg tag.
+  return (
+    <Badge variant={live ? "violet" : "neutral"} className={cn(onImage && "h-10 bg-background px-3.5 text-sm shadow-sm", onImage && live && "text-tone-violet", onImage && !live && "text-foreground")}>
+      {live ? "Live Counter" : "Special Add-on"}
+    </Badge>
+  );
 }
 
 function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED") {
@@ -49,18 +56,21 @@ export default async function AddOnsPage() {
       sortValues: { name: addOn.name, price: Number(addOn.price), newest: addOn.createdAt.getTime() },
       card: (
         <>
-          <CatalogCardMedia src={addOn.image} icon={Sparkles} />
-          <CatalogCardBody
-            title={addOn.name}
-            trailing={
+          <CatalogCardMedia
+            src={addOn.image}
+            icon={Sparkles}
+            overlay={
               <>
-                {!addOn.isActive && <Badge variant="neutral">Inactive</Badge>}
+                <AddOnTypeBadge type={addOn.type} onImage />
                 <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
               </>
             }
+          />
+          <CatalogCardBody
+            title={addOn.name}
             description={addOn.description}
-            tags={<AddOnTypeBadge type={addOn.type} />}
             footer={<span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</span>}
+            active={addOn.isActive}
           />
         </>
       ),
@@ -78,7 +88,7 @@ export default async function AddOnsPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
+              <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -118,6 +128,7 @@ export default async function AddOnsPage() {
 
       <CatalogBrowser
         entries={entries}
+        defaultView="list"
         addTile={<AddAddOnDialog variant="tile" />}
         columns={["Add-on", "Type", "Price", "Status", ""]}
         richList

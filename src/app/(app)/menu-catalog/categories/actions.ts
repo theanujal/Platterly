@@ -6,6 +6,8 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  duplicateCategory,
+  setCategoryActive,
   listCategoryMenuAssignments,
   type CategoryInput,
 } from "@/modules/menus/category";
@@ -74,4 +76,28 @@ export async function getCategoryMenuAssignmentsAction(categoryId: string): Prom
     maxSelection: a.maxSelection,
     sortOrder: a.sortOrder,
   }));
+}
+
+export async function duplicateCategoryAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["create"] }, organizationId);
+  try {
+    await duplicateCategory(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/categories");
+  return { ok: true };
+}
+
+export async function setCategoryActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await setCategoryActive(organizationId, id, isActive, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/categories");
+  return { ok: true };
 }

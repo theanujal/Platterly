@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Boxes, Tag, IndianRupee } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { DrawerForm } from "@/components/catalog/form-drawer";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
@@ -59,9 +59,10 @@ interface InventoryFormProps {
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
+  onCancel: () => void;
 }
 
-export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuccess, submitLabel }: InventoryFormProps) {
+export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
   const [openingStock, setOpeningStock] = useState("");
   const [image, setImage] = useState<File | null>(null);
@@ -101,7 +102,7 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-w-xl flex-col gap-6">
+    <DrawerForm onSubmit={handleSubmit} error={error} pending={pending} submitLabel={submitLabel} onCancel={onCancel}>
       {/* Field order per AJ's spec, 2026-09-19: Image; Name | Category;
           Description; Unit | Opening Stock; Low Stock Alert | Expiry Date;
           Cost Per Unit | Storage Location; Supplier Name | Supplier
@@ -202,14 +203,6 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
       </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      <Button type="submit" disabled={pending} className="self-end">
-        {pending ? "Saving…" : submitLabel}
-      </Button>
-    </form>
+    </DrawerForm>
   );
 }

@@ -15,6 +15,24 @@ export interface MenuInput {
   childUnder5Price?: number | null;
   child5To10PricingType?: ChildPricingType;
   child5To10PriceValue?: number | null;
+  /** Full replacement of this menu's categories, in display order, each with its max-selection (null = unlimited). Omit to leave them alone. */
+  categoryAssignments?: { categoryId: string; maxSelection: number | null }[];
+}
+
+/** The Menu Types drawer owns picking and ordering a menu's categories (AJ, 2026-09-30); the array order becomes each row's sortOrder. */
+async function replaceMenuCategoryAssignments(organizationId: string, menuId: string, assignments: MenuInput["categoryAssignments"]) {
+  if (assignments === undefined) return;
+  const valid = await prisma.menuCategory.findMany({
+    where: { organizationId, id: { in: assignments.map((a) => a.categoryId) } },
+    select: { id: true },
+  });
+  const validIds = new Set(valid.map((c) => c.id));
+  const rows = assignments.filter((a) => validIds.has(a.categoryId));
+  await prisma.menuCategoryAssignment.deleteMany({ where: { menuId } });
+  if (rows.length === 0) return;
+  await prisma.menuCategoryAssignment.createMany({
+    data: rows.map((a, index) => ({ menuId, categoryId: a.categoryId, maxSelection: a.maxSelection, sortOrder: index })),
+  });
 }
 
 export async function createMenu(organizationId: string, input: MenuInput, actorUserId: string) {
@@ -33,6 +51,8 @@ export async function createMenu(organizationId: string, input: MenuInput, actor
       child5To10PriceValue: input.child5To10PriceValue,
     },
   });
+
+  await replaceMenuCategoryAssignments(organizationId, menu.id, input.categoryAssignments);
 
   await audit({
     organizationId,
@@ -64,6 +84,8 @@ export async function updateMenu(organizationId: string, id: string, input: Menu
       child5To10PriceValue: input.child5To10PriceValue !== undefined ? input.child5To10PriceValue : before.child5To10PriceValue,
     },
   });
+
+  await replaceMenuCategoryAssignments(organizationId, id, input.categoryAssignments);
 
   await audit({
     organizationId,
@@ -453,4 +475,51 @@ export async function listCustomMenuSections(organizationId: string, menuPrefere
     sections.get(key)!.items.push(toStorefrontItem(item));
   }
   return [...sections.values()].sort((a, b) => (a.categoryId === null ? 1 : 0) - (b.categoryId === null ? 1 : 0));
+}
+
+/** Copies a Menu with its items and category assignments (AJ, 2026-09-30 — the card menu's Duplicate). */
+export async function duplicateMenu(organizationId: string, id: string, actorUserId: string) {
+  const source = await getMenu(organizationId, id);
+  if (!source) throw new Error("Menu not found.");
+
+  const copy = await prisma.menu.create({
+    data: {
+      organizationId,
+      name: `${source.name} (Copy)`,
+      description: source.description,
+      image: source.image,
+      menuType: source.menuType,
+      pricePerPlate: source.pricePerPlate,
+      isActive: source.isActive,
+      childUnder5Chargeable: source.childUnder5Chargeable,
+      childUnder5Price: source.childUnder5Price,
+      child5To10PricingType: source.child5To10PricingType,
+      child5To10PriceValue: source.child5To10PriceValue,
+    },
+  });
+  if (source.items.length > 0) {
+    await prisma.menuMenuItem.createMany({ data: source.items.map((i) => ({ menuId: copy.id, menuItemId: i.menuItemId, sortOrder: i.sortOrder })) });
+  }
+  if (source.categoryAssignments.length > 0) {
+    await prisma.menuCategoryAssignment.createMany({
+      data: source.categoryAssignments.map((a) => ({ menuId: copy.id, categoryId: a.categoryId, maxSelection: a.maxSelection, sortOrder: a.sortOrder })),
+    });
+  }
+
+  await audit({ organizationId, actorUserId, action: "menu.create", recordType: "Menu", recordId: copy.id, after: JSON.parse(JSON.stringify(copy)) });
+  return copy;
+}
+
+export async function setMenuActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {
+  const before = await prisma.menu.findFirstOrThrow({ where: { id, organizationId } });
+  const after = await prisma.menu.update({ where: { id }, data: { isActive } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "menu.update",
+    recordType: "Menu",
+    recordId: id,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
 }

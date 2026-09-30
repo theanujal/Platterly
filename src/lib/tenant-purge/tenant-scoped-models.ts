@@ -38,6 +38,10 @@ export const TENANT_SCOPED_DELEGATES = [
   // "event" below at the DB level either way — listed here purely to
   // satisfy the guardrail test, order doesn't matter against "event".
   "menuSelection",
+  // 2026-09-30 — menuApprovalNote keeps its own organizationId but also cascades off menuSelection; listed for the guardrail (order does not matter).
+  "menuApprovalNote",
+  // 2026-09-30 — statusChange keeps its own organizationId and cascades off order; listed for the guardrail.
+  "statusChange",
   // Chunk 9 — Event has onDelete: Restrict FKs to Customer/EventType, and
   // its child eventRequiredInventory (no organizationId of its own,
   // cascades off Event automatically) has onDelete: Restrict to Inventory.

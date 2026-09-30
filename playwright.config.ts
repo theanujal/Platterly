@@ -5,23 +5,31 @@ import { defineConfig, devices } from "@playwright/test";
 // Runs against the real dev Postgres DB, same convention as the Vitest
 // suite (no mocking, no separate test DB) — specs are responsible for their
 // own cleanup, same as `afterEach` in the Vitest tests.
+// Two ways to run locally (2026-09-30):
+//   npm run test:e2e        headed, slowMo 350, one window at a time, for watching (AJ's default)
+//   npm run test:e2e:fast   PW_FAST=1: headless, no slowMo, 4 workers, for a quick full-suite check
+// Every spec signs up its own throwaway caterer, so specs don't share data and can run in parallel.
+const fast = !!process.env.PW_FAST;
+const headless = !!process.env.CI || fast;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   // Headed local runs are meant to be watched — one browser window at a
   // time, not five at once. CI (if ever wired in) keeps default parallelism.
-  workers: process.env.CI ? undefined : 1,
+  workers: fast ? 4 : process.env.CI ? undefined : 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: "html",
+  // "list" prints each test and its time in the terminal; the HTML report is still written but never auto-opened (it used to hang the terminal on a failure).
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",
     // AJ wants to actually watch these run, not just see screenshots after
     // the fact — headed + a bit of slowMo so actions are visible in real
     // time. Revisit (headless in CI) if this ever gets wired into CI.
-    headless: !!process.env.CI,
-    launchOptions: { slowMo: process.env.CI ? 0 : 350 },
+    headless,
+    launchOptions: { slowMo: headless ? 0 : 350 },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {

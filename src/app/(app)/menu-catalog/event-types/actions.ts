@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createEventType, updateEventType, deleteEventType, reorderEventTypes, type EventTypeInput } from "@/modules/events/event-type";
+import { duplicateEventType, setEventTypeActive, createEventType, updateEventType, deleteEventType, reorderEventTypes, type EventTypeInput } from "@/modules/events/event-type";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -89,6 +89,30 @@ export async function reorderEventTypesAction(orderedIds: string[]): Promise<Act
   await requirePermission({ events: ["edit"] }, organizationId);
   try {
     await reorderEventTypes(organizationId, orderedIds, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/event-types");
+  return { ok: true };
+}
+
+export async function duplicateEventTypeAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ events: ["create"] }, organizationId);
+  try {
+    await duplicateEventType(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/event-types");
+  return { ok: true };
+}
+
+export async function setEventTypeActiveAction(id: string, isActive: boolean): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ events: ["edit"] }, organizationId);
+  try {
+    await setEventTypeActive(organizationId, id, isActive, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

@@ -50,10 +50,10 @@ describe("summarizeMenuApproval", () => {
     expect(summarizeMenuApproval([], "AWAITING_CUSTOMER_APPROVAL")).toBeNull();
   });
 
-  it("calls a re-sent menu a revision, but the first send just 'Menu sent'", () => {
-    expect(summarizeMenuApproval([sel("SENT_TO_CUSTOMER", 2)], "AWAITING_CUSTOMER_APPROVAL")).toEqual({
-      title: "Revised menu sent",
-      detail: "Waiting for customer approval.",
+  it("calls a re-sent menu an updated menu, but the first send just 'Menu sent'", () => {
+    expect(summarizeMenuApproval([sel("CUSTOMER_REVIEWING", 2)], "AWAITING_CUSTOMER_APPROVAL")).toEqual({
+      title: "Updated menu sent",
+      detail: "Waiting for the customer to review it.",
       tone: "info",
     });
     expect(summarizeMenuApproval([sel("SENT_TO_CUSTOMER", 1)], "AWAITING_CUSTOMER_APPROVAL")?.title).toBe("Menu sent");
@@ -62,19 +62,16 @@ describe("summarizeMenuApproval", () => {
   it("uses the same tone as the Menu Approvals page badges", () => {
     expect(summarizeMenuApproval([sel("DRAFT")], "PENDING_REVIEW")).toMatchObject({ title: "Needs review", tone: "cyan" });
     expect(summarizeMenuApproval([sel("CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("pink");
-    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("fuchsia");
-    expect(summarizeMenuApproval([sel("KITCHEN_REVIEWING")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("info");
+    expect(summarizeMenuApproval([sel("CUSTOMER_REVIEWING")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("info");
     expect(summarizeMenuApproval([sel("FINAL_LOCKED")], "AWAITING_CUSTOMER_APPROVAL")?.tone).toBe("success");
   });
 
   it("surfaces the least-advanced menu when an order has several events", () => {
-    expect(summarizeMenuApproval([sel("FINAL_LOCKED"), sel("CUSTOMER_REVIEWING"), sel("KITCHEN_APPROVED")], "AWAITING_CUSTOMER_APPROVAL")?.title).toBe("Customer is reviewing");
+    expect(summarizeMenuApproval([sel("FINAL_LOCKED"), sel("CUSTOMER_REVIEWING"), sel("CUSTOMER_APPROVED")], "AWAITING_CUSTOMER_APPROVAL")?.title).toBe("Updated menu sent");
   });
 
-  it("describes each step of the new team -> customer -> kitchen flow", () => {
-    expect(summarizeMenuApproval([sel("CUSTOMER_APPROVED")], "KITCHEN_REVIEW")).toMatchObject({ title: "Customer approved the menu", tone: "success" });
-    expect(summarizeMenuApproval([sel("KITCHEN_REVIEWING")], "KITCHEN_REVIEW")).toMatchObject({ title: "Kitchen is reviewing", tone: "info" });
-    expect(summarizeMenuApproval([sel("KITCHEN_CHANGES_REQUESTED")], "PENDING_REVIEW")).toMatchObject({ title: "Kitchen requested changes", tone: "fuchsia" });
+  it("describes each step of the team -> customer -> kitchen flow", () => {
+    expect(summarizeMenuApproval([sel("CUSTOMER_APPROVED")], "APPROVED")).toMatchObject({ title: "Customer approved the menu", tone: "success" });
     expect(summarizeMenuApproval([sel("FINAL_LOCKED")], "SENT_TO_KITCHEN")).toMatchObject({ title: "Sent to the kitchen", tone: "success" });
   });
 
@@ -171,7 +168,6 @@ describe("distinct 'needs attention' tones (AJ, 2026-09-27)", () => {
       pendingReview: ORDER_STATUS_TONE.PENDING_REVIEW,
       needsReview: MENU_SELECTION_STATUS_TONE.DRAFT,
       changesRequested: MENU_SELECTION_STATUS_TONE.CHANGES_REQUESTED,
-      kitchenChangesRequested: MENU_SELECTION_STATUS_TONE.KITCHEN_CHANGES_REQUESTED,
       inPreparation: KITCHEN_STATUS_TONE.IN_PREPARATION,
       oneDay: getEventCountdown(day("2026-09-27"), day("2026-09-27"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,
       today: getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,

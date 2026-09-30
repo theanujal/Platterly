@@ -165,7 +165,7 @@ export interface CalendarFixtureOrder {
   /** "YYYY-MM-DD" */
   start: string;
   end: string;
-  status?: "PENDING_REVIEW" | "AWAITING_CUSTOMER_APPROVAL" | "KITCHEN_REVIEW" | "APPROVED" | "SENT_TO_KITCHEN" | "COMPLETED" | "CANCELLED";
+  status?: "PENDING_REVIEW" | "AWAITING_CUSTOMER_APPROVAL" | "APPROVED" | "SENT_TO_KITCHEN" | "COMPLETED" | "CANCELLED";
   guests?: number;
 }
 

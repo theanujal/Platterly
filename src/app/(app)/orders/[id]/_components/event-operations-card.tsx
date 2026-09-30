@@ -65,11 +65,15 @@ export function EventOperationsCard({
       </div>
 
       {!event ? (
-        <p className="text-sm text-muted-foreground">Set an Event Type on this order and save it. The event is created for you, and its kitchen and status show up here.</p>
+        <p className="text-sm text-muted-foreground">
+          Set an Event Type on this order and save it. The event is created for you, and its kitchen and status show up here.
+        </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="event-kitchen">Assigned Kitchen</Label>
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="event-kitchen" className="shrink-0 font-normal text-muted-foreground">
+              Assigned Kitchen
+            </Label>
             <Select
               items={{ [NO_KITCHEN]: "Not assigned", ...Object.fromEntries(kitchens.map((k) => [k.id, k.name])) }}
               value={kitchenId}
@@ -79,7 +83,7 @@ export function EventOperationsCard({
                 void save({ assignedKitchenId: next === NO_KITCHEN ? null : next });
               }}
             >
-              <SelectTrigger id="event-kitchen" className="w-full">
+              <SelectTrigger id="event-kitchen" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -92,8 +96,10 @@ export function EventOperationsCard({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="event-status">Event Status</Label>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="event-status" className="shrink-0 font-normal text-muted-foreground">
+              Event Status
+            </Label>
             <Select
               items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
               value={status}
@@ -103,7 +109,7 @@ export function EventOperationsCard({
                 void save({ status: next });
               }}
             >
-              <SelectTrigger id="event-status" className="w-full">
+              <SelectTrigger id="event-status" className="w-44">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
