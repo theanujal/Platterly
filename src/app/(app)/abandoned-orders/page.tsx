@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import type { Metadata } from "next";
 import {
-  MessageCircle,
   Phone,
   Mail,
   MapPin,
@@ -31,12 +30,13 @@ import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { CopyButton } from "@/components/ui/copy-button";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 
 // WhatsApp's own brand green (not a design-system token — same one-off
 // exception apps make for a recognizable "Chat on WhatsApp" CTA, AJ 2026-09-28).
-const WHATSAPP_GREEN = "bg-[#25D366] text-white border-[#25D366] hover:bg-[#1FAD54] hover:border-[#1FAD54]";
+const WHATSAPP_TINT = "bg-[#25D366]/15 text-[#128C4A] hover:bg-[#25D366]/25";
 
 // Badge pads its leading edge tighter when it sees this attribute on an icon child (same convention as order-card.tsx).
 const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
@@ -138,22 +138,35 @@ export default async function AbandonedOrdersPage() {
     const menuPreferenceLabel = isVeg ? "Vegetarian" : "Non-Vegetarian";
     const eventWhen = formatEventWhen(new Date(draft.eventDate), new Date(draft.eventDate), now);
     const eventDateLabel = formatEventDates(new Date(draft.eventDate), new Date(draft.eventDate));
-    // No official WhatsApp logo in lucide-react — MessageCircle stands in for it, but the button
-    // keeps WhatsApp's own brand green rather than an outline/orange, per AJ's call (2026-09-28).
-    // Once expired there's nothing left to follow up on — the resume link itself no longer works.
+    // Same action styling as the Customers card/list (AJ, 2026-09-30): a tinted WhatsApp button
+    // plus an icon-only Copy link on the card, ghost icon buttons in the list. Once expired
+    // there's nothing left to follow up on — the resume link itself no longer works.
+    const expiredNote = <p className="text-sm text-muted-foreground">This link expired after {DRAFT_EXPIRY_DAYS} days of inactivity.</p>;
     const actions = draft.isExpired ? (
-      <p className="text-center text-sm text-muted-foreground">This link expired after {DRAFT_EXPIRY_DAYS} days of inactivity.</p>
+      <div className="text-center">{expiredNote}</div>
     ) : (
       <div className="flex items-center gap-2">
+        <Button render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />} nativeButton={false} size="md" className={`flex-1 ${WHATSAPP_TINT}`}>
+          <WhatsAppIcon className="size-4" /> Send on WhatsApp
+        </Button>
+        <CopyButton value={resumeUrl} label="Copy link" size="md" iconOnly className="size-[38px]" />
+      </div>
+    );
+    const listActions = draft.isExpired ? (
+      <span className="text-xs whitespace-nowrap text-muted-foreground">Link expired</span>
+    ) : (
+      <div className="flex items-center justify-end gap-1">
         <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Send resume link to ${customer.name} on WhatsApp`}
+          className="text-[#128C4A]"
           render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />}
           nativeButton={false}
-          size="md"
-          className={`flex-1 ${WHATSAPP_GREEN}`}
         >
-          <MessageCircle /> WhatsApp
+          <WhatsAppIcon className="size-4" />
         </Button>
-        <CopyButton value={resumeUrl} label="Copy link" size="md" className="flex-1" />
+        <CopyButton value={resumeUrl} label="Copy link" iconOnly className="border-transparent" />
       </div>
     );
 
@@ -292,11 +305,19 @@ export default async function AbandonedOrdersPage() {
               {draft.guestCount}
             </span>
           </TableCell>
-          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{stepLabel(draft.currentStep)}</TableCell>
-          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{timeAgo(draft.lastActivityAt)}</TableCell>
-          <TableCell className="px-3 py-3">{statusBadge}</TableCell>
-          <TableCell className="px-3 py-3">{consentBadge}</TableCell>
-          <TableCell className="px-3 py-3">{actions}</TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-sm whitespace-nowrap text-muted-foreground">{stepLabel(draft.currentStep)}</span>
+              <span className="text-xs whitespace-nowrap text-muted-foreground">{timeAgo(draft.lastActivityAt)}</span>
+            </div>
+          </TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex flex-col items-start gap-1">
+              {statusBadge}
+              {consentBadge}
+            </div>
+          </TableCell>
+          <TableCell className="px-3 py-3">{listActions}</TableCell>
         </>
       ),
     };
@@ -329,7 +350,7 @@ export default async function AbandonedOrdersPage() {
       <CatalogBrowser
         entries={entries}
         addTile={null}
-        columns={["Customer", "Event", "Guests", "Stopped at", "Last activity", "Status", "Consent", "Follow up"]}
+        columns={["Customer", "Event", "Guests", "Stopped at", "Status", ""]}
         searchPlaceholder="Search abandoned orders…"
         emptyLabel="No abandoned orders — everyone who started an order has finished it."
         filterOptions={filterOptions}

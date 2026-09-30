@@ -5,8 +5,7 @@ import { verifyEmailViaOtp } from "./auth-helpers";
 /**
  * Add-ons Management (2026-09-14, AJ's own field-level spec) — a standalone
  * catalog of Live Counters and Special Add-ons, each priced Per Plate or
- * Fixed. A new top-level sidebar section (a peer of Menu Catalog and
- * Events), not a tab inside Menu Catalog.
+ * Fixed. Lives in the Menu Catalog sub-nav (moved there 2026-09-30).
  *
  * Reworked again 2026-09-14 (UI/UX redesign round): Add and Edit are now
  * popup dialogs (a top-right "Add Add-on" button, a pencil icon per card) —
@@ -48,9 +47,10 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   // dismissed — close it before interacting with anything else.
   await page.getByRole("button", { name: "Close" }).click();
 
-  // --- Add-ons is a top-level sidebar item, a peer of Menu Catalog/Events, not nested under Menu Catalog. ---
+  // --- Add-ons lives in the Menu Catalog sub-nav (AJ, 2026-09-30), alongside Event Types. ---
+  await page.getByRole("link", { name: "Menu Catalog", exact: true }).first().click();
   await page.getByRole("link", { name: "Add-ons" }).click();
-  await expect(page).toHaveURL(/\/addons$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/add-ons$/);
   await expect(page.getByRole("heading", { name: "Add-ons" })).toBeVisible();
 
   // --- Live Counter, priced Per Plate, via the "Add Add-on" popup ---

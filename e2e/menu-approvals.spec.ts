@@ -105,7 +105,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   }
 
   const addOnName = `Live Chaat ${suffix}`;
-  await page.goto("/addons");
+  await page.goto("/menu-catalog/add-ons");
   await page.getByRole("button", { name: "Add Add-on" }).click();
   await page.getByLabel("Name").fill(addOnName);
   await page.getByLabel("Price", { exact: true }).fill("10"); // Per Plate by default
@@ -114,11 +114,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- Event Type with that Menu assigned (the storefront scopes its menus to this) ---
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("checkbox", { name: menuName }).check();
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   // --- Customer walks the public flow (brand-new cookie-less context, no login) ---
   const publicContext = await browser.newContext();

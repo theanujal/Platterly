@@ -142,10 +142,10 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   const menuName = `Wedding Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");
@@ -314,10 +314,10 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Reception ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   // --- Two Menus, each with its own Food Item assigned to it ---
   const lunchMenuName = `Lunch Menu ${suffix}`;
@@ -566,10 +566,10 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Reception ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   const menuName = `Feast Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");
@@ -611,7 +611,7 @@ test("the food item drawer: category limits are compulsory, extra items are char
   }
 
   const addOnName = `Live Chaat ${suffix}`;
-  await page.goto("/addons");
+  await page.goto("/menu-catalog/add-ons");
   await page.getByRole("button", { name: "Add Add-on" }).click();
   await page.getByLabel("Name").fill(addOnName);
   await page.getByLabel("Price", { exact: true }).fill("20");

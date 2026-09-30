@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ChefHat, Sparkles, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Settings2, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -32,8 +32,6 @@ const SALES_AND_CATALOG_ITEMS = [
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
-  { label: "Event Types", href: "/events", icon: Settings2 },
-  { label: "Add-ons", href: "/addons", icon: Sparkles },
 ] as const;
 
 const INVENTORY_ITEMS = [{ label: "Inventory", href: "/inventory", icon: Boxes }] as const;

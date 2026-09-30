@@ -57,7 +57,7 @@ export async function createAddOnAction(formData: FormData): Promise<ActionResul
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/addons");
+  revalidatePath("/menu-catalog/add-ons");
   return { ok: true };
 }
 
@@ -74,7 +74,7 @@ export async function updateAddOnAction(
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/addons");
+  revalidatePath("/menu-catalog/add-ons");
   return { ok: true };
 }
 
@@ -86,6 +86,6 @@ export async function deleteAddOnAction(id: string): Promise<ActionResult> {
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/addons");
+  revalidatePath("/menu-catalog/add-ons");
   return { ok: true };
 }

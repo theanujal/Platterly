@@ -225,7 +225,7 @@ export function FoodItemSelectionDrawer({
   const totalSelected = picked.length;
   const railItemClass = (active: boolean) =>
     cn(
-      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
+      "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 sm:w-full text-left text-sm font-medium transition-colors",
       active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-foreground hover:bg-muted",
     );
   // The active tab's own count carries the accent tone too (matching the reference), not just its label.
@@ -233,7 +233,7 @@ export function FoodItemSelectionDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 p-0 data-[side=right]:sm:max-w-4xl">
+      <SheetContent className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-4xl">
         <SheetHeader className="gap-3 border-b border-border p-5 pr-14">
           <SheetTitle className="text-lg">Select Menu Items</SheetTitle>
           <SheetDescription className="sr-only">Choose the dishes and add-ons for {menuName}.</SheetDescription>
@@ -252,8 +252,8 @@ export function FoodItemSelectionDrawer({
               {vegOnly && <p className="text-xs text-muted-foreground">Showing vegetarian dishes only.</p>}
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="relative min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <div className="relative min-w-[12rem] flex-1">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search food items…" className="w-full pl-9" />
             </div>
@@ -281,7 +281,7 @@ export function FoodItemSelectionDrawer({
         ) : sections.length === 0 && data.addOns.length === 0 ? (
           <p className="flex-1 py-10 text-center text-sm text-muted-foreground">This menu has no food items yet.</p>
         ) : (
-          <div className="grid min-h-0 flex-1 grid-cols-[11rem_minmax(0,1fr)] gap-4 p-5 sm:grid-cols-[12rem_minmax(0,1fr)]">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:grid-cols-[12rem_minmax(0,1fr)] sm:grid-rows-1 sm:gap-4 sm:p-5">
             {/*
               `overflow-y-auto` alone forces the browser to also compute
               overflow-x as `auto` (a scroll container can't have one axis
@@ -290,7 +290,7 @@ export function FoodItemSelectionDrawer({
               this container's own edges, since the ring paints outside the
               button's border box. `p-1` gives it room.
             */}
-            <nav className="flex min-h-0 flex-col gap-1 overflow-y-auto p-1" aria-label="Categories">
+            <nav className="flex min-h-0 flex-row gap-1 overflow-x-auto p-1 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto" aria-label="Categories">
               {sections.map((section) => {
                 const key = section.categoryId ?? "other";
                 return (
@@ -310,9 +310,9 @@ export function FoodItemSelectionDrawer({
               )}
             </nav>
 
-            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto rounded-xl border border-border p-4">
+            <div className="flex min-h-0 flex-col overflow-y-auto rounded-xl border border-border bg-card">
               {effectiveCategory !== "ADDONS" && (
-                <div className="flex items-center justify-between gap-2">
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-card px-4 py-3">
                   <h3 className="text-base font-semibold">{sections.find((s) => (s.categoryId ?? "other") === effectiveCategory)?.categoryName ?? "Items"}</h3>
                   <button type="button" onClick={toggleSelectAll} className="flex items-center gap-2 text-sm font-medium" disabled={visibleItems.length === 0}>
                     <Box checked={allVisibleSelected} />
@@ -322,7 +322,7 @@ export function FoodItemSelectionDrawer({
               )}
 
               {visibleSections.length === 0 && visibleAddOns.length === 0 && (
-                <p className="py-6 text-center text-sm text-muted-foreground">No food items match your search.</p>
+                <p className="p-6 text-center text-sm text-muted-foreground">No food items match your search.</p>
               )}
 
               {visibleSections.map(({ section, index, items }) => {
@@ -330,18 +330,18 @@ export function FoodItemSelectionDrawer({
                 const needed = section.maxSelection === null ? null : Math.min(section.maxSelection, section.items.length);
                 const met = needed === null || regular >= needed;
                 return (
-                  <div key={section.categoryId ?? "other"} className="flex flex-col gap-1" data-testid={`picker-section-${section.categoryName}`}>
-                    <div className="flex items-center justify-between gap-2 py-1">
-                      <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{section.categoryName}</span>
-                      {needed !== null && (
+                  <div key={section.categoryId ?? "other"} className="flex flex-col" data-testid={`picker-section-${section.categoryName}`}>
+                    {needed !== null && (
+                      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                        <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Included items</span>
                         <Badge variant={met ? "success" : "warning"}>
                           {regular}/{section.maxSelection}
                           {!met ? ` · pick ${needed - regular} more` : ""}
                         </Badge>
-                      )}
-                    </div>
-                    <Table className="rounded-lg border border-border">
-                      <TableBody>
+                      </div>
+                    )}
+                    <Table>
+                      <TableBody className="[&_tr:last-child]:border-0">
                         {items.map((item) => {
                           const selected = picked.includes(item.id);
                           const isExtra = extraSet.has(item.id);
@@ -353,9 +353,9 @@ export function FoodItemSelectionDrawer({
                               aria-pressed={selected}
                               onClick={() => toggleItem(item, index)}
                               onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggleItem(item, index))}
-                              className="cursor-pointer"
+                              className="h-16 cursor-pointer"
                             >
-                              <TableCell className="w-10">
+                              <TableCell className="w-12 pl-4">
                                 <Box checked={selected} />
                               </TableCell>
                               <TableCell className="w-14">
@@ -371,7 +371,7 @@ export function FoodItemSelectionDrawer({
                                   )}
                                 </span>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="pr-4 text-right">
                                 <FoodTypeBadge foodType={item.foodType} />
                               </TableCell>
                             </TableRow>
@@ -384,12 +384,12 @@ export function FoodItemSelectionDrawer({
               })}
 
               {visibleAddOns.length > 0 && (
-                <div className="flex flex-col gap-1" data-testid="picker-addons">
-                  <div className="py-1">
+                <div className="flex flex-col" data-testid="picker-addons">
+                  <div className="border-b border-border bg-muted/40 px-4 py-2">
                     <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Add-ons (Optional)</span>
                   </div>
-                  <Table className="rounded-lg border border-border">
-                    <TableBody>
+                  <Table>
+                    <TableBody className="[&_tr:last-child]:border-0">
                       {visibleAddOns.map((addOn) => {
                         const selected = addOnIds.includes(addOn.id);
                         return (
@@ -400,9 +400,9 @@ export function FoodItemSelectionDrawer({
                             aria-pressed={selected}
                             onClick={() => toggleAddOn(addOn.id)}
                             onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), toggleAddOn(addOn.id))}
-                            className="cursor-pointer"
+                            className="h-16 cursor-pointer"
                           >
-                            <TableCell className="w-10">
+                            <TableCell className="w-12 pl-4">
                               <Box checked={selected} />
                             </TableCell>
                             <TableCell className="w-14">
@@ -427,7 +427,7 @@ export function FoodItemSelectionDrawer({
           </div>
         )}
 
-        <SheetFooter className="flex-row items-center justify-between gap-3 border-t border-border p-5">
+        <SheetFooter className="flex-row flex-wrap items-center justify-between gap-3 border-t border-border p-4 sm:p-5">
           <div className="min-w-0 text-sm">
             <p className="font-semibold">
               {totalSelected} item{totalSelected === 1 ? "" : "s"} selected

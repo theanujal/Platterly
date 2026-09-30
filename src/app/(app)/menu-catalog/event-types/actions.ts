@@ -50,7 +50,7 @@ export async function createEventTypeAction(formData: FormData): Promise<ActionR
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/events");
+  revalidatePath("/menu-catalog/event-types");
   return { ok: true };
 }
 
@@ -67,8 +67,8 @@ export async function updateEventTypeAction(
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/events");
-  revalidatePath(`/events/${id}`);
+  revalidatePath("/menu-catalog/event-types");
+  revalidatePath(`/menu-catalog/event-types/${id}`);
   return { ok: true };
 }
 
@@ -80,7 +80,7 @@ export async function deleteEventTypeAction(id: string): Promise<ActionResult> {
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/events");
+  revalidatePath("/menu-catalog/event-types");
   return { ok: true };
 }
 
@@ -92,6 +92,6 @@ export async function reorderEventTypesAction(orderedIds: string[]): Promise<Act
   } catch (error) {
     return toErrorResult(error);
   }
-  revalidatePath("/events");
+  revalidatePath("/menu-catalog/event-types");
   return { ok: true };
 }

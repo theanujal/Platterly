@@ -117,10 +117,10 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Birthday ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   const menuName = `Party Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");

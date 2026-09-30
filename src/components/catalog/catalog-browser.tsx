@@ -360,7 +360,11 @@ export function CatalogBrowser({
                     className={entry.href ? "cursor-pointer" : undefined}
                     onClick={
                       entry.href
-                        ? () => {
+                        ? (event) => {
+                            // Buttons/links inside the row (and dialogs they open — portals bubble
+                            // through React but aren't DOM descendants) must not trigger the row link.
+                            const target = event.target as HTMLElement;
+                            if (!event.currentTarget.contains(target) || target.closest("a, button, input, [role='button'], [role='menuitem']")) return;
                             window.location.href = entry.href!;
                           }
                         : undefined

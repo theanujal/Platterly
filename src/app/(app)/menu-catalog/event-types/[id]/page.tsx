@@ -13,7 +13,7 @@ export default async function EditEventTypePage({ params }: { params: Promise<{ 
   if (!eventType) notFound();
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{eventType.name}</h1>

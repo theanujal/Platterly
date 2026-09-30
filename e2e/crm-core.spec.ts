@@ -17,12 +17,12 @@ import { verifyEmailViaOtp } from "./auth-helpers";
  * record/page now, and status (Lead vs Customer) is derived from Order
  * ownership rather than an explicit Convert action.
  *
- * Updated 2026-09-16: the standalone `/events` Dashboard and `/events/new`
+ * Updated 2026-09-16: the standalone `/menu-catalog/event-types` Dashboard and `/menu-catalog/event-types/new`
  * (Customer-only Event creation) were removed once every Event started
  * coming from an Order (AJ's decision) — Event creation/editing now happens
  * entirely from the Order detail page's inline editor, which folded in
- * everything the old standalone `/events/[id]` page used to expose (status,
- * required inventory, name/dates/notes, delete). `/events` now serves Event
+ * everything the old standalone `/menu-catalog/event-types/[id]` page used to expose (status,
+ * required inventory, name/dates/notes, delete). `/menu-catalog/event-types` now serves Event
  * Types instead (see e2e/events.spec.ts).
  */
 
@@ -74,10 +74,10 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const eventTypeName = `Wedding ${suffix}`;
-  await page.goto("/events/new");
+  await page.goto("/menu-catalog/event-types/new");
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByRole("button", { name: "Create event" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
 
   // --- Add a Lead on the merged Customers page, with Lead Information ---
   const leadName = `Asha Rao ${suffix}`;
@@ -95,6 +95,18 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(leadName)).toBeVisible();
   await expect(page.getByText("Lead", { exact: true }).first()).toBeVisible();
+
+  // --- List view: the whole row is a link, but the buttons inside it (and dialogs they open) aren't ---
+  await page.getByRole("button", { name: /list/i }).first().click();
+  await page.getByRole("button", { name: `Edit ${leadName}` }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("dialog").getByLabel("Name").click();
+  await expect(page).toHaveURL(/\/customers$/);
+  await page.keyboard.press("Escape");
+  await page.getByRole("cell").getByText("Lead", { exact: true }).click();
+  await expect(page).toHaveURL(/\/customers\/.+/);
+  await page.goBack();
+  await page.getByRole("button", { name: /grid/i }).first().click();
 
   // --- Leads-only filter shows this person; Customers-only filter doesn't (yet) ---
   await page.getByLabel("Filter by All").click();

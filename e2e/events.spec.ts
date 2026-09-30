@@ -14,7 +14,7 @@ import { verifyEmailViaOtp } from "./auth-helpers";
  * Event started coming from an Order (AJ's decision — see
  * src/modules/orders/README.md and e2e/crm-core.spec.ts). Event Types moved
  * up to replace it: the sidebar's "Event Types" item now lands directly on
- * `/events` (formerly `/events/types`), with no dashboard in between.
+ * `/menu-catalog/event-types` (formerly `/menu-catalog/event-types/types`), with no dashboard in between.
  */
 
 const cleanupEmails: string[] = [];
@@ -61,13 +61,13 @@ test("create an event type with an icon assigning a menu, then edit it", async (
 
   // --- "Event Types" nav item lands directly on /events (no dashboard) ---
   await page.getByRole("link", { name: "Event Types" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
   await expect(page.getByRole("heading", { name: "Event Types" })).toBeVisible();
 
   // --- Create Event Type, with an icon (Chunk 9 Group 9.1) ---
   const eventTypeName = `Wedding Event ${suffix}`;
   await page.getByRole("link", { name: "Add New Event Type" }).click();
-  await expect(page).toHaveURL(/\/events\/new$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types\/new$/);
   await page.getByLabel("Event Name").fill(eventTypeName);
   await page.getByLabel("Description").fill("Full wedding catering package");
   await page.getByLabel("Icon").click();
@@ -76,18 +76,18 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   await page.getByText(menuName).click();
   await page.getByRole("button", { name: "Create event" }).click();
 
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
   await expect(page.getByText(eventTypeName)).toBeVisible();
   await expect(page.getByText("Min 50 guests")).toBeVisible();
 
   // --- Edit: confirm the menu assignment and icon round-trip ---
   await page.getByText(eventTypeName).click();
-  await expect(page).toHaveURL(/\/events\/.+/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types\/.+/);
   await expect(page.getByLabel("Event Name")).toHaveValue(eventTypeName);
   await expect(page.getByText(menuName)).toBeVisible();
 
   await page.getByLabel("Event Name").fill(`${eventTypeName} Updated`);
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page).toHaveURL(/\/events$/);
+  await expect(page).toHaveURL(/\/menu-catalog\/event-types$/);
   await expect(page.getByText(`${eventTypeName} Updated`)).toBeVisible();
 });

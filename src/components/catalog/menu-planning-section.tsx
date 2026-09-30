@@ -183,9 +183,9 @@ export function MenuPlanningSection({
       <div
         key={mealType}
         data-testid={`${mealSlotTestIdPrefix}meal-slot-${date}-${mealType}`}
-        className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-accent/40 p-4"
+        className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-accent/40 p-3 sm:p-4"
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="flex items-center gap-2 text-sm font-semibold">
             <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
               {createElement(MEAL_ICON[mealType], { className: "size-4" })}
@@ -245,7 +245,7 @@ export function MenuPlanningSection({
 
         {entry.menuId && (
           <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm">
                 <span className="font-medium">Food Items</span>
                 <span className="ml-2 text-muted-foreground">
@@ -374,8 +374,8 @@ export function MenuPlanningSection({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
-          <nav className="flex flex-col gap-1.5 rounded-xl border border-border p-2" aria-label="Event Dates">
-            <span className="px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Event Dates</span>
+          <nav className="flex flex-row gap-1.5 overflow-x-auto rounded-xl border border-border p-2 md:flex-col md:overflow-x-visible" aria-label="Event Dates">
+            <span className="hidden px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase md:block">Event Dates</span>
             {days.map((date) => {
               const meals = dayMeals(date);
               const isFocused = date === activeDate;
@@ -385,7 +385,7 @@ export function MenuPlanningSection({
                   type="button"
                   onClick={() => setFocusedDate(date)}
                   className={cn(
-                    "flex flex-col gap-0.5 rounded-lg border-l-2 px-3 py-2 text-left transition-colors",
+                    "flex min-w-44 shrink-0 flex-col gap-0.5 rounded-lg border-l-2 px-3 py-2 text-left transition-colors md:min-w-0 md:shrink",
                     isFocused ? "border-primary bg-accent/50" : "border-transparent hover:bg-muted/50",
                   )}
                 >
@@ -400,7 +400,7 @@ export function MenuPlanningSection({
           </nav>
 
           {activeDate && (
-            <div className="flex flex-col gap-4 rounded-xl border border-border p-4">
+            <div className="flex min-w-0 flex-col gap-4 rounded-xl border border-border p-3 sm:p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-semibold">{formatDay(activeDate, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</h3>

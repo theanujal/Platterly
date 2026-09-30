@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, LayoutGrid, UtensilsCrossed } from "lucide-react";
+import { BookOpen, LayoutGrid, PartyPopper, Sparkles, UtensilsCrossed } from "lucide-react";
 import { cn } from "cn";
 
 // Display order/labels only (AJ, 2026-09-14) — routes/model names are
@@ -11,6 +11,8 @@ const NAV_ITEMS = [
   { label: "Menu Types", href: "/menu-catalog/menus", icon: BookOpen },
   { label: "Menu Categories", href: "/menu-catalog/categories", icon: LayoutGrid },
   { label: "Food Items", href: "/menu-catalog/items", icon: UtensilsCrossed },
+  { label: "Event Types", href: "/menu-catalog/event-types", icon: PartyPopper },
+  { label: "Add-ons", href: "/menu-catalog/add-ons", icon: Sparkles },
 ] as const;
 
 // AJ's reference screenshot, 2026-09-17 — the sub-nav needs its own active/
@@ -28,7 +30,7 @@ export function MenuCatalogNav() {
     <nav className="flex shrink-0 flex-col gap-1 bg-secondary px-4 py-6 md:w-52">
       <h2 className="px-3 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Menu Catalog</h2>
       {NAV_ITEMS.map((item) => {
-        const active = pathname === item.href;
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link
             key={item.href}

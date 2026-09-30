@@ -32,7 +32,7 @@ export function EventTypeRowActions({ eventTypeId, name }: { eventTypeId: string
       return;
     }
     setOpen(false);
-    router.push("/events");
+    router.push("/menu-catalog/event-types");
   }
 
   return (

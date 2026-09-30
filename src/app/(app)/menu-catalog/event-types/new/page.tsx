@@ -8,7 +8,7 @@ export default async function NewEventTypePage() {
   const menus = await listMenus(organizationId);
 
   return (
-    <div className="flex flex-col gap-6 p-6 md:p-8">
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-lg font-semibold">New Event Type</h1>
         <p className="text-sm text-muted-foreground">Add a type of event you cater, e.g. Wedding Event.</p>

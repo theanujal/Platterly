@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
-import { Users } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listCustomers } from "@/modules/customers/customer";
-import { formatPhoneDisplay } from "@/lib/phone";
-import { Badge } from "@/components/ui/badge";
-import { TableCell } from "@/components/ui/table";
+import { prisma } from "@/lib/db";
+import { canonicalUrl } from "@/lib/seo/canonical";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddCustomerDialog } from "./_components/add-customer-dialog";
-import { CustomerCardActions } from "./_components/customer-card-actions";
+import { EditCustomerDialog } from "./_components/edit-customer-dialog";
+import { CustomerCard, CustomerListCells, buildMenuMessageHref, type CustomerDisplayData } from "./_components/customer-display";
 import type { CustomerFormValues } from "./_components/customer-form";
 
 export const metadata: Metadata = {
@@ -20,7 +19,11 @@ export const metadata: Metadata = {
 export default async function CustomersPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ customers: ["view"] }, organizationId);
-  const customers = await listCustomers(organizationId);
+  const [customers, organization] = await Promise.all([
+    listCustomers(organizationId),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, slug: true, slugChangeCount: true } }),
+  ]);
+  const menuUrl = organization.slugChangeCount > 0 ? canonicalUrl(`/${organization.slug}`) : null;
 
   const entries: CatalogEntry[] = customers.map((customer) => {
     const initialValues: CustomerFormValues = {
@@ -33,48 +36,28 @@ export default async function CustomersPage() {
       leadSource: customer.leadSource ?? "MANUAL_ENTRY",
     };
 
+    const display: CustomerDisplayData = {
+      id: customer.id,
+      name: customer.name,
+      phone: customer.phone,
+      email: customer.email,
+      status: customer.status,
+      isActive: customer.isActive,
+      orderCount: customer.orderCount,
+      lastOrderAt: customer.lastOrderAt,
+    };
+    const menuHref = buildMenuMessageHref(customer, organization.name, menuUrl);
+    const editAction = <EditCustomerDialog customerId={customer.id} name={customer.name} initialValues={initialValues} />;
+
     return {
       id: customer.id,
+      href: `/customers/${customer.id}`,
+      cardOwnsLink: true,
       searchText: `${customer.name} ${customer.phone} ${customer.email ?? ""}`,
       filterValues: { activeStatus: customer.isActive ? "ACTIVE" : "INACTIVE", recordStatus: customer.status },
       sortValues: { name: customer.name, newest: customer.createdAt.getTime() },
-      card: (
-        <div className="flex flex-col gap-1.5 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <span className="flex items-center gap-1.5 font-medium">
-              <Users className="size-4 text-muted-foreground" />
-              {customer.name}
-            </span>
-            <div className="flex shrink-0 items-center gap-0.5">
-              {!customer.isActive && <Badge variant="neutral">Inactive</Badge>}
-              <CustomerCardActions customerId={customer.id} name={customer.name} initialValues={initialValues} />
-            </div>
-          </div>
-          <span className="text-sm text-muted-foreground">{formatPhoneDisplay(customer.phone)}</span>
-          {customer.email && <span className="text-xs text-muted-foreground">{customer.email}</span>}
-          <Badge variant={customer.status === "CUSTOMER" ? "info" : "warning"} className="w-fit">
-            {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
-          </Badge>
-        </div>
-      ),
-      listRow: (
-        <>
-          <TableCell className="font-medium">{customer.name}</TableCell>
-          <TableCell>{formatPhoneDisplay(customer.phone)}</TableCell>
-          <TableCell className="text-muted-foreground">{customer.email ?? "—"}</TableCell>
-          <TableCell>
-            <Badge variant={customer.status === "CUSTOMER" ? "info" : "warning"}>
-              {customer.status === "CUSTOMER" ? "Customer" : "Lead"}
-            </Badge>
-          </TableCell>
-          <TableCell>
-            <Badge variant={customer.isActive ? "success" : "neutral"}>{customer.isActive ? "Active" : "Inactive"}</Badge>
-          </TableCell>
-          <TableCell>
-            <CustomerCardActions customerId={customer.id} name={customer.name} initialValues={initialValues} />
-          </TableCell>
-        </>
-      ),
+      card: <CustomerCard customer={display} menuHref={menuHref} editAction={editAction} />,
+      listRow: <CustomerListCells customer={display} menuHref={menuHref} editAction={editAction} />,
     };
   });
 
@@ -117,7 +100,9 @@ export default async function CustomersPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddCustomerDialog variant="tile" />}
-        columns={["Name", "Phone", "Email", "Status", "Active", "Actions"]}
+        columns={["Customer", "Contact", "Status", "Total Orders", "Last Order", ""]}
+        richList
+        gridColumnsClassName="grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         searchPlaceholder="Search customers…"
         emptyLabel="No customers yet."
         filterOptions={filterOptions}

@@ -114,12 +114,20 @@ export async function listCustomers(organizationId: string, filter?: CustomerLis
           }
         : {}),
     },
-    include: { _count: { select: { orders: true } } },
+    include: {
+      _count: { select: { orders: true } },
+      orders: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 },
+    },
     orderBy: { name: "asc" },
     take: filter?.take,
   });
 
-  return customers.map(({ _count, ...customer }) => ({ ...customer, status: statusOf(_count.orders) }));
+  return customers.map(({ _count, orders, ...customer }) => ({
+    ...customer,
+    status: statusOf(_count.orders),
+    orderCount: _count.orders,
+    lastOrderAt: orders[0]?.createdAt ?? null,
+  }));
 }
 
 /**

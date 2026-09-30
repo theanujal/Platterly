@@ -27,7 +27,7 @@ export default async function EventTypesPage() {
     const Icon = getEventTypeIcon(eventType.icon);
     return {
       id: eventType.id,
-      href: `/events/${eventType.id}`,
+      href: `/menu-catalog/event-types/${eventType.id}`,
       searchText: `${eventType.name} ${eventType.description ?? ""}`,
       filterValues: { status: eventType.isActive ? "ACTIVE" : "INACTIVE" },
       card: (
@@ -76,14 +76,14 @@ export default async function EventTypesPage() {
   });
 
   return (
-    <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Event Types" }]} />
+    <div className="flex flex-col gap-4">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Catalog", href: "/menu-catalog" }, { label: "Event Types" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Event Types</h1>
           <p className="text-sm text-muted-foreground">The types of events you cater — e.g. Wedding, Corporate Lunch.</p>
         </div>
-        <Button render={<Link href="/events/new" />} nativeButton={false}>
+        <Button render={<Link href="/menu-catalog/event-types/new" />} nativeButton={false}>
           <Plus className="size-4" />
           Add Event Type
         </Button>
@@ -93,7 +93,7 @@ export default async function EventTypesPage() {
       <CatalogBrowser
         entries={entries}
         addTile={
-          <Link href="/events/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+          <Link href="/menu-catalog/event-types/new" className={CATALOG_ADD_TILE_CLASSNAME}>
             <CatalogAddTileContent label="Add New Event Type" description="e.g. Wedding, Corporate Lunch" />
           </Link>
         }

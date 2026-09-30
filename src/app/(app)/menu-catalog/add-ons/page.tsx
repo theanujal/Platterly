@@ -109,8 +109,8 @@ export default async function AddOnsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Add-ons" }]} />
+    <div className="flex flex-col gap-4">
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Catalog", href: "/menu-catalog" }, { label: "Add-ons" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Add-ons</h1>
