@@ -1217,6 +1217,8 @@ model Order {
   gasElectricAvailable Boolean?
   deliveryInstructions String?
   cookingInstructions  String?
+  // When the customer sent their Venue & Delivery details on the approval link (2026-10-02); null until then.
+  venueDetailsSubmittedAt DateTime?
 
   // Participant Information (Group 10.3) — lets pricing reflect actual
   // guest composition. `totalParticipants` is a UI-suggested default
@@ -1779,7 +1781,7 @@ model StorefrontDraft {
   customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   status         StorefrontDraftStatus @default(IN_PROGRESS)
-  // Furthest step reached, 1-5 (Event Details, Menu, Items, Venue, Review).
+  // Furthest step unlocked, 1-3 (Event Details, Build Your Menu, Review & Submit).
   currentStep    Int                   @default(1)
   data           Json
   orderId        String?

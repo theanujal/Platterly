@@ -41,9 +41,9 @@ interface ReviewStepProps {
 }
 
 /**
- * Step 6: what the customer chose, laid out like a receipt (AJ, 2026-10-01): the selection on the left, the order
+ * Step 3: what the customer chose, laid out like a receipt (AJ, 2026-10-01): the selection on the left, the order
  * summary with the running total on the right. Extras and add-ons can be removed here; the dishes inside the menu
- * can't (the category minimums are set on the Choose Items step).
+ * can't (the category minimums are set on the Build Your Menu step).
  */
 export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepProps) {
   const router = useRouter();
@@ -94,7 +94,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
     <div className="flex flex-col gap-6 pb-28">
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold">Review Your Request</h2>
-        <p className="text-sm text-muted-foreground">Check everything below, then submit. Our team reviews it and follows up with you.</p>
+        <p className="text-sm text-muted-foreground">Check everything below, then submit it for approval. This is a request, not a confirmed order: our team reviews your menu and follows up with you.</p>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
@@ -183,7 +183,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
             <SummaryRow label="Kids (0–5)" value={String(summary.childBelow5Count)} />
             <SummaryRow label="Kids (5–10)" value={String(summary.child5To10Count)} />
             <SummaryRow label="Menu" value={quote.isCustomMenu ? "Custom Menu" : (quote.menuName ?? "—")} />
-            <SummaryRow label="Venue" value={summary.venueLine} />
+            <SummaryRow label="Event Location" value={summary.venueLine} />
           </dl>
 
           <div className="flex flex-col gap-4 text-sm" data-testid="review-pricing">
@@ -230,9 +230,9 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
           {error}
         </p>
       )}
-      <StepFooter onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=venue`)}>
+      <StepFooter onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=menu`)}>
         <Button type="button" disabled={pending} onClick={handleSubmit}>
-          {pending ? "Working…" : "Submit Request"}
+          {pending ? "Working…" : "Submit for Menu Approval"}
           <Send />
         </Button>
       </StepFooter>

@@ -11,10 +11,7 @@ import { formatPhoneDisplay } from "@/lib/phone";
 import { PublicShell } from "@/components/public/public-shell";
 import { WizardStepper } from "../../_components/wizard-stepper";
 import { EventDetailsForm } from "../../_components/event-details-form";
-import { MenuStep } from "../../_components/menu-step";
-import { ItemsStep } from "../../_components/items-step";
-import { AddOnsStep } from "../../_components/addons-step";
-import { VenueStep } from "../../_components/venue-step";
+import { BuildMenuStep } from "../../_components/build-menu-step";
 import { ReviewStep } from "../../_components/review-step";
 
 interface PlanPageProps {
@@ -90,7 +87,9 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
 
   const requestedIndex = WIZARD_STEPS.findIndex((s) => s.key === stepParam);
   const index = Math.min(requestedIndex === -1 ? draft.currentStep - 1 : requestedIndex, draft.currentStep - 1);
-  const step: WizardStepKey = WIZARD_STEPS[Math.max(index, 0)].key;
+  let step: WizardStepKey = WIZARD_STEPS[Math.max(index, 0)].key;
+  // A draft saved before the 3-step flow may have no Venue Location yet; Event Details asks for it.
+  if (!data.venueLocation) step = "details";
 
   let content: React.ReactNode;
 
@@ -114,48 +113,45 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
             child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
             eventMealTypes: data.eventMealTypes,
             menuPreference: data.menuPreference,
+            venueLocation: data.venueLocation,
           },
         }}
       />
     );
   } else if (step === "menu") {
-    const menus = await listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference });
-    content = <MenuStep tenantSlug={tenantSlug} draftId={draft.id} menus={menus} selected={data.menuChoice} />;
-  } else if (step === "items") {
-    if (!data.menuChoice) notFound();
-    const isCustom = data.menuChoice.kind === "CUSTOM";
-    let sections;
-    let menuName: string | null = null;
-    if (data.menuChoice.kind === "MENU") {
-      const menus = await listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference });
-      const menu = menus.find((m) => m.id === (data.menuChoice as { menuId: string }).menuId);
-      if (!menu) notFound();
-      sections = menu.sections;
-      menuName = menu.name;
-    } else {
-      sections = await listCustomMenuSections(organization.id, data.menuPreference);
-    }
-    content = (
-      <ItemsStep
-        tenantSlug={tenantSlug}
-        draftId={draft.id}
-        menuName={menuName}
-        sections={sections}
-        guests={data.guestCount}
-        isCustomMenu={isCustom}
-        initialItemIds={data.itemIds ?? []}
-      />
-    );
-  } else if (step === "addons") {
-    if (!data.itemIds?.length) notFound();
-    const addOns = (await listAddOns(organization.id))
+    const [menus, customSections, eventTypes, addOnRecords] = await Promise.all([
+      listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference }),
+      listCustomMenuSections(organization.id, data.menuPreference),
+      listEventTypes(organization.id),
+      listAddOns(organization.id),
+    ]);
+    const addOns = addOnRecords
       .filter((a) => a.isActive)
       .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, type: a.type, priceType: a.priceType, price: Number(a.price), included: a.includedInPackage }));
-    content = <AddOnsStep tenantSlug={tenantSlug} draftId={draft.id} addOns={addOns} guests={data.guestCount} initialAddOnIds={data.addOnIds ?? []} />;
-  } else if (step === "venue") {
-    content = <VenueStep tenantSlug={tenantSlug} draftId={draft.id} initial={data.venue} />;
+    // A saved choice that no longer exists (menu switched off) starts the customer at the menu list again.
+    const savedChoice = data.menuChoice && (data.menuChoice.kind === "CUSTOM" || menus.some((m) => m.id === (data.menuChoice as { menuId: string }).menuId)) ? data.menuChoice : null;
+    const kids = data.childBelow5Count + data.child5To10Count;
+    content = (
+      <BuildMenuStep
+        tenantSlug={tenantSlug}
+        draftId={draft.id}
+        menus={menus}
+        customSections={customSections}
+        addOns={addOns}
+        guests={data.guestCount}
+        event={{
+          date: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+          eventType: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
+          guests: kids > 0 ? `${data.guestCount} (${kids} kid${kids === 1 ? "" : "s"})` : String(data.guestCount),
+          meals: data.eventMealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
+          preference: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
+          location: data.venueLocation,
+        }}
+        initial={{ choice: savedChoice, itemIds: savedChoice ? (data.itemIds ?? []) : [], addOnIds: data.addOnIds ?? [] }}
+      />
+    );
   } else {
-    if (!data.venue || !data.itemIds?.length) notFound();
+    if (!data.menuChoice || !data.itemIds?.length) notFound();
     let quote;
     try {
       quote = await buildDraftQuote(organization.id, data);
@@ -199,7 +195,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           itemIds: data.itemIds ?? [],
           addOnIds: data.addOnIds ?? [],
           placedAt: new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).replace(/, (?=\d{1,2}:)/, " | "),
-          venueLine: [data.venue.venueBuildingName, data.venue.completeVenueAddress].filter(Boolean).join(", "),
+          venueLine: data.venueLocation,
         }}
       />
     );
@@ -208,6 +204,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
   return (
     <Shell
       organization={organization}
+      width={step === "menu" ? "max-w-7xl" : undefined}
       title={step === "details" ? "Plan Your Event" : undefined}
       subtitle={step === "details" ? "Check your details, then continue to your menu." : undefined}
     >

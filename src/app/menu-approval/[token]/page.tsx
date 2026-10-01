@@ -1,28 +1,31 @@
 import type { Metadata } from "next";
-import { resolveApprovalLink } from "@/modules/menu-approvals/approval-link";
-import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
-import { formatAmount } from "@/modules/orders/order-card";
-import { CalendarDays, Check, MapPin, UtensilsCrossed, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CircleCheck } from "lucide-react";
+import { resolveApprovalLink, type VenueDetails } from "@/modules/menu-approvals/approval-link";
+import { buildApprovalView } from "@/modules/menu-approvals/approval-view";
 import { PublicShell } from "@/components/public/public-shell";
+import { ProgressSteps } from "@/components/public/progress-steps";
 import { FormCard } from "@/components/public/form-section";
-import { ApprovalActions } from "./_components/approval-actions";
+import { ReviewScreen } from "./_components/review-screen";
+import { VenueScreen, ChangesCard } from "./_components/venue-screen";
+import { VENUE_TYPE_OPTIONS } from "@/modules/menu-approvals/venue-options";
+import { ApprovedMenuCard } from "./_components/approved-menu-card";
+import { PriceSummary } from "./_components/price-summary";
 
 export const metadata: Metadata = {
   title: "Review & Approve Menu — Platterly",
   robots: { index: false, follow: false },
 };
 
-// Dates in the snapshot are UTC-midnight ISO days — format them in UTC so they never shift a day.
-function formatDay(iso: string) {
-  return new Date(`${iso}T00:00:00.000Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
+const STEPS = ["Review & Approve", "Venue & Delivery", "Confirmation"];
 
+// One link, three stages (2026-10-02): the menu to approve, then the venue and delivery details, then a read-only
+// confirmation. It stays live after approval and ends only when the order is completed or cancelled (or the link is
+// recalled, replaced or expired).
 export default async function MenuApprovalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const link = await resolveApprovalLink(token);
 
-  // One neutral page for every failure (wrong, expired, revoked, superseded or already answered) — no way to tell them apart.
+  // One neutral page for every failure (wrong, expired, revoked, superseded or finished) — no way to tell them apart.
   if (!link.ok) {
     return (
       <PublicShell brand={{ name: "Platterly", logo: null }} width="max-w-xl">
@@ -36,91 +39,83 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
     );
   }
 
-  const { snapshot } = link;
-  const sameDay = snapshot.eventStartDate === snapshot.eventEndDate;
-  const dateText = sameDay ? formatDay(snapshot.eventStartDate) : `${formatDay(snapshot.eventStartDate)} – ${formatDay(snapshot.eventEndDate)}`;
+  const view = buildApprovalView(link.snapshot);
+  const brand = { name: link.organizationName, logo: link.organizationLogo };
+
+  if (link.stage === "REVIEW") {
+    return (
+      <PublicShell
+        brand={brand}
+        title="Review & Approve Your Menu"
+        subtitle={`Version ${link.versionNumber} · We've prepared this menu based on your event requirements. Please review it carefully before approving or requesting changes.`}
+        width="max-w-6xl"
+      >
+        <ProgressSteps steps={STEPS} current={0} />
+        <ReviewScreen token={token} view={view} />
+      </PublicShell>
+    );
+  }
+
+  if (link.stage === "VENUE") {
+    return (
+      <PublicShell brand={brand} title="Venue & Delivery Details" subtitle="Your menu has been approved! Now tell us where and how we should deliver and set up." width="max-w-6xl">
+        <ProgressSteps steps={STEPS} current={1} />
+        <VenueScreen token={token} view={view} initial={link.venue} />
+      </PublicShell>
+    );
+  }
 
   return (
-    <PublicShell
-      brand={{ name: link.organizationName, logo: link.organizationLogo }}
-      title="Review & Approve Menu"
-      subtitle={`Version ${link.versionNumber} · Please check your menu below, then approve it or ask us for changes.`}
-      width="max-w-2xl"
-    >
-      <FormCard className="gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-base font-semibold">{snapshot.customerName}</p>
-          {snapshot.eventTypeName && <Badge variant="outline">{snapshot.eventTypeName}</Badge>}
+    <PublicShell brand={brand} title="Thank You!" subtitle="We've received your approval and your venue and delivery details." width="max-w-6xl">
+      <ProgressSteps steps={STEPS} current={3} />
+      <div role="status" className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/10 p-4" data-testid="venue-confirmation">
+        <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />
+        <div className="text-sm">
+          <p className="font-semibold">Everything is with our team</p>
+          <p className="text-muted-foreground">We&apos;ll use these details to plan your event and confirm the final quote with you. You can come back to this page any time to see them.</p>
         </div>
-        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-          <Detail icon={<CalendarDays className="size-4" />} label="Date" value={dateText} />
-          {snapshot.guests !== null && <Detail icon={<Users className="size-4" />} label="Guests" value={String(snapshot.guests)} />}
-          {snapshot.venue && (
-            <div className="sm:col-span-2">
-              <Detail icon={<MapPin className="size-4" />} label="Venue" value={snapshot.venue} />
-            </div>
-          )}
-        </dl>
-      </FormCard>
-
-      {snapshot.meals.length > 0 && (
-        <div className="flex flex-col gap-4">
-          {snapshot.meals.map((meal) => (
-            <section key={`${meal.date}-${meal.mealType}`} className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-              <div className="flex items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <UtensilsCrossed className="size-5" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-[15px] font-semibold leading-tight">{MEAL_TYPE_LABEL[meal.mealType]}</h2>
-                  {meal.menuName && <p className="text-sm text-muted-foreground">{meal.menuName}</p>}
-                </div>
-                <span className="text-sm text-muted-foreground">{formatDay(meal.date)}</span>
-              </div>
-              {meal.items.length > 0 && <ItemList names={meal.items.map((item) => item.name)} />}
-            </section>
-          ))}
-        </div>
-      )}
-
-      {snapshot.selectedItems.length > 0 && (
-        <section className="flex flex-col gap-3 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-          <h2 className="text-[15px] font-semibold">{snapshot.isCustomMenu ? "Your custom menu" : "Selected items"}</h2>
-          <ItemList names={snapshot.selectedItems.map((item) => (item.isExtra ? `${item.name} (extra)` : item.name))} />
-        </section>
-      )}
-
-      <div className="flex items-center justify-between rounded-lg bg-accent px-5 py-3 font-semibold text-accent-foreground">
-        <span>Total</span>
-        <span>{formatAmount(snapshot.total)}</span>
       </div>
-
-      <ApprovalActions token={token} />
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="flex flex-col gap-4">
+          <ApprovedMenuCard view={view} />
+          <PriceSummary rows={view.priceRows} total={view.total} isCustomMenu={view.isCustomMenu} />
+          <ChangesCard token={token} />
+        </div>
+        <VenueSummary venue={link.venue} />
+      </div>
     </PublicShell>
   );
 }
 
-function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function VenueSummary({ venue }: { venue: VenueDetails }) {
+  const typeLabel = VENUE_TYPE_OPTIONS.find((o) => o.value === venue.venueType)?.label;
+  const address = [venue.venueDoorNumber, venue.venueTower, venue.venueFloor].filter(Boolean).join(", ");
+  const rows: [string, string | null][] = [
+    ["Venue Type", typeLabel ?? null],
+    ["Venue / Building Name", venue.venueBuildingName || null],
+    ["Door / Tower / Floor", address || null],
+    ["Complete Venue Address", venue.completeVenueAddress || null],
+    ["Landmark", venue.venueLandmark || null],
+    ["Contact Person", venue.venueContactName || null],
+    ["Contact Number", venue.venueContactPhone || null],
+    ["Loading / Access Instructions", venue.venueAccessInstructions || null],
+    ["Cooking Instructions", venue.cookingInstructions || null],
+    ["Gas / electric connection at venue", venue.gasElectricAvailable ? "Yes" : "No"],
+    ["Cooking live counter facility", venue.liveCounterAvailable ? "Yes" : "No"],
+  ];
   return (
-    <div className="flex items-start gap-3">
-      <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <div>
-        <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="font-medium">{value}</dd>
-      </div>
-    </div>
-  );
-}
-
-function ItemList({ names }: { names: string[] }) {
-  return (
-    <ul className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
-      {names.map((name, index) => (
-        <li key={index} className="flex items-start gap-2">
-          <Check className="mt-0.5 size-4 shrink-0 text-success" />
-          {name}
-        </li>
-      ))}
-    </ul>
+    <FormCard className="gap-4" >
+      <h2 className="text-lg font-semibold">Your Venue & Delivery Details</h2>
+      <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2" data-testid="venue-summary">
+        {rows
+          .filter(([, value]) => value)
+          .map(([label, value]) => (
+            <div key={label} className="flex flex-col gap-0.5">
+              <dt className="text-xs text-muted-foreground">{label}</dt>
+              <dd className="font-medium whitespace-pre-line">{value}</dd>
+            </div>
+          ))}
+      </dl>
+    </FormCard>
   );
 }

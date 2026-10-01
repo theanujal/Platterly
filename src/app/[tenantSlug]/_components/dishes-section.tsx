@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Check, ChevronDown, ChevronUp, CircleAlert, Eye, Layers, Search, UtensilsCrossed } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Check, ChevronDown, ChevronUp, CircleAlert, Eye, Layers, Search, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/components/ui/dialog";
 import { IconInput } from "@/components/ui/icon-input";
@@ -14,45 +12,46 @@ import { FormCard } from "@/components/public/form-section";
 import { formatInr } from "@/lib/format-currency";
 import type { StorefrontMenuItem, StorefrontMenuSection } from "@/modules/menus/menu";
 import { requiredShortfalls, splitPicks } from "@/modules/menu-approvals/storefront-selection";
-import { saveItemsAction } from "../actions";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { SectionHeading } from "./menu-section";
 import { cn } from "cn";
 
-interface ItemsStepProps {
-  tenantSlug: string;
-  draftId: string;
+interface DishesSectionProps {
   menuName: string | null;
   sections: StorefrontMenuSection[];
   guests: number;
   isCustomMenu: boolean;
-  initialItemIds: string[];
+  itemIds: string[];
+  onItemIdsChange: (update: (previous: string[]) => string[]) => void;
 }
 
 const sectionKey = (section: StorefrontMenuSection) => section.categoryId ?? "other";
 
-export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isCustomMenu, initialItemIds }: ItemsStepProps) {
-  const router = useRouter();
-  const [itemIds, setItemIds] = useState<string[]>(initialItemIds);
+/**
+ * Build Your Menu, part 2: the dishes (the old Choose Items step). A big screen shows a category rail and the chosen
+ * category's table; a phone shows every category as a folding section with its progress. A category past its limit
+ * reads "2/2 selected + 1 extra". The "Additional Option" popup, the limits and the extra charges are unchanged.
+ */
+export function DishesSection({ menuName, sections, guests, isCustomMenu, itemIds, onItemIdsChange }: DishesSectionProps) {
+  const compact = useIsMobile();
+  const setItemIds = onItemIdsChange;
   const [detail, setDetail] = useState<{ item: StorefrontMenuItem; categoryName: string } | null>(null);
   const [extraPrompt, setExtraPrompt] = useState<{ item: StorefrontMenuItem; categoryName: string; cap: number } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [missingCategories, setMissingCategories] = useState<string[] | null>(null);
-  const [pending, setPending] = useState(false);
   // Finding dishes: a search, a category (the tabs and the dropdown are one choice; it starts on the first category),
   // a diet filter, and folded sections.
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState(sections[0] ? sectionKey(sections[0]) : "");
   const [foodType, setFoodType] = useState("ALL");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Which folding sections a phone has open. Until the customer opens or closes one, only the first category that still needs dishes is open.
+  const [openKeys, setOpenKeys] = useState<Set<string> | null>(null);
+  // On a big screen a category shows open unless the customer folded it.
+  const [foldedKeys, setFoldedKeys] = useState<Set<string>>(new Set());
 
   // The very same splitter the server re-runs on save — the badges and
   // counters here can't drift from what actually gets priced.
   const split = useMemo(() => splitPicks(sections, itemIds), [sections, itemIds]);
   const sectionOfItem = useMemo(() => splitPicks(sections, []).sectionOfItem, [sections]);
   const extraSet = new Set(split.extraIds);
-  const itemById = useMemo(() => new Map(sections.flatMap((section) => section.items).map((item) => [item.id, item])), [sections]);
-  // What the customer has added on top of the menu price so far (only charged extras).
-  const extrasTotal = split.extraIds.reduce((sum, id) => sum + (itemById.get(id)?.price ?? 0) * guests, 0);
-
   const hasBothFoodTypes = useMemo(() => new Set(sections.flatMap((s) => s.items.map((i) => i.foodType))).size > 1, [sections]);
   const needle = query.trim().toLowerCase();
   const searching = needle !== "" || foodType !== "ALL";
@@ -66,7 +65,7 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
           (needle === "" || `${item.name} ${item.description ?? ""}`.toLowerCase().includes(needle)) && (foodType === "ALL" || item.foodType === foodType),
       ),
     }))
-    .filter((entry) => (needle !== "" || sectionKey(entry.section) === category) && entry.items.length > 0);
+    .filter((entry) => (needle !== "" || compact || sectionKey(entry.section) === category) && entry.items.length > 0);
 
   const categoryItems = Object.fromEntries(sections.map((s) => [sectionKey(s), s.categoryName]));
 
@@ -86,37 +85,36 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
     setItemIds((prev) => [...prev, item.id]);
   }
 
-  function toggleCollapsed(key: string) {
-    setCollapsed((prev) => {
+  function toggleOpen(key: string) {
+    const flip = (prev: Set<string>) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
-    });
+    };
+    if (compact) setOpenKeys((prev) => flip(prev ?? new Set([defaultOpenKey])));
+    else setFoldedKeys(flip);
   }
 
-  async function handleContinue() {
-    setError(null);
-    if (itemIds.length === 0 && (isCustomMenu || requiredShortfalls(sections, itemIds).length === 0)) {
-      setError("Please select at least one menu item.");
-      return;
-    }
-    // Each category with a limit needs its minimum picked before moving on (the server checks the same rule).
-    const short = isCustomMenu ? [] : requiredShortfalls(sections, itemIds);
-    if (short.length > 0) {
-      const first = sections.find((s) => s.categoryName === short[0].name);
-      if (first) setCategory(sectionKey(first));
-      setMissingCategories(short.map((s) => s.name));
-      return;
-    }
-    setPending(true);
-    const result = await saveItemsAction(tenantSlug, draftId, itemIds);
-    if (!result.ok) {
-      setPending(false);
-      setError(result.error);
-      return;
-    }
-    router.push(`/${tenantSlug}/plan/${draftId}?step=addons`);
+  // What is still needed before the customer can move on (the same rule the server re-checks on save).
+  const short = isCustomMenu ? [] : requiredShortfalls(sections, itemIds);
+  const sectionsRef = useRef<HTMLDivElement>(null);
+  const firstNeeded = short[0] && sections.find((s) => s.categoryName === short[0].name);
+  const defaultOpenKey = sectionKey(firstNeeded ?? sections[0] ?? { categoryId: null });
+
+  function jumpTo(name: string) {
+    const target = sections.find((s) => s.categoryName === name);
+    if (!target) return;
+    const key = sectionKey(target);
+    setCategory(key);
+    setQuery("");
+    setOpenKeys((prev) => new Set([...(prev ?? [defaultOpenKey]), key]));
+    setFoldedKeys((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    sectionsRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }
 
   // The dishes are a table (AJ's mockup): Dish, Type, Status and the action. The mockup's Price and Quantity columns
@@ -180,24 +178,27 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
     );
   }
 
-  return (
-    <div className="flex flex-col gap-8 pb-28">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold">{isCustomMenu ? "Build Your Custom Menu" : "Choose Your Menu Items"}</h2>
-        <p className="text-sm text-muted-foreground">
-          {isCustomMenu
-            ? "Select any dishes you like — our team will confirm the price per plate."
-            : `${menuName ?? "Your menu"} — pick your dishes from each category. Extras beyond a category's limit are charged separately.`}
-        </p>
-      </div>
+  const picked = split.regularIds.length + split.extraIds.length;
 
+  return (
+    <div className="flex flex-col gap-6" ref={sectionsRef} data-testid="dishes-section">
       <FormCard className="gap-5">
+        <SectionHeading
+          number={2}
+          title={isCustomMenu ? "Build Your Custom Menu" : "Select Dishes"}
+          description={
+            isCustomMenu
+              ? "Select any dishes you like. Our team will confirm the price per plate."
+              : `${menuName ?? "Your menu"}: choose dishes from each category. Selection limits are shown for each category; extras beyond a limit are charged separately.`
+          }
+        />
         {sections.length === 0 && <p className="text-center text-sm text-muted-foreground">No dishes are available yet — please check back soon.</p>}
 
         {sections.length > 0 && (
-          <div className="grid gap-5 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6">
-            {/* The category rail (chips across the top on a phone). One category shows at a time; there is no "all". */}
-            <div role="tablist" aria-label="Categories" className="-m-1 flex gap-2 overflow-x-auto p-1 lg:m-0 lg:flex-col lg:overflow-visible lg:p-0">
+          <div className={cn("grid gap-5", !compact && "lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6")}>
+            {/* The category rail on a big screen: one category shows at a time. A phone lists every category instead. */}
+            {!compact && (
+            <div role="tablist" aria-label="Categories" className="flex flex-col gap-2">
               {sections.map((section) => {
                 const key = sectionKey(section);
                 const active = category === key && needle === "";
@@ -212,17 +213,18 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
                       setQuery("");
                     }}
                     className={cn(
-                      "inline-flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:w-full",
-                      active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-muted-foreground hover:bg-muted hover:text-foreground lg:bg-transparent max-lg:bg-muted",
+                      "inline-flex w-full min-h-11 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                      active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     <Layers className="size-4 shrink-0" />
-                    <span className="lg:flex-1 lg:text-left">{section.categoryName}</span>
-                    <span className="rounded-full bg-background px-2 text-xs font-normal text-muted-foreground">{section.items.length}</span>
+                    <span className="flex-1 text-left">{section.categoryName}</span>
+                    <CategoryProgress section={section} regular={split.regularIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} extras={split.extraIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} isCustomMenu={isCustomMenu} />
                   </button>
                 );
               })}
             </div>
+            )}
 
             <div className="flex min-w-0 flex-col gap-5">
               {/* Find dishes quickly: search, the category and diet dropdowns, and the Grid / List switch on one row. */}
@@ -230,6 +232,7 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
                 <div className="min-w-48 flex-1">
                   <IconInput icon={Search} type="search" aria-label="Search dishes" placeholder="Search dishes…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 </div>
+                {!compact && (
                 <Select items={categoryItems} value={category} onValueChange={(value) => setCategory(value ?? category)}>
                   <SelectTrigger aria-label="Filter by category" className="w-48">
                     <SelectValue />
@@ -242,6 +245,7 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
                     ))}
                   </SelectContent>
                 </Select>
+                )}
                 {hasBothFoodTypes && (
                   <Select items={{ ALL: "All Types", VEGETARIAN: "Veg", NON_VEGETARIAN: "Non-Veg" }} value={foodType} onValueChange={(value) => setFoodType(value ?? "ALL")}>
                     <SelectTrigger aria-label="Filter by type" className="w-36">
@@ -261,14 +265,15 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
               {visibleSections.map(({ section, index, items }) => {
                 const key = sectionKey(section);
                 const regularInSection = split.regularIds.filter((id) => sectionOfItem.get(id) === index).length;
+                const extrasInSection = split.extraIds.filter((id) => sectionOfItem.get(id) === index).length;
                 // A search or diet filter always shows what it found, even in a folded category.
-                const open = searching || !collapsed.has(key);
+                const open = searching || (compact ? (openKeys ?? new Set([defaultOpenKey])).has(key) : !foldedKeys.has(key));
                 const capped = !isCustomMenu && section.maxSelection !== null;
                 const needed = capped ? Math.min(section.maxSelection ?? 0, section.items.length) : 0;
                 const full = capped && regularInSection >= (section.maxSelection ?? 0);
                 return (
                   <section key={key} className="flex flex-col gap-3" data-testid="item-section">
-                    <button type="button" aria-expanded={open} onClick={() => toggleCollapsed(key)} className="flex w-full items-center gap-3 text-left">
+                    <button type="button" aria-expanded={open} onClick={() => toggleOpen(key)} className="flex w-full items-center gap-3 text-left">
                       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                         <Layers className="size-5" />
                       </span>
@@ -280,9 +285,11 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
                       </span>
                       {capped && (
                         <Badge variant={regularInSection >= needed ? "success" : "neutral"} data-testid="category-counter">
-                          {regularInSection}/{section.maxSelection} selected
+                          {regularInSection >= needed && <Check />}
+                          {regularInSection}/{section.maxSelection} selected{extrasInSection > 0 ? ` + ${extrasInSection} extra` : ""}
                         </Badge>
                       )}
+                      {!capped && extrasInSection > 0 && <Badge variant="neutral">{extrasInSection} selected</Badge>}
                       {open ? <ChevronUp className="size-5 shrink-0 text-muted-foreground" /> : <ChevronDown className="size-5 shrink-0 text-muted-foreground" />}
                     </button>
 
@@ -313,32 +320,26 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
         )}
       </FormCard>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
+      {!isCustomMenu && short.length > 0 && (
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-lg bg-warning/10 px-3 py-2.5 text-sm text-warning" data-testid="selection-needed">
+          <CircleAlert className="size-4 shrink-0" />
+          Some categories need a selection to continue:
+          {short.map((entry, i) => (
+            <span key={entry.name}>
+              <button type="button" className="font-semibold underline underline-offset-2" onClick={() => jumpTo(entry.name)}>
+                {entry.name}
+              </button>
+              {i < short.length - 1 ? "," : ""}
+            </span>
+          ))}
         </p>
       )}
-
-      <StepFooter
-        onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=menu`)}
-        summary={
-          <>
-            <span data-testid="selection-summary">
-              {itemIds.length} item{itemIds.length === 1 ? "" : "s"} selected
-            </span>
-            {extrasTotal > 0 && (
-              <span data-testid="extras-summary" className="font-medium text-foreground">
-                Extras: {formatInr(extrasTotal)}
-              </span>
-            )}
-          </>
-        }
-      >
-        <Button type="button" disabled={pending} onClick={handleContinue}>
-          {pending ? "Saving…" : "Continue to Add-ons"}
-          <ArrowRight />
-        </Button>
-      </StepFooter>
+      {(isCustomMenu || sections.length === 0) && picked === 0 && sections.length > 0 && (
+        <p className="flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-2.5 text-sm text-warning">
+          <CircleAlert className="size-4 shrink-0" />
+          Select at least one dish to continue.
+        </p>
+      )}
 
       <FoodItemDetailsDialog
         item={detail?.item ?? null}
@@ -349,20 +350,6 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
         onToggle={() => detail && toggleItem(detail.item, detail.categoryName)}
         hidePrice={isCustomMenu}
       />
-
-      <Dialog open={missingCategories !== null} onOpenChange={(open) => !open && setMissingCategories(null)}>
-        <DialogContent className="gap-4 sm:max-w-md">
-          <DialogTitle className="text-lg font-semibold text-primary">Selection Required</DialogTitle>
-          <p role="alert" className="text-sm text-muted-foreground">
-            Please select at least one item from: {missingCategories?.join(", ")}
-          </p>
-          <DialogFooter>
-            <Button type="button" onClick={() => setMissingCategories(null)}>
-              OK
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={extraPrompt !== null} onOpenChange={(open) => !open && setExtraPrompt(null)}>
         <DialogContent className="gap-4 sm:max-w-md">
@@ -402,5 +389,21 @@ export function ItemsStep({ tenantSlug, draftId, menuName, sections, guests, isC
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/** The rail's per-category progress: "1/1" with a check once complete, plus "+ k" for extras; the dish count when there is no limit. */
+function CategoryProgress({ section, regular, extras, isCustomMenu }: { section: StorefrontMenuSection; regular: number; extras: number; isCustomMenu: boolean }) {
+  if (isCustomMenu || section.maxSelection === null) {
+    return <span className="rounded-full bg-background px-2 text-xs font-normal text-muted-foreground">{regular + extras || section.items.length}</span>;
+  }
+  const needed = Math.min(section.maxSelection, section.items.length);
+  const done = regular >= needed;
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full px-2 text-xs font-medium", done ? "bg-success/15 text-success" : "bg-background text-muted-foreground")}>
+      {done && <Check className="size-3" />}
+      {regular}/{section.maxSelection}
+      {extras > 0 ? ` + ${extras}` : ""}
+    </span>
   );
 }

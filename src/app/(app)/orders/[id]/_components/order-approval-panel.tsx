@@ -16,6 +16,7 @@ interface OrderApprovalPanelProps {
     menuSelectionId: string;
     status: MenuSelectionStatus;
     currentVersion: number;
+    venueDetailsSubmittedAt: Date | null;
     versions: { versionNumber: number; status: MenuSelectionStatus; note: string | null; sentAt: Date | null; supersededAt: Date | null }[];
   } | null;
   /** Same permission as the Menu Approvals page — without it the link would lead nowhere. */
@@ -101,6 +102,13 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
           );
         })}
       </ol>
+
+      {(status === "CUSTOMER_APPROVED" || status === "FINAL_LOCKED") && (
+        <p className="flex flex-wrap items-center gap-2 text-sm" data-testid="venue-details-status">
+          <span className="font-medium">Venue details:</span>
+          {approval?.venueDetailsSubmittedAt ? <Badge variant="success">Received {fmt(approval.venueDetailsSubmittedAt)}</Badge> : <Badge variant="warning">Waiting for the customer</Badge>}
+        </p>
+      )}
 
       {showLink && (
         <Button size="md" variant="outline" className="w-fit" render={<Link href={linkHref} />} nativeButton={false}>

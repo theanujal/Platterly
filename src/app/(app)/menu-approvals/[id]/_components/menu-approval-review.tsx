@@ -109,8 +109,10 @@ interface MenuApprovalReviewProps {
   notes: NoteView[];
   versions: VersionView[];
   statusHistory: StatusHistoryEntry[];
-  /** The live customer approval link while the menu is awaiting the customer, else null. */
+  /** The live customer link: while the menu awaits the customer, and after approval (it then carries the venue form), else null. */
   approvalUrl: string | null;
+  /** ISO time the customer sent the Venue & Delivery details on that link, or null. */
+  venueDetailsSubmittedAt: string | null;
   /** Set from ?version=N: show that frozen version, read-only. */
   viewVersion: number | null;
 }
@@ -180,6 +182,7 @@ export function MenuApprovalReview({
   versions,
   statusHistory,
   approvalUrl,
+  venueDetailsSubmittedAt,
   viewVersion,
 }: MenuApprovalReviewProps) {
   const router = useRouter();
@@ -485,6 +488,24 @@ export function MenuApprovalReview({
           <span className="text-muted-foreground">Customer link:</span>
           <code className="max-w-full truncate rounded bg-muted px-2 py-1 text-xs">{liveUrl}</code>
           <CopyButton value={liveUrl} label="Copy link" size="md" />
+        </div>
+      )}
+      {!shownVersion && (status === "CUSTOMER_APPROVED" || status === "FINAL_LOCKED") && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border p-3 text-sm" data-testid="venue-details-status">
+          <span className="font-medium">Venue &amp; delivery details:</span>
+          {venueDetailsSubmittedAt ? (
+            <Badge variant="success">Received {formatDateTime(new Date(venueDetailsSubmittedAt))}</Badge>
+          ) : (
+            <>
+              <Badge variant="warning">Waiting for the customer</Badge>
+              {liveUrl && (
+                <>
+                  <code className="max-w-full truncate rounded bg-muted px-2 py-1 text-xs">{liveUrl}</code>
+                  <CopyButton value={liveUrl} label="Copy link" size="md" />
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
       {!shownVersion && status === "FINAL_LOCKED" && lockedAt && (

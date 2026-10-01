@@ -147,6 +147,7 @@ export default async function MenuApprovalDetailPage({
           createdAt: c.createdAt,
         }))}
         approvalUrl={approvalUrl}
+        venueDetailsSubmittedAt={order.venueDetailsSubmittedAt?.toISOString() ?? null}
         viewVersion={version && /^\d+$/.test(version) ? Number(version) : null}
       />
     </div>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Leaf, Drumstick, ArrowRight, CalendarDays, Users, UtensilsCrossed, PartyPopper, Check } from "lucide-react";
+import { User, Mail, Leaf, Drumstick, ArrowRight, CalendarDays, Users, UtensilsCrossed, PartyPopper, Check, MapPin } from "lucide-react";
 import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -37,6 +37,7 @@ interface FormValues {
   child5To10Count: string;
   eventMealTypes: string[];
   menuPreference: string;
+  venueLocation: string;
 }
 
 const EMPTY_VALUES: FormValues = {
@@ -50,6 +51,7 @@ const EMPTY_VALUES: FormValues = {
   child5To10Count: "",
   eventMealTypes: [],
   menuPreference: "",
+  venueLocation: "",
 };
 
 interface EventDetailsFormProps {
@@ -91,6 +93,10 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
     }
     if (values.eventMealTypes.length === 0) {
       setError("Please choose at least one meal.");
+      return;
+    }
+    if (!values.venueLocation.trim()) {
+      setError("Please enter the Venue Location.");
       return;
     }
     setPending(true);
@@ -173,6 +179,18 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ed-location" required>Venue Location</Label>
+            <IconInput
+              icon={MapPin}
+              id="ed-location"
+              required
+              placeholder="Area, locality or address, e.g. Whitefield, Bangalore"
+              value={values.venueLocation}
+              onChange={(e) => setField("venueLocation", e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">We use this to check we can serve your area. You&apos;ll share the full venue and delivery details after you approve your menu.</p>
           </div>
         </FormSection>
 
@@ -268,7 +286,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
       )}
       <StepFooter>
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Continue to Menu Selection"}
+          {pending ? "Saving…" : "Continue to Build Your Menu"}
           <ArrowRight />
         </Button>
       </StepFooter>

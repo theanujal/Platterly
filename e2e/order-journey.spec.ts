@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId } from "./db";
 import { pickCalendarDate, selectOption, signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
+import { submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
  * The whole order journey in one run, across the three people who touch it
@@ -107,29 +108,16 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await customerPage.getByLabel("Number of Guests").fill("100");
   await customerPage.getByRole("checkbox", { name: "Dinner" }).click();
   await customerPage.getByRole("radio", { name: /^Vegetarian/ }).click();
-  await customerPage.getByRole("button", { name: "Continue to Menu Selection" }).click();
+  await customerPage.getByLabel("Venue Location").fill("Whitefield, Bangalore");
+  await customerPage.getByRole("button", { name: "Continue to Build Your Menu" }).click();
 
   const menuCard = customerPage.getByTestId("menu-card").filter({ hasText: menuName });
   await menuCard.getByRole("button", { name: "Select", exact: true }).click();
-  await customerPage.getByRole("button", { name: "Continue to Menu Items" }).click();
-
   await customerPage.getByTestId("item-card").filter({ hasText: itemName }).getByRole("button", { name: "Select", exact: true }).click();
-  await customerPage.getByRole("button", { name: "Continue to Add-ons" }).click();
-  await customerPage.getByRole("button", { name: "Continue to Venue & Delivery" }).click(); // add-ons are optional
-
-  await customerPage.getByLabel("Venue Type").click();
-  await customerPage.getByRole("option", { name: "Home" }).click();
-  await customerPage.getByLabel("Venue / Building Name").fill("Journey Villa");
-  await customerPage.getByLabel("Door / Flat / House No.").fill("7");
-  await customerPage.getByLabel("Complete Venue Address").fill("7 Journey Road");
-  await customerPage.getByLabel("Venue Contact Person").fill("Meera");
-  await customerPage.getByRole("textbox", { name: "Contact Number" }).fill("9000000007");
-  await customerPage.getByLabel("Vehicle Access").click();
-  await customerPage.getByRole("option", { name: "Vehicle can enter venue & parking available" }).click();
-  await customerPage.getByRole("button", { name: "Review Order" }).click();
+  await customerPage.getByRole("button", { name: "Continue to Review" }).click(); // add-ons are optional
 
   await expect(customerPage.getByTestId("review-total")).toHaveText("₹40,000.00"); // 400 x 100 guests
-  await customerPage.getByRole("button", { name: "Submit Request" }).click();
+  await customerPage.getByRole("button", { name: "Submit for Menu Approval" }).click();
   await expect(customerPage.getByTestId("confirmation")).toContainText("Request Submitted Successfully!");
 
   // ===== Owner: the order arrived, and the menu goes out for approval =====
@@ -150,10 +138,11 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   // ===== Customer: approves through the no-login link =====
   await customerPage.goto(approvalPath);
-  await expect(customerPage.getByRole("heading", { name: "Review & Approve Menu" })).toBeVisible();
-  await expect(customerPage.getByText(itemName)).toBeVisible();
+  await expect(customerPage.getByRole("heading", { name: "Review & Approve Your Menu" })).toBeVisible();
+  await expect(customerPage.getByTestId("selected-dishes")).toContainText(itemName);
   await customerPage.getByRole("button", { name: "Approve Menu" }).click();
-  await expect(customerPage.getByText("Menu approved — thank you!")).toBeVisible();
+  // The venue and delivery details are asked for only now, on the same link.
+  await submitVenueDetailsAsCustomer(customerPage, { building: "Journey Villa", address: "7 Journey Road", contact: "Meera", phone: "9000000007" });
 
   // ===== Owner: the order is Approved, and goes to the kitchen =====
   await page.goto("/orders");

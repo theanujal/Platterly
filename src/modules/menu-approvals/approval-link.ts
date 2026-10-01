@@ -5,6 +5,8 @@ import { notify } from "@/lib/notifications/notify";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder } from "@/modules/orders/order";
+import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { listKitchens } from "@/modules/events/event";
 import {
   addMenuApprovalNote,
@@ -17,7 +19,7 @@ import {
   InvalidMenuSelectionTransitionError,
 } from "./menu-approval";
 import type { ApprovalSnapshot } from "./approval-snapshot";
-import type { MenuSelectionStatus } from "@/generated/prisma/enums";
+import type { MenuSelectionStatus, VenueType } from "@/generated/prisma/enums";
 
 /**
  * Team -> customer approval (AJ, 2026-09-26). The team sends the menu; each
@@ -34,6 +36,11 @@ export const APPROVAL_LINK_DAYS = 14;
 const SENDABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUESTED"];
 /** The only statuses in which the customer's link may still act. */
 const AWAITING_CUSTOMER: MenuSelectionStatus[] = ["SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING"];
+/** Once approved the same link carries the Venue & Delivery step and then the read-only Confirmation. */
+const APPROVED: MenuSelectionStatus[] = ["CUSTOMER_APPROVED", "FINAL_LOCKED"];
+const LINK_LIVE_STATUSES: MenuSelectionStatus[] = [...AWAITING_CUSTOMER, ...APPROVED];
+/** After approval the link has to outlive the original 14 days: the venue form can come days later. */
+const APPROVED_LINK_MIN_DAYS = 30;
 
 async function buildSnapshot(organizationId: string, orderId: string, menuSelectionId: string): Promise<ApprovalSnapshot> {
   const [order, selection] = await Promise.all([
@@ -42,7 +49,10 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
       include: {
         customer: { select: { name: true } },
         eventType: { select: { name: true } },
-        mealPlanEntries: { include: { menu: { select: { name: true } }, items: { orderBy: { createdAt: "asc" } } }, orderBy: [{ date: "asc" }, { mealType: "asc" }] },
+        mealPlanEntries: {
+          include: { menu: { select: { name: true, description: true, image: true, pricePerPlate: true } }, items: { orderBy: { createdAt: "asc" } } },
+          orderBy: [{ date: "asc" }, { mealType: "asc" }],
+        },
         items: { where: { mealPlanEntryId: null }, orderBy: { createdAt: "asc" } },
       },
     }),
@@ -51,6 +61,43 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
 
   const mealItemNames = new Set(order.mealPlanEntries.flatMap((entry) => entry.items.map((item) => item.name)));
 
+  // The category each dish sits in and each add-on's type, so the approval page can group them (2026-10-02).
+  const allItems = order.mealPlanEntries.flatMap((entry) => entry.items);
+  const dishIds = [...new Set(allItems.map((item) => item.menuItemId).filter((id): id is string => !!id))];
+  const addOnIds = [...new Set(allItems.map((item) => item.addOnId).filter((id): id is string => !!id))];
+  const [dishCategories, addOns] = await Promise.all([
+    dishIds.length > 0
+      ? prisma.menuItemCategory.findMany({ where: { menuItemId: { in: dishIds } }, select: { menuItemId: true, category: { select: { name: true } } }, orderBy: { createdAt: "asc" } })
+      : [],
+    addOnIds.length > 0 ? prisma.addOn.findMany({ where: { id: { in: addOnIds }, organizationId }, select: { id: true, type: true, priceType: true, includedInPackage: true } }) : [],
+  ]);
+  const categoryOfDish = new Map<string, string>();
+  for (const row of dishCategories) if (!categoryOfDish.has(row.menuItemId)) categoryOfDish.set(row.menuItemId, row.category.name);
+  const addOnById = new Map(addOns.map((addOn) => [addOn.id, addOn]));
+
+  // The pieces of the total, from the very same pricing rule the order uses.
+  const pricing = priceMeals(
+    order.mealPlanEntries.map((entry) => ({
+      price: entry.price === null ? null : Number(entry.price),
+      menuPricePerPlate: entry.menu ? Number(entry.menu.pricePerPlate) : null,
+      items: entry.items.map((item) => ({ itemType: item.itemType, unitPrice: Number(item.unitPrice), quantity: item.quantity, isExtra: item.isExtra })),
+    })),
+    order.individualPricingEnabled,
+    menuGuestCount(order),
+  );
+  let extrasAmount = 0;
+  let liveCountersAmount = 0;
+  let addOnsAmount = 0;
+  for (const item of allItems) {
+    const amount = Number(item.unitPrice) * item.quantity;
+    if (item.itemType === "ADD_ON") {
+      if (item.addOnId && addOnById.get(item.addOnId)?.type === "LIVE_COUNTER") liveCountersAmount += amount;
+      else addOnsAmount += amount;
+    } else if (item.isExtra) extrasAmount += amount;
+  }
+  const childrenCharge = Number(order.childrenCharge);
+  const total = Number(order.total);
+
   return {
     customerName: order.customer.name,
     eventTypeName: order.eventType?.name ?? null,
@@ -58,21 +105,29 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
     eventEndDate: order.eventEndDate.toISOString().slice(0, 10),
     venue: order.venue ?? order.eventAddress ?? null,
     guests: order.totalParticipants,
-    total: Number(order.total),
+    total,
     meals: order.mealPlanEntries.map((entry) => ({
       date: entry.date.toISOString().slice(0, 10),
       mealType: entry.mealType,
       menuName: entry.menu?.name ?? null,
       menuId: entry.menuId,
       price: entry.price === null ? null : Number(entry.price),
-      items: entry.items.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        itemType: item.itemType,
-        catalogId: item.menuItemId ?? item.addOnId ?? item.menuId ?? undefined,
-        unitPrice: Number(item.unitPrice),
-        isExtra: item.isExtra,
-      })),
+      menuImage: entry.menu?.image ?? null,
+      menuDescription: entry.menu?.description ?? null,
+      pricePerPlate: entry.menu ? Number(entry.menu.pricePerPlate) : null,
+      items: entry.items.map((item) => {
+        const addOn = item.addOnId ? addOnById.get(item.addOnId) : undefined;
+        return {
+          name: item.name,
+          quantity: item.quantity,
+          itemType: item.itemType,
+          catalogId: item.menuItemId ?? item.addOnId ?? item.menuId ?? undefined,
+          unitPrice: Number(item.unitPrice),
+          isExtra: item.isExtra,
+          category: item.menuItemId ? (categoryOfDish.get(item.menuItemId) ?? null) : null,
+          ...(addOn ? { addOnType: addOn.type, priceType: addOn.priceType, included: addOn.includedInPackage } : {}),
+        };
+      }),
     })),
     // The meal plan is the source of truth now; a dish already listed under a meal isn't repeated here.
     selectedItems: [
@@ -80,6 +135,16 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
       ...order.items.map((item) => ({ name: item.name, isExtra: false })),
     ],
     isCustomMenu: selection.isCustomMenu,
+    breakdown: {
+      menuAmount: pricing.menuAmount,
+      extrasAmount,
+      liveCountersAmount,
+      addOnsAmount,
+      childrenCharge,
+      adjustments: total - (pricing.menuAmount + extrasAmount + liveCountersAmount + addOnsAmount + childrenCharge),
+    },
+    childBelow5Count: order.childBelow5Count ?? 0,
+    child5To10Count: order.child5To10Count ?? 0,
   };
 }
 
@@ -211,10 +276,13 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
   return { menuSelectionId: menuSelection.id, versionId: version.id, versionNumber, url };
 }
 
-/** The live approval link for the menu's current version, or null when none is active — for staff to copy. */
+/**
+ * The live link for the menu's current version, or null when none is active — for staff to copy. It stays live after
+ * the customer approves (it then carries the Venue & Delivery form and the Confirmation), until the order is done.
+ */
 export async function getActiveApprovalUrl(organizationId: string, menuSelectionId: string): Promise<string | null> {
   const selection = await prisma.menuSelection.findFirst({ where: { id: menuSelectionId, organizationId }, select: { status: true, currentVersion: true } });
-  if (!selection || !AWAITING_CUSTOMER.includes(selection.status)) return null;
+  if (!selection || !LINK_LIVE_STATUSES.includes(selection.status)) return null;
   const version = await prisma.menuVersion.findUnique({ where: { menuSelectionId_versionNumber: { menuSelectionId, versionNumber: selection.currentVersion } }, select: { id: true } });
   if (!version) return null;
   const token = await prisma.secureAccessToken.findFirst({
@@ -252,25 +320,51 @@ export async function revokeOutstandingApprovalLinks(organizationId: string, men
   await revokeVersionTokens(organizationId, versions.map((v) => v.id));
 }
 
+/** Which screen the link shows: the menu to approve, the venue form once approved, or the read-only confirmation. */
+export type ApprovalLinkStage = "REVIEW" | "VENUE" | "CONFIRMATION";
+
 export type ResolvedApprovalLink =
   | { ok: false }
   | {
       ok: true;
+      stage: ApprovalLinkStage;
       organizationId: string;
       organizationName: string;
       organizationLogo: string | null;
       menuSelectionId: string;
+      orderId: string | null;
       versionId: string;
       versionNumber: number;
       snapshot: ApprovalSnapshot;
+      /** What the customer sent on the venue form (Confirmation), or what is already on the order to pre-fill it (Venue). */
+      venue: VenueDetails;
+      venueDetailsSubmittedAt: Date | null;
     };
 
+export interface VenueDetails {
+  venueType: VenueType | null;
+  venueBuildingName: string;
+  venueDoorNumber: string;
+  venueTower: string;
+  venueFloor: string;
+  completeVenueAddress: string;
+  venueLandmark: string;
+  venueContactName: string;
+  venueContactPhone: string;
+  venueAccessInstructions: string;
+  cookingInstructions: string;
+  gasElectricAvailable: boolean;
+  liveCounterAvailable: boolean;
+}
+
 /**
- * Every check the public page and both customer actions run, in one place:
+ * Every check the public page and the customer actions run, in one place:
  * the token is real, unrevoked, unexpired and for a menu approval; its version
- * exists and is the CURRENT, unsuperseded one; and the menu is still awaiting
- * the customer. Any failure returns the same `{ ok: false }` — the caller can't
- * tell a wrong token from an old one from one already used (no probing).
+ * exists and is the CURRENT, unsuperseded one; and the menu is either awaiting
+ * the customer (REVIEW), approved with no venue details yet (VENUE) or approved
+ * with them in (CONFIRMATION, read-only). A Completed or Cancelled order ends the
+ * link. Any failure returns the same `{ ok: false }` — the caller can't tell a
+ * wrong token from an old one from one already finished (no probing).
  */
 export async function resolveApprovalLink(token: string): Promise<ResolvedApprovalLink> {
   const resolved = await resolveToken(token);
@@ -278,33 +372,94 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
 
   const version = await prisma.menuVersion.findUnique({
     where: { id: resolved.resourceId },
-    include: { menuSelection: { select: { id: true, organizationId: true, status: true, currentVersion: true, organization: { select: { name: true, logo: true } } } } },
+    include: {
+      menuSelection: {
+        select: {
+          id: true,
+          organizationId: true,
+          status: true,
+          currentVersion: true,
+          organization: { select: { name: true, logo: true } },
+          event: { select: { orderId: true } },
+        },
+      },
+    },
   });
   if (!version || !version.snapshot) return { ok: false };
 
   const selection = version.menuSelection;
   if (selection.organizationId !== resolved.organizationId) return { ok: false };
   if (version.supersededAt || version.versionNumber !== selection.currentVersion) return { ok: false };
-  if (!AWAITING_CUSTOMER.includes(selection.status)) return { ok: false };
+  if (!LINK_LIVE_STATUSES.includes(selection.status)) return { ok: false };
+
+  const orderId = selection.event.orderId;
+  const order = orderId
+    ? await prisma.order.findFirst({
+        where: { id: orderId, organizationId: selection.organizationId },
+        select: {
+          status: true,
+          venue: true,
+          venueType: true,
+          venueDoorNumber: true,
+          venueTower: true,
+          venueFloor: true,
+          eventAddress: true,
+          venueLandmark: true,
+          venueContactName: true,
+          venueContactPhone: true,
+          venueAccessInstructions: true,
+          cookingInstructions: true,
+          gasElectricAvailable: true,
+          liveCounterAvailable: true,
+          venueDetailsSubmittedAt: true,
+        },
+      })
+    : null;
+  // A finished or cancelled order ends the customer's link for good.
+  if (order && (order.status === "COMPLETED" || order.status === "CANCELLED")) return { ok: false };
+
+  const submittedAt = order?.venueDetailsSubmittedAt ?? null;
+  const stage: ApprovalLinkStage = AWAITING_CUSTOMER.includes(selection.status) ? "REVIEW" : submittedAt ? "CONFIRMATION" : "VENUE";
 
   return {
     ok: true,
+    stage,
     organizationId: selection.organizationId,
     organizationName: selection.organization.name,
     organizationLogo: selection.organization.logo,
     menuSelectionId: selection.id,
+    orderId,
     versionId: version.id,
     versionNumber: version.versionNumber,
     snapshot: version.snapshot as unknown as ApprovalSnapshot,
+    venue: {
+      venueType: order?.venueType ?? null,
+      venueBuildingName: order?.venue ?? "",
+      venueDoorNumber: order?.venueDoorNumber ?? "",
+      venueTower: order?.venueTower ?? "",
+      venueFloor: order?.venueFloor ?? "",
+      completeVenueAddress: order?.eventAddress ?? "",
+      venueLandmark: order?.venueLandmark ?? "",
+      venueContactName: order?.venueContactName ?? "",
+      venueContactPhone: order?.venueContactPhone ?? "",
+      venueAccessInstructions: order?.venueAccessInstructions ?? "",
+      cookingInstructions: order?.cookingInstructions ?? "",
+      gasElectricAvailable: order?.gasElectricAvailable ?? false,
+      liveCounterAvailable: order?.liveCounterAvailable ?? false,
+    },
+    venueDetailsSubmittedAt: submittedAt,
   };
 }
 
-/** The customer's "Approve Menu": hands the order to the kitchen team's review. */
+/**
+ * The customer's "Approve Menu": hands the order to the team. The link is NOT revoked any more: it now carries the
+ * Venue & Delivery form, so its expiry is pushed out to give the customer time to fill it in.
+ */
 export async function approveViaLink(token: string) {
   const link = await resolveApprovalLink(token);
-  if (!link.ok) return { ok: false as const };
+  if (!link.ok || link.stage !== "REVIEW") return { ok: false as const };
   await customerApproves(link.organizationId, link.menuSelectionId);
-  await revokeVersionTokens(link.organizationId, [link.versionId]);
+  await extendApprovedLink(link.organizationId, link.versionId, link.snapshot.eventEndDate);
   await audit({
     organizationId: link.organizationId,
     action: "menu_selection.customer_approved_via_link",
@@ -315,10 +470,139 @@ export async function approveViaLink(token: string) {
   return { ok: true as const };
 }
 
+/** Keeps the version's link alive until at least 30 days from now, or the day after the event, whichever is later. */
+async function extendApprovedLink(organizationId: string, versionId: string, eventEndIso: string) {
+  const day = 24 * 60 * 60 * 1000;
+  const afterEvent = new Date(`${eventEndIso}T00:00:00.000Z`).getTime() + day;
+  const expiresAt = new Date(Math.max(Date.now() + APPROVED_LINK_MIN_DAYS * day, Number.isNaN(afterEvent) ? 0 : afterEvent));
+  await prisma.secureAccessToken.updateMany({
+    where: { organizationId, resourceType: "MENU_APPROVAL", resourceId: versionId, revokedAt: null },
+    data: { expiresAt },
+  });
+}
+
+export interface VenueDetailsInput {
+  venueType: string;
+  venueBuildingName: string;
+  venueDoorNumber?: string;
+  venueTower?: string;
+  venueFloor?: string;
+  completeVenueAddress: string;
+  venueLandmark?: string;
+  venueContactName: string;
+  venueContactPhone: string;
+  venueAccessInstructions?: string;
+  cookingInstructions?: string;
+  gasElectricAvailable?: boolean;
+  liveCounterAvailable?: boolean;
+}
+
+const VENUE_TYPES: VenueType[] = ["CLUBHOUSE", "HOTEL", "BANQUET_HALL", "RESORT", "HOME", "OFFICE", "OTHER"];
+const FIELD_MAX = 1000;
+
+/** A validation message the customer can read as-is. */
+export class VenueDetailsError extends Error {}
+
+function cleanText(value: string | undefined, label: string, required = false): string | null {
+  const trimmed = value?.trim() ?? "";
+  if (required && trimmed.length === 0) throw new VenueDetailsError(`${label} is required.`);
+  if (trimmed.length > FIELD_MAX) throw new VenueDetailsError(`${label} is too long.`);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * The customer's Venue & Delivery form, sent on the approval link after approving. Writes only the venue columns of the
+ * order behind this menu, once (a second send is refused), then tells the team. The detailed fields are the ones the
+ * customer used to fill in before submitting the request; Vehicle Access is not asked of the customer.
+ */
+export async function submitVenueViaLink(token: string, input: VenueDetailsInput) {
+  const link = await resolveApprovalLink(token);
+  if (!link.ok || link.stage !== "VENUE" || !link.orderId) return { ok: false as const };
+
+  if (!VENUE_TYPES.includes(input.venueType as VenueType)) throw new VenueDetailsError("Venue Type is required.");
+  const phone = normalizePhone(input.venueContactPhone?.trim() ?? "");
+  if (!phone) throw new VenueDetailsError("Contact Number is required.");
+  if (!isValidPhone(phone)) throw new VenueDetailsError("Please enter a valid contact number for the selected country.");
+  const data = {
+    venueType: input.venueType as VenueType,
+    venue: cleanText(input.venueBuildingName, "Venue / Building Name", true),
+    venueDoorNumber: cleanText(input.venueDoorNumber, "Door / Flat / House No."),
+    venueTower: cleanText(input.venueTower, "Tower / Block"),
+    venueFloor: cleanText(input.venueFloor, "Floor"),
+    eventAddress: cleanText(input.completeVenueAddress, "Complete Venue Address", true),
+    venueLandmark: cleanText(input.venueLandmark, "Landmark"),
+    venueContactName: cleanText(input.venueContactName, "Contact Person", true),
+    venueContactPhone: phone,
+    venueAccessInstructions: cleanText(input.venueAccessInstructions, "Loading / Access Instructions"),
+    cookingInstructions: cleanText(input.cookingInstructions, "Cooking Instructions"),
+    gasElectricAvailable: input.gasElectricAvailable === true,
+    liveCounterAvailable: input.liveCounterAvailable === true,
+  };
+
+  // Claimed in one statement so a double submit can't write twice.
+  const claimed = await prisma.order.updateMany({
+    where: { id: link.orderId, organizationId: link.organizationId, venueDetailsSubmittedAt: null },
+    data: { ...data, venueDetailsSubmittedAt: new Date() },
+  });
+  if (claimed.count === 0) return { ok: false as const };
+
+  await addMenuApprovalNote(link.organizationId, link.menuSelectionId, {
+    authorType: "CUSTOMER",
+    authorName: link.snapshot.customerName,
+    body: "Sent the venue and delivery details.",
+    versionNumber: link.versionNumber,
+  });
+  await notify({
+    organizationId: link.organizationId,
+    channel: "IN_APP",
+    event: "menu_approval.venue_details_submitted",
+    recipient: {},
+    payload: { menuSelectionId: link.menuSelectionId, orderId: link.orderId, versionNumber: link.versionNumber, customerName: link.snapshot.customerName },
+  });
+  await audit({
+    organizationId: link.organizationId,
+    action: "order.venue_details_submitted_via_link",
+    recordType: "Order",
+    recordId: link.orderId,
+    after: { venue: data.venue, venueType: data.venueType, eventAddress: data.eventAddress },
+  });
+  return { ok: true as const };
+}
+
+/**
+ * After approving, the customer may still ask about the approved menu ("Request Menu Changes"). This only leaves a note
+ * and a notification for the team: the approved menu's status is not touched, the team decides whether to reopen it.
+ */
+export async function askAboutApprovedMenuViaLink(token: string, note: string) {
+  const link = await resolveApprovalLink(token);
+  if (!link.ok || link.stage === "REVIEW") return { ok: false as const };
+  await addMenuApprovalNote(link.organizationId, link.menuSelectionId, {
+    authorType: "CUSTOMER",
+    authorName: link.snapshot.customerName,
+    body: note,
+    versionNumber: link.versionNumber,
+  });
+  await notify({
+    organizationId: link.organizationId,
+    channel: "IN_APP",
+    event: "menu_approval.change_asked_after_approval",
+    recipient: {},
+    payload: { menuSelectionId: link.menuSelectionId, versionNumber: link.versionNumber, customerName: link.snapshot.customerName, note },
+  });
+  await audit({
+    organizationId: link.organizationId,
+    action: "menu_selection.change_asked_after_approval_via_link",
+    recordType: "MenuSelection",
+    recordId: link.menuSelectionId,
+    after: { versionNumber: link.versionNumber, note },
+  });
+  return { ok: true as const };
+}
+
 /** The customer's "Request Changes": back to the team as Pending Review, with their note. */
 export async function requestChangesViaLink(token: string, note: string) {
   const link = await resolveApprovalLink(token);
-  if (!link.ok) return { ok: false as const };
+  if (!link.ok || link.stage !== "REVIEW") return { ok: false as const };
   await customerRequestsChanges(link.organizationId, link.menuSelectionId, note);
   await revokeVersionTokens(link.organizationId, [link.versionId]);
   await notify({
@@ -353,7 +637,9 @@ export async function getOrderMenuApproval(organizationId: string, orderId: stri
     },
   });
   if (!selection) return null;
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { venueDetailsSubmittedAt: true } });
   return {
+    venueDetailsSubmittedAt: order?.venueDetailsSubmittedAt ?? null,
     versions: selection.versions,
     menuSelectionId: selection.id,
     status: selection.status,

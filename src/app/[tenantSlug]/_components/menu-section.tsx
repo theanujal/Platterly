@@ -1,10 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Check, ChefHat, Search, UtensilsCrossed } from "lucide-react";
+import { ArrowRight, Check, ChefHat, Pencil, Search, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -13,53 +11,89 @@ import { FormCard } from "@/components/public/form-section";
 import { formatInr } from "@/lib/format-currency";
 import type { StorefrontMenu } from "@/modules/menus/menu";
 import type { MenuChoice } from "@/modules/menu-approvals/storefront-draft";
-import { saveMenuChoiceAction } from "../actions";
 import { cn } from "cn";
 
-interface MenuStepProps {
-  tenantSlug: string;
-  draftId: string;
+interface MenuSectionProps {
   menus: StorefrontMenu[];
-  selected?: MenuChoice;
+  /** What the customer has picked, or null before they pick. */
+  choice: MenuChoice | null;
+  /** Every menu is listed until one is picked; "Change" lists them again. */
+  listOpen: boolean;
+  onChoose: (choice: MenuChoice) => void;
+  onChange: () => void;
+  onCancelChange: () => void;
 }
 
-export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps) {
-  const router = useRouter();
+/**
+ * Build Your Menu, part 1 (AJ, 2026-10-02): all the menus are shown until the customer picks one, then only the picked
+ * menu stays, as a compact card with "Change". Nothing is picked for the customer.
+ */
+export function MenuSection({ menus, choice, listOpen, onChoose, onChange, onCancelChange }: MenuSectionProps) {
   const [query, setQuery] = useState("");
   const [details, setDetails] = useState<StorefrontMenu | null>(null);
-  // Nothing is picked for the customer: the choice starts empty (or as the one they made before going back) and
-  // only changes when they press Select. Continue saves it.
-  const [choice, setChoice] = useState<MenuChoice | null>(selected ?? null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
 
   const needle = query.trim().toLowerCase();
   // Menus arrive in the order the caterer set in Menu Types; searching only narrows them.
   const visibleMenus = needle ? menus.filter((menu) => `${menu.name} ${menu.description ?? ""}`.toLowerCase().includes(needle)) : menus;
   const customSelected = choice?.kind === "CUSTOM";
 
-  async function handleContinue() {
-    if (!choice) return;
-    setError(null);
-    setPending(true);
-    const result = await saveMenuChoiceAction(tenantSlug, draftId, choice);
-    if (!result.ok) {
-      setPending(false);
-      setError(result.error);
-      return;
-    }
-    router.push(`/${tenantSlug}/plan/${draftId}?step=items`);
+  const pickedMenu = choice?.kind === "MENU" ? menus.find((menu) => menu.id === choice.menuId) : undefined;
+
+  // A menu is picked and the list is closed: just the picked menu, with a way to change it.
+  if (choice && !listOpen) {
+    return (
+      <FormCard className="gap-4" >
+        <SectionHeading number={1} title="Your Menu" />
+        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-primary bg-accent/40 p-3" data-testid="picked-menu">
+          {pickedMenu ? (
+            pickedMenu.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={pickedMenu.image} alt="" className="size-16 shrink-0 rounded-lg object-cover" />
+            ) : (
+              <span className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <UtensilsCrossed className="size-6 text-muted-foreground" />
+              </span>
+            )
+          ) : (
+            <span className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <ChefHat className="size-7" />
+            </span>
+          )}
+          <div className="flex min-w-[11rem] flex-1 flex-col gap-0.5">
+            <h3 className="text-base font-semibold">{pickedMenu ? pickedMenu.name : "Custom Menu"}</h3>
+            <p className="text-sm text-muted-foreground">
+              {pickedMenu ? (
+                <>
+                  {formatInr(pickedMenu.pricePerPlate)} / plate
+                  <Button type="button" variant="link" className="ml-3 h-auto p-0 font-medium" onClick={() => setDetails(pickedMenu)}>
+                    View details
+                  </Button>
+                </>
+              ) : (
+                "Hand-picked dishes. Our team confirms the price per plate."
+              )}
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="md" className="max-sm:w-full" onClick={onChange}>
+            <Pencil /> Change
+          </Button>
+        </div>
+        {renderDetails()}
+      </FormCard>
+    );
   }
 
-
   return (
-    <div className="flex flex-col gap-6 pb-28">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold">Choose Your Menu</h2>
-        <p className="text-sm text-muted-foreground">Pick a ready-made menu or create your own.</p>
-      </div>
-
+    <div className="flex flex-col gap-6">
       <FormCard className="gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <SectionHeading number={1} title="Choose a Menu" description="Pick a ready-made menu or create your own." />
+          {choice && (
+            <Button type="button" variant="ghost" size="md" onClick={onCancelChange}>
+              Keep my current menu
+            </Button>
+          )}
+        </div>
         {/* Search first, then the Grid / List switch, on one row, as on the backend's catalog pages. */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-48 flex-1">
@@ -97,7 +131,7 @@ export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps
                     <span className="text-base font-semibold">
                       {formatInr(menu.pricePerPlate)} <span className="text-xs font-normal text-muted-foreground">/ plate</span>
                     </span>
-                    <Button type="button" size="md" variant={isSelected ? "default" : "outline"} aria-pressed={isSelected} onClick={() => setChoice({ kind: "MENU", menuId: menu.id })}>
+                    <Button type="button" size="md" variant={isSelected ? "default" : "outline"} aria-pressed={isSelected} onClick={() => onChoose({ kind: "MENU", menuId: menu.id })}>
                       {isSelected && <Check />}
                       {isSelected ? "Selected" : "Select"}
                     </Button>
@@ -130,7 +164,7 @@ export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps
             Hand-pick every dish yourself. There&apos;s no fixed price — our team will review your choices and confirm the price per plate.
           </p>
         </div>
-        <Button type="button" variant={customSelected ? "default" : "outline"} aria-pressed={customSelected} onClick={() => setChoice({ kind: "CUSTOM" })}>
+        <Button type="button" variant={customSelected ? "default" : "outline"} aria-pressed={customSelected} onClick={() => onChoose({ kind: "CUSTOM" })}>
           {customSelected && <Check />}
           {customSelected ? "Selected" : "Create custom menu"}
           {!customSelected && <ArrowRight />}
@@ -139,19 +173,12 @@ export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps
 
       </FormCard>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
+      {renderDetails()}
+    </div>
+  );
 
-      <StepFooter onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=details`)}>
-        <Button type="button" disabled={!choice || pending} onClick={handleContinue}>
-          {pending ? "Saving…" : "Continue to Menu Items"}
-          <ArrowRight />
-        </Button>
-      </StepFooter>
-
+  function renderDetails() {
+    return (
       <Dialog open={details !== null} onOpenChange={(open) => !open && setDetails(null)}>
         <DialogContent className="max-h-[90vh] gap-5 overflow-y-auto sm:max-w-3xl">
           {details && (
@@ -195,7 +222,7 @@ export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps
                 <Button
                   type="button"
                   onClick={() => {
-                    setChoice({ kind: "MENU", menuId: details.id });
+                    onChoose({ kind: "MENU", menuId: details.id });
                     setDetails(null);
                   }}
                 >
@@ -206,6 +233,19 @@ export function MenuStep({ tenantSlug, draftId, menus, selected }: MenuStepProps
           )}
         </DialogContent>
       </Dialog>
+    );
+  }
+}
+
+/** The numbered heading each Build Your Menu section starts with. */
+export function SectionHeading({ number, title, description }: { number: number; title: string; description?: string }) {
+  return (
+    <div className="flex items-start gap-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{number}</span>
+      <div className="min-w-0">
+        <h2 className="text-lg font-semibold leading-tight">{title}</h2>
+        {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+      </div>
     </div>
   );
 }

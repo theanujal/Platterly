@@ -20,13 +20,13 @@ export function isDraftExpired(lastActivityAt: Date, now: Date = new Date()): bo
 /** A draft idle this long (AJ, 2026-09-28, "purge after 3 months") is hard-deleted — well past DRAFT_EXPIRY_DAYS, so it's already long expired and never resurfaced. The Customer (a Lead with 0 orders) stays. */
 export const DRAFT_PURGE_DAYS = 90;
 
-/** The wizard's steps, in order. `currentStep` on a draft is the 1-based index of the step the visitor is on. */
+/**
+ * The wizard's steps, in order (AJ, 2026-10-02: three steps up to the lead; Venue & Delivery is collected after the
+ * customer approves the menu). `currentStep` on a draft is the 1-based index of the furthest step the visitor has unlocked.
+ */
 export const WIZARD_STEPS = [
   { key: "details", label: "Event Details" },
-  { key: "menu", label: "Choose Menu" },
-  { key: "items", label: "Choose Items" },
-  { key: "addons", label: "Add-ons & Live Counters" },
-  { key: "venue", label: "Venue & Delivery" },
+  { key: "menu", label: "Build Your Menu" },
   { key: "review", label: "Review & Submit" },
 ] as const;
 

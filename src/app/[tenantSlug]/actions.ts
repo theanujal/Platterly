@@ -9,14 +9,15 @@ import {
   saveDraftMenuChoice,
   saveDraftItems,
   saveDraftAddOns,
-  saveDraftVenue,
   submitDraft,
+  getDraft,
+  buildDraftQuote,
   StorefrontDraftError,
   type EventDetailsInput,
-  type DraftVenue,
   type MenuChoice,
+  type DraftQuote,
 } from "@/modules/menu-approvals/storefront-draft";
-import type { FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
+import type { FoodType, MealType } from "@/generated/prisma/enums";
 
 // Chunk 12 — every public storefront mutation. The tenant is resolved from
 // the URL slug on each call (never a client-supplied id), and only
@@ -64,6 +65,7 @@ function readEventDetails(formData: FormData): EventDetailsInput {
     child5To10Count: count(formData, "child5To10Count"),
     eventMealTypes: formData.getAll("eventMealTypes").map(String) as MealType[],
     menuPreference: text(formData, "menuPreference") as FoodType,
+    venueLocation: text(formData, "venueLocation"),
   };
 }
 
@@ -124,29 +126,45 @@ export async function saveAddOnsAction(tenantSlug: string, draftId: string, addO
   }
 }
 
-export async function saveVenueAction(tenantSlug: string, draftId: string, formData: FormData): Promise<StepResult> {
+/**
+ * Build Your Menu's one Continue: saves the menu choice, the dishes and the add-ons together, in that order, through
+ * the same three functions the separate steps used (so every rule, including the category minimums, still applies).
+ */
+export async function saveBuildMenuAction(
+  tenantSlug: string,
+  draftId: string,
+  input: { choice: MenuChoice; itemIds: string[]; addOnIds: string[] },
+): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    const venue: DraftVenue = {
-      venueType: text(formData, "venueType") as VenueType,
-      venueBuildingName: text(formData, "venueBuildingName"),
-      venueDoorNumber: text(formData, "venueDoorNumber"),
-      venueTower: text(formData, "venueTower"),
-      venueFloor: text(formData, "venueFloor"),
-      completeVenueAddress: text(formData, "completeVenueAddress"),
-      venueLandmark: text(formData, "venueLandmark"),
-      venueContactName: text(formData, "venueContactName"),
-      venueContactPhone: text(formData, "venueContactPhone"),
-      venueAccessInstructions: text(formData, "venueAccessInstructions"),
-      vehicleAccess: text(formData, "vehicleAccess") as VehicleAccessType,
-      liveCounterAvailable: text(formData, "liveCounterAvailable") === "true",
-      gasElectricAvailable: text(formData, "gasElectricAvailable") === "true",
-      cookingInstructions: text(formData, "cookingInstructions"),
-    };
-    await saveDraftVenue(organization.id, draftId, venue);
+    await saveDraftMenuChoice(organization.id, draftId, input.choice);
+    await saveDraftItems(organization.id, draftId, { itemIds: input.itemIds });
+    await saveDraftAddOns(organization.id, draftId, input.addOnIds);
     return { ok: true };
   } catch (error) {
     return fail(error);
+  }
+}
+
+export type EstimateResult = { ok: true; quote: DraftQuote } | { ok: false };
+
+/**
+ * The running "Estimated Total" on Build Your Menu: the exact same calculation the Review step and the submit use
+ * (`buildDraftQuote`), run on the picks as they stand right now without saving them.
+ */
+export async function estimateQuoteAction(
+  tenantSlug: string,
+  draftId: string,
+  input: { choice: MenuChoice; itemIds: string[]; addOnIds: string[] },
+): Promise<EstimateResult> {
+  try {
+    const organization = await resolveOrganization(tenantSlug);
+    const draft = await getDraft(organization.id, draftId);
+    if (!draft || draft.status === "COMPLETED") return { ok: false };
+    const quote = await buildDraftQuote(organization.id, { ...draft.data, menuChoice: input.choice, itemIds: input.itemIds, addOnIds: input.addOnIds });
+    return { ok: true, quote };
+  } catch {
+    return { ok: false };
   }
 }
 

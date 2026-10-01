@@ -5,7 +5,6 @@ import {
   saveDraftMenuChoice,
   saveDraftItems,
   saveDraftAddOns,
-  saveDraftVenue,
   submitDraft,
   saveDraftDetails,
   buildDraftQuote,
@@ -13,7 +12,6 @@ import {
   listAbandonedOrders,
   StorefrontDraftError,
   type StartDraftInput,
-  type DraftVenue,
 } from "@/modules/menu-approvals/storefront-draft";
 import { setCustomMenuPricePerPlate } from "@/modules/menu-approvals/menu-approval";
 import { splitPicks } from "@/modules/menu-approvals/storefront-selection";
@@ -39,19 +37,6 @@ afterEach(async () => {
 function futureDate(days = 60) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
-
-const VENUE: DraftVenue = {
-  venueType: "HOME",
-  venueBuildingName: "Green Villa",
-  venueDoorNumber: "12",
-  completeVenueAddress: "12 Green Villa Road",
-  venueContactName: "Ravi",
-  venueContactPhone: "9000000002",
-  vehicleAccess: "VEHICLE_AND_PARKING",
-  liveCounterAvailable: false,
-  gasElectricAvailable: true,
-  cookingInstructions: "No onion or garlic",
-};
 
 /** A tenant with one veg Menu (Starters capped at 1, Mains capped at 2), an Event Type using it, and two add-ons. */
 async function setup() {
@@ -91,6 +76,7 @@ async function setup() {
     child5To10Count: 2,
     eventMealTypes: ["DINNER"],
     menuPreference: "VEGETARIAN",
+    venueLocation: "Whitefield, Bangalore",
     ...over,
   });
 
@@ -181,10 +167,10 @@ describe("menu + items steps (server-side rules)", () => {
     // A second starter is an extra, so it cannot stand in for a missing main.
     await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id] })).rejects.toThrow(/Mains/);
     const saved = await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
-    expect(saved.currentStep).toBe(4); // the add-ons step is now unlocked
+    expect(saved.currentStep).toBe(2); // the dishes alone do not unlock Review; saving the add-ons choice does
   });
 
-  it("step 4 saves optional add-ons, unlocks the venue step, and rejects one that isn't available", async () => {
+  it("saves optional add-ons, unlocks the Review step, and rejects one that isn't available", async () => {
     const t = await setup();
     const { draft } = await startDraft(t.org.id, t.details());
     await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
@@ -193,7 +179,7 @@ describe("menu + items steps (server-side rules)", () => {
 
     await expect(saveDraftAddOns(t.org.id, draft.id, ["not-an-add-on"])).rejects.toThrow(/isn't available/);
     const saved = await saveDraftAddOns(t.org.id, draft.id, [t.perPlateAddOn.id, t.perPlateAddOn.id]);
-    expect(saved.currentStep).toBe(5);
+    expect(saved.currentStep).toBe(3);
     expect((await getDraft(t.org.id, draft.id))!.data.addOnIds).toEqual([t.perPlateAddOn.id]); // repeats collapse
 
     // None at all is fine, and saving the dishes again keeps the chosen add-ons.
@@ -223,13 +209,43 @@ describe("menu + items steps (server-side rules)", () => {
   });
 });
 
+describe("Venue Location (the only venue detail asked before the lead is submitted)", () => {
+  it("is required to start a draft and to edit the details", async () => {
+    const t = await setup();
+    await expect(startDraft(t.org.id, t.details({ venueLocation: "   " }))).rejects.toThrow(/Venue Location is required/);
+    const { draft } = await startDraft(t.org.id, t.details());
+    const before = (await getDraft(t.org.id, draft.id))!.data;
+    await expect(saveDraftDetails(t.org.id, draft.id, { ...before, venueLocation: "" })).rejects.toThrow(/Venue Location is required/);
+    await saveDraftDetails(t.org.id, draft.id, { ...before, venueLocation: "  Indiranagar  " });
+    expect((await getDraft(t.org.id, draft.id))!.data.venueLocation).toBe("Indiranagar");
+  });
+
+  it("a draft saved before the 3-step flow uses its old venue address as the location", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    const data = (await getDraft(t.org.id, draft.id))!.data as unknown as Record<string, unknown>;
+    delete data.venueLocation;
+    await prisma.storefrontDraft.update({ where: { id: draft.id }, data: { data: { ...data, venue: { completeVenueAddress: "12 Green Villa Road" } } as never } });
+    expect((await getDraft(t.org.id, draft.id))!.data.venueLocation).toBe("12 Green Villa Road");
+  });
+
+  it("submitting needs a location", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+    const data = (await getDraft(t.org.id, draft.id))!.data as unknown as Record<string, unknown>;
+    await prisma.storefrontDraft.update({ where: { id: draft.id }, data: { data: { ...data, venueLocation: "" } as never } });
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow(/complete every step/);
+  });
+});
+
 describe("quote + final submit (Order created only here)", () => {
   async function completeDraft(t: Awaited<ReturnType<typeof setup>>, overrides?: Partial<StartDraftInput>) {
     const { draft, customer } = await startDraft(t.org.id, t.details(overrides));
     await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
     // Two starters against a cap of 1: the second (kebab) is an extra.
     await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.dal.id], addOnIds: [t.perPlateAddOn.id, t.fixedAddOn.id] });
-    await saveDraftVenue(t.org.id, draft.id, VENUE);
     return { draft, customer };
   }
 
@@ -258,11 +274,11 @@ describe("quote + final submit (Order created only here)", () => {
     expect(order.customerId).toBe(customer.id);
     expect(Number(order.total)).toBe(39300);
     // "Number of Guests" is the adults; the two 5-10 kids sit on top.
-    expect(order.venueDoorNumber).toBe("12");
+    // Only the location is known before approval; the venue and delivery details come later.
+    expect(order.eventAddress).toBe("Whitefield, Bangalore");
+    expect(order.venueDoorNumber).toBeNull();
     expect(order.adultCount).toBe(60);
     expect(order.totalParticipants).toBe(62);
-    expect(order.gasElectricAvailable).toBe(true);
-    expect(order.cookingInstructions).toBe("No onion or garlic");
     expect(order.notes).toBe("Please call before delivery");
 
     const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
@@ -325,7 +341,6 @@ describe("quote + final submit (Order created only here)", () => {
     const { draft } = await startDraft(t.org.id, t.details({ child5To10Count: 0 }));
     await saveDraftMenuChoice(t.org.id, draft.id, { kind: "CUSTOM" });
     await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.outsider.id], addOnIds: [] }); // no caps, any dish
-    await saveDraftVenue(t.org.id, draft.id, VENUE);
 
     const result = await submitDraft(t.org.id, draft.id);
     expect(result.isCustomMenu).toBe(true);

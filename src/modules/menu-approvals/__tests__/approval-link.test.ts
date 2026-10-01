@@ -12,6 +12,9 @@ import {
   recallMenuFromCustomer,
   getActiveApprovalUrl,
   getOrderMenuApproval,
+  submitVenueViaLink,
+  askAboutApprovedMenuViaLink,
+  VenueDetailsError,
 } from "@/modules/menu-approvals/approval-link";
 import { setMenuSelectionItems, InvalidMenuSelectionTransitionError } from "@/modules/menu-approvals/menu-approval";
 import { createMenuItem } from "@/modules/menus/item";
@@ -208,15 +211,26 @@ describe("resolveApprovalLink (public, no login)", () => {
     expect(row.resourceId).toBe(sent.versionId);
   });
 
-  it("stops working once the customer has responded", async () => {
+  it("after the customer approves, the same link carries the venue step instead of dying", async () => {
     const { org, actor, order } = await makeAdminOrder();
     const sent = await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
     const token = tokenOf(sent.url);
 
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "REVIEW" });
     expect(await approveViaLink(token)).toEqual({ ok: true });
-    expect(await resolveApprovalLink(token)).toEqual({ ok: false });
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "VENUE" });
     expect(await approveViaLink(token)).toEqual({ ok: false }); // a second click / replayed email is a harmless no-op
-    expect(await requestChangesViaLink(token, "too late")).toEqual({ ok: false });
+    expect(await requestChangesViaLink(token, "too late")).toEqual({ ok: false }); // changes after approval go through the note instead
+  });
+
+  it("approving pushes the link's expiry out to at least 30 days, so the venue form can come later", async () => {
+    const { org, actor, order } = await makeAdminOrder();
+    const sent = await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
+    await approveViaLink(tokenOf(sent.url));
+    const row = await prisma.secureAccessToken.findUniqueOrThrow({ where: { token: tokenOf(sent.url) } });
+    const days = (row.expiresAt!.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(29.9);
+    expect(row.revokedAt).toBeNull();
   });
 
   it("stops working when the team recalls the menu", async () => {
@@ -280,5 +294,170 @@ describe("staff lookups", () => {
     expect(await getActiveApprovalUrl(other.id, selection.id)).toBeNull();
     await expect(sendMenuForApproval(other.id, { menuSelectionId: selection.id }, actor.id)).rejects.toThrow();
     await expect(recallMenuFromCustomer(other.id, selection.id, actor.id)).rejects.toThrow();
+  });
+});
+
+describe("Venue & Delivery on the approved link", () => {
+  const VENUE = {
+    venueType: "HOME",
+    venueBuildingName: "Green Villa",
+    venueDoorNumber: "12",
+    completeVenueAddress: "12 Green Villa Road, Whitefield",
+    venueContactName: "Ravi",
+    venueContactPhone: "9000000002",
+    cookingInstructions: "No onion or garlic",
+    gasElectricAvailable: true,
+  };
+
+  async function approved() {
+    const ctx = await makeAdminOrder();
+    const sent = await sendMenuForApproval(ctx.org.id, { orderId: ctx.order.id }, ctx.actor.id);
+    const token = tokenOf(sent.url);
+    await approveViaLink(token);
+    return { ...ctx, token };
+  }
+
+  it("pre-fills the address with what the customer already gave, and sends the venue columns once", async () => {
+    const { org, order, token } = await approved();
+    await prisma.order.update({ where: { id: order.id }, data: { eventAddress: "Whitefield, Bangalore" } });
+    const link = await resolveApprovalLink(token);
+    expect(link).toMatchObject({ ok: true, stage: "VENUE", venue: { completeVenueAddress: "Whitefield, Bangalore" } });
+
+    expect(await submitVenueViaLink(token, VENUE)).toEqual({ ok: true });
+
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(saved).toMatchObject({
+      venue: "Green Villa",
+      venueType: "HOME",
+      venueDoorNumber: "12",
+      eventAddress: "12 Green Villa Road, Whitefield",
+      venueContactName: "Ravi",
+      cookingInstructions: "No onion or garlic",
+      gasElectricAvailable: true,
+      liveCounterAvailable: false,
+      vehicleAccess: null, // not asked of the customer
+    });
+    expect(saved.venueContactPhone).toBe("+919000000002");
+    expect(saved.venueDetailsSubmittedAt).not.toBeNull();
+
+    // The link now shows the read-only confirmation, a second send is refused, and the team is told.
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "CONFIRMATION" });
+    expect(await submitVenueViaLink(token, { ...VENUE, venueBuildingName: "Changed" })).toEqual({ ok: false });
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).venue).toBe("Green Villa");
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.venue_details_submitted" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "order.venue_details_submitted_via_link" } })).toBe(1);
+    const note = await prisma.menuApprovalNote.findFirstOrThrow({ where: { organizationId: org.id, authorType: "CUSTOMER" } });
+    expect(note.body).toMatch(/venue and delivery details/);
+    expect((await getOrderMenuApproval(org.id, order.id))?.venueDetailsSubmittedAt).not.toBeNull();
+  });
+
+  it("refuses missing required fields and a bad phone number, writing nothing", async () => {
+    const { order, token } = await approved();
+    await expect(submitVenueViaLink(token, { ...VENUE, venueType: "" })).rejects.toThrow(/Venue Type is required/);
+    await expect(submitVenueViaLink(token, { ...VENUE, venueBuildingName: "  " })).rejects.toThrow(/Venue \/ Building Name is required/);
+    await expect(submitVenueViaLink(token, { ...VENUE, completeVenueAddress: "" })).rejects.toThrow(/Complete Venue Address is required/);
+    await expect(submitVenueViaLink(token, { ...VENUE, venueContactName: "" })).rejects.toThrow(/Contact Person is required/);
+    await expect(submitVenueViaLink(token, { ...VENUE, venueContactPhone: "" })).rejects.toThrow(/Contact Number is required/);
+    await expect(submitVenueViaLink(token, { ...VENUE, venueContactPhone: "123" })).rejects.toBeInstanceOf(VenueDetailsError);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).venueDetailsSubmittedAt).toBeNull();
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "VENUE" });
+  });
+
+  it("the door number, tower, floor and landmark are optional", async () => {
+    const { token } = await approved();
+    expect(
+      await submitVenueViaLink(token, {
+        venueType: "HOTEL",
+        venueBuildingName: "Taj",
+        completeVenueAddress: "MG Road",
+        venueContactName: "Meera",
+        venueContactPhone: "9000000003",
+      }),
+    ).toEqual({ ok: true });
+  });
+
+  it("can't send the venue form before approving", async () => {
+    const { org, actor, order } = await makeAdminOrder();
+    const sent = await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
+    expect(await submitVenueViaLink(tokenOf(sent.url), VENUE)).toEqual({ ok: false });
+  });
+
+  it("'Request Menu Changes' after approval leaves a note and a notification, and changes nothing else", async () => {
+    const { org, order, token } = await approved();
+    expect(await askAboutApprovedMenuViaLink(token, "Can we swap the dessert?")).toEqual({ ok: true });
+    expect((await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: org.id } })).status).toBe("CUSTOMER_APPROVED");
+    expect(await orderStatus(order.id)).toBe("APPROVED");
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "VENUE" });
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.change_asked_after_approval" } })).toBe(1);
+    expect((await prisma.menuApprovalNote.findFirstOrThrow({ where: { organizationId: org.id } })).body).toBe("Can we swap the dessert?");
+  });
+
+  it("'Request Menu Changes' is refused while the menu is still being reviewed (that is Request Changes)", async () => {
+    const { org, actor, order } = await makeAdminOrder();
+    const sent = await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
+    expect(await askAboutApprovedMenuViaLink(tokenOf(sent.url), "hello")).toEqual({ ok: false });
+  });
+
+  it("the link ends when the order is Completed or Cancelled, and is live for the team to copy until then", async () => {
+    const { org, order, token } = await approved();
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: org.id } });
+    expect(await getActiveApprovalUrl(org.id, selection.id)).toContain(token);
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "COMPLETED" } });
+    expect(await resolveApprovalLink(token)).toEqual({ ok: false });
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "CANCELLED" } });
+    expect(await resolveApprovalLink(token)).toEqual({ ok: false });
+  });
+
+  it("reopening the menu (back to Draft) ends the link", async () => {
+    const { org, token } = await approved();
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: org.id } });
+    await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "DRAFT" } });
+    expect(await resolveApprovalLink(token)).toEqual({ ok: false });
+  });
+});
+
+describe("snapshot for the redesigned approval page", () => {
+  it("freezes the menu's image/price, each dish's category, add-on kinds and the price breakdown", async () => {
+    const { org, actor, customer } = await makeAdminOrder();
+    const eventType = await createEventType(org.id, { name: "Reception" }, actor.id);
+    const menu = await prisma.menu.create({ data: { organizationId: org.id, name: "North Indian", menuType: "VEGETARIAN", pricePerPlate: 400, image: "/m.png", description: "Festive spread" } });
+    const category = await prisma.menuCategory.create({ data: { organizationId: org.id, name: "Starters" } });
+    const dish = await createMenuItem(org.id, { name: "Paneer 65", foodType: "VEGETARIAN", price: 140, menuIds: [menu.id], categoryIds: [category.id] }, actor.id);
+    const counter = await prisma.addOn.create({ data: { organizationId: org.id, name: "Chaat Counter", type: "LIVE_COUNTER", priceType: "FIXED", price: 2000 } });
+    const order = await createOrder(
+      org.id,
+      {
+        customerId: customer.id,
+        eventTypeId: eventType.id,
+        eventStartDate: new Date("2026-12-05"),
+        eventEndDate: new Date("2026-12-05"),
+        adultCount: 10,
+        totalParticipants: 10,
+        mealPlanEntries: [
+          {
+            date: new Date("2026-12-05"),
+            mealType: "DINNER",
+            menuId: menu.id,
+            items: [
+              { itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 },
+              { itemType: "ADD_ON", catalogId: counter.id, quantity: 1 },
+            ],
+          },
+        ],
+      },
+      actor.id,
+    );
+
+    await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
+    const version = await prisma.menuVersion.findFirstOrThrow({ where: { menuSelection: { organizationId: org.id } } });
+    const snapshot = version.snapshot as unknown as import("@/modules/menu-approvals/approval-snapshot").ApprovalSnapshot;
+
+    expect(snapshot.meals[0]).toMatchObject({ menuName: "North Indian", menuImage: "/m.png", menuDescription: "Festive spread", pricePerPlate: 400 });
+    expect(snapshot.meals[0].items.find((i) => i.name === "Paneer 65")).toMatchObject({ category: "Starters" });
+    expect(snapshot.meals[0].items.find((i) => i.name === "Chaat Counter")).toMatchObject({ addOnType: "LIVE_COUNTER", priceType: "FIXED", included: false });
+    expect(snapshot.breakdown).toMatchObject({ menuAmount: 4000, liveCountersAmount: 2000, extrasAmount: 0, addOnsAmount: 0 });
+    expect(snapshot.total).toBe(6000);
   });
 });

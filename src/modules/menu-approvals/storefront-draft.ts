@@ -10,7 +10,7 @@ import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput
 import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
 import { requiredShortfalls, splitPicks } from "./storefront-selection";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "./public-lead-time";
-import type { FoodType, MealType, VenueType, VehicleAccessType, Prisma } from "@/generated/prisma/client";
+import type { FoodType, MealType, Prisma } from "@/generated/prisma/client";
 
 // Chunk 12 (2026-09-25) — the public storefront's multi-step order flow,
 // server side. A visitor is saved as a Lead (Customer with no Order) the
@@ -33,6 +33,8 @@ export interface EventDetailsInput {
   /** "Meals Required" — one or more meals on the event day. The menu, dishes and add-ons repeat for each. */
   eventMealTypes: MealType[];
   menuPreference: FoodType;
+  /** Where the event is (an area, locality or address). The detailed venue and delivery information is collected after the customer approves the menu. */
+  venueLocation: string;
 }
 
 export interface StartDraftInput extends EventDetailsInput {
@@ -42,21 +44,9 @@ export interface StartDraftInput extends EventDetailsInput {
   marketingConsent: boolean;
 }
 
-export interface DraftVenue {
-  venueType: VenueType;
-  venueBuildingName: string;
-  venueDoorNumber: string;
-  venueTower?: string;
-  venueFloor?: string;
-  completeVenueAddress: string;
-  venueLandmark?: string;
-  venueContactName: string;
-  venueContactPhone: string;
-  venueAccessInstructions?: string;
-  vehicleAccess: VehicleAccessType;
-  liveCounterAvailable: boolean;
-  gasElectricAvailable: boolean;
-  cookingInstructions?: string;
+/** Drafts saved before 2026-10-02 carried the full Venue & Delivery form; only its address is still read (as the Venue Location). */
+interface LegacyDraftVenue {
+  completeVenueAddress?: string;
 }
 
 export type MenuChoice = { kind: "MENU"; menuId: string } | { kind: "CUSTOM" };
@@ -66,7 +56,7 @@ export interface DraftData extends EventDetailsInput {
   /** In the order the visitor picked them — extras are derived from this order. */
   itemIds?: string[];
   addOnIds?: string[];
-  venue?: DraftVenue;
+  venue?: LegacyDraftVenue;
 }
 
 // --- validation helpers -------------------------------------------------
@@ -104,13 +94,17 @@ async function validateEventDetails(organizationId: string, details: EventDetail
 
   if (!isCount(details.childBelow5Count) || !isCount(details.child5To10Count)) throw new StorefrontDraftError("Kids counts must be zero or more.");
 
-  return { ...details, eventMealTypes: meals, eventDate: details.eventDate.slice(0, 10) };
+  const venueLocation = requireText(details.venueLocation, "Venue Location");
+
+  return { ...details, eventMealTypes: meals, eventDate: details.eventDate.slice(0, 10), venueLocation };
 }
 
 function readData(draft: { data: Prisma.JsonValue }): DraftData {
   const data = draft.data as unknown as DraftData & { eventMealType?: MealType };
   // Drafts saved before "Meals Required" held a single meal.
   if (!data.eventMealTypes) data.eventMealTypes = data.eventMealType ? [data.eventMealType] : [];
+  // Drafts saved before the 3-step flow have no Venue Location; their old venue address stands in for it.
+  if (!data.venueLocation) data.venueLocation = data.venue?.completeVenueAddress ?? "";
   return data;
 }
 
@@ -178,7 +172,7 @@ export async function saveDraftDetails(organizationId: string, draftId: string, 
   return saveDraft(draftId, next, 2, draft.currentStep);
 }
 
-// --- step 2: menu -------------------------------------------------------
+// --- step 2: Build Your Menu (menu choice, dishes, add-ons) ----------- -------------------------------------------------------
 
 export async function saveDraftMenuChoice(organizationId: string, draftId: string, choice: MenuChoice) {
   const draft = await loadEditableDraft(organizationId, draftId);
@@ -200,10 +194,10 @@ export async function saveDraftMenuChoice(organizationId: string, draftId: strin
   const changed = JSON.stringify(before.menuChoice) !== JSON.stringify(choice);
   const next: DraftData = { ...before, menuChoice: choice };
   if (changed) delete next.itemIds;
-  return saveDraft(draftId, next, 3, draft.currentStep);
+  return saveDraft(draftId, next, 2, draft.currentStep);
 }
 
-// --- step 3: items + add-ons --------------------------------------------
+// --- dishes and add-ons --------------------------------------------
 
 interface PickableItem {
   id: string;
@@ -254,7 +248,7 @@ async function classifyItems(organizationId: string, data: DraftData, itemIds: s
 }
 
 /**
- * Step 3: the dishes. Every category with a limit needs its full count of included dishes picked (or every dish it
+ * The dishes. Every category with a limit needs its full count of included dishes picked (or every dish it
  * has, when it has fewer) before this saves, the same "compulsory" rule the admin picker uses (`requiredShortfalls`),
  * so the customer and the team cannot end up with different ideas of a complete menu. Extras do not count.
  * `addOnIds` stays as it was unless it is passed (kept for callers that still send both).
@@ -278,7 +272,7 @@ export async function saveDraftItems(organizationId: string, draftId: string, in
   const addOnIds = input.addOnIds ? [...new Set(input.addOnIds)] : before.addOnIds;
   if (addOnIds && addOnIds.length > 0) await assertAddOnsAvailable(organizationId, addOnIds);
 
-  return saveDraft(draftId, { ...before, itemIds, addOnIds }, 4, draft.currentStep);
+  return saveDraft(draftId, { ...before, itemIds, addOnIds }, 2, draft.currentStep);
 }
 
 async function assertAddOnsAvailable(organizationId: string, addOnIds: string[]) {
@@ -286,9 +280,9 @@ async function assertAddOnsAvailable(organizationId: string, addOnIds: string[])
   if (count !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
 }
 
-// --- step 4: add-ons and live counters ------------------------------------
+// --- add-ons and live counters ------------------------------------
 
-/** Step 4: optional add-ons and live counters. May be empty; unlocks the venue step. */
+/** Optional add-ons and live counters. May be empty; saving them is what unlocks the Review step. */
 export async function saveDraftAddOns(organizationId: string, draftId: string, addOnIds: string[]) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const before = readData(draft);
@@ -297,39 +291,10 @@ export async function saveDraftAddOns(organizationId: string, draftId: string, a
   const unique = [...new Set(addOnIds)];
   if (unique.length > 0) await assertAddOnsAvailable(organizationId, unique);
 
-  return saveDraft(draftId, { ...before, addOnIds: unique }, 5, draft.currentStep);
+  return saveDraft(draftId, { ...before, addOnIds: unique }, 3, draft.currentStep);
 }
 
-// --- step 5: venue ------------------------------------------------------
-
-export async function saveDraftVenue(organizationId: string, draftId: string, venue: DraftVenue) {
-  const draft = await loadEditableDraft(organizationId, draftId);
-  const before = readData(draft);
-  if (!before.itemIds?.length) throw new StorefrontDraftError("Please choose your menu items first.");
-
-  const cleaned: DraftVenue = {
-    venueType: venue.venueType,
-    venueBuildingName: requireText(venue.venueBuildingName, "Venue / Building Name"),
-    venueDoorNumber: requireText(venue.venueDoorNumber, "Door / Flat / House No."),
-    venueTower: venue.venueTower?.trim() || undefined,
-    venueFloor: venue.venueFloor?.trim() || undefined,
-    completeVenueAddress: requireText(venue.completeVenueAddress, "Complete Venue Address"),
-    venueLandmark: venue.venueLandmark?.trim() || undefined,
-    venueContactName: requireText(venue.venueContactName, "Venue Contact Person"),
-    venueContactPhone: requireText(venue.venueContactPhone, "Contact Number"),
-    venueAccessInstructions: venue.venueAccessInstructions?.trim() || undefined,
-    vehicleAccess: venue.vehicleAccess,
-    liveCounterAvailable: venue.liveCounterAvailable === true,
-    gasElectricAvailable: venue.gasElectricAvailable === true,
-    cookingInstructions: venue.cookingInstructions?.trim() || undefined,
-  };
-  if (!cleaned.venueType) throw new StorefrontDraftError("Venue Type is required.");
-  if (!cleaned.vehicleAccess) throw new StorefrontDraftError("Vehicle Access is required.");
-
-  return saveDraft(draftId, { ...before, venue: cleaned }, 6, draft.currentStep);
-}
-
-// --- step 5: quote + submit ---------------------------------------------
+// --- step 3: quote + submit ---------------------------------------------
 
 export interface DraftQuote {
   isCustomMenu: boolean;
@@ -397,7 +362,7 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
 export async function submitDraft(organizationId: string, draftId: string, notes?: string) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const data = readData(draft);
-  if (!data.menuChoice || !data.itemIds?.length || !data.venue) throw new StorefrontDraftError("Please complete every step before submitting.");
+  if (!data.menuChoice || !data.itemIds?.length || !data.venueLocation) throw new StorefrontDraftError("Please complete every step before submitting.");
 
   const claimed = await prisma.storefrontDraft.updateMany({
     where: { id: draftId, organizationId, status: "IN_PROGRESS" },
@@ -409,7 +374,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
     const quote = await buildDraftQuote(organizationId, data);
     const { regularIds, extraIds } = await classifyItems(organizationId, data, data.itemIds);
     const eventDate = new Date(data.eventDate);
-    const venue = data.venue;
     const guests = data.guestCount;
 
     // The whole menu goes on the meal so Menu Approvals shows it in the same planner as any order (AJ, 2026-09-30):
@@ -429,15 +393,13 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       eventStartDate: eventDate,
       eventEndDate: eventDate,
       orderKind: mealTypes.length > 1 ? "MULTI" : "SINGLE",
-      venue: venue.venueBuildingName,
-      eventAddress: venue.completeVenueAddress,
+      // Only the location is known at this point; the venue and delivery details come after the customer approves.
+      eventAddress: data.venueLocation,
       // "Number of Guests" on the form is the adults; children are counted on top.
       adultCount: guests,
       totalParticipants: guests + data.childBelow5Count + data.child5To10Count,
       childBelow5Count: data.childBelow5Count,
       child5To10Count: data.child5To10Count,
-      gasElectricAvailable: venue.gasElectricAvailable,
-      cookingInstructions: venue.cookingInstructions,
       individualPricingEnabled: true,
       notes: notes?.trim() || undefined,
       mealPlanEntries: mealTypes.map((mealType) => ({
@@ -454,16 +416,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       data: {
         menuPreference: data.menuPreference,
         eventMealType: mealTypes[0],
-        venueType: venue.venueType,
-        venueDoorNumber: venue.venueDoorNumber,
-        venueTower: venue.venueTower,
-        venueFloor: venue.venueFloor,
-        venueLandmark: venue.venueLandmark,
-        venueContactName: venue.venueContactName,
-        venueContactPhone: venue.venueContactPhone,
-        venueAccessInstructions: venue.venueAccessInstructions,
-        vehicleAccess: venue.vehicleAccess,
-        liveCounterAvailable: venue.liveCounterAvailable,
       },
     });
 
@@ -557,8 +509,7 @@ export async function listAbandonedOrders(organizationId: string, state: Abandon
       guestCount: data.guestCount,
       eventMealTypes: data.eventMealTypes,
       menuPreference: data.menuPreference,
-      // Only set once the visitor reaches the Venue & Delivery step.
-      venueName: data.venue?.venueBuildingName ?? null,
+      venueName: data.venueLocation || null,
     };
   });
 }

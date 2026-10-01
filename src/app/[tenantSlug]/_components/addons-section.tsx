@@ -1,15 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Flame, Gift, Info, Search } from "lucide-react";
+import { Check, Flame, Gift, Info, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { FormCard } from "@/components/public/form-section";
 import { IconInput } from "@/components/ui/icon-input";
 import { formatInr } from "@/lib/format-currency";
-import { saveAddOnsAction } from "../actions";
+import { SectionHeading } from "./menu-section";
 import { cn } from "cn";
 
 export interface StorefrontAddOn {
@@ -24,12 +22,11 @@ export interface StorefrontAddOn {
   included: boolean;
 }
 
-interface AddOnsStepProps {
-  tenantSlug: string;
-  draftId: string;
+interface AddOnsSectionProps {
   addOns: StorefrontAddOn[];
   guests: number;
-  initialAddOnIds: string[];
+  addOnIds: string[];
+  onAddOnIdsChange: (update: (previous: string[]) => string[]) => void;
 }
 
 const GROUPS = [
@@ -38,33 +35,17 @@ const GROUPS = [
 ] as const;
 
 /**
- * Step 4: optional add-ons and live counters (AJ, 2026-10-01 — they used to sit at the bottom of the dish step).
- * Two tabs (Live Counters, Add-ons) over a card grid. Nothing is required; what the kitchen marks "included in the
- * package" is free, everything else is charged on top of the menu price.
+ * Build Your Menu, part 3: optional add-ons and live counters (the old Add-ons step). Two tabs over a card grid.
+ * Nothing is required and the customer can go straight to Review; what the kitchen marks "included in the package"
+ * is free, everything else is charged on top of the menu price.
  */
-export function AddOnsStep({ tenantSlug, draftId, addOns, guests, initialAddOnIds }: AddOnsStepProps) {
-  const router = useRouter();
-  const [addOnIds, setAddOnIds] = useState<string[]>(initialAddOnIds);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+export function AddOnsSection({ addOns, guests, addOnIds, onAddOnIdsChange }: AddOnsSectionProps) {
   const groups = GROUPS.filter((g) => addOns.some((a) => a.type === g.type));
   const [tab, setTab] = useState<(typeof GROUPS)[number]["type"]>(groups[0]?.type ?? "LIVE_COUNTER");
   const [search, setSearch] = useState("");
 
   function toggle(id: string) {
-    setAddOnIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  async function handleContinue() {
-    setError(null);
-    setPending(true);
-    const result = await saveAddOnsAction(tenantSlug, draftId, addOnIds);
-    if (!result.ok) {
-      setPending(false);
-      setError(result.error);
-      return;
-    }
-    router.push(`/${tenantSlug}/plan/${draftId}?step=venue`);
+    onAddOnIdsChange((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   const group = GROUPS.find((g) => g.type === tab)!;
@@ -72,17 +53,13 @@ export function AddOnsStep({ tenantSlug, draftId, addOns, guests, initialAddOnId
   const rows = addOns.filter((a) => a.type === tab && (!query || a.name.toLowerCase().includes(query) || (a.description ?? "").toLowerCase().includes(query)));
   const Icon = group.icon;
 
-  return (
-    <div className="flex flex-col gap-6 pb-28">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold">Add-ons &amp; Live Counters</h2>
-        <p className="text-sm text-muted-foreground">Optional extras for your event. Choose any, or continue without them.</p>
-      </div>
+  if (addOns.length === 0) return null;
 
-      {addOns.length === 0 ? (
-        <p className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground ring-1 ring-foreground/10">No add-ons or live counters are available right now. You can continue.</p>
-      ) : (
+  return (
+    <div className="flex flex-col gap-6" data-testid="addons-block">
+      {(
         <FormCard className="gap-5">
+          <SectionHeading number={3} title="Add-ons & Live Counters" description="Optional extras for your event. Choose any, or skip this section and continue to Review." />
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div role="tablist" className="flex gap-2">
               {groups.map((g) => {
@@ -171,26 +148,6 @@ export function AddOnsStep({ tenantSlug, draftId, addOns, guests, initialAddOnId
           </div>
         </FormCard>
       )}
-
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-
-      <StepFooter
-        onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=items`)}
-        summary={
-          <span data-testid="addon-summary">
-            {addOnIds.length} add-on{addOnIds.length === 1 ? "" : "s"} selected
-          </span>
-        }
-      >
-        <Button type="button" disabled={pending} onClick={handleContinue}>
-          {pending ? "Saving…" : "Continue to Venue & Delivery"}
-          <ArrowRight />
-        </Button>
-      </StepFooter>
     </div>
   );
 }
