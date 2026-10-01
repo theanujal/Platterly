@@ -7,13 +7,13 @@ import { DashboardCardHeader } from "./dashboard-card-header";
 // used to be the standalone Menu Catalog shortcut card, since "manage
 // catalog" is just another quick action, not its own module.
 const ACTIONS = [
-  { label: "New Order", href: "/orders/new", icon: ShoppingCart },
-  { label: "New Quotation", href: "/quotations/new", icon: FileText },
+  { key: "order", label: "New Order", href: "/orders/new", icon: ShoppingCart },
+  { key: "quotation", label: "New Quotation", href: "/quotations/new", icon: FileText },
   // Enquiries merged into Customers (2026-09-17, AJ) — "New Lead" now just
   // opens the Customers page, same "Add Customer" popup with its "Is this
   // an enquiry?" toggle, rather than a separate Enquiries route.
-  { label: "New Lead", href: "/customers", icon: Users },
-  { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
+  { key: "lead", label: "New Lead", href: "/customers", icon: Users },
+  { key: "catalog", label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 
 // AJ, 2026-09-17 — matches the reference screenshot's placement exactly:
@@ -30,13 +30,15 @@ const ACTIONS = [
 // shrinks this card down to near-zero instead of just letting the page
 // scroll. Caught live via a real headed-browser screenshot during a
 // brand-new-signup walkthrough, not hypothetical.
-export function QuickActionsCard() {
+export function QuickActionsCard({ allowed }: { allowed: Record<(typeof ACTIONS)[number]["key"], boolean> }) {
+  const actions = ACTIONS.filter((action) => allowed[action.key]);
+  if (actions.length === 0) return null;
   return (
     <Card className="shrink-0 border-primary/20 bg-primary/[0.03]">
       <DashboardCardHeader icon={Zap} title="Quick Actions" colorClassName="bg-primary/10 text-primary" />
       <CardContent>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {ACTIONS.map((action) => (
+          {actions.map((action) => (
             <Link
               key={action.href}
               href={action.href}

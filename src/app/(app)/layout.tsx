@@ -1,11 +1,12 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
+import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { GlobalSearch } from "@/components/app-shell/global-search";
 
@@ -33,6 +34,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getCurrentSubscription(organizationId),
   ]);
 
+  // Links the role can't open are left out of the sidebar. Each page still enforces its own permission.
+  const navHrefs = Object.keys(NAV_PERMISSIONS);
+  const navAllowed = await Promise.all(navHrefs.map((href) => hasPermission(NAV_PERMISSIONS[href], organizationId)));
+  const allowedHrefs = navHrefs.filter((_, index) => navAllowed[index]);
+
   const cookieStore = await cookies();
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultOpen = sidebarState !== "false";
@@ -52,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar organizationName={organization.name} subscription={subscriptionCardProps} />
+      <AppSidebar organizationName={organization.name} subscription={subscriptionCardProps} allowedHrefs={allowedHrefs} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />

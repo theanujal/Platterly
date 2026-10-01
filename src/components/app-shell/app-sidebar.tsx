@@ -19,6 +19,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { UpgradeCard } from "@/components/app-shell/upgrade-card";
+import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
 
 // AJ's explicit nav order, 2026-09-19 — 3 groups (sales/catalog, inventory,
 // kitchen), each its own SidebarMenu so a SidebarSeparator can mark the
@@ -48,6 +49,7 @@ interface NavItem {
 }
 
 function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname: string }) {
+  if (items.length === 0) return null;
   return (
     <SidebarMenu>
       {items.map((item) => {
@@ -73,11 +75,17 @@ function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname
 interface AppSidebarProps {
   organizationName: string;
   /** Null when the tenant has no active subscription row at all — the card is skipped rather than showing a fabricated plan. */
+  /** Links the signed-in role may open; anything in `NAV_PERMISSIONS` that is missing here is hidden. */
+  allowedHrefs: string[];
   subscription: { planName: string; isTrialing: boolean; trialDaysLeft: number | null; trialTotalDays: number | null } | null;
 }
 
-export function AppSidebar({ organizationName, subscription }: AppSidebarProps) {
+export function AppSidebar({ organizationName, subscription, allowedHrefs }: AppSidebarProps) {
   const pathname = usePathname();
+  const visible = <T extends NavItem>(items: readonly T[]) => items.filter((item) => !(item.href in NAV_PERMISSIONS) || allowedHrefs.includes(item.href));
+  const salesItems = visible(SALES_AND_CATALOG_ITEMS);
+  const inventoryItems = visible(INVENTORY_ITEMS);
+  const kitchenItems = visible(KITCHEN_ITEMS);
 
   return (
     <Sidebar collapsible="icon">
@@ -98,11 +106,11 @@ export function AppSidebar({ organizationName, subscription }: AppSidebarProps) 
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <NavItemGroup items={SALES_AND_CATALOG_ITEMS} pathname={pathname} />
-            <SidebarSeparator />
-            <NavItemGroup items={INVENTORY_ITEMS} pathname={pathname} />
-            <SidebarSeparator />
-            <NavItemGroup items={KITCHEN_ITEMS} pathname={pathname} />
+            <NavItemGroup items={salesItems} pathname={pathname} />
+            {inventoryItems.length > 0 && <SidebarSeparator />}
+            <NavItemGroup items={inventoryItems} pathname={pathname} />
+            {kitchenItems.length > 0 && <SidebarSeparator />}
+            <NavItemGroup items={kitchenItems} pathname={pathname} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
@@ -118,6 +126,7 @@ export function AppSidebar({ organizationName, subscription }: AppSidebarProps) 
           </div>
         )}
         <Separator className="group-data-[collapsible=icon]:hidden" />
+        {allowedHrefs.includes("/settings") && (
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -131,6 +140,7 @@ export function AppSidebar({ organizationName, subscription }: AppSidebarProps) 
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        )}
         <SidebarMenu>
           <SidebarMenuItem>
             <SignOutButton

@@ -25,13 +25,15 @@ interface DashboardKpisProps {
   statusBreakdown: { status: OrderStatus; count: number; totalValue: number }[];
   outstandingBalance: number;
   outstandingOrdersCount: number;
+  /** Pending revenue and order values are shown only to roles that may see money. */
+  showMoney: boolean;
 }
 
 // A colorful KPI system in place of six identical neutral cards — every
 // Order status gets its own solid-color tile (so the pipeline is scannable
 // at a glance), plus a secondary row translating the two most active
 // statuses and the outstanding balance into real money.
-export function DashboardKpis({ statusBreakdown, outstandingBalance, outstandingOrdersCount }: DashboardKpisProps) {
+export function DashboardKpis({ statusBreakdown, outstandingBalance, outstandingOrdersCount, showMoney }: DashboardKpisProps) {
   const inKitchenValue = statusBreakdown.find((s) => s.status === "SENT_TO_KITCHEN")?.totalValue ?? 0;
   const completedValue = statusBreakdown.find((s) => s.status === "COMPLETED")?.totalValue ?? 0;
 
@@ -57,6 +59,7 @@ export function DashboardKpis({ statusBreakdown, outstandingBalance, outstanding
           );
         })}
       </div>
+      {showMoney && (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Link
           href="/orders"
@@ -98,6 +101,7 @@ export function DashboardKpis({ statusBreakdown, outstandingBalance, outstanding
           </div>
         </Link>
       </div>
+      )}
     </div>
   );
 }

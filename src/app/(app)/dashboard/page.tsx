@@ -39,7 +39,20 @@ export default async function DashboardPage() {
   // Only the person who can actually save a slug change should see the
   // popup nudging them to (AJ, 2026-09-19) — it was showing to every role,
   // including staff who'd just hit a permission error trying to use it.
-  const canClaimLink = await hasPermission({ tenant: ["edit"] }, organizationId);
+  const [canClaimLink, canViewOrders, canSell, canViewPayments, canViewInventory, canCreateQuotation, canViewCustomers, canViewMenus] =
+    await Promise.all([
+      hasPermission({ tenant: ["edit"] }, organizationId),
+      hasPermission({ orders: ["view"] }, organizationId),
+      hasPermission({ orders: ["create"] }, organizationId),
+      hasPermission({ payments: ["view"] }, organizationId),
+      hasPermission({ inventory: ["view"] }, organizationId),
+      hasPermission({ quotations: ["create"] }, organizationId),
+      hasPermission({ customers: ["view"] }, organizationId),
+      hasPermission({ menus: ["view"] }, organizationId),
+    ]);
+  // Each card shows only what the role can use (e.g. the kitchen role sees order counts, the
+  // calendar and upcoming events, but no revenue, no "create" shortcuts and no setup banner).
+  const canSeeMoney = canSell || canViewPayments;
 
   const firstName = session.user.firstName ?? session.user.name.split(" ")[0];
   const lastName = session.user.lastName ?? "";
@@ -59,41 +72,51 @@ export default async function DashboardPage() {
       </div>
       <Separator />
 
-      {!organization.onboardingCompletedAt && <OnboardingNudgeBanner />}
+      {!organization.onboardingCompletedAt && canClaimLink && <OnboardingNudgeBanner />}
 
-      <DashboardKpis
-        statusBreakdown={snapshot.statusBreakdown}
-        outstandingBalance={snapshot.outstandingBalance}
-        outstandingOrdersCount={snapshot.outstandingOrdersCount}
+      {canViewOrders && (
+        <DashboardKpis
+          statusBreakdown={snapshot.statusBreakdown}
+          outstandingBalance={snapshot.outstandingBalance}
+          outstandingOrdersCount={snapshot.outstandingOrdersCount}
+          showMoney={canSeeMoney}
+        />
+      )}
+
+      <QuickActionsCard
+        allowed={{ order: canSell, quotation: canCreateQuotation, lead: canViewCustomers, catalog: canViewMenus }}
       />
 
-      <QuickActionsCard />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <OrdersActivityCard
-            revenueTrend={snapshot.revenueTrend}
-            totalOrders={snapshot.totalOrders}
-          />
+      {(canSeeMoney || canSell) && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {canSeeMoney && (
+            <div className="lg:col-span-2">
+              <OrdersActivityCard revenueTrend={snapshot.revenueTrend} totalOrders={snapshot.totalOrders} />
+            </div>
+          )}
+          {canSell && (
+            <div className={`flex flex-col gap-4 ${canSeeMoney ? "" : "lg:col-span-3"}`}>
+              <PublicMenuShortcutCard slug={organization.slug} slugChangeCount={organization.slugChangeCount} />
+              <NeedsAttentionCard
+                pendingReviewOrders={snapshot.pendingReviewOrders}
+                outstandingOrdersCount={snapshot.outstandingOrdersCount}
+                outstandingBalance={snapshot.outstandingBalance}
+                quotationsAwaitingResponse={snapshot.quotationsAwaitingResponse}
+              />
+            </div>
+          )}
         </div>
-        <div className="flex flex-col gap-4">
-          <PublicMenuShortcutCard slug={organization.slug} slugChangeCount={organization.slugChangeCount} />
-          <NeedsAttentionCard
-            pendingReviewOrders={snapshot.pendingReviewOrders}
-            outstandingOrdersCount={snapshot.outstandingOrdersCount}
-            outstandingBalance={snapshot.outstandingBalance}
-            quotationsAwaitingResponse={snapshot.quotationsAwaitingResponse}
-          />
+      )}
+
+      {(canViewInventory || canSeeMoney || canViewOrders) && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {canViewInventory && <InventoryOverviewCard organizationId={organizationId} />}
+          {canSeeMoney && <PartialPaymentsCard organizationId={organizationId} />}
+          {canViewOrders && <OrdersCalendarCard orderCountsByDay={snapshot.orderCountsByDay} />}
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <InventoryOverviewCard organizationId={organizationId} />
-        <PartialPaymentsCard organizationId={organizationId} />
-        <OrdersCalendarCard orderCountsByDay={snapshot.orderCountsByDay} />
-      </div>
-
-      <UpcomingEventsCard events={snapshot.upcomingEvents} />
+      {canViewOrders && <UpcomingEventsCard events={snapshot.upcomingEvents} />}
 
       <CustomLinkDialog suggestedSlug={suggestedSlug} defaultOpen={canClaimLink && organization.slugChangeCount === 0} />
     </main>

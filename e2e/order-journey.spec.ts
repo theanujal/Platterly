@@ -193,6 +193,20 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await verifyEmailViaOtp(kitchenPage, kitchenEmail);
   await expect(kitchenPage).toHaveURL(/\/dashboard$/);
 
+  // The sidebar and Dashboard show the kitchen role only what it can use.
+  const sidebar = kitchenPage.locator("[data-sidebar='sidebar']").first();
+  for (const name of ["Orders", "Calendar", "Menu Catalog", "Kitchen Dashboard"]) {
+    await expect(sidebar.getByRole("link", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Quotations", "Customers", "Inventory", "Menu Approvals", "Settings"]) {
+    await expect(sidebar.getByRole("link", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(kitchenPage.getByText("Pending Revenue")).toHaveCount(0);
+  for (const name of ["New Order", "New Quotation", "New Lead"]) {
+    await expect(kitchenPage.getByRole("link", { name })).toHaveCount(0);
+  }
+  await expect(kitchenPage.getByText("Public Menu")).toHaveCount(0);
+
   // ===== Kitchen member: what the role may NOT do =====
   // Menu Approvals is the sales team's pipeline, closed to the kitchen role (permissions.ts).
   await kitchenPage.goto("/menu-approvals");
