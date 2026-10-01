@@ -1,6 +1,9 @@
 import * as React from "react"
 
-const MOBILE_BREAKPOINT = 768
+// 1024, not shadcn's stock 768: the 256px sidebar left only ~560px for the page on a tablet in
+// portrait (iPad 768-834px), cutting off tables, tabs and the calendar. Under 1024px the sidebar is
+// the slide-out drawer it already is on a phone.
+const MOBILE_BREAKPOINT = 1024
 
 // useSyncExternalStore instead of shadcn's stock useState+useEffect
 // generated version — that version called setState directly in the effect

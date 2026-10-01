@@ -312,7 +312,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 className="bg-[#25D366] text-white hover:bg-[#1FAD54]"
                 disabled={!menuHref}
