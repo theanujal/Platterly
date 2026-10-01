@@ -38,7 +38,7 @@ test("claim a custom link, then view the real public storefront page (unauthenti
 
   // --- Settings: real link shown, Copy button, and a downloadable QR ---
   await page.goto("/settings/integration/public-menu-link");
-  await expect(page.getByText(`localhost:3000/${slug}`)).toBeVisible();
+  await expect(page.getByText(`${new URL(page.url()).host}/${slug}`)).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Download QR code" })).toBeVisible();
 

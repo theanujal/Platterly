@@ -17,12 +17,16 @@ const nextConfig: NextConfig = {
   // (catalog-image.ts, logos, ImageDropzone), so the body limit sits just above it to
   // leave room for the rest of the form.
   experimental: {
+    // Lets `forbidden()` render src/app/forbidden.tsx (a "no access" page) instead of a 500.
+    authInterrupts: true,
     serverActions: { bodySizeLimit: "5mb" },
   },
   // Default "bottom-left" sits exactly on top of the new sidebar's footer
   // (Sign out button) — moved out of the way rather than disabling the dev
   // indicator entirely. Caught by a real Playwright click hang: Next's own
   // <nextjs-portal> intercepted pointer events meant for Sign out.
+  // Each product and the ops admin are served from their own `*.localhost` host in dev.
+  allowedDevOrigins: ["*.localhost"],
   devIndicators: {
     position: "bottom-right",
   },

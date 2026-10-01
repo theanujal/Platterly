@@ -11,7 +11,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:e2e:fast": "PW_FAST=1 playwright test",
+    "test:e2e:headed": "PW_HEADED=1 playwright test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio"

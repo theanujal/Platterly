@@ -8,6 +8,7 @@ import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { notify } from "@/lib/notifications/notify";
 import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
 import { canonicalUrl } from "@/lib/seo/canonical";
+import { trustedOrigins } from "@/lib/routing/hosts";
 
 /**
  * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
@@ -21,6 +22,15 @@ import { canonicalUrl } from "@/lib/seo/canonical";
  */
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
+  // The app is served from several hosts (catering.*, ops.*), each with its
+  // own host-only session cookie — deliberately no crossSubDomainCookies.
+  trustedOrigins: trustedOrigins(),
+  // Production rate limiting is per client IP. Behind Cloudflare/Nginx the socket address is the
+  // proxy's, so without this every visitor shares one bucket and gets "Too many requests".
+  // Nginx must overwrite (not append to) these headers, so a client can't forge its own IP.
+  advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] } },
+  // Only the production rehearsal (e2e through one IP) switches this off; never set it in production.
+  ...(process.env.AUTH_RATE_LIMIT_OFF === "1" ? { rateLimit: { enabled: false } } : {}),
   emailAndPassword: {
     enabled: true,
   },

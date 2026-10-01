@@ -1,5 +1,6 @@
 import { requireSuperAdminOrRedirect } from "../_lib/guard";
 import { SuperAdminNav } from "./_components/nav";
+import { ProductSwitcher } from "./_components/product-switcher";
 import { SignOutButton } from "./_components/sign-out-button";
 
 // Chunk 3 Group 3.1 — every page under this route group is gated by
@@ -13,6 +14,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
       <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-3">
         <SuperAdminNav />
         <div className="flex items-center gap-3 text-sm text-neutral-500">
+          <ProductSwitcher />
           <span>{session.user.name}</span>
           <SignOutButton />
         </div>

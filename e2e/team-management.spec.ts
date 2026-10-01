@@ -118,11 +118,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await inviteePage.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(inviteePage, staffEmail);
 
-  // Must return to the invitation's own accept page, NOT the onboarding wizard.
-  await expect(inviteePage).toHaveURL(new RegExp(`/invitations/${invitationId}/accept$`));
-  await expect(inviteePage.getByRole("heading", { name: `Join ${businessName}` })).toBeVisible();
-
-  await inviteePage.getByRole("button", { name: "Accept invitation" }).click();
+  // No steps between verifying and the Dashboard: no onboarding wizard and no Accept click (AJ, 2026-10-01).
   await expect(inviteePage).toHaveURL(/\/dashboard$/);
   // The custom-link popup is gated on `tenant: ["edit"]` (AJ, 2026-09-19) —
   // Staff doesn't hold that permission, so it must NOT auto-open here even

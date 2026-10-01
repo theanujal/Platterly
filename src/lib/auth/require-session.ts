@@ -1,13 +1,12 @@
 import "server-only";
 import { headers as nextHeaders } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, forbidden } from "next/navigation";
 import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
+import { hostKind, requestHost } from "@/lib/routing/hosts";
 import type { statement } from "./permissions";
 
-export class UnauthenticatedError extends Error {}
-export class ForbiddenError extends Error {}
 
 /**
  * Tenant-isolation + auth core (Chunk 1 Group 1.3, PRD §54). Deliberately a
@@ -18,9 +17,12 @@ export class ForbiddenError extends Error {}
  * avoids that conflict entirely.
  */
 export async function requireSession() {
-  const session = await auth.api.getSession({ headers: await nextHeaders() });
+  const requestHeaders = await nextHeaders();
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) {
-    throw new UnauthenticatedError("No active session");
+    // No session (never signed in, or it expired): send the visitor to the sign-in page of the
+    // host they are on, instead of throwing a 500. The ops host signs in at /super.
+    redirect(hostKind(requestHost(requestHeaders)) === "ops" ? "/super" : "/kitchenlogin");
   }
   return session;
 }
@@ -35,14 +37,14 @@ export async function requireSession() {
 export async function requireOrg(organizationId: string) {
   const session = await requireSession();
   if (session.session.activeOrganizationId !== organizationId) {
-    throw new ForbiddenError("Session is not scoped to this organization");
+    forbidden();
   }
   const membership = await prisma.member.findFirst({
     where: { userId: session.user.id, organizationId },
     select: { disabledAt: true },
   });
   if (membership?.disabledAt) {
-    throw new ForbiddenError("This account has been disabled by an administrator.");
+    forbidden();
   }
   return session;
 }
@@ -68,7 +70,7 @@ export async function requireOrg(organizationId: string) {
  *    back to yet — redirect to the invitation's own accept page rather than
  *    throwing, since this is an expected state, not an error.
  *  - Once an organization IS resolved (either branch), reject with
- *    `ForbiddenError` if the caller's own `Member.disabledAt` is set. This
+ *    `forbidden()` (the 403 page) if the caller's own `Member.disabledAt` is set. This
  *    is the single enforcement point for "a disabled teammate is locked out
  *    of every caterer-facing route," not a check scattered per-page.
  */
@@ -97,7 +99,7 @@ export async function requireActiveOrganization() {
         if (pendingInvitation) {
           redirect(`/invitations/${pendingInvitation.id}/accept`);
         }
-        throw new ForbiddenError("No organization membership found");
+        forbidden();
       }
       membership = await prisma.member.findFirstOrThrow({
         where: { organizationId: provisioned.organizationId },
@@ -112,7 +114,7 @@ export async function requireActiveOrganization() {
   }
 
   if (membership?.disabledAt) {
-    throw new ForbiddenError("This account has been disabled by an administrator.");
+    forbidden();
   }
 
   return { session, organizationId };
@@ -138,7 +140,7 @@ export async function requirePermission<Resource extends keyof Statement>(
     },
   });
   if (!result.success) {
-    throw new ForbiddenError(result.error ?? "Not authorized");
+    forbidden();
   }
   return session;
 }
@@ -172,7 +174,7 @@ export async function hasPermission<Resource extends keyof Statement>(
 export async function requireSuperAdmin() {
   const session = await requireSession();
   if (!session.user.isSuperAdmin) {
-    throw new ForbiddenError("Super Admin access required");
+    forbidden();
   }
   return session;
 }

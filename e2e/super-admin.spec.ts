@@ -11,12 +11,14 @@ import { cleanupTenantBySlug } from "./db";
  */
 const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL;
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD;
+// Super Admin lives on its own host, separate from the baseURL caterer host.
+const OPS_URL = process.env.PW_OPS_URL ?? "http://ops.localhost:3000";
 
 async function signInAsSuperAdmin(page: Page) {
   if (!SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
     throw new Error("Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in .env to run this spec.");
   }
-  await page.goto("/super");
+  await page.goto(`${OPS_URL}/super`);
   await page.getByLabel("Email").fill(SUPER_ADMIN_EMAIL);
   await page.getByLabel("Password").fill(SUPER_ADMIN_PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -24,7 +26,7 @@ async function signInAsSuperAdmin(page: Page) {
 }
 
 test("Super Admin can sign in via the UI and reach the dashboard", async ({ page }) => {
-  await page.goto("/super");
+  await page.goto(`${OPS_URL}/super`);
   await expect(page.getByRole("heading", { name: "Super Admin" })).toBeVisible();
 
   await signInAsSuperAdmin(page);
@@ -46,10 +48,10 @@ test("Tenants and Plans pages render their 'New' link-button with no Base UI con
   // Base UI assigns role="button" here (ARIA compensation for a styled
   // <a> acting as a button, per the nativeButton={false} fix) even though
   // the underlying element is a Next.js <Link>.
-  await page.goto("/super/tenants");
+  await page.goto(`${OPS_URL}/super/tenants`);
   await expect(page.getByRole("button", { name: "New Caterer" })).toBeVisible();
 
-  await page.goto("/super/plans");
+  await page.goto(`${OPS_URL}/super/plans`);
   await expect(page.getByRole("button", { name: "New Plan" })).toBeVisible();
 
   const nativeButtonWarnings = consoleErrors.filter((text) => text.includes("nativeButton"));
@@ -59,7 +61,7 @@ test("Tenants and Plans pages render their 'New' link-button with no Base UI con
 test("clicking 'New Caterer' actually navigates to the create-tenant page", async ({ page }) => {
   await signInAsSuperAdmin(page);
 
-  await page.goto("/super/tenants");
+  await page.goto(`${OPS_URL}/super/tenants`);
   await page.getByRole("button", { name: "New Caterer" }).click();
   await expect(page).toHaveURL(/\/super\/tenants\/new$/);
   await expect(page.getByRole("heading", { name: "New Caterer" })).toBeVisible();
@@ -77,7 +79,7 @@ test("creating a tenant with a separate owner first/last name renders the joined
   try {
     await signInAsSuperAdmin(page);
 
-    await page.goto("/super/tenants/new");
+    await page.goto(`${OPS_URL}/super/tenants/new`);
     await page.getByLabel("Business name").fill("Owner Name Test Co");
     await page.getByLabel("Storefront slug").fill(slug);
     await page.getByLabel("Owner first name").fill("Asha");

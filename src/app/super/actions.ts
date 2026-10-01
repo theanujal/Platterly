@@ -3,7 +3,6 @@
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
-import { requireSession, UnauthenticatedError } from "@/lib/auth/require-session";
 
 /**
  * Chunk 3 Group 3.1. Better Auth's email/password sign-in has no concept of
@@ -15,14 +14,9 @@ import { requireSession, UnauthenticatedError } from "@/lib/auth/require-session
  * left live under `/super`.
  */
 export async function verifySuperAdminSessionAction(): Promise<{ ok: false; error: string } | never> {
-  let session;
-  try {
-    session = await requireSession();
-  } catch (error) {
-    if (error instanceof UnauthenticatedError) {
-      return { ok: false, error: "Sign-in failed. Check your email and password." };
-    }
-    throw error;
+  const session = await auth.api.getSession({ headers: await nextHeaders() });
+  if (!session) {
+    return { ok: false, error: "Sign-in failed. Check your email and password." };
   }
 
   if (!session.user.isSuperAdmin) {

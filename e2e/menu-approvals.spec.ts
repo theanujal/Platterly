@@ -526,7 +526,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // --- Iframe settings: code + a live preview that really embeds the storefront ---
   await page.goto("/settings/integration/iframe");
   await expect(page.getByRole("heading", { name: "Iframe", level: 1 })).toBeVisible();
-  await expect(page.getByTestId("iframe-code")).toContainText(`localhost:3000/${slug}`);
+  await expect(page.getByTestId("iframe-code")).toContainText(`${new URL(page.url()).host}/${slug}`);
   await page.getByRole("button", { name: /Desktop/ }).click();
   await expect(page.getByTestId("iframe-code")).toContainText('width="800" height="600"');
   await expect(page.frameLocator('iframe[title="Iframe preview"]').getByLabel("Your Name")).toBeVisible();

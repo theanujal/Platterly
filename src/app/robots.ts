@@ -1,12 +1,19 @@
 import type { MetadataRoute } from "next";
+import { headers } from "next/headers";
 import { canonicalUrl } from "@/lib/seo/canonical";
+import { hostKind, requestHost } from "@/lib/routing/hosts";
 
 /**
- * Chunk 1 Group 1.4: disallow the two reserved login paths and any future
- * authenticated app path; the `[tenantSlug]` storefront catch-all stays
- * crawlable by default. Chunk 8 doesn't need to touch this file.
+ * Only a kitchen's own storefront (`/{kitchen-slug}`) is meant to be indexed;
+ * the proxy adds `X-Robots-Tag: noindex` to every other page (customer links,
+ * admin, ops). Those customer links are deliberately NOT disallowed here: a
+ * crawler has to be able to fetch a page to see its noindex. The ops host
+ * has nothing to crawl, so it disallows everything.
  */
-export default function robots(): MetadataRoute.Robots {
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  if (hostKind(requestHost(await headers())) === "ops") {
+    return { rules: { userAgent: "*", disallow: "/" } };
+  }
   return {
     rules: {
       userAgent: "*",

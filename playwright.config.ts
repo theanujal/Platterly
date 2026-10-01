@@ -5,11 +5,11 @@ import { defineConfig, devices } from "@playwright/test";
 // Runs against the real dev Postgres DB, same convention as the Vitest
 // suite (no mocking, no separate test DB) — specs are responsible for their
 // own cleanup, same as `afterEach` in the Vitest tests.
-// Two ways to run locally (2026-09-30):
-//   npm run test:e2e        headed, slowMo 350, one window at a time, for watching (AJ's default)
-//   npm run test:e2e:fast   PW_FAST=1: headless, no slowMo, 4 workers, for a quick full-suite check
+// Two ways to run locally (AJ, 2026-10-01: the default is now the fast one, about 1 minute for the full suite):
+//   npm run test:e2e         headless, no slowMo, 4 workers
+//   npm run test:e2e:headed  PW_HEADED=1: headed, slowMo 350, one window at a time, for watching a run live
 // Every spec signs up its own throwaway caterer, so specs don't share data and can run in parallel.
-const fast = !!process.env.PW_FAST;
+const fast = !process.env.PW_HEADED;
 const headless = !!process.env.CI || fast;
 
 export default defineConfig({
@@ -26,18 +26,24 @@ export default defineConfig({
   // 5s assertion wait is too tight in fast mode (two specs flaked on it). Headed runs keep 5s.
   expect: { timeout: fast ? 15_000 : 5_000 },
   use: {
-    baseURL: "http://localhost:3000",
+    // PW_BASE_URL points the suite at a production-like rehearsal (see PW_RESOLVE) instead of the dev server.
+    baseURL: process.env.PW_BASE_URL ?? "http://catering.localhost:3000",
+    ignoreHTTPSErrors: !!process.env.PW_BASE_URL,
     trace: "on-first-retry",
     // AJ wants to actually watch these run, not just see screenshots after
     // the fact — headed + a bit of slowMo so actions are visible in real
     // time. Revisit (headless in CI) if this ever gets wired into CI.
     headless,
-    launchOptions: { slowMo: headless ? 0 : 350 },
+    launchOptions: {
+      slowMo: headless ? 0 : 350,
+      // Rehearsal only: map the fake production domain to this machine, e.g. "MAP *.platterly.test 127.0.0.1".
+      args: process.env.PW_RESOLVE ? [`--host-resolver-rules=${process.env.PW_RESOLVE}`] : [],
+    },
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
+  webServer: process.env.PW_BASE_URL ? undefined : {
     command: "npm run dev",
-    url: "http://localhost:3000",
+    url: "http://catering.localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },
