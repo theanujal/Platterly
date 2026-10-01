@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { hostKind, originFor, requestHost, PRODUCT_SUBDOMAINS } from "@/lib/routing/hosts";
+import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { isReservedPathSegment } from "@/lib/routing/reserved-words";
 
 /**
@@ -8,8 +8,9 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * Session cookies stay host-only, so a caterer session on catering.* can
  * never reach ops.* and the reverse. Auth itself is still enforced per page
  * (`require-session.ts`); this only decides which routes a host may serve.
- * A bare or unknown host (plain `localhost`, the apex, an IP) is redirected
- * to the catering host, so the app only ever lives on its product hosts.
+ * A bare or unknown host (plain `localhost`, the apex, an IP) serves no page of
+ * this app and is never redirected: that host is reserved for the landing page,
+ * which is hosted separately. A browser visit there gets a 404 for now.
  * `/api/health` stays reachable on any host for uptime checks.
  *
  * Indexing (AJ, 2026-10-01): the only indexable page is a kitchen's own
@@ -44,13 +45,12 @@ export function proxy(request: NextRequest) {
   if (kind === "catering" && isSuperPath) {
     return withIndexing(new NextResponse("Not found", { status: 404 }), false);
   }
-  // Only a real browser page load is redirected. Next's own internal requests (e.g. the
+  // Only a real browser page load is refused. Next's own internal requests (e.g. the
   // fetch it makes to follow a Server Action's redirect()) reach this app on the bare
-  // host without the browser's cookies, and redirecting those breaks the action.
+  // host without the browser's cookies, and refusing those breaks the action.
   const isBrowserNavigation = request.headers.get("sec-fetch-dest") === "document";
   if (kind === "other" && isBrowserNavigation && pathname !== "/api/health") {
-    const target = new URL(`${pathname}${request.nextUrl.search}`, originFor(PRODUCT_SUBDOMAINS[0]));
-    return NextResponse.redirect(target);
+    return withIndexing(new NextResponse("Not found", { status: 404 }), false);
   }
   return withIndexing(NextResponse.next(), isStorefrontPath(pathname));
 }
