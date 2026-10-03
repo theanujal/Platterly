@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listExpenses, listOrderOptions } from "@/modules/expenses/expense";
+import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { ExpensesBrowser } from "./_components/expenses-browser";
@@ -13,6 +14,8 @@ export const metadata: Metadata = {
 export default async function ExpensesPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ expenses: ["view"] }, organizationId);
+  // No background scheduler yet: book whatever recurring expenses have fallen due before listing anything.
+  await generateDueRecurringExpenses(organizationId);
   const [expenses, orders, canCreate, canEdit, canDelete] = await Promise.all([
     listExpenses(organizationId),
     listOrderOptions(organizationId),
@@ -40,6 +43,9 @@ export default async function ExpensesPage() {
           paymentMethod: e.paymentMethod,
           supplierName: e.supplierName,
           notes: e.notes,
+          recurringExpenseId: e.recurringExpenseId,
+          recurring: e.recurring ? { frequency: e.recurring.frequency, isActive: e.recurring.isActive, startDate: e.recurring.startDate.toISOString(), endDate: e.recurring.endDate ? e.recurring.endDate.toISOString() : null, nextDue: e.recurring.nextDue ? e.recurring.nextDue.toISOString() : null } : null,
+          attachments: e.attachments,
         }))}
         orderOptions={orders.map((o) => ({ id: o.id, label: o.label }))}
         canCreate={canCreate}

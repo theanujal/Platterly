@@ -337,6 +337,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 paymentMethod: e.paymentMethod,
                 supplierName: e.supplierName,
                 notes: e.notes,
+                attachments: e.attachments,
               }))}
               canCreate={canCreateExpense}
               canEdit={canEditExpense}

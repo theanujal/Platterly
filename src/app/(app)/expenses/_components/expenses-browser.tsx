@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Pencil, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { Building2, Pencil, Plus, Repeat, Search, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
@@ -13,6 +13,7 @@ import { EXPENSE_CATEGORY_LABEL } from "@/modules/expenses/profitability";
 import { cn } from "cn";
 import { deleteExpenseAction } from "../../profitability/actions";
 import { ExpenseDialog, METHOD_LABEL, type ExpenseRowData } from "./expense-dialog";
+import { ExpenseFiles } from "./expense-files";
 
 type Row = ExpenseRowData & { orderLabel: string | null };
 type Scope = "ALL" | "ORDER" | "COMPANY";
@@ -123,8 +124,8 @@ export function ExpensesBrowser({
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
-                {["Date", "Applies to", "Category", "Supplier", "Method", "Notes", "Amount"].map((h, i) => (
-                  <TableHead key={h} className={cn("h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase", i === 6 && "text-right")}>
+                {["Date", "Applies to", "Category", "Supplier", "Method", "Notes", "Files", "Amount"].map((h, i) => (
+                  <TableHead key={h} className={cn("h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase", i === 7 && "text-right")}>
                     {h}
                   </TableHead>
                 ))}
@@ -148,10 +149,23 @@ export function ExpensesBrowser({
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className="px-3 py-3">{EXPENSE_CATEGORY_LABEL[r.category]}</TableCell>
+                  <TableCell className="px-3 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {EXPENSE_CATEGORY_LABEL[r.category]}
+                      {r.recurringExpenseId && (
+                        <Badge variant="outline" data-testid="recurring-badge">
+                          <Repeat data-icon="inline-start" />
+                          Recurring
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="px-3 py-3">{r.supplierName ?? "—"}</TableCell>
                   <TableCell className="px-3 py-3">{r.paymentMethod ? (METHOD_LABEL[r.paymentMethod] ?? r.paymentMethod) : "—"}</TableCell>
                   <TableCell className="max-w-56 truncate px-3 py-3 text-muted-foreground">{r.notes ?? "—"}</TableCell>
+                  <TableCell className="px-3 py-3">
+                    <ExpenseFiles attachments={r.attachments} />
+                  </TableCell>
                   <TableCell className="px-3 py-3 text-right font-semibold tabular-nums">{inr(r.amount)}</TableCell>
                   {(canEdit || canDelete) && (
                     <TableCell className="px-3 py-3">
@@ -176,7 +190,7 @@ export function ExpensesBrowser({
         </div>
       )}
 
-      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={dialog.mode === "edit" ? dialog.row.orderId : null} orderOptions={orderOptions} state={dialog} onClose={() => setDialog(null)} onDone={setNotice} />}
+      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={dialog.mode === "edit" ? dialog.row.orderId : null} orderOptions={orderOptions} canStopRepeating={canDelete} state={dialog} onClose={() => setDialog(null)} onDone={setNotice} />}
 
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>

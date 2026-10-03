@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { User, CalendarDays, MapPin, ChevronRight } from "lucide-react";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listProfitability } from "@/modules/expenses/expense";
+import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
+import { RangeFilter } from "./_components/range-filter";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -17,10 +19,11 @@ export const metadata: Metadata = {
 const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const profitTone = (profit: number) => (profit < 0 ? "text-destructive" : "text-success");
 
-export default async function ProfitabilityPage() {
+export default async function ProfitabilityPage({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string }> }) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ expenses: ["view"] }, organizationId);
-  const [rows, canOpenOrders] = await Promise.all([listProfitability(organizationId), hasPermission({ orders: ["edit"] }, organizationId)]);
+  const range = resolveRange(await searchParams);
+  const [rows, canOpenOrders] = await Promise.all([listProfitability(organizationId, range), hasPermission({ orders: ["edit"] }, organizationId)]);
 
   const revenue = rows.reduce((s, r) => s + r.revenue, 0);
   const cost = rows.reduce((s, r) => s + r.totalCost, 0);
@@ -115,6 +118,14 @@ export default async function ProfitabilityPage() {
         <p className="text-sm text-muted-foreground">Profit on every order: the order total minus the expenses recorded on its Expenses tab. Cancelled orders are left out.</p>
       </div>
       <Separator />
+      <div className="flex flex-col gap-3">
+        <RangeFilter preset={range.preset} from={range.preset === "custom" && range.from ? toIsoDate(range.from) : ""} to={range.preset === "custom" && range.to ? toIsoDate(range.to) : ""} />
+        <p className="text-sm text-muted-foreground" data-testid="range-summary">
+          {range.from || range.to
+            ? `Orders whose event is ${range.from ? `from ${longDate(range.from)}` : ""}${range.from && range.to ? " " : ""}${range.to ? `${range.from ? "to" : "up to"} ${longDate(range.to)}` : ""}: ${rows.length} ${rows.length === 1 ? "order" : "orders"}.`
+            : `All orders: ${rows.length} ${rows.length === 1 ? "order" : "orders"}.`}
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {tiles.map((t) => (
           <div key={t.label} className="flex flex-col gap-1 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
@@ -129,7 +140,7 @@ export default async function ProfitabilityPage() {
         entries={entries}
         columns={["Order", "Customer / Event", "Revenue", "Cost", "Profit", "Margin", "Food cost", "Open order"]}
         searchPlaceholder="Search by order, customer, event or venue…"
-        emptyLabel="No orders yet. Profit shows here once orders exist."
+        emptyLabel={range.from || range.to ? "No orders with an event in this period." : "No orders yet. Profit shows here once orders exist."}
         sortOptions={sortOptions}
         richList
         defaultView="list"

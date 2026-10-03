@@ -1,8 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { prisma } from "@/lib/db";
 import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { computeProfitability } from "../profitability";
+import { AttachmentError, MAX_ATTACHMENTS_PER_EXPENSE, addExpenseAttachment, removeExpenseAttachment } from "../attachment";
+import { createRecurringExpense, deleteRecurringExpense, generateDueRecurringExpenses, listRecurringExpenses, setRecurringExpenseActive, updateRecurringExpense, RecurringExpenseError } from "../recurring";
 import { ExpenseError, createExpense, deleteExpense, getOrderProfitability, listExpenses, listOrderExpenses, listOrderOptions, listProfitability, updateExpense } from "../expense";
 
 const orgIds: string[] = [];
@@ -10,6 +14,8 @@ const userIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.expense.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.recurringExpense.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.order.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
@@ -171,5 +177,162 @@ describe("expenses", () => {
     await createExpense(org.id, order.id, { category: "FOOD", amount: 10, spentAt: day });
     await prisma.order.delete({ where: { id: order.id } });
     expect(await prisma.expense.count({ where: { organizationId: org.id } })).toBe(0);
+  });
+});
+
+const stored = (key: string) => existsSync(path.join(process.cwd(), "public", "uploads", key));
+const pdf = (name = "bill.pdf", bytes = 200) => new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
+
+describe("expense attachments", () => {
+  it("keeps a receipt with an expense, lists it, and removing it deletes the stored file", async () => {
+    const { org, actor, order } = await makeOrder();
+    const exp = await createExpense(org.id, order.id, { category: "FOOD", amount: 100, spentAt: day }, actor.id);
+    const a = await addExpenseAttachment(org.id, exp.id, pdf("fresh-mart.pdf"), actor.id);
+    expect(a).toMatchObject({ fileName: "fresh-mart.pdf", contentType: "application/pdf", sizeBytes: 200 });
+    expect(stored(a.key)).toBe(true);
+    expect((await listExpenses(org.id))[0].attachments.map((x) => x.fileName)).toEqual(["fresh-mart.pdf"]);
+    expect((await listOrderExpenses(org.id, order.id))[0].attachments).toHaveLength(1);
+    await removeExpenseAttachment(org.id, a.id, actor.id);
+    expect(stored(a.key)).toBe(false);
+    expect(await prisma.expenseAttachment.count({ where: { expenseId: exp.id } })).toBe(0);
+  });
+
+  it("refuses the wrong type, an oversize or empty file, and a sixth file", async () => {
+    const { org, order } = await makeOrder();
+    const exp = await createExpense(org.id, order.id, { category: "FOOD", amount: 100, spentAt: day });
+    await expect(addExpenseAttachment(org.id, exp.id, new File(["x"], "a.exe", { type: "application/x-msdownload" }))).rejects.toThrow(AttachmentError);
+    await expect(addExpenseAttachment(org.id, exp.id, pdf("big.pdf", 4 * 1024 * 1024 + 1))).rejects.toThrow(/4MB/);
+    await expect(addExpenseAttachment(org.id, exp.id, pdf("empty.pdf", 0))).rejects.toThrow(/empty/);
+    for (let i = 0; i < MAX_ATTACHMENTS_PER_EXPENSE; i++) await addExpenseAttachment(org.id, exp.id, pdf(`f${i}.pdf`));
+    await expect(addExpenseAttachment(org.id, exp.id, pdf("sixth.pdf"))).rejects.toThrow(/at most/);
+  });
+
+  it("deleting the expense, or its order, deletes the stored files too", async () => {
+    const { org, actor, order } = await makeOrder();
+    const e1 = await createExpense(org.id, order.id, { category: "FOOD", amount: 10, spentAt: day });
+    const e2 = await createExpense(org.id, order.id, { category: "LABOUR", amount: 20, spentAt: day });
+    const a1 = await addExpenseAttachment(org.id, e1.id, pdf("one.pdf"));
+    const a2 = await addExpenseAttachment(org.id, e2.id, pdf("two.pdf"));
+    await deleteExpense(org.id, e1.id, actor.id);
+    expect(stored(a1.key)).toBe(false);
+    expect(stored(a2.key)).toBe(true);
+    const { deleteOrder } = await import("@/modules/orders/order");
+    await deleteOrder(org.id, order.id, actor.id);
+    expect(stored(a2.key)).toBe(false);
+  });
+
+  it("never lets one kitchen attach to or remove another's receipt", async () => {
+    const a = await makeOrder();
+    const b = await makeOrder();
+    const exp = await createExpense(a.org.id, a.order.id, { category: "FOOD", amount: 10, spentAt: day });
+    await expect(addExpenseAttachment(b.org.id, exp.id, pdf())).rejects.toThrow();
+    const att = await addExpenseAttachment(a.org.id, exp.id, pdf());
+    await expect(removeExpenseAttachment(b.org.id, att.id)).rejects.toThrow();
+    await removeExpenseAttachment(a.org.id, att.id);
+  });
+});
+
+const input = { category: "RENT" as const, amount: 25000, frequency: "MONTHLY" as const, startDate: new Date("2026-07-01") };
+
+describe("recurring company expenses", () => {
+  it("books every date already due, once, and never twice", async () => {
+    const { org, actor } = await makeOrder();
+    await createRecurringExpense(org.id, { ...input, supplierName: "Landlord" }, actor.id);
+    const now = new Date("2026-10-03T10:00:00Z");
+    expect(await generateDueRecurringExpenses(org.id, now)).toBe(4);
+    const rows = await listExpenses(org.id);
+    expect(rows.map((r) => r.spentAt.toISOString().slice(0, 10)).sort()).toEqual(["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01"]);
+    expect(rows.every((r) => r.orderId === null && r.category === "RENT" && r.amount === 25000 && r.supplierName === "Landlord" && r.recurringExpenseId)).toBe(true);
+    expect(await generateDueRecurringExpenses(org.id, now)).toBe(0);
+    expect(await generateDueRecurringExpenses(org.id, new Date("2026-10-20"))).toBe(0);
+    expect(await generateDueRecurringExpenses(org.id, new Date("2026-11-02"))).toBe(1);
+    expect(await listExpenses(org.id)).toHaveLength(5);
+  });
+
+  it("two runs at once still book each date a single time", async () => {
+    const { org, actor } = await makeOrder();
+    await createRecurringExpense(org.id, input, actor.id);
+    const now = new Date("2026-10-03");
+    await Promise.all([generateDueRecurringExpenses(org.id, now), generateDueRecurringExpenses(org.id, now)]);
+    expect(await prisma.expense.count({ where: { organizationId: org.id } })).toBe(4);
+  });
+
+  it("a future start books nothing yet; an end date stops it", async () => {
+    const { org, actor } = await makeOrder();
+    await createRecurringExpense(org.id, { ...input, startDate: new Date("2026-12-01") }, actor.id);
+    await createRecurringExpense(org.id, { ...input, category: "SALARIES", endDate: new Date("2026-08-15") }, actor.id);
+    expect(await generateDueRecurringExpenses(org.id, new Date("2026-10-03"))).toBe(2);
+    expect((await listExpenses(org.id)).every((r) => r.category === "SALARIES")).toBe(true);
+  });
+
+  it("pausing stops bookings, and resuming skips the dates that fell during the pause", async () => {
+    const { org, actor } = await makeOrder();
+    const rec = await createRecurringExpense(org.id, input, actor.id);
+    await generateDueRecurringExpenses(org.id, new Date("2026-10-03"));
+    await setRecurringExpenseActive(org.id, rec.id, false, actor.id);
+    expect(await generateDueRecurringExpenses(org.id, new Date("2026-12-15"))).toBe(0);
+    await setRecurringExpenseActive(org.id, rec.id, true, actor.id, new Date("2026-12-15"));
+    expect(await generateDueRecurringExpenses(org.id, new Date("2026-12-16"))).toBe(0);
+    expect(await generateDueRecurringExpenses(org.id, new Date("2027-01-02"))).toBe(1);
+    const dates = (await listExpenses(org.id)).map((r) => r.spentAt.toISOString().slice(0, 10)).sort();
+    expect(dates).toEqual(["2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01", "2027-01-01"]);
+  });
+
+  it("editing changes dates not yet booked; deleting the template keeps what it booked", async () => {
+    const { org, actor } = await makeOrder();
+    const rec = await createRecurringExpense(org.id, input, actor.id);
+    await generateDueRecurringExpenses(org.id, new Date("2026-10-03"));
+    await updateRecurringExpense(org.id, rec.id, { ...input, amount: 30000 }, actor.id);
+    await generateDueRecurringExpenses(org.id, new Date("2026-11-02"));
+    const rows = await listExpenses(org.id);
+    expect(rows.find((r) => r.spentAt.toISOString().startsWith("2026-10-01"))!.amount).toBe(25000);
+    expect(rows.find((r) => r.spentAt.toISOString().startsWith("2026-11-01"))!.amount).toBe(30000);
+    await deleteRecurringExpense(org.id, rec.id, actor.id);
+    const after = await listExpenses(org.id);
+    expect(after).toHaveLength(5);
+    expect(after.every((r) => r.recurringExpenseId === null)).toBe(true);
+    expect(await listRecurringExpenses(org.id)).toHaveLength(0);
+  });
+
+  it("validates: company categories only, a positive amount, an end date after the start", async () => {
+    const { org } = await makeOrder();
+    await expect(createRecurringExpense(org.id, { ...input, category: "FOOD" })).rejects.toThrow(RecurringExpenseError);
+    await expect(createRecurringExpense(org.id, { ...input, amount: 0 })).rejects.toThrow(/greater than zero/);
+    await expect(createRecurringExpense(org.id, { ...input, endDate: new Date("2026-06-01") })).rejects.toThrow(/end date/);
+    await expect(createRecurringExpense(org.id, { ...input, frequency: "DAILY" as never })).rejects.toThrow(/how often/);
+    await expect(createRecurringExpense(org.id, { ...input, startDate: new Date("nope") })).rejects.toThrow(/starts/);
+  });
+
+  it("is per kitchen, and shows the next due date", async () => {
+    const a = await makeOrder();
+    const b = await makeOrder();
+    const rec = await createRecurringExpense(a.org.id, input, a.actor.id);
+    await expect(updateRecurringExpense(b.org.id, rec.id, input)).rejects.toThrow();
+    await expect(setRecurringExpenseActive(b.org.id, rec.id, false)).rejects.toThrow();
+    await expect(deleteRecurringExpense(b.org.id, rec.id)).rejects.toThrow();
+    expect(await generateDueRecurringExpenses(b.org.id, new Date("2026-10-03"))).toBe(0);
+    const [t] = await listRecurringExpenses(a.org.id, new Date("2026-10-03"));
+    expect(t.nextDue!.toISOString().slice(0, 10)).toBe("2026-11-01");
+    expect(await listRecurringExpenses(b.org.id)).toHaveLength(0);
+  });
+});
+
+describe("Profitability date range", () => {
+  it("filters orders by event date, inclusive of both ends", async () => {
+    const { org, actor } = await makeOrder(1000);
+    const customer = await prisma.customer.findFirstOrThrow({ where: { organizationId: org.id } });
+    const make = (iso: string) =>
+      createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(iso), eventEndDate: new Date(iso), totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: [{ date: new Date(iso), mealType: "DINNER", price: 500 }] }, actor.id);
+    await make("2026-11-10");
+    await make("2026-11-30");
+    await make("2027-01-05");
+    const total = (await listProfitability(org.id)).length;
+    expect(total).toBe(4);
+    const nov = await listProfitability(org.id, { from: new Date("2026-11-01"), to: new Date("2026-11-30") });
+    expect(nov.map((r) => r.eventStartDate.toISOString().slice(0, 10)).sort()).toEqual(["2026-11-10", "2026-11-30"]);
+    // the order makeOrder() creates is on 5 Dec 2026
+    expect(await listProfitability(org.id, { from: new Date("2026-12-01") })).toHaveLength(2);
+    expect(await listProfitability(org.id, { to: new Date("2026-11-10") })).toHaveLength(1);
+    expect(await listProfitability(org.id, { from: new Date("2030-01-01"), to: new Date("2030-12-31") })).toHaveLength(0);
   });
 });

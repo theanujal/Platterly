@@ -64,6 +64,8 @@ export const TENANT_SCOPED_DELEGATES = [
   // onDelete: Restrict to order, so all three MUST precede "order". The kitchen's saved
   // Razorpay / UPI settings are tenantSetting rows, purged above with the rest.
   "expense", // cascades off order too; listed for the guardrail (order does not matter)
+  "expenseAttachment", // cascades off its expense; listed for the guardrail
+  "recurringExpense", // an Expense's recurringExpenseId is SetNull, so order does not matter
   "payment",
   "invoice",
   "paymentLink",

@@ -1,3 +1,4 @@
+import { deleteStoredFiles } from "@/modules/expenses/attachment";
 import { derivePaymentState } from "@/modules/payments/payment-math";
 import "server-only";
 import { prisma } from "@/lib/db";
@@ -459,7 +460,10 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
 /** Hard delete — items/mealPlanEntries cascade; any linked Event just gets orderId unset (SetNull), not deleted. */
 export async function deleteOrder(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
+  // The DB removes the order's expenses and their attachment rows; their stored files need removing by hand.
+  const expenseFiles = await prisma.expenseAttachment.findMany({ where: { expense: { orderId: id } }, select: { key: true } });
   await prisma.order.delete({ where: { id } });
+  await deleteStoredFiles(expenseFiles.map((f) => f.key));
 
   await audit({
     organizationId,

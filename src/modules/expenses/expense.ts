@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { deleteStoredFiles } from "./attachment";
+import { nextOccurrence } from "./recurrence";
 import { COMPANY_EXPENSE_CATEGORIES, computeProfitability, EXPENSE_CATEGORIES, type ExpenseCategoryValue } from "./profitability";
 import type { PaymentMethod } from "@/generated/prisma/enums";
 
@@ -55,13 +57,14 @@ export async function updateExpense(organizationId: string, id: string, input: E
 }
 
 export async function deleteExpense(organizationId: string, id: string, actorUserId?: string) {
-  const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId } });
+  const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId }, include: { attachments: { select: { key: true } } } });
   await prisma.expense.delete({ where: { id } });
+  await deleteStoredFiles(before.attachments.map((a) => a.key));
   await audit({ organizationId, actorUserId, action: "expense.delete", recordType: "Expense", recordId: id, before: { orderId: before.orderId, category: before.category, amount: Number(before.amount) } });
 }
 
 export function listOrderExpenses(organizationId: string, orderId: string) {
-  return prisma.expense.findMany({ where: { organizationId, orderId }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }] });
+  return prisma.expense.findMany({ where: { organizationId, orderId }, orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }], include: { attachments: { select: { id: true, fileName: true, url: true, contentType: true }, orderBy: { createdAt: "asc" } } } });
 }
 
 export async function getOrderProfitability(organizationId: string, orderId: string) {
@@ -76,9 +79,11 @@ export async function getOrderProfitability(organizationId: string, orderId: str
 }
 
 /** One row per order (cancelled ones left out), for the Profitability page. */
-export async function listProfitability(organizationId: string) {
+export async function listProfitability(organizationId: string, range: { from?: Date | null; to?: Date | null } = {}) {
+  // The range is on the event date (inclusive of the last day), since profit belongs to the event.
+  const eventStartDate = range.from || range.to ? { ...(range.from ? { gte: range.from } : {}), ...(range.to ? { lt: new Date(range.to.getTime() + 86_400_000) } : {}) } : undefined;
   const orders = await prisma.order.findMany({
-    where: { organizationId, status: { not: "CANCELLED" } },
+    where: { organizationId, status: { not: "CANCELLED" }, ...(eventStartDate ? { eventStartDate } : {}) },
     orderBy: { eventStartDate: "desc" },
     select: {
       id: true,
@@ -117,6 +122,10 @@ export interface ExpenseListRow {
   paymentMethod: PaymentMethod | null;
   supplierName: string | null;
   notes: string | null;
+  recurringExpenseId: string | null;
+  /** The schedule that booked this expense, when one did. */
+  recurring: { frequency: "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY"; isActive: boolean; startDate: Date; endDate: Date | null; nextDue: Date | null } | null;
+  attachments: { id: string; fileName: string; url: string; contentType: string }[];
 }
 
 /** Every expense, order-level and company-level, newest first (the Expenses page). */
@@ -124,7 +133,11 @@ export async function listExpenses(organizationId: string): Promise<ExpenseListR
   const rows = await prisma.expense.findMany({
     where: { organizationId },
     orderBy: [{ spentAt: "desc" }, { createdAt: "desc" }],
-    include: { order: { select: { orderNumber: true, customer: { select: { name: true } } } } },
+    include: {
+      order: { select: { orderNumber: true, customer: { select: { name: true } } } },
+      recurringExpense: { select: { frequency: true, isActive: true, startDate: true, endDate: true } },
+      attachments: { select: { id: true, fileName: true, url: true, contentType: true }, orderBy: { createdAt: "asc" } },
+    },
   });
   return rows.map((e) => ({
     id: e.id,
@@ -137,6 +150,11 @@ export async function listExpenses(organizationId: string): Promise<ExpenseListR
     paymentMethod: e.paymentMethod,
     supplierName: e.supplierName,
     notes: e.notes,
+    recurringExpenseId: e.recurringExpenseId,
+    recurring: e.recurringExpense
+      ? { ...e.recurringExpense, nextDue: e.recurringExpense.isActive ? nextOccurrence({ start: e.recurringExpense.startDate, frequency: e.recurringExpense.frequency, endDate: e.recurringExpense.endDate, from: new Date() }) : null }
+      : null,
+    attachments: e.attachments,
   }));
 }
 

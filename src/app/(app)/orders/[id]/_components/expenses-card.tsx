@@ -11,6 +11,7 @@ import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type Profitability } from "@/modules/expenses/profitability";
 import { deleteExpenseAction } from "../../../profitability/actions";
 import { ExpenseDialog, METHOD_LABEL, type ExpenseRowData } from "../../../expenses/_components/expense-dialog";
+import { ExpenseFiles } from "../../../expenses/_components/expense-files";
 
 const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 
@@ -114,6 +115,7 @@ export function ExpensesCard({
                 <TableHead>Supplier</TableHead>
                 <TableHead>Method</TableHead>
                 <TableHead>Notes</TableHead>
+                <TableHead>Files</TableHead>
                 <TableHead className="text-right">Amount</TableHead>
                 {(canEdit || canDelete) && <TableHead className="w-24" />}
               </TableRow>
@@ -126,6 +128,9 @@ export function ExpensesCard({
                   <TableCell>{row.supplierName ?? "—"}</TableCell>
                   <TableCell>{row.paymentMethod ? (METHOD_LABEL[row.paymentMethod] ?? row.paymentMethod) : "—"}</TableCell>
                   <TableCell className="max-w-56 truncate text-muted-foreground">{row.notes ?? "—"}</TableCell>
+                  <TableCell>
+                    <ExpenseFiles attachments={row.attachments} />
+                  </TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{inr(row.amount)}</TableCell>
                   {(canEdit || canDelete) && (
                     <TableCell>
