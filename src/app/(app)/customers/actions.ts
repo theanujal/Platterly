@@ -1,5 +1,6 @@
 "use server";
 
+import { addCustomerNote, updateCustomerNote, deleteCustomerNote } from "@/modules/customers/customer-notes";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createCustomer, updateCustomer, updateCustomerNotes, deleteCustomer, type CustomerInput } from "@/modules/customers/customer";
@@ -81,5 +82,41 @@ export async function updateCustomerNotesAction(id: string, notes: string): Prom
     return toErrorResult(error);
   }
   revalidatePath(`/customers/${id}`);
+  return { ok: true };
+}
+
+export async function addCustomerNoteAction(customerId: string, body: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ customers: ["edit"] }, organizationId);
+  try {
+    await addCustomerNote(organizationId, customerId, body, { userId: session.user.id, name: session.user.name });
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  return { ok: true };
+}
+
+export async function updateCustomerNoteAction(customerId: string, noteId: string, body: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ customers: ["edit"] }, organizationId);
+  try {
+    await updateCustomerNote(organizationId, noteId, body, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath(`/customers/${customerId}`);
+  return { ok: true };
+}
+
+export async function deleteCustomerNoteAction(customerId: string, noteId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ customers: ["edit"] }, organizationId);
+  try {
+    await deleteCustomerNote(organizationId, noteId, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath(`/customers/${customerId}`);
   return { ok: true };
 }

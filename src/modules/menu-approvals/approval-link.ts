@@ -586,7 +586,7 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
 async function sendAdvancePaymentLink(organizationId: string, orderId: string) {
   try {
     const settings = await getPaymentSettingsView(organizationId);
-    if (!settings.razorpay.connected && !settings.upi) return;
+    if (!settings.customersCanPay) return;
     const { link, url } = await createPaymentLink({ organizationId, orderId, kind: "ADVANCE" });
     await sendPaymentLink({ organizationId, orderId, url, amount: Number(link.amount) });
   } catch (error) {

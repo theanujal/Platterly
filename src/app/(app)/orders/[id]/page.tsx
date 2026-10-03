@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getOrder } from "@/modules/orders/order";
@@ -28,6 +29,12 @@ import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Order — Platterly",
+  robots: { index: false, follow: false },
+};
+
 
 const ORDER_KIND_LABEL: Record<OrderKind, string> = {
   SINGLE: "Single Order",

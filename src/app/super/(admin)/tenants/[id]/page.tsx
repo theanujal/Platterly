@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Building2, Crown, Link2, ShieldCheck, User, FileText } from "lucide-react";
+import { Building2, Crown, Link2, MessageSquare, ShieldCheck, User, FileText } from "lucide-react";
 import { requireSuperAdminOrRedirect } from "../../../_lib/guard";
 import { getTenant } from "@/modules/tenants/tenant";
 import { listPlans } from "@/modules/subscriptions/plan";
@@ -13,6 +13,8 @@ import { StatusActions } from "./_components/status-actions";
 import { EditTenantDialog } from "./_components/edit-tenant-dialog";
 import { SlugOverrideForm } from "./_components/slug-override-form";
 import { AssignPlan } from "./_components/assign-plan";
+import { ProviderConnect } from "./_components/provider-connect";
+import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { cn } from "cn";
 
 const TABS = [
@@ -37,7 +39,7 @@ const LIMITS: { key: "maxUsers" | "maxOrders" | "maxEvents" | "maxCustomers" | "
 export default async function TenantDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   await requireSuperAdminOrRedirect();
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
-  const [tenant, plans] = await Promise.all([getTenant(id), listPlans()]);
+  const [tenant, plans, whatsapp, email] = await Promise.all([getTenant(id), listPlans(), getChannelSettings(id, "whatsapp"), getChannelSettings(id, "email")]);
   if (!tenant) notFound();
   const active = TABS.find((t) => t.key === tab)?.key ?? "overview";
   const subscription = tenant.subscriptions[0];
@@ -172,6 +174,9 @@ export default async function TenantDetailPage({ params, searchParams }: { param
           <SettingsPanel>
             <SettingsSection icon={Link2} title="Storefront link" description="After a caterer has used both free changes, only you can change it.">
               <SlugOverrideForm tenantId={tenant.id} currentSlug={tenant.slug} slugChangeCount={tenant.slugChangeCount} />
+            </SettingsSection>
+            <SettingsSection icon={MessageSquare} title="Message providers" description="Connect WhatsApp and Email for this caterer. Once connected, they can switch each on in their own Settings. Nothing is delivered until the providers go live (Chunk 16).">
+              <ProviderConnect organizationId={tenant.id} connected={{ whatsapp: whatsapp.providerConnected, email: email.providerConnected }} />
             </SettingsSection>
             <SettingsSection icon={ShieldCheck} title="Account status" description="Suspend or deactivate blocks sign-in and stops the caterer's customer links. Every change is recorded in the audit log.">
               <div className="flex flex-wrap gap-2">

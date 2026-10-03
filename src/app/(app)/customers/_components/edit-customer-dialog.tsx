@@ -33,6 +33,7 @@ export function EditCustomerDialog({ customerId, name, initialValues, triggerSty
       </Button>
       <FormDrawer open={open} onOpenChange={setOpen} title="Edit Customer">
         <CustomerForm
+          hideNotes
           initialValues={initialValues}
           submitLabel="Save changes"
           notice={

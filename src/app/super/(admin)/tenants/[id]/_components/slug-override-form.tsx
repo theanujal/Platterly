@@ -42,7 +42,7 @@ export function SlugOverrideForm({ tenantId, currentSlug, slugChangeCount }: Slu
           <Label htmlFor="slug-override">Storefront slug</Label>
           <Input id="slug-override" maxLength={20} value={slug} onChange={(e) => setSlug(e.target.value)} />
         </div>
-        <Button type="submit" variant="outline" size="sm" disabled={pending}>
+        <Button type="submit" variant="outline" size="md" disabled={pending}>
           {pending ? "Saving…" : "Override slug"}
         </Button>
       </div>

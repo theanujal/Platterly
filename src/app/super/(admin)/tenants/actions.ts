@@ -13,6 +13,8 @@ import {
   type TenantProfileUpdateInput,
 } from "@/modules/tenants/tenant";
 import { assignPlan } from "@/modules/subscriptions/subscription";
+import { audit } from "@/lib/audit/audit";
+import { setChannelProviderConnected } from "@/modules/notifications/channel-settings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -85,5 +87,22 @@ export async function assignPlanAction(tenantId: string, subscriptionPlanId: str
     return toErrorResult(error);
   }
   revalidatePath(`/super/tenants/${tenantId}`);
+  return { ok: true };
+}
+
+/**
+ * Connects or disconnects a kitchen's WhatsApp / Email provider. The Platterly team does this, the caterer then only
+ * activates it (Settings -> WhatsApp / Email). Disconnecting also deactivates it for the caterer.
+ */
+export async function setProviderConnectedAction(organizationId: string, channel: "whatsapp" | "email", connected: boolean): Promise<ActionResult> {
+  const session = await requireSuperAdmin();
+  if (channel !== "whatsapp" && channel !== "email") return { ok: false, error: "Unknown channel." };
+  try {
+    await setChannelProviderConnected(organizationId, channel, connected);
+    await audit({ organizationId, actorUserId: session.user.id, action: `notifications.${channel}_provider_${connected ? "connected" : "disconnected"}`, recordType: "Organization", recordId: organizationId });
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath(`/super/tenants/${organizationId}`);
   return { ok: true };
 }

@@ -82,6 +82,7 @@ export async function resolvePaymentLink(token: string): Promise<ResolvedPayment
   if (balance <= 0) return null;
 
   const [creds, settings] = await Promise.all([getRazorpayCredentials(link.organizationId), getPaymentSettingsView(link.organizationId)]);
+  // Only the methods the kitchen has switched on are offered.
   const when = link.order.eventStartDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   return {
     linkId: link.id,
@@ -96,8 +97,8 @@ export async function resolvePaymentLink(token: string): Promise<ResolvedPayment
     amount: Math.min(Number(link.amount), balance),
     type: link.type,
     balance,
-    razorpayKeyId: creds?.keyId ?? null,
-    upi: settings.upi,
+    razorpayKeyId: settings.razorpay.enabled ? (creds?.keyId ?? null) : null,
+    upi: settings.upi?.enabled ? { upiId: settings.upi.upiId, payeeName: settings.upi.payeeName } : null,
   };
 }
 

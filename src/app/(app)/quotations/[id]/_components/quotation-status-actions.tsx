@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,23 +54,22 @@ export function QuotationStatusActions({ quotationId, status, hasOrder }: Quotat
     <div className="flex flex-col items-end gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {SENDABLE.includes(status) && (
-          <Button size="sm" disabled={pending !== null} onClick={() => run("send", () => sendQuotationAction(quotationId))}>
+          <Button disabled={pending !== null} onClick={() => run("send", () => sendQuotationAction(quotationId))}>
             {pending === "send" ? "Sending…" : "Send Quotation"}
           </Button>
         )}
         {status === "ACCEPTED" && !hasOrder && (
-          <Button size="sm" disabled={pending !== null} onClick={() => run("convert", () => convertQuotationToOrderAction(quotationId))}>
+          <Button disabled={pending !== null} onClick={() => run("convert", () => convertQuotationToOrderAction(quotationId))}>
             {pending === "convert" ? "Converting…" : "Convert to Order"}
           </Button>
         )}
         {status === "ACCEPTED" && hasOrder && (
-          <Button size="sm" variant="outline" render={<Link href="/orders" />} nativeButton={false}>
+          <Button variant="outline" render={<Link href="/orders" />} nativeButton={false}>
             View Order
           </Button>
         )}
         {EXPIRABLE.includes(status) && (
           <Button
-            size="sm"
             variant="outline"
             disabled={pending !== null}
             onClick={() => run("expire", () => markQuotationExpiredAction(quotationId))}
@@ -78,7 +78,10 @@ export function QuotationStatusActions({ quotationId, status, hasOrder }: Quotat
           </Button>
         )}
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>Delete</AlertDialogTrigger>
+          <AlertDialogTrigger render={<Button variant="outline" className="text-destructive hover:bg-destructive/10 hover:text-destructive" />}>
+            <Trash2 data-icon="inline-start" />
+            Delete
+          </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this Quotation?</AlertDialogTitle>

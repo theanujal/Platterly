@@ -8,7 +8,7 @@ import { generateInvoiceFromOrder, InvoiceError } from "@/modules/invoices/invoi
 import { sendInvoiceDocument } from "@/modules/invoices/invoice-send";
 import { confirmPayment, recordPayment, rejectPayment, PaymentError } from "../payment";
 import { createPaymentLink, resolvePaymentLink } from "../payment-links";
-import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveRazorpay, saveUpi, buildUpiUri, PaymentSettingsError } from "../payment-settings";
+import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveRazorpay, saveUpi, setMethodEnabled, buildUpiUri, PaymentSettingsError } from "../payment-settings";
 import { decryptSecret, encryptSecret } from "../secret-box";
 import { verifyCheckoutSignature, verifyWebhookSignature } from "../razorpay";
 import { advanceAmount, derivePaymentState } from "../payment-math";
@@ -77,7 +77,7 @@ describe("secrets", () => {
     const { org } = await makeOrderWithTotal();
     await saveRazorpay(org.id, { keyId: "rzp_test_ABCDEF1234", keySecret: "key-secret", webhookSecret: "hook-secret" });
     const view = await getPaymentSettingsView(org.id);
-    expect(view.razorpay).toEqual({ connected: true, keyIdMasked: "rzp_test_••••••1234" });
+    expect(view.razorpay).toEqual({ connected: true, keyIdMasked: "rzp_test_••••••1234", enabled: true });
     expect(JSON.stringify(view)).not.toContain("key-secret");
     const row = await prisma.tenantSetting.findFirstOrThrow({ where: { organizationId: org.id, key: "payments.razorpay" } });
     expect(JSON.stringify(row.value)).not.toContain("key-secret");
@@ -97,6 +97,35 @@ describe("secrets", () => {
     const uri = buildUpiUri(view.upi!, 3000, "ORD-0001");
     expect(uri).toContain("pa=kitchen%40okhdfc");
     expect(uri).toContain("am=3000.00");
+  });
+});
+
+describe("which methods customers are offered", () => {
+  it("a method that is set up is on by default, each can be switched off alone, and both on means both offered", async () => {
+    const { org, order } = await makeOrderWithTotal(10000);
+    await expect(setMethodEnabled(org.id, "upi", true)).rejects.toBeInstanceOf(PaymentSettingsError); // not set up yet
+    expect((await getPaymentSettingsView(org.id)).customersCanPay).toBe(false);
+
+    await saveUpi(org.id, { upiId: "kitchen@okhdfc", payeeName: "Kitchen" });
+    await saveRazorpay(org.id, { keyId: "rzp_test_ABCDEF1234", keySecret: "s", webhookSecret: "w" });
+    let view = await getPaymentSettingsView(org.id);
+    expect(view.upi?.enabled).toBe(true);
+    expect(view.razorpay.enabled).toBe(true);
+
+    const { url } = await createPaymentLink({ organizationId: org.id, orderId: order.id, kind: "BALANCE" });
+    const token = url.split("/pay/")[1];
+    expect(await resolvePaymentLink(token)).toMatchObject({ razorpayKeyId: "rzp_test_ABCDEF1234", upi: { upiId: "kitchen@okhdfc" } });
+
+    await setMethodEnabled(org.id, "razorpay", false);
+    expect(await resolvePaymentLink(token)).toMatchObject({ razorpayKeyId: null, upi: { upiId: "kitchen@okhdfc" } });
+    await setMethodEnabled(org.id, "upi", false);
+    view = await getPaymentSettingsView(org.id);
+    expect(view.customersCanPay).toBe(false);
+    expect(await resolvePaymentLink(token)).toMatchObject({ razorpayKeyId: null, upi: null });
+
+    await setMethodEnabled(org.id, "razorpay", true);
+    await setMethodEnabled(org.id, "upi", true);
+    expect(await resolvePaymentLink(token)).toMatchObject({ razorpayKeyId: "rzp_test_ABCDEF1234", upi: { upiId: "kitchen@okhdfc" } });
   });
 });
 

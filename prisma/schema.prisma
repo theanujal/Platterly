@@ -160,9 +160,10 @@ model Organization {
   invoiceNextValue Int @default(1)
   receiptNextValue Int @default(1)
 
-  invoices     Invoice[]
-  payments     Payment[]
-  paymentLinks PaymentLink[]
+  invoices      Invoice[]
+  payments      Payment[]
+  paymentLinks  PaymentLink[]
+  customerNotes CustomerNote[]
 
   subscriptions Subscription[]
 
@@ -972,6 +973,7 @@ model Customer {
   orders           Order[]
   quotations       Quotation[]
   storefrontDrafts StorefrontDraft[]
+  noteEntries      CustomerNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1290,12 +1292,14 @@ model Order {
   advance            Decimal @default(0) @db.Decimal(12, 2)
   balance            Decimal @default(0) @db.Decimal(12, 2)
 
-  paymentStatus OrderPaymentStatus @default(UNPAID)
-  status        OrderStatus        @default(PENDING_REVIEW)
-  notes         String?
+  paymentStatus         OrderPaymentStatus @default(UNPAID)
+  status                OrderStatus        @default(PENDING_REVIEW)
+  notes                 String?
   // "Order Details" section — a second, kitchen-facing note distinct from
   // the customer/admin-facing `notes` above.
-  kitchenNotes  String?
+  kitchenNotes          String?
+  // Set whenever the kitchen notes change; the prep sheet shows it (AJ, 2026-09-30: a timestamp, no author).
+  kitchenNotesUpdatedAt DateTime?
 
   items           OrderItem[]
   mealPlanEntries MealPlanEntry[]
@@ -1977,4 +1981,23 @@ model Payment {
   @@index([organizationId, orderId])
   @@index([razorpayOrderId])
   @@map("payment")
+}
+
+// A customer's dated notes (AJ, 2026-09-30: "Add Note", each with its author and time), replacing the single
+// Customer.notes text. That column stays for the "notes about this lead" field on the create form, which now
+// also writes the first note.
+model CustomerNote {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  body           String
+  authorUserId   String?
+  authorName     String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, customerId])
+  @@map("customer_note")
 }

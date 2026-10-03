@@ -6,9 +6,10 @@ import { CheckCircle2, Copy, CreditCard, KeyRound, Link2, Percent, Phone, Shield
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/settings-ui";
 import type { PaymentSettingsView } from "@/modules/payments/payment-settings";
-import { disconnectRazorpayAction, saveAdvanceAction, saveRazorpayAction, saveUpiAction, testRazorpayAction, type ActionResult } from "../actions";
+import { disconnectRazorpayAction, saveAdvanceAction, saveRazorpayAction, saveUpiAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
 
 /** A save button + status line shared by the three panels. */
 function useSave() {
@@ -35,9 +36,46 @@ function Status({ message }: { message: { ok: boolean; text: string } | null }) 
   );
 }
 
+/** "Offer to customers": switches one method on or off. Both on means customers see both. */
+function MethodToggle({ method, label, enabled, configured }: { method: "razorpay" | "upi"; label: string; enabled: boolean; configured: boolean }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function change(next: boolean) {
+    setError(null);
+    setPending(true);
+    const result = await setMethodEnabledAction(method, next);
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    router.refresh();
+  }
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/60 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium">Offer {label} to customers</p>
+          <p className="text-xs text-muted-foreground">{!configured ? `Save your ${label} details first.` : enabled ? `Customers can pay with ${label}.` : `Hidden from customers.`}</p>
+        </div>
+        <Switch checked={enabled} disabled={!configured || pending} onCheckedChange={change} aria-label={`Offer ${label} to customers`} />
+      </div>
+      {error && (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PaymentsSettings({ settings, webhookUrl }: { settings: PaymentSettingsView; webhookUrl: string }) {
+  const offered = [settings.razorpay.enabled && "Razorpay", settings.upi?.enabled && "UPI QR"].filter(Boolean).join(" and ");
   return (
     <div className="flex flex-col gap-4">
+      <InfoBox tone={offered ? "success" : "neutral"} title="What customers can pay with">
+        <p data-testid="offered-methods">
+          {offered ? `Customers see: ${offered}.${settings.razorpay.enabled && settings.upi?.enabled ? " Both are offered side by side." : ""}` : "Nothing yet. Set up Razorpay or UPI and switch it on to let customers pay online."}
+        </p>
+      </InfoBox>
       <RazorpayPanel settings={settings} webhookUrl={webhookUrl} />
       <UpiPanel settings={settings} />
       <AdvancePanel settings={settings} />
@@ -63,6 +101,7 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
   return (
     <SettingsPanel>
       <PanelHeader icon={CreditCard} title="Razorpay" description="Use your own Razorpay account. Customers pay you directly; Platterly never holds your money." />
+      <MethodToggle method="razorpay" label="Razorpay" enabled={settings.razorpay.enabled} configured={connected} />
       {connected && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-sm font-semibold text-success">
@@ -131,6 +170,7 @@ function UpiPanel({ settings }: { settings: PaymentSettingsView }) {
   return (
     <SettingsPanel>
       <PanelHeader icon={Phone} title="UPI" description="Every payment link and the approval page get a QR with the exact amount." />
+      <MethodToggle method="upi" label="UPI QR" enabled={settings.upi?.enabled ?? false} configured={settings.upi !== null} />
       <form
         className="flex flex-col gap-4"
         onSubmit={(event) => {

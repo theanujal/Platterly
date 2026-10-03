@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { NewQuotationClient } from "./_components/new-quotation-client";
+
+export const metadata: Metadata = {
+  title: "New Quotation — Platterly",
+  robots: { index: false, follow: false },
+};
+
 
 export default async function NewQuotationPage() {
   const { organizationId } = await requireActiveOrganization();

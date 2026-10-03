@@ -50,7 +50,7 @@ export function AssignPlan({ tenantId, plans, currentPlanId }: AssignPlanProps) 
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" disabled={!planId || pending} onClick={handleAssign}>
+        <Button variant="outline" size="md" disabled={!planId || pending} onClick={handleAssign}>
           {pending ? "Assigning…" : "Assign Plan"}
         </Button>
       </div>

@@ -138,6 +138,26 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
 
   await expectNoSideScroll(customerPage, "the payment page");
 
+  // ===== The kitchen chooses what customers are offered: each method alone, or both =====
+  await page.goto("/settings/integration/payments");
+  await expect(page.getByTestId("offered-methods")).toContainText("Customers see: Razorpay and UPI QR");
+  await page.getByRole("switch", { name: "Offer Razorpay to customers" }).click();
+  await expect(page.getByTestId("offered-methods")).toContainText("Customers see: UPI QR.");
+  await customerPage.reload();
+  await expect(customerPage.getByTestId("upi-qr")).toBeVisible();
+  await expect(customerPage.getByRole("button", { name: "Pay with Card, UPI or Net Banking" })).toHaveCount(0);
+  await page.getByRole("switch", { name: "Offer UPI QR to customers" }).click();
+  await expect(page.getByTestId("offered-methods")).toContainText("Nothing yet");
+  await customerPage.reload();
+  await expect(customerPage.getByText("The kitchen will share payment details with you directly.")).toBeVisible();
+  await page.getByRole("switch", { name: "Offer Razorpay to customers" }).click();
+  await page.getByRole("switch", { name: "Offer UPI QR to customers" }).click();
+  await expect(page.getByTestId("offered-methods")).toContainText("Both are offered side by side");
+  await customerPage.reload();
+  await expect(customerPage.getByTestId("upi-qr")).toBeVisible();
+  await expect(customerPage.getByRole("button", { name: "Pay with Card, UPI or Net Banking" })).toBeVisible();
+  await page.goto(invoiceUrl);
+
   // "I have paid" waits for the kitchen: nothing changes on the order yet
   await customerPage.getByRole("button", { name: "I have paid" }).click();
   await expect(customerPage.getByTestId("pay-done")).toContainText("we have noted your payment");

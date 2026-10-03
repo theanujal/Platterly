@@ -51,9 +51,11 @@ interface CustomerFormProps {
   onCancel: () => void;
   /** Shown above the fields, e.g. the edit popup's "changes apply everywhere" note. */
   notice?: React.ReactNode;
+  /** Notes are dated entries on the profile page; this field only starts the first one, so editing hides it. */
+  hideNotes?: boolean;
 }
 
-export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, onCancel, notice }: CustomerFormProps) {
+export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, onCancel, notice, hideNotes }: CustomerFormProps) {
   const [values, setValues] = useState<CustomerFormValues>({ ...EMPTY_CUSTOMER_VALUES, ...initialValues });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -142,7 +144,7 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1.5">
+          {!hideNotes && <div className="flex flex-col gap-1.5">
             <Label htmlFor="customer-notes">Notes</Label>
             <Textarea
               id="customer-notes"
@@ -150,7 +152,7 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
               value={values.notes}
               onChange={(e) => setField("notes", e.target.value)}
             />
-          </div>
+          </div>}
         </div>
       )}
 

@@ -30,6 +30,12 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
     },
   });
 
+  // The "notes about this lead" typed on the create form is the customer's first dated note.
+  if (input.notes?.trim()) {
+    const author = actorUserId ? await prisma.user.findUnique({ where: { id: actorUserId }, select: { name: true } }) : null;
+    await prisma.customerNote.create({ data: { organizationId, customerId: customer.id, body: input.notes.trim(), authorUserId: actorUserId, authorName: author?.name ?? "Team" } });
+  }
+
   await audit({
     organizationId,
     actorUserId,
@@ -52,7 +58,6 @@ export async function updateCustomer(organizationId: string, id: string, input: 
       name: input.name,
       phone: normalizePhone(input.phone),
       email: input.email,
-      notes: input.notes,
       isActive: input.isActive ?? before.isActive,
       isEnquiry,
       leadSource: isEnquiry ? (input.leadSource ?? before.leadSource ?? "MANUAL_ENTRY") : null,

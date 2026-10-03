@@ -99,6 +99,29 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     expect(log).not.toBeNull();
   });
 
+  it("the kitchen notes timestamp moves only when the notes actually change", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const base = { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() };
+    const order = await createOrder(org.id, base, actor.id);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).kitchenNotesUpdatedAt).toBeNull();
+
+    await updateOrder(org.id, order.id, { ...base, kitchenNotes: "No onion, no garlic" }, actor.id);
+    const first = (await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).kitchenNotesUpdatedAt;
+    expect(first).not.toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await updateOrder(org.id, order.id, { ...base, kitchenNotes: "No onion, no garlic" }, actor.id); // saved again, unchanged
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).kitchenNotesUpdatedAt).toEqual(first);
+
+    await updateOrder(org.id, order.id, { ...base, kitchenNotes: "No onion, no garlic, extra spicy" }, actor.id);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).kitchenNotesUpdatedAt!.getTime()).toBeGreaterThan(first!.getTime());
+
+    await updateOrder(org.id, order.id, { ...base, kitchenNotes: "  " }, actor.id); // cleared
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).kitchenNotesUpdatedAt).toBeNull();
+  });
+
   it("deleteOrder hard-deletes and cascades items/mealPlanEntries", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

@@ -10,6 +10,8 @@ import {
   saveAdvancePercent,
   saveRazorpay,
   saveUpi,
+  setMethodEnabled,
+  type PaymentMethodKey,
 } from "@/modules/payments/payment-settings";
 import { testRazorpayKeys } from "@/modules/payments/razorpay";
 
@@ -69,4 +71,13 @@ export async function saveUpiAction(formData: FormData): Promise<ActionResult> {
 export async function saveAdvanceAction(formData: FormData): Promise<ActionResult> {
   const { organizationId } = await guard();
   return run(() => saveAdvancePercent(organizationId, Number(formData.get("advancePercent"))));
+}
+
+export async function setMethodEnabledAction(method: PaymentMethodKey, enabled: boolean): Promise<ActionResult> {
+  const { organizationId, userId } = await guard();
+  if (method !== "razorpay" && method !== "upi") return { ok: false, error: "Unknown payment method." };
+  return run(async () => {
+    await setMethodEnabled(organizationId, method, enabled);
+    await audit({ organizationId, actorUserId: userId, action: "payments.method_toggled", recordType: "TenantSetting", recordId: `payments.${method}`, after: { enabled } });
+  });
 }

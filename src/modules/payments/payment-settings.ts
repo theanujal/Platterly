@@ -12,6 +12,7 @@ import { decryptSecret, encryptSecret, maskKeyId } from "./secret-box";
 const RAZORPAY_KEY = "payments.razorpay";
 const UPI_KEY = "payments.upi";
 const ADVANCE_KEY = "payments.advancePercent";
+const ENABLED_KEY = "payments.enabled";
 export const DEFAULT_ADVANCE_PERCENT = 50;
 
 interface StoredRazorpay {
@@ -30,10 +31,15 @@ export interface RazorpayCredentials {
   webhookSecret: string;
 }
 
+export type PaymentMethodKey = "razorpay" | "upi";
+
 export interface PaymentSettingsView {
-  razorpay: { connected: boolean; keyIdMasked: string | null };
-  upi: { upiId: string; payeeName: string } | null;
+  /** `connected` = keys saved; `enabled` = connected AND switched on, i.e. offered to customers. */
+  razorpay: { connected: boolean; keyIdMasked: string | null; enabled: boolean };
+  upi: { upiId: string; payeeName: string; enabled: boolean } | null;
   advancePercent: number;
+  /** True when at least one method is switched on, so customers have something to pay with. */
+  customersCanPay: boolean;
 }
 
 export class PaymentSettingsError extends Error {}
@@ -42,15 +48,20 @@ export class PaymentSettingsError extends Error {}
 const UPI_ID = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
 
 export async function getPaymentSettingsView(organizationId: string): Promise<PaymentSettingsView> {
-  const [razorpay, upi, advance] = await Promise.all([
+  const [razorpay, upi, advance, flags] = await Promise.all([
     getSetting<StoredRazorpay>(organizationId, RAZORPAY_KEY),
     getSetting<StoredUpi>(organizationId, UPI_KEY),
     getSetting<number>(organizationId, ADVANCE_KEY),
+    getSetting<{ razorpay?: boolean; upi?: boolean }>(organizationId, ENABLED_KEY),
   ]);
+  // A method that is set up is on until the kitchen switches it off.
+  const razorpayEnabled = !!razorpay && flags?.razorpay !== false;
+  const upiEnabled = !!upi && flags?.upi !== false;
   return {
-    razorpay: { connected: !!razorpay, keyIdMasked: razorpay ? maskKeyId(razorpay.keyId) : null },
-    upi: upi ?? null,
+    razorpay: { connected: !!razorpay, keyIdMasked: razorpay ? maskKeyId(razorpay.keyId) : null, enabled: razorpayEnabled },
+    upi: upi ? { ...upi, enabled: upiEnabled } : null,
     advancePercent: advance ?? DEFAULT_ADVANCE_PERCENT,
+    customersCanPay: razorpayEnabled || upiEnabled,
   };
 }
 
@@ -71,6 +82,15 @@ export async function saveRazorpay(organizationId: string, input: { keyId: strin
   if (!keySecret) throw new PaymentSettingsError("Key Secret is required.");
   if (!webhookSecret) throw new PaymentSettingsError("Webhook Secret is required.");
   await setSetting(organizationId, RAZORPAY_KEY, { keyId, keySecret, webhookSecret } satisfies StoredRazorpay);
+}
+
+/** Which methods customers are offered. Both on means both show; a method can only be switched on once it is set up. */
+export async function setMethodEnabled(organizationId: string, method: PaymentMethodKey, enabled: boolean) {
+  const view = await getPaymentSettingsView(organizationId);
+  const configured = method === "razorpay" ? view.razorpay.connected : view.upi !== null;
+  if (enabled && !configured) throw new PaymentSettingsError(method === "razorpay" ? "Save your Razorpay keys first." : "Save your UPI ID first.");
+  const flags = (await getSetting<{ razorpay?: boolean; upi?: boolean }>(organizationId, ENABLED_KEY)) ?? {};
+  await setSetting(organizationId, ENABLED_KEY, { ...flags, [method]: enabled });
 }
 
 export async function disconnectRazorpay(organizationId: string) {

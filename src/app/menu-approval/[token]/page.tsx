@@ -68,7 +68,7 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
     getPaymentSettingsView(link.organizationId),
     link.orderId ? orderBalance(link.organizationId, link.orderId) : Promise.resolve(null),
   ]);
-  const canPay = money !== null && money.balance > 0 && (paymentSettings.razorpay.connected || paymentSettings.upi !== null);
+  const canPay = money !== null && money.balance > 0 && paymentSettings.customersCanPay;
 
   return (
     <PublicShell brand={brand} title="Thank You!" subtitle="Your menu is final and on its way to our kitchen." width="max-w-6xl">

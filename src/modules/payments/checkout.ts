@@ -16,7 +16,7 @@ import { paymentMethodForRazorpay } from "./payment-math";
  */
 export async function startRazorpayCheckout(link: ResolvedPaymentLink) {
   const creds = await getRazorpayCredentials(link.organizationId);
-  if (!creds) throw new PaymentError("This kitchen has not set up online payments.");
+  if (!creds || link.razorpayKeyId === null) throw new PaymentError("This kitchen is not taking online payments right now.");
   const { razorpayOrderId } = await createRazorpayOrder(creds, {
     amountRupees: link.amount,
     receipt: link.orderNumber,

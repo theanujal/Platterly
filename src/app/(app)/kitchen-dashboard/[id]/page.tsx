@@ -38,7 +38,7 @@ export default async function KitchenPrepSheetPage({ params }: { params: Promise
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
   if (!sheet) notFound();
-  const { selection, meals, guests, extraPercent, isMultiOrder, kitchenNotes } = sheet;
+  const { selection, meals, guests, extraPercent, isMultiOrder, kitchenNotes, kitchenNotesUpdatedAt } = sheet;
   const { event } = selection;
 
   const menuNames = [...new Set(meals.map((m) => m.menuName).filter((n): n is string => Boolean(n)))];
@@ -108,7 +108,14 @@ export default async function KitchenPrepSheetPage({ params }: { params: Promise
               <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <ClipboardList className="size-4.5" />
               </span>
-              <h2 className="font-semibold">Preparation Notes</h2>
+              <div className="min-w-0">
+                <h2 className="font-semibold">Preparation Notes</h2>
+                {kitchenNotesUpdatedAt && notes.length > 0 && (
+                  <p className="text-xs text-muted-foreground" data-testid="prep-notes-updated">
+                    Updated {kitchenNotesUpdatedAt.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="flex flex-col gap-2 rounded-lg bg-muted/50 p-3 text-sm whitespace-pre-line">
               {notes.length > 0 ? (

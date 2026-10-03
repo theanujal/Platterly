@@ -91,11 +91,12 @@ export function FoodItemDetailsDialog({ item, categoryName, open, onOpenChange, 
         )}
 
         <DialogFooter className="gap-2 sm:justify-end">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" className="max-sm:w-full" onClick={() => onOpenChange(false)}>
             Close
           </Button>
           <Button
             type="button"
+            className="max-sm:w-full"
             onClick={() => {
               onToggle();
               onOpenChange(false);

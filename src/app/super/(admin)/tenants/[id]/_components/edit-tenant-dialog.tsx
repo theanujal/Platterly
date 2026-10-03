@@ -24,7 +24,7 @@ export function EditTenantDialog({ tenantId, initialValues }: EditTenantDialogPr
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>Edit</DialogTrigger>
+      <DialogTrigger render={<Button variant="outline" />}>Edit</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Edit caterer profile</DialogTitle>

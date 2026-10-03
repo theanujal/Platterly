@@ -193,12 +193,28 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByRole("dialog").getByRole("note")).toContainText("everywhere in Platterly");
   await page.keyboard.press("Escape");
 
-  // Notes box: type, save, and it is still there after a reload.
-  await page.locator("#side-notes").fill("Prefers a live dosa counter.");
-  await page.getByRole("button", { name: "Save note" }).click();
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  // Notes are dated entries: the note typed on the create form is the first one, and the team can add, edit and delete more.
+  const side = page.getByTestId("side-notes-list");
+  await expect(side.getByTestId("customer-note")).toHaveCount(1);
+  await expect(side).toContainText("Met at a wedding expo.");
+  await expect(side).toContainText("CRM Tester"); // who wrote it, with the date and time beside it
+  await page.locator("#side-note-new").fill("Prefers a live dosa counter.");
+  await page.getByRole("button", { name: "Add Note" }).first().click();
+  await expect(side.getByTestId("customer-note")).toHaveCount(2);
+  await expect(side.getByTestId("customer-note").first()).toContainText("Prefers a live dosa counter.");
   await page.reload();
-  await expect(page.locator("#side-notes")).toHaveValue("Prefers a live dosa counter.");
+  await expect(page.getByTestId("side-notes-list").getByTestId("customer-note")).toHaveCount(2);
+  // Edit one, then delete it
+  await page.getByTestId("side-notes-list").getByTestId("customer-note").first().getByRole("button", { name: "Edit note" }).click();
+  await page.getByRole("textbox", { name: "Edit note" }).fill("Prefers a live dosa and chaat counter.");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByTestId("side-notes-list")).toContainText("live dosa and chaat counter");
+  await expect(page.getByTestId("side-notes-list")).toContainText("edited");
+  await page.getByTestId("side-notes-list").getByTestId("customer-note").first().getByRole("button", { name: "Delete note" }).click();
+  await expect(page.getByTestId("side-notes-list").getByTestId("customer-note")).toHaveCount(1);
+  // Each note also shows in the Activity tab
+  await page.getByRole("tab", { name: "Activity" }).click();
+  await expect(page.getByRole("tabpanel").getByText(/added a note/)).toBeVisible();
 
   await page.getByRole("button", { name: `Delete ${leadName}` }).click();
   const confirm = page.getByRole("alertdialog");

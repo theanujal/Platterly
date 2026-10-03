@@ -77,6 +77,8 @@ export const TENANT_SCOPED_DELEGATES = [
   // order relative to "customer" doesn't matter; listed explicitly because it
   // carries its own organizationId.
   "storefrontDraft",
+  // customerNote carries its own organizationId and cascades off customer; listed for the guardrail (order does not matter).
+  "customerNote",
   "customer",
 ] as const;
 

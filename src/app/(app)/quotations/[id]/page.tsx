@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getQuotation, getOrIssueQuotationLink } from "@/modules/quotations/quotation";
@@ -11,6 +12,12 @@ import { EditQuotationClient } from "./_components/edit-quotation-client";
 import { QuotationStatusActions } from "./_components/quotation-status-actions";
 import type { QuotationFormValues } from "../_components/quotation-form";
 import type { QuotationStatus } from "@/generated/prisma/enums";
+
+export const metadata: Metadata = {
+  title: "Quotation — Platterly",
+  robots: { index: false, follow: false },
+};
+
 
 const STATUS_LABEL: Record<QuotationStatus, string> = {
   DRAFT: "Draft",

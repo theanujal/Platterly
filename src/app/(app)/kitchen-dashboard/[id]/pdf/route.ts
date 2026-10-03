@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
   if (!sheet) return new Response("Not found", { status: 404 });
-  const { selection, meals, guests, extraPercent, kitchenNotes } = sheet;
+  const { selection, meals, guests, extraPercent, kitchenNotes, kitchenNotesUpdatedAt } = sheet;
   const { event } = selection;
 
   const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -43,6 +43,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (kitchenNotes?.trim() || event.notes?.trim()) {
     y += 4;
     doc.setFont("helvetica", "bold").text("Preparation notes", left, y);
+    if (kitchenNotesUpdatedAt && kitchenNotes?.trim()) {
+      doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(90).text(`Updated ${kitchenNotesUpdatedAt.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`, 555, y, { align: "right" }).setTextColor(0).setFontSize(10);
+    }
     y += 13;
     doc.setFont("helvetica", "normal");
     const lines = doc.splitTextToSize([kitchenNotes, event.notes].filter((n) => n?.trim()).join("\n"), 515) as string[];

@@ -565,7 +565,7 @@ export async function getKitchenPrepSheet(organizationId: string, id: string) {
     };
   });
 
-  return { selection, meals, guests, extraPercent, isMultiOrder: order?.orderKind === "MULTI", kitchenNotes: order?.kitchenNotes ?? null };
+  return { selection, meals, guests, extraPercent, isMultiOrder: order?.orderKind === "MULTI", kitchenNotes: order?.kitchenNotes ?? null, kitchenNotesUpdatedAt: order?.kitchenNotesUpdatedAt ?? null };
 }
 
 /**

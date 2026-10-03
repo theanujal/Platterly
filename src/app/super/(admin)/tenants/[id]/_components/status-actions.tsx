@@ -70,7 +70,7 @@ function ConfirmAction({
 
   return (
     <AlertDialog open={open} onOpenChange={setOpen}>
-      <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>{copy.label}</AlertDialogTrigger>
+      <AlertDialogTrigger render={<Button variant="outline" size="md" />}>{copy.label}</AlertDialogTrigger>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{copy.title}</AlertDialogTitle>

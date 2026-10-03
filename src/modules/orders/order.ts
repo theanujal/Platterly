@@ -360,6 +360,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       status: input.status ?? "PENDING_REVIEW",
       notes: input.notes,
       kitchenNotes: input.kitchenNotes,
+      kitchenNotesUpdatedAt: input.kitchenNotes?.trim() ? new Date() : null,
     },
   });
   await replaceMealPlanEntries(organizationId, order.id, input.mealPlanEntries);
@@ -428,6 +429,8 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       status: input.status ?? before.status,
       notes: input.notes,
       kitchenNotes: input.kitchenNotes,
+      // Only a real change moves the timestamp, so re-saving the order does not.
+      ...(input.kitchenNotes !== undefined && (input.kitchenNotes.trim() || null) !== (before.kitchenNotes?.trim() || null) ? { kitchenNotesUpdatedAt: input.kitchenNotes.trim() ? new Date() : null } : {}),
     },
   });
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries);

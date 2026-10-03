@@ -16,7 +16,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { STATUS_ICON as ORDER_STATUS_ICON, STATUS_LABEL as ORDER_STATUS_LABEL, STATUS_VARIANT as ORDER_STATUS_VARIANT } from "../../orders/_components/order-display";
 import { STATUS_ICON as QUOTE_STATUS_ICON, STATUS_LABEL as QUOTE_STATUS_LABEL, STATUS_VARIANT as QUOTE_STATUS_VARIANT } from "../../quotations/_components/quotation-display";
 import { EditCustomerDialog } from "../_components/edit-customer-dialog";
-import { CustomerNotes } from "../_components/customer-notes";
+import { CustomerNotes, type NoteRow } from "../_components/customer-notes";
+import { listCustomerNotes } from "@/modules/customers/customer-notes";
 import { DeleteCustomerButton } from "../_components/delete-customer-button";
 import { CustomerAvatar, CustomerStatusBadge, buildMenuMessageHref, formatLastOrder } from "../_components/customer-display";
 import { DetailTabs, FilterableRows, type FilterableRow } from "../_components/customer-detail-client";
@@ -46,6 +47,7 @@ const ACTIVITY_DOT = {
   order: "bg-tone-orange",
   quotation: "bg-tone-violet",
   draft: "bg-tone-teal",
+  note: "bg-tone-pink",
 } as const;
 
 function formatWhen(date: Date): string {
@@ -88,7 +90,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ customers: ["view"] }, organizationId);
-  const [customer, canEdit, canDelete, organization, orders, quotations, allDrafts] = await Promise.all([
+  const [customer, canEdit, canDelete, organization, orders, quotations, allDrafts, customerNotes] = await Promise.all([
     getCustomer(organizationId, id),
     hasPermission({ customers: ["edit"] }, organizationId),
     hasPermission({ customers: ["delete"] }, organizationId),
@@ -96,7 +98,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     prisma.order.findMany({ where: { organizationId, customerId: id }, include: { eventType: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
     prisma.quotation.findMany({ where: { organizationId, customerId: id }, include: { eventType: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
     listAbandonedOrders(organizationId, "ALL"),
+    listCustomerNotes(organizationId, id),
   ]);
+  const noteRows: NoteRow[] = customerNotes.map((n) => ({ id: n.id, body: n.body, authorName: n.authorName, createdAt: n.createdAt.toISOString(), updatedAt: n.updatedAt.toISOString() }));
   if (!customer) notFound();
   const drafts = allDrafts.filter((draft) => draft.customer.id === id);
 
@@ -201,6 +205,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     { key: "customer", kind: "customer" as const, title: "Customer added", at: customer.createdAt },
     ...orders.map((o) => ({ key: `o-${o.id}`, kind: "order" as const, title: `Order ${o.orderNumber ?? ""} created`.replace("  ", " "), at: o.createdAt })),
     ...quotations.map((q) => ({ key: `q-${q.id}`, kind: "quotation" as const, title: "Quotation created", at: q.createdAt })),
+    ...customerNotes.map((n) => ({ key: `n-${n.id}`, kind: "note" as const, title: `${n.authorName} added a note`, at: n.createdAt })),
     ...drafts.map((d) => ({ key: `d-${d.id}`, kind: "draft" as const, title: "Started an order on the public menu link", at: d.lastActivityAt })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime());
 
@@ -257,7 +262,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         <Card>
           <CardContent className="flex flex-col gap-3">
             <h2 className="text-xl font-semibold">Notes</h2>
-            <CustomerNotes key={customer.notes ?? ""} customerId={customer.id} initialNotes={customer.notes ?? ""} canEdit={canEdit} idPrefix="tab" />
+            <CustomerNotes customerId={customer.id} notes={noteRows} canEdit={canEdit} idPrefix="tab" />
           </CardContent>
         </Card>
       ),
@@ -342,7 +347,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           <Card>
             <CardContent className="flex flex-col gap-3">
               <h2 className="text-lg font-semibold">Notes</h2>
-              <CustomerNotes key={customer.notes ?? ""} customerId={customer.id} initialNotes={customer.notes ?? ""} canEdit={canEdit} idPrefix="side" />
+              <CustomerNotes customerId={customer.id} notes={noteRows} canEdit={canEdit} idPrefix="side" limit={3} />
             </CardContent>
           </Card>
         </aside>

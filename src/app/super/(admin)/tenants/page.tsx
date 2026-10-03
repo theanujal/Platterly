@@ -8,6 +8,7 @@ import { TableCell } from "@/components/ui/table";
 import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { PageHeader } from "../_components/page-header";
 import { Avatar, TenantStatusBadge, trialBadge } from "../_components/display";
+import { CatererCardMenu } from "./_components/caterer-card-menu";
 import { cn } from "cn";
 import type { TenantStatus } from "@/generated/prisma/enums";
 
@@ -45,14 +46,23 @@ export default async function CaterersPage({ searchParams }: { searchParams: Pro
   const entries: CatalogEntry[] = caterers.map((caterer) => ({
     id: caterer.id,
     href: `/super/tenants/${caterer.id}`,
+    // The card has a 3-dot menu of its own, so it carries a stretched link instead of being wrapped in one.
+    cardOwnsLink: true,
     searchText: `${caterer.name} ${caterer.slug} ${caterer.ownerName} ${caterer.email ?? ""}`,
     sortValues: { name: caterer.name, orders: caterer.orders, newest: caterer.createdAt.getTime() },
     card: (
-      <div className="flex h-full flex-col gap-4 p-5" data-testid="caterer-card">
+      <div className="relative flex h-full flex-col gap-4 p-5" data-testid="caterer-card">
         <div className="flex items-start gap-4">
           <Avatar name={caterer.name} size="lg" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <span className="truncate text-base font-semibold">{caterer.name}</span>
+            <span className="flex items-start justify-between gap-2">
+              <Link href={`/super/tenants/${caterer.id}`} className="truncate text-base font-semibold after:absolute after:inset-0 after:content-['']">
+                {caterer.name}
+              </Link>
+              <span className="relative z-10 -mt-1 -mr-1 shrink-0">
+                <CatererCardMenu tenantId={caterer.id} name={caterer.name} status={caterer.status} />
+              </span>
+            </span>
             <span className="flex items-center gap-2 text-sm text-muted-foreground">
               <Link2 className="size-4 shrink-0" />
               <span className="truncate font-mono text-[13px]">{caterer.slug}</span>

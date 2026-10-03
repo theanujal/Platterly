@@ -77,6 +77,7 @@ test("clicking 'New Caterer' actually navigates to the create-tenant page", asyn
 });
 
 test("creating a tenant with a separate owner first/last name renders the joined name, not blank", async ({ page }) => {
+  test.setTimeout(120_000);
   // Chunk 6 correction (AJ, 2026-09-14) — Owner Name showed "—" for every
   // self-serve signup because nothing wrote to it; this exercises the
   // Super Admin path directly, the one place `ownerFirstName`/`ownerLastName`
@@ -100,6 +101,22 @@ test("creating a tenant with a separate owner first/last name renders the joined
     const row = page.getByRole("row", { name: /Owner Name Test Co/ });
     await expect(row.getByRole("cell", { name: /Asha Rao/ })).toBeVisible();
 
+    // The 3-dot menu on a caterer card suspends and re-activates, asking first.
+    await page.getByLabel("Grid view").click();
+    const card = page.getByTestId("caterer-card").filter({ hasText: "Owner Name Test Co" });
+    await expect(card).toContainText("Active");
+    await card.getByRole("button", { name: "Actions for Owner Name Test Co" }).click();
+    await page.getByRole("menuitem", { name: "Suspend" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("Suspend this caterer?");
+    await page.getByRole("alertdialog").getByRole("button", { name: "Suspend" }).click();
+    await expect(page.getByRole("alertdialog")).not.toBeVisible();
+    await expect(card).toContainText("Suspended");
+    await card.getByRole("button", { name: "Actions for Owner Name Test Co" }).click();
+    await page.getByRole("menuitem", { name: "Activate", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Activate", exact: true }).click();
+    await expect(card).toContainText("Active");
+    await page.getByLabel("List view").click();
+
     // Row click opens the caterer: header, tabs, then the Owner details on the Overview tab.
     await row.getByText("Owner Name Test Co").click();
     await expect(page.getByRole("heading", { name: /Owner Name Test Co/ })).toBeVisible();
@@ -109,6 +126,14 @@ test("creating a tenant with a separate owner first/last name renders the joined
     await page.getByRole("link", { name: "Account" }).click();
     await expect(page.getByTestId("tab-account")).toContainText("Storefront link");
     await expect(page.getByRole("button", { name: "Suspend" })).toBeVisible();
+    // The Platterly team connects the caterer's message providers (the caterer then only switches them on).
+    const whatsapp = page.getByTestId("provider-whatsapp");
+    await expect(whatsapp).toContainText("Not connected");
+    await whatsapp.getByRole("button", { name: "Connect" }).click();
+    await expect(whatsapp).toContainText("Connected");
+    await expect(page.getByTestId("provider-email")).toContainText("Not connected");
+    await whatsapp.getByRole("button", { name: "Disconnect" }).click();
+    await expect(whatsapp).toContainText("Not connected");
   } finally {
     await cleanupTenantBySlug(slug);
   }

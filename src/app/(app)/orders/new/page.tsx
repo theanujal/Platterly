@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { NewOrderClient } from "./_components/new-order-client";
+
+export const metadata: Metadata = {
+  title: "New Order — Platterly",
+  robots: { index: false, follow: false },
+};
+
 
 export default async function NewOrderPage() {
   const { organizationId } = await requireActiveOrganization();
