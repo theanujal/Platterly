@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { LogOut } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
-import { Button } from "@/components/ui/button";
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar";
 
 export function SignOutButton() {
   const router = useRouter();
@@ -13,8 +14,13 @@ export function SignOutButton() {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={handleSignOut}>
-      Sign out
-    </Button>
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton tooltip="Sign out" onClick={handleSignOut} className="cursor-pointer">
+          <LogOut />
+          <span>Sign out</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }

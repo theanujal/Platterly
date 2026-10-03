@@ -20,6 +20,8 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * gets `X-Robots-Tag: noindex` here, in one place, instead of per page.
  */
 const OPS_ALLOWED = ["/super", "/api/auth", "/api/health"];
+// The brand marks the Super Admin sidebar and sign-in page draw (public/platterly-mark.svg, platterly-logo.*).
+const OPS_BRAND_ASSET = /^\/platterly-[a-z-]+\.(svg|png)$/;
 
 function isStorefrontPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
@@ -38,7 +40,7 @@ export function proxy(request: NextRequest) {
 
   if (kind === "ops") {
     if (pathname === "/") return withIndexing(NextResponse.rewrite(new URL("/super", request.url)), false);
-    const allowed = OPS_ALLOWED.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+    const allowed = OPS_ALLOWED.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || OPS_BRAND_ASSET.test(pathname);
     if (!allowed) return withIndexing(new NextResponse("Not found", { status: 404 }), false);
     return withIndexing(NextResponse.next(), false);
   }

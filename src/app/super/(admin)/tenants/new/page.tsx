@@ -1,4 +1,5 @@
 import { requireSuperAdminOrRedirect } from "../../../_lib/guard";
+import { PageHeader } from "../../_components/page-header";
 import { NewTenantClient } from "./_components/new-tenant-client";
 
 // Chunk 3 Group 3.2 — Super Admin "Create caterer" (PRD §8.2). Creates the
@@ -8,9 +9,11 @@ export default async function NewTenantPage() {
   await requireSuperAdminOrRedirect();
 
   return (
-    <div className="mx-auto flex max-w-lg flex-col gap-4">
-      <h1 className="text-lg font-semibold">New Caterer</h1>
-      <NewTenantClient />
-    </div>
+    <>
+      <PageHeader crumbs={[{ label: "Catering" }, { label: "Caterers", href: "/super/tenants" }, { label: "New Caterer" }]} title="New Caterer" description="Add a caterer's business profile. They sign up for their own login." />
+      <div className="flex max-w-lg flex-col gap-4">
+        <NewTenantClient />
+      </div>
+    </>
   );
 }

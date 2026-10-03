@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { getPlatformCounts } from "../queries";
+import { getPlatformCounts, getProductBreakdown, getRecentCaterers, getTrialsEndingSoon, listCaterersOverview } from "../queries";
+import { createOrder } from "@/modules/orders/order";
+import { createCustomer } from "@/modules/customers/customer";
 import { createPlan } from "@/modules/subscriptions/plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 
@@ -9,6 +11,10 @@ const cleanupUserIds: string[] = [];
 const cleanupPlanIds: string[] = [];
 
 afterEach(async () => {
+  await prisma.event.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.order.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.customer.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.subscription.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: cleanupOrgIds } } });
   await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
@@ -88,9 +94,27 @@ describe("Platform analytics counts (Chunk 3 Group 3.4)", () => {
     expect(after.activeSubscriptions).toBe(before.activeSubscriptions + 1);
   });
 
-  it("reports ordersProcessed and eventsProcessed as 0 stubs, structured as real fields for Chunk 9/10 to populate", async () => {
-    const counts = await getPlatformCounts();
-    expect(counts.ordersProcessed).toBe(0);
-    expect(counts.eventsProcessed).toBe(0);
+  it("counts real orders and events across every kitchen, and lists recent caterers and ending trials", async () => {
+    const before = await getPlatformCounts();
+    const actor = await makeActor();
+    const org = await makeOrg();
+    const customer = await createCustomer(org.id, { name: "Count Customer", phone: "9876543210" }, actor.id);
+    await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date("2026-12-05"), eventEndDate: new Date("2026-12-05") }, actor.id);
+
+    const after = await getPlatformCounts();
+    expect(after.ordersProcessed).toBe(before.ordersProcessed + 1);
+    expect(after.eventsProcessed).toBeGreaterThanOrEqual(before.eventsProcessed);
+
+    const recent = await getRecentCaterers(3);
+    expect(recent.map((r) => r.id)).toContain(org.id);
+
+    const trialPlan = await createPlan({ code: `e-${crypto.randomUUID().slice(0, 8)}`, name: "Ending Trial", isTrial: true, trialDurationDays: 2 });
+    cleanupPlanIds.push(trialPlan.id);
+    await assignPlan(org.id, trialPlan.id, actor.id);
+    expect((await getTrialsEndingSoon(50)).map((t) => t.organizationId)).toContain(org.id);
+
+    const overview = await listCaterersOverview();
+    expect(overview.find((o) => o.id === org.id)).toMatchObject({ orders: 1, trialing: true, planName: "Ending Trial" });
+    expect((await getProductBreakdown())[0]).toMatchObject({ key: "catering", orders: after.ordersProcessed });
   });
 });

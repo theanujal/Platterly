@@ -33,6 +33,13 @@ test("Super Admin can sign in via the UI and reach the dashboard", async ({ page
 
   await expect(page.getByRole("heading", { name: "Welcome, AJ" })).toBeVisible();
   await expect(page.getByText("Total caterers")).toBeVisible();
+  // The redesigned shell (design system §13): sidebar, product switcher, real counts, products panel.
+  await expect(page.getByTestId("overview-stats")).toContainText("Orders processed");
+  await expect(page.getByTestId("products-panel")).toContainText("Catering");
+  await expect(page.getByTestId("product-switcher")).toContainText("Catering");
+  await expect(page.getByRole("link", { name: "Overview" })).toHaveClass(/bg-sidebar-accent|data-active|active/);
+  await expect(page.getByRole("link", { name: "Caterers" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Plans" })).toBeVisible();
 
   await page.screenshot({ path: "e2e/.artifacts/super-admin-dashboard.png", fullPage: true });
 });
@@ -50,6 +57,8 @@ test("Tenants and Plans pages render their 'New' link-button with no Base UI con
   // the underlying element is a Next.js <Link>.
   await page.goto(`${OPS_URL}/super/tenants`);
   await expect(page.getByRole("button", { name: "New Caterer" })).toBeVisible();
+  // Status chips carry counts, and the list opens in List view like Orders.
+  await expect(page.getByRole("group", { name: "Filter by status" })).toContainText("Active");
 
   await page.goto(`${OPS_URL}/super/plans`);
   await expect(page.getByRole("button", { name: "New Plan" })).toBeVisible();
@@ -87,12 +96,53 @@ test("creating a tenant with a separate owner first/last name renders the joined
     await page.getByRole("button", { name: "Create caterer" }).click();
 
     await expect(page).toHaveURL(/\/super\/tenants$/);
+    await page.getByLabel("Search").fill("Owner Name Test Co");
     const row = page.getByRole("row", { name: /Owner Name Test Co/ });
-    await expect(row.getByRole("cell", { name: "Asha Rao" })).toBeVisible();
+    await expect(row.getByRole("cell", { name: /Asha Rao/ })).toBeVisible();
 
-    await row.getByRole("link", { name: "Owner Name Test Co" }).click();
-    await expect(page.getByText("Asha Rao")).toBeVisible();
+    // Row click opens the caterer: header, tabs, then the Owner details on the Overview tab.
+    await row.getByText("Owner Name Test Co").click();
+    await expect(page.getByRole("heading", { name: /Owner Name Test Co/ })).toBeVisible();
+    await expect(page.getByTestId("tab-overview")).toContainText("Asha Rao");
+    await page.getByRole("link", { name: "Subscription" }).click();
+    await expect(page.getByTestId("tab-subscription")).toBeVisible();
+    await page.getByRole("link", { name: "Account" }).click();
+    await expect(page.getByTestId("tab-account")).toContainText("Storefront link");
+    await expect(page.getByRole("button", { name: "Suspend" })).toBeVisible();
   } finally {
     await cleanupTenantBySlug(slug);
+  }
+});
+
+test("Plans show as cards with limits, the Trial plan is marked, and the sidebar is a drawer on a tablet", async ({ page }) => {
+  await signInAsSuperAdmin(page);
+  await page.goto(`${OPS_URL}/super/plans`);
+  await expect(page.getByRole("heading", { name: "Plans", exact: true })).toBeVisible();
+  await expect(page.getByTestId("plan-card").first()).toContainText("Team members");
+  await expect(page.getByText("Trial plan").first()).toBeVisible();
+
+  // Old links for the product keep working under the Catering group.
+  await page.getByRole("link", { name: "Caterers", exact: true }).click();
+  await expect(page).toHaveURL(/\/super\/tenants$/);
+
+  // No sideways scroll on a phone or a tablet, and the sidebar hides behind its trigger below 1024px.
+  for (const width of [360, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const path of ["/super/dashboard", "/super/tenants", "/super/plans"]) {
+      await page.goto(`${OPS_URL}${path}`);
+      await expect(page.getByRole("heading").first()).toBeVisible();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `${path} scrolls sideways at ${width}px`).toBeLessThanOrEqual(0);
+    }
+  }
+  await expect(page.getByTestId("product-switcher")).toBeHidden();
+  await page.getByRole("button", { name: "Toggle Sidebar" }).click();
+  await expect(page.getByTestId("product-switcher")).toBeVisible();
+});
+
+test("a signed-out visitor, or a caterer, cannot open any Super Admin page", async ({ page }) => {
+  for (const path of ["/super/dashboard", "/super/tenants", "/super/plans"]) {
+    await page.goto(`${OPS_URL}${path}`);
+    await expect(page).toHaveURL(/\/super$/);
   }
 });

@@ -1,25 +1,27 @@
+import { cookies } from "next/headers";
 import { requireSuperAdminOrRedirect } from "../_lib/guard";
-import { SuperAdminNav } from "./_components/nav";
-import { ProductSwitcher } from "./_components/product-switcher";
-import { SignOutButton } from "./_components/sign-out-button";
+import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+import { SuperSidebar } from "./_components/super-sidebar";
 
-// Chunk 3 Group 3.1 — every page under this route group is gated by
-// requireSuperAdminOrRedirect(). The `(admin)` segment adds no URL
-// path, so no RESERVED_PATH_SEGMENTS entry is needed for it.
+// Every page under this route group is gated by requireSuperAdminOrRedirect(). The `(admin)` segment adds no URL
+// path, so no RESERVED_PATH_SEGMENTS entry is needed for it. The shell follows the caterer app's own (design system §13):
+// a sidebar (a drawer below 1024px), a header strip, then the page.
 export default async function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSuperAdminOrRedirect();
+  const sidebarState = (await cookies()).get("sidebar_state")?.value;
 
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-neutral-200 px-6 py-3">
-        <SuperAdminNav />
-        <div className="flex items-center gap-3 text-sm text-neutral-500">
-          <ProductSwitcher />
-          <span>{session.user.name}</span>
-          <SignOutButton />
-        </div>
-      </header>
-      <main className="flex-1 p-6">{children}</main>
-    </div>
+    <SidebarProvider defaultOpen={sidebarState !== "false"}>
+      <SuperSidebar userName={session.user.name} />
+      <SidebarInset>
+        <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
+          <SidebarTrigger />
+          <Separator orientation="vertical" className="h-4" />
+          <span className="text-sm text-muted-foreground">{session.user.email}</span>
+        </header>
+        <main className="flex flex-1 flex-col gap-4 p-6 md:p-8">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
