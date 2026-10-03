@@ -19,7 +19,7 @@ export default async function SuperAdminOverviewPage() {
   return (
     <>
       <PageHeader crumbs={[{ label: "Overview" }]} title={`Welcome, ${session.user.name}`} description="Every product at a glance." />
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3" data-testid="overview-stats">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-4" data-testid="overview-stats">
         <StatTile icon={<Users />} label="Total caterers" value={counts.totalCaterers} />
         <StatTile icon={<CircleCheck />} label="Active" value={counts.activeCaterers} tone="success" />
         <StatTile icon={<UserPlus />} label="New, last 7 days" value={counts.newRegistrations7d} tone="info" />
@@ -30,13 +30,13 @@ export default async function SuperAdminOverviewPage() {
         <StatTile icon={<Power />} label="Suspended" value={counts.suspendedCaterers} tone="danger" />
       </div>
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <Panel icon={<Users />} title="Recent caterers" action={<Link href="/super/tenants" className="text-primary hover:underline">View all</Link>}>
           {recent.length === 0 && <p className="text-sm text-muted-foreground">No caterers yet.</p>}
           <ul className="flex flex-col divide-y divide-border" data-testid="recent-caterers">
             {recent.map((caterer) => (
-              <li key={caterer.id}>
-                <Link href={`/super/tenants/${caterer.id}`} className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0 hover:opacity-80">
+              <li key={caterer.id} className="py-3.5 first:pt-0 last:pb-0">
+                <Link href={`/super/tenants/${caterer.id}`} className="flex items-center gap-4 text-sm hover:opacity-80">
                   <Avatar name={caterer.name} size="sm" />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold">{caterer.name}</span>
@@ -57,8 +57,8 @@ export default async function SuperAdminOverviewPage() {
             {trials.map((trial) => {
               const badge = trialBadge(trial.trialEndsAt);
               return (
-                <li key={trial.organizationId}>
-                  <Link href={`/super/tenants/${trial.organizationId}`} className="flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0 hover:opacity-80">
+                <li key={trial.organizationId} className="py-3.5 first:pt-0 last:pb-0">
+                  <Link href={`/super/tenants/${trial.organizationId}`} className="flex items-center gap-4 text-sm hover:opacity-80">
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-semibold">{trial.name}</span>
                       <span className="block text-xs text-muted-foreground">
@@ -75,11 +75,11 @@ export default async function SuperAdminOverviewPage() {
       </div>
 
       <Panel icon={<Layers />} title="Products">
-        <ul className="flex flex-col gap-2.5" data-testid="products-panel">
+        <ul className="flex flex-col gap-3" data-testid="products-panel">
           {products.map((row) => {
             const product = PRODUCTS.find((p) => p.key === row.key);
             return (
-              <li key={row.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3 text-sm">
+              <li key={row.key} className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-4 text-sm">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <ChefHat className="size-5" />
                 </span>

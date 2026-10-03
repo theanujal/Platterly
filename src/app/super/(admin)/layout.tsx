@@ -20,7 +20,7 @@ export default async function SuperAdminLayout({ children }: { children: React.R
           <Separator orientation="vertical" className="h-4" />
           <span className="text-sm text-muted-foreground">{session.user.email}</span>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-6 md:p-8">{children}</main>
+        <main className="flex flex-1 flex-col gap-6 p-6 md:p-8">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );

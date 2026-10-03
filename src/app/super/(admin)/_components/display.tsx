@@ -35,7 +35,7 @@ export function trialBadge(trialEndsAt: Date | null, now = new Date()): { label:
 export function StatTile({ icon, label, value, tone = "primary" }: { icon: ReactNode; label: string; value: number | string; tone?: "primary" | "success" | "info" | "warning" | "danger" }) {
   const toneClass = { primary: "bg-primary/10 text-primary", success: "bg-success/10 text-success", info: "bg-info/10 text-info", warning: "bg-warning/10 text-warning", danger: "bg-destructive/10 text-destructive" }[tone];
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+    <div className="flex min-w-0 items-center gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
       <span className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg [&_svg]:size-5", toneClass)}>{icon}</span>
       <div className="min-w-0">
         <span className="block truncate text-xs text-muted-foreground">{label}</span>
@@ -47,7 +47,7 @@ export function StatTile({ icon, label, value, tone = "primary" }: { icon: React
 
 export function Panel({ icon, title, action, children }: { icon: ReactNode; title: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="flex min-w-0 flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+    <section className="flex min-w-0 flex-col gap-5 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
       <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
         <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary [&_svg]:size-4">{icon}</span>
         {title}
