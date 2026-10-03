@@ -9,7 +9,9 @@ const OPS_URL = process.env.PW_OPS_URL ?? "http://ops.localhost:3000";
 for (const path of ["/dashboard", "/orders", "/customers", "/settings"]) {
   test(`logged out, ${path} redirects to the caterer sign-in`, async ({ page }) => {
     await page.goto(path);
-    await expect(page).toHaveURL(/\/kitchenlogin$/);
+    // The caterer sign-in is the catering root (AJ, 2026-10-03), no longer /kitchenlogin.
+    await expect(page).toHaveURL(/^https?:\/\/catering\.[^/]+\/$/);
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
     await expect(page.getByText("This page couldn't load")).toHaveCount(0);
   });
 }

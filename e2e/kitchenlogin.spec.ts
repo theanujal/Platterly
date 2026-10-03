@@ -149,6 +149,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // never back at the onboarding wizard.
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
+  await expect(page).toHaveURL(/^https?:\/\/catering\.[^/]+\/$/); // signing out lands on the catering root
 
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");

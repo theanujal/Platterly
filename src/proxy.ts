@@ -11,7 +11,13 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * A bare or unknown host (plain `localhost`, the apex, an IP) serves no page of
  * this app and is never redirected: that host is reserved for the landing page,
  * which is hosted separately. A browser visit there gets a 404 for now.
- * `/api/health` stays reachable on any host for uptime checks.
+ * `/api/health` stays reachable on any host for uptime checks. Every other `/api/*` route (sign-in, the
+ * Razorpay webhook) answers only on its own product host; on a bare or unknown host it is a 404 for every
+ * kind of request, not just a browser page load.
+ *
+ * Entry point (AJ, 2026-10-03): opening `catering.platterly.in/` shows the kitchen sign-in / sign-up page
+ * straight away. The URL stays `/` (a rewrite). The old address `/kitchenlogin` redirects there (a temporary,
+ * 307 redirect, so a bookmark never gets stuck if the root ever changes); the wizard under it stays put.
  *
  * Indexing (AJ, 2026-10-01): the only indexable page is a kitchen's own
  * storefront, `catering.platterly.in/{kitchen-slug}` — one non-reserved path
@@ -45,6 +51,19 @@ export function proxy(request: NextRequest) {
     return withIndexing(NextResponse.next(), false);
   }
   if (kind === "catering" && isSuperPath) {
+    return withIndexing(new NextResponse("Not found", { status: 404 }), false);
+  }
+  if (kind === "catering" && (pathname === "/kitchenlogin" || pathname === "/kitchenlogin/")) {
+    // Built from the host the visitor typed, not request.url: behind Nginx the app may see an internal host.
+    const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "");
+    const target = new URL(`/${request.nextUrl.search}`, `${proto}://${requestHost(request.headers)}`);
+    return withIndexing(NextResponse.redirect(target, 307), false);
+  }
+  if (kind === "catering" && pathname === "/") {
+    return withIndexing(NextResponse.rewrite(new URL("/kitchenlogin", request.url)), false);
+  }
+  // An API route is never served on a bare or unknown host (only the uptime check is).
+  if (kind === "other" && (pathname === "/api" || pathname.startsWith("/api/")) && pathname !== "/api/health") {
     return withIndexing(new NextResponse("Not found", { status: 404 }), false);
   }
   // Only a real browser page load is refused. Next's own internal requests (e.g. the

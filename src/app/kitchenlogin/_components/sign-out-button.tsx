@@ -19,7 +19,7 @@ export function SignOutButton({ className, variant = "ghost", size = "sm" }: Sig
 
   async function handleSignOut() {
     await authClient.signOut();
-    router.push("/kitchenlogin");
+    router.push("/");
     router.refresh();
   }
 

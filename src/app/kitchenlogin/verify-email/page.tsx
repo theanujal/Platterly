@@ -26,7 +26,7 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
 
   const session = await auth.api.getSession({ headers: await nextHeaders() });
   if (!session) {
-    redirect("/kitchenlogin");
+    redirect("/");
   }
   if (session.user.emailVerified) {
     redirect(destination);

@@ -22,7 +22,7 @@ export async function requireSession() {
   if (!session) {
     // No session (never signed in, or it expired): send the visitor to the sign-in page of the
     // host they are on, instead of throwing a 500. The ops host signs in at /super.
-    redirect(hostKind(requestHost(requestHeaders)) === "ops" ? "/super" : "/kitchenlogin");
+    redirect(hostKind(requestHost(requestHeaders)) === "ops" ? "/super" : "/");
   }
   return session;
 }
