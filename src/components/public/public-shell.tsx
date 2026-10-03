@@ -26,7 +26,7 @@ export function PublicShell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-svh flex-col bg-accent/50">
+    <div className="flex min-h-svh flex-col bg-accent/80">
       <main className={cn("mx-auto flex w-full flex-1 flex-col gap-8 px-4 py-8 md:px-8 md:py-12", width)}>
         <header className="flex flex-col items-center gap-3 text-center">
           <Brand brand={brand} />

@@ -345,8 +345,13 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByTestId("price-rows")).toContainText("Extra Items");
   await expect(customerPage.getByTestId("approval-total")).toHaveText("₹53,000.00");
   // "View all" lists every dish by category in a popup.
-  await customerPage.getByRole("button", { name: "View all" }).click();
+  await customerPage.getByRole("button", { name: "View all" }).first().click();
   await expect(customerPage.getByRole("dialog")).toContainText(itemName);
+  await customerPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
+  // Clicking a category card opens the same read-only list; the customer can't change the selection there.
+  await customerPage.getByTestId("selected-dishes").getByRole("button").first().click();
+  await expect(customerPage.getByRole("dialog")).toContainText(itemName);
+  await expect(customerPage.getByRole("dialog").getByRole("checkbox")).toHaveCount(0);
   await customerPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
   // The customer never edits: "Edit" and "Change" open the Request Changes box with a prefix for the team.
   await customerPage.getByRole("button", { name: "Edit" }).click();

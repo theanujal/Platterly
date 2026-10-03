@@ -458,6 +458,11 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
 export async function approveViaLink(token: string) {
   const link = await resolveApprovalLink(token);
   if (!link.ok || link.stage !== "REVIEW") return { ok: false as const };
+  await approveResolvedLink(link);
+  return { ok: true as const };
+}
+
+async function approveResolvedLink(link: Extract<ResolvedApprovalLink, { ok: true }>) {
   await customerApproves(link.organizationId, link.menuSelectionId);
   await extendApprovedLink(link.organizationId, link.versionId, link.snapshot.eventEndDate);
   await audit({
@@ -467,7 +472,6 @@ export async function approveViaLink(token: string) {
     recordId: link.menuSelectionId,
     after: { versionNumber: link.versionNumber },
   });
-  return { ok: true as const };
 }
 
 /** Keeps the version's link alive until at least 30 days from now, or the day after the event, whichever is later. */
@@ -511,13 +515,13 @@ function cleanText(value: string | undefined, label: string, required = false): 
 }
 
 /**
- * The customer's Venue & Delivery form, sent on the approval link after approving. Writes only the venue columns of the
+ * The customer's Venue & Delivery form, sent on the approval link after the customer clicks Approve (a still-unapproved menu is approved by this send). Writes only the venue columns of the
  * order behind this menu, once (a second send is refused), then tells the team. The detailed fields are the ones the
  * customer used to fill in before submitting the request; Vehicle Access is not asked of the customer.
  */
 export async function submitVenueViaLink(token: string, input: VenueDetailsInput) {
   const link = await resolveApprovalLink(token);
-  if (!link.ok || link.stage !== "VENUE" || !link.orderId) return { ok: false as const };
+  if (!link.ok || link.stage === "CONFIRMATION" || !link.orderId) return { ok: false as const };
 
   if (!VENUE_TYPES.includes(input.venueType as VenueType)) throw new VenueDetailsError("Venue Type is required.");
   const phone = normalizePhone(input.venueContactPhone?.trim() ?? "");
@@ -538,6 +542,9 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
     gasElectricAvailable: input.gasElectricAvailable === true,
     liveCounterAvailable: input.liveCounterAvailable === true,
   };
+
+  // The customer's "Approve Menu" only opens this form; the approval itself is recorded here, once the details are valid.
+  if (link.stage === "REVIEW") await approveResolvedLink(link);
 
   // Claimed in one statement so a double submit can't write twice.
   const claimed = await prisma.order.updateMany({

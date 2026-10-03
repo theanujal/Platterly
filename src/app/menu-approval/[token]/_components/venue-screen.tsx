@@ -25,7 +25,7 @@ const venueTypeItems = Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value
  * address starts with the Venue Location they gave at the beginning. Required: venue type, venue / building name,
  * complete address, contact person and number; the rest is optional.
  */
-export function VenueScreen({ token, view, initial }: { token: string; view: ApprovalView; initial: VenueDetails }) {
+export function VenueScreen({ token, view, initial, onBack }: { token: string; view: ApprovalView; initial: VenueDetails; onBack?: () => void }) {
   const router = useRouter();
   const [values, setValues] = useState({
     venueType: initial.venueType ?? "",
@@ -67,15 +67,19 @@ export function VenueScreen({ token, view, initial }: { token: string; view: App
       <div role="status" className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/10 p-4">
         <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />
         <div className="text-sm">
-          <p className="font-semibold">Menu Approved</p>
-          <p className="text-muted-foreground">Great! Your menu has been approved. Please share your venue and delivery details to help us plan the event.</p>
+          <p className="font-semibold">{onBack ? "Menu ready to approve" : "Menu Approved"}</p>
+          <p className="text-muted-foreground">
+            {onBack
+              ? "Please share your venue and delivery details. Your menu approval is confirmed when you send them."
+              : "Great! Your menu has been approved. Please share your venue and delivery details to help us plan the event."}
+          </p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
           <ApprovedMenuCard view={view} />
-          <ChangesCard token={token} />
+          {!onBack && <ChangesCard token={token} />}
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -151,13 +155,13 @@ export function VenueScreen({ token, view, initial }: { token: string; view: App
                 <Label htmlFor="vd-cooking">Cooking Instructions (Optional)</Label>
                 <Textarea id="vd-cooking" placeholder="e.g. Jain food to be cooked separately, or no onion and garlic" value={values.cookingInstructions} onChange={(e) => set("cookingInstructions", e.target.value)} />
               </div>
-              <div className="flex items-center gap-2 rounded-lg bg-muted/60 p-3">
+              <div className="flex items-center gap-2 rounded-lg bg-muted p-3">
                 <Checkbox id="vd-gas-electric" className="border-foreground/40" checked={values.gasElectricAvailable} onCheckedChange={(c) => set("gasElectricAvailable", c === true)} />
                 <Label htmlFor="vd-gas-electric" className="cursor-pointer font-normal">
                   Gas / electric connection available at venue?
                 </Label>
               </div>
-              <div className="flex items-center gap-2 rounded-lg bg-muted/60 p-3">
+              <div className="flex items-center gap-2 rounded-lg bg-muted p-3">
                 <Checkbox id="vd-live-counter" className="border-foreground/40" checked={values.liveCounterAvailable} onCheckedChange={(c) => set("liveCounterAvailable", c === true)} />
                 <Label htmlFor="vd-live-counter" className="cursor-pointer font-normal">
                   Cooking live counter facility available?
@@ -171,7 +175,12 @@ export function VenueScreen({ token, view, initial }: { token: string; view: App
               {error}
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {onBack && (
+              <Button type="button" variant="outline" disabled={pending} onClick={onBack}>
+                Back
+              </Button>
+            )}
             <Button type="submit" disabled={pending}>
               {pending ? "Sending…" : "Continue"}
               <ArrowRight />

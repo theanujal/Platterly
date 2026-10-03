@@ -317,6 +317,19 @@ describe("Venue & Delivery on the approved link", () => {
     return { ...ctx, token };
   }
 
+  it("approves only when the venue details are sent: validation failures leave the menu unapproved", async () => {
+    const ctx = await makeAdminOrder();
+    const sent = await sendMenuForApproval(ctx.org.id, { orderId: ctx.order.id }, ctx.actor.id);
+    const token = tokenOf(sent.url);
+    await expect(submitVenueViaLink(token, { ...VENUE, venueContactName: "" })).rejects.toThrow(/Contact Person is required/);
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "REVIEW" });
+
+    expect(await submitVenueViaLink(token, VENUE)).toEqual({ ok: true });
+    expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "CONFIRMATION" });
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: ctx.org.id, event: { orderId: ctx.order.id } } });
+    expect(selection.status).toBe("CUSTOMER_APPROVED");
+  });
+
   it("pre-fills the address with what the customer already gave, and sends the venue columns once", async () => {
     const { org, order, token } = await approved();
     await prisma.order.update({ where: { id: order.id }, data: { eventAddress: "Whitefield, Bangalore" } });
@@ -374,12 +387,6 @@ describe("Venue & Delivery on the approved link", () => {
         venueContactPhone: "9000000003",
       }),
     ).toEqual({ ok: true });
-  });
-
-  it("can't send the venue form before approving", async () => {
-    const { org, actor, order } = await makeAdminOrder();
-    const sent = await sendMenuForApproval(org.id, { orderId: order.id }, actor.id);
-    expect(await submitVenueViaLink(tokenOf(sent.url), VENUE)).toEqual({ ok: false });
   });
 
   it("'Request Menu Changes' after approval leaves a note and a notification, and changes nothing else", async () => {

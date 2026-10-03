@@ -8,7 +8,7 @@ import { selectOption } from "./auth-helpers";
  */
 export async function submitVenueDetailsAsCustomer(page: Page, details: { building: string; address: string; contact: string; phone: string; door?: string }) {
   await expect(page.getByRole("heading", { name: "Venue & Delivery Details" })).toBeVisible();
-  await expect(page.getByText("Menu Approved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Menu ready to approve", { exact: true })).toBeVisible();
 
   await page.getByLabel("Venue / Building Name").fill(details.building);
   await page.getByLabel("Complete Venue Address").fill(details.address);

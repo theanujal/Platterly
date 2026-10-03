@@ -5,7 +5,7 @@ import { buildApprovalView } from "@/modules/menu-approvals/approval-view";
 import { PublicShell } from "@/components/public/public-shell";
 import { ProgressSteps } from "@/components/public/progress-steps";
 import { FormCard } from "@/components/public/form-section";
-import { ReviewScreen } from "./_components/review-screen";
+import { ReviewFlow } from "./_components/review-flow";
 import { VenueScreen, ChangesCard } from "./_components/venue-screen";
 import { VENUE_TYPE_OPTIONS } from "@/modules/menu-approvals/venue-options";
 import { ApprovedMenuCard } from "./_components/approved-menu-card";
@@ -44,14 +44,8 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
 
   if (link.stage === "REVIEW") {
     return (
-      <PublicShell
-        brand={brand}
-        title="Review & Approve Your Menu"
-        subtitle={`Version ${link.versionNumber} · We've prepared this menu based on your event requirements. Please review it carefully before approving or requesting changes.`}
-        width="max-w-6xl"
-      >
-        <ProgressSteps steps={STEPS} current={0} />
-        <ReviewScreen token={token} view={view} />
+      <PublicShell brand={brand} width="max-w-6xl">
+        <ReviewFlow token={token} view={view} versionNumber={link.versionNumber} venue={link.venue} />
       </PublicShell>
     );
   }
@@ -66,13 +60,15 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
   }
 
   return (
-    <PublicShell brand={brand} title="Thank You!" subtitle="We've received your approval and your venue and delivery details." width="max-w-6xl">
+    <PublicShell brand={brand} title="Thank You!" subtitle="Your menu is final and on its way to our kitchen." width="max-w-6xl">
       <ProgressSteps steps={STEPS} current={3} />
       <div role="status" className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/10 p-4" data-testid="venue-confirmation">
         <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />
         <div className="text-sm">
-          <p className="font-semibold">Everything is with our team</p>
-          <p className="text-muted-foreground">We&apos;ll use these details to plan your event and confirm the final quote with you. You can come back to this page any time to see them.</p>
+          <p className="font-semibold">We&apos;re starting the preparation</p>
+          <p className="text-muted-foreground">
+            Your menu is final and our kitchen team is getting ready. See you on {view.dateText}! You can come back to this page any time to see your menu and venue details.
+          </p>
         </div>
       </div>
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
