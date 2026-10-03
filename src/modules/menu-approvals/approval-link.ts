@@ -3,7 +3,7 @@ import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import { notify } from "@/lib/notifications/notify";
+import { emailPayload, loadOrderContext, notifyCustomer, onCustomerMenuAction } from "@/modules/notifications/triggers";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder } from "@/modules/orders/order";
@@ -258,13 +258,13 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
   const token = await issueToken({ organizationId, resourceType: "MENU_APPROVAL", resourceId: version.id, expiresInDays: APPROVAL_LINK_DAYS });
   const url = canonicalUrl(`/menu-approval/${token.token}`);
 
-  const customer = await prisma.customer.findFirst({ where: { organizationId, orders: { some: { id: orderId } } }, select: { name: true, email: true, phone: true } });
-  await notify({
+  const context = await loadOrderContext(organizationId, orderId);
+  await notifyCustomer({
     organizationId,
-    channel: "EMAIL",
     event: "menu_approval.sent",
-    recipient: { email: customer?.email ?? undefined, phone: customer?.phone },
-    payload: { orderId, menuSelectionId: menuSelection.id, versionNumber, customerName: customer?.name ?? "", url },
+    email: context.customerEmail,
+    phone: context.customerPhone,
+    payload: emailPayload(context, { menuSelectionId: menuSelection.id, versionNumber, url }),
   });
   await audit({
     organizationId,
@@ -466,6 +466,7 @@ export async function approveViaLink(token: string) {
 
 async function approveResolvedLink(link: Extract<ResolvedApprovalLink, { ok: true }>) {
   await customerApproves(link.organizationId, link.menuSelectionId);
+  await onCustomerMenuAction(link.organizationId, link.orderId, "approved");
   await extendApprovedLink(link.organizationId, link.versionId, link.snapshot.eventEndDate);
   await audit({
     organizationId: link.organizationId,
@@ -561,13 +562,7 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
     body: "Sent the venue and delivery details.",
     versionNumber: link.versionNumber,
   });
-  await notify({
-    organizationId: link.organizationId,
-    channel: "IN_APP",
-    event: "menu_approval.venue_details_submitted",
-    recipient: {},
-    payload: { menuSelectionId: link.menuSelectionId, orderId: link.orderId, versionNumber: link.versionNumber, customerName: link.snapshot.customerName },
-  });
+  await onCustomerMenuAction(link.organizationId, link.orderId, "venue_details_submitted");
   await audit({
     organizationId: link.organizationId,
     action: "order.venue_details_submitted_via_link",
@@ -607,13 +602,7 @@ export async function askAboutApprovedMenuViaLink(token: string, note: string) {
     body: note,
     versionNumber: link.versionNumber,
   });
-  await notify({
-    organizationId: link.organizationId,
-    channel: "IN_APP",
-    event: "menu_approval.change_asked_after_approval",
-    recipient: {},
-    payload: { menuSelectionId: link.menuSelectionId, versionNumber: link.versionNumber, customerName: link.snapshot.customerName, note },
-  });
+  await onCustomerMenuAction(link.organizationId, link.orderId, "change_asked_after_approval", { note });
   await audit({
     organizationId: link.organizationId,
     action: "menu_selection.change_asked_after_approval_via_link",
@@ -630,13 +619,7 @@ export async function requestChangesViaLink(token: string, note: string) {
   if (!link.ok || link.stage !== "REVIEW") return { ok: false as const };
   await customerRequestsChanges(link.organizationId, link.menuSelectionId, note);
   await revokeVersionTokens(link.organizationId, [link.versionId]);
-  await notify({
-    organizationId: link.organizationId,
-    channel: "IN_APP",
-    event: "menu_approval.changes_requested",
-    recipient: {},
-    payload: { menuSelectionId: link.menuSelectionId, versionNumber: link.versionNumber, customerName: link.snapshot.customerName, note },
-  });
+  await onCustomerMenuAction(link.organizationId, link.orderId, "changes_requested", { note });
   await audit({
     organizationId: link.organizationId,
     action: "menu_selection.customer_changes_requested_via_link",

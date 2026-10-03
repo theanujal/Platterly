@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { markAllRead, markRead } from "@/modules/notifications/inbox";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listOrders } from "@/modules/orders/order";
 import type { OrderStatus } from "@/generated/prisma/enums";
@@ -33,4 +35,17 @@ export async function searchOrdersAction(query: string): Promise<GlobalSearchRes
     customerName: order.customer.name,
     customerPhone: order.customer.phone,
   }));
+}
+
+// The header bell. Only ever touches the signed-in person's own notifications (see modules/notifications/inbox.ts).
+export async function markNotificationReadAction(id: string): Promise<void> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await markRead(organizationId, session.user.id, id);
+  revalidatePath("/", "layout");
+}
+
+export async function markAllNotificationsReadAction(): Promise<void> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await markAllRead(organizationId, session.user.id);
+  revalidatePath("/", "layout");
 }

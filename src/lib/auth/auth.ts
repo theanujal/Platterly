@@ -9,6 +9,10 @@ import { notify } from "@/lib/notifications/notify";
 import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { trustedOrigins } from "@/lib/routing/hosts";
+import { sendEmail } from "@/lib/notifications/email/zeptomail";
+import { verificationCodeEmail } from "@/lib/notifications/email/templates";
+
+const OTP_EXPIRES_IN_SECONDS = 600;
 
 /**
  * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
@@ -130,19 +134,19 @@ export const auth = betterAuth({
      * interface, unlike `sendInvitationEmail` above — `auto-provision.ts`
      * returns `organizationId: null` for a user signing up to accept a
      * pending invitation, so no Organization is guaranteed to exist yet at
-     * this point. Log-only for now (AJ's explicit choice, same "interface
-     * now, integration later" convention as everything else pre-Chunk-16)
-     * — swap the one `console.log` line for a real provider call once a
-     * provider exists; nothing else here changes.
+     * this point. Sent straight through ZeptoMail in the shared email layout
+     * (Chunk 16); without credentials it falls back to the server log.
      */
     emailOTP({
       otpLength: 6,
-      expiresIn: 600,
+      expiresIn: OTP_EXPIRES_IN_SECONDS,
       allowedAttempts: 5,
       sendVerificationOnSignUp: true,
       async sendVerificationOTP({ email, otp, type }) {
         if (type !== "email-verification") return;
-        console.log(`[dev-only] Email verification OTP for ${email}: ${otp}`);
+        const result = await sendEmail({ to: email, ...verificationCodeEmail(otp, OTP_EXPIRES_IN_SECONDS / 60) });
+        // No ZeptoMail credentials (dev, CI) or a failed send: the code is still readable in the server log.
+        if (result.status !== "sent") console.log(`[dev-only] Email verification OTP for ${email}: ${otp} (${result.reason})`);
       },
     }),
     // Must stay last — sets/reads cookies via Next.js's own cookies() API.

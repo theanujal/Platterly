@@ -25,7 +25,7 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * /menu-approval/*, /{slug}/plan/*; every admin page; the whole ops host)
  * gets `X-Robots-Tag: noindex` here, in one place, instead of per page.
  */
-const OPS_ALLOWED = ["/super", "/api/auth", "/api/health"];
+const OPS_ALLOWED = ["/super", "/api/auth", "/api/health", "/sw.js"];
 // The brand marks the Super Admin sidebar and sign-in page draw (public/platterly-mark.svg, platterly-logo.*).
 const OPS_BRAND_ASSET = /^\/platterly-[a-z-]+\.(svg|png)$/;
 

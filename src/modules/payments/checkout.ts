@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import { notify } from "@/lib/notifications/notify";
+import { onPaymentActivity } from "@/modules/notifications/triggers";
 import { sendReceiptForPayment } from "@/modules/invoices/invoice-send";
 import { issueReceipt, PaymentError, recordPayment, syncOrderPayments } from "./payment";
 import type { ResolvedPaymentLink } from "./payment-links";
@@ -55,7 +55,7 @@ export async function confirmRazorpayPayment(organizationId: string, razorpayOrd
   await issueReceipt(organizationId, payment.id);
   // The customer paid through the link, so they get the receipt without anyone clicking anything.
   await sendReceiptForPayment(organizationId, payment.id);
-  await notify({ organizationId, channel: "IN_APP", event: "payment.received", recipient: {}, payload: { orderId: payment.orderId, amount: Number(payment.amount), source: "RAZORPAY" } });
+  await onPaymentActivity(organizationId, payment.orderId, Number(payment.amount), "received");
   await audit({ organizationId, action: "payment.razorpay_confirmed", recordType: "Payment", recordId: payment.id, after: { amount: Number(payment.amount), razorpayPaymentId } });
   return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
 }
@@ -76,12 +76,6 @@ export async function claimUpiPayment(link: ResolvedPaymentLink) {
     source: "UPI_QR",
     status: "PENDING",
   });
-  await notify({
-    organizationId: link.organizationId,
-    channel: "IN_APP",
-    event: "payment.upi_claimed",
-    recipient: {},
-    payload: { orderId: link.orderId, paymentId: payment.id, amount: link.amount, customerName: link.customerName },
-  });
+  await onPaymentActivity(link.organizationId, link.orderId, link.amount, "upi_claimed");
   return payment;
 }

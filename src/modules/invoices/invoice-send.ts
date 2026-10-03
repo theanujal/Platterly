@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
+import { emailPayload, loadOrderContext } from "@/modules/notifications/triggers";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { invoiceUrl } from "@/modules/payments/payment-links";
 import { syncInvoiceStatuses } from "./invoice";
@@ -15,9 +16,10 @@ export async function sendInvoiceDocument(organizationId: string, invoiceId: str
   const invoice = await prisma.invoice.findFirstOrThrow({ where: { id: invoiceId, organizationId } });
   const url = await invoiceUrl(organizationId, invoiceId);
   const email = await getChannelSettings(organizationId, "email");
-  const payload = { template: invoice.type === "RECEIPT" ? "receipt" : "invoice", number: invoice.number, total: Number(invoice.total), url };
+  const context = await loadOrderContext(organizationId, invoice.orderId);
+  const payload = emailPayload(context, { template: invoice.type === "RECEIPT" ? "receipt" : "invoice", number: invoice.number, amount: Number(invoice.total), url });
   const event = invoice.type === "RECEIPT" ? "receipt.sent" : "invoice.sent";
-  if (invoice.customerEmail) await notify({ organizationId, channel: "EMAIL", event, recipient: { email: invoice.customerEmail }, payload });
+  if (invoice.customerEmail) await notify({ organizationId, channel: "EMAIL", event, recipient: { email: invoice.customerEmail }, payload: JSON.parse(JSON.stringify(payload)) });
   if (invoice.type === "INVOICE" && !invoice.sentAt) {
     await prisma.invoice.update({ where: { id: invoiceId }, data: { sentAt: new Date() } });
     await syncInvoiceStatuses(invoice.orderId);

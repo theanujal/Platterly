@@ -60,16 +60,22 @@ test("WhatsApp and Email settings: status, per-message switches, templates, acti
   await expect(page.getByRole("heading", { name: "Email Settings" })).toBeVisible();
   await expect(page.getByText("Email Service Not Connected")).toBeVisible();
   await expect(page.getByRole("switch", { name: "Event Reminders" })).toBeEnabled();
-  await expect(page.getByRole("switch", { name: "System Alerts" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "System Alerts" })).toBeEnabled();
   await expect(page.getByText("Order Confirmation (Customer)")).toBeVisible();
 
-  // --- Push: switches only, no service card ---
+  // --- Push: one master switch for the person, plus this browser's state ---
   await page.goto("/settings/communication/push-notifications");
-  await expect(page.getByText("Push Notification Preferences")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Push Notifications" }).first()).toBeVisible();
   await expect(page.getByText("Service Status")).toHaveCount(0);
-  await page.getByRole("switch", { name: "Order Confirmation" }).click();
-  await page.getByRole("button", { name: "Save Notification Settings" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible();
+  const master = page.getByRole("switch", { name: "Send me push notifications" });
+  await expect(master).toBeChecked();
+  // Click until it takes (under load the first click can land before the page is interactive).
+  await expect(async () => {
+    if (await master.isChecked()) await master.click();
+    await expect(master).not.toBeChecked({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "Send me push notifications" })).not.toBeChecked();
 });
 
 test("Platterly Link page and Subscription invoice download", async ({ page }) => {

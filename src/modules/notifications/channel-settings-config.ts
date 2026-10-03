@@ -64,9 +64,10 @@ export const CHANNEL_CONFIG: Record<SettingsChannel, ChannelConfig> = {
     hasService: true,
     messages: [
       { key: "orderConfirmation", label: "Order Confirmation", description: "Send email when new orders are created", available: true },
-      { key: "orderStatusUpdates", label: "Order Status Updates", description: "Send email when order status changes", available: false },
+      { key: "orderStatusUpdates", label: "Order Status Updates", description: "Send email when order status changes", available: true },
+      { key: "paymentConfirmation", label: "Payment Confirmation", description: "Send email when payments are requested or received", available: true },
       { key: "eventReminders", label: "Event Reminders", description: "Send email reminders for upcoming events", available: true },
-      { key: "systemAlerts", label: "System Alerts", description: "Send important system notifications", available: false },
+      { key: "systemAlerts", label: "System Alerts", description: "Send important system notifications", available: true },
     ],
     templates: [ORDER_CONFIRMATION_TEMPLATE, NEW_ORDER_ALERT_TEMPLATE],
   },
@@ -81,6 +82,27 @@ export const CHANNEL_CONFIG: Record<SettingsChannel, ChannelConfig> = {
     ],
     templates: [],
   },
+};
+
+/**
+ * Which Settings switch governs a notification event. An event not listed here is "always on" (invitations,
+ * security codes) and ignores the caterer's switches.
+ */
+export const MESSAGE_FOR_EVENT: Record<string, MessageKey> = {
+  "order.created": "orderConfirmation",
+  "order.new_alert": "orderConfirmation",
+  "order.status_changed": "orderStatusUpdates",
+  "quotation.sent": "orderStatusUpdates",
+  "menu_approval.sent": "orderStatusUpdates",
+  "invoice.sent": "paymentConfirmation",
+  "receipt.sent": "paymentConfirmation",
+  "payment.link_sent": "paymentConfirmation",
+  "payment.received": "paymentConfirmation",
+  "payment.upi_claimed": "paymentConfirmation",
+  "payment.due": "paymentConfirmation",
+  "payment.overdue": "paymentConfirmation",
+  "event.reminder": "eventReminders",
+  "system.alert": "systemAlerts",
 };
 
 export interface ChannelSettings {

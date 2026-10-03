@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
-import { getChannelSettings } from "@/modules/notifications/channel-settings";
-import { ChannelPreferences } from "../../../_components/channel-settings-ui";
+import { requireSession } from "@/lib/auth/require-session";
+import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
+import { PushSettings } from "../../../_components/push-settings";
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
@@ -10,18 +10,12 @@ export const metadata: Metadata = {
 };
 
 export default async function PushNotificationsPage() {
-  const { organizationId } = await requireActiveOrganization();
-  const settings = await getChannelSettings(organizationId, "push");
+  const session = await requireSession();
+  const state = await getPushState(session.user.id);
 
   return (
     <SettingsCard title="Push Notifications" description="Configure push notifications to stay updated on your catering events.">
-      <ChannelPreferences
-        channel="push"
-        title="Push Notification Preferences"
-        description="Choose which push notifications you want to receive"
-        messages={settings.messages}
-        saveLabel="Save Notification Settings"
-      />
+      <PushSettings enabled={state.enabled} devices={state.devices} vapidPublicKey={vapidPublicKey()} />
     </SettingsCard>
   );
 }

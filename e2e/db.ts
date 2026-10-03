@@ -251,6 +251,40 @@ export async function connectNotificationProvider(email: string, channel: "whats
 
 
 /**
+ * Chunk 16.3: sets where a person is in the "Stay updated" push popup schedule. Specs mark it NEVER so the popup
+ * doesn't sit over the page they are testing; push-prompt.spec.ts resets it to PENDING to test the popup itself.
+ */
+export async function setPushPromptState(email: string, state: "PENDING" | "LATER" | "ENABLED" | "NEVER" | "EXHAUSTED", nextAtMinutesFromNow?: number): Promise<void> {
+  await pool.query(
+    `UPDATE "user" SET "pushPromptState" = $2::"PushPromptState", "pushPromptCount" = 0,
+       "pushPromptNextAt" = CASE WHEN $3::int IS NULL THEN NULL ELSE (now() AT TIME ZONE 'UTC') + ($3::int * interval '1 minute') END WHERE email = $1`,
+    [email, state, nextAtMinutesFromNow ?? null],
+  );
+}
+
+export async function getPushPrompt(email: string): Promise<{ state: string; count: number; daysUntilNext: number | null }> {
+  // Prisma stores UTC in a zone-less column, so compare against UTC "now" rather than the session's local time.
+  const { rows } = await pool.query<{ pushPromptState: string; pushPromptCount: number; days: string | null }>(
+    `SELECT "pushPromptState", "pushPromptCount", EXTRACT(EPOCH FROM ("pushPromptNextAt" - (now() AT TIME ZONE 'UTC'))) / 86400 AS days FROM "user" WHERE email = $1`,
+    [email],
+  );
+  return { state: rows[0].pushPromptState, count: rows[0].pushPromptCount, daysUntilNext: rows[0].days === null ? null : Number(rows[0].days) };
+}
+
+/** Chunk 16.5: puts an in-app notification in a signed-up caterer's bell, the way a real trigger would. */
+export async function addInAppNotification(email: string, title: string, message: string): Promise<void> {
+  const { rows } = await pool.query<{ organizationId: string; userId: string }>(
+    `SELECT m."organizationId", m."userId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1`,
+    [email],
+  );
+  if (!rows[0]) throw new Error(`No organization found for ${email}`);
+  await pool.query(
+    `INSERT INTO notification (id, "organizationId", channel, event, "recipientUserId", payload, "createdAt") VALUES ($1, $2, 'IN_APP', 'order.new_alert', $3, $4, now())`,
+    [crypto.randomUUID(), rows[0].organizationId, rows[0].userId, JSON.stringify({ title, message })],
+  );
+}
+
+/**
  * Chunk 14 — a bare-bones customer + order for the billing specs, inserted directly: the order form itself is
  * covered by orders.spec.ts, and billing only needs an order with a total. Returns the ids the spec needs.
  */

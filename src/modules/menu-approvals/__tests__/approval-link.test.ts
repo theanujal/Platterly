@@ -59,6 +59,8 @@ async function makeActor() {
 async function makeAdminOrder(withEventType = true) {
   const org = await makeOrg();
   const actor = await makeActor();
+  // The Sales team member who receives the customer's in-app alerts.
+  await prisma.member.create({ data: { id: crypto.randomUUID(), organizationId: org.id, userId: actor.id, role: "salesEvents", createdAt: new Date() } });
   const customer = await createCustomer(org.id, { name: "Anoop Jalota", phone: "9876543210", email: "anoop@example.test" }, actor.id);
   const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
   const order = await createOrder(
@@ -357,7 +359,7 @@ describe("Venue & Delivery on the approved link", () => {
     expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "CONFIRMATION" });
     expect(await submitVenueViaLink(token, { ...VENUE, venueBuildingName: "Changed" })).toEqual({ ok: false });
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).venue).toBe("Green Villa");
-    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.venue_details_submitted" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.venue_details_submitted", channel: "IN_APP" } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "order.venue_details_submitted_via_link" } })).toBe(1);
     const note = await prisma.menuApprovalNote.findFirstOrThrow({ where: { organizationId: org.id, authorType: "CUSTOMER" } });
     expect(note.body).toMatch(/venue and delivery details/);
@@ -395,7 +397,7 @@ describe("Venue & Delivery on the approved link", () => {
     expect((await prisma.menuSelection.findFirstOrThrow({ where: { organizationId: org.id } })).status).toBe("CUSTOMER_APPROVED");
     expect(await orderStatus(order.id)).toBe("APPROVED");
     expect(await resolveApprovalLink(token)).toMatchObject({ ok: true, stage: "VENUE" });
-    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.change_asked_after_approval" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "menu_approval.change_asked_after_approval", channel: "IN_APP" } })).toBe(1);
     expect((await prisma.menuApprovalNote.findFirstOrThrow({ where: { organizationId: org.id } })).body).toBe("Can we swap the dessert?");
   });
 

@@ -175,7 +175,7 @@ export default async function TenantDetailPage({ params, searchParams }: { param
             <SettingsSection icon={Link2} title="Storefront link" description="After a caterer has used both free changes, only you can change it.">
               <SlugOverrideForm tenantId={tenant.id} currentSlug={tenant.slug} slugChangeCount={tenant.slugChangeCount} />
             </SettingsSection>
-            <SettingsSection icon={MessageSquare} title="Message providers" description="Connect WhatsApp and Email for this caterer. Once connected, they can switch each on in their own Settings. Nothing is delivered until the providers go live (Chunk 16).">
+            <SettingsSection icon={MessageSquare} title="Message providers" description="Connect WhatsApp and Email for this caterer. Once connected, they can switch each on in their own Settings. Email is delivered through Platterly's ZeptoMail once connected and switched on; WhatsApp messages are queued until its provider is added.">
               <ProviderConnect organizationId={tenant.id} connected={{ whatsapp: whatsapp.providerConnected, email: email.providerConnected }} />
             </SettingsSection>
             <SettingsSection icon={ShieldCheck} title="Account status" description="Suspend or deactivate blocks sign-in and stops the caterer's customer links. Every change is recorded in the audit log.">

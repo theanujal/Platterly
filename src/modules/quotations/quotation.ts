@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import { notify } from "@/lib/notifications/notify";
+import { notifyCustomer, onQuotationResponded } from "@/modules/notifications/triggers";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
@@ -367,12 +367,20 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
 
   const after = await prisma.quotation.update({ where: { id }, data: { status: "SENT" } });
 
-  await notify({
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
+  await notifyCustomer({
     organizationId,
-    channel: "WHATSAPP",
     event: "quotation.sent",
-    recipient: { phone: quotation.customer.phone },
-    payload: { quotationId: id, customerName: quotation.customer.name, url },
+    email: quotation.customer.email,
+    phone: quotation.customer.phone,
+    payload: {
+      quotationId: id,
+      kitchenName: org.name,
+      customerName: quotation.customer.name,
+      eventDate: quotation.eventStartDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }),
+      amount: Number(after.total),
+      url,
+    },
   });
 
   await audit({
@@ -456,6 +464,8 @@ async function customerTransition(organizationId: string, id: string, status: Qu
     before: { status: before.status },
     after: { status: after.status },
   });
+
+  if (status === "ACCEPTED" || status === "REJECTED" || status === "CHANGES_REQUESTED") await onQuotationResponded(organizationId, id, status);
 
   return after;
 }

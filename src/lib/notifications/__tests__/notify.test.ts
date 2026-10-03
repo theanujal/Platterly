@@ -23,7 +23,7 @@ describe("notify() (Chunk 2 Group 2.1)", () => {
     const result = await notify({
       organizationId: org.id,
       channel: "EMAIL",
-      event: "quotation.sent",
+      event: "custom.no_template",
       recipient: { email: "customer@example.test" },
       payload: { quotationId: "q_123" },
     });
@@ -46,5 +46,28 @@ describe("notify() (Chunk 2 Group 2.1)", () => {
     expect(result.whatsAppMessages).toHaveLength(1);
     expect(result.whatsAppMessages[0].toPhone).toBe("+919999999999");
     expect(result.whatsAppMessages[0].status).toBe("queued");
+  });
+});
+
+describe("notify() email gating (Chunk 16)", () => {
+  it("does not send a templated email while the channel is off, but always sends invitations", async () => {
+    const { vi } = await import("vitest");
+    vi.stubEnv("ZEPTOMAIL_TOKEN", "abc");
+    vi.stubEnv("ZEPTOMAIL_FROM", "noreply@platterly.test");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "req-9" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const org = await makeOrg();
+      const invoice = await notify({ organizationId: org.id, channel: "EMAIL", event: "invoice.sent", recipient: { email: "c@example.test" }, payload: { number: "INV-1" } });
+      expect(invoice.logs[0].status).toBe("skipped");
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const invite = await notify({ organizationId: org.id, channel: "EMAIL", event: "team.invitation_sent", recipient: { email: "t@example.test" }, payload: { organizationName: "X", inviterName: "Y", acceptUrl: "https://x.test/a" } });
+      expect(invite.logs[0].status).toBe("sent");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
   });
 });

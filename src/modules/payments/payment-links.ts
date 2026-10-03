@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { originFor } from "@/lib/routing/hosts";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
-import { notify } from "@/lib/notifications/notify";
+import { emailPayload, loadOrderContext, notifyCustomer } from "@/modules/notifications/triggers";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { advanceAmount, round2 } from "./payment-math";
 import { PaymentError, orderBalance } from "./payment";
@@ -104,10 +104,14 @@ export async function resolvePaymentLink(token: string): Promise<ResolvedPayment
 
 /** Tells the customer about a payment link. Logged until the email provider is live (Chunk 16). */
 export async function sendPaymentLink(params: { organizationId: string; orderId: string; url: string; amount: number }) {
-  const order = await prisma.order.findFirstOrThrow({ where: { id: params.orderId, organizationId: params.organizationId }, select: { orderNumber: true, customer: { select: { name: true, email: true, phone: true } } } });
-  const payload = { template: "paymentRequest", orderNumber: order.orderNumber, amount: params.amount, url: params.url };
+  const context = await loadOrderContext(params.organizationId, params.orderId);
   const email = await getChannelSettings(params.organizationId, "email");
-  if (order.customer.email) await notify({ organizationId: params.organizationId, channel: "EMAIL", event: "payment.link_sent", recipient: { email: order.customer.email }, payload });
-  await notify({ organizationId: params.organizationId, channel: "WHATSAPP", event: "payment.link_sent", recipient: { phone: order.customer.phone }, payload });
+  await notifyCustomer({
+    organizationId: params.organizationId,
+    event: "payment.link_sent",
+    email: context.customerEmail,
+    phone: context.customerPhone,
+    payload: emailPayload(context, { template: "paymentRequest", amount: params.amount, url: params.url }),
+  });
   return { emailActive: email.active };
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { onOrderStatusChanged } from "@/modules/notifications/triggers";
 
 /**
  * Status history (AJ, 2026-09-30): one row for every change of an order's or its menu approval's status.
@@ -21,7 +22,7 @@ export interface StatusChangeInput {
 
 export async function recordStatusChange(input: StatusChangeInput) {
   const actor = input.actorUserId ? await prisma.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } }) : null;
-  return prisma.statusChange.create({
+  const change = await prisma.statusChange.create({
     data: {
       organizationId: input.organizationId,
       orderId: input.orderId,
@@ -36,6 +37,9 @@ export async function recordStatusChange(input: StatusChangeInput) {
       actorName: actor?.name ?? null,
     },
   });
+  // The customer hears about the order's own status changes (not the menu approval's internal steps).
+  if (input.subject === "ORDER") await onOrderStatusChanged(input.organizationId, input.orderId, input.toStatus, input.reason);
+  return change;
 }
 
 /**

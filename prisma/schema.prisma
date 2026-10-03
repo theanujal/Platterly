@@ -38,12 +38,45 @@ model User {
   // `additionalFields.phone` in src/lib/auth/auth.ts.
   phone String?
 
+  // --- Chunk 16.3: Web Push, per person ---
+  // `pushEnabled` is the person's one master switch; devices live in PushSubscription. The prompt fields drive
+  // the "Stay updated" popup: asked at sign-up, then again every 3 days after "Maybe Later" (up to 5 times).
+  pushEnabled       Boolean            @default(true)
+  pushPromptState   PushPromptState    @default(PENDING)
+  pushPromptCount   Int                @default(0)
+  pushPromptNextAt  DateTime?
+  pushSubscriptions PushSubscription[]
+
   notificationsReceived        Notification[]
   auditLogsActedOn             AuditLog[]
   inventoryTransactionsActedOn InventoryTransaction[]
 
   @@unique([email])
   @@map("user")
+}
+
+enum PushPromptState {
+  PENDING
+  LATER
+  ENABLED
+  NEVER
+  EXHAUSTED
+}
+
+// One row per browser/device a person enabled push on. `endpoint` is the browser's private address for it.
+model PushSubscription {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint   String    @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+  @@map("push_subscription")
 }
 
 model Session {
@@ -321,11 +354,14 @@ model Notification {
   recipientUser   User?               @relation(fields: [recipientUserId], references: [id], onDelete: SetNull)
   payload         Json
   createdAt       DateTime            @default(now())
+  // In-app alerts only: when the person opened or cleared it (the bell's unread count).
+  readAt          DateTime?
 
   logs             NotificationLog[]
   whatsAppMessages WhatsAppMessage[]
 
   @@index([organizationId])
+  @@index([recipientUserId, channel, readAt])
   @@map("notification")
 }
 

@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { getLatestEmailOtp } from "./db";
+import { getLatestEmailOtp, setPushPromptState } from "./db";
 
 /**
  * Every sign-up (fresh caterer or invited teammate) now lands on
@@ -27,6 +27,8 @@ export interface SignUpOptions {
   phone?: string;
   /** Dismiss the "Claim your custom link" dialog a fresh Dashboard opens. Default true; the storefront spec needs it open. */
   closeClaimDialog?: boolean;
+  /** Leave the "Stay updated" push popup schedule alone, so it shows. Default false (marked "Don't ask again"). */
+  pushPrompt?: boolean;
 }
 
 /**
@@ -47,6 +49,8 @@ export async function signUpCaterer(page: Page, email: string, options: SignUpOp
   await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
+  // The "Stay updated" push popup would sit over the page under test; push-prompt.spec.ts covers it itself.
+  if (!options.pushPrompt) await setPushPromptState(email, "NEVER");
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);

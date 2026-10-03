@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { generatePlaceholderSlug } from "./slug";
 import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
+import { onCatererSignedUp } from "@/modules/notifications/triggers";
 
 /**
  * Runs immediately after a new caterer/kitchen-admin account is created
@@ -85,6 +86,7 @@ export async function provisionTenantForNewUser(
 
   const trialPlan = await ensureTrialPlan();
   await assignPlan(organization.id, trialPlan.id, userId);
+  await onCatererSignedUp(organization.id, user.name);
 
   return { organizationId: organization.id };
 }

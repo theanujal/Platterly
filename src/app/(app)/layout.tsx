@@ -8,6 +8,10 @@ import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
+import { getInbox } from "@/modules/notifications/inbox";
+import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
+import { PushPrompt } from "@/components/push/push-prompt";
+import { markAllNotificationsReadAction, markNotificationReadAction } from "./actions";
 import { GlobalSearch } from "@/components/app-shell/global-search";
 
 function daysUntil(date: Date): number {
@@ -26,12 +30,14 @@ function daysUntil(date: Date): number {
 // Menu Catalog's own layouts already used before this change).
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { session, organizationId } = await requireActiveOrganization();
-  const [organization, subscription] = await Promise.all([
+  const [organization, subscription, inbox, push] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
       select: { name: true },
     }),
     getCurrentSubscription(organizationId),
+    getInbox(organizationId, session.user.id),
+    getPushState(session.user.id),
   ]);
 
   // Links the role can't open are left out of the sidebar. Each page still enforces its own permission.
@@ -67,7 +73,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <GlobalSearch />
           </div>
           <div className="ml-auto flex items-center gap-1">
-            <NotificationBell />
+            <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
             <Link
               href="/settings/account/user-profile"
               aria-label="Account settings"
@@ -84,6 +90,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>
+        <PushPrompt
+          show={push.showPrompt}
+          vapidPublicKey={vapidPublicKey()}
+          settingsHref="/settings/communication/push-notifications"
+          benefits={["New orders and customer replies", "Event reminders before your catering events", "Payments received and UPI payments to confirm"]}
+        />
       </SidebarInset>
     </SidebarProvider>
   );

@@ -4,6 +4,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
+import { onOrderCreated } from "@/modules/notifications/triggers";
 import { createEvent } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
 import type { Prisma } from "@/generated/prisma/client";
@@ -375,6 +376,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
     recordId: order.id,
     after: JSON.parse(JSON.stringify(withTotals)),
   });
+  await onOrderCreated(organizationId, order.id);
 
   return withTotals;
 }
