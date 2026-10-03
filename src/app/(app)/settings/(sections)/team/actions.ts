@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth/auth";
@@ -48,7 +49,7 @@ export async function inviteMemberAction(email: string, role: string): Promise<A
       body: { email, role, organizationId },
     });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not send invitation." };
+    return { ok: false, error: userMessage(error, "Could not send invitation.") };
   }
 
   revalidatePath("/settings/team");
@@ -71,7 +72,7 @@ export async function resendInvitationAction(email: string, role: string): Promi
       body: { email, role, organizationId, resend: true },
     });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not resend invitation." };
+    return { ok: false, error: userMessage(error, "Could not resend invitation.") };
   }
 
   revalidatePath("/settings/team");
@@ -85,7 +86,7 @@ export async function cancelInvitationAction(invitationId: string): Promise<Acti
   try {
     await auth.api.cancelInvitation({ headers: await nextHeaders(), body: { invitationId } });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not cancel invitation." };
+    return { ok: false, error: userMessage(error, "Could not cancel invitation.") };
   }
 
   revalidatePath("/settings/team");
@@ -106,7 +107,7 @@ export async function updateMemberRoleAction(memberId: string, newRole: string):
       body: { memberId, role: newRole, organizationId },
     });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not update role." };
+    return { ok: false, error: userMessage(error, "Could not update role.") };
   }
 
   revalidatePath("/settings/team");
@@ -120,7 +121,7 @@ export async function disableMemberAction(memberId: string): Promise<ActionResul
   try {
     await disableMember(organizationId, memberId, session.user.id);
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not disable this member." };
+    return { ok: false, error: userMessage(error, "Could not disable this member.") };
   }
 
   revalidatePath("/settings/team");
@@ -143,7 +144,9 @@ export async function enableMemberAction(memberId: string): Promise<ActionResult
  * is config for a later chunk to consume, not enforcement with a real
  * effect today.
  */
-export async function getTeamPrivacyAction(organizationId: string): Promise<TeamPrivacySettings> {
+export async function getTeamPrivacyAction(): Promise<TeamPrivacySettings> {
+  // Always the signed-in person's own kitchen. (It used to take an organization id, which any caller could change.)
+  const { organizationId } = await requireActiveOrganization();
   const stored = await getSetting<TeamPrivacySettings>(organizationId, TEAM_PRIVACY_KEY);
   return stored ?? DEFAULT_TEAM_PRIVACY;
 }

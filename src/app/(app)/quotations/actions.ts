@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import {
@@ -19,7 +20,7 @@ import type { OrderKind, MealType, FoodType, PricingMethod, ChildPricingType } f
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+  return { ok: false, error: userMessage(error, "Something went wrong.") };
 }
 
 function stringField(formData: FormData, name: string): string | undefined {

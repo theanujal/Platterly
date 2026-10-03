@@ -1,3 +1,4 @@
+import { RULES, validateInput, checkMoney } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -31,6 +32,8 @@ export async function createInventoryItem(
   actorUserId: string,
   openingStock?: number,
 ) {
+  validateInput(input, RULES.inventoryItem);
+  checkMoney(openingStock, "opening stock", { max: 1_000_000_000 });
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.inventory.create({
       data: {
@@ -84,6 +87,7 @@ export async function updateInventoryItem(
   input: InventoryItemInput,
   actorUserId: string,
 ) {
+  validateInput(input, RULES.inventoryItem);
   const before = await prisma.inventory.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.inventory.update({

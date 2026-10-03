@@ -1,3 +1,4 @@
+import { matchesDeclaredType } from "./file-signature";
 import "server-only";
 import { getStorageDriver } from "./storage";
 
@@ -31,6 +32,9 @@ export async function uploadCatalogImage(
     throw new InvalidImageError("Image must be 4MB or smaller.");
   }
   const buffer = Buffer.from(await file.arrayBuffer());
+  if (!matchesDeclaredType(buffer, file.type)) {
+    throw new InvalidImageError("That file is not a real PNG, JPG or WebP image.");
+  }
   const key = `organizations/${organizationId}/catalog/${kind}/${crypto.randomUUID()}.${extension}`;
   const uploaded = await getStorageDriver().upload(key, buffer, file.type);
   return uploaded.url;

@@ -14,7 +14,8 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
  * exist. First real caller of `TenantSetting` (Chunk 2 scaffold, zero
  * callers until now).
  */
-export async function getCurrencyPreferencesAction(organizationId: string): Promise<CurrencyPreferences> {
+export async function getCurrencyPreferencesAction(): Promise<CurrencyPreferences> {
+  const { organizationId } = await requireActiveOrganization();
   const stored = await getSetting<CurrencyPreferences>(organizationId, CURRENCY_PREFERENCES_KEY);
   return stored ?? DEFAULT_CURRENCY_PREFERENCES;
 }

@@ -90,9 +90,9 @@ describe("Customer CRUD (Chunk 9 Group 9.2, merged with Lead/Enquiry 2026-09-17)
     const orgA = await makeOrg();
     const orgB = await makeOrg();
     const actor = await makeActor();
-    await createCustomer(orgA.id, { name: "Zeeshan", phone: "1" }, actor.id);
-    const first = await createCustomer(orgA.id, { name: "Amit", phone: "2" }, actor.id);
-    await createCustomer(orgB.id, { name: "Other Tenant's Customer", phone: "3" }, actor.id);
+    await createCustomer(orgA.id, { name: "Zeeshan", phone: "9876500001" }, actor.id);
+    const first = await createCustomer(orgA.id, { name: "Amit", phone: "9876500002" }, actor.id);
+    await createCustomer(orgB.id, { name: "Other Tenant's Customer", phone: "9876500003" }, actor.id);
 
     const list = await listCustomers(orgA.id);
     expect(list.map((c) => c.name)).toEqual(["Amit", "Zeeshan"]);

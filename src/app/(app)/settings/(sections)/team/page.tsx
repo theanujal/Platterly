@@ -45,7 +45,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const [allMembers, invitations, teamPrivacy, seats, canInvite, canManage, canEditSettings, params] = await Promise.all([
     listMembers(organizationId),
     listPendingInvitations(organizationId),
-    getTeamPrivacyAction(organizationId),
+    getTeamPrivacyAction(),
     getSeatUsage(organizationId),
     hasPermission({ users: ["create"] }, organizationId),
     hasPermission({ users: ["edit", "delete"] }, organizationId),

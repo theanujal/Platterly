@@ -1,3 +1,4 @@
+import { validateOrderLike } from "@/lib/validation";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
 import { derivePaymentState } from "@/modules/payments/payment-math";
 import "server-only";
@@ -314,6 +315,7 @@ export function deriveStandardChildPricingMenuId(entries: MealPlanEntryInput[] |
 }
 
 export async function createOrder(organizationId: string, input: OrderInput, actorUserId?: string) {
+  validateOrderLike(input);
   const orderKind = input.orderKind ?? "SINGLE";
   const pricingMethod = input.pricingMethod ?? "STANDARD";
   const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
@@ -382,6 +384,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
 }
 
 export async function updateOrder(organizationId: string, id: string, input: OrderInput, actorUserId: string) {
+  validateOrderLike(input);
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;

@@ -10,7 +10,19 @@ import { RESERVED_PATH_SEGMENTS } from "./src/lib/routing/reserved-words";
 // the order flow under `/{slug}/plan/...`. Later rules win for the same key.
 const reservedAlternation = RESERVED_PATH_SEGMENTS.map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 
+// Chunk 17.3 — headers sent on every response. HSTS is ignored over plain http (local dev) and applies once the
+// app is served over https. A full script CSP is deliberately not set yet: Next's inline bootstrap scripts, Razorpay
+// Checkout and Google Fonts need a nonce-based policy, which is a separate piece of work.
+export const SECURITY_HEADERS = [
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), usb=(), bluetooth=(), interest-cohort=()" },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+];
+
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   // Image uploads (logo, food items, menus, add-ons, event types, inventory) go through
   // Server Actions as multipart form data. The default 1MB body limit rejected any photo
   // over 1MB with "Body exceeded 1 MB limit". The app's own rule is 4MB per image
@@ -32,7 +44,7 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
-      { source: "/:path*", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'" }] },
+      { source: "/:path*", headers: [{ key: "Content-Security-Policy", value: "frame-ancestors 'self'" }, ...SECURITY_HEADERS] },
       {
         source: `/:tenantSlug((?!(?:${reservedAlternation})$)[^/]+)`,
         headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],

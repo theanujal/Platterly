@@ -13,6 +13,8 @@ import type { PaymentType } from "@/generated/prisma/enums";
 const catering = () => originFor("catering");
 
 export async function invoiceUrl(organizationId: string, invoiceId: string): Promise<string> {
+  // The invoice must be this kitchen's own: a link is never issued for another kitchen's record (Chunk 17.3).
+  await prisma.invoice.findFirstOrThrow({ where: { id: invoiceId, organizationId }, select: { id: true } });
   const existing = await prisma.secureAccessToken.findFirst({ where: { organizationId, resourceType: "INVOICE", resourceId: invoiceId, revokedAt: null } });
   const token = existing ?? (await issueToken({ organizationId, resourceType: "INVOICE", resourceId: invoiceId }));
   return `${catering()}/invoice/${token.token}`;

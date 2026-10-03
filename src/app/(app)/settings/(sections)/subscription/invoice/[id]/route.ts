@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { jsPDF } from "jspdf";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 
 const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -30,6 +30,7 @@ const STATUS_LABEL: Record<string, string> = { TRIALING: "Trial", ACTIVE: "Activ
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
 
   const [subscription, organization] = await Promise.all([
     prisma.subscription.findFirst({ where: { id, organizationId }, include: { subscriptionPlan: true } }),

@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -26,6 +27,7 @@ async function replaceEventTypeMenus(eventTypeId: string, menuIds: string[] | un
 }
 
 export async function createEventType(organizationId: string, input: EventTypeInput, actorUserId: string) {
+  validateInput(input, RULES.eventType);
   const { _max } = await prisma.eventType.aggregate({ where: { organizationId }, _max: { sortOrder: true } });
 
   const eventType = await prisma.eventType.create({
@@ -60,6 +62,7 @@ export async function updateEventType(
   input: EventTypeInput,
   actorUserId: string,
 ) {
+  validateInput(input, RULES.eventType);
   const before = await prisma.eventType.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.eventType.update({

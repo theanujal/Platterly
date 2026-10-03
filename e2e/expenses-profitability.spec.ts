@@ -225,7 +225,7 @@ test("receipts attach to an expense, show in the table, and can be removed", asy
   const pdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
   await dialog.locator("#exp-files").setInputFiles([
     { name: "fresh-mart.pdf", mimeType: "application/pdf", buffer: pdf },
-    { name: "till-slip.png", mimeType: "image/png", buffer: Buffer.from("89504e470d0a1a0a", "hex") },
+    { name: "till-slip.png", mimeType: "image/png", buffer: Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.alloc(24)]) },
   ]);
   await expect(dialog.getByTestId("expense-file-list")).toContainText("fresh-mart.pdf");
   await expect(dialog.getByTestId("expense-file-list")).toContainText("till-slip.png");

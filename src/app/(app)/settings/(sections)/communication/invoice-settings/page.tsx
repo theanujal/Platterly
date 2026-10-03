@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { EditablePanel } from "../../../_components/editable-panel";
 import { InfoBox, InfoList, SettingsCard } from "../../../_components/settings-ui";
 import { getInvoiceTermsAction } from "../actions";
@@ -12,7 +12,8 @@ export const metadata: Metadata = {
 
 export default async function InvoiceSettingsPage() {
   const { organizationId } = await requireActiveOrganization();
-  const terms = await getInvoiceTermsAction(organizationId);
+  await requirePermission({ settings: ["view"] }, organizationId);
+  const terms = await getInvoiceTermsAction();
 
   return (
     <SettingsCard title="Invoice Settings" description="Terms & conditions shown at the bottom of your invoices.">

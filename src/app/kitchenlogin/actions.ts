@@ -1,5 +1,6 @@
 "use server";
 
+import { matchesDeclaredType } from "@/lib/storage/file-signature";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { updateTenant, markOnboardingComplete } from "@/modules/tenants/tenant";
@@ -56,6 +57,9 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
       return { ok: false, error: "Logo must be 4MB or smaller." };
     }
     const buffer = Buffer.from(await logo.arrayBuffer());
+    if (!matchesDeclaredType(buffer, logo.type)) {
+      return { ok: false, error: "That file is not a real PNG, JPG or WebP image." };
+    }
     const uploaded = await getStorageDriver().upload(
       `organizations/${organizationId}/logo.${extension}`,
       buffer,

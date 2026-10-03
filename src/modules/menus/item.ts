@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -59,6 +60,7 @@ async function replaceItemMenus(menuItemId: string, menuIds: string[] | undefine
 }
 
 export async function createMenuItem(organizationId: string, input: MenuItemInput, actorUserId: string) {
+  validateInput(input, RULES.menuItem);
   const item = await prisma.menuItem.create({
     data: {
       organizationId,
@@ -104,6 +106,7 @@ export async function updateMenuItem(
   input: MenuItemInput,
   actorUserId: string,
 ) {
+  validateInput(input, RULES.menuItem);
   const before = await prisma.menuItem.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.menuItem.update({

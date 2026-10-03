@@ -1,3 +1,4 @@
+import { RULES, validateInput, checkMoney } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -58,6 +59,9 @@ export async function reorderMenus(organizationId: string, orderedIds: string[],
 }
 
 export async function createMenu(organizationId: string, input: MenuInput, actorUserId: string) {
+  validateInput(input, RULES.menu);
+  checkMoney(input.childUnder5Price, "child under 5 price");
+  checkMoney(input.child5To10PriceValue, "child 5 to 10 price");
   const menu = await prisma.menu.create({
     data: {
       organizationId,
@@ -90,6 +94,9 @@ export async function createMenu(organizationId: string, input: MenuInput, actor
 }
 
 export async function updateMenu(organizationId: string, id: string, input: MenuInput, actorUserId: string) {
+  validateInput(input, RULES.menu);
+  checkMoney(input.childUnder5Price, "child under 5 price");
+  checkMoney(input.child5To10PriceValue, "child 5 to 10 price");
   const before = await prisma.menu.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.menu.update({

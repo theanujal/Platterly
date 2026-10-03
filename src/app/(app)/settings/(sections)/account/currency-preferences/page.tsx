@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { EditablePanel } from "../../../_components/editable-panel";
 import { Detail, DetailGrid, InfoBox, SettingsCard } from "../../../_components/settings-ui";
 import { getCurrencyPreferencesAction } from "./actions";
@@ -13,7 +13,8 @@ export const metadata: Metadata = {
 
 export default async function CurrencyPreferencesPage() {
   const { organizationId } = await requireActiveOrganization();
-  const preferences = await getCurrencyPreferencesAction(organizationId);
+  await requirePermission({ settings: ["view"] }, organizationId);
+  const preferences = await getCurrencyPreferencesAction();
 
   return (
     <SettingsCard title="Currency Preferences" description="How amounts are displayed across the app.">

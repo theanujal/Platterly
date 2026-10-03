@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { ChannelPreferences, ChannelServiceStatus, ChannelTemplates } from "../../../_components/channel-settings-ui";
 import { SettingsCard } from "../../../_components/settings-ui";
@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 export default async function WhatsappSettingsPage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const settings = await getChannelSettings(organizationId, "whatsapp");
 
   return (

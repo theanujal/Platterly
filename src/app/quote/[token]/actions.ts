@@ -1,15 +1,18 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
+import { publicActionLimited } from "@/lib/public-rate-limit";
 import { resolveQuotationToken, acceptQuotation, rejectQuotation, requestQuotationChanges } from "@/modules/quotations/quotation";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+  return { ok: false, error: userMessage(error, "Something went wrong.") };
 }
 
 export async function acceptQuotationAction(token: string): Promise<ActionResult> {
+  if (await publicActionLimited("quote-link")) return { ok: false, error: "Too many attempts. Please try again later." };
   const resolved = await resolveQuotationToken(token);
   if (!resolved) return { ok: false, error: "This link is no longer valid." };
   try {
@@ -22,6 +25,7 @@ export async function acceptQuotationAction(token: string): Promise<ActionResult
 }
 
 export async function rejectQuotationAction(token: string, message: string): Promise<ActionResult> {
+  if (await publicActionLimited("quote-link")) return { ok: false, error: "Too many attempts. Please try again later." };
   const resolved = await resolveQuotationToken(token);
   if (!resolved) return { ok: false, error: "This link is no longer valid." };
   try {
@@ -34,6 +38,7 @@ export async function rejectQuotationAction(token: string, message: string): Pro
 }
 
 export async function requestQuotationChangesAction(token: string, message: string): Promise<ActionResult> {
+  if (await publicActionLimited("quote-link")) return { ok: false, error: "Too many attempts. Please try again later." };
   const resolved = await resolveQuotationToken(token);
   if (!resolved) return { ok: false, error: "This link is no longer valid." };
   try {

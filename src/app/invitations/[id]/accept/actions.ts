@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/auth";
@@ -18,7 +19,7 @@ export async function acceptInvitationAction(invitationId: string): Promise<Acti
   try {
     await auth.api.acceptInvitation({ headers: await nextHeaders(), body: { invitationId } });
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not accept this invitation." };
+    return { ok: false, error: userMessage(error, "Could not accept this invitation.") };
   }
 
   redirect("/dashboard");

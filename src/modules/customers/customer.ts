@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -17,6 +18,7 @@ export interface CustomerInput {
 }
 
 export async function createCustomer(organizationId: string, input: CustomerInput, actorUserId?: string) {
+  validateInput(input, RULES.customer);
   const customer = await prisma.customer.create({
     data: {
       organizationId,
@@ -49,6 +51,7 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
 }
 
 export async function updateCustomer(organizationId: string, id: string, input: CustomerInput, actorUserId: string) {
+  validateInput(input, RULES.customer);
   const before = await prisma.customer.findFirstOrThrow({ where: { id, organizationId } });
   const isEnquiry = input.isEnquiry ?? before.isEnquiry;
 

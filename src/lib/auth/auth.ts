@@ -34,7 +34,13 @@ export const auth = betterAuth({
   // Production rate limiting is per client IP. Behind Cloudflare/Nginx the socket address is the
   // proxy's, so without this every visitor shares one bucket and gets "Too many requests".
   // Nginx must overwrite (not append to) these headers, so a client can't forge its own IP.
-  advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] } },
+  advanced: {
+    ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] },
+    // Chunk 17.3: session cookies are Secure in production (https only), never readable by scripts, and not sent on
+    // cross-site requests. Stated here so a missing https base URL can never silently downgrade them.
+    useSecureCookies: process.env.NODE_ENV === "production",
+    defaultCookieAttributes: { httpOnly: true, sameSite: "lax" },
+  },
   // Only the production rehearsal (e2e through one IP) switches this off; never set it in production.
   ...(process.env.AUTH_RATE_LIMIT_OFF === "1" ? { rateLimit: { enabled: false } } : {}),
   emailAndPassword: {

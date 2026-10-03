@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -15,6 +16,7 @@ export interface AddOnInput {
 }
 
 export async function createAddOn(organizationId: string, input: AddOnInput, actorUserId: string) {
+  validateInput(input, RULES.addOn);
   const addOn = await prisma.addOn.create({
     data: {
       organizationId,
@@ -42,6 +44,7 @@ export async function createAddOn(organizationId: string, input: AddOnInput, act
 }
 
 export async function updateAddOn(organizationId: string, id: string, input: AddOnInput, actorUserId: string) {
+  validateInput(input, RULES.addOn);
   const before = await prisma.addOn.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.addOn.update({

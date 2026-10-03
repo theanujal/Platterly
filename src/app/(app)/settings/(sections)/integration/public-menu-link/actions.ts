@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSession } from "@/lib/auth/require-session";
 import { setCustomSlug, SlugTakenError, InvalidSlugError, SlugChangeLimitError } from "@/modules/tenants/tenant";
 import { validateSlugFormat } from "@/modules/tenants/slug";
 import { prisma } from "@/lib/db";
@@ -33,6 +33,7 @@ export async function setCustomSlugAction(newSlug: string): Promise<ActionResult
 }
 
 export async function checkSlugAvailableAction(slug: string): Promise<ActionResult> {
+  await requireSession(); // signed-in people only, so the slug list cannot be probed anonymously
   const validation = validateSlugFormat(slug);
   if (!validation.valid) {
     return { ok: false, error: validation.error! };

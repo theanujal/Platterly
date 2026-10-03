@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
@@ -9,7 +10,7 @@ import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+  return { ok: false, error: userMessage(error, "Something went wrong.") };
 }
 
 function stringField(formData: FormData, name: string): string | undefined {
@@ -162,7 +163,7 @@ export async function reorderMenusAction(orderedIds: string[]): Promise<ActionRe
   try {
     await reorderMenus(organizationId, orderedIds, session.user.id);
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : "Could not reorder menus." };
+    return { ok: false, error: userMessage(error, "Could not reorder menus.") };
   }
   revalidatePath("/menu-catalog/menus");
   return { ok: true };

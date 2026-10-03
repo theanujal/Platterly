@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { EditablePanel } from "../../../_components/editable-panel";
 import { Detail, DetailGrid, SettingsCard } from "../../../_components/settings-ui";
@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 
 export default async function KitchenRulesPage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const rules = await getKitchenRules(organizationId);
 
   return (

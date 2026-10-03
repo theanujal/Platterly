@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -62,6 +63,7 @@ async function replaceCategoryMenuAssignments(categoryId: string, assignments: M
 }
 
 export async function createCategory(organizationId: string, input: CategoryInput, actorUserId: string) {
+  validateInput(input, RULES.category);
   const existing = await prisma.menuCategory.findUnique({
     where: { organizationId_name: { organizationId, name: input.name } },
   });
@@ -97,6 +99,7 @@ export async function updateCategory(
   input: CategoryInput,
   actorUserId: string,
 ) {
+  validateInput(input, RULES.category);
   const before = await prisma.menuCategory.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.menuCategory.update({

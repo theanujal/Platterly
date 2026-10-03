@@ -170,7 +170,7 @@ describe("Event CRUD (Chunk 9 Group 9.4)", () => {
     const orgB = await makeOrg();
     const actor = await makeActor();
     const eventTypeA = await createEventType(orgA.id, { name: "A Type" }, actor.id);
-    const customerA = await createCustomer(orgA.id, { name: "A Customer", phone: "1" }, actor.id);
+    const customerA = await createCustomer(orgA.id, { name: "A Customer", phone: "9876500001" }, actor.id);
     const eventA = await createEvent(orgA.id, { customerId: customerA.id, eventTypeId: eventTypeA.id, name: "A Event", startDate: new Date(), endDate: new Date() }, actor.id);
 
     expect(await getEvent(orgB.id, eventA.id)).toBeNull();

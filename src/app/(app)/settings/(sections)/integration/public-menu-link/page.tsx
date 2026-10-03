@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ExternalLink } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
@@ -22,6 +22,7 @@ const CHANGE_LIMIT = 2;
 // business URL with copy/open, the locked notice once changes run out, and how it works.
 export default async function PublicMenuLinkPage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
   const claimed = organization.slugChangeCount > 0;
   const url = canonicalUrl(`/${organization.slug}`);

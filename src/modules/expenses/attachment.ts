@@ -1,3 +1,4 @@
+import { matchesDeclaredType } from "@/lib/storage/file-signature";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -28,8 +29,11 @@ export async function addExpenseAttachment(organizationId: string, expenseId: st
   const existing = await prisma.expenseAttachment.count({ where: { expenseId } });
   if (existing >= MAX_ATTACHMENTS_PER_EXPENSE) throw new AttachmentError(`An expense can have at most ${MAX_ATTACHMENTS_PER_EXPENSE} files.`);
 
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (!matchesDeclaredType(bytes, file.type)) throw new AttachmentError("That file is not a real PNG, JPG, WebP or PDF.");
+
   const key = `organizations/${organizationId}/expenses/${expenseId}/${crypto.randomUUID()}.${extension}`;
-  const uploaded = await getStorageDriver().upload(key, Buffer.from(await file.arrayBuffer()), file.type);
+  const uploaded = await getStorageDriver().upload(key, bytes, file.type);
   const attachment = await prisma.expenseAttachment.create({
     data: {
       organizationId,

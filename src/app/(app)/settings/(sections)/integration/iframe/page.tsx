@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SettingsCard } from "../../../_components/settings-ui";
 import { Button } from "@/components/ui/button";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { IframeGenerator } from "./_components/iframe-generator";
@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 
 export default async function IframeSettingsPage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { slug: true, slugChangeCount: true } });
   const claimed = organization.slugChangeCount > 0;
 

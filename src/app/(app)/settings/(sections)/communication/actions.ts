@@ -48,7 +48,8 @@ export async function saveChannelTemplateAction(channel: SettingsChannel, templa
   return guarded(channel, (organizationId) => setChannelTemplate(organizationId, channel, templateKey, body));
 }
 
-export async function getInvoiceTermsAction(organizationId: string): Promise<string> {
+export async function getInvoiceTermsAction(): Promise<string> {
+  const { organizationId } = await requireActiveOrganization();
   const stored = await getSetting<string>(organizationId, INVOICE_TERMS_KEY);
   return stored ?? "";
 }

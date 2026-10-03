@@ -1,3 +1,4 @@
+import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -35,6 +36,7 @@ function clean(input: ExpenseInput, forOrder: boolean) {
 
 /** `orderId` null records a company (overhead) expense, such as rent, that belongs to no order. */
 export async function createExpense(organizationId: string, orderId: string | null, input: ExpenseInput, actorUserId?: string) {
+  validateInput(input, RULES.expense);
   if (orderId) await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { id: true } });
   const expense = await prisma.expense.create({ data: { organizationId, orderId, recordedByUserId: actorUserId, ...clean(input, orderId !== null) } });
   await audit({ organizationId, actorUserId, action: "expense.create", recordType: "Expense", recordId: expense.id, after: { orderId, category: expense.category, amount: Number(expense.amount) } });
@@ -42,6 +44,7 @@ export async function createExpense(organizationId: string, orderId: string | nu
 }
 
 export async function updateExpense(organizationId: string, id: string, input: ExpenseInput, actorUserId?: string) {
+  validateInput(input, RULES.expense);
   const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId } });
   const expense = await prisma.expense.update({ where: { id }, data: clean(input, before.orderId !== null) });
   await audit({

@@ -181,7 +181,12 @@ describe("expenses", () => {
 });
 
 const stored = (key: string) => existsSync(path.join(process.cwd(), "public", "uploads", key));
-const pdf = (name = "bill.pdf", bytes = 200) => new File([new Uint8Array(bytes)], name, { type: "application/pdf" });
+// A real PDF starts with "%PDF-"; uploads are checked against their content, not just their declared type.
+const pdf = (name = "bill.pdf", bytes = 200) => {
+  const data = new Uint8Array(bytes);
+  data.set(new TextEncoder().encode("%PDF-1.7").subarray(0, bytes));
+  return new File([data], name, { type: "application/pdf" });
+};
 
 describe("expense attachments", () => {
   it("keeps a receipt with an expense, lists it, and removing it deletes the stored file", async () => {
@@ -201,6 +206,8 @@ describe("expense attachments", () => {
     const { org, order } = await makeOrder();
     const exp = await createExpense(org.id, order.id, { category: "FOOD", amount: 100, spentAt: day });
     await expect(addExpenseAttachment(org.id, exp.id, new File(["x"], "a.exe", { type: "application/x-msdownload" }))).rejects.toThrow(AttachmentError);
+    // A script renamed to look like a PDF is refused: the content is checked, not only the declared type.
+    await expect(addExpenseAttachment(org.id, exp.id, new File(["<script>alert(1)</script>"], "bill.pdf", { type: "application/pdf" }))).rejects.toThrow(/not a real/);
     await expect(addExpenseAttachment(org.id, exp.id, pdf("big.pdf", 4 * 1024 * 1024 + 1))).rejects.toThrow(/4MB/);
     await expect(addExpenseAttachment(org.id, exp.id, pdf("empty.pdf", 0))).rejects.toThrow(/empty/);
     for (let i = 0; i < MAX_ATTACHMENTS_PER_EXPENSE; i++) await addExpenseAttachment(org.id, exp.id, pdf(`f${i}.pdf`));

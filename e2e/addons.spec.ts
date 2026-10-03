@@ -70,7 +70,8 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByRole("dialog").locator('input[type="file"]').setInputFiles({
     name: "topper.webp",
     mimeType: "image/webp",
-    buffer: Buffer.alloc(3.5 * 1024 * 1024, 1),
+    // A real WebP header (uploads are checked by content), padded to just under the 4MB limit.
+    buffer: Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WEBP"), Buffer.alloc(3.5 * 1024 * 1024, 1)]),
   });
   await page.getByRole("button", { name: "Create add-on" }).click();
 

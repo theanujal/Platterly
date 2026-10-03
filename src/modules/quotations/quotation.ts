@@ -1,3 +1,4 @@
+import { validateOrderLike } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -150,6 +151,7 @@ export async function recalculateQuotationTotals(quotationId: string) {
 }
 
 export async function createQuotation(organizationId: string, input: QuotationInput, actorUserId: string) {
+  validateOrderLike(input);
   const orderKind = input.orderKind ?? "SINGLE";
   const pricingMethod = input.pricingMethod ?? "STANDARD";
   const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
@@ -201,6 +203,7 @@ export async function createQuotation(organizationId: string, input: QuotationIn
 }
 
 export async function updateQuotation(organizationId: string, id: string, input: QuotationInput, actorUserId: string) {
+  validateOrderLike(input);
   const before = await prisma.quotation.findFirstOrThrow({ where: { id, organizationId } });
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;
@@ -333,6 +336,8 @@ const SENDABLE_STATUSES: QuotationStatus[] = ["DRAFT", "CHANGES_REQUESTED"];
  * of live tokens for the same resource.
  */
 export async function getOrIssueQuotationLink(organizationId: string, quotationId: string): Promise<string> {
+  // The quotation must be this kitchen's own: a link is never issued for another kitchen's record (Chunk 17.3).
+  await prisma.quotation.findFirstOrThrow({ where: { id: quotationId, organizationId }, select: { id: true } });
   const existing = await prisma.secureAccessToken.findFirst({
     where: {
       organizationId,

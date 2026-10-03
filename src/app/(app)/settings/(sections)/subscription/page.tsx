@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CalendarDays, CreditCard, Download, Gift, History } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getCurrentSubscription, listSubscriptionHistory } from "@/modules/subscriptions/subscription";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ const statusLabel = (status: string) => STATUS_LABEL[status] ?? status.charAt(0)
 // generated from the subscription itself (invoice/[id]/route.ts).
 export default async function SubscriptionPage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const [current, history] = await Promise.all([getCurrentSubscription(organizationId), listSubscriptionHistory(organizationId)]);
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
 

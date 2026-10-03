@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Building2, Globe, Hash, MapPin, Phone, Store } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { EditablePanel } from "../../../_components/editable-panel";
 import { Detail, DetailGrid, SettingsCard, SettingsSection } from "../../../_components/settings-ui";
@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 
 export default async function BusinessProfilePage() {
   const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["view"] }, organizationId);
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
   const businessName = organization.name === "Unnamed Business" ? "" : organization.name;
   const nextOrderNumber = `${organization.orderNumberPrefix}-${String(organization.orderNumberNextValue).padStart(organization.orderNumberPadding, "0")}`;

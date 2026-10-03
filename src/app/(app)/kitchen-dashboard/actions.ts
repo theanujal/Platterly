@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { setKitchenProductionStatus, InvalidMenuSelectionTransitionError } from "@/modules/menu-approvals/menu-approval";
@@ -16,7 +17,7 @@ export async function setKitchenProductionStatusAction(id: string, status: Kitch
     if (error instanceof InvalidMenuSelectionTransitionError) {
       return { ok: false, error: "This menu selection's kitchen stage can no longer be changed." };
     }
-    return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+    return { ok: false, error: userMessage(error, "Something went wrong.") };
   }
   revalidatePath("/kitchen-dashboard");
   return { ok: true };

@@ -1,5 +1,6 @@
 "use server";
 
+import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
@@ -23,7 +24,7 @@ function toErrorResult(error: unknown): ActionResult {
   if (error instanceof InvalidMenuSelectionTransitionError || error instanceof ManualStatusChangeError) {
     return { ok: false, error: error.message || "This menu selection can no longer make that move." };
   }
-  return { ok: false, error: error instanceof Error ? error.message : "Something went wrong." };
+  return { ok: false, error: userMessage(error, "Something went wrong.") };
 }
 
 function revalidate(id: string) {
