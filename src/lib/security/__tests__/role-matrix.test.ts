@@ -78,6 +78,9 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "view",
       "export"
     ],
+    "audit": [
+      "view"
+    ],
     "settings": [
       "view",
       "edit"
@@ -134,6 +137,9 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "edit"
     ],
     "reports": [
+      "view"
+    ],
+    "audit": [
       "view"
     ],
     "settings": [
@@ -277,6 +283,13 @@ describe("role permission matrix", () => {
       for (const [resource, actions] of Object.entries(EXPECTED[role])) {
         expect(actions, `${role} ${resource}`).not.toContain("delete");
       }
+    }
+  });
+
+  it("only the owner and manager can read the Audit Log", () => {
+    for (const role of Object.keys(EXPECTED)) {
+      const canSee = (EXPECTED[role].audit ?? []).includes("view");
+      expect(canSee, role).toBe(role === "owner" || role === "manager");
     }
   });
 

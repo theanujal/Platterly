@@ -20,6 +20,7 @@ import { createMenuSelection, getMenuSelection, getKitchenPrepSheet, listMenuApp
 import { disableMember, enableMember, listMembers } from "@/modules/team/team";
 import { getInbox, markAllRead } from "@/modules/notifications/inbox";
 import { notify } from "@/lib/notifications/notify";
+import { listAuditLog } from "@/modules/audit/audit-log";
 import { purgeTenantData } from "@/lib/tenant-purge/purge";
 import { TENANT_SCOPED_DELEGATES } from "@/lib/tenant-purge/tenant-scoped-models";
 
@@ -201,6 +202,11 @@ describe("tenant isolation: kitchen B cannot reach kitchen A's records by id", (
       const ids = idsIn(await rows);
       expect(ids, `${name} leaked kitchen A's row`).not.toContain(aId);
     }
+    // The Audit Log shows each kitchen only its own history.
+    const bLog = await listAuditLog(orgB);
+    expect(bLog.entries.every((e) => ![A.order, A.customer, A.expense, A.invoice].includes(e.recordId))).toBe(true);
+    expect(bLog.total).toBe(0);
+    expect((await listAuditLog(orgA)).total).toBeGreaterThan(5);
     expect((await getInbox(orgB, actorB)).items).toHaveLength(0);
     await markAllRead(orgB, actorA); // B acting on A's user id inside B's own kitchen touches nothing
     expect((await getInbox(orgA, actorA)).unread).toBe(unreadBaseline);

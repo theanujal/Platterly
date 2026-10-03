@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChefHat, ChevronsUpDown, Crown, LayoutDashboard, Users, Check } from "lucide-react";
+import { BarChart3, ChefHat, ChevronsUpDown, Crown, LayoutDashboard, Users, Check } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail } from "@/components/ui/sidebar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PRODUCTS, productForPath } from "@/lib/products";
@@ -84,6 +84,7 @@ export function SuperSidebar({ userName }: { userName: string }) {
           <SidebarGroupContent>
             <SidebarMenu>
               <NavLink href="/super/dashboard" label="Overview" icon={LayoutDashboard} pathname={pathname} />
+              <NavLink href="/super/reports" label="Reports" icon={BarChart3} pathname={pathname} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

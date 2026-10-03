@@ -309,7 +309,7 @@ export async function seedOrderForBilling(email: string, total: number): Promise
   const customerId = `cust_${suffix}`;
   const orderId = `ord_${suffix}`;
   const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 8999)}`;
-  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [customerId, organizationId, "Billing Customer", "+919876500777", "billing-customer@example.test"]);
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [customerId, organizationId, "Billing Customer", `+9198765${String(Math.floor(Math.random() * 100000)).padStart(5, "0")}`, "billing-customer@example.test"]);
   await pool.query(
     `INSERT INTO "order" (id, "organizationId", "customerId", "orderNumber", "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", "individualPricingEnabled", subtotal, total, balance, venue, "updatedAt")
      VALUES ($1, $2, $3, $4, now() + interval '10 days', now() + interval '10 days', 100, 100, true, $5, $5, $5, 'Whitefield Hall', now())`,

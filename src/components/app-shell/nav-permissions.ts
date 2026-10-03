@@ -15,10 +15,12 @@ export const NAV_PERMISSIONS: Record<string, Needs> = {
   "/invoices": { invoices: ["view"] },
   "/expenses": { expenses: ["view"] },
   "/profitability": { expenses: ["view"] },
+  "/reports": { reports: ["view"] },
   "/customers": { customers: ["view"] },
   "/menu-catalog": { menus: ["view"] },
   "/inventory": { inventory: ["view"] },
   "/menu-approvals": { menus: ["approve"] },
   "/kitchen-dashboard": { menus: ["view"] },
+  "/audit-log": { audit: ["view"] },
   "/settings": { settings: ["view"] },
 };

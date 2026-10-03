@@ -13,22 +13,40 @@ import { RANGE_PRESET_LABEL, type RangePreset } from "@/modules/expenses/date-ra
  * The Profitability date range, all on one row: a period dropdown, then From / To dates and Apply. The range lives in
  * the URL (?range= or ?from=&to=) so a filtered view can be shared; picking a period or applying dates navigates there.
  */
-export function RangeFilter({ preset, from, to }: { preset: RangePreset | "custom"; from: string; to: string }) {
+export function RangeFilter({
+  preset,
+  from,
+  to,
+  basePath = "/profitability",
+  extra = {},
+}: {
+  preset: RangePreset | "custom";
+  from: string;
+  to: string;
+  /** The page this filter belongs to (Reports reuses it), and any other query values to keep, such as a tab. */
+  basePath?: string;
+  extra?: Record<string, string>;
+}) {
   const router = useRouter();
   const [fromValue, setFromValue] = useState(from);
   const [toValue, setToValue] = useState(to);
   const options: Record<string, string> = { ...RANGE_PRESET_LABEL, ...(preset === "custom" ? { custom: "Custom range" } : {}) };
 
+  const go = (params: URLSearchParams) => {
+    for (const [key, value] of Object.entries(extra)) params.set(key, value);
+    router.push(params.size > 0 ? `${basePath}?${params}` : basePath);
+  };
+
   function choose(value: string | null) {
     if (!value || value === "custom") return;
-    router.push(value === "all" ? "/profitability" : `/profitability?range=${value}`);
+    go(new URLSearchParams(value === "all" ? {} : { range: value }));
   }
 
   function apply() {
     const params = new URLSearchParams();
     if (fromValue) params.set("from", fromValue);
     if (toValue) params.set("to", toValue);
-    router.push(params.size > 0 ? `/profitability?${params}` : "/profitability");
+    go(params);
   }
 
   return (

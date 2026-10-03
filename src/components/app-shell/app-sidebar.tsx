@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, TrendingUp, Wallet, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, TrendingUp, Wallet, ScrollText, BarChart3, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -34,11 +34,14 @@ const SALES_AND_CATALOG_ITEMS = [
   { label: "Invoices", href: "/invoices", icon: Receipt },
   { label: "Expenses", href: "/expenses", icon: Wallet },
   { label: "Profitability", href: "/profitability", icon: TrendingUp },
+  { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 
 const INVENTORY_ITEMS = [{ label: "Inventory", href: "/inventory", icon: Boxes }] as const;
+
+const ADMIN_ITEMS = [{ label: "Audit Log", href: "/audit-log", icon: ScrollText }] as const;
 
 const KITCHEN_ITEMS = [
   { label: "Menu Approvals", href: "/menu-approvals", icon: ClipboardCheck },
@@ -89,6 +92,7 @@ export function AppSidebar({ organizationName, subscription, allowedHrefs }: App
   const salesItems = visible(SALES_AND_CATALOG_ITEMS);
   const inventoryItems = visible(INVENTORY_ITEMS);
   const kitchenItems = visible(KITCHEN_ITEMS);
+  const adminItems = visible(ADMIN_ITEMS);
 
   return (
     <Sidebar collapsible="icon">
@@ -114,6 +118,8 @@ export function AppSidebar({ organizationName, subscription, allowedHrefs }: App
             <NavItemGroup items={inventoryItems} pathname={pathname} />
             {kitchenItems.length > 0 && <SidebarSeparator />}
             <NavItemGroup items={kitchenItems} pathname={pathname} />
+            {adminItems.length > 0 && <SidebarSeparator />}
+            <NavItemGroup items={adminItems} pathname={pathname} />
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

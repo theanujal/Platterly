@@ -18,6 +18,7 @@ const AREAS = [
   ["invoices", "invoices"],
   ["payments", "payments"],
   ["reports", "reports"],
+  ["audit", "audit log"],
   ["users", "team members"],
   ["settings", "settings"],
 ] as const;

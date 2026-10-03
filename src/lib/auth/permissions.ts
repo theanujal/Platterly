@@ -42,6 +42,8 @@ export const statement = {
   // Chunk 15: what an order's event cost (the Expenses tab and the Profitability page).
   expenses: ["view", "create", "edit", "delete"],
   reports: ["view", "export"],
+  // Chunk 17.2: the Audit Log page. Owners and managers only (AJ, 2026-10-04).
+  audit: ["view"],
   settings: ["view", "edit"],
 } as const;
 
@@ -77,6 +79,7 @@ export const roles = {
     payments: ["view", "create", "manage"],
     expenses: ["view", "create", "edit", "delete"],
     reports: ["view", "export"],
+    audit: ["view"],
     settings: ["view", "edit"],
   }),
   manager: ac.newRole({
@@ -93,6 +96,7 @@ export const roles = {
     payments: ["view", "create"],
     expenses: ["view", "create", "edit"],
     reports: ["view"],
+    audit: ["view"],
     settings: ["view"],
   }),
   staff: ac.newRole({

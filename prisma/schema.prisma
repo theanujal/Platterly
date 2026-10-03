@@ -408,6 +408,7 @@ model AuditLog {
   createdAt      DateTime     @default(now())
 
   @@index([organizationId])
+  @@index([organizationId, createdAt])
   @@index([recordType, recordId])
   @@map("audit_log")
 }
