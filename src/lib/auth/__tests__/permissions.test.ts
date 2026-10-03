@@ -118,6 +118,30 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.accounts.authorize({ orders: ["view"] }).success).toBe(false);
     expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(false);
   });
+
+  it("Accounts can record and correct expenses without opening orders (AJ, 2026-10-03)", () => {
+    expect(roles.accounts.authorize({ expenses: ["view", "create", "edit"] }).success).toBe(true);
+    expect(roles.accounts.authorize({ expenses: ["delete"] }).success).toBe(false);
+  });
+});
+
+describe("expenses permission (Chunk 15)", () => {
+  const expected: Record<string, string[]> = {
+    owner: ["view", "create", "edit", "delete"],
+    manager: ["view", "create", "edit"],
+    accounts: ["view", "create", "edit"],
+    staff: [],
+    salesEvents: [],
+    kitchen: [],
+    inventoryTeam: [],
+  };
+  for (const [role, granted] of Object.entries(expected)) {
+    it(`${role} has exactly ${granted.length ? granted.join("/") : "no"} access to expenses`, () => {
+      for (const action of ["view", "create", "edit", "delete"] as const) {
+        expect((roles as Record<string, { authorize: (r: object) => { success: boolean } }>)[role].authorize({ expenses: [action] }).success).toBe(granted.includes(action));
+      }
+    });
+  }
 });
 
 describe("eventTypes permission (renamed from `events`, 2026-09-30)", () => {

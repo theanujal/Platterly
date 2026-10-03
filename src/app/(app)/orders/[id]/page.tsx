@@ -24,6 +24,9 @@ import { EventOperationsCard } from "./_components/event-operations-card";
 import { RequiredInventoryCard } from "./_components/required-inventory-card";
 import { OrderApprovalPanel } from "./_components/order-approval-panel";
 import { OrderSummaryCard } from "./_components/order-summary-card";
+import { ExpensesCard } from "./_components/expenses-card";
+import { listOrderExpenses } from "@/modules/expenses/expense";
+import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
 import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
@@ -91,6 +94,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     hasPermission({ payments: ["create"] }, organizationId),
     hasPermission({ payments: ["manage"] }, organizationId),
   ]);
+  const [canViewExpenses, canCreateExpense, canEditExpense, canDeleteExpense] = await Promise.all([
+    hasPermission({ expenses: ["view"] }, organizationId),
+    hasPermission({ expenses: ["create"] }, organizationId),
+    hasPermission({ expenses: ["edit"] }, organizationId),
+    hasPermission({ expenses: ["delete"] }, organizationId),
+  ]);
+  const expenses = canViewExpenses ? await listOrderExpenses(organizationId, id) : [];
   const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
     id: p.id,
     amount: Number(p.amount),
@@ -310,6 +320,30 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
           }))}
         carriedOverItemsSubtotal={order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0)}
+        expensesTab={
+          canViewExpenses ? (
+            <ExpensesCard
+              orderId={order.id}
+              profitability={computeProfitability(
+                orderTotal,
+                expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
+              )}
+              expenses={expenses.map((e) => ({
+                id: e.id,
+                orderId: e.orderId,
+                category: e.category,
+                amount: Number(e.amount),
+                spentAt: e.spentAt.toISOString(),
+                paymentMethod: e.paymentMethod,
+                supplierName: e.supplierName,
+                notes: e.notes,
+              }))}
+              canCreate={canCreateExpense}
+              canEdit={canEditExpense}
+              canDelete={canDeleteExpense}
+            />
+          ) : undefined
+        }
         inventoryTab={
           <RequiredInventoryCard
             orderId={order.id}

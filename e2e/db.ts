@@ -90,6 +90,11 @@ export async function cleanupInviteeUser(email: string): Promise<void> {
   await pool.query('DELETE FROM "user" WHERE id = $1', [user.id]);
 }
 
+/** Sets a signed-up member's role directly (the invite UI only offers the role presets one at a time). */
+export async function setMemberRole(email: string, role: string): Promise<void> {
+  await pool.query('UPDATE member SET role = $1 WHERE "userId" = (SELECT id FROM "user" WHERE email = $2)', [role, email]);
+}
+
 export async function getPendingInvitationId(email: string): Promise<string | null> {
   const { rows } = await pool.query<{ id: string }>(
     'SELECT id FROM invitation WHERE email = $1 AND status = \'pending\' ORDER BY "createdAt" DESC LIMIT 1',

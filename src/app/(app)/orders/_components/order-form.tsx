@@ -250,6 +250,8 @@ interface OrderFormProps {
   sidebarTop?: React.ReactNode;
   /** Tabbed only: the Inventory tab's content and anything extra for the top of Pricing & Payment. */
   inventoryTab?: React.ReactNode;
+  /** The Expenses tab (Chunk 15); only passed on the order's own page and only to roles that may view expenses. */
+  expensesTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
   /**
    * Edit page only (AJ, 2026-09-30): the menu is planned in Menu Approvals, so here it is shown read-only and the
@@ -284,6 +286,7 @@ export function OrderForm({
   headerActions,
   sidebarTop,
   inventoryTab,
+  expensesTab,
   pricingExtra,
   menuPlanReadOnly = false,
   menuPlanBanner = null,
@@ -1120,6 +1123,7 @@ export function OrderForm({
     },
         ]
       : []),
+    ...(expensesTab ? [{ id: "expenses", label: "Expenses", panel: expensesTab }] : []),
   ];
 
   return (

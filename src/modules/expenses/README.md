@@ -1,5 +1,7 @@
-# expenses
+# expenses (Chunk 15)
 
-Owning chunk: Chunk 15 — Expenses & Event Profitability.
-
-Empty by design until that chunk lands — this folder exists to hold the §57 module boundary map from Chunk 1 Group 1.1.
+- `expense.ts` — create / edit / delete an expense against an **Order** (not the hidden Event record, which is synced from the Order and may not exist) or, with `orderId` null, a **company expense** (rent, salaries...) that belongs to no order; every change audit-logged; `getOrderProfitability` and `listProfitability` (one row per non-cancelled order, order expenses only); `listExpenses` / `listOrderOptions` feed the Expenses page.
+- `profitability.ts` — client-safe PRD §42 math: revenue minus every category = profit, margin %, food-cost %, per-category breakdown. **Revenue is the order total** (AJ, 2026-10-03), whatever has been paid. Margin and food-cost % are `null` when revenue is 0.
+- Categories: order = Food, Labour, Transport, Equipment, Venue, Miscellaneous; company = Rent, Salaries, Utilities, Marketing, Maintenance, Licences & fees, Miscellaneous (Miscellaneous is in both; the server refuses the wrong list). Company expenses never count in an order's profit. Supplier is plain text until Chunk 18's Supplier entity.
+- UI: the **Expenses** tab on the order page (`orders/[id]/_components/expenses-card.tsx`), the left-menu **Expenses** page (`/expenses`, all expenses, order and company, with the shared `expense-dialog.tsx`) and the **Profitability** page (`/profitability`, left menu). The Accounts team works from `/expenses` since it cannot open orders.
+- Permission `expenses`: owner view/create/edit/delete; manager and accounts view/create/edit; every other role none.
