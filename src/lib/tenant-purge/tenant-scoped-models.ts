@@ -60,6 +60,12 @@ export const TENANT_SCOPED_DELEGATES = [
   // is onDelete: Restrict (same reasoning as Event's), so "order" must
   // precede "customer" below. Order->Event is the reverse direction
   // (Event.orderId, onDelete: SetNull) — no ordering constraint either way.
+  // Chunk 14 — payment, invoice (invoiceItem cascades off it) and paymentLink carry
+  // onDelete: Restrict to order, so all three MUST precede "order". The kitchen's saved
+  // Razorpay / UPI settings are tenantSetting rows, purged above with the rest.
+  "payment",
+  "invoice",
+  "paymentLink",
   "order",
   // Chunk 10 Group 10.1 — quotationItem has no organizationId of its own,
   // cascades off its parent quotation row. Quotation.customerId is also

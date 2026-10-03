@@ -2,6 +2,9 @@
 
 import { headers } from "next/headers";
 import { isRateLimited } from "@/lib/rate-limit";
+import { resolveApprovalLink } from "@/modules/menu-approvals/approval-link";
+import { createPaymentLink } from "@/modules/payments/payment-links";
+import { PaymentError } from "@/modules/payments/payment";
 import {
   requestChangesViaLink,
   submitVenueViaLink,
@@ -59,6 +62,29 @@ export async function askAboutApprovedMenuAction(token: string, note: string): P
     const result = await askAboutApprovedMenuViaLink(token, trimmed);
     return result.ok ? { ok: true } : { ok: false, error: INACTIVE };
   } catch (error) {
+    console.error("[menu-approval]", error);
+    return { ok: false, error: INACTIVE };
+  }
+}
+
+/**
+ * The Payment box on the Confirmation stage: the customer picks Advance, Full amount or a custom amount and is
+ * sent to the kitchen's payment page for it (Razorpay or UPI QR). Only available once the menu is final.
+ */
+export async function createApprovalPaymentLinkAction(token: string, kind: "ADVANCE" | "FULL" | "CUSTOM", amount?: number): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+  if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
+  const link = await resolveApprovalLink(token);
+  if (!link.ok || link.stage !== "CONFIRMATION" || !link.orderId) return { ok: false, error: INACTIVE };
+  try {
+    const created = await createPaymentLink({
+      organizationId: link.organizationId,
+      orderId: link.orderId,
+      kind: kind === "FULL" ? "BALANCE" : kind,
+      amount,
+    });
+    return { ok: true, path: new URL(created.url).pathname };
+  } catch (error) {
+    if (error instanceof PaymentError) return { ok: false, error: error.message };
     console.error("[menu-approval]", error);
     return { ok: false, error: INACTIVE };
   }

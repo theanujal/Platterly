@@ -12,6 +12,7 @@ export const NAV_PERMISSIONS: Record<string, Needs> = {
   "/calendar": { orders: ["view"] },
   "/abandoned-orders": { orders: ["view"] },
   "/quotations": { quotations: ["view"] },
+  "/invoices": { invoices: ["view"] },
   "/customers": { customers: ["view"] },
   "/menu-catalog": { menus: ["view"] },
   "/inventory": { inventory: ["view"] },

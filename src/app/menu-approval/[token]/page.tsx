@@ -10,6 +10,10 @@ import { VenueScreen, ChangesCard } from "./_components/venue-screen";
 import { VENUE_TYPE_OPTIONS } from "@/modules/menu-approvals/venue-options";
 import { ApprovedMenuCard } from "./_components/approved-menu-card";
 import { PriceSummary } from "./_components/price-summary";
+import { PaymentBox } from "./_components/payment-box";
+import { orderBalance } from "@/modules/payments/payment";
+import { advanceAmount } from "@/modules/payments/payment-math";
+import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 
 export const metadata: Metadata = {
   title: "Review & Approve Menu — Platterly",
@@ -59,6 +63,13 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
     );
   }
 
+  // The menu is final: if the kitchen has set up Razorpay or UPI, the customer can pay now (or skip; the link is sent anyway).
+  const [paymentSettings, money] = await Promise.all([
+    getPaymentSettingsView(link.organizationId),
+    link.orderId ? orderBalance(link.organizationId, link.orderId) : Promise.resolve(null),
+  ]);
+  const canPay = money !== null && money.balance > 0 && (paymentSettings.razorpay.connected || paymentSettings.upi !== null);
+
   return (
     <PublicShell brand={brand} title="Thank You!" subtitle="Your menu is final and on its way to our kitchen." width="max-w-6xl">
       <ProgressSteps steps={STEPS} current={3} />
@@ -77,7 +88,18 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
           <PriceSummary rows={view.priceRows} total={view.total} isCustomMenu={view.isCustomMenu} />
           <ChangesCard token={token} />
         </div>
-        <VenueSummary venue={link.venue} />
+        <div className="flex flex-col gap-4">
+          {canPay && money && (
+            <PaymentBox
+              token={token}
+              advance={advanceAmount(money.total, money.paid, paymentSettings.advancePercent)}
+              balance={money.balance}
+              advancePercent={paymentSettings.advancePercent}
+              paid={money.paid}
+            />
+          )}
+          <VenueSummary venue={link.venue} />
+        </div>
       </div>
     </PublicShell>
   );

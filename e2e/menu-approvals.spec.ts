@@ -427,6 +427,39 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await customerPage.goto(linkV2);
   await expect(customerPage.getByRole("heading", { name: "Thank You!" })).toBeVisible();
   await expect(customerPage.getByTestId("venue-summary")).toContainText("12 Green Villa Road");
+  await expect(customerPage.getByText("We're starting the preparation")).toBeVisible();
+  await expect(customerPage.getByTestId("payment-box")).toHaveCount(0); // the kitchen has not set up UPI or Razorpay yet
+  await customerPage.close();
+
+  // The kitchen sets its own UPI id and advance (Settings -> Payments); the confirmation then offers payment (Chunk 14).
+  await page.goto("/settings/integration/payments");
+  await page.getByLabel("UPI ID").fill("approvals@okhdfc");
+  await page.getByLabel("Name shown in the UPI app").fill("Approval Kitchen");
+  await page.getByRole("button", { name: "Save UPI" }).click();
+  await expect(page.getByText("UPI saved.")).toBeVisible();
+  await page.getByLabel("Advance (% of the order)").fill("40");
+  await page.getByRole("button", { name: "Save Advance" }).click();
+  await expect(page.getByText("Advance saved.")).toBeVisible();
+
+  const payerPage = await customerContext.newPage();
+  await payerPage.goto(linkV2);
+  const paymentBox = payerPage.getByTestId("payment-box");
+  await expect(paymentBox).toContainText("Pay now to secure your date");
+  await expect(paymentBox.getByRole("radio", { name: /Advance/ })).toHaveAttribute("aria-checked", "true");
+  await expect(paymentBox).toContainText("40% to confirm your date");
+  await expect(paymentBox).toContainText("We are also sending you a payment link");
+  // Custom amount: more than the balance is refused, a smaller one opens that amount's payment page.
+  await paymentBox.getByRole("radio", { name: /Custom amount/ }).click();
+  await paymentBox.getByLabel(/^Amount/).fill("99999999");
+  await paymentBox.getByRole("button", { name: /^Pay / }).click();
+  await expect(paymentBox.getByRole("alert")).toContainText("more than the balance");
+  await paymentBox.getByLabel(/^Amount/).fill("1000");
+  await paymentBox.getByRole("button", { name: "Pay ₹1,000.00" }).click();
+  await expect(payerPage).toHaveURL(/\/pay\/[A-Za-z0-9_-]+$/);
+  await expect(payerPage.getByTestId("pay-amount")).toHaveText("Pay ₹1,000.00");
+  await expect(payerPage.getByTestId("upi-qr")).toBeVisible();
+  await expect(payerPage.locator('a[href^="upi://"]')).toHaveAttribute("href", /pa=approvals%40okhdfc.*am=1000\.00/);
+  await payerPage.close();
   await customerContext.close();
 
   // The customer approving makes the order Approved; the team then sends it to the kitchen itself (no kitchen review step).

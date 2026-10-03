@@ -1,3 +1,4 @@
+import { derivePaymentState } from "@/modules/payments/payment-math";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -281,6 +282,15 @@ export async function recalculateOrderTotals(orderId: string) {
       : computeChildrenCharge(order.childPricingMenu, order.childBelow5Count, order.child5To10Count);
   const subtotal = mealsSubtotal + childrenCharge;
   const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges);
+  // Once an order has confirmed payments, they decide advance, balance and payment status (Chunk 14).
+  const paid = await prisma.payment.aggregate({ where: { orderId, status: "CONFIRMED" }, _sum: { amount: true } });
+  const confirmedPaid = Number(paid._sum.amount ?? 0);
+  if (confirmedPaid > 0) {
+    return prisma.order.update({
+      where: { id: orderId },
+      data: { subtotal, childrenCharge, total, advance: confirmedPaid, balance: total - confirmedPaid, paymentStatus: derivePaymentState(total, confirmedPaid) },
+    });
+  }
   const balance = total - Number(order.advance);
 
   return prisma.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, total, balance } });

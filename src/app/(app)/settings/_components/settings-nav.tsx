@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Lock, Mail, MessageCircle, Trash2, User, Users } from "lucide-react";
+import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Lock, Mail, MessageCircle, Trash2, User, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "cn";
 
@@ -34,6 +34,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Platterly Link", href: "/settings/integration/public-menu-link", icon: Link2 },
       { label: "Iframe", href: "/settings/integration/iframe", icon: Code2 },
+      { label: "Payments", href: "/settings/integration/payments", icon: Wallet },
     ],
   },
   {

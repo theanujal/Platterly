@@ -156,6 +156,14 @@ model Organization {
   orderNumberNextValue Int    @default(1)
   orderNumberPadding   Int    @default(4)
 
+  // Chunk 14 — atomic counters for INV-0001 / RCT-0001 (src/modules/invoices/invoice.ts).
+  invoiceNextValue Int @default(1)
+  receiptNextValue Int @default(1)
+
+  invoices     Invoice[]
+  payments     Payment[]
+  paymentLinks PaymentLink[]
+
   subscriptions Subscription[]
 
   menuCategories   MenuCategory[]
@@ -823,18 +831,18 @@ enum ChildPricingType {
 }
 
 model AddOn {
-  id             String         @id @default(cuid())
-  organizationId String
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name           String
-  description    String?
-  image          String?
-  type           AddOnType
-  priceType      AddOnPriceType
-  price          Decimal        @db.Decimal(10, 2)
+  id                String         @id @default(cuid())
+  organizationId    String
+  organization      Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  image             String?
+  type              AddOnType
+  priceType         AddOnPriceType
+  price             Decimal        @db.Decimal(10, 2)
   // Part of the package: the customer can still pick it, but it adds nothing to the bill (resolveCatalogItem prices it at 0).
-  includedInPackage Boolean     @default(false)
-  isActive       Boolean        @default(true)
+  includedInPackage Boolean        @default(false)
+  isActive          Boolean        @default(true)
 
   orderItems         OrderItem[]
   quotationItems     QuotationItem[]
@@ -1214,9 +1222,9 @@ model Order {
   // customer-facing intake form's own free-text access note; these two are
   // the admin Create Order form's separate Delivery/Cooking instruction
   // fields, per AJ's explicit ask for two distinct textareas).
-  gasElectricAvailable Boolean?
-  deliveryInstructions String?
-  cookingInstructions  String?
+  gasElectricAvailable    Boolean?
+  deliveryInstructions    String?
+  cookingInstructions     String?
   // When the customer sent their Venue & Delivery details on the approval link (2026-10-02); null until then.
   venueDetailsSubmittedAt DateTime?
 
@@ -1293,6 +1301,9 @@ model Order {
   mealPlanEntries MealPlanEntry[]
   statusChanges   StatusChange[]
   events          Event[]
+  invoices        Invoice[]
+  payments        Payment[]
+  paymentLinks    PaymentLink[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1793,4 +1804,177 @@ model StorefrontDraft {
 
   @@index([organizationId, status, lastActivityAt])
   @@map("storefront_draft")
+}
+
+// --- Chunk 14: Billing, Invoicing & Payments (PRD §38-40) ---
+// Every kitchen collects its own money (its own Razorpay account and/or UPI id);
+// Platterly never holds it. Order.advance / balance / paymentStatus are derived from
+// CONFIRMED payments by src/modules/payments/payment.ts once an order has any.
+
+enum InvoiceType {
+  INVOICE
+  RECEIPT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum GstType {
+  CGST_SGST
+  IGST
+}
+
+enum PaymentType {
+  ADVANCE
+  PARTIAL
+  FINAL
+}
+
+enum PaymentMethod {
+  UPI
+  CARD
+  NET_BANKING
+  CASH
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+}
+
+enum PaymentSource {
+  MANUAL
+  RAZORPAY
+  UPI_QR
+}
+
+model Invoice {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  type   InvoiceType   @default(INVOICE)
+  number String
+  status InvoiceStatus @default(DRAFT)
+
+  issueDate DateTime  @default(now())
+  dueDate   DateTime?
+
+  // Snapshots, so an invoice never changes when the customer or business profile does.
+  customerName      String
+  customerPhone     String?
+  customerEmail     String?
+  customerAddress   String?
+  businessName      String
+  businessAddress   String?
+  businessGstNumber String?
+
+  // Prices on an order include GST, so GST is carved out of the total (the invoice total always equals the order total).
+  gstEnabled   Boolean @default(false)
+  gstType      GstType @default(CGST_SGST)
+  gstRate      Decimal @default(0) @db.Decimal(5, 2)
+  taxableValue Decimal @default(0) @db.Decimal(12, 2)
+  cgst         Decimal @default(0) @db.Decimal(12, 2)
+  sgst         Decimal @default(0) @db.Decimal(12, 2)
+  igst         Decimal @default(0) @db.Decimal(12, 2)
+  total        Decimal @default(0) @db.Decimal(12, 2)
+
+  terms  String?
+  notes  String?
+  sentAt DateTime?
+
+  // A RECEIPT belongs to exactly one payment.
+  receiptForPaymentId String?  @unique
+  receiptForPayment   Payment? @relation("PaymentReceipt", fields: [receiptForPaymentId], references: [id], onDelete: SetNull)
+
+  items    InvoiceItem[]
+  payments Payment[]     @relation("InvoicePayments")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId, orderId])
+  @@map("invoice")
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  detail      String?
+  hsnSac      String?
+  quantity    Decimal @db.Decimal(12, 2)
+  rate        Decimal @db.Decimal(12, 2)
+  amount      Decimal @db.Decimal(12, 2)
+  sortOrder   Int     @default(0)
+
+  @@index([invoiceId])
+  @@map("invoice_item")
+}
+
+model PaymentLink {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId         String
+  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoiceId       String?
+  type            PaymentType
+  // The amount the link asks for; a payment can never exceed the order's balance.
+  amount          Decimal      @db.Decimal(12, 2)
+  createdByUserId String?
+  createdAt       DateTime     @default(now())
+
+  payments Payment[]
+
+  @@index([organizationId, orderId])
+  @@map("payment_link")
+}
+
+model Payment {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderId        String
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  invoiceId      String?
+  invoice        Invoice?     @relation("InvoicePayments", fields: [invoiceId], references: [id], onDelete: SetNull)
+  paymentLinkId  String?
+  paymentLink    PaymentLink? @relation(fields: [paymentLinkId], references: [id], onDelete: SetNull)
+
+  amount     Decimal       @db.Decimal(12, 2)
+  type       PaymentType
+  method     PaymentMethod
+  status     PaymentStatus @default(CONFIRMED)
+  source     PaymentSource @default(MANUAL)
+  receivedAt DateTime      @default(now())
+  reference  String?
+  note       String?
+
+  // Razorpay's own ids; razorpayPaymentId is unique so a webhook delivered twice makes one payment.
+  razorpayOrderId   String?
+  razorpayPaymentId String? @unique
+
+  recordedByUserId String?
+  confirmedAt      DateTime?
+
+  receipt Invoice? @relation("PaymentReceipt")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, orderId])
+  @@index([razorpayOrderId])
+  @@map("payment")
 }

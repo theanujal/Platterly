@@ -36,6 +36,10 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // Restrict, and Postgres gives no guarantee it resolves organization's
     // cascade into `order` before its cascade into `customer`. `order` is
     // also a reserved SQL keyword, hence the quoting.
+    // Chunk 14 — payment, invoice and payment_link are onDelete: Restrict to `order`.
+    await pool.query('DELETE FROM payment WHERE "organizationId" = ANY($1)', [orgIds]);
+    await pool.query('DELETE FROM invoice WHERE "organizationId" = ANY($1)', [orgIds]);
+    await pool.query('DELETE FROM payment_link WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM "order" WHERE "organizationId" = ANY($1)', [orgIds]);
     // Chunk 10 Group 10.1 — same hazard again: quotation.customerId is also
     // onDelete: Restrict.
@@ -116,6 +120,9 @@ export async function cleanupTenantBySlug(slug: string): Promise<void> {
   const org = rows[0];
   if (!org) return;
   await pool.query('DELETE FROM event WHERE "organizationId" = $1', [org.id]); // see cleanupOnboardingTestUser's comment
+  await pool.query('DELETE FROM payment WHERE "organizationId" = $1', [org.id]);
+  await pool.query('DELETE FROM invoice WHERE "organizationId" = $1', [org.id]);
+  await pool.query('DELETE FROM payment_link WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM "order" WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM quotation WHERE "organizationId" = $1', [org.id]);
   await pool.query('DELETE FROM audit_log WHERE "organizationId" = $1', [org.id]);
@@ -235,4 +242,61 @@ export async function connectNotificationProvider(email: string, channel: "whats
      ON CONFLICT ("organizationId", key) DO UPDATE SET value = '{"connected": true}', "updatedAt" = now()`,
     [crypto.randomUUID(), orgId, `notifications.${channel}.provider`],
   );
+}
+
+
+/**
+ * Chunk 14 — a bare-bones customer + order for the billing specs, inserted directly: the order form itself is
+ * covered by orders.spec.ts, and billing only needs an order with a total. Returns the ids the spec needs.
+ */
+export async function seedOrderForBilling(email: string, total: number): Promise<{ orderId: string; organizationId: string; orderNumber: string }> {
+  const { rows: members } = await pool.query<{ organizationId: string }>(
+    'SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1',
+    [email],
+  );
+  const organizationId = members[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const customerId = `cust_${suffix}`;
+  const orderId = `ord_${suffix}`;
+  const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 8999)}`;
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [customerId, organizationId, "Billing Customer", "+919876500777", "billing-customer@example.test"]);
+  await pool.query(
+    `INSERT INTO "order" (id, "organizationId", "customerId", "orderNumber", "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", "individualPricingEnabled", subtotal, total, balance, venue, "updatedAt")
+     VALUES ($1, $2, $3, $4, now() + interval '10 days', now() + interval '10 days', 100, 100, true, $5, $5, $5, 'Whitefield Hall', now())`,
+    [orderId, organizationId, customerId, orderNumber, total],
+  );
+  await pool.query(
+    `INSERT INTO meal_plan_entry (id, "orderId", date, "mealType", price) VALUES ($1, $2, now() + interval '10 days', 'DINNER', $3)`,
+    [`mpe_${suffix}`, orderId, total],
+  );
+  return { orderId, organizationId, orderNumber };
+}
+
+/** A PENDING Razorpay payment, as `startRazorpayCheckout` records it before the customer pays. */
+export async function seedPendingRazorpayPayment(organizationId: string, orderId: string, razorpayOrderId: string, amount: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO payment (id, "organizationId", "orderId", amount, type, method, status, source, "receivedAt", "razorpayOrderId", "updatedAt")
+     VALUES ($1, $2, $3, $4, 'ADVANCE', 'UPI', 'PENDING', 'RAZORPAY', now(), $5, now())`,
+    [`pay_${Math.random().toString(36).slice(2, 10)}`, organizationId, orderId, amount, razorpayOrderId],
+  );
+}
+
+export async function getPaymentsForOrder(orderId: string): Promise<{ status: string; amount: string; razorpayPaymentId: string | null }[]> {
+  const { rows } = await pool.query<{ status: string; amount: string; razorpayPaymentId: string | null }>('SELECT status, amount::text, "razorpayPaymentId" FROM payment WHERE "orderId" = $1 ORDER BY "createdAt"', [orderId]);
+  return rows;
+}
+
+export async function getOrderMoney(orderId: string): Promise<{ advance: string; balance: string; paymentStatus: string }> {
+  const { rows } = await pool.query<{ advance: string; balance: string; paymentStatus: string }>('SELECT advance::text, balance::text, "paymentStatus"::text FROM "order" WHERE id = $1', [orderId]);
+  return rows[0];
+}
+
+/** The customer link a "Send Invoice" produced (the log-only notify() keeps it in the notification payload). */
+export async function getLatestInvoiceLink(organizationId: string, event: "invoice.sent" | "receipt.sent"): Promise<string | null> {
+  const { rows } = await pool.query<{ url: string | null }>(
+    `SELECT payload->>'url' AS url FROM notification WHERE "organizationId" = $1 AND event = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    [organizationId, event],
+  );
+  return rows[0]?.url ?? null;
 }

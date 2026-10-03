@@ -1,3 +1,5 @@
+import { createPaymentLink, sendPaymentLink } from "@/modules/payments/payment-links";
+import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -573,7 +575,23 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
     recordId: link.orderId,
     after: { venue: data.venue, venueType: data.venueType, eventAddress: data.eventAddress },
   });
+  await sendAdvancePaymentLink(link.organizationId, link.orderId);
   return { ok: true as const };
+}
+
+/**
+ * The menu is final, so the customer is also sent a payment link for the advance (when the kitchen has set up
+ * Razorpay or UPI). They can pay on the confirmation page right away or later from this link. Never blocks the approval.
+ */
+async function sendAdvancePaymentLink(organizationId: string, orderId: string) {
+  try {
+    const settings = await getPaymentSettingsView(organizationId);
+    if (!settings.razorpay.connected && !settings.upi) return;
+    const { link, url } = await createPaymentLink({ organizationId, orderId, kind: "ADVANCE" });
+    await sendPaymentLink({ organizationId, orderId, url, amount: Number(link.amount) });
+  } catch (error) {
+    console.error("[menu-approval] advance payment link not sent", error);
+  }
 }
 
 /**

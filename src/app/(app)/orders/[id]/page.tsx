@@ -9,6 +9,11 @@ import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { listKitchens } from "@/modules/events/event";
 import { listInventoryItems } from "@/modules/inventory/inventory";
+import { prisma } from "@/lib/db";
+import { listOrderPayments } from "@/modules/payments/payment";
+import { confirmedPaidForOrder } from "@/modules/invoices/invoice";
+import { PaymentsPanel, type PaymentRowData } from "../../invoices/_components/payments-panel";
+import { CreateInvoiceButton, OpenInvoiceLink } from "../../invoices/_components/invoice-actions";
 import { CalendarDays, Layers, Receipt, Tag, Users, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -69,6 +74,28 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     listStatusChanges(organizationId, id, { subject: "ORDER" }),
   ]);
   if (!order) notFound();
+
+  const [orderPayments, confirmedPaid, activeInvoice, billingOrg, canCreateInvoice, canRecordPayment, canManagePayment] = await Promise.all([
+    listOrderPayments(organizationId, id),
+    confirmedPaidForOrder(id),
+    prisma.invoice.findFirst({ where: { organizationId, orderId: id, type: "INVOICE", status: { not: "CANCELLED" } }, select: { id: true, number: true } }),
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { gstShowOnInvoices: true } }),
+    hasPermission({ invoices: ["create"] }, organizationId),
+    hasPermission({ payments: ["create"] }, organizationId),
+    hasPermission({ payments: ["manage"] }, organizationId),
+  ]);
+  const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
+    id: p.id,
+    amount: Number(p.amount),
+    type: p.type,
+    method: p.method,
+    source: p.source,
+    status: p.status,
+    receivedAt: p.receivedAt.toISOString(),
+    reference: p.reference,
+    receipt: p.receipt ? { id: p.receipt.id, number: p.receipt.number } : null,
+  }));
+  const orderTotal = Number(order.total);
 
   const initialValues: OrderFormValues = {
     customerId: order.customerId,
@@ -216,6 +243,23 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               }}
             />
             <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
+            <div className="flex flex-col gap-3" data-testid="order-billing">
+              {activeInvoice ? (
+                <OpenInvoiceLink invoiceId={activeInvoice.id} number={activeInvoice.number} />
+              ) : (
+                canCreateInvoice && orderTotal > 0 && <CreateInvoiceButton orderId={order.id} gstEnabled={billingOrg.gstShowOnInvoices === true} defaultDueDate={toDateInputValue(order.eventStartDate)} />
+              )}
+              <PaymentsPanel
+                orderId={order.id}
+                invoiceId={activeInvoice?.id}
+                total={orderTotal}
+                paid={confirmedPaid}
+                balance={Math.max(orderTotal - confirmedPaid, 0)}
+                payments={paymentRows}
+                canRecord={canRecordPayment}
+                canManage={canManagePayment}
+              />
+            </div>
             <EventOperationsCard
               orderId={order.id}
               event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
