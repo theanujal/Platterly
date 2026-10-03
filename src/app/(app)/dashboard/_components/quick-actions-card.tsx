@@ -34,15 +34,15 @@ export function QuickActionsCard({ allowed }: { allowed: Record<(typeof ACTIONS)
   const actions = ACTIONS.filter((action) => allowed[action.key]);
   if (actions.length === 0) return null;
   return (
-    <Card className="shrink-0 border-primary/20 bg-primary/[0.03]">
+    <Card className="shrink-0">
       <DashboardCardHeader icon={Zap} title="Quick Actions" colorClassName="bg-primary/10 text-primary" />
       <CardContent>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {actions.map((action) => (
             <Link
               key={action.href}
               href={action.href}
-              className="flex flex-col items-start gap-2 rounded-lg border border-border bg-background p-3 text-sm font-medium transition-colors hover:border-primary/30 hover:bg-primary/5"
+              className="flex flex-col items-start gap-3 rounded-lg border border-border bg-background p-4 text-sm font-medium transition-colors hover:border-primary/30 hover:bg-primary/5"
             >
               <action.icon className="size-4 text-primary" />
               {action.label}

@@ -14,7 +14,6 @@ import { OrdersCalendarCard } from "./_components/orders-calendar-card";
 import { InventoryOverviewCard } from "./_components/inventory-overview-card";
 import { PartialPaymentsCard } from "./_components/partial-payments-card";
 import { PublicMenuShortcutCard } from "./_components/public-menu-shortcut-card";
-import { Separator } from "@/components/ui/separator";
 
 export const metadata: Metadata = {
   title: "Dashboard — Platterly",
@@ -58,7 +57,7 @@ export default async function DashboardPage() {
   const lastName = session.user.lastName ?? "";
 
   return (
-    <main className="flex flex-1 flex-col gap-6 p-6 md:p-8">
+    <main className="flex flex-1 flex-col gap-8 p-6 md:p-8 [&_[data-slot=card]]:[--card-spacing:--spacing(5)]">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">
@@ -70,7 +69,6 @@ export default async function DashboardPage() {
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" })}
         </p>
       </div>
-      <Separator />
 
       {!organization.onboardingCompletedAt && canClaimLink && <OnboardingNudgeBanner />}
 
@@ -88,14 +86,14 @@ export default async function DashboardPage() {
       />
 
       {(canSeeMoney || canSell) && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {canSeeMoney && (
             <div className="lg:col-span-2">
               <OrdersActivityCard revenueTrend={snapshot.revenueTrend} totalOrders={snapshot.totalOrders} />
             </div>
           )}
           {canSell && (
-            <div className={`flex flex-col gap-4 ${canSeeMoney ? "" : "lg:col-span-3"}`}>
+            <div className={`flex flex-col gap-6 ${canSeeMoney ? "" : "lg:col-span-3"}`}>
               <PublicMenuShortcutCard slug={organization.slug} slugChangeCount={organization.slugChangeCount} />
               <NeedsAttentionCard
                 pendingReviewOrders={snapshot.pendingReviewOrders}
@@ -109,7 +107,7 @@ export default async function DashboardPage() {
       )}
 
       {(canViewInventory || canSeeMoney || canViewOrders) && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           {canViewInventory && <InventoryOverviewCard organizationId={organizationId} />}
           {canSeeMoney && <PartialPaymentsCard organizationId={organizationId} />}
           {canViewOrders && <OrdersCalendarCard orderCountsByDay={snapshot.orderCountsByDay} />}

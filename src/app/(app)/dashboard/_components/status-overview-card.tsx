@@ -80,7 +80,7 @@ export function StatusOverviewCard({
     <Card>
       <DashboardCardHeader icon={Icon} title={title} colorClassName={styles.iconChip} />
       <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           <div className="flex items-baseline justify-between">
             <span className="text-sm text-muted-foreground">{primaryLabel}</span>
             <span className={cn("text-lg font-semibold", styles.primaryValue)}>{primaryValue}</span>
@@ -90,7 +90,7 @@ export function StatusOverviewCard({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           {[
             { chip: redChip, chipBg: "bg-rose-50", iconBg: "bg-rose-100", iconColor: "text-rose-600", valueColor: "text-rose-600" },
             {
@@ -101,7 +101,7 @@ export function StatusOverviewCard({
               valueColor: "text-amber-600",
             },
           ].map(({ chip, chipBg, iconBg, iconColor, valueColor }) => (
-            <div key={chip.label} className={cn("flex items-center gap-2.5 rounded-lg p-3", chipBg)}>
+            <div key={chip.label} className={cn("flex items-center gap-2.5 rounded-lg p-4", chipBg)}>
               <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", iconBg, iconColor)}>
                 <chip.icon className="size-4" />
               </div>
@@ -116,9 +116,9 @@ export function StatusOverviewCard({
         {rows.length === 0 ? (
           <p className="rounded-lg bg-muted/50 px-3 py-3 text-center text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {rows.map((row) => (
-              <div key={row.key} className="flex items-center justify-between gap-3 rounded-lg bg-rose-50 px-3 py-2.5">
+              <div key={row.key} className="flex items-center justify-between gap-3 rounded-lg bg-rose-50 px-4 py-3">
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate text-sm font-semibold">{row.title}</span>
                   <span className="text-xs text-muted-foreground">{row.subtitle}</span>

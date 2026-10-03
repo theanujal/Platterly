@@ -43,7 +43,7 @@ export function NeedsAttentionCard({
   ].filter((item): item is { href: string; label: string } => Boolean(item));
 
   return (
-    <Card className="border-amber-500/20 bg-amber-500/[0.03]">
+    <Card>
       <CardHeader>
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
@@ -64,7 +64,7 @@ export function NeedsAttentionCard({
               <Link
                 key={item.href + item.label}
                 href={item.href}
-                className="flex items-center justify-between gap-2 py-2.5 text-sm text-foreground/90 transition-colors first:pt-0 last:pb-0 hover:text-foreground"
+                className="flex items-center justify-between gap-2 py-3 text-sm text-foreground/90 transition-colors first:pt-0 last:pb-0 hover:text-foreground"
               >
                 <span>{item.label}</span>
                 <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
