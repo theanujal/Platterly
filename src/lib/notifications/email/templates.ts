@@ -26,6 +26,8 @@ export interface EmailData {
   note?: string;
   /** A caterer-edited message body from Settings (with {{variables}}); replaces the default paragraph. */
   customBody?: string;
+  /** Customer emails only. */
+  unsubscribeUrl?: string;
 }
 
 const SECURITY_NOTE = "Platterly will never ask you to share your OTP, password, or account access details outside the platform.";
@@ -154,6 +156,7 @@ export function orderConfirmationEmail(d: EmailData): RenderedEmail {
       details: rows([["Order", d.orderNumber], ["Event", d.eventType], ["Event date", d.eventDate], ["Venue", d.eventAddress], ["Order total", money(d.amount)]]),
       cta: d.url ? { label: "View your order", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -195,6 +198,7 @@ export function orderStatusEmail(d: EmailData): RenderedEmail {
       details: rows([["Order", d.orderNumber], ["Event date", d.eventDate]]),
       cta: d.url ? { label: "View your order", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -213,6 +217,7 @@ export function quotationSentEmail(d: EmailData): RenderedEmail {
       details: rows([["Event", d.eventType], ["Event date", d.eventDate], ["Quotation total", money(d.amount)]]),
       cta: d.url ? { label: "Review quotation", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -234,6 +239,7 @@ export function menuApprovalEmail(d: EmailData): RenderedEmail {
       details: rows([["Order", d.orderNumber], ["Event date", d.eventDate], ["Menu version", d.versionNumber ? `Version ${d.versionNumber}` : undefined]]),
       cta: d.url ? { label: "Review menu", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -252,6 +258,7 @@ export function invoiceEmail(d: EmailData): RenderedEmail {
       details: rows([["Invoice", d.documentNumber], ["Order", d.orderNumber], ["Amount", money(d.amount)]]),
       cta: d.url ? { label: "View invoice", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -268,6 +275,7 @@ export function receiptEmail(d: EmailData): RenderedEmail {
       details: rows([["Receipt", d.documentNumber], ["Order", d.orderNumber], ["Amount paid", money(d.amount)], ["Balance", d.balance === undefined ? undefined : money(d.balance)]]),
       cta: d.url ? { label: "View receipt", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -284,6 +292,7 @@ export function paymentLinkEmail(d: EmailData): RenderedEmail {
       details: rows([["Order", d.orderNumber], ["Amount due", money(d.amount)]]),
       cta: d.url ? { label: "Pay now", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -320,6 +329,7 @@ export function eventReminderEmail(d: EmailData & { daysBefore: number }): Rende
       details: rows([["Event", d.eventType], ["Date", d.eventDate], ["Venue", d.eventAddress], ["Order", d.orderNumber]]),
       cta: d.url ? { label: "View order", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -337,6 +347,7 @@ export function paymentDueEmail(d: EmailData & { overdue?: boolean }): RenderedE
       details: rows([["Order", d.orderNumber], ["Event date", d.eventDate], ["Balance due", money(d.balance ?? d.amount)]]),
       cta: d.url ? { label: "Pay now", url: d.url } : undefined,
       signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
     }),
   };
 }
@@ -361,6 +372,7 @@ function pick(data: Record<string, unknown>): EmailData {
     status: text(data.status),
     note: text(data.note),
     customBody: text(data.customBody),
+    unsubscribeUrl: text(data.unsubscribeUrl),
   };
 }
 

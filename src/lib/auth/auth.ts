@@ -10,7 +10,9 @@ import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/module
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { sendEmail } from "@/lib/notifications/email/zeptomail";
-import { verificationCodeEmail } from "@/lib/notifications/email/templates";
+import { passwordResetEmail, verificationCodeEmail } from "@/lib/notifications/email/templates";
+import { isRateLimited } from "@/lib/rate-limit";
+import { APIError } from "better-auth/api";
 
 const OTP_EXPIRES_IN_SECONDS = 600;
 
@@ -143,8 +145,14 @@ export const auth = betterAuth({
       allowedAttempts: 5,
       sendVerificationOnSignUp: true,
       async sendVerificationOTP({ email, otp, type }) {
-        if (type !== "email-verification") return;
-        const result = await sendEmail({ to: email, ...verificationCodeEmail(otp, OTP_EXPIRES_IN_SECONDS / 60) });
+        if (type !== "email-verification" && type !== "forget-password") return;
+        // A new code at most once a minute per address and purpose (the page's own countdown is the same 60 seconds),
+        // so the form can't be used to flood someone's inbox.
+        if (isRateLimited(`otp:${type}:${email.toLowerCase()}`, 1, 55_000)) {
+          throw new APIError("TOO_MANY_REQUESTS", { message: "Please wait a minute before asking for another code." });
+        }
+        const message = type === "forget-password" ? passwordResetEmail(otp, OTP_EXPIRES_IN_SECONDS / 60) : verificationCodeEmail(otp, OTP_EXPIRES_IN_SECONDS / 60);
+        const result = await sendEmail({ to: email, ...message });
         // No ZeptoMail credentials (dev, CI) or a failed send: the code is still readable in the server log.
         if (result.status !== "sent") console.log(`[dev-only] Email verification OTP for ${email}: ${otp} (${result.reason})`);
       },

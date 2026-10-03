@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notifyCustomer, onQuotationResponded } from "@/modules/notifications/triggers";
+import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
@@ -371,10 +372,12 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
   await notifyCustomer({
     organizationId,
     event: "quotation.sent",
+    customerId: quotation.customerId,
     email: quotation.customer.email,
     phone: quotation.customer.phone,
     payload: {
       quotationId: id,
+      unsubscribeUrl: unsubscribeUrl(quotation.customerId),
       kitchenName: org.name,
       customerName: quotation.customer.name,
       eventDate: quotation.eventStartDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }),

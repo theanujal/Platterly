@@ -58,7 +58,9 @@ test("WhatsApp and Email settings: status, per-message switches, templates, acti
   // --- Email: the same layout ---
   await page.goto("/settings/communication/email-settings");
   await expect(page.getByRole("heading", { name: "Email Settings" })).toBeVisible();
-  await expect(page.getByText("Email Service Not Connected")).toBeVisible();
+  // Email is connected for every kitchen by default (2026-10-04): the caterer only switches it on.
+  await expect(page.getByText("Email Service Deactivated")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Activate Email" })).toBeEnabled();
   await expect(page.getByRole("switch", { name: "Event Reminders" })).toBeEnabled();
   await expect(page.getByRole("switch", { name: "System Alerts" })).toBeEnabled();
   await expect(page.getByText("Order Confirmation (Customer)")).toBeVisible();

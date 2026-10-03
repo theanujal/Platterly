@@ -154,6 +154,16 @@ export async function getLatestEmailOtp(email: string): Promise<string | null> {
   return value.slice(0, value.lastIndexOf(":"));
 }
 
+/** The latest 6-digit "forgot password" code for an address (stored by better-auth under its own identifier). */
+export async function getLatestResetOtp(email: string): Promise<string | null> {
+  const { rows } = await pool.query<{ value: string }>(
+    'SELECT value FROM verification WHERE identifier = $1 ORDER BY "createdAt" DESC LIMIT 1',
+    [`forget-password-otp-${email}`],
+  );
+  const value = rows[0]?.value;
+  return value ? value.slice(0, value.lastIndexOf(":")) : null;
+}
+
 export async function closeDbPool(): Promise<void> {
   await pool.end();
 }

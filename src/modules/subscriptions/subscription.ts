@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { onPlanChanged } from "@/modules/notifications/triggers";
 
 /**
  * Chunk 3 Group 3.3 — manual tenant plan assignment (no live billing yet,
@@ -11,6 +12,7 @@ import { audit } from "@/lib/audit/audit";
 export async function assignPlan(organizationId: string, subscriptionPlanId: string, actorUserId: string) {
   const plan = await prisma.subscriptionPlan.findUniqueOrThrow({ where: { id: subscriptionPlanId } });
   const now = new Date();
+  const previous = await prisma.subscription.findFirst({ where: { organizationId, endDate: null }, include: { subscriptionPlan: { select: { name: true } } } });
 
   const subscription = await prisma.$transaction(async (tx) => {
     await tx.subscription.updateMany({
@@ -40,6 +42,8 @@ export async function assignPlan(organizationId: string, subscriptionPlanId: str
     recordId: subscription.id,
     after: { subscriptionPlanId, status: subscription.status },
   });
+  // The trial that comes with sign-up is not a "change"; moving a kitchen to another plan is.
+  if (previous && previous.subscriptionPlanId !== subscriptionPlanId) await onPlanChanged(organizationId, plan.name, previous.subscriptionPlan.name);
 
   return subscription;
 }

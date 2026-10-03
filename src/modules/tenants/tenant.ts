@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import type { TenantStatus } from "@/generated/prisma/enums";
+import { onTenantStatusChanged } from "@/modules/notifications/triggers";
 import { validateSlugFormat } from "./slug";
 
 export interface TenantProfileInput {
@@ -154,6 +155,7 @@ async function setStatus(id: string, status: TenantStatus, action: string, actor
     before: { status: before.status },
     after: { status: after.status },
   });
+  if (before.status !== after.status) await onTenantStatusChanged(id, after.status as "ACTIVE" | "SUSPENDED" | "DEACTIVATED");
 
   return after;
 }

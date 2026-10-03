@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,9 @@ export function SuperAdminLoginForm() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
+        <Link href="/super/forgot-password" className="self-end text-sm font-medium text-primary hover:underline">
+          Forgot password?
+        </Link>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">

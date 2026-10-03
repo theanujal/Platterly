@@ -4,6 +4,9 @@ import type { OrderStatus } from "@/generated/prisma/enums";
 import { notify } from "@/lib/notifications/notify";
 import { formatInr } from "@/lib/format-currency";
 import { orderBalance } from "@/modules/payments/payment";
+import { canonicalUrl } from "@/lib/seo/canonical";
+import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
+import { canSendPromotions, isPromotionalEvent } from "./opt-out";
 
 /**
  * Chunk 16: who gets told what, and when. Every business event that sends a message calls ONE function here, so the
@@ -13,10 +16,10 @@ import { orderBalance } from "@/modules/payments/payment";
  * A notification must never break the action that caused it, so each trigger swallows and logs its own errors.
  */
 
-/** Roles per audience (role ids from `lib/auth/permissions.ts`). */
-const SALES_ROLES = ["owner", "manager", "salesEvents"];
-const KITCHEN_ROLES = ["owner", "kitchen"];
-const ACCOUNTS_ROLES = ["owner", "accounts"];
+/**
+ * Every team alert goes to every active team member, whatever their role (AJ, 2026-10-04). `roles` stays an optional
+ * filter on `notifyTeam` / `teamMembers` in case a message ever needs to be narrowed again.
+ */
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 const formatDate = (d: Date | null | undefined) => (d ? DATE_FORMAT.format(d) : undefined);
@@ -33,6 +36,7 @@ async function safely(label: string, run: () => Promise<void>) {
 
 export interface OrderContext {
   kitchenName: string;
+  customerId: string;
   customerName: string;
   customerEmail: string | null;
   customerPhone: string;
@@ -49,13 +53,14 @@ export async function loadOrderContext(organizationId: string, orderId: string):
   const [order, org, money] = await Promise.all([
     prisma.order.findFirstOrThrow({
       where: { id: orderId, organizationId },
-      select: { orderNumber: true, eventStartDate: true, eventAddress: true, venue: true, eventType: { select: { name: true } }, customer: { select: { name: true, email: true, phone: true } } },
+      select: { orderNumber: true, eventStartDate: true, eventAddress: true, venue: true, eventType: { select: { name: true } }, customer: { select: { id: true, name: true, email: true, phone: true } } },
     }),
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } }),
     orderBalance(organizationId, orderId),
   ]);
   return {
     kitchenName: org.name,
+    customerId: order.customer.id,
     customerName: order.customer.name,
     customerEmail: order.customer.email,
     customerPhone: order.customer.phone,
@@ -81,14 +86,15 @@ export function emailPayload(c: OrderContext, extra: Record<string, unknown> = {
     eventType: c.eventType,
     amount: c.amount,
     balance: c.balance,
+    unsubscribeUrl: unsubscribeUrl(c.customerId),
     ...extra,
   };
 }
 
 /** Active team members holding any of these roles. */
-export async function teamMembers(organizationId: string, roles: string[]) {
+export async function teamMembers(organizationId: string, roles?: string[]) {
   const members = await prisma.member.findMany({
-    where: { organizationId, role: { in: roles }, disabledAt: null },
+    where: { organizationId, ...(roles ? { role: { in: roles } } : {}), disabledAt: null },
     select: { user: { select: { id: true, email: true } } },
   });
   const seen = new Set<string>();
@@ -98,14 +104,16 @@ export async function teamMembers(organizationId: string, roles: string[]) {
 type Payload = Record<string, string | number | boolean | null | undefined>;
 
 /** Email + WhatsApp to a customer (each only if they have the contact detail). */
-export async function notifyCustomer(params: { organizationId: string; event: string; email?: string | null; phone?: string | null; payload: Payload }) {
+export async function notifyCustomer(params: { organizationId: string; event: string; customerId?: string; email?: string | null; phone?: string | null; payload: Payload }) {
+  // Promotional messages respect the customer's opt-out; everything they asked for is unaffected.
+  if (isPromotionalEvent(params.event) && !(params.customerId && (await canSendPromotions(params.customerId)))) return;
   const payload = JSON.parse(JSON.stringify(params.payload));
   if (params.email) await notify({ organizationId: params.organizationId, channel: "EMAIL", event: params.event, recipient: { email: params.email }, payload });
   if (params.phone) await notify({ organizationId: params.organizationId, channel: "WHATSAPP", event: params.event, recipient: { phone: params.phone }, payload });
 }
 
 /** In-app (one row per person, so the bell can show each their own) and optionally email, to the team by role. */
-export async function notifyTeam(params: { organizationId: string; roles: string[]; event: string; title: string; message: string; email?: boolean; push?: boolean; payload: Payload }) {
+export async function notifyTeam(params: { organizationId: string; roles?: string[]; event: string; title: string; message: string; email?: boolean; push?: boolean; payload: Payload }) {
   const payload = JSON.parse(JSON.stringify({ ...params.payload, title: params.title, message: params.message }));
   for (const user of await teamMembers(params.organizationId, params.roles)) {
     await notify({ organizationId: params.organizationId, channel: "IN_APP", event: params.event, recipient: { userId: user.id }, payload });
@@ -131,6 +139,70 @@ export function onCatererSignedUp(organizationId: string, ownerName: string) {
   );
 }
 
+/** A notice about the kitchen's account, to the whole team: bell, push and (if switched on) email. */
+export function onSystemAlert(organizationId: string, alert: { title: string; message: string; href?: string; event?: string }) {
+  return safely("onSystemAlert", async () => {
+    const href = alert.href ?? "/settings/subscription";
+    await notifyTeam({
+      organizationId,
+      event: "system.alert",
+      email: true,
+      title: alert.title,
+      message: alert.message,
+      payload: { href, url: canonicalUrl(href), kind: alert.event ?? "general" },
+    });
+  });
+}
+
+/** Platterly suspended, re-activated or deactivated a kitchen: the team and every Super Admin are told. */
+export function onTenantStatusChanged(organizationId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") {
+  return safely("onTenantStatusChanged", async () => {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
+    const copy = {
+      SUSPENDED: ["Account suspended", "Your account has been suspended. Sign-in and your customer links are paused. Please contact Platterly to restore it."],
+      DEACTIVATED: ["Account deactivated", "Your account has been deactivated. Please contact Platterly if this is unexpected."],
+      ACTIVE: ["Account active again", "Your account is active again. Sign-in and your customer links work as before."],
+    }[status];
+    await onSystemAlert(organizationId, { title: copy[0], message: copy[1], event: `tenant.${status.toLowerCase()}` });
+    await notifySuperAdmins({
+      organizationId,
+      event: `caterer.${status.toLowerCase()}`,
+      title: `Caterer ${status === "ACTIVE" ? "activated" : status.toLowerCase()}`,
+      message: `${org.name} is now ${status.toLowerCase()}.`,
+      href: `/super/tenants/${organizationId}`,
+    });
+  });
+}
+
+/** A kitchen moved to another plan (not the trial that comes with sign-up). */
+export function onPlanChanged(organizationId: string, planName: string, previousPlanName: string | null) {
+  return safely("onPlanChanged", async () => {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
+    await onSystemAlert(organizationId, {
+      title: "Your plan changed",
+      message: previousPlanName ? `Your plan changed from ${previousPlanName} to ${planName}.` : `You are now on the ${planName} plan.`,
+      event: "plan.changed",
+    });
+    await notifySuperAdmins({
+      organizationId,
+      event: "caterer.plan_changed",
+      title: "Caterer plan changed",
+      message: `${org.name}: ${previousPlanName ? `${previousPlanName} to ${planName}` : planName}.`,
+      href: `/super/tenants/${organizationId}`,
+    });
+  });
+}
+
+/** The Platterly team switched a message channel off for this kitchen. */
+export function onProviderDisconnected(organizationId: string, channel: string) {
+  return onSystemAlert(organizationId, {
+    title: `${channel} switched off`,
+    message: `${channel} was switched off for your account, so those messages are not being sent. Contact Platterly if you did not expect this.`,
+    href: `/settings/communication/${channel.toLowerCase()}-settings`,
+    event: "provider.disconnected",
+  });
+}
+
 const orderLabel = (c: OrderContext) => (c.orderNumber ? `Order ${c.orderNumber}` : "An order");
 
 // --- triggers ---------------------------------------------------------------------------------------------
@@ -142,7 +214,6 @@ export function onOrderCreated(organizationId: string, orderId: string) {
     await notifyCustomer({ organizationId, event: "order.created", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c) });
     await notifyTeam({
       organizationId,
-      roles: SALES_ROLES,
       event: "order.new_alert",
       email: true,
       title: "New order",
@@ -163,8 +234,7 @@ export function onOrderStatusChanged(organizationId: string, orderId: string, st
     if (status === "SENT_TO_KITCHEN") {
       await notifyTeam({
         organizationId,
-        roles: KITCHEN_ROLES,
-        event: "order.sent_to_kitchen",
+          event: "order.sent_to_kitchen",
         title: "Order sent to kitchen",
         message: `${orderLabel(c)} for ${c.customerName}${c.eventDate ? ` (${c.eventDate})` : ""} is ready for preparation.`,
         payload: emailPayload(c),
@@ -186,7 +256,6 @@ export function onCustomerMenuAction(organizationId: string, orderId: string | n
     const c = await loadOrderContext(organizationId, orderId);
     await notifyTeam({
       organizationId,
-      roles: SALES_ROLES,
       event: `menu_approval.${kind}`,
       title: text[0],
       message: `${c.customerName} ${text[1]}${c.orderNumber ? ` (${c.orderNumber})` : ""}.`,
@@ -202,7 +271,6 @@ export function onQuotationResponded(organizationId: string, quotationId: string
     const q = await prisma.quotation.findFirstOrThrow({ where: { id: quotationId, organizationId }, select: { customer: { select: { name: true } } } });
     await notifyTeam({
       organizationId,
-      roles: SALES_ROLES,
       event: `quotation.${status.toLowerCase()}`,
       title: `Quotation ${status === "CHANGES_REQUESTED" ? "changes requested" : verb}`,
       message: `${q.customer.name} ${verb} their quotation.`,
@@ -217,7 +285,6 @@ export function onPaymentActivity(organizationId: string, orderId: string, amoun
     const c = await loadOrderContext(organizationId, orderId);
     await notifyTeam({
       organizationId,
-      roles: ACCOUNTS_ROLES,
       event: kind === "received" ? "payment.received" : "payment.upi_claimed",
       email: true,
       title: kind === "received" ? "Payment received" : "UPI payment to confirm",
@@ -248,6 +315,7 @@ const OPEN_STATUSES: readonly OrderStatus[] = ["PENDING_REVIEW", "AWAITING_CUSTO
 const BILLABLE_STATUSES: readonly OrderStatus[] = [...OPEN_STATUSES, "COMPLETED"];
 
 export interface DueRunResult {
+  trialNotices: number;
   eventReminders: number;
   paymentDue: number;
   paymentOverdue: number;
@@ -261,7 +329,29 @@ export interface DueRunResult {
  *   payment overdue: the day after the event while a balance is open
  */
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
-  const result: DueRunResult = { eventReminders: 0, paymentDue: 0, paymentOverdue: 0 };
+  const result: DueRunResult = { trialNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0 };
+
+  // Trial ending: 3 days and 1 day before, and once it has ended.
+  const trials = await prisma.subscription.findMany({
+    where: { status: "TRIALING", endDate: null, trialEndsAt: { not: null } },
+    select: { id: true, organizationId: true, trialEndsAt: true },
+  });
+  for (const trial of trials) {
+    const ends = trial.trialEndsAt!;
+    const daysLeft = Math.round((istDay(ends, 0).getTime() - istDay(now, 0).getTime()) / DAY_MS);
+    const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -7 ? "ended" : null;
+    if (!stage) continue;
+    const key = `${trial.id}:trial:${stage}`;
+    if (await alreadySent(trial.organizationId, "system.alert", key)) continue;
+    await safely("trial notice", async () => {
+      const text =
+        stage === "ended"
+          ? { title: "Your free trial has ended", message: "Your free trial has ended. Choose a plan to keep every feature." }
+          : { title: `Your trial ends in ${stage} day${stage === "1" ? "" : "s"}`, message: `Your free trial ends in ${stage} day${stage === "1" ? "" : "s"}. Upgrade to keep every feature.` };
+      await notifyTeam({ organizationId: trial.organizationId, event: "system.alert", email: true, title: text.title, message: text.message, payload: { href: "/settings/subscription", url: canonicalUrl("/settings/subscription"), dedupeKey: key } });
+      result.trialNotices += 1;
+    });
+  }
 
   const eventsOn = (offset: number, statuses: readonly OrderStatus[] = OPEN_STATUSES) =>
     prisma.order.findMany({
@@ -280,8 +370,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
         if (daysBefore === 1) {
           await notifyTeam({
             organizationId,
-            roles: KITCHEN_ROLES,
-            event: "event.reminder",
+                  event: "event.reminder",
             title: "Event tomorrow",
             message: `${orderLabel(c)} for ${c.customerName} is tomorrow${c.eventAddress ? ` at ${c.eventAddress}` : ""}.`,
             payload,

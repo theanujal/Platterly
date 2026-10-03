@@ -24,6 +24,8 @@ export interface EmailLayoutParams {
   cta?: { label: string; url: string };
   /** Replaces "Team Platterly" in the sign-off, e.g. the kitchen's name on customer emails. */
   signOff?: string;
+  /** Customer emails: the link that opts the customer out of promotional messages, shown under the footer. */
+  unsubscribeUrl?: string;
   /** Trusted HTML shown under the code box. */
   afterCodeHtml?: string;
   securityNote?: string;
@@ -36,8 +38,17 @@ export function p(html: string): string {
   return `<p style="margin:0 0 16px;font-size:14px;line-height:1.65;color:#374151;">${html}</p>`;
 }
 
+/**
+ * The logo. With EMAIL_LOGO_URL set (production: the public address of /platterly-logo.png) it is a normal link, so
+ * mail apps show it as part of the email. Without it the logo travels inside the email (cid), which works anywhere but
+ * Gmail lists as an attachment.
+ */
+function logoSrc(): string {
+  return process.env.EMAIL_LOGO_URL || "cid:platterly-logo";
+}
+
 export function renderEmail(params: EmailLayoutParams): string {
-  const { tag, eyebrow, title, greeting, bodyHtml, details, cta, signOff = "Team Platterly", code, afterCodeHtml = "", securityNote } = params;
+  const { tag, eyebrow, title, greeting, bodyHtml, details, cta, signOff = "Team Platterly", unsubscribeUrl, code, afterCodeHtml = "", securityNote } = params;
   const detailsBox = details?.length
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 20px;background:#FFF6EA;border:1px solid #F8DDB8;border-radius:12px;">${details
         .map(
@@ -62,6 +73,9 @@ export function renderEmail(params: EmailLayoutParams): string {
         </tr>
       </table>`
     : "";
+  const unsubscribe = unsubscribeUrl
+    ? `<div style="margin-top:8px;font-size:12px;color:#9CA3AF;">Don't want promotional emails? <a href="${escapeHtml(unsubscribeUrl)}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>. You will still get messages about your orders.</div>`
+    : "";
   const note = securityNote
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;background:#F8FAFC;border-radius:12px;">
         <tr><td style="padding:14px 18px;font-size:12px;line-height:1.6;color:#64748B;"><strong style="color:#374151;">Security note:</strong> ${escapeHtml(securityNote)}</td></tr>
@@ -76,7 +90,7 @@ export function renderEmail(params: EmailLayoutParams): string {
     <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;">
       <tr><td style="padding:0 0 24px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:middle;"><img src="cid:platterly-logo" alt="Platterly" width="140" height="32" style="display:block;border:0;height:32px;width:140px;"></td>
+          <td style="vertical-align:middle;"><img src="${logoSrc()}" alt="Platterly" width="140" height="32" style="display:block;border:0;height:32px;width:140px;"></td>
           <td align="right" style="vertical-align:middle;"><span style="display:inline-block;padding:5px 14px;background:#FDEBD3;color:#B8400E;font-size:12px;font-weight:700;">${escapeHtml(tag)}</span></td>
         </tr></table>
       </td></tr>
@@ -98,6 +112,7 @@ export function renderEmail(params: EmailLayoutParams): string {
         <div style="font-size:14px;color:#374151;">Best regards,</div>
         <div style="font-size:14px;font-weight:800;color:#111827;">${escapeHtml(signOff)}</div>
         <div style="margin-top:16px;font-size:12px;color:#9CA3AF;">This is an automated email from Platterly. Please do not reply to this email.</div>
+        ${unsubscribe}
       </td></tr>
     </table>
   </td></tr>

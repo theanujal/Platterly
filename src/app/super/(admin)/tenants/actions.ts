@@ -15,6 +15,7 @@ import {
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { audit } from "@/lib/audit/audit";
 import { setChannelProviderConnected } from "@/modules/notifications/channel-settings";
+import { onProviderDisconnected } from "@/modules/notifications/triggers";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -99,6 +100,7 @@ export async function setProviderConnectedAction(organizationId: string, channel
   if (channel !== "whatsapp" && channel !== "email") return { ok: false, error: "Unknown channel." };
   try {
     await setChannelProviderConnected(organizationId, channel, connected);
+    if (!connected) await onProviderDisconnected(organizationId, channel === "email" ? "Email" : "WhatsApp");
     await audit({ organizationId, actorUserId: session.user.id, action: `notifications.${channel}_provider_${connected ? "connected" : "disconnected"}`, recordType: "Organization", recordId: organizationId });
   } catch (error) {
     return toErrorResult(error);

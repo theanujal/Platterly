@@ -7,7 +7,8 @@ import { CHANNEL_CONFIG, type ChannelSettings, type MessageKey, type SettingsCha
  * connected by the Platterly team from the (not yet built) admin dashboard:
  * that writes `providerConnected` through `setChannelProviderConnected`. The
  * caterer only activates or deactivates the channel and picks which messages
- * go out. Nothing sends yet: the providers land in Chunk 16 and read these.
+ * go out. Email is the exception (AJ, 2026-10-04): it is sent from Platterly's own ZeptoMail account, so it is
+ * connected for every kitchen unless the Platterly team switches it off (the kill switch on the caterer's page).
  */
 
 const settingsKey = (channel: SettingsChannel) => `notifications.${channel}`;
@@ -28,7 +29,7 @@ export async function getChannelSettings(organizationId: string, channel: Settin
     getSetting<{ connected?: boolean }>(organizationId, providerKey(channel)),
   ]);
   const config = CHANNEL_CONFIG[channel];
-  const providerConnected = config.hasService ? provider?.connected === true : true;
+  const providerConnected = !config.hasService ? true : channel === "email" ? provider?.connected !== false : provider?.connected === true;
 
   const messages: ChannelSettings["messages"] = {};
   for (const message of config.messages) messages[message.key] = message.available && stored?.messages?.[message.key] === true;

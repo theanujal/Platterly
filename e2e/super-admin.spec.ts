@@ -131,7 +131,13 @@ test("creating a tenant with a separate owner first/last name renders the joined
     await expect(whatsapp).toContainText("Not connected");
     await whatsapp.getByRole("button", { name: "Connect" }).click();
     await expect(whatsapp).toContainText("Connected");
-    await expect(page.getByTestId("provider-email")).toContainText("Not connected");
+    // Email is connected for every caterer by default; the Platterly team can switch it off and on again.
+    const email = page.getByTestId("provider-email");
+    await expect(email).toContainText("Connected");
+    await email.getByRole("button", { name: "Disconnect" }).click();
+    await expect(email).toContainText("Not connected");
+    await email.getByRole("button", { name: "Connect" }).click();
+    await expect(email).toContainText("Connected");
     await whatsapp.getByRole("button", { name: "Disconnect" }).click();
     await expect(whatsapp).toContainText("Not connected");
   } finally {

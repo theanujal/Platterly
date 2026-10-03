@@ -327,7 +327,7 @@ model Store {
 // --- Chunk 2: Cross-Cutting Platform Service Interfaces ---
 // Interfaces many later, unrelated chunks call — "interface now, integration
 // later" (same pattern as auth's pluggable strategy from Chunk 1). Real
-// WhatsApp/ZeptoMail/Push/SMS providers land in Chunk 16; these models exist
+// WhatsApp/ZeptoMail/Push providers land in Chunk 16; these models exist
 // so every module from Chunk 9 onward has something to call today.
 
 enum NotificationChannel {
@@ -335,7 +335,6 @@ enum NotificationChannel {
   EMAIL
   IN_APP
   PUSH
-  SMS
 }
 
 model Notification {
@@ -1013,6 +1012,8 @@ model Customer {
   // started doesn't depend on it.
   marketingConsent   Boolean   @default(false)
   marketingConsentAt DateTime?
+  // Chunk 16: set when the customer uses the unsubscribe link in an email; consent is switched off with it.
+  marketingOptOutAt DateTime?
 
   events           Event[]
   orders           Order[]

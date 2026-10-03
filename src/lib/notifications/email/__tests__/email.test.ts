@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { verificationCodeEmail, teamInvitationEmail, emailForEvent } from "../templates";
+import { verificationCodeEmail, teamInvitationEmail, emailForEvent, passwordResetEmail } from "../templates";
 import { sendEmail } from "../zeptomail";
 import { escapeHtml } from "../layout";
 
@@ -84,5 +84,38 @@ describe("every email template", () => {
 
   it("leaves events without an email (in-app only) alone", () => {
     expect(emailForEvent("menu_approval.changes_requested", {})).toBeNull();
+  });
+});
+
+describe("email additions (2026-10-04)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("password reset code email", () => {
+    const { subject, html } = passwordResetEmail("482915", 10);
+    expect(subject).toBe("Platterly Password Reset");
+    expect(html).toContain("482915");
+    expect(html).toContain("Valid for 10 minutes");
+  });
+
+  it("the logo is an attachment by default and a plain link when EMAIL_LOGO_URL is set", () => {
+    vi.stubEnv("EMAIL_LOGO_URL", "");
+    expect(verificationCodeEmail("111111", 10).html).toContain("cid:platterly-logo");
+    vi.stubEnv("EMAIL_LOGO_URL", "https://catering.platterly.in/platterly-logo.png");
+    const html = verificationCodeEmail("111111", 10).html;
+    expect(html).toContain('src="https://catering.platterly.in/platterly-logo.png"');
+    expect(html).not.toContain("cid:platterly-logo");
+  });
+
+  it("customer emails carry the unsubscribe link, team emails do not", () => {
+    const customer = emailForEvent("event.reminder", { daysBefore: 1, unsubscribeUrl: "https://x.test/unsubscribe/abc.def" })!;
+    expect(customer.html).toContain("https://x.test/unsubscribe/abc.def");
+    expect(customer.html).toContain("promotional emails");
+    expect(emailForEvent("order.new_alert", {})!.html).not.toContain("Unsubscribe");
+  });
+
+  it("a system alert email shows its title and message", () => {
+    const { html } = emailForEvent("system.alert", { title: "Your plan changed", message: "Trial to Professional.", url: "https://x.test/settings/subscription" })!;
+    expect(html).toContain("Your plan changed");
+    expect(html).toContain("Trial to Professional.");
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
@@ -69,6 +70,9 @@ export function SignInForm({ callbackURL }: SignInFormProps = {}) {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
+        <Link href="/kitchenlogin/forgot-password" className="self-end text-sm font-medium text-primary hover:underline">
+          Forgot password?
+        </Link>
       </div>
       {error && (
         <p role="alert" className="text-sm text-destructive">

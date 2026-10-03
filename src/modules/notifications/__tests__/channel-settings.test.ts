@@ -36,16 +36,29 @@ describe("channel settings (WhatsApp / Email / Push)", () => {
     expect(settings.templates.orderConfirmationCustomer).toBe(CHANNEL_CONFIG.whatsapp.templates[0].defaultBody);
   });
 
-  it("can't be activated until the platform connects the provider, and disconnecting deactivates it", async () => {
+  it("WhatsApp can't be activated until the platform connects it, and disconnecting deactivates it", async () => {
     const org = await makeOrg();
-    await expect(setChannelActive(org.id, "email", true)).rejects.toThrow(ChannelProviderNotConnectedError);
+    await expect(setChannelActive(org.id, "whatsapp", true)).rejects.toThrow(ChannelProviderNotConnectedError);
 
-    await setChannelProviderConnected(org.id, "email", true);
+    await setChannelProviderConnected(org.id, "whatsapp", true);
+    await setChannelActive(org.id, "whatsapp", true);
+    expect((await getChannelSettings(org.id, "whatsapp")).active).toBe(true);
+
+    await setChannelProviderConnected(org.id, "whatsapp", false);
+    expect((await getChannelSettings(org.id, "whatsapp")).active).toBe(false);
+  });
+
+  it("Email is connected for every kitchen by default; the platform can still switch it off", async () => {
+    const org = await makeOrg();
+    expect((await getChannelSettings(org.id, "email")).providerConnected).toBe(true);
     await setChannelActive(org.id, "email", true);
     expect((await getChannelSettings(org.id, "email")).active).toBe(true);
 
     await setChannelProviderConnected(org.id, "email", false);
-    expect((await getChannelSettings(org.id, "email")).active).toBe(false);
+    const off = await getChannelSettings(org.id, "email");
+    expect(off.providerConnected).toBe(false);
+    expect(off.active).toBe(false);
+    await expect(setChannelActive(org.id, "email", true)).rejects.toThrow(ChannelProviderNotConnectedError);
   });
 
   it("push has no provider to connect, so it is always available", async () => {

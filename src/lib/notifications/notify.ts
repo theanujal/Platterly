@@ -34,7 +34,7 @@ async function channelAllowed(organizationId: string, channel: "email" | "whatsa
 /**
  * Chunk 2 Group 2.1 — log-only notification driver. Every module that needs
  * to send something calls this exact function; real WhatsApp/ZeptoMail/
- * Push/SMS providers are wired in behind it in Chunk 16 without callers
+ * Push providers are wired in behind it in Chunk 16 without callers
  * changing. Every call writes a row. Email is really sent for events with a template (see email/templates.ts)
  * when ZeptoMail is configured and the kitchen has the channel active with the message switched on.
  */
