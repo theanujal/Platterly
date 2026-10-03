@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createMenuItem, updateMenuItem, deleteMenuItem, listMenuItems, getMenuItem } from "@/modules/menus/item";
+import { createMenuItem, duplicateMenuItem, updateMenuItem, deleteMenuItem, listMenuItems, getMenuItem } from "@/modules/menus/item";
 import { createCategory } from "@/modules/menus/category";
 import { createMenu } from "@/modules/menus/menu";
 
@@ -116,6 +116,25 @@ describe("MenuItem CRUD (Chunk 6, reworked 2026-09-14)", () => {
     expect(changed.spiceLevel).toBe("SPICY");
     expect(changed.origin).toBeNull();
     expect(changed.baseType).toBe("GRAVY_BASED");
+  });
+
+  it("highlight tags (Popular, Chef's Special, Live Counter) default off, persist, survive an update that omits them, and are copied by duplicate", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const plain = await createMenuItem(org.id, { name: "Plain Dal", foodType: "VEGETARIAN", price: 100 }, actor.id);
+    expect(plain).toMatchObject({ isPopular: false, isChefsSpecial: false, isLiveCounter: false });
+
+    const tagged = await createMenuItem(org.id, { name: "Chaat", foodType: "VEGETARIAN", price: 150, isPopular: true, isLiveCounter: true }, actor.id);
+    expect(tagged).toMatchObject({ isPopular: true, isChefsSpecial: false, isLiveCounter: true });
+
+    const renamed = await updateMenuItem(org.id, tagged.id, { name: "Aloo Chaat", foodType: "VEGETARIAN", price: 150 }, actor.id);
+    expect(renamed).toMatchObject({ isPopular: true, isLiveCounter: true }); // omitted = unchanged
+
+    const changed = await updateMenuItem(org.id, tagged.id, { name: "Aloo Chaat", foodType: "VEGETARIAN", price: 150, isPopular: false, isChefsSpecial: true }, actor.id);
+    expect(changed).toMatchObject({ isPopular: false, isChefsSpecial: true, isLiveCounter: true });
+
+    const copy = await duplicateMenuItem(org.id, tagged.id, actor.id);
+    expect(copy).toMatchObject({ isChefsSpecial: true, isLiveCounter: true, isPopular: false });
   });
 
   it("an item can be tagged with multiple categories at once", async () => {

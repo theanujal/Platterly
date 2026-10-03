@@ -19,6 +19,10 @@ export interface MenuItemInput {
   foodType: FoodType;
   price: number;
   isActive?: boolean;
+  /** Highlight tags: plain checkboxes. */
+  isPopular?: boolean;
+  isChefsSpecial?: boolean;
+  isLiveCounter?: boolean;
   /** Full replacement of this item's category tags — independent of menuIds below (AJ, 2026-09-14). */
   categoryIds?: string[];
   /** Full replacement of this item's direct menu assignments — independent of categoryIds above. */
@@ -69,6 +73,9 @@ export async function createMenuItem(organizationId: string, input: MenuItemInpu
       preparationMethod: input.preparationMethod,
       spiceLevel: input.spiceLevel,
       onionGarlic: input.onionGarlic,
+      isPopular: input.isPopular ?? false,
+      isChefsSpecial: input.isChefsSpecial ?? false,
+      isLiveCounter: input.isLiveCounter ?? false,
       vegFriendly: input.vegFriendly,
       nonVegFriendly: input.nonVegFriendly,
       texture: input.texture,
@@ -113,6 +120,9 @@ export async function updateMenuItem(
       preparationMethod: input.preparationMethod !== undefined ? input.preparationMethod : before.preparationMethod,
       spiceLevel: input.spiceLevel !== undefined ? input.spiceLevel : before.spiceLevel,
       onionGarlic: input.onionGarlic !== undefined ? input.onionGarlic : before.onionGarlic,
+      isPopular: input.isPopular ?? before.isPopular,
+      isChefsSpecial: input.isChefsSpecial ?? before.isChefsSpecial,
+      isLiveCounter: input.isLiveCounter ?? before.isLiveCounter,
       vegFriendly: input.vegFriendly !== undefined ? input.vegFriendly : before.vegFriendly,
       nonVegFriendly: input.nonVegFriendly !== undefined ? input.nonVegFriendly : before.nonVegFriendly,
       texture: input.texture !== undefined ? input.texture : before.texture,
@@ -195,6 +205,9 @@ export async function duplicateMenuItem(organizationId: string, id: string, acto
       foodType: source.foodType,
       price: Number(source.price),
       isActive: source.isActive,
+      isPopular: source.isPopular,
+      isChefsSpecial: source.isChefsSpecial,
+      isLiveCounter: source.isLiveCounter,
       categoryIds: source.categories.map((c) => c.categoryId),
       menuIds: source.menus.map((m) => m.menuId),
       origin: source.origin,

@@ -1,3 +1,4 @@
+import { ItemHighlightBadges } from "@/components/catalog/item-highlights";
 import type { Metadata } from "next";
 import { UtensilsCrossed } from "lucide-react";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
@@ -38,6 +39,9 @@ export default async function ItemsPage() {
       price: item.price.toString(),
       imageUrl: item.image,
       isActive: item.isActive,
+      isPopular: item.isPopular,
+      isChefsSpecial: item.isChefsSpecial,
+      isLiveCounter: item.isLiveCounter,
       categoryIds: item.categories.map((c) => c.categoryId),
       menuIds: item.menus.map((m) => m.menuId),
       origin: item.origin ?? "",
@@ -77,6 +81,7 @@ export default async function ItemsPage() {
             description={item.description}
             tags={
               <>
+                <ItemHighlightBadges highlights={{ popular: item.isPopular, chefsSpecial: item.isChefsSpecial, liveCounter: item.isLiveCounter }} className="contents" />
                 <Badge variant="outline">
                   Menus: {item.menus.length}
                 </Badge>
@@ -97,7 +102,10 @@ export default async function ItemsPage() {
           </TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.categories.map((c) => c.category.name).join(", ") || "—"}</TableCell>
           <TableCell className="px-3 py-3">
-            <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} />
+              <ItemHighlightBadges highlights={{ popular: item.isPopular, chefsSpecial: item.isChefsSpecial, liveCounter: item.isLiveCounter }} className="contents" />
+            </div>
           </TableCell>
           <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(Number(item.price))}</TableCell>
           <TableCell className="px-3 py-3">

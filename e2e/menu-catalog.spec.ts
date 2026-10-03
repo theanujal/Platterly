@@ -138,12 +138,19 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Item Name").fill(itemName);
   await page.getByLabel("Item Price Per Plate").fill("250");
+  // Highlight tags are plain checkboxes.
+  await page.getByRole("checkbox", { name: "Live Counter" }).check();
+  await page.getByRole("checkbox", { name: "Chef's Special" }).check();
   await page.getByText(menuName).click();
   await page.getByText(startersName).click();
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(itemName)).toBeVisible();
   await expect(page.getByText("Veg", { exact: true }).first()).toBeVisible();
+  // The tags show on the item (list view here), and only the ones that were ticked.
+  await expect(page.getByRole("row", { name: new RegExp(itemName) }).getByTestId("item-highlights")).toContainText("Live Counter");
+  await expect(page.getByRole("row", { name: new RegExp(itemName) }).getByTestId("item-highlights")).toContainText("Chef's Special");
+  await expect(page.getByRole("row", { name: new RegExp(itemName) }).getByTestId("item-highlights")).not.toContainText("Popular");
 
   // --- Active/Inactive switch round-trip (Food Item) ---
   await page.getByLabel("Grid view").click(); // catalog pages open in List view by default (AJ, 2026-09-30)

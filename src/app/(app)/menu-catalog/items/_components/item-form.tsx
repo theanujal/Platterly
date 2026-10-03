@@ -111,6 +111,9 @@ export interface ItemFormValues {
   preparationMethod: string;
   spiceLevel: string;
   onionGarlic: string;
+  isPopular: boolean;
+  isChefsSpecial: boolean;
+  isLiveCounter: boolean;
   vegFriendly: boolean;
   nonVegFriendly: boolean;
   texture: string;
@@ -132,6 +135,9 @@ export const EMPTY_ITEM_VALUES: ItemFormValues = {
   preparationMethod: "",
   spiceLevel: "",
   onionGarlic: "",
+  isPopular: false,
+  isChefsSpecial: false,
+  isLiveCounter: false,
   vegFriendly: false,
   nonVegFriendly: false,
   texture: "",
@@ -181,6 +187,9 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
     formData.set("preparationMethod", values.preparationMethod);
     formData.set("spiceLevel", values.spiceLevel);
     formData.set("onionGarlic", values.onionGarlic);
+    formData.set("isPopular", String(values.isPopular));
+    formData.set("isChefsSpecial", String(values.isChefsSpecial));
+    formData.set("isLiveCounter", String(values.isLiveCounter));
     formData.set("vegFriendly", String(values.vegFriendly));
     formData.set("nonVegFriendly", String(values.nonVegFriendly));
     formData.set("texture", values.texture);
@@ -257,6 +266,25 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
             value={values.price}
             onChange={(e) => setField("price", e.target.value)}
           />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>Highlights</Label>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 rounded-md border border-border p-3">
+            {(
+              [
+                ["isPopular", "item-popular", "Popular"],
+                ["isChefsSpecial", "item-chefs-special", "Chef's Special"],
+                ["isLiveCounter", "item-live-counter", "Live Counter"],
+              ] as const
+            ).map(([key, id, label]) => (
+              <label key={key} htmlFor={id} className="flex w-fit cursor-pointer items-center gap-2">
+                <Checkbox id={id} checked={values[key]} onCheckedChange={(checked) => setField(key, checked === true)} />
+                <span className="text-sm">{label}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Shown as a badge on this dish for you and for customers.</p>
         </div>
 
         <div className="flex flex-col gap-2">

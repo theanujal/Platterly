@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemHighlightBadges } from "@/components/catalog/item-highlights";
 import { useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronUp, CircleAlert, Eye, Layers, Search, UtensilsCrossed } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -157,6 +158,7 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
           )}
           <div className="flex min-w-0 flex-col gap-0.5">
             <h4 className="text-[15px] font-semibold leading-snug">{item.name}</h4>
+            <ItemHighlightBadges highlights={item.highlights} className="flex flex-wrap gap-1" />
             {item.description && <p className="line-clamp-2 text-sm text-muted-foreground">{item.description}</p>}
             {needle !== "" && <span className="text-xs text-muted-foreground">{section.categoryName}</span>}
           </div>

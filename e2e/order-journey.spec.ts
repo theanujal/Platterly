@@ -77,6 +77,8 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await page.getByRole("button", { name: "Add Item" }).click();
   await page.getByLabel("Item Name").fill(itemName);
   await page.getByLabel("Item Price Per Plate").fill("150");
+  await page.getByRole("checkbox", { name: "Popular" }).check();
+  await page.getByRole("checkbox", { name: "Chef's Special" }).check();
   await page.getByRole("checkbox", { name: menuName }).check();
   await page.getByRole("checkbox", { name: categoryName }).check();
   await page.getByRole("button", { name: "Create item" }).click();
@@ -113,7 +115,12 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   const menuCard = customerPage.getByTestId("menu-card").filter({ hasText: menuName });
   await menuCard.getByRole("button", { name: "Select", exact: true }).click();
-  await customerPage.getByTestId("item-card").filter({ hasText: itemName }).getByRole("button", { name: "Select", exact: true }).click();
+  // The caterer's highlight tags show on the dish (checkboxes on the Food Item form).
+  const dishRow = customerPage.getByTestId("item-card").filter({ hasText: itemName });
+  await expect(dishRow.getByTestId("item-highlights")).toContainText("Popular");
+  await expect(dishRow.getByTestId("item-highlights")).toContainText("Chef's Special");
+  await expect(dishRow.getByTestId("item-highlights")).not.toContainText("Live Counter");
+  await dishRow.getByRole("button", { name: "Select", exact: true }).click();
   await customerPage.getByRole("button", { name: "Continue to Review" }).click(); // add-ons are optional
 
   await expect(customerPage.getByTestId("review-total")).toHaveText("₹40,000.00"); // 400 x 100 guests

@@ -615,6 +615,12 @@ model MenuItem {
   price          Decimal      @db.Decimal(10, 2)
   isActive       Boolean      @default(true)
 
+  // Highlight tags (AJ, 2026-10-03): plain checkboxes on the Food Item form, shown as badges on the item card, the
+  // list and the customer's dish rows.
+  isPopular      Boolean @default(false)
+  isChefsSpecial Boolean @default(false)
+  isLiveCounter  Boolean @default(false)
+
   // Additional Details (2026-09-17, AJ) — all optional, edited from the
   // same Food Item form as Basic Information, dynamically consumed by the
   // (not-yet-built) customer-facing menu: a field left unset here simply

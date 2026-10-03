@@ -207,6 +207,8 @@ export interface StorefrontMenuItem {
   image: string | null;
   foodType: FoodType;
   price: number;
+  /** The caterer's highlight tags, shown as badges. */
+  highlights: { popular: boolean; chefsSpecial: boolean; liveCounter: boolean };
   /** Food Item "Additional Details", pre-formatted as label/value rows — only the ones the caterer filled in (a blank one never renders). */
   details: { label: string; value: string }[];
 }
@@ -244,6 +246,9 @@ type StorefrontItemSource = {
   image: string | null;
   foodType: FoodType;
   price: unknown;
+  isPopular: boolean;
+  isChefsSpecial: boolean;
+  isLiveCounter: boolean;
   origin: string | null;
   baseType: string | null;
   preparationMethod: string | null;
@@ -282,6 +287,7 @@ function toStorefrontItem(item: StorefrontItemSource): StorefrontMenuItem {
     image: item.image,
     foodType: item.foodType,
     price: Number(item.price),
+    highlights: { popular: item.isPopular, chefsSpecial: item.isChefsSpecial, liveCounter: item.isLiveCounter },
     details: buildItemDetailRows(item),
   };
 }

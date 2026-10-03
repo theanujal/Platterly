@@ -1,5 +1,6 @@
 "use client";
 
+import { ItemHighlightBadges } from "./item-highlights";
 import { Check, ChefHat, CookingPot, Flame, Globe, Info, Layers, Plus, Salad, Sparkles, UtensilsCrossed, Users, Wheat, type LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ export function FoodItemDetailsDialog({ item, categoryName, open, onOpenChange, 
 
           <div className="flex min-w-0 flex-col gap-3">
             <DialogTitle className="pr-8 text-xl font-semibold">{item.name}</DialogTitle>
+            <ItemHighlightBadges highlights={item.highlights} />
             <div className="flex flex-wrap items-center gap-1.5">
               <Badge variant="outline">{categoryName ?? "Other Items"}</Badge>
               <Badge variant={isVeg ? "success" : "danger"}>{isVeg ? "Vegetarian" : "Non-Vegetarian"}</Badge>
