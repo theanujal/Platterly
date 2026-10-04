@@ -15,6 +15,8 @@ export interface InventoryItemInput {
   storageLocation?: string;
   /** A pick from the supplier list. */
   supplierId?: string | null;
+  /** Chunk 23: the location holding this item. Null = shared by every location; undefined = leave as it is. */
+  kitchenId?: string | null;
   expiryDate?: Date;
 }
 
@@ -29,6 +31,10 @@ async function assertSupplier(organizationId: string, supplierId?: string | null
   if (supplierId) await prisma.supplier.findFirstOrThrow({ where: { id: supplierId, organizationId }, select: { id: true } });
 }
 
+async function assertLocation(organizationId: string, kitchenId?: string | null) {
+  if (kitchenId) await prisma.kitchen.findFirstOrThrow({ where: { id: kitchenId, organizationId }, select: { id: true } });
+}
+
 /** Opening stock is created here as a real STOCK_IN ledger entry, not a bare column write — the ledger stays the one source of truth for every stock change. */
 export async function createInventoryItem(
   organizationId: string,
@@ -38,6 +44,7 @@ export async function createInventoryItem(
 ) {
   validateInput(input, RULES.inventoryItem);
   await assertSupplier(organizationId, input.supplierId);
+  await assertLocation(organizationId, input.kitchenId);
   checkMoney(openingStock, "opening stock", { max: 1_000_000_000 });
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.inventory.create({
@@ -52,6 +59,7 @@ export async function createInventoryItem(
         costPerUnit: input.costPerUnit,
         storageLocation: input.storageLocation,
         supplierId: input.supplierId ?? null,
+        kitchenId: input.kitchenId ?? null,
         expiryDate: input.expiryDate,
       },
     });
@@ -93,6 +101,7 @@ export async function updateInventoryItem(
 ) {
   validateInput(input, RULES.inventoryItem);
   await assertSupplier(organizationId, input.supplierId);
+  await assertLocation(organizationId, input.kitchenId);
   const before = await prisma.inventory.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.inventory.update({
@@ -107,6 +116,7 @@ export async function updateInventoryItem(
       costPerUnit: input.costPerUnit,
       storageLocation: input.storageLocation,
       supplierId: input.supplierId ?? null,
+      ...(input.kitchenId !== undefined ? { kitchenId: input.kitchenId } : {}),
       expiryDate: input.expiryDate,
     },
   });
@@ -158,8 +168,10 @@ export async function deleteInventoryItem(organizationId: string, id: string, ac
   });
 }
 
-export async function listInventoryItems(organizationId: string) {
-  return prisma.inventory.findMany({ where: { organizationId }, orderBy: { name: "asc" }, include: { supplier: { select: { name: true } } } });
+/** With a `locationId`, that location's items plus the ones shared by every location (no location set). */
+export async function listInventoryItems(organizationId: string, locationId?: string | null) {
+  const where = locationId ? { organizationId, OR: [{ kitchenId: null }, { kitchenId: locationId }] } : { organizationId };
+  return prisma.inventory.findMany({ where, orderBy: { name: "asc" }, include: { supplier: { select: { name: true } } } });
 }
 
 export async function getInventoryItem(organizationId: string, id: string) {

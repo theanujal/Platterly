@@ -1,11 +1,12 @@
 "use server";
 
-import { userMessage } from "@/lib/errors";
+import { userMessage, ValidationError } from "@/lib/errors";
 import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth/auth";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { disableMember, enableMember, getSeatUsage, retireExpiredInvitations } from "@/modules/team/team";
+import { disableMember, enableMember, getSeatUsage, retireExpiredInvitations, setMemberLocation } from "@/modules/team/team";
+import { isMultiLocationEnabled } from "@/modules/locations/locations";
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import { audit } from "@/lib/audit/audit";
 import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
@@ -124,6 +125,19 @@ export async function disableMemberAction(memberId: string): Promise<ActionResul
     return { ok: false, error: userMessage(error, "Could not disable this member.") };
   }
 
+  revalidatePath("/settings/team");
+  return { ok: true };
+}
+
+export async function setMemberLocationAction(memberId: string, locationId: string | null): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ users: ["edit"] }, organizationId);
+  try {
+    if (!(await isMultiLocationEnabled(organizationId))) throw new ValidationError("Switch on multiple locations first.");
+    await setMemberLocation(organizationId, memberId, locationId, session.user.id);
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Could not change this location.") };
+  }
   revalidatePath("/settings/team");
   return { ok: true };
 }

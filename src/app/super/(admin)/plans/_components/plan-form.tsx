@@ -19,6 +19,7 @@ export interface PlanFormValues {
   priceAnnual: string;
   gstPercent: string;
   highlights: string;
+  multiLocation: boolean;
   currency: string;
   maxUsers: string;
   maxEvents: string;
@@ -42,6 +43,7 @@ const EMPTY_VALUES: PlanFormValues = {
   priceAnnual: "",
   gstPercent: "18",
   highlights: "",
+  multiLocation: false,
   currency: "INR",
   maxUsers: "",
   maxEvents: "",
@@ -92,6 +94,7 @@ export function valuesToPlanInput(values: PlanFormValues): PlanInput {
     priceAnnual: toOptionalFloat(values.priceAnnual) ?? null,
     gstPercent: toOptionalFloat(values.gstPercent) ?? 18,
     highlights: values.highlights.split("\n").map((line) => line.trim()).filter(Boolean),
+    multiLocation: values.multiLocation,
     currency: values.currency || "INR",
     maxUsers: toOptionalInt(values.maxUsers),
     maxEvents: toOptionalInt(values.maxEvents),
@@ -230,6 +233,19 @@ export function PlanForm({ includeCode = false, initialValues, onSubmit, onSucce
               </div>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Features</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <label htmlFor="multiLocation" className="flex w-fit cursor-pointer items-center gap-2 rounded-md py-1.5 -my-1.5">
+            <Checkbox id="multiLocation" checked={values.multiLocation} onCheckedChange={(checked) => setField("multiLocation", checked === true)} />
+            <span className="text-sm font-medium">Multiple locations</span>
+          </label>
+          <p className="mt-2 text-xs text-muted-foreground">Lets a kitchen on this plan switch on locations (a location switcher, locations on events, inventory and team members).</p>
         </CardContent>
       </Card>
 

@@ -12,6 +12,9 @@ import { getInbox } from "@/modules/notifications/inbox";
 import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
 import { PushPrompt } from "@/components/push/push-prompt";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "./actions";
+import { LocationSwitcher } from "@/components/app-shell/location-switcher";
+import { getActiveLocation } from "@/modules/locations/active-location";
+import { listLocations } from "@/modules/locations/locations";
 import { GlobalSearch } from "@/components/app-shell/global-search";
 
 function daysUntil(date: Date): number {
@@ -39,6 +42,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     getInbox(organizationId, session.user.id),
     getPushState(session.user.id),
   ]);
+
+  const activeLocation = await getActiveLocation(organizationId, session.user.id);
+  const switcherLocations = activeLocation.canSwitch ? await listLocations(organizationId) : [];
 
   // Links the role can't open are left out of the sidebar. Each page still enforces its own permission.
   const navHrefs = Object.keys(NAV_PERMISSIONS);
@@ -73,6 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <GlobalSearch />
           </div>
           <div className="ml-auto flex items-center gap-1">
+            {activeLocation.canSwitch && <LocationSwitcher locations={switcherLocations.map((l) => ({ id: l.id, name: l.name }))} activeId={activeLocation.locationId} />}
             <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
             <Link
               href="/settings/account/user-profile"

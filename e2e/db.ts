@@ -435,6 +435,16 @@ export async function activatePaidPlan(email: string, planCode: string, daysFrom
   );
 }
 
+/** Chunk 23: moves a kitchen onto a plan that includes multiple locations (its own plan row, not the shared ones). */
+export async function givePlanWithMultiLocation(email: string): Promise<void> {
+  await pool.query(
+    `INSERT INTO subscription_plan (id, code, name, "multiLocation", "updatedAt")
+     VALUES ('plan_e2e_multi_location', 'e2e-multi-location', 'E2E Multi Location', true, now())
+     ON CONFLICT (code) DO UPDATE SET "multiLocation" = true`,
+  );
+  await activatePaidPlan(email, "e2e-multi-location", 30);
+}
+
 /** Chunk 20: a paid plan payment with its invoice snapshot, as confirming a Razorpay payment would leave it. */
 export async function seedPaidPlanPayment(email: string, invoiceNumber: string): Promise<string> {
   const id = `spay_${Math.random().toString(36).slice(2, 10)}`;

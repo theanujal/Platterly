@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listOrders } from "@/modules/orders/order";
 import { listEventTypes } from "@/modules/events/event-type";
@@ -30,8 +31,9 @@ interface OrdersPageProps {
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
+  const activeLocation = await getActiveLocation(organizationId, session.user.id);
   const { status, orderKind, eventType } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
   const validOrderKind = orderKind && orderKind in ORDER_KIND_LABEL ? (orderKind as OrderKind) : undefined;
@@ -42,7 +44,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
   const [orders, canEdit, canDelete] = await Promise.all([
     // Orders whose event is over never show here, under any status (AJ, 2026-09-30); they appear in the customer's order history.
-    listOrders(organizationId, { when: "upcoming", status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
+    listOrders(organizationId, { locationId: activeLocation.locationId, when: "upcoming", status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);

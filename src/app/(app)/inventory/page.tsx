@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Boxes } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
+import { listLocations } from "@/modules/locations/locations";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
@@ -36,9 +38,16 @@ function formatDate(date: Date) {
 }
 
 export default async function InventoryPage() {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
-  const [items, supplierOptions] = await Promise.all([listInventoryItems(organizationId), listSupplierOptions(organizationId)]);
+  const active = await getActiveLocation(organizationId, session.user.id);
+  const [items, supplierOptions, allLocations] = await Promise.all([
+    listInventoryItems(organizationId, active.locationId),
+    listSupplierOptions(organizationId),
+    active.enabled ? listLocations(organizationId) : Promise.resolve([]),
+  ]);
+  const locations = active.enabled ? allLocations.map((l) => ({ id: l.id, name: l.name })) : null;
+  const locationName = new Map(allLocations.map((l) => [l.id, l.name]));
 
   const entries: CatalogEntry[] = items.map((item) => {
     const stock = Number(item.stockCount);
@@ -54,6 +63,7 @@ export default async function InventoryPage() {
       costPerUnit: item.costPerUnit?.toString() ?? "",
       storageLocation: item.storageLocation ?? "",
       supplierId: item.supplierId ?? "",
+      kitchenId: item.kitchenId ?? "",
       expiryDate: toDateInputValue(item.expiryDate),
       imageUrl: item.image,
     };
@@ -73,7 +83,7 @@ export default async function InventoryPage() {
                 <Badge variant="outline" className="h-10 border-transparent bg-background px-3.5 text-sm text-foreground shadow-sm">
                   {item.category}
                 </Badge>
-                <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} />
+                <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} locations={locations} />
               </>
             }
           />
@@ -101,14 +111,14 @@ export default async function InventoryPage() {
             {stock} {item.unit}
           </TableCell>
           <TableCell className="px-3 py-3 text-sm">{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
-          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.storageLocation ?? "—"}</TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{[item.kitchenId ? locationName.get(item.kitchenId) : null, item.storageLocation].filter(Boolean).join(" · ") || "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.expiryDate ? formatDate(item.expiryDate) : "—"}</TableCell>
           <TableCell className="px-3 py-3">
             <Badge variant={status.variant}>{status.label}</Badge>
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} variant="plain" />
+              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} locations={locations} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -145,13 +155,13 @@ export default async function InventoryPage() {
           <h1 className="text-2xl font-semibold">Inventory</h1>
           <p className="text-sm text-muted-foreground">Track stock on hand, low-stock alerts, and supplier contacts.</p>
         </div>
-        <AddInventoryDialog suppliers={supplierOptions} />
+        <AddInventoryDialog suppliers={supplierOptions} locations={locations} />
       </div>
       <Separator />
 
       <CatalogBrowser
         entries={entries}
-        addTile={<AddInventoryDialog variant="tile" suppliers={supplierOptions} />}
+        addTile={<AddInventoryDialog variant="tile" suppliers={supplierOptions} locations={locations} />}
         columns={["Item", "Category", "Stock", "Cost / Unit", "Storage", "Expiry", "Status", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}

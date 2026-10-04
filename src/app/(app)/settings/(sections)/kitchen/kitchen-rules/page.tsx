@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { EditablePanel } from "../../../_components/editable-panel";
 import { Detail, DetailGrid, SettingsCard } from "../../../_components/settings-ui";
+import { getLocationSettings, listLocations } from "@/modules/locations/locations";
+import { LocationsCard } from "./_components/locations-card";
 import { KitchenRulesForm } from "./_components/kitchen-rules-form";
 
 export const metadata: Metadata = {
@@ -14,6 +16,11 @@ export default async function KitchenRulesPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["view"] }, organizationId);
   const rules = await getKitchenRules(organizationId);
+  const [locationSettings, locations, canEdit] = await Promise.all([
+    getLocationSettings(organizationId),
+    listLocations(organizationId),
+    hasPermission({ settings: ["edit"] }, organizationId),
+  ]);
 
   return (
     <SettingsCard title="Kitchen Rules" description="How orders reach your kitchen and how much it cooks.">
@@ -30,6 +37,12 @@ export default async function KitchenRulesPage() {
           </DetailGrid>
         }
         edit={<KitchenRulesForm initialValues={rules} />}
+      />
+      <LocationsCard
+        planAllows={locationSettings.planAllows}
+        enabled={locationSettings.enabled}
+        canEdit={canEdit}
+        locations={locations.map((l) => ({ id: l.id, name: l.name, isDefault: l.isDefault }))}
       />
     </SettingsCard>
   );

@@ -4,7 +4,6 @@ import { audit } from "@/lib/audit/audit";
 import { normalizePhone, isValidPhone } from "@/lib/phone";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
-import { listKitchens } from "@/modules/events/event";
 import { ownVisitId } from "@/modules/storefront-visits/visits";
 import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
@@ -423,8 +422,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
     });
 
     const event = await createEventForOrder(organizationId, order.id);
-    const [defaultKitchen] = await listKitchens(organizationId);
-    if (defaultKitchen) await prisma.event.update({ where: { id: event.id }, data: { assignedKitchenId: defaultKitchen.id } });
 
     const menuSelection = await createMenuSelection(organizationId, event.id, {
       chosenMenuId: data.menuChoice.kind === "MENU" ? data.menuChoice.menuId : null,

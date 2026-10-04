@@ -62,6 +62,8 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     costPerUnit: numberField(formData, "costPerUnit"),
     storageLocation: stringField(formData, "storageLocation"),
     supplierId: stringField(formData, "supplierId") ?? null,
+    // Only sent while multiple locations are on; absent leaves the item as it is.
+    kitchenId: formData.has("kitchenId") ? (stringField(formData, "kitchenId") ?? null) : undefined,
     expiryDate: dateField(formData, "expiryDate"),
   };
 }

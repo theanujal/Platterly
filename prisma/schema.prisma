@@ -254,8 +254,14 @@ model Member {
   // disabled member out of every caterer-facing route without removing them.
   disabledAt DateTime?
 
+  // Chunk 23: the one location this person works from. Null = the whole kitchen (open). Written through Prisma,
+  // like disabledAt, not through Better Auth.
+  locationId String?
+  location   Kitchen? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
   @@index([organizationId])
   @@index([userId])
+  @@index([locationId])
   @@map("member")
 }
 
@@ -310,7 +316,9 @@ model Kitchen {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  events Event[]
+  events    Event[]
+  members   Member[]
+  inventory Inventory[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -483,6 +491,8 @@ model SubscriptionPlan {
   // paywall page shows under "Premium Benefits" (one line each). All set by the Super Admin.
   gstPercent        Decimal  @default(18) @db.Decimal(5, 2)
   highlights        String[] @default([])
+  // Chunk 23: a feature on/off (not a count). Lets a kitchen with several locations switch on the location tools.
+  multiLocation     Boolean  @default(false)
 
   // PRD §9 limits list. Null means unlimited.
   maxUsers            Int?
@@ -1019,6 +1029,9 @@ model Inventory {
   supplierId        String?
   supplier          Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   expiryDate        DateTime?
+  // Chunk 23: which location holds this item. Null = shared by every location.
+  kitchenId         String?
+  kitchen           Kitchen?     @relation(fields: [kitchenId], references: [id], onDelete: SetNull)
 
   transactions       InventoryTransaction[]
   requiredByEvents   EventRequiredInventory[]
@@ -1029,6 +1042,7 @@ model Inventory {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  @@index([kitchenId])
   @@map("inventory")
 }
 

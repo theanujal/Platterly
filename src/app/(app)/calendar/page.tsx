@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, ChevronLeft, ChevronRight, List as ListIcon, AlertTriangle, PackageX, Users } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getCalendarData } from "@/modules/orders/calendar";
 import { buttonVariants } from "@/components/ui/button";
@@ -41,8 +42,9 @@ function StatCard({ label, value, hint }: { label: string; value: string; hint?:
 }
 
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
 
   const params = await searchParams;
   const today = todayIso();
@@ -54,8 +56,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const monthEnd = addDays(addMonths(monthKey, 1) + "-01", -1);
 
   const [data, upcoming] = await Promise.all([
-    getCalendarData(organizationId, cells[0], cells[cells.length - 1]),
-    getCalendarData(organizationId, today, addDays(today, 6)),
+    getCalendarData(organizationId, cells[0], cells[cells.length - 1], locationId),
+    getCalendarData(organizationId, today, addDays(today, 6), locationId),
   ]);
 
   const orderIds = new Set(data.orders.map((o) => o.id));

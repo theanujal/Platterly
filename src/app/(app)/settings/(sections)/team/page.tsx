@@ -8,6 +8,7 @@ import { INVITABLE_ROLE_DEFINITIONS, roleLabel } from "@/lib/auth/role-metadata"
 import { describeRolePermissions } from "@/lib/auth/role-permissions";
 import { applyTeamPrivacy, getSeatUsage, listMembers, listPendingInvitations } from "@/modules/team/team";
 import { INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
+import { getLocationSettings, listLocations } from "@/modules/locations/locations";
 import { getTeamPrivacyAction } from "./actions";
 import { InviteMemberForm } from "./_components/invite-member-form";
 import { InvitationRowActions } from "./_components/invitation-row-actions";
@@ -43,7 +44,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   // Denies Staff outright (staff.users === []) — they never see this page.
   await requirePermission({ users: ["view"] }, organizationId);
 
-  const [allMembers, invitations, teamPrivacy, seats, canInvite, canManage, canEditSettings, params] = await Promise.all([
+  const [allMembers, invitations, teamPrivacy, seats, canInvite, canManage, canEditSettings, locationSettings, locationList, params] = await Promise.all([
     listMembers(organizationId),
     listPendingInvitations(organizationId),
     getTeamPrivacyAction(),
@@ -51,6 +52,8 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     hasPermission({ users: ["create"] }, organizationId),
     hasPermission({ users: ["edit", "delete"] }, organizationId),
     hasPermission({ settings: ["edit"] }, organizationId),
+    getLocationSettings(organizationId),
+    listLocations(organizationId),
     searchParams,
   ]);
 
@@ -110,11 +113,12 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                       {member.user.email && <p className="text-sm text-muted-foreground">{member.user.email}</p>}
                       <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <RoleBadge role={member.role} />
+                        {locationSettings.enabled && member.role !== "owner" && <Badge variant="outline">{member.location?.name ?? "All locations"}</Badge>}
                         <span className="text-xs text-muted-foreground">Joined {formatDate(member.createdAt)}</span>
                       </div>
                     </div>
                     {canManage && !isYou && (
-                      <MemberRowActions memberId={member.id} role={member.role} disabled={!!member.disabledAt} />
+                      <MemberRowActions memberId={member.id} role={member.role} disabled={!!member.disabledAt} locationId={member.locationId} locations={locationSettings.enabled ? locationList.map((l) => ({ id: l.id, name: l.name })) : null} />
                     )}
                   </li>
                 );

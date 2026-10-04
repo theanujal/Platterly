@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { ValidationError } from "@/lib/errors";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 
 export class CannotDisableOwnerError extends Error {}
@@ -14,7 +15,7 @@ export class CannotDisableOwnerError extends Error {}
 export async function listMembers(organizationId: string) {
   return prisma.member.findMany({
     where: { organizationId },
-    include: { user: true },
+    include: { user: true, location: { select: { id: true, name: true } } },
     orderBy: { createdAt: "asc" },
   });
 }
@@ -63,6 +64,22 @@ export async function disableMember(organizationId: string, memberId: string, ac
   });
 
   return after;
+}
+
+/**
+ * Chunk 23 — the one location a team member works from. Null puts them back on the whole kitchen (open). The owner is
+ * always kitchen-wide, and the location must belong to the same kitchen.
+ */
+export async function setMemberLocation(organizationId: string, memberId: string, locationId: string | null, actorUserId: string) {
+  const member = await prisma.member.findFirst({ where: { id: memberId, organizationId } });
+  if (!member) throw new ValidationError("That team member doesn't exist.");
+  if (member.role === "owner") throw new ValidationError("The owner always works across every location.");
+  if (locationId !== null) {
+    const location = await prisma.kitchen.findFirst({ where: { id: locationId, organizationId }, select: { id: true } });
+    if (!location) throw new ValidationError("That location doesn't exist.");
+  }
+  await prisma.member.update({ where: { id: memberId }, data: { locationId } });
+  await audit({ organizationId, actorUserId, action: "team.member_location", recordType: "Member", recordId: memberId, before: { locationId: member.locationId }, after: { locationId } });
 }
 
 export async function enableMember(organizationId: string, memberId: string, actorUserId: string) {

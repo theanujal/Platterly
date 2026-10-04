@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createOrder } from "@/modules/orders/order";
+import { createEventForOrder, createOrder, listOrders } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { createEvent } from "@/modules/events/event";
@@ -165,3 +165,39 @@ describe("getOrderCountsByDay / getCalendarData (Chunk 13)", () => {
     expect(data.inventoryConstraints).toEqual([]); // neither still needs stock held back
   });
 });
+
+describe("locations (Chunk 23)", () => {
+  async function twoLocations(orgId: string) {
+    const branch = await prisma.branch.create({ data: { organizationId: orgId, name: "Main branch", isDefault: true } });
+    const north = await prisma.kitchen.create({ data: { organizationId: orgId, branchId: branch.id, name: "North", isDefault: true } });
+    const south = await prisma.kitchen.create({ data: { organizationId: orgId, branchId: branch.id, name: "South" } });
+    return { north, south };
+  }
+
+  it("a new event lands in the default location, and the calendar and orders list follow the chosen location", async () => {
+    const { org, actor, customer, eventType } = await setup();
+    const { north, south } = await twoLocations(org.id);
+    const make = async (day: string) => {
+      const order = await createOrder(org.id, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: d(day), eventEndDate: d(day), status: "APPROVED" }, actor.id);
+      const event = await createEventForOrder(org.id, order.id, actor.id);
+      return { order, event };
+    };
+    const first = await make("2026-10-05");
+    const second = await make("2026-10-06");
+    expect(first.event.assignedKitchenId).toBe(north.id);
+    await prisma.event.update({ where: { id: second.event.id }, data: { assignedKitchenId: south.id } });
+
+    const everywhere = await getCalendarData(org.id, "2026-10-01", "2026-10-31");
+    expect(everywhere.orders).toHaveLength(2);
+    const atNorth = await getCalendarData(org.id, "2026-10-01", "2026-10-31", north.id);
+    expect(atNorth.orders.map((o) => o.id)).toEqual([first.order.id]);
+    expect(atNorth.events.map((e) => e.id)).toEqual([first.event.id]);
+    expect(atNorth.orderCountsByDay).toEqual({ "2026-10-05": 1 });
+    const atSouth = await getCalendarData(org.id, "2026-10-01", "2026-10-31", south.id);
+    expect(atSouth.orders.map((o) => o.id)).toEqual([second.order.id]);
+
+    expect((await listOrders(org.id)).map((o) => o.id).sort()).toEqual([first.order.id, second.order.id].sort());
+    expect((await listOrders(org.id, { locationId: south.id })).map((o) => o.id)).toEqual([second.order.id]);
+  });
+});
+

@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { markAllRead, markRead } from "@/modules/notifications/inbox";
+import { cookies } from "next/headers";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { ACTIVE_LOCATION_COOKIE, getActiveLocation } from "@/modules/locations/active-location";
+import { prisma } from "@/lib/db";
 import { listOrders } from "@/modules/orders/order";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
@@ -47,5 +50,24 @@ export async function markNotificationReadAction(id: string): Promise<void> {
 export async function markAllNotificationsReadAction(): Promise<void> {
   const { session, organizationId } = await requireActiveOrganization();
   await markAllRead(organizationId, session.user.id);
+  revalidatePath("/", "layout");
+}
+
+/**
+ * Chunk 23 — the header's location switcher. Owner only, and only while multiple locations are on; a location from
+ * another kitchen is refused. Null means "all locations".
+ */
+export async function setActiveLocationAction(locationId: string | null): Promise<void> {
+  const { session, organizationId } = await requireActiveOrganization();
+  const active = await getActiveLocation(organizationId, session.user.id);
+  if (!active.canSwitch) return;
+  const cookieStore = await cookies();
+  if (locationId === null) {
+    cookieStore.delete(ACTIVE_LOCATION_COOKIE);
+  } else {
+    const location = await prisma.kitchen.findFirst({ where: { id: locationId, organizationId }, select: { id: true } });
+    if (!location) return;
+    cookieStore.set(ACTIVE_LOCATION_COOKIE, location.id, { path: "/", httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 60 * 24 * 365 });
+  }
   revalidatePath("/", "layout");
 }

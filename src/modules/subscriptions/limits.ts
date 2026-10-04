@@ -29,6 +29,16 @@ export class PlanLimitError extends ValidationError {
   }
 }
 
+/** Chunk 23: whether the kitchen's current plan includes multiple locations. No subscription means no. */
+export async function hasMultiLocationPlan(organizationId: string): Promise<boolean> {
+  const subscription = await getCurrentSubscription(organizationId);
+  return subscription?.subscriptionPlan.multiLocation === true;
+}
+
+export async function assertMultiLocationPlan(organizationId: string): Promise<void> {
+  if (!(await hasMultiLocationPlan(organizationId))) throw new ValidationError("Your plan does not include multiple locations. Upgrade your plan to use them.");
+}
+
 /** Throws a plain-language error when adding one more would pass the plan's limit. */
 export async function assertWithinPlanLimit(organizationId: string, key: LimitKey): Promise<void> {
   const subscription = await getCurrentSubscription(organizationId);

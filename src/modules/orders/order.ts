@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { onOrderCreated } from "@/modules/notifications/triggers";
-import { createEvent } from "@/modules/events/event";
+import { createEvent, listKitchens } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
 import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
@@ -485,6 +485,8 @@ export async function deleteOrder(organizationId: string, id: string, actorUserI
 export type OrderListWhen = "upcoming" | "past";
 
 export interface OrderListFilter {
+  /** Chunk 23: only orders with an event at this location. Null/omitted = all locations. */
+  locationId?: string | null;
   status?: OrderStatus;
   orderKind?: OrderKind;
   eventTypeId?: string;
@@ -514,6 +516,7 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
     where: {
       organizationId,
       AND: [whenWhere(filter?.when)],
+      ...(filter?.locationId ? { events: { some: { assignedKitchenId: filter.locationId } } } : {}),
       status: filter?.status,
       orderKind: filter?.orderKind,
       eventTypeId: filter?.eventTypeId,
@@ -672,9 +675,12 @@ export async function createEventForOrder(organizationId: string, orderId: strin
     throw new OrderEventTypeRequiredError("Set an Event Type on this Order before creating an Event for it.");
   }
 
+  // Chunk 23: a new event lands in the default location; the team can move it on the order page.
+  const [defaultLocation] = await listKitchens(organizationId);
   const event = await createEvent(
     organizationId,
     {
+      assignedKitchenId: defaultLocation?.id,
       customerId: order.customerId,
       eventTypeId: order.eventTypeId,
       name: `${order.customer.name}'s Event`,

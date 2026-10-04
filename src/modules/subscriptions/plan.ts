@@ -27,6 +27,8 @@ export interface PlanInput extends PlanLimits {
   // Chunk 20: GST added on top of the prices, and the bullets shown on the payment page.
   gstPercent?: number;
   highlights?: string[];
+  // Chunk 23: whether kitchens on this plan can switch on multiple locations.
+  multiLocation?: boolean;
   currency?: string;
 }
 

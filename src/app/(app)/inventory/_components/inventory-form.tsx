@@ -53,6 +53,8 @@ export interface InventoryFormValues {
   storageLocation: string;
   /** Empty string = no supplier. */
   supplierId: string;
+  /** Chunk 23: empty string = shared by every location. */
+  kitchenId: string;
   expiryDate: string;
   imageUrl: string | null;
 }
@@ -66,6 +68,7 @@ export const EMPTY_INVENTORY_VALUES: InventoryFormValues = {
   costPerUnit: "",
   storageLocation: "",
   supplierId: "",
+  kitchenId: "",
   expiryDate: "",
   imageUrl: null,
 };
@@ -75,13 +78,15 @@ interface InventoryFormProps {
   /** Opening Stock is only offered at creation — every change after that goes through a Stock In/Out/Adjustment entry, never a direct field edit. */
   showOpeningStock?: boolean;
   suppliers: { id: string; name: string }[];
+  /** Null while multiple locations are off; the field is then hidden and not sent. */
+  locations?: { id: string; name: string }[] | null;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
   onCancel: () => void;
 }
 
-export function InventoryForm({ initialValues, showOpeningStock, suppliers, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
+export function InventoryForm({ initialValues, showOpeningStock, suppliers, locations, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
   const [openingStock, setOpeningStock] = useState("");
   const [image, setImage] = useState<File | null>(null);
@@ -106,6 +111,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, onSu
     formData.set("costPerUnit", values.costPerUnit);
     formData.set("storageLocation", values.storageLocation);
     formData.set("supplierId", values.supplierId);
+    if (locations) formData.set("kitchenId", values.kitchenId);
     formData.set("expiryDate", values.expiryDate);
     if (showOpeningStock) formData.set("openingStock", openingStock);
     if (image) formData.set("image", image);
@@ -229,6 +235,29 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, onSu
           <Label htmlFor="inv-location">Storage Location</Label>
           <IconInput icon={MapPin} id="inv-location" value={values.storageLocation} onChange={(e) => setField("storageLocation", e.target.value)} />
         </div>
+
+        {locations && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inv-kitchen">Location</Label>
+            <Select
+              items={{ all: "All locations (shared)", ...Object.fromEntries(locations.map((l) => [l.id, l.name])) }}
+              value={values.kitchenId || "all"}
+              onValueChange={(v) => setField("kitchenId", !v || v === "all" ? "" : v)}
+            >
+              <SelectTrigger id="inv-kitchen" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All locations (shared)</SelectItem>
+                {locations.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-supplier">Supplier</Label>

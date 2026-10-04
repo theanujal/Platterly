@@ -15,11 +15,12 @@ interface InventoryCardActionsProps {
   currentStock: number;
   initialValues: InventoryFormValues;
   suppliers: { id: string; name: string }[];
+  locations?: { id: string; name: string }[] | null;
   variant?: "overlay" | "plain";
 }
 
 /** 3-dot menu on an inventory card, or the Stock / Edit / Delete icons on a list row. Stock and Edit open drawers. */
-export function InventoryCardActions({ itemId, name, unit, currentStock, initialValues, suppliers, variant }: InventoryCardActionsProps) {
+export function InventoryCardActions({ itemId, name, unit, currentStock, initialValues, suppliers, locations, variant }: InventoryCardActionsProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
 
@@ -35,7 +36,7 @@ export function InventoryCardActions({ itemId, name, unit, currentStock, initial
         deleteDescription="This inventory item and its stock history will be permanently removed."
       />
       <StockTransactionDialog open={stockOpen} onOpenChange={setStockOpen} itemId={itemId} name={name} unit={unit} currentStock={currentStock} />
-      <EditInventoryDialog open={editOpen} onOpenChange={setEditOpen} itemId={itemId} initialValues={initialValues} suppliers={suppliers} />
+      <EditInventoryDialog open={editOpen} onOpenChange={setEditOpen} itemId={itemId} initialValues={initialValues} suppliers={suppliers} locations={locations} />
     </>
   );
 }

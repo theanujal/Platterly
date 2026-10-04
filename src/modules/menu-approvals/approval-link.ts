@@ -9,7 +9,6 @@ import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
-import { listKitchens } from "@/modules/events/event";
 import {
   addMenuApprovalNote,
   mirrorSelectionItemsFromMealPlan,
@@ -167,8 +166,6 @@ async function ensureMenuSelection(organizationId: string, orderId: string, acto
   let event = await prisma.event.findFirst({ where: { organizationId, orderId }, orderBy: { createdAt: "asc" } });
   if (!event) {
     event = await createEventForOrder(organizationId, orderId, actorUserId);
-    const [defaultKitchen] = await listKitchens(organizationId);
-    if (defaultKitchen) event = await prisma.event.update({ where: { id: event.id }, data: { assignedKitchenId: defaultKitchen.id } });
   }
   return createMenuSelection(organizationId, event.id);
 }

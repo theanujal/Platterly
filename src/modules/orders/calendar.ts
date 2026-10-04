@@ -134,11 +134,13 @@ export interface CalendarData {
  * overlapping it, per-day counts for both, and inventory items whose total
  * required quantity across the window's live Events exceeds current stock.
  */
-export async function getCalendarData(organizationId: string, fromIso: string, toIso: string): Promise<CalendarData> {
+export async function getCalendarData(organizationId: string, fromIso: string, toIso: string, locationId?: string | null): Promise<CalendarData> {
   const w = overlapsWindow(fromIso, toIso);
+  // Chunk 23: limited to one location when a location is chosen (the header switcher, or the member's own).
+  const atLocation = locationId ? { assignedKitchenId: locationId } : {};
   const [orders, events, required] = await Promise.all([
     prisma.order.findMany({
-      where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
+      where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte }, ...(locationId ? { events: { some: atLocation } } : {}) },
       select: {
         id: true,
         orderNumber: true,
@@ -154,7 +156,7 @@ export async function getCalendarData(organizationId: string, fromIso: string, t
       orderBy: [{ eventStartDate: "asc" }, { createdAt: "asc" }],
     }),
     prisma.event.findMany({
-      where: { organizationId, ...liveEvent, startDate: { lte: w.lte }, endDate: { gte: w.gte } },
+      where: { organizationId, ...liveEvent, ...atLocation, startDate: { lte: w.lte }, endDate: { gte: w.gte } },
       select: {
         id: true,
         name: true,
@@ -173,6 +175,7 @@ export async function getCalendarData(organizationId: string, fromIso: string, t
       where: {
         event: {
           organizationId,
+          ...atLocation,
           startDate: { lte: w.lte },
           endDate: { gte: w.gte },
           OR: [
