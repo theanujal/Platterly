@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
     return new Response("Unauthorized", { status: 401 });
   }
 
-  let event: { event?: string; payload?: { payment?: { entity?: { id?: string; order_id?: string; method?: string } } } };
+  let event: { event?: string; payload?: { payment?: { entity?: { id?: string; order_id?: string; method?: string; amount?: number } } } };
   try {
     event = JSON.parse(rawBody);
   } catch {
@@ -25,7 +25,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
   }
   const entity = event.payload?.payment?.entity;
   if (entity?.id && entity.order_id) {
-    if (event.event === "payment.captured") await confirmRazorpayPayment(organizationId, entity.order_id, entity.id, entity.method);
+    if (event.event === "payment.captured") await confirmRazorpayPayment(organizationId, entity.order_id, entity.id, entity.method, typeof entity.amount === "number" ? entity.amount : undefined);
     else if (event.event === "payment.failed") await failRazorpayPayment(organizationId, entity.order_id);
   }
   return new Response("OK");

@@ -1,3 +1,4 @@
+import { emitPayment } from "@/modules/webhooks/emit";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -51,10 +52,17 @@ export interface RecordPaymentInput {
   actorUserId?: string;
 }
 
+/** A payment may only be filed under an invoice of the same kitchen and the same order (the id can come from a browser or the API). */
+export async function assertInvoiceOfOrder(organizationId: string, orderId: string, invoiceId: string | null | undefined) {
+  if (!invoiceId) return;
+  if ((await prisma.invoice.count({ where: { id: invoiceId, organizationId, orderId } })) === 0) throw new PaymentError("That invoice doesn't belong to this order.");
+}
+
 export async function recordPayment(input: RecordPaymentInput) {
   const amount = round2(input.amount);
   if (!Number.isFinite(amount) || amount <= 0) throw new PaymentError("Enter an amount greater than zero.");
   const { balance } = await orderBalance(input.organizationId, input.orderId);
+  await assertInvoiceOfOrder(input.organizationId, input.orderId, input.invoiceId);
   if (amount > balance + 0.005) throw new PaymentError(`That is more than the balance of ₹${balance.toLocaleString("en-IN")}.`);
 
   const source = input.source ?? "MANUAL";
@@ -91,6 +99,7 @@ export async function recordPayment(input: RecordPaymentInput) {
     recordId: payment.id,
     after: { amount, status, source, method: input.method },
   });
+  await emitPayment(input.organizationId, "payment.created", payment.id);
   return payment;
 }
 
@@ -105,6 +114,7 @@ export async function confirmPayment(organizationId: string, paymentId: string, 
   await syncOrderPayments(payment.orderId);
   await issueReceipt(organizationId, paymentId);
   await audit({ organizationId, actorUserId, action: "payment.confirm", recordType: "Payment", recordId: paymentId, after: { amount: Number(payment.amount) } });
+  await emitPayment(organizationId, "payment.updated", paymentId);
   return confirmed;
 }
 
@@ -113,6 +123,7 @@ export async function rejectPayment(organizationId: string, paymentId: string, a
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be rejected.");
   await prisma.payment.update({ where: { id: paymentId }, data: { status: "FAILED" } });
   await audit({ organizationId, actorUserId, action: "payment.reject", recordType: "Payment", recordId: paymentId });
+  await emitPayment(organizationId, "payment.failed", paymentId);
 }
 
 const TYPE_LABEL: Record<PaymentType, string> = { ADVANCE: "Advance", PARTIAL: "Partial payment", FINAL: "Final payment" };

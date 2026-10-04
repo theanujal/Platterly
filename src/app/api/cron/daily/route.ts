@@ -4,6 +4,8 @@ import { prisma } from "@/lib/db";
 import { runDueNotifications } from "@/modules/notifications/triggers";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { scrubOldVisits } from "@/modules/storefront-visits/visits";
+import { runDueWebhookDeliveries, scrubWebhookDeliveries } from "@/modules/webhooks/deliver";
+import { scrubIdempotencyKeys } from "@/lib/api/idempotency";
 
 /**
  * The one scheduled job (Chunk 16): event reminders, payment due / overdue notices, repeating expenses and the 90-day clean-up of storefront visitor IPs.
@@ -33,7 +35,11 @@ async function run(request: Request) {
     recurringExpenses += await generateDueRecurringExpenses(org.organizationId, now);
   }
   const visitsScrubbed = await scrubOldVisits(now);
-  return NextResponse.json({ ranAt: now.toISOString(), notifications, recurringExpenses, visitsScrubbed });
+  // Chunk 25: webhook retries that have come due, and the housekeeping for the API and webhook tables.
+  const webhooksSent = await runDueWebhookDeliveries(now);
+  const webhookLogScrubbed = await scrubWebhookDeliveries(now);
+  const idempotencyKeysScrubbed = await scrubIdempotencyKeys(now);
+  return NextResponse.json({ ranAt: now.toISOString(), notifications, recurringExpenses, visitsScrubbed, webhooksSent, webhookLogScrubbed, idempotencyKeysScrubbed });
 }
 
 export const GET = run;

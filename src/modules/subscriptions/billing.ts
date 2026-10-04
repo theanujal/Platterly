@@ -95,10 +95,15 @@ export async function verifySubscriptionCheckout(organizationId: string, params:
  * Razorpay says the payment was captured (checkout verification or webhook, whichever comes first). Safe to call
  * twice: only the call that flips PENDING to PAID does the work, so one payment is one period and one invoice.
  */
-export async function confirmSubscriptionPayment(razorpayOrderId: string, razorpayPaymentId: string, now: Date = new Date()) {
+export async function confirmSubscriptionPayment(razorpayOrderId: string, razorpayPaymentId: string, now: Date = new Date(), capturedPaise?: number) {
   const payment = await prisma.subscriptionPayment.findUnique({ where: { razorpayOrderId }, include: { subscriptionPlan: true } });
   if (!payment) return null;
   if (payment.status === "PAID") return payment;
+  // The webhook says how much Razorpay captured: if that is not the price (with GST) this payment asked for, it is not this payment.
+  if (capturedPaise !== undefined && capturedPaise !== Math.round(Number(payment.total) * 100)) {
+    console.error("[billing] captured amount does not match", payment.id);
+    return null;
+  }
   const claimed = await prisma.subscriptionPayment.updateMany({ where: { id: payment.id, status: "PENDING" }, data: { status: "PAID", razorpayPaymentId, paidAt: now } });
   if (claimed.count === 0) return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
 

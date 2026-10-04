@@ -6,7 +6,7 @@ import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { emailPayload, loadOrderContext, notifyCustomer } from "@/modules/notifications/triggers";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { advanceAmount, round2 } from "./payment-math";
-import { PaymentError, orderBalance } from "./payment";
+import { PaymentError, assertInvoiceOfOrder, orderBalance } from "./payment";
 import { getPaymentSettingsView, getRazorpayCredentials } from "./payment-settings";
 import type { PaymentType } from "@/generated/prisma/enums";
 
@@ -26,6 +26,7 @@ export type PaymentLinkKind = "ADVANCE" | "BALANCE" | "CUSTOM";
 export async function createPaymentLink(params: { organizationId: string; orderId: string; kind: PaymentLinkKind; amount?: number; invoiceId?: string | null; actorUserId?: string }) {
   const { total, paid, balance } = await orderBalance(params.organizationId, params.orderId);
   if (balance <= 0) throw new PaymentError("This order is already paid in full.");
+  await assertInvoiceOfOrder(params.organizationId, params.orderId, params.invoiceId);
   const settings = await getPaymentSettingsView(params.organizationId);
 
   let amount: number;

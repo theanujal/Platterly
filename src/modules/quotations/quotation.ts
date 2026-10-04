@@ -1,3 +1,4 @@
+import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { validateOrderLike } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
@@ -152,6 +153,7 @@ export async function recalculateQuotationTotals(quotationId: string) {
 
 export async function createQuotation(organizationId: string, input: QuotationInput, actorUserId: string) {
   validateOrderLike(input);
+  await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId });
   const orderKind = input.orderKind ?? "SINGLE";
   const pricingMethod = input.pricingMethod ?? "STANDARD";
   const childPricingMenuId = deriveStandardChildPricingMenuId(input.mealPlanEntries);
@@ -204,6 +206,7 @@ export async function createQuotation(organizationId: string, input: QuotationIn
 
 export async function updateQuotation(organizationId: string, id: string, input: QuotationInput, actorUserId: string) {
   validateOrderLike(input);
+  await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId });
   const before = await prisma.quotation.findFirstOrThrow({ where: { id, organizationId } });
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;

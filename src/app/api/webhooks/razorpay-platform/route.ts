@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   const rawBody = await request.text();
   if (!secret || !signature || !verifyWebhookSignature(rawBody, signature, secret)) return new Response("Unauthorized", { status: 401 });
 
-  let event: { event?: string; payload?: { payment?: { entity?: { id?: string; order_id?: string } } } };
+  let event: { event?: string; payload?: { payment?: { entity?: { id?: string; order_id?: string; amount?: number } } } };
   try {
     event = JSON.parse(rawBody);
   } catch {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   }
   const entity = event.payload?.payment?.entity;
   if (entity?.id && entity.order_id) {
-    if (event.event === "payment.captured") await confirmSubscriptionPayment(entity.order_id, entity.id);
+    if (event.event === "payment.captured") await confirmSubscriptionPayment(entity.order_id, entity.id, new Date(), typeof entity.amount === "number" ? entity.amount : undefined);
     else if (event.event === "payment.failed") await failSubscriptionPayment(entity.order_id);
   }
   return new Response("OK");

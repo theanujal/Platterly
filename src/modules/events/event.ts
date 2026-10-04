@@ -1,4 +1,6 @@
+import { emitEvents } from "@/modules/webhooks/emit";
 import "server-only";
+import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -68,11 +70,13 @@ export async function updateEventOperations(organizationId: string, id: string, 
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
+  await emitEvents(organizationId, "event.updated", [id]);
   return after;
 }
 
 export async function createEvent(organizationId: string, input: EventInput, actorUserId?: string) {
   await assertWithinPlanLimit(organizationId, "maxEvents");
+  await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId, kitchenId: input.assignedKitchenId });
   const event = await prisma.event.create({
     data: {
       organizationId,
@@ -98,12 +102,14 @@ export async function createEvent(organizationId: string, input: EventInput, act
     recordId: event.id,
     after: JSON.parse(JSON.stringify(event)),
   });
+  await emitEvents(organizationId, "event.created", [event.id]);
 
   return event;
 }
 
 export async function updateEvent(organizationId: string, id: string, input: EventInput, actorUserId: string) {
   const before = await prisma.event.findFirstOrThrow({ where: { id, organizationId } });
+  await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId, kitchenId: input.assignedKitchenId });
 
   const after = await prisma.event.update({
     where: { id },
@@ -131,6 +137,7 @@ export async function updateEvent(organizationId: string, id: string, input: Eve
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
+  await emitEvents(organizationId, "event.updated", [id]);
 
   return after;
 }

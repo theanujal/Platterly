@@ -1,3 +1,4 @@
+import { emitOrder } from "@/modules/webhooks/emit";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -61,6 +62,7 @@ export async function changeStatusManually(
     if (input.target.kind !== "ORDER") throw new ManualStatusChangeError("This order has no menu approval yet.");
     if (order.status === input.target.status) return { unchanged: true as const };
     await prisma.order.update({ where: { id: orderId }, data: { status: input.target.status } });
+    await emitOrder(organizationId, "order.status_changed", orderId, order.status);
     await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId });
     await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } });
     return { unchanged: false as const };
