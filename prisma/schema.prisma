@@ -223,6 +223,7 @@ model Organization {
   quotations       Quotation[]
   menuSelections   MenuSelection[]
   storefrontDrafts StorefrontDraft[]
+  storefrontVisits StorefrontVisit[]
 
   @@unique([slug])
   @@map("organization")
@@ -2207,6 +2208,9 @@ model StorefrontDraft {
   orderId        String?
   lastActivityAt DateTime              @default(now())
   completedAt    DateTime?
+  // Chunk 22: the visit this journey came from (where the visitor arrived from). Plain id, no FK: a visit row can
+  // outlive or be purged independently of the draft.
+  visitId        String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -2517,4 +2521,49 @@ model RecurringExpense {
 
   @@index([organizationId])
   @@map("recurring_expense")
+}
+
+// Chunk 22 (AJ, 2026-10-04): one row per visit to a kitchen's public storefront, so the kitchen can see where visitors
+// come from. `ipAddress`, `city` and `userAgent` are personal data: they are blanked after 90 days (the daily job),
+// leaving the source, device, country and the daily visitor hash so the totals stay.
+enum VisitSource {
+  GOOGLE
+  OTHER_SEARCH
+  WHATSAPP
+  INSTAGRAM
+  FACEBOOK
+  QR
+  EMAIL
+  EMBED
+  REFERRAL
+  CAMPAIGN
+  DIRECT
+}
+
+enum VisitDevice {
+  MOBILE
+  TABLET
+  DESKTOP
+}
+
+model StorefrontVisit {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  visitedAt      DateTime     @default(now())
+  source         VisitSource
+  // The referring site, the website holding the frame, or the custom ?src= tag, whichever decided `source`.
+  sourceDetail   String?
+  device         VisitDevice
+  browser        String?
+  country        String?
+  city           String?
+  ipAddress      String?
+  userAgent      String?
+  // sha256(ip | user agent | day | secret): the same person on the same day gets the same key, nothing else links it.
+  visitorKey     String
+
+  @@index([organizationId, visitedAt])
+  @@index([organizationId, visitorKey])
+  @@map("storefront_visit")
 }

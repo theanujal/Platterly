@@ -79,6 +79,7 @@ export async function startDraftAction(tenantSlug: string, formData: FormData): 
       email: text(formData, "email"),
       phone: text(formData, "phone"),
       marketingConsent: text(formData, "marketingConsent") === "true",
+      visitId: text(formData, "visitId") || undefined,
     });
     return { ok: true, draftId: draft.id };
   } catch (error) {

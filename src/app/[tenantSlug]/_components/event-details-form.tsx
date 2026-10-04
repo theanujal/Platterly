@@ -116,6 +116,12 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
     }
 
     formData.set("marketingConsent", consent ? "true" : "false");
+    try {
+      const visitId = sessionStorage.getItem(`pv:${tenantSlug}`);
+      if (visitId && visitId !== "none" && visitId !== "pending") formData.set("visitId", visitId);
+    } catch {
+      /* no visit to link */
+    }
     const result = await startDraftAction(tenantSlug, formData);
     setPending(false);
     if (!result.ok) return setError(result.error);

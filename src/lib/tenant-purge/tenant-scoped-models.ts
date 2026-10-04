@@ -19,6 +19,7 @@ export const TENANT_SCOPED_DELEGATES = [
   "branch",
   "kitchen",
   "store",
+  "storefrontVisit",
   "notification", // notificationLog cascades automatically (DB-level onDelete: Cascade via notificationId)
   "whatsAppMessage",
   "secureAccessToken",

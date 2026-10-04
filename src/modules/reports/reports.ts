@@ -15,10 +15,10 @@ export interface ReportRange {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const scopeWhere = (scope: ReportScope) => ("organizationId" in scope ? { organizationId: scope.organizationId } : {});
+export const scopeWhere = (scope: ReportScope) => ("organizationId" in scope ? { organizationId: scope.organizationId } : {});
 
 /** `from` and `to` are calendar dates (both included), in India time for "when it was created". */
-function dateFilter(range: ReportRange, tz: "ist" | "utc"): { gte?: Date; lt?: Date } | undefined {
+export function dateFilter(range: ReportRange, tz: "ist" | "utc"): { gte?: Date; lt?: Date } | undefined {
   if (!range.from && !range.to) return undefined;
   const shift = tz === "ist" ? 5.5 * 60 * 60 * 1000 : 0;
   return {

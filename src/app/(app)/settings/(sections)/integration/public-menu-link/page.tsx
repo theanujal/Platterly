@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ExternalLink } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
-import { canonicalUrl } from "@/lib/seo/canonical";
+import { canonicalUrl, withSrc } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { slugify } from "@/modules/tenants/slug";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ export default async function PublicMenuLinkPage() {
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
   const claimed = organization.slugChangeCount > 0;
   const url = canonicalUrl(`/${organization.slug}`);
-  const qrDataUrl = claimed ? await generateQrCodeDataUrl(url) : null;
+  const qrDataUrl = claimed ? await generateQrCodeDataUrl(withSrc(url, "qr")) : null;
   const locked = claimed && organization.slugChangeCount >= CHANGE_LIMIT;
 
   return (
@@ -63,6 +63,29 @@ export default async function PublicMenuLinkPage() {
               </div>
             )}
           </>
+        )}
+
+        {claimed && (
+          <SettingsSection title="Know where visitors come from" description="Reports > Storefront shows the source of every visit. Google, other websites and frames are detected on their own. For the rest, add one of these tags to the end of your link.">
+            <ul className="flex flex-col gap-1.5 text-sm" data-testid="src-tags">
+              {[
+                ["QR code", "?src=qr", "already added to the QR above"],
+                ["WhatsApp", "?src=whatsapp", "already added to the Share on WhatsApp button"],
+                ["Instagram bio or story", "?src=instagram", ""],
+                ["Facebook page or post", "?src=facebook", ""],
+                ["Email or newsletter", "?src=email", ""],
+                ["Anything else, e.g. a flyer", "?src=flyer", "any short word of letters and numbers"],
+              ].map(([where, tag, note]) => (
+                <li key={tag} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border pb-1.5">
+                  <span>{where}</span>
+                  <span className="flex items-baseline gap-2">
+                    <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">{tag}</code>
+                    {note && <span className="text-xs text-muted-foreground">{note}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </SettingsSection>
         )}
 
         {locked ? (

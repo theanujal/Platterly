@@ -2,7 +2,7 @@ import Link from "next/link";
 import { QrCode, ExternalLink, Settings2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { canonicalUrl } from "@/lib/seo/canonical";
+import { canonicalUrl, withSrc } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { CopyButton } from "@/components/ui/copy-button";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
@@ -23,7 +23,7 @@ interface PublicMenuShortcutCardProps {
 export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMenuShortcutCardProps) {
   const claimed = slugChangeCount > 0;
   const url = claimed ? canonicalUrl(`/${slug}`) : null;
-  const qrDataUrl = url ? await generateQrCodeDataUrl(url) : null;
+  const qrDataUrl = url ? await generateQrCodeDataUrl(withSrc(url, "qr")) : null;
 
   return (
     <Card>
@@ -62,7 +62,7 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
                     title="Share on WhatsApp"
                     render={
                       <a
-                        href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${url}`)}`}
+                        href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${withSrc(url, "whatsapp")}`)}`}
                         target="_blank"
                         rel="noopener"
                       />

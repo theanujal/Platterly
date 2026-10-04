@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { VISIT_SOURCE_LABEL } from "@/modules/storefront-visits/visit-math";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, ChevronRight, Leaf, Drumstick, Mail, Phone, ShoppingBag, User } from "lucide-react";
@@ -86,10 +87,22 @@ function RowShell({ href, icon, children }: { href?: string; icon: React.ReactNo
   );
 }
 
+/** Chunk 22: where a storefront lead first came from (their first journey that has a recorded visit). */
+async function loadArrival(organizationId: string, customerId: string, showIp: boolean) {
+  const draft = await prisma.storefrontDraft.findFirst({ where: { organizationId, customerId, visitId: { not: null } }, orderBy: { createdAt: "asc" }, select: { visitId: true } });
+  if (!draft?.visitId) return null;
+  const visit = await prisma.storefrontVisit.findFirst({ where: { id: draft.visitId, organizationId } });
+  if (!visit) return null;
+  const label = VISIT_SOURCE_LABEL[visit.source];
+  return { text: visit.sourceDetail && visit.sourceDetail !== label.toLowerCase() ? `${label} (${visit.sourceDetail})` : label, ip: showIp ? visit.ipAddress : null };
+}
+
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ customers: ["view"] }, organizationId);
+  const canSeeIp = await hasPermission({ tenant: ["view"] }, organizationId);
+  const arrival = await loadArrival(organizationId, id, canSeeIp);
   const [customer, canEdit, canDelete, organization, orders, quotations, allDrafts, customerNotes] = await Promise.all([
     getCustomer(organizationId, id),
     hasPermission({ customers: ["edit"] }, organizationId),
@@ -309,6 +322,12 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                     <ShoppingBag className="size-4" />
                     Total Orders <span className="font-medium text-foreground">{orders.length}</span>
                   </span>
+                  {arrival && (
+                    <span className="flex items-center gap-2" data-testid="customer-arrival">
+                      Arrived from <span className="font-medium text-foreground">{arrival.text}</span>
+                      {arrival.ip && <span className="text-xs">IP {arrival.ip}</span>}
+                    </span>
+                  )}
                   {customer.isEnquiry && (
                     <span className="flex items-center gap-2">
                       Lead source <Badge variant="outline">{LEAD_SOURCE_LABEL[customer.leadSource ?? ""] ?? "—"}</Badge>

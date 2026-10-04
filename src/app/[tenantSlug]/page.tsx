@@ -7,6 +7,8 @@ import { buildRestaurantJsonLd } from "@/lib/seo/structured-data";
 import { EventDetailsForm } from "./_components/event-details-form";
 import { PublicShell } from "@/components/public/public-shell";
 import { StorefrontContact } from "./_components/storefront-contact";
+import { VisitBeacon } from "./_components/visit-beacon";
+import { VISIT_RETENTION_DAYS } from "@/modules/storefront-visits/visits";
 
 interface StorefrontPageProps {
   params: Promise<{ tenantSlug: string }>;
@@ -73,6 +75,7 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
     >
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
 
+      <VisitBeacon slug={tenantSlug} />
       <StorefrontContact organization={organization} />
 
       <EventDetailsForm
@@ -80,6 +83,9 @@ export default async function TenantStorefrontPage({ params }: StorefrontPagePro
         businessName={organization.name}
         eventTypes={eventTypes.map((et) => ({ id: et.id, name: et.name, minGuests: et.minGuests }))}
       />
+      <p className="text-center text-xs text-muted-foreground" data-testid="visit-notice">
+        To help {organization.name} understand where its customers come from, we record your visit: your IP address, device and the site or link you came from. This is deleted after {VISIT_RETENTION_DAYS} days.
+      </p>
     </PublicShell>
   );
 }

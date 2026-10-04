@@ -76,6 +76,15 @@ test("Super Admin reads the platform-wide reports", async ({ page }: { page: Pag
   await expect(page).toHaveURL(/tab=events/);
   await expect(page.getByTestId("events-count")).toBeVisible();
   await expect(page.getByTestId("events-by-type")).toBeVisible();
+
+  // Chunk 22: finance, inventory and storefront across every kitchen; no visitor IPs at platform level.
+  await page.getByRole("tab", { name: "Finance" }).click();
+  await expect(page.getByTestId("finance-report")).toBeVisible();
+  await page.getByRole("tab", { name: "Inventory" }).click();
+  await expect(page.getByTestId("inventory-report")).toBeVisible();
+  await page.getByRole("tab", { name: "Storefront" }).click();
+  await expect(page.getByTestId("storefront-report")).toBeVisible();
+  await expect(page.getByTestId("sf-recent")).toHaveCount(0);
 });
 
 test("a signed-out visitor is sent to sign in", async ({ page }) => {

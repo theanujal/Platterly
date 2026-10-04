@@ -452,3 +452,28 @@ export async function seedPaidPlanPayment(email: string, invoiceNumber: string):
   );
   return id;
 }
+
+/** Chunk 22: a storefront lead whose journey started from the kitchen's most recent visit from `source`. Returns the customer id. */
+export async function seedLeadFromVisit(email: string, source: string): Promise<string> {
+  const { rows: orgRows } = await pool.query<{ id: string }>(
+    `SELECT m."organizationId" AS id FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1`,
+    [email],
+  );
+  const organizationId = orgRows[0].id;
+  const { rows: visitRows } = await pool.query<{ id: string }>(
+    `SELECT id FROM storefront_visit WHERE "organizationId" = $1 AND source = $2 ORDER BY "visitedAt" DESC LIMIT 1`,
+    [organizationId, source],
+  );
+  const customerId = `cust_${Math.random().toString(36).slice(2, 10)}`;
+  await pool.query(
+    `INSERT INTO customer (id, "organizationId", name, phone, "isEnquiry", "leadSource", "updatedAt") VALUES ($1, $2, 'Visit Lead', '+919800000088', true, 'STOREFRONT', now())`,
+    [customerId, organizationId],
+  );
+  const eventTypeId = `et_${Math.random().toString(36).slice(2, 10)}`;
+  await pool.query(`INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, 'Wedding', now())`, [eventTypeId, organizationId]);
+  await pool.query(
+    `INSERT INTO storefront_draft (id, "organizationId", "customerId", status, "currentStep", data, "visitId", "updatedAt") VALUES ($1, $2, $3, 'IN_PROGRESS', 2, $5::jsonb, $4, now())`,
+    [`draft_${Math.random().toString(36).slice(2, 10)}`, organizationId, customerId, visitRows[0].id, JSON.stringify({ eventTypeId })],
+  );
+  return customerId;
+}

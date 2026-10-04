@@ -5,6 +5,7 @@ import { normalizePhone, isValidPhone } from "@/lib/phone";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
+import { ownVisitId } from "@/modules/storefront-visits/visits";
 import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
 import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
@@ -42,6 +43,8 @@ export interface StartDraftInput extends EventDetailsInput {
   email: string;
   phone: string;
   marketingConsent: boolean;
+  /** The storefront visit this journey came from (Chunk 22); only trusted if it belongs to this kitchen. */
+  visitId?: string;
 }
 
 /** Drafts saved before 2026-10-02 carried the full Venue & Delivery form; only its address is still read (as the Venue Location). */
@@ -151,7 +154,7 @@ export async function startDraft(organizationId: string, input: StartDraftInput)
 
   await purgeExpiredDrafts(organizationId);
   const draft = await prisma.storefrontDraft.create({
-    data: { organizationId, customerId: customer.id, currentStep: 2, data: details as unknown as Prisma.InputJsonValue },
+    data: { organizationId, customerId: customer.id, currentStep: 2, data: details as unknown as Prisma.InputJsonValue, visitId: await ownVisitId(organizationId, input.visitId) },
   });
   return { draft, customer };
 }

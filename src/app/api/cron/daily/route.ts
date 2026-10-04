@@ -3,9 +3,10 @@ import { timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { runDueNotifications } from "@/modules/notifications/triggers";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
+import { scrubOldVisits } from "@/modules/storefront-visits/visits";
 
 /**
- * The one scheduled job (Chunk 16): event reminders, payment due / overdue notices and repeating expenses.
+ * The one scheduled job (Chunk 16): event reminders, payment due / overdue notices, repeating expenses and the 90-day clean-up of storefront visitor IPs.
  * A server cron (or any scheduler) calls it every ~10 minutes:
  *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://catering.platterly.in/api/cron/daily
  * Safe to call as often as you like: every message and every booked expense is idempotent. Without CRON_SECRET
@@ -31,7 +32,8 @@ async function run(request: Request) {
   for (const org of await prisma.recurringExpense.findMany({ where: { isActive: true }, select: { organizationId: true }, distinct: ["organizationId"] })) {
     recurringExpenses += await generateDueRecurringExpenses(org.organizationId, now);
   }
-  return NextResponse.json({ ranAt: now.toISOString(), notifications, recurringExpenses });
+  const visitsScrubbed = await scrubOldVisits(now);
+  return NextResponse.json({ ranAt: now.toISOString(), notifications, recurringExpenses, visitsScrubbed });
 }
 
 export const GET = run;
