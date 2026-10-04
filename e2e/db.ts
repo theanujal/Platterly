@@ -33,6 +33,7 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // ever firing against a row that's about to cascade away anyway.
     // Chunk 18 — recipe_ingredient is onDelete: Restrict to inventory; same hazard.
     // Chunk 18.3 — purchase orders and supplier payments are onDelete: Restrict to supplier / inventory.
+    await pool.query('DELETE FROM staff_assignment WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM purchase_order WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM supplier_payment WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM recipe WHERE "organizationId" = ANY($1)', [orgIds]);
@@ -354,6 +355,32 @@ export async function seedKitchenOrderWithDish(email: string, dishName: string):
   await pool.query(
     `INSERT INTO order_item (id, "orderId", "itemType", "menuItemId", "mealPlanEntryId", name, "unitPrice", quantity) VALUES ($1, $2, 'MENU_ITEM', $3, $4, $5, 100, 1)`,
     [`oi_${suffix}`, orderId, dishes[0].id, `mpe_${suffix}`, dishName],
+  );
+  return { orderId, orderNumber };
+}
+
+/** Chunk 19.2 — an order with its event (3 days away, 100 guests), for the staffing spec. */
+export async function seedOrderWithEvent(email: string): Promise<{ orderId: string; orderNumber: string }> {
+  const { rows: members } = await pool.query<{ organizationId: string }>(
+    'SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1',
+    [email],
+  );
+  const organizationId = members[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const orderId = `ord_${suffix}`;
+  const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 8999)}`;
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [`cust_${suffix}`, organizationId, "Staffing Customer", `+9198222${String(Math.floor(Math.random() * 100000)).padStart(5, "0")}`]);
+  await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`et_${suffix}`, organizationId, "Wedding"]);
+  await pool.query(
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, 'APPROVED', now() + interval '3 days', now() + interval '3 days', 100, 100, 1000, 1000, 1000, now())`,
+    [orderId, organizationId, `cust_${suffix}`, `et_${suffix}`, orderNumber],
+  );
+  await pool.query(
+    `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", name, "startDate", "endDate", "guestCount", "orderId", "updatedAt")
+     VALUES ($1, $2, $3, $4, 'Wedding', now() + interval '3 days', now() + interval '3 days', 100, $5, now())`,
+    [`ev_${suffix}`, organizationId, `cust_${suffix}`, `et_${suffix}`, orderId],
   );
   return { orderId, orderNumber };
 }

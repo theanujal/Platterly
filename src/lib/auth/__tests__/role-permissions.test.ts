@@ -16,7 +16,7 @@ describe("describeRolePermissions (derived from the real grants)", () => {
     const { included } = describeRolePermissions("manager");
     expect(included).toContain("View, create and edit customers");
     expect(included).toContain("View and create invoices");
-    expect(included.some((line) => /delete/i.test(line))).toBe(false);
+    expect(included.some((line) => /delete/i.test(line))).toBe(false); // staff scheduling is view, create and edit only
     expect(included).toContain("View settings");
   });
 

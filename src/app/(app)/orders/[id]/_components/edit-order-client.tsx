@@ -13,6 +13,7 @@ interface EditOrderClientProps {
   sidebarTop?: React.ReactNode;
   inventoryTab?: React.ReactNode;
   expensesTab?: React.ReactNode;
+  staffingTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
   menuPlanBanner?: React.ReactNode;
   eventTypes: { id: string; name: string }[];
@@ -42,6 +43,7 @@ export function EditOrderClient({
   sidebarTop,
   inventoryTab,
   expensesTab,
+  staffingTab,
   pricingExtra,
   menuPlanBanner,
 }: EditOrderClientProps) {
@@ -54,6 +56,7 @@ export function EditOrderClient({
       sidebarTop={sidebarTop}
       inventoryTab={inventoryTab}
       expensesTab={expensesTab}
+      staffingTab={staffingTab}
       pricingExtra={pricingExtra}
       menuPlanReadOnly
       menuPlanBanner={menuPlanBanner}

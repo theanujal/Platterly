@@ -56,6 +56,8 @@ export const TENANT_SCOPED_DELEGATES = [
   // cascades automatically (DB-level onDelete: Cascade) off its parent
   // inventory row.
   // Chunk 18.3 — purchase orders and supplier payments are Restrict to supplier/inventory; purchaseOrderItem cascades off its order.
+  "staffAssignment", // cascades off its event and staff member; listed for the guardrail
+  "staffMember",
   "purchaseOrder",
   "supplierPayment",
   "inventory",

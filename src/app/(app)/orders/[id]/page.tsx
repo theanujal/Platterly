@@ -28,6 +28,9 @@ import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { getOrderStockPlan } from "@/modules/production/production";
+import { listEventAssignments, listAssignableMembers } from "@/modules/employees/assignment";
+import { listStaffMembers } from "@/modules/employees/staff-member";
+import { StaffingCard } from "./_components/staffing-card";
 import { StockPlanCard } from "./_components/stock-plan-card";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
@@ -105,6 +108,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   ]);
   const expenses = canViewExpenses ? await listOrderExpenses(organizationId, id) : [];
   const supplierOptions = canViewExpenses ? await listSupplierOptions(organizationId) : [];
+  const [canViewStaffing, canAddStaff, canEditStaff] = await Promise.all([
+    hasPermission({ staffing: ["view"] }, organizationId),
+    hasPermission({ staffing: ["create"] }, organizationId),
+    hasPermission({ staffing: ["edit"] }, organizationId),
+  ]);
   const [stockPlan, canTakeStock] = await Promise.all([getOrderStockPlan(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId)]);
   const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
     id: p.id,
@@ -179,6 +187,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
   // An Order's Event is created and kept in step automatically; a normal order has exactly one.
   const event = order.events[0] ?? null;
+  const staffing = canViewStaffing && event
+    ? {
+        assignments: await listEventAssignments(organizationId, event.id),
+        floorStaff: canAddStaff ? (await listStaffMembers(organizationId)).filter((m) => m.isActive).map((m) => ({ id: m.id, name: m.name, defaultDuty: m.defaultDuty })) : [],
+        teamMembers: canAddStaff ? await listAssignableMembers(organizationId) : [],
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
@@ -349,6 +364,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               canCreate={canCreateExpense}
               canEdit={canEditExpense}
               canDelete={canDeleteExpense}
+            />
+          ) : undefined
+        }
+        staffingTab={
+          canViewStaffing ? (
+            <StaffingCard
+              orderId={order.id}
+              eventId={event?.id ?? null}
+              data={staffing ?? { assignments: [], floorStaff: [], teamMembers: [] }}
+              canAdd={canAddStaff}
+              canEdit={canEditStaff}
+              canRemove={canEditStaff}
             />
           ) : undefined
         }

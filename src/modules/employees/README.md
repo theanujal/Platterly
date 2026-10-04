@@ -1,5 +1,3 @@
 # employees
 
-Owning chunk: Chunk 19 — Employees, Staff Scheduling, Event Tasks & Logistics.
-
-Empty by design until that chunk lands — this folder exists to hold the §57 module boundary map from Chunk 1 Group 1.1.
+Chunk 19 — who works your events. Employees are the team members (people with a login, from Team Management) plus `StaffMember` records for floor staff with no login (AJ, 2026-10-04). `assignment.ts` puts either kind on an event with a duty (Event Manager, Kitchen, Serving, Delivery, Setup, Store). The kitchen team fills the schedule in by hand: nothing is suggested from the guest count and there are no required roles or understaffed warnings. The only hint is a heads-up when someone is already on an overlapping event; it never blocks. An assignment points at exactly one person (also a CHECK in the database). Floor staff who have been scheduled cannot be deleted, only marked inactive.

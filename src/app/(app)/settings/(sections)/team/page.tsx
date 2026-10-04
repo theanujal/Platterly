@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Mail, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
@@ -84,6 +85,9 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
         {active === "members" && (
           <>
             <PanelHeader icon={Users} title="Team Members" description="View and manage your team members and their roles." />
+            <p className="text-sm text-muted-foreground">
+              Need to add someone who does not sign in, such as serving or delivery crew? Add them as <Link href="/staff" className="underline">staff without a login</Link>.
+            </p>
             <ul className="flex flex-col gap-3">
               {members.map((member) => {
                 const isYou = member.userId === session.user.id;

@@ -212,6 +212,8 @@ model Organization {
   recipes          Recipe[]
   purchaseOrders   PurchaseOrder[]
   supplierPayments SupplierPayment[]
+  staffMembers     StaffMember[]
+  staffAssignments StaffAssignment[]
   suppliers        Supplier[]
   customers        Customer[]
   events           Event[]
@@ -977,6 +979,61 @@ model Supplier {
   @@map("supplier")
 }
 
+// Chunk 19.2 — Staff scheduling (AJ, 2026-10-04). The kitchen team fills it in by hand; nothing is predicted from the
+// guest count. A StaffMember is a person with no Platterly login (floor staff); people with a login are Members and
+// can be assigned too. An assignment points at exactly one of the two (also enforced by a CHECK in the migration).
+enum StaffDuty {
+  EVENT_MANAGER
+  KITCHEN
+  SERVING
+  DELIVERY
+  SETUP
+  STORE
+}
+
+model StaffMember {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String?
+  // The duty they are usually given; each assignment can still use another.
+  defaultDuty    StaffDuty    @default(SERVING)
+  notes          String?
+  isActive       Boolean      @default(true)
+
+  assignments StaffAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("staff_member")
+}
+
+model StaffAssignment {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId         String
+  event           Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  staffMemberId   String?
+  staffMember     StaffMember? @relation(fields: [staffMemberId], references: [id], onDelete: Cascade)
+  // Better Auth Member.id (a team member with a login). Plain id: Member is owned by the auth library.
+  memberId        String?
+  duty            StaffDuty
+  notes           String?
+  createdByUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, staffMemberId])
+  @@unique([eventId, memberId])
+  @@index([organizationId])
+  @@index([eventId])
+  @@map("staff_assignment")
+}
+
 // Chunk 18.3 — Purchasing. DRAFT is the purchase request; ORDERED is sent to the supplier; receiving writes real
 // STOCK_IN ledger rows. Restrict to the supplier and inventory so a used record cannot vanish; the purge list and
 // the e2e cleanup remove purchase orders first.
@@ -1223,6 +1280,7 @@ model Event {
   order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   requiredInventory EventRequiredInventory[]
+  staffAssignments  StaffAssignment[]
   // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
   // is @unique).
   menuSelection     MenuSelection?

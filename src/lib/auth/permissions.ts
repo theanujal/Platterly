@@ -44,6 +44,9 @@ export const statement = {
   reports: ["view", "export"],
   // Chunk 17.2: the Audit Log page. Owners and managers only (AJ, 2026-10-04).
   audit: ["view"],
+  // Chunk 19.2: who is on which event, and the floor staff list. The kitchen team fills it in (AJ, 2026-10-04), so it is
+  // the one place besides inventory where a non-owner role may delete (floor staff records); a manager can view, create and edit.
+  staffing: ["view", "create", "edit", "delete"],
   settings: ["view", "edit"],
 } as const;
 
@@ -80,6 +83,7 @@ export const roles = {
     expenses: ["view", "create", "edit", "delete"],
     reports: ["view", "export"],
     audit: ["view"],
+    staffing: ["view", "create", "edit", "delete"],
     settings: ["view", "edit"],
   }),
   manager: ac.newRole({
@@ -97,6 +101,7 @@ export const roles = {
     expenses: ["view", "create", "edit"],
     reports: ["view"],
     audit: ["view"],
+    staffing: ["view", "create", "edit"],
     settings: ["view"],
   }),
   staff: ac.newRole({
@@ -113,6 +118,7 @@ export const roles = {
     payments: [],
     expenses: [],
     reports: ["view"],
+    staffing: ["view"],
     settings: [],
   }),
   /**
@@ -140,6 +146,7 @@ export const roles = {
     payments: [],
     expenses: [],
     reports: [],
+    staffing: ["view", "create", "edit", "delete"],
     settings: [],
   }),
   /**
@@ -207,6 +214,7 @@ export const roles = {
     payments: [],
     expenses: [],
     reports: ["view"],
+    staffing: ["view"],
     settings: [],
   }),
 };

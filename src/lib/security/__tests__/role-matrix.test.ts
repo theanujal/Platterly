@@ -7,6 +7,7 @@ import { roles, statement } from "@/lib/auth/permissions";
  */
 const EXPECTED: Record<string, Record<string, string[]>> = {
   "owner": {
+    "staffing": ["view","create","edit","delete"],
     "tenant": [
       "view",
       "edit",
@@ -87,6 +88,7 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
     ]
   },
   "manager": {
+    "staffing": ["view","create","edit"],
     "tenant": [
       "view"
     ],
@@ -147,6 +149,7 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
     ]
   },
   "staff": {
+    "staffing": ["view"],
     "customers": [
       "view"
     ],
@@ -170,6 +173,7 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
     ]
   },
   "kitchen": {
+    "staffing": ["view","create","edit","delete"],
     "eventTypes": [
       "view"
     ],
@@ -215,6 +219,7 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
     ]
   },
   "salesEvents": {
+    "staffing": ["view"],
     "customers": [
       "view",
       "create",
@@ -278,9 +283,10 @@ describe("role permission matrix", () => {
     }
   });
 
-  it("no role below the owner can delete any business record", () => {
+  it("no role below the owner can delete any business record, except a team in its own domain (inventory team: inventory; kitchen team: staff records)", () => {
     for (const role of Object.keys(EXPECTED).filter((r) => r !== "owner" && r !== "inventoryTeam")) {
       for (const [resource, actions] of Object.entries(EXPECTED[role])) {
+        if (role === "kitchen" && resource === "staffing") continue;
         expect(actions, `${role} ${resource}`).not.toContain("delete");
       }
     }
