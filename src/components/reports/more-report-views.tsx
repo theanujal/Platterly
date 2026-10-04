@@ -221,8 +221,23 @@ export function FinanceView({ finance, receivables, payables, showKitchen = fals
 
 // ---------------------------------------------------------- Storefront
 
-export function StorefrontView({ storefront, channels, recent }: { storefront: StorefrontReport; channels: ChannelRow[]; recent: RecentVisitor[] | null }) {
+/** `byLocation`: visits happen before anyone picks a location (one public link), so only the orders by channel are shown. */
+export function StorefrontView({ storefront, channels, recent, byLocation = false }: { storefront: StorefrontReport; channels: ChannelRow[]; recent: RecentVisitor[] | null; byLocation?: boolean }) {
   const s = storefront;
+  if (byLocation) {
+    return (
+      <div className="flex flex-col gap-4" data-testid="storefront-report">
+        <ReportSection title="Orders by channel" description="Which door each order came in through (cancelled orders left out).">
+          <Table
+            testId="sf-channels"
+            columns={[{ label: "Channel" }, { label: "Orders", align: "right" }, { label: "Share", align: "right" }, { label: "Average order", align: "right" }, { label: "Revenue", align: "right" }]}
+            rows={channels.map((c) => [c.label, whole(c.orders), `${c.sharePercent}%`, inr(c.avgOrder), inr(c.revenue)])}
+            min="30rem"
+          />
+        </ReportSection>
+      </div>
+    );
+  }
   const reviewed = s.funnel.reduce((sum, r) => sum + r.reachedReview, 0);
   return (
     <div className="flex flex-col gap-4" data-testid="storefront-report">

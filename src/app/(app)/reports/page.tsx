@@ -78,7 +78,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           {tab === "sales" && "Enquiries, conversion and quotations are not split by location, so they are left out."}
           {tab === "finance" && "Company expenses and supplier payments are not split by location, so only the expenses of this location's orders are counted and payables are left out."}
           {tab === "inventory" && "Items shared by every location are included."}
-          {tab === "storefront" && "There is one public link for the whole kitchen, so visits are not split by location."}
+          {tab === "storefront" && "There is one public link for the whole kitchen and a visitor has not chosen a location yet, so visits, sources and devices are left out; only the orders by channel are shown."}
         </p>
       )}
       <ReportTabs
@@ -99,7 +99,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       {menu && <MenuView menu={menu} />}
       {inventory && <InventoryView stock={inventory.stock} movements={inventory.movements} purchases={inventory.purchases} />}
       {finance && <FinanceView finance={finance.finance} receivables={finance.receivables} payables={finance.payables} orderLinks={canOpenOrders} byLocation={Boolean(locationId)} />}
-      {storefront && <StorefrontView storefront={storefront.storefront} channels={storefront.channels} recent={canSeeVisitors ? storefront.recent : null} />}
+      {storefront && <StorefrontView storefront={storefront.storefront} channels={storefront.channels} recent={canSeeVisitors ? storefront.recent : null} byLocation={Boolean(locationId)} />}
     </div>
   );
 }

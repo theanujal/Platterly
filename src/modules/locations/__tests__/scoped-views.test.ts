@@ -5,7 +5,7 @@ import { getPartialPaymentsOverview } from "@/modules/orders/order";
 import { getInventoryOverviewStats, listLowStockItems, createInventoryItem } from "@/modules/inventory/inventory";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import { loadEventsReport, loadSalesReport } from "@/modules/reports/reports";
-import { loadFinanceReport, loadInventoryReport } from "@/modules/reports/more-reports";
+import { loadFinanceReport, loadInventoryReport, loadStorefrontReport } from "@/modules/reports/more-reports";
 import { createPurchaseOrder, listPurchaseOrders, suggestReorder } from "@/modules/purchasing/purchase-order";
 import { getProductionPlan } from "@/modules/production/production";
 
@@ -110,6 +110,17 @@ describe("location-scoped Dashboard, Reports and Purchasing (Chunk 23)", () => {
     const stockCount = async (scope: { organizationId: string; locationId?: string | null }) => (await loadInventoryReport(scope, NONE)).stock.items;
     expect(await stockCount(everywhere)).toBe(3);
     expect(await stockCount(here)).toBe(2);
+  });
+
+  it("the Storefront report follows the location for orders by channel and leaves the visit figures out", async () => {
+    const { org, north } = await seed();
+    const total = (channels: { orders: number }[]) => channels.reduce((s, c) => s + c.orders, 0);
+    const everywhere = await loadStorefrontReport({ organizationId: org.id }, NONE);
+    const here = await loadStorefrontReport({ organizationId: org.id, locationId: north.id }, NONE, { recent: true });
+    expect(total(everywhere.channels)).toBe(3);
+    expect(total(here.channels)).toBe(1);
+    expect(here.storefront.visits).toBe(0);
+    expect(here.recent).toEqual([]);
   });
 
   it("purchase orders are for a location (or none); lists, reorder suggestions and the production plan follow it", async () => {

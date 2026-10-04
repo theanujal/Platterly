@@ -123,6 +123,10 @@ test("a person held to a location cannot open another location's order or sheets
   await page.goto("/reports");
   await expect(page.getByTestId("report-location")).toContainText("North Branch");
   await expect(page.getByTestId("sales-orders")).toContainText("1");
+  await page.goto("/reports?tab=storefront");
+  await expect(page.getByTestId("report-location")).toContainText("orders by channel");
+  await expect(page.getByTestId("sf-channels")).toBeVisible();
+  await expect(page.getByTestId("sf-visits")).toHaveCount(0);
   expect((await page.goto("/dashboard"))?.status()).toBe(200);
   // No switcher for someone who is held.
   await expect(page.getByRole("combobox", { name: "Location" })).toHaveCount(0);

@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { ExpenseCategoryValue } from "@/modules/expenses/profitability";
 import { VISIT_SOURCE_LABEL } from "@/modules/storefront-visits/visit-math";
-import { dateFilter, orderScope, scopeWhere, type ReportRange, type ReportScope } from "./reports";
+import { byLocation, dateFilter, orderScope, scopeWhere, type ReportRange, type ReportScope } from "./reports";
 import { sharedOrAt } from "@/modules/locations/scope";
 import { computeMenuReport } from "./menu-math";
 import { computeMovements, computePurchases, computeStock } from "./inventory-math";
@@ -148,14 +148,16 @@ const DEVICE_NAME = { MOBILE: "Phone", TABLET: "Tablet", DESKTOP: "Computer" } a
 export async function loadStorefrontReport(scope: ReportScope, range: ReportRange, options: { recent?: boolean } = {}) {
   const when = dateFilter(range, "ist");
   const [visits, drafts, orders, completedDrafts, recent] = await Promise.all([
-    prisma.storefrontVisit.findMany({
+    // Visits and drafts happen before anyone has chosen a location (there is one public link), so a location-scoped
+    // report leaves them out and keeps only the orders.
+    byLocation(scope) ? Promise.resolve([]) : prisma.storefrontVisit.findMany({
       where: { ...scopeWhere(scope), ...(when ? { visitedAt: when } : {}) },
       select: { id: true, visitedAt: true, source: true, sourceDetail: true, device: true, browser: true, country: true, city: true, visitorKey: true },
     }),
-    prisma.storefrontDraft.findMany({ where: { ...scopeWhere(scope), ...(when ? { createdAt: when } : {}) }, select: { visitId: true, status: true, currentStep: true } }),
-    prisma.order.findMany({ where: { ...scopeWhere(scope), ...(when ? { createdAt: when } : {}) }, select: { id: true, total: true, status: true, quotationId: true } }),
+    byLocation(scope) ? Promise.resolve([]) : prisma.storefrontDraft.findMany({ where: { ...scopeWhere(scope), ...(when ? { createdAt: when } : {}) }, select: { visitId: true, status: true, currentStep: true } }),
+    prisma.order.findMany({ where: { ...orderScope(scope), ...(when ? { createdAt: when } : {}) }, select: { id: true, total: true, status: true, quotationId: true } }),
     prisma.storefrontDraft.findMany({ where: { ...scopeWhere(scope), status: "COMPLETED", orderId: { not: null } }, select: { orderId: true } }),
-    options.recent && "organizationId" in scope
+    options.recent && "organizationId" in scope && !byLocation(scope)
       ? prisma.storefrontVisit.findMany({ where: { organizationId: scope.organizationId, ...(when ? { visitedAt: when } : {}) }, orderBy: { visitedAt: "desc" }, take: 25 })
       : Promise.resolve([]),
   ]);
