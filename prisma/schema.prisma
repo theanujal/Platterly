@@ -478,6 +478,10 @@ model SubscriptionPlan {
   priceMonthly      Decimal? @db.Decimal(10, 2)
   priceAnnual       Decimal? @db.Decimal(10, 2)
   currency          String   @default("INR")
+  // Chunk 20: prices above are before GST; this rate is added at checkout. The bullet list is what the
+  // paywall page shows under "Premium Benefits" (one line each). All set by the Super Admin.
+  gstPercent        Decimal  @default(18) @db.Decimal(5, 2)
+  highlights        String[] @default([])
 
   // PRD §9 limits list. Null means unlimited.
   maxUsers            Int?
@@ -498,6 +502,7 @@ model SubscriptionPlan {
   updatedAt DateTime @updatedAt
 
   subscriptions Subscription[]
+  payments      SubscriptionPayment[]
 
   @@map("subscription_plan")
 }
@@ -522,12 +527,85 @@ model Subscription {
   // subscription. History is kept, never deleted (immutable per the updated
   // product doc's accounting/audit note, §19).
   endDate            DateTime?
+  // Chunk 20: a paid row runs until currentPeriodEnd; after that the kitchen is locked until it pays again.
+  billingInterval    BillingInterval?
+  currentPeriodEnd   DateTime?
+  // A downgrade chosen mid-period: it takes effect at the next payment, never immediately.
+  pendingPlanId      String?
+  pendingInterval    BillingInterval?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   @@index([organizationId])
   @@index([organizationId, status])
   @@map("subscription")
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// Chunk 20: what a kitchen pays Platterly for its plan (one row per attempt). Kept after a kitchen's
+// data purge on purpose, like Subscription: it is Platterly's own accounting record.
+model SubscriptionPayment {
+  id                 String                    @id @default(cuid())
+  organizationId     String
+  subscriptionPlanId String
+  subscriptionPlan   SubscriptionPlan          @relation(fields: [subscriptionPlanId], references: [id], onDelete: Restrict)
+  interval           BillingInterval
+  // Rupees. amount + gstAmount = total; the plan price and GST rate are frozen here at checkout.
+  amount             Decimal                   @db.Decimal(10, 2)
+  gstPercent         Decimal                   @db.Decimal(5, 2)
+  gstAmount          Decimal                   @db.Decimal(10, 2)
+  total              Decimal                   @db.Decimal(10, 2)
+  status             SubscriptionPaymentStatus @default(PENDING)
+  razorpayOrderId    String?                   @unique
+  razorpayPaymentId  String?
+  invoiceNumber      String?                   @unique
+  periodStart        DateTime?
+  periodEnd          DateTime?
+  paidAt             DateTime?
+  // The seller, the buyer and the GST split as they were on the day it was paid, so an invoice never changes later.
+  invoiceSnapshot    Json?
+  createdAt          DateTime                  @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("subscription_payment")
+}
+
+// Platterly's own details printed on plan invoices (the seller). One row, id "platform", edited by the Super Admin.
+// Every field is optional so it can be filled in later; a blank field is simply left off the invoice.
+model PlatformBillingProfile {
+  id           String   @id
+  legalName    String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  // The two-digit GST state code (e.g. 29 for Karnataka). Decides CGST + SGST versus IGST.
+  stateCode    String?
+  postalCode   String?
+  country      String?
+  gstin        String?
+  pan          String?
+  // Service accounting code printed on each invoice line. 998314 is hosting / IT infrastructure; confirm with your CA.
+  sacCode      String   @default("998314")
+  // Start of every invoice number: <prefix><caterer initials>-<yy>-<mm>-<n>.
+  invoicePrefix String  @default("FP")
+  email        String?
+  phone        String?
+  website      String?
+  invoiceNote  String?
+  updatedAt    DateTime @updatedAt
+
+  @@map("platform_billing_profile")
 }
 
 // --- Chunk 6: Menu & Product Catalog (PRD §22-24, Updated doc §12) ---

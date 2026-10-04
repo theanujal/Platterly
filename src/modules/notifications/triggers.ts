@@ -391,6 +391,7 @@ const BILLABLE_STATUSES: readonly OrderStatus[] = [...OPEN_STATUSES, "COMPLETED"
 
 export interface DueRunResult {
   trialNotices: number;
+  planNotices: number;
   eventReminders: number;
   paymentDue: number;
   paymentOverdue: number;
@@ -406,7 +407,7 @@ export interface DueRunResult {
  *   payment overdue: the day after the event while a balance is open
  */
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
-  const result: DueRunResult = { trialNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0 };
+  const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0 };
 
   // Trial ending: 3 days and 1 day before, and once it has ended.
   const trials = await prisma.subscription.findMany({
@@ -425,8 +426,31 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
         stage === "ended"
           ? { title: "Your free trial has ended", message: "Your free trial has ended. Choose a plan to keep every feature." }
           : { title: `Your trial ends in ${stage} day${stage === "1" ? "" : "s"}`, message: `Your free trial ends in ${stage} day${stage === "1" ? "" : "s"}. Upgrade to keep every feature.` };
-      await notifyTeam({ organizationId: trial.organizationId, event: "system.alert", email: true, title: text.title, message: text.message, payload: { href: "/settings/subscription", url: canonicalUrl("/settings/subscription"), dedupeKey: key } });
+      await notifyTeam({ organizationId: trial.organizationId, event: "system.alert", email: true, title: text.title, message: text.message, payload: { href: "/subscribe", url: canonicalUrl("/subscribe"), dedupeKey: key } });
       result.trialNotices += 1;
+    });
+  }
+
+  // Paid plan ending (Chunk 20): 3 days and 1 day before the paid period runs out, and once it has. Renewing moves the
+  // period end, which starts a fresh set of keys.
+  const paid = await prisma.subscription.findMany({
+    where: { status: "ACTIVE", endDate: null, currentPeriodEnd: { not: null } },
+    select: { id: true, organizationId: true, currentPeriodEnd: true },
+  });
+  for (const plan of paid) {
+    const ends = plan.currentPeriodEnd!;
+    const daysLeft = Math.round((istDay(ends, 0).getTime() - istDay(now, 0).getTime()) / DAY_MS);
+    const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -7 ? "ended" : null;
+    if (!stage) continue;
+    const key = `${plan.id}:${ends.getTime()}:plan:${stage}`;
+    if (await alreadySent(plan.organizationId, "system.alert", key)) continue;
+    await safely("plan notice", async () => {
+      const text =
+        stage === "ended"
+          ? { title: "Your plan has ended", message: "Your plan has ended and your account is locked. Renew to get back in; nothing has been deleted." }
+          : { title: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}`, message: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}. Renew to keep your account open.` };
+      await notifyTeam({ organizationId: plan.organizationId, event: "system.alert", email: true, title: text.title, message: text.message, payload: { href: "/subscribe", url: canonicalUrl("/subscribe"), dedupeKey: key } });
+      result.planNotices += 1;
     });
   }
 

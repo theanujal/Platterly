@@ -1,4 +1,5 @@
 import { validateOrderLike } from "@/lib/validation";
+import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
 import { derivePaymentState } from "@/modules/payments/payment-math";
 import "server-only";
@@ -315,6 +316,7 @@ export function deriveStandardChildPricingMenuId(entries: MealPlanEntryInput[] |
 }
 
 export async function createOrder(organizationId: string, input: OrderInput, actorUserId?: string) {
+  await assertWithinPlanLimit(organizationId, "maxOrders");
   validateOrderLike(input);
   const orderKind = input.orderKind ?? "SINGLE";
   const pricingMethod = input.pricingMethod ?? "STANDARD";

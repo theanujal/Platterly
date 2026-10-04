@@ -58,7 +58,7 @@ export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDay
       <Button
         size="md"
         className="w-full bg-white text-success hover:bg-white/90"
-        render={<Link href="/settings/subscription" />}
+        render={<Link href="/subscribe" />}
         nativeButton={false}
       >
         Upgrade Now

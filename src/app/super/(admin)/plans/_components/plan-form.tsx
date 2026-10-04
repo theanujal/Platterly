@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { PlanInput } from "@/modules/subscriptions/plan";
 
@@ -16,6 +17,8 @@ export interface PlanFormValues {
   trialDurationDays: string;
   priceMonthly: string;
   priceAnnual: string;
+  gstPercent: string;
+  highlights: string;
   currency: string;
   maxUsers: string;
   maxEvents: string;
@@ -37,6 +40,8 @@ const EMPTY_VALUES: PlanFormValues = {
   trialDurationDays: "",
   priceMonthly: "",
   priceAnnual: "",
+  gstPercent: "18",
+  highlights: "",
   currency: "INR",
   maxUsers: "",
   maxEvents: "",
@@ -82,8 +87,11 @@ export function valuesToPlanInput(values: PlanFormValues): PlanInput {
     description: values.description || undefined,
     isTrial: values.isTrial,
     trialDurationDays: toOptionalInt(values.trialDurationDays),
-    priceMonthly: toOptionalFloat(values.priceMonthly),
-    priceAnnual: toOptionalFloat(values.priceAnnual),
+    // Blank means "not sold" and must clear a saved price, so null rather than undefined.
+    priceMonthly: toOptionalFloat(values.priceMonthly) ?? null,
+    priceAnnual: toOptionalFloat(values.priceAnnual) ?? null,
+    gstPercent: toOptionalFloat(values.gstPercent) ?? 18,
+    highlights: values.highlights.split("\n").map((line) => line.trim()).filter(Boolean),
     currency: values.currency || "INR",
     maxUsers: toOptionalInt(values.maxUsers),
     maxEvents: toOptionalInt(values.maxEvents),
@@ -209,6 +217,19 @@ export function PlanForm({ includeCode = false, initialValues, onSubmit, onSucce
               />
             </div>
           </div>
+          {!values.isTrial && (
+            <>
+              <p className="text-xs text-muted-foreground">Prices are before GST. Leave Price / month blank and the plan is not offered to caterers; leave Price / year blank and only monthly is offered.</p>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="gstPercent">GST (%)</Label>
+                <Input id="gstPercent" type="number" min={0} max={100} step="0.01" className="max-w-40" value={values.gstPercent} onChange={(e) => setField("gstPercent", e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="highlights">Benefits shown on the payment page</Label>
+                <Textarea id="highlights" rows={5} placeholder={"One benefit per line, for example:\nUnlimited orders and events\nStaff scheduling and logistics"} value={values.highlights} onChange={(e) => setField("highlights", e.target.value)} />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

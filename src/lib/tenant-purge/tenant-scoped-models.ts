@@ -110,4 +110,4 @@ export const TENANT_SCOPED_DELEGATES = [
  *   writes describing itself — is permanent regardless of data purges,
  *   matching existing precedent (`tenant.ts`'s `deactivateTenant` comment).
  */
-export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "AuditLog"] as const;
+export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog"] as const;

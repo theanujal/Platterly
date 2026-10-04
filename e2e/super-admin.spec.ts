@@ -177,3 +177,17 @@ test("a signed-out visitor, or a caterer, cannot open any Super Admin page", asy
     await expect(page).toHaveURL(/\/super$/);
   }
 });
+
+test("Billing details page: all fields present, example invoice number shown, a bad GSTIN is refused (nothing saved)", async ({ page }) => {
+  await signInAsSuperAdmin(page);
+  await page.getByRole("link", { name: "Billing details" }).click();
+  await expect(page).toHaveURL(/\/super\/billing$/);
+  for (const label of ["Legal name", "GSTIN", "GST state code", "PAN", "SAC code", "Invoice prefix", "Support email"]) await expect(page.getByLabel(label)).toBeVisible();
+  await expect(page.getByText(/FPAC-\d{2}-\d{2}-1/)).toBeVisible();
+
+  await page.getByLabel("GSTIN").fill("NOT-A-GSTIN");
+  await page.getByRole("button", { name: "Save billing details" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "GSTIN should look like" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("GSTIN")).not.toHaveValue("NOT-A-GSTIN");
+});

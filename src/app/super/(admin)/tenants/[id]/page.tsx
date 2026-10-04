@@ -4,6 +4,8 @@ import { Building2, Crown, Link2, MessageSquare, ShieldCheck, User, FileText } f
 import { requireSuperAdminOrRedirect } from "../../../_lib/guard";
 import { getTenant } from "@/modules/tenants/tenant";
 import { listPlans } from "@/modules/subscriptions/plan";
+import { listSubscriptionPayments } from "@/modules/subscriptions/billing";
+import { billingLockReason } from "@/modules/subscriptions/billing-math";
 import { Badge } from "@/components/ui/badge";
 import { InfoBox, SettingsPanel, SettingsSection, Detail, DetailGrid } from "@/app/(app)/settings/_components/settings-ui";
 import { formatPhoneDisplay } from "@/lib/phone";
@@ -39,11 +41,12 @@ const LIMITS: { key: "maxUsers" | "maxOrders" | "maxEvents" | "maxCustomers" | "
 export default async function TenantDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   await requireSuperAdminOrRedirect();
   const [{ id }, { tab }] = await Promise.all([params, searchParams]);
-  const [tenant, plans, whatsapp, email] = await Promise.all([getTenant(id), listPlans(), getChannelSettings(id, "whatsapp"), getChannelSettings(id, "email")]);
+  const [tenant, plans, whatsapp, email, payments] = await Promise.all([getTenant(id), listPlans(), getChannelSettings(id, "whatsapp"), getChannelSettings(id, "email"), listSubscriptionPayments(id)]);
   if (!tenant) notFound();
   const active = TABS.find((t) => t.key === tab)?.key ?? "overview";
   const subscription = tenant.subscriptions[0];
   const plan = subscription?.subscriptionPlan;
+  const locked = billingLockReason(subscription ?? null) !== null;
   const trial = subscription?.status === "TRIALING" ? trialBadge(subscription.trialEndsAt ?? null) : null;
   const ownerName = [tenant.ownerFirstName, tenant.ownerLastName].filter(Boolean).join(" ");
   const address = [tenant.addressLine1, tenant.addressLine2, tenant.city, tenant.state, tenant.postalCode, tenant.country].filter(Boolean).join(", ");
@@ -145,13 +148,14 @@ export default async function TenantDetailPage({ params, searchParams }: { param
 
       {active === "subscription" && (
         <SettingsPanel className="max-w-2xl" >
-          <SettingsSection icon={Crown} title="Current plan" description="Plan limits are definitions today: billing goes live in Chunk 20.">
+          <SettingsSection icon={Crown} title="Current plan" description="A caterer whose trial or paid period has ended is locked out of everything except the payment page until it pays.">
             <div className="flex flex-wrap items-center gap-2 text-lg font-semibold" data-testid="tab-subscription">
               {plan?.name ?? "No plan assigned yet."}
-              {subscription && <Badge variant={subscription.status === "TRIALING" ? "orange" : "success"}>{subscription.status === "TRIALING" ? "Trial" : "Active"}</Badge>}
+              {subscription && <Badge variant={locked ? "destructive" : subscription.status === "TRIALING" ? "orange" : "success"}>{locked ? "Locked: payment due" : subscription.status === "TRIALING" ? "Trial" : "Active"}</Badge>}
               {trial && <Badge variant={trial.variant}>{trial.label}</Badge>}
             </div>
-            {subscription?.trialEndsAt && <p className="text-sm text-muted-foreground">Trial ends {longDate(subscription.trialEndsAt)}.</p>}
+            {subscription?.trialEndsAt && <p className="text-sm text-muted-foreground">Trial {locked ? "ended" : "ends"} {longDate(subscription.trialEndsAt)}.</p>}
+            {subscription?.currentPeriodEnd && <p className="text-sm text-muted-foreground">Paid until {longDate(subscription.currentPeriodEnd)}.</p>}
             {plan && (
               <dl className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
                 {LIMITS.map((limit) => (
@@ -163,7 +167,27 @@ export default async function TenantDetailPage({ params, searchParams }: { param
               </dl>
             )}
           </SettingsSection>
-          <SettingsSection title="Assign a plan">
+          <SettingsSection title="Payments" description="What this caterer has paid for its plan, with GST.">
+            {payments.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="no-payments">No plan payments yet.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="payments-list">
+                {payments.map((payment) => (
+                  <li key={payment.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                    <span className="flex flex-col">
+                      <span className="font-medium">{payment.subscriptionPlan.name}, {payment.interval === "ANNUAL" ? "1 year" : "30 days"}</span>
+                      <span className="text-xs text-muted-foreground">{payment.invoiceNumber} · {payment.paidAt ? longDate(payment.paidAt) : ""}{payment.periodEnd ? ` · until ${longDate(payment.periodEnd)}` : ""}</span>
+                    </span>
+                    <span className="flex flex-col items-end">
+                      <span className="font-semibold">₹{Number(payment.total).toLocaleString("en-IN")}</span>
+                      <span className="text-xs text-muted-foreground">incl. GST ₹{Number(payment.gstAmount).toLocaleString("en-IN")}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </SettingsSection>
+          <SettingsSection title="Assign a plan" description="Assigning a plan by hand gives access with no payment and no end date.">
             <AssignPlan tenantId={tenant.id} plans={plans} currentPlanId={subscription?.subscriptionPlanId} />
           </SettingsSection>
         </SettingsPanel>

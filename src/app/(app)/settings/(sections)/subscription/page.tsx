@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
-import { CalendarDays, CreditCard, Download, Gift, History } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, CreditCard, Download, Gift, History, Receipt, Sparkles } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getCurrentSubscription, listSubscriptionHistory } from "@/modules/subscriptions/subscription";
+import { listSubscriptionPayments } from "@/modules/subscriptions/billing";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { prisma } from "@/lib/db";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 
 export const metadata: Metadata = {
@@ -26,14 +29,14 @@ function daysUntil(date: Date): number {
 const STATUS_LABEL: Record<string, string> = { TRIALING: "Trial Active", ACTIVE: "Active", CANCELLED: "Cancelled", EXPIRED: "Expired", PAST_DUE: "Past Due" };
 const statusLabel = (status: string) => STATUS_LABEL[status] ?? status.charAt(0) + status.slice(1).toLowerCase().replaceAll("_", " ");
 
-// Laid out like AJ's Subscription reference (2026-09-30). There is no payment
-// or transaction model yet (Chunk 20 owns real billing), so a trial shows
-// ₹0 and any other row shows its plan's price; each row's invoice is a PDF
+// Laid out like AJ's Subscription reference (2026-09-30). Real payments (Chunk 20) are listed in their own panel;
+// the history rows still show the plan's list price, and each row's invoice is a PDF
 // generated from the subscription itself (invoice/[id]/route.ts).
 export default async function SubscriptionPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["view"] }, organizationId);
-  const [current, history] = await Promise.all([getCurrentSubscription(organizationId), listSubscriptionHistory(organizationId)]);
+  const [current, history, payments] = await Promise.all([getCurrentSubscription(organizationId), listSubscriptionHistory(organizationId), listSubscriptionPayments(organizationId)]);
+  const pendingPlan = current?.pendingPlanId ? await prisma.subscriptionPlan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
 
   return (
@@ -71,14 +74,25 @@ export default async function SubscriptionPage() {
               <dl className="flex flex-col gap-2 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Payment Method:</dt>
-                  <dd className="font-medium">{trialing ? "Free Trial" : "Not set up yet"}</dd>
+                  <dd className="font-medium">{trialing ? "Free Trial" : current.billingInterval ? "Razorpay (card, UPI or net banking)" : "Set by Platterly"}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Next Billing:</dt>
-                  <dd className="font-medium">{trialing && current.trialEndsAt ? formatDate(current.trialEndsAt) : "—"}</dd>
+                  <dd className="font-medium">{trialing && current.trialEndsAt ? formatDate(current.trialEndsAt) : current.currentPeriodEnd ? formatDate(current.currentPeriodEnd) : "—"}</dd>
                 </div>
+                {pendingPlan && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Next plan:</dt>
+                    <dd className="font-medium">{pendingPlan.name} (from the next payment)</dd>
+                  </div>
+                )}
               </dl>
             </div>
+
+            <Button size="md" className="self-start" render={<Link href="/subscribe" />} nativeButton={false} data-testid="manage-plan">
+              <Sparkles data-icon="inline-start" />
+              {trialing ? "Upgrade plan" : "Renew or change plan"}
+            </Button>
 
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               {[
@@ -124,9 +138,40 @@ export default async function SubscriptionPage() {
           ))}
           {history.length === 0 && <li className="text-sm text-muted-foreground">No subscription history yet.</li>}
         </ul>
-        <InfoBox tone="neutral">
-          <p>Saved payment methods and real payment amounts aren&apos;t modeled yet — a later chunk adds live billing. Invoices are generated from the subscription record.</p>
-        </InfoBox>
+      </SettingsPanel>
+
+      <SettingsPanel>
+        <PanelHeader icon={Receipt} title="Payments" description="What you have paid for your plan, GST included" />
+        {payments.length === 0 ? (
+          <InfoBox tone="neutral">
+            <p>No plan payments yet. Once you pay for a plan, each payment and its invoice number shows here.</p>
+          </InfoBox>
+        ) : (
+          <ul className="flex flex-col gap-2" data-testid="payments-list">
+            {payments.map((payment) => (
+              <li key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
+                <span className="flex flex-col gap-0.5">
+                  <span className="font-medium">
+                    {payment.subscriptionPlan.name}, {payment.interval === "ANNUAL" ? "1 year" : "30 days"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {payment.invoiceNumber} · {payment.paidAt ? formatDate(payment.paidAt) : ""}
+                  </span>
+                </span>
+                <span className="flex items-center gap-4">
+                  <span className="flex flex-col items-end">
+                    <span className="font-semibold">{formatMoney(payment.total, "INR")}</span>
+                    <span className="text-xs text-muted-foreground">includes GST {formatMoney(payment.gstAmount, "INR")}</span>
+                  </span>
+                  <Button variant="outline" size="md" render={<a href={`/settings/subscription/payment-invoice/${payment.id}`} download />} nativeButton={false}>
+                    <Download data-icon="inline-start" />
+                    Invoice
+                  </Button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </SettingsPanel>
     </SettingsCard>
   );

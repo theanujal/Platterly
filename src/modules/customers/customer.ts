@@ -1,4 +1,5 @@
 import { RULES, validateInput } from "@/lib/validation";
+import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -18,6 +19,7 @@ export interface CustomerInput {
 }
 
 export async function createCustomer(organizationId: string, input: CustomerInput, actorUserId?: string) {
+  await assertWithinPlanLimit(organizationId, "maxCustomers");
   validateInput(input, RULES.customer);
   const customer = await prisma.customer.create({
     data: {

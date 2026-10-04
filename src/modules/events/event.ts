@@ -1,4 +1,5 @@
 import "server-only";
+import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import type { EventStatus } from "@/generated/prisma/enums";
@@ -71,6 +72,7 @@ export async function updateEventOperations(organizationId: string, id: string, 
 }
 
 export async function createEvent(organizationId: string, input: EventInput, actorUserId?: string) {
+  await assertWithinPlanLimit(organizationId, "maxEvents");
   const event = await prisma.event.create({
     data: {
       organizationId,

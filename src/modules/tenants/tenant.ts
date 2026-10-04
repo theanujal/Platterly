@@ -1,4 +1,5 @@
 import "server-only";
+import { billingLockReason } from "@/modules/subscriptions/billing-math";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import type { TenantStatus } from "@/generated/prisma/enums";
@@ -313,15 +314,22 @@ export async function getTenant(id: string) {
  * with no separate "unpublish" flag needed.
  */
 export async function getPublishedTenantBySlug(slug: string) {
-  return prisma.organization.findFirst({
+  const organization = await prisma.organization.findFirst({
     where: { slug, status: "ACTIVE", slugChangeCount: { gt: 0 } },
+    include: { subscriptions: { where: { endDate: null }, orderBy: { startDate: "desc" }, take: 1 } },
   });
+  // Chunk 20: a kitchen locked for non-payment is suspended publicly too, not just behind its login.
+  if (!organization || billingLockReason(organization.subscriptions[0] ?? null)) return null;
+  const { subscriptions, ...rest } = organization;
+  void subscriptions;
+  return rest;
 }
 
 /** Feeds `sitemap.xml` — same "published" definition as `getPublishedTenantBySlug`. */
 export async function listPublishedTenantSlugs() {
-  return prisma.organization.findMany({
+  const organizations = await prisma.organization.findMany({
     where: { status: "ACTIVE", slugChangeCount: { gt: 0 } },
-    select: { slug: true },
+    select: { slug: true, subscriptions: { where: { endDate: null }, orderBy: { startDate: "desc" }, take: 1 } },
   });
+  return organizations.filter((organization) => !billingLockReason(organization.subscriptions[0] ?? null)).map(({ slug }) => ({ slug }));
 }

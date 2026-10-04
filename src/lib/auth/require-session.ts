@@ -5,6 +5,7 @@ import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { hostKind, requestHost } from "@/lib/routing/hosts";
+import { billingLockReason } from "@/modules/subscriptions/billing-math";
 import type { statement } from "./permissions";
 
 
@@ -63,6 +64,8 @@ export async function requireOrg(organizationId: string) {
  * `auto-provision.ts`), so a membership should always already exist. This
  * only fires if that hook ever failed to run atomically with user creation.
  *
+ * Chunk 20: unless `allowLocked`, a kitchen with an ended trial / paid period is redirected to `/subscribe`.
+ *
  * Chunk 5 Group 5.2 — two additions on top of the above:
  *  - `provisionTenantForNewUser` now returns `{ organizationId: null }` for
  *    a user with a pending team invitation (see that function's own
@@ -74,7 +77,7 @@ export async function requireOrg(organizationId: string) {
  *    is the single enforcement point for "a disabled teammate is locked out
  *    of every caterer-facing route," not a check scattered per-page.
  */
-export async function requireActiveOrganization() {
+export async function requireActiveOrganization(options: { allowLocked?: boolean } = {}) {
   const session = await requireSession();
   let organizationId = session.session.activeOrganizationId;
   let membership: { organizationId: string; disabledAt: Date | null } | null = null;
@@ -115,6 +118,17 @@ export async function requireActiveOrganization() {
 
   if (membership?.disabledAt) {
     forbidden();
+  }
+
+  // Chunk 20: a kitchen whose trial or paid period has run out can sign in but reach nothing except the payment
+  // page (`/subscribe`, which passes allowLocked). This is the one place every page and Server Action goes through.
+  if (!options.allowLocked) {
+    const current = await prisma.subscription.findFirst({
+      where: { organizationId, endDate: null },
+      orderBy: { startDate: "desc" },
+      select: { status: true, trialEndsAt: true, currentPeriodEnd: true },
+    });
+    if (billingLockReason(current)) redirect("/subscribe");
   }
 
   return { session, organizationId };

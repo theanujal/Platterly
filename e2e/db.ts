@@ -51,6 +51,7 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // onDelete: Restrict.
     await pool.query('DELETE FROM quotation WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM audit_log WHERE "organizationId" = ANY($1)', [orgIds]);
+    await pool.query('DELETE FROM subscription_payment WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM subscription WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM member WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM organization WHERE id = ANY($1)', [orgIds]);
@@ -411,4 +412,43 @@ export async function getLatestInvoiceLink(organizationId: string, event: "invoi
     [organizationId, event],
   );
   return rows[0]?.url ?? null;
+}
+
+/** Chunk 20: runs a kitchen's trial out (or a paid period out), so the paywall applies. */
+export async function expireSubscription(email: string): Promise<void> {
+  await pool.query(
+    `UPDATE subscription SET "trialEndsAt" = now() - interval '1 day'
+     WHERE "endDate" IS NULL AND "organizationId" IN (SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1)`,
+    [email],
+  );
+}
+
+/** Chunk 20: what a successful payment leaves behind, without going through Razorpay. */
+export async function activatePaidPlan(email: string, planCode: string, daysFromNow: number): Promise<void> {
+  await pool.query(
+    `WITH org AS (SELECT m."organizationId" AS id FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1),
+          ended AS (UPDATE subscription SET status = 'CANCELLED', "endDate" = now() WHERE "endDate" IS NULL AND "organizationId" IN (SELECT id FROM org))
+     INSERT INTO subscription (id, "organizationId", "subscriptionPlanId", status, "startDate", "billingInterval", "currentPeriodEnd", "updatedAt")
+     SELECT 'sub_' || substr(md5(random()::text), 1, 10), org.id, p.id, 'ACTIVE', now(), 'MONTHLY', now() + ($3 || ' days')::interval, now()
+     FROM org, subscription_plan p WHERE p.code = $2`,
+    [email, planCode, String(daysFromNow)],
+  );
+}
+
+/** Chunk 20: a paid plan payment with its invoice snapshot, as confirming a Razorpay payment would leave it. */
+export async function seedPaidPlanPayment(email: string, invoiceNumber: string): Promise<string> {
+  const id = `spay_${Math.random().toString(36).slice(2, 10)}`;
+  const snapshot = {
+    seller: { legalName: "Platterly Technologies", addressLine1: "1 Test Road", addressLine2: null, city: "Bengaluru", state: "Karnataka", stateCode: "29", postalCode: "560001", country: "India", gstin: "29ABCDE1234F1Z5", pan: "ABCDE1234F", sacCode: "998314", email: "billing@platterly.in", phone: null, website: null, note: null },
+    buyer: { name: "ABC Caterer", addressLine1: null, addressLine2: null, city: "Mysuru", state: "Karnataka", postalCode: null, country: "India", gstin: "29AAAAA0000A1Z5" },
+    gst: { kind: "INTRA", lines: [{ label: "CGST (9%)", amount: 270 }, { label: "SGST (9%)", amount: 270 }] },
+    highlights: ["Unlimited orders", "Staff scheduling"],
+  };
+  await pool.query(
+    `INSERT INTO subscription_payment (id, "organizationId", "subscriptionPlanId", interval, amount, "gstPercent", "gstAmount", total, status, "razorpayOrderId", "razorpayPaymentId", "invoiceNumber", "periodStart", "periodEnd", "paidAt", "invoiceSnapshot")
+     SELECT $2, m."organizationId", p.id, 'MONTHLY', 3000, 18, 540, 3540, 'PAID', 'order_' || $2, 'pay_test1234', $3, now(), now() + interval '30 days', now(), $4::jsonb
+     FROM member m JOIN "user" u ON u.id = m."userId", subscription_plan p WHERE u.email = $1 AND p.code = 'premium'`,
+    [email, id, invoiceNumber, JSON.stringify(snapshot)],
+  );
+  return id;
 }

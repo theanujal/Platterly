@@ -8,6 +8,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "super",
   "kitchenlogin",
   "unsubscribe",
+  "subscribe",
   "audit-log",
   "reports",
   "sw.js",

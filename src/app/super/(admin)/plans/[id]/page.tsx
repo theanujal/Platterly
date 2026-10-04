@@ -27,6 +27,8 @@ export default async function PlanDetailPage({ params }: { params: Promise<{ id:
           trialDurationDays: plan.trialDurationDays?.toString() ?? "",
           priceMonthly: plan.priceMonthly?.toString() ?? "",
           priceAnnual: plan.priceAnnual?.toString() ?? "",
+          gstPercent: plan.gstPercent.toString(),
+          highlights: plan.highlights.join("\n"),
           currency: plan.currency,
           maxUsers: plan.maxUsers?.toString() ?? "",
           maxEvents: plan.maxEvents?.toString() ?? "",
