@@ -21,6 +21,8 @@ const userIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.purchaseOrder.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.supplierPayment.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.expense.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.recurringExpense.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.inventory.deleteMany({ where: { organizationId: { in: orgIds } } });

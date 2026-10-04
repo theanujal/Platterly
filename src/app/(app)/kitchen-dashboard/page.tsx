@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, PackageCheck, Truck } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listKitchenProductionBoard } from "@/modules/menu-approvals/menu-approval";
@@ -38,6 +40,9 @@ export default async function KitchenDashboardPage() {
           <h1 className="text-2xl font-semibold">Kitchen Dashboard</h1>
           <p className="text-sm text-muted-foreground">Confirmed menus in production from {windowText}, through to delivery.</p>
         </div>
+        <Button variant="outline" render={<Link href="/kitchen-dashboard/production" />} nativeButton={false}>
+          Production Planning
+        </Button>
       </div>
       <Separator />
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, TrendingUp, Wallet, ScrollText, BarChart3, Truck, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, TrendingUp, Wallet, ScrollText, BarChart3, Truck, PackageCheck, Settings as SettingsIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +42,7 @@ const SALES_AND_CATALOG_ITEMS = [
 const INVENTORY_ITEMS = [
   { label: "Inventory", href: "/inventory", icon: Boxes },
   { label: "Suppliers", href: "/suppliers", icon: Truck },
+  { label: "Purchasing", href: "/purchasing", icon: PackageCheck },
 ] as const;
 
 const ADMIN_ITEMS = [{ label: "Audit Log", href: "/audit-log", icon: ScrollText }] as const;

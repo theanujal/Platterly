@@ -55,6 +55,9 @@ export const TENANT_SCOPED_DELEGATES = [
   // Chunk 7 — inventoryTransaction has no organizationId of its own; it
   // cascades automatically (DB-level onDelete: Cascade) off its parent
   // inventory row.
+  // Chunk 18.3 — purchase orders and supplier payments are Restrict to supplier/inventory; purchaseOrderItem cascades off its order.
+  "purchaseOrder",
+  "supplierPayment",
   "inventory",
   "supplier", // inventory / expense / recurringExpense point at it with SetNull, so order does not matter
   // Chunk 10 — orderItem/mealPlanEntry have no organizationId of their own;

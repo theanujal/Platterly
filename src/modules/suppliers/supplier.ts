@@ -78,13 +78,15 @@ export async function setSupplierActive(organizationId: string, id: string, isAc
 /** Refuses while anything points at the supplier; deactivate it instead. */
 export async function deleteSupplier(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.supplier.findFirstOrThrow({ where: { id, organizationId } });
-  const [items, expenses, repeating] = await Promise.all([
+  const [items, expenses, repeating, orders, payments] = await Promise.all([
     prisma.inventory.count({ where: { supplierId: id } }),
     prisma.expense.count({ where: { supplierId: id } }),
     prisma.recurringExpense.count({ where: { supplierId: id } }),
+    prisma.purchaseOrder.count({ where: { supplierId: id } }),
+    prisma.supplierPayment.count({ where: { supplierId: id } }),
   ]);
-  if (items + expenses + repeating > 0) {
-    throw new SupplierInUseError(`"${before.name}" is used by ${items} inventory item(s) and ${expenses + repeating} expense(s). Deactivate it instead.`);
+  if (items + expenses + repeating + orders + payments > 0) {
+    throw new SupplierInUseError(`"${before.name}" is used by ${items} inventory item(s), ${expenses + repeating} expense(s) and ${orders} purchase order(s). Deactivate it instead.`);
   }
   await prisma.supplier.delete({ where: { id } });
   await audit({ organizationId, actorUserId, action: "supplier.delete", recordType: "Supplier", recordId: id, before: JSON.parse(JSON.stringify(before)) });

@@ -236,7 +236,7 @@ export function onOrderStatusChanged(organizationId: string, orderId: string, st
         organizationId,
           event: "order.sent_to_kitchen",
         title: "Order sent to kitchen",
-        message: `${orderLabel(c)} for ${c.customerName}${c.eventDate ? ` (${c.eventDate})` : ""} is ready for preparation.`,
+        message: `${orderLabel(c)} for ${c.customerName}${c.eventDate ? ` (${c.eventDate})` : ""} is ready for preparation. Review the stock it needs on the order's Inventory tab.`,
         payload: emailPayload(c),
       });
     }

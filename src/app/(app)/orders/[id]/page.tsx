@@ -27,6 +27,8 @@ import { OrderSummaryCard } from "./_components/order-summary-card";
 import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
+import { getOrderStockPlan } from "@/modules/production/production";
+import { StockPlanCard } from "./_components/stock-plan-card";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
 import { MenuStatusBanner } from "./_components/menu-status-banner";
@@ -103,6 +105,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   ]);
   const expenses = canViewExpenses ? await listOrderExpenses(organizationId, id) : [];
   const supplierOptions = canViewExpenses ? await listSupplierOptions(organizationId) : [];
+  const [stockPlan, canTakeStock] = await Promise.all([getOrderStockPlan(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId)]);
   const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
     id: p.id,
     amount: Number(p.amount),
@@ -350,6 +353,24 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           ) : undefined
         }
         inventoryTab={
+          <div className="flex flex-col gap-4">
+            {stockPlan && (
+              <StockPlanCard
+                orderId={order.id}
+                canConfirm={canTakeStock}
+                plan={{
+                  guests: stockPlan.guests,
+                  servings: stockPlan.servings,
+                  extraPercent: stockPlan.extraPercent,
+                  lines: stockPlan.lines,
+                  withoutRecipe: stockPlan.withoutRecipe,
+                  deductedAt: stockPlan.deductedAt ? stockPlan.deductedAt.toISOString() : null,
+                  taken: stockPlan.taken,
+                  canTake: stockPlan.canTake,
+                  sentToKitchen: stockPlan.status === "SENT_TO_KITCHEN",
+                }}
+              />
+            )}
           <RequiredInventoryCard
             orderId={order.id}
             event={
@@ -359,6 +380,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             }
             inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
           />
+          </div>
         }
       />
     </div>

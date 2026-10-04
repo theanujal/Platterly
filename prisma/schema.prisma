@@ -210,6 +210,8 @@ model Organization {
   addOns           AddOn[]
   inventoryItems   Inventory[]
   recipes          Recipe[]
+  purchaseOrders   PurchaseOrder[]
+  supplierPayments SupplierPayment[]
   suppliers        Supplier[]
   customers        Customer[]
   events           Event[]
@@ -935,9 +937,10 @@ model Inventory {
   supplier          Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   expiryDate        DateTime?
 
-  transactions      InventoryTransaction[]
-  requiredByEvents  EventRequiredInventory[]
-  recipeIngredients RecipeIngredient[]
+  transactions       InventoryTransaction[]
+  requiredByEvents   EventRequiredInventory[]
+  recipeIngredients  RecipeIngredient[]
+  purchaseOrderItems PurchaseOrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -964,12 +967,85 @@ model Supplier {
   inventoryItems    Inventory[]
   expenses          Expense[]
   recurringExpenses RecurringExpense[]
+  purchaseOrders    PurchaseOrder[]
+  payments          SupplierPayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, name])
   @@map("supplier")
+}
+
+// Chunk 18.3 — Purchasing. DRAFT is the purchase request; ORDERED is sent to the supplier; receiving writes real
+// STOCK_IN ledger rows. Restrict to the supplier and inventory so a used record cannot vanish; the purge list and
+// the e2e cleanup remove purchase orders first.
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id              String              @id @default(cuid())
+  organizationId  String
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  number          String
+  supplierId      String
+  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  status          PurchaseOrderStatus @default(DRAFT)
+  expectedDate    DateTime?           @db.Date
+  orderedAt       DateTime?
+  receivedAt      DateTime?
+  notes           String?
+  createdByUserId String?
+
+  items PurchaseOrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId, status])
+  @@index([supplierId])
+  @@map("purchase_order")
+}
+
+model PurchaseOrderItem {
+  id               String        @id @default(cuid())
+  purchaseOrderId  String
+  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  inventoryId      String
+  inventory        Inventory     @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  quantity         Decimal       @db.Decimal(12, 3)
+  receivedQuantity Decimal       @default(0) @db.Decimal(12, 3)
+  unitCost         Decimal       @db.Decimal(10, 2)
+
+  @@unique([purchaseOrderId, inventoryId])
+  @@index([inventoryId])
+  @@map("purchase_order_item")
+}
+
+// Money paid to a supplier. Outstanding balance = value received on purchase orders minus these payments.
+model SupplierPayment {
+  id               String         @id @default(cuid())
+  organizationId   String
+  organization     Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId       String
+  supplier         Supplier       @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  amount           Decimal        @db.Decimal(12, 2)
+  paidAt           DateTime       @db.Date
+  method           PaymentMethod?
+  note             String?
+  recordedByUserId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([supplierId])
+  @@index([organizationId])
+  @@map("supplier_payment")
 }
 
 // Chunk 18.1 — Recipe / BOM. One recipe per Food Item; an Inventory item IS the
@@ -1022,6 +1098,8 @@ model InventoryTransaction {
   // stock-quantity math for the exact rules each type applies.
   quantity    Decimal                  @db.Decimal(12, 2)
   note        String?
+  // Chunk 18.4 — set when an order's recipe-based stock take wrote this row (a plain id, no FK, so the ledger outlives the order).
+  orderId     String?
 
   // Nullable/SetNull so the ledger entry survives actor deletion, same
   // rationale as AuditLog.actorUserId.
@@ -1031,6 +1109,7 @@ model InventoryTransaction {
   createdAt DateTime @default(now())
 
   @@index([inventoryId])
+  @@index([orderId])
   @@map("inventory_transaction")
 }
 
@@ -1350,6 +1429,10 @@ model Order {
   childBelow5Count  Int?
   child5To10Count   Int?
   totalParticipants Int?
+
+  // Chunk 18.4 — set once, when the recipe-based stock for this order was confirmed and taken (at the kitchen hand-off).
+  stockDeductedAt       DateTime?
+  stockDeductedByUserId String?
 
   // Children Guests & Pricing (order-level, all order kinds) — which Menu's
   // child rates apply to childBelow5Count/child5To10Count above when

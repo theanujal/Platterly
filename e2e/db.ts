@@ -32,6 +32,9 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // avoids `event_required_inventory`'s onDelete: Restrict on inventoryId
     // ever firing against a row that's about to cascade away anyway.
     // Chunk 18 — recipe_ingredient is onDelete: Restrict to inventory; same hazard.
+    // Chunk 18.3 — purchase orders and supplier payments are onDelete: Restrict to supplier / inventory.
+    await pool.query('DELETE FROM purchase_order WHERE "organizationId" = ANY($1)', [orgIds]);
+    await pool.query('DELETE FROM supplier_payment WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM recipe WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM event WHERE "organizationId" = ANY($1)', [orgIds]);
     // Chunk 10 — same ordering hazard: `order`.customerId is onDelete:
@@ -322,6 +325,37 @@ export async function seedOrderForBilling(email: string, total: number): Promise
     [`mpe_${suffix}`, orderId, total],
   );
   return { orderId, organizationId, orderNumber };
+}
+
+/**
+ * Chunk 18.4 — an order that is already with the kitchen (Sent to Kitchen), 100 guests today, with one meal that has
+ * the named Food Item on it. Inserted directly: the order form and the approval flow have their own specs.
+ */
+export async function seedKitchenOrderWithDish(email: string, dishName: string): Promise<{ orderId: string; orderNumber: string }> {
+  const { rows: members } = await pool.query<{ organizationId: string }>(
+    'SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1',
+    [email],
+  );
+  const organizationId = members[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const { rows: dishes } = await pool.query<{ id: string }>('SELECT id FROM menu_item WHERE "organizationId" = $1 AND name = $2', [organizationId, dishName]);
+  if (!dishes[0]) throw new Error(`No food item called ${dishName}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const customerId = `cust_${suffix}`;
+  const orderId = `ord_${suffix}`;
+  const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 8999)}`;
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [customerId, organizationId, "Kitchen Customer", `+9198111${String(Math.floor(Math.random() * 100000)).padStart(5, "0")}`]);
+  await pool.query(
+    `INSERT INTO "order" (id, "organizationId", "customerId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, "updatedAt")
+     VALUES ($1, $2, $3, $4, 'SENT_TO_KITCHEN', now(), now(), 100, 100, 1000, 1000, 1000, now())`,
+    [orderId, organizationId, customerId, orderNumber],
+  );
+  await pool.query(`INSERT INTO meal_plan_entry (id, "orderId", date, "mealType") VALUES ($1, $2, now(), 'LUNCH')`, [`mpe_${suffix}`, orderId]);
+  await pool.query(
+    `INSERT INTO order_item (id, "orderId", "itemType", "menuItemId", "mealPlanEntryId", name, "unitPrice", quantity) VALUES ($1, $2, 'MENU_ITEM', $3, $4, $5, 100, 1)`,
+    [`oi_${suffix}`, orderId, dishes[0].id, `mpe_${suffix}`, dishName],
+  );
+  return { orderId, orderNumber };
 }
 
 /** A PENDING Razorpay payment, as `startRazorpayCheckout` records it before the customer pays. */

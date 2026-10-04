@@ -1,5 +1,3 @@
 # purchasing
 
-Owning chunk: Chunk 18 — Recipe-Driven Inventory, Purchasing & Kitchen Production Planning.
-
-Empty by design until that chunk lands — this folder exists to hold the §57 module boundary map from Chunk 1 Group 1.1.
+Chunk 18.3 — purchase orders to suppliers. A draft is the purchase request; Mark as ordered sends it; Receive stock books a real STOCK_IN ledger row per line ("Received on PO-0001") and the order moves to Partly received or Received. Receiving is atomic per line, so two people receiving at once cannot take more than was ordered. Cancel only before anything arrives; delete only a draft or cancelled order. `supplier-payment.ts` records money paid to a supplier; the outstanding balance is the value received on non-cancelled orders minus those payments. Maths shared with the pages is in `po-math.ts`.
