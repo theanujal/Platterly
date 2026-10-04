@@ -9,6 +9,7 @@ import { RangeFilter } from "@/app/(app)/profitability/_components/range-filter"
 import { EventsView, SalesView } from "@/components/reports/report-views";
 import { FinanceView, InventoryView, MenuView, StorefrontView } from "@/components/reports/more-report-views";
 import { ReportTabs } from "@/components/reports/report-ui";
+import { ExportMenu } from "@/components/reports/export-menu";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 
@@ -28,16 +29,23 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   const location = locationId ? await prisma.kitchen.findFirst({ where: { id: locationId, organizationId }, select: { name: true } }) : null;
   const query = await searchParams;
-  const [canInventory, canFinance, canSeeVisitors, canOpenOrders] = await Promise.all([
+  const [canInventory, canFinance, canSeeVisitors, canOpenOrders, canExport] = await Promise.all([
     hasPermission({ inventory: ["view"] }, organizationId),
     hasPermission({ expenses: ["view"] }, organizationId),
     hasPermission({ tenant: ["view"] }, organizationId),
     hasPermission({ orders: ["edit"] }, organizationId),
+    hasPermission({ reports: ["export"] }, organizationId),
   ]);
   const allowed = ["sales", "events", "menu", ...(canInventory ? ["inventory"] : []), ...(canFinance ? ["finance"] : []), "storefront"];
   const tab = allowed.includes(query.tab ?? "") ? (query.tab as string) : "sales";
   const range = resolveRange(query);
   const scope = { organizationId, locationId };
+
+  const keep: Record<string, string> = {};
+  if (query.from || query.to) {
+    if (query.from) keep.from = query.from;
+    if (query.to) keep.to = query.to;
+  } else if (query.range) keep.range = query.range;
 
   const [sales, events, menu, inventory, finance, storefront] = await Promise.all([
     tab === "sales" ? loadSalesReport(scope, range) : null,
@@ -48,11 +56,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     tab === "storefront" ? loadStorefrontReport(scope, range, { recent: canSeeVisitors }) : null,
   ]);
 
-  const keep: Record<string, string> = {};
-  if (query.from || query.to) {
-    if (query.from) keep.from = query.from;
-    if (query.to) keep.to = query.to;
-  } else if (query.range) keep.range = query.range;
 
   const subject = { sales: "Orders placed", events: "Events dated", menu: "Orders placed", inventory: "Movements and purchases", finance: "Revenue and expenses", storefront: "Visits" }[tab];
   const periodText =
@@ -63,9 +66,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Reports" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Reports</h1>
-        <p className="text-sm text-muted-foreground">How your catering business is doing: sales, events, menu, stock, finance and storefront visitors, for any period.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Reports</h1>
+          <p className="text-sm text-muted-foreground">How your catering business is doing: sales, events, menu, stock, finance and storefront visitors, for any period.</p>
+        </div>
+        {canExport && <ExportMenu href="/reports/export" params={{ tab, ...keep }} />}
       </div>
       <Separator />
       <RangeFilter preset={range.preset} from={range.from ? toIsoDate(range.from) : ""} to={range.to ? toIsoDate(range.to) : ""} basePath="/reports" extra={{ tab }} />

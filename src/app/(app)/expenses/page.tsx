@@ -3,6 +3,7 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { listExpenses, listOrderOptions } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
+import { ExportMenu } from "@/components/reports/export-menu";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { ExpensesBrowser } from "./_components/expenses-browser";
@@ -17,21 +18,25 @@ export default async function ExpensesPage() {
   await requirePermission({ expenses: ["view"] }, organizationId);
   // No background scheduler yet: book whatever recurring expenses have fallen due before listing anything.
   await generateDueRecurringExpenses(organizationId);
-  const [expenses, orders, supplierOptions, canCreate, canEdit, canDelete] = await Promise.all([
+  const [expenses, orders, supplierOptions, canCreate, canEdit, canDelete, canExport] = await Promise.all([
     listExpenses(organizationId),
     listOrderOptions(organizationId),
     listSupplierOptions(organizationId),
     hasPermission({ expenses: ["create"] }, organizationId),
     hasPermission({ expenses: ["edit"] }, organizationId),
     hasPermission({ expenses: ["delete"] }, organizationId),
+    hasPermission({ reports: ["export"] }, organizationId),
   ]);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Expenses" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Expenses</h1>
-        <p className="text-sm text-muted-foreground">Everything the business spends: costs of an order&apos;s event, and company expenses such as rent and salaries that belong to no order.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Expenses</h1>
+          <p className="text-sm text-muted-foreground">Everything the business spends: costs of an order&apos;s event, and company expenses such as rent and salaries that belong to no order.</p>
+        </div>
+        {canExport && <ExportMenu href="/expenses/export" />}
       </div>
       <Separator />
       <ExpensesBrowser

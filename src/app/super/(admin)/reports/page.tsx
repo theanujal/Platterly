@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { requireSuperAdmin } from "@/lib/auth/require-session";
 import { loadEventsReport, loadSalesReport, loadSignupsByMonth } from "@/modules/reports/reports";
 import { loadFinanceReport, loadInventoryReport, loadStorefrontReport } from "@/modules/reports/more-reports";
+import { loadSaasReport } from "@/modules/reports/saas-report";
 import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
 import { inr } from "@/modules/invoices/invoice-format";
 import { RangeFilter } from "@/app/(app)/profitability/_components/range-filter";
 import { EventsView, SalesView } from "@/components/reports/report-views";
-import { FinanceView, InventoryView, StorefrontView } from "@/components/reports/more-report-views";
+import { FinanceView, InventoryView, StorefrontView, SubscriptionsView } from "@/components/reports/more-report-views";
 import { BarList, ReportSection, ReportTabs, ReportTile } from "@/components/reports/report-ui";
+import { ExportMenu } from "@/components/reports/export-menu";
 import { PageHeader } from "../_components/page-header";
 
 export const metadata: Metadata = {
@@ -22,17 +24,18 @@ type Query = { tab?: string; range?: string; from?: string; to?: string };
 export default async function PlatformReportsPage({ searchParams }: { searchParams: Promise<Query> }) {
   await requireSuperAdmin();
   const query = await searchParams;
-  const tab = ["events", "finance", "inventory", "storefront"].includes(query.tab ?? "") ? (query.tab as string) : "sales";
+  const tab = ["events", "finance", "inventory", "storefront", "subscriptions"].includes(query.tab ?? "") ? (query.tab as string) : "sales";
   const range = resolveRange(query);
   const scope = { all: true } as const;
 
-  const [sales, events, signups, finance, inventory, storefront] = await Promise.all([
+  const [sales, events, signups, finance, inventory, storefront, saas] = await Promise.all([
     tab === "sales" ? loadSalesReport(scope, range) : null,
     tab === "events" ? loadEventsReport(scope, range) : null,
     tab === "sales" ? loadSignupsByMonth(range) : null,
     tab === "finance" ? loadFinanceReport(scope, range) : null,
     tab === "inventory" ? loadInventoryReport(scope, range) : null,
     tab === "storefront" ? loadStorefrontReport(scope, range) : null,
+    tab === "subscriptions" ? loadSaasReport(range) : null,
   ]);
 
   const keep: Record<string, string> = {};
@@ -43,7 +46,7 @@ export default async function PlatformReportsPage({ searchParams }: { searchPara
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Reports" }]} title="Reports" description="Sales, events, finance, inventory and storefront visitors across every caterer on the platform." />
+      <PageHeader crumbs={[{ label: "Reports" }]} title="Reports" description="Sales, events, finance, inventory, storefront visitors and subscription revenue across every caterer on the platform." action={<ExportMenu href="/super/reports/export" params={{ tab, ...keep }} />} />
       <RangeFilter preset={range.preset} from={range.from ? toIsoDate(range.from) : ""} to={range.to ? toIsoDate(range.to) : ""} basePath="/super/reports" extra={{ tab }} />
       <ReportTabs
         tabs={[
@@ -52,6 +55,7 @@ export default async function PlatformReportsPage({ searchParams }: { searchPara
           { id: "finance", label: "Finance" },
           { id: "inventory", label: "Inventory" },
           { id: "storefront", label: "Storefront" },
+          { id: "subscriptions", label: "Subscriptions" },
         ]}
         active={tab}
         basePath="/super/reports"
@@ -103,6 +107,7 @@ export default async function PlatformReportsPage({ searchParams }: { searchPara
       {events && <EventsView events={events} orderLinks={false} showKitchen />}
       {finance && <FinanceView finance={finance.finance} receivables={finance.receivables} payables={finance.payables} showKitchen />}
       {inventory && <InventoryView stock={inventory.stock} movements={inventory.movements} purchases={inventory.purchases} />}
+      {saas && <SubscriptionsView saas={saas} periodChosen={Boolean(range.from)} />}
       {storefront && <StorefrontView storefront={storefront.storefront} channels={storefront.channels} recent={null} />}
     </>
   );

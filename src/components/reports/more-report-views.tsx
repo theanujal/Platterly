@@ -5,6 +5,7 @@ import type { MovementReport, PurchaseReport, StockReport } from "@/modules/repo
 import type { FinanceReport, PayablesReport, ReceivablesReport } from "@/modules/reports/finance-math";
 import type { ChannelRow, StorefrontReport } from "@/modules/reports/storefront-math";
 import type { RecentVisitor } from "@/modules/reports/more-reports";
+import type { SaasReport } from "@/modules/reports/saas-math";
 import { BarList, ReportSection, ReportTile } from "./report-ui";
 
 /** The Menu, Inventory, Finance and Storefront views (Chunk 22), shared by a kitchen's Reports page and the Super Admin platform report. */
@@ -319,6 +320,52 @@ export function StorefrontView({ storefront, channels, recent, byLocation = fals
           )}
         </ReportSection>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------- Subscriptions (Super Admin)
+
+/** Platform-wide: what kitchens pay Platterly for their plans (Chunk 24.2). Amounts are before GST. */
+export function SubscriptionsView({ saas, periodChosen }: { saas: SaasReport; periodChosen: boolean }) {
+  const c = saas.churn;
+  return (
+    <div className="flex flex-col gap-4" data-testid="subscriptions-report">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+        <ReportTile label="MRR (monthly recurring revenue)" value={inr(saas.mrr)} hint="What paying kitchens pay per month, today, before GST" testId="saas-mrr" />
+        <ReportTile label="ARR (annual run rate)" value={inr(saas.arr)} hint="MRR x 12" testId="saas-arr" />
+        <ReportTile label="Paying kitchens" value={whole(saas.payingKitchens)} hint={saas.averagePerKitchen === null ? undefined : `${inr(saas.averagePerKitchen)} a month each, on average`} testId="saas-paying" />
+        <ReportTile label="Locked for non-payment" value={whole(saas.lapsedNow)} hint="Paid before, not covered today" testId="saas-lapsed" />
+        <ReportTile label="Revenue collected" value={inr(saas.revenue)} hint={`${whole(saas.payments)} ${saas.payments === 1 ? "payment" : "payments"} in the period, before GST`} testId="saas-revenue" />
+        <ReportTile label="GST collected" value={inr(saas.gstCollected)} hint="Passed on, not income" testId="saas-gst" />
+        <ReportTile label="New paying kitchens" value={whole(saas.newPayingKitchens)} hint="First payment in the period" testId="saas-new" />
+        <ReportTile label="Failed payments" value={whole(saas.failedPayments)} hint="Attempts that did not go through" testId="saas-failed" />
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <ReportTile label="Trials started" value={whole(saas.trials.started)} hint="In the period" testId="saas-trials" />
+        <ReportTile label="Trial conversion" value={percent(saas.trials.conversionPercent)} hint={`${whole(saas.trials.converted)} of ${whole(saas.trials.started)} have paid since`} testId="saas-conversion" />
+        <ReportTile label="Trials ended unpaid" value={whole(saas.trials.endedUnpaid)} hint={`${whole(saas.trials.runningNow)} still running now`} testId="saas-unpaid" />
+        <ReportTile label="Churn" value={c.logoChurnPercent === null ? "—" : percent(c.logoChurnPercent)} hint={c.startKitchens === null ? (periodChosen ? "Choose a period with a first day" : "Choose a period, such as This month") : `${whole(c.churned ?? 0)} of ${whole(c.startKitchens)} kitchens; ${percent(c.revenueChurnPercent)} of MRR (${inr(c.churnedMrr ?? 0)})`} testId="saas-churn" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ReportSection title="MRR by plan" description="Who pays what per month today.">
+          <BarList rows={saas.mrrByPlan.map((p) => ({ label: p.planName, value: p.mrr, text: `${inr(p.mrr)} (${p.sharePercent}%)`, sub: `${whole(p.kitchens)} ${p.kitchens === 1 ? "kitchen" : "kitchens"}` }))} emptyText="No kitchen is paying yet." />
+        </ReportSection>
+        <ReportSection title="Revenue by plan" description="Collected in the period, before GST.">
+          <BarList rows={saas.revenueByPlan.map((p) => ({ label: p.planName, value: p.revenue, text: `${inr(p.revenue)} (${p.sharePercent}%)`, sub: `${whole(p.payments)} ${p.payments === 1 ? "payment" : "payments"}` }))} />
+        </ReportSection>
+      </div>
+      <ReportSection title="Revenue by month" description="By the day each payment was made (India time), before GST.">
+        <BarList rows={saas.revenueByMonth.map((m) => ({ label: m.label, value: m.revenue, text: inr(m.revenue), sub: `${whole(m.payments)} ${m.payments === 1 ? "payment" : "payments"}` }))} />
+      </ReportSection>
+      <ReportSection title="How these are worked out">
+        <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+          <li>A kitchen is paying on a day when one of its paid plan payments covers that day. A yearly payment counts one twelfth a month.</li>
+          <li>Amounts are before GST: GST is collected for the government, not earned. Only paid payments count.</li>
+          <li>Trial conversion: of the kitchens whose trial started in the period, the share that has paid since.</li>
+          <li>Churn: of the kitchens paying on the first day of the period, the share no longer paying on its last day (never later than today).</li>
+        </ul>
+      </ReportSection>
     </div>
   );
 }

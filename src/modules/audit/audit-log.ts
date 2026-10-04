@@ -93,3 +93,27 @@ export async function listAuditLog(organizationId: string, filter: AuditFilter =
     actors: actorRows.filter((a) => a.actorUserId).map((a) => ({ id: a.actorUserId as string, name: a.actorUser?.name ?? "Former team member" })),
   };
 }
+
+/** Most rows one export holds, so a kitchen with years of history cannot build an unbounded file. */
+export const AUDIT_EXPORT_LIMIT = 10_000;
+
+/** The same filters as the page, newest first, without paging (capped at AUDIT_EXPORT_LIMIT). */
+export async function exportAuditLog(organizationId: string, filter: AuditFilter = {}): Promise<AuditEntry[]> {
+  const rows = await prisma.auditLog.findMany({
+    where: where(organizationId, filter),
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: AUDIT_EXPORT_LIMIT,
+    include: { actorUser: { select: { name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    createdAt: r.createdAt,
+    who: describeActor(r.actorUser?.name, r.action),
+    summary: describeAction(r.action),
+    action: r.action,
+    recordType: r.recordType,
+    recordId: r.recordId,
+    href: recordHref(r.recordType, r.recordId),
+    changes: diffAudit(r.before, r.after),
+  }));
+}

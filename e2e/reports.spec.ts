@@ -85,6 +85,23 @@ test("Super Admin reads the platform-wide reports", async ({ page }: { page: Pag
   await page.getByRole("tab", { name: "Storefront" }).click();
   await expect(page.getByTestId("storefront-report")).toBeVisible();
   await expect(page.getByTestId("sf-recent")).toHaveCount(0);
+
+  // Chunk 24.2: what kitchens pay Platterly (MRR, ARR, churn, trials), and the platform reports as a file.
+  await page.getByRole("tab", { name: "Subscriptions" }).click();
+  await expect(page).toHaveURL(/tab=subscriptions/);
+  const saas = page.getByTestId("subscriptions-report");
+  await expect(saas).toBeVisible();
+  for (const id of ["saas-mrr", "saas-arr", "saas-paying", "saas-revenue", "saas-gst", "saas-conversion", "saas-churn"]) await expect(page.getByTestId(id)).toBeVisible();
+  await expect(page.getByTestId("saas-churn")).toContainText("Choose a period");
+  await page.goto(`${OPS_URL}/super/reports?tab=subscriptions&range=this-month`);
+  await expect(page.getByTestId("saas-churn")).not.toContainText("Choose a period");
+  const file = await page.request.get(`${OPS_URL}/super/reports/export?tab=subscriptions&format=csv`);
+  expect(file.status()).toBe(200);
+  const text = await file.text();
+  expect(text).toContain("Subscriptions summary");
+  expect(text).toContain("MRR by plan");
+  const sales = await page.request.get(`${OPS_URL}/super/reports/export?tab=sales&format=xlsx`);
+  expect(sales.headers()["content-type"]).toContain("spreadsheetml");
 });
 
 test("a signed-out visitor is sent to sign in", async ({ page }) => {

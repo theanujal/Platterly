@@ -5,6 +5,7 @@ import { listProfitability } from "@/modules/expenses/expense";
 import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
 import { RangeFilter } from "./_components/range-filter";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
+import { ExportMenu } from "@/components/reports/export-menu";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { TableCell } from "@/components/ui/table";
@@ -23,7 +24,8 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ expenses: ["view"] }, organizationId);
   const range = resolveRange(await searchParams);
-  const [rows, canOpenOrders] = await Promise.all([listProfitability(organizationId, range), hasPermission({ orders: ["edit"] }, organizationId)]);
+  const query = await searchParams;
+  const [rows, canOpenOrders, canExport] = await Promise.all([listProfitability(organizationId, range), hasPermission({ orders: ["edit"] }, organizationId), hasPermission({ reports: ["export"] }, organizationId)]);
 
   const revenue = rows.reduce((s, r) => s + r.revenue, 0);
   const cost = rows.reduce((s, r) => s + r.totalCost, 0);
@@ -113,9 +115,12 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Profitability" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Profitability</h1>
-        <p className="text-sm text-muted-foreground">Profit on every order: the order total minus the expenses recorded on its Expenses tab. Cancelled orders are left out.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Profitability</h1>
+          <p className="text-sm text-muted-foreground">Profit on every order: the order total minus the expenses recorded on its Expenses tab. Cancelled orders are left out.</p>
+        </div>
+        {canExport && <ExportMenu href="/profitability/export" params={{ range: query.range, from: query.from, to: query.to }} />}
       </div>
       <Separator />
       <div className="flex flex-col gap-3">
