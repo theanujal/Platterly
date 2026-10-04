@@ -28,12 +28,14 @@ const FILTERS: { value: Scope; label: string }[] = [
 export function ExpensesBrowser({
   rows,
   orderOptions,
+  suppliers,
   canCreate,
   canEdit,
   canDelete,
 }: {
   rows: Row[];
   orderOptions: { id: string; label: string }[];
+  suppliers: { id: string; name: string }[];
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -190,7 +192,7 @@ export function ExpensesBrowser({
         </div>
       )}
 
-      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={dialog.mode === "edit" ? dialog.row.orderId : null} orderOptions={orderOptions} canStopRepeating={canDelete} state={dialog} onClose={() => setDialog(null)} onDone={setNotice} />}
+      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={dialog.mode === "edit" ? dialog.row.orderId : null} orderOptions={orderOptions} suppliers={suppliers} canStopRepeating={canDelete} state={dialog} onClose={() => setDialog(null)} onDone={setNotice} />}
 
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>

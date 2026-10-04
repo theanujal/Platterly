@@ -10,15 +10,17 @@ interface EditInventoryDialogProps {
   onOpenChange: (open: boolean) => void;
   itemId: string;
   initialValues: InventoryFormValues;
+  suppliers: { id: string; name: string }[];
 }
 
-export function EditInventoryDialog({ open, onOpenChange, itemId, initialValues }: EditInventoryDialogProps) {
+export function EditInventoryDialog({ open, onOpenChange, itemId, initialValues, suppliers }: EditInventoryDialogProps) {
   const router = useRouter();
 
   return (
     <FormDrawer open={open} onOpenChange={onOpenChange} title="Edit Inventory Item">
       <InventoryForm
         initialValues={initialValues}
+        suppliers={suppliers}
         submitLabel="Save changes"
         onSubmit={(formData) => updateInventoryItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}
         onCancel={() => onOpenChange(false)}

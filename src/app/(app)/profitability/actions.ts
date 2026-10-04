@@ -18,6 +18,7 @@ export interface ExpenseFormInput {
   spentAt: string;
   paymentMethod: string;
   supplierName: string;
+  supplierId?: string;
   notes: string;
 }
 
@@ -30,6 +31,7 @@ function toInput(form: ExpenseFormInput): ExpenseInput {
     spentAt: new Date(form.spentAt),
     paymentMethod: METHODS.includes(form.paymentMethod as PaymentMethod) ? (form.paymentMethod as PaymentMethod) : null,
     supplierName: form.supplierName,
+    supplierId: form.supplierId || null,
     notes: form.notes,
   };
 }
@@ -104,6 +106,7 @@ export interface RecurringFormInput {
   endDate: string;
   paymentMethod: string;
   supplierName: string;
+  supplierId?: string;
   notes: string;
 }
 
@@ -116,6 +119,7 @@ function toRecurringInput(form: RecurringFormInput): RecurringExpenseInput {
     endDate: form.endDate ? new Date(form.endDate) : null,
     paymentMethod: METHODS.includes(form.paymentMethod as PaymentMethod) ? (form.paymentMethod as PaymentMethod) : null,
     supplierName: form.supplierName,
+    supplierId: form.supplierId || null,
     notes: form.notes,
   };
 }

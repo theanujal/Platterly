@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
 import { InventoryCardActions } from "./_components/inventory-card-actions";
 import type { InventoryFormValues } from "./_components/inventory-form";
@@ -37,7 +38,7 @@ function formatDate(date: Date) {
 export default async function InventoryPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
-  const items = await listInventoryItems(organizationId);
+  const [items, supplierOptions] = await Promise.all([listInventoryItems(organizationId), listSupplierOptions(organizationId)]);
 
   const entries: CatalogEntry[] = items.map((item) => {
     const stock = Number(item.stockCount);
@@ -52,15 +53,14 @@ export default async function InventoryPage() {
       lowStockThreshold: item.lowStockThreshold?.toString() ?? "",
       costPerUnit: item.costPerUnit?.toString() ?? "",
       storageLocation: item.storageLocation ?? "",
-      supplierName: item.supplierName ?? "",
-      supplierContact: item.supplierContact ?? "",
+      supplierId: item.supplierId ?? "",
       expiryDate: toDateInputValue(item.expiryDate),
       imageUrl: item.image,
     };
 
     return {
       id: item.id,
-      searchText: `${item.name} ${item.category} ${item.storageLocation ?? ""} ${item.supplierName ?? ""}`,
+      searchText: `${item.name} ${item.category} ${item.storageLocation ?? ""} ${item.supplier?.name ?? ""}`,
       filterValues: { category: item.category, status: status.label },
       sortValues: { name: item.name, stock, newest: item.createdAt.getTime() },
       card: (
@@ -73,7 +73,7 @@ export default async function InventoryPage() {
                 <Badge variant="outline" className="h-10 border-transparent bg-background px-3.5 text-sm text-foreground shadow-sm">
                   {item.category}
                 </Badge>
-                <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} />
+                <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} />
               </>
             }
           />
@@ -108,7 +108,7 @@ export default async function InventoryPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} variant="plain" />
+              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -145,13 +145,13 @@ export default async function InventoryPage() {
           <h1 className="text-2xl font-semibold">Inventory</h1>
           <p className="text-sm text-muted-foreground">Track stock on hand, low-stock alerts, and supplier contacts.</p>
         </div>
-        <AddInventoryDialog />
+        <AddInventoryDialog suppliers={supplierOptions} />
       </div>
       <Separator />
 
       <CatalogBrowser
         entries={entries}
-        addTile={<AddInventoryDialog variant="tile" />}
+        addTile={<AddInventoryDialog variant="tile" suppliers={supplierOptions} />}
         columns={["Item", "Category", "Stock", "Cost / Unit", "Storage", "Expiry", "Status", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}

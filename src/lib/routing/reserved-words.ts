@@ -29,6 +29,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "menu-catalog",
   "addons",
   "inventory",
+  "suppliers",
   "customers",
   "quotations",
   "quote",

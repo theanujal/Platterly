@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { saveRecipe, deleteRecipe } from "@/modules/recipes/recipe";
 import type {
   FoodType,
   MenuItemOrigin,
@@ -128,6 +129,36 @@ export async function setMenuItemActiveAction(id: string, isActive: boolean): Pr
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
     await setMenuItemActive(organizationId, id, isActive, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  return { ok: true };
+}
+
+export interface RecipePayload {
+  yieldServings: number;
+  notes?: string;
+  ingredients: { inventoryId: string; quantity: number }[];
+}
+
+export async function saveRecipeAction(menuItemId: string, payload: RecipePayload): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await saveRecipe(organizationId, menuItemId, payload, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  return { ok: true };
+}
+
+export async function deleteRecipeAction(menuItemId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await deleteRecipe(organizationId, menuItemId, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

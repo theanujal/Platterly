@@ -13,8 +13,8 @@ export interface InventoryItemInput {
   lowStockThreshold?: number;
   costPerUnit?: number;
   storageLocation?: string;
-  supplierName?: string;
-  supplierContact?: string;
+  /** A pick from the supplier list. */
+  supplierId?: string | null;
   expiryDate?: Date;
 }
 
@@ -25,6 +25,10 @@ export interface StockTransactionInput {
   note?: string;
 }
 
+async function assertSupplier(organizationId: string, supplierId?: string | null) {
+  if (supplierId) await prisma.supplier.findFirstOrThrow({ where: { id: supplierId, organizationId }, select: { id: true } });
+}
+
 /** Opening stock is created here as a real STOCK_IN ledger entry, not a bare column write — the ledger stays the one source of truth for every stock change. */
 export async function createInventoryItem(
   organizationId: string,
@@ -33,6 +37,7 @@ export async function createInventoryItem(
   openingStock?: number,
 ) {
   validateInput(input, RULES.inventoryItem);
+  await assertSupplier(organizationId, input.supplierId);
   checkMoney(openingStock, "opening stock", { max: 1_000_000_000 });
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.inventory.create({
@@ -46,8 +51,7 @@ export async function createInventoryItem(
         lowStockThreshold: input.lowStockThreshold,
         costPerUnit: input.costPerUnit,
         storageLocation: input.storageLocation,
-        supplierName: input.supplierName,
-        supplierContact: input.supplierContact,
+        supplierId: input.supplierId ?? null,
         expiryDate: input.expiryDate,
       },
     });
@@ -88,6 +92,7 @@ export async function updateInventoryItem(
   actorUserId: string,
 ) {
   validateInput(input, RULES.inventoryItem);
+  await assertSupplier(organizationId, input.supplierId);
   const before = await prisma.inventory.findFirstOrThrow({ where: { id, organizationId } });
 
   const after = await prisma.inventory.update({
@@ -101,8 +106,7 @@ export async function updateInventoryItem(
       lowStockThreshold: input.lowStockThreshold,
       costPerUnit: input.costPerUnit,
       storageLocation: input.storageLocation,
-      supplierName: input.supplierName,
-      supplierContact: input.supplierContact,
+      supplierId: input.supplierId ?? null,
       expiryDate: input.expiryDate,
     },
   });
@@ -137,6 +141,11 @@ export async function deleteInventoryItem(organizationId: string, id: string, ac
     throw new InventoryInUseError(`"${before.name}" is required by ${eventCount} Event(s) and can't be deleted.`);
   }
 
+  const recipeCount = await prisma.recipeIngredient.count({ where: { inventoryId: id } });
+  if (recipeCount > 0) {
+    throw new InventoryInUseError(`"${before.name}" is an ingredient in ${recipeCount} recipe(s) and can't be deleted.`);
+  }
+
   await prisma.inventory.delete({ where: { id } });
 
   await audit({
@@ -150,7 +159,7 @@ export async function deleteInventoryItem(organizationId: string, id: string, ac
 }
 
 export async function listInventoryItems(organizationId: string) {
-  return prisma.inventory.findMany({ where: { organizationId }, orderBy: { name: "asc" } });
+  return prisma.inventory.findMany({ where: { organizationId }, orderBy: { name: "asc" }, include: { supplier: { select: { name: true } } } });
 }
 
 export async function getInventoryItem(organizationId: string, id: string) {

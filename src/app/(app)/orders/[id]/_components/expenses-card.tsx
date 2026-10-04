@@ -34,6 +34,7 @@ export function ExpensesCard({
   orderId,
   profitability,
   expenses,
+  suppliers,
   canCreate,
   canEdit,
   canDelete,
@@ -41,6 +42,7 @@ export function ExpensesCard({
   orderId: string;
   profitability: Profitability;
   expenses: ExpenseRowData[];
+  suppliers: { id: string; name: string }[];
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -155,7 +157,7 @@ export function ExpensesCard({
         </div>
       )}
 
-      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={orderId} state={dialog} onClose={() => setDialog(null)} onDone={(text) => setNotice(text)} />}
+      {dialog && <ExpenseDialog key={dialog.mode === "edit" ? dialog.row.id : "add"} orderId={orderId} suppliers={suppliers} state={dialog} onClose={() => setDialog(null)} onDone={(text) => setNotice(text)} />}
 
       <AlertDialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <AlertDialogContent>

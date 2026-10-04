@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listExpenses, listOrderOptions } from "@/modules/expenses/expense";
+import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -16,9 +17,10 @@ export default async function ExpensesPage() {
   await requirePermission({ expenses: ["view"] }, organizationId);
   // No background scheduler yet: book whatever recurring expenses have fallen due before listing anything.
   await generateDueRecurringExpenses(organizationId);
-  const [expenses, orders, canCreate, canEdit, canDelete] = await Promise.all([
+  const [expenses, orders, supplierOptions, canCreate, canEdit, canDelete] = await Promise.all([
     listExpenses(organizationId),
     listOrderOptions(organizationId),
+    listSupplierOptions(organizationId),
     hasPermission({ expenses: ["create"] }, organizationId),
     hasPermission({ expenses: ["edit"] }, organizationId),
     hasPermission({ expenses: ["delete"] }, organizationId),
@@ -42,12 +44,14 @@ export default async function ExpensesPage() {
           spentAt: e.spentAt.toISOString(),
           paymentMethod: e.paymentMethod,
           supplierName: e.supplierName,
+          supplierId: e.supplierId,
           notes: e.notes,
           recurringExpenseId: e.recurringExpenseId,
           recurring: e.recurring ? { frequency: e.recurring.frequency, isActive: e.recurring.isActive, startDate: e.recurring.startDate.toISOString(), endDate: e.recurring.endDate ? e.recurring.endDate.toISOString() : null, nextDue: e.recurring.nextDue ? e.recurring.nextDue.toISOString() : null } : null,
           attachments: e.attachments,
         }))}
         orderOptions={orders.map((o) => ({ id: o.id, label: o.label }))}
+        suppliers={supplierOptions}
         canCreate={canCreate}
         canEdit={canEdit}
         canDelete={canDelete}

@@ -5,6 +5,8 @@ import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { listMenuItems } from "@/modules/menus/item";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
+import { listInventoryItems } from "@/modules/inventory/inventory";
+import { listRecipes } from "@/modules/recipes/recipe";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
@@ -22,11 +24,20 @@ export const metadata: Metadata = {
 
 export default async function ItemsPage() {
   const { organizationId } = await requireActiveOrganization();
-  const [items, categories, menus] = await Promise.all([
+  const [items, categories, menus, inventory, recipes] = await Promise.all([
     listMenuItems(organizationId),
     listCategories(organizationId),
     listMenus(organizationId),
+    listInventoryItems(organizationId),
+    listRecipes(organizationId),
   ]);
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
+  const recipeByItem = new Map(
+    recipes.map((r) => [
+      r.menuItemId,
+      { yieldServings: r.yieldServings.toString(), notes: r.notes ?? "", ingredients: r.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })) },
+    ]),
+  );
 
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name }));
   const menuOptions = menus.map((m) => ({ id: m.id, name: m.name }));
@@ -72,7 +83,7 @@ export default async function ItemsPage() {
             overlay={
               <>
                 <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} onImage />
-                <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} />
+                <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} />
               </>
             }
           />
@@ -88,6 +99,7 @@ export default async function ItemsPage() {
                 <Badge variant="outline">
                   Categories: {item.categories.length}
                 </Badge>
+                {recipeByItem.has(item.id) && <Badge variant="info">Recipe</Badge>}
               </>
             }
             footer={<span className="text-base font-semibold">{formatRupees(Number(item.price))}</span>}
@@ -105,6 +117,7 @@ export default async function ItemsPage() {
             <div className="flex flex-wrap items-center gap-1.5">
               <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} />
               <ItemHighlightBadges highlights={{ popular: item.isPopular, chefsSpecial: item.isChefsSpecial, liveCounter: item.isLiveCounter }} className="contents" />
+              {recipeByItem.has(item.id) && <Badge variant="info">Recipe</Badge>}
             </div>
           </TableCell>
           <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(Number(item.price))}</TableCell>
@@ -113,7 +126,7 @@ export default async function ItemsPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} variant="plain" />
+              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} variant="plain" />
             </div>
           </TableCell>
         </>

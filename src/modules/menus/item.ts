@@ -2,6 +2,7 @@ import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { copyRecipe } from "@/modules/recipes/recipe";
 import type {
   FoodType,
   MenuItemOrigin,
@@ -199,7 +200,7 @@ export async function getMenuItem(organizationId: string, id: string) {
 export async function duplicateMenuItem(organizationId: string, id: string, actorUserId: string) {
   const source = await getMenuItem(organizationId, id);
   if (!source) throw new Error("Food item not found.");
-  return createMenuItem(
+  const copy = await createMenuItem(
     organizationId,
     {
       name: `${source.name} (Copy)`,
@@ -226,6 +227,8 @@ export async function duplicateMenuItem(organizationId: string, id: string, acto
     },
     actorUserId,
   );
+  if (await prisma.recipe.count({ where: { menuItemId: id } })) await copyRecipe(organizationId, id, copy.id, actorUserId);
+  return copy;
 }
 
 export async function setMenuItemActive(organizationId: string, id: string, isActive: boolean, actorUserId: string) {

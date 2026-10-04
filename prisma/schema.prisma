@@ -209,6 +209,8 @@ model Organization {
   eventTypes       EventType[]
   addOns           AddOn[]
   inventoryItems   Inventory[]
+  recipes          Recipe[]
+  suppliers        Supplier[]
   customers        Customer[]
   events           Event[]
   orders           Order[]
@@ -682,10 +684,8 @@ model MenuItem {
   // curated fields above. Comma-separated, parsed at the form boundary.
   keyIngredients    String?
 
-  // Chunk 18 (Phase 2) attaches Recipe/BOM via this FK — left nullable now
-  // per the roadmap's explicit note, so Phase 2 doesn't need a migration to
-  // add it, without pulling Recipe/BOM logic itself forward.
-  recipeId String?
+  // Chunk 18.1 — optional recipe (ingredient list) for this dish.
+  recipe Recipe?
 
   categories         MenuItemCategory[]
   menus              MenuMenuItem[]
@@ -931,18 +931,82 @@ model Inventory {
   lowStockThreshold Decimal?     @db.Decimal(12, 2)
   costPerUnit       Decimal?     @db.Decimal(10, 2)
   storageLocation   String?
-  supplierName      String?
-  supplierContact   String?
+  supplierId        String?
+  supplier          Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   expiryDate        DateTime?
 
-  transactions     InventoryTransaction[]
-  requiredByEvents EventRequiredInventory[]
+  transactions      InventoryTransaction[]
+  requiredByEvents  EventRequiredInventory[]
+  recipeIngredients RecipeIngredient[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("inventory")
+}
+
+// Chunk 18.2 — Supplier. Inventory items, expenses and (18.3) purchase orders point at it. SetNull on every
+// referrer so deleting a kitchen never hits an ordering hazard; `deleteSupplier` refuses while anything uses it.
+model Supplier {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  gstin          String?
+  notes          String?
+  isActive       Boolean      @default(true)
+
+  inventoryItems    Inventory[]
+  expenses          Expense[]
+  recurringExpenses RecurringExpense[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, name])
+  @@map("supplier")
+}
+
+// Chunk 18.1 — Recipe / BOM. One recipe per Food Item; an Inventory item IS the
+// ingredient (AJ, 2026-10-04), so there is no separate Ingredient table and no
+// second stock count to keep in step. Quantities are for `yieldServings`
+// servings and scale linearly (src/modules/recipes/recipe-math.ts).
+model Recipe {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItemId     String       @unique
+  menuItem       MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  yieldServings  Decimal      @default(1) @db.Decimal(10, 2)
+  notes          String?
+
+  ingredients RecipeIngredient[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("recipe")
+}
+
+// No `organizationId` of its own — cascades off its Recipe. Restrict on the
+// Inventory side: an item used in a recipe cannot be deleted silently.
+model RecipeIngredient {
+  id          String    @id @default(cuid())
+  recipeId    String
+  recipe      Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  inventoryId String
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  quantity    Decimal   @db.Decimal(12, 3)
+
+  @@unique([recipeId, inventoryId])
+  @@index([inventoryId])
+  @@map("recipe_ingredient")
 }
 
 // No `organizationId` of its own — cascades automatically (DB-level
@@ -1014,7 +1078,7 @@ model Customer {
   marketingConsent   Boolean   @default(false)
   marketingConsentAt DateTime?
   // Chunk 16: set when the customer uses the unsubscribe link in an email; consent is switched off with it.
-  marketingOptOutAt DateTime?
+  marketingOptOutAt  DateTime?
 
   events           Event[]
   orders           Order[]
@@ -2068,7 +2132,6 @@ enum ExpenseCategory {
 
 // Chunk 15 (PRD §41): what an order's event cost to run, or (orderId null) a company expense such as rent.
 // Hangs off the Order, not the hidden Event record (an Event is synced from each Order and may not exist yet).
-// `supplierName` is plain text until Chunk 18's Supplier.
 model Expense {
   id             String       @id @default(cuid())
   organizationId String
@@ -2081,6 +2144,9 @@ model Expense {
   spentAt       DateTime        @db.Date
   paymentMethod PaymentMethod?
   supplierName  String?
+  // Chunk 18.2 — optional pick from the supplier list; supplierName keeps the name as typed or as it was when picked.
+  supplierId    String?
+  supplier      Supplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   notes         String?
 
   recordedByUserId String?
@@ -2142,6 +2208,9 @@ model RecurringExpense {
   endDate       DateTime?           @db.Date
   paymentMethod PaymentMethod?
   supplierName  String?
+  // Chunk 18.2 — optional pick from the supplier list; supplierName keeps the name as typed or as it was when picked.
+  supplierId    String?
+  supplier      Supplier?           @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   notes         String?
 
   isActive       Boolean   @default(true)

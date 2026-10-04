@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolveSupplierFields } from "@/modules/suppliers/supplier";
 import { audit } from "@/lib/audit/audit";
 import { COMPANY_EXPENSE_CATEGORIES, type ExpenseCategoryValue } from "./profitability";
 import { RECURRENCE_FREQUENCIES, dueOccurrences, nextOccurrence, utcDate, type RecurrenceFrequencyValue } from "./recurrence";
@@ -15,10 +16,11 @@ export interface RecurringExpenseInput {
   endDate?: Date | null;
   paymentMethod?: PaymentMethod | null;
   supplierName?: string | null;
+  supplierId?: string | null;
   notes?: string | null;
 }
 
-function clean(input: RecurringExpenseInput) {
+async function clean(organizationId: string, input: RecurringExpenseInput) {
   if (!(COMPANY_EXPENSE_CATEGORIES as readonly string[]).includes(input.category)) throw new RecurringExpenseError("Choose a company category.");
   if (!RECURRENCE_FREQUENCIES.includes(input.frequency)) throw new RecurringExpenseError("Choose how often it repeats.");
   const amount = Math.round((input.amount + Number.EPSILON) * 100) / 100;
@@ -33,13 +35,13 @@ function clean(input: RecurringExpenseInput) {
     startDate: utcDate(input.startDate),
     endDate: endDate ? utcDate(endDate) : null,
     paymentMethod: input.paymentMethod ?? null,
-    supplierName: input.supplierName?.trim() || null,
+    ...(await resolveSupplierFields(organizationId, input)),
     notes: input.notes?.trim() || null,
   };
 }
 
 export async function createRecurringExpense(organizationId: string, input: RecurringExpenseInput, actorUserId?: string) {
-  const recurring = await prisma.recurringExpense.create({ data: { organizationId, createdByUserId: actorUserId, ...clean(input) } });
+  const recurring = await prisma.recurringExpense.create({ data: { organizationId, createdByUserId: actorUserId, ...(await clean(organizationId, input)) } });
   await audit({ organizationId, actorUserId, action: "recurring_expense.create", recordType: "RecurringExpense", recordId: recurring.id, after: { category: recurring.category, amount: Number(recurring.amount), frequency: recurring.frequency } });
   return recurring;
 }
@@ -47,7 +49,7 @@ export async function createRecurringExpense(organizationId: string, input: Recu
 /** Changes apply to dates not yet booked; expenses already booked keep their own values. */
 export async function updateRecurringExpense(organizationId: string, id: string, input: RecurringExpenseInput, actorUserId?: string) {
   await prisma.recurringExpense.findFirstOrThrow({ where: { id, organizationId }, select: { id: true } });
-  const recurring = await prisma.recurringExpense.update({ where: { id }, data: clean(input) });
+  const recurring = await prisma.recurringExpense.update({ where: { id }, data: await clean(organizationId, input) });
   await audit({ organizationId, actorUserId, action: "recurring_expense.update", recordType: "RecurringExpense", recordId: id, after: { category: recurring.category, amount: Number(recurring.amount), frequency: recurring.frequency } });
   return recurring;
 }
@@ -78,6 +80,7 @@ export async function listRecurringExpenses(organizationId: string, now: Date = 
     endDate: r.endDate,
     paymentMethod: r.paymentMethod,
     supplierName: r.supplierName,
+    supplierId: r.supplierId,
     notes: r.notes,
     isActive: r.isActive,
     nextDue: r.isActive ? nextOccurrence({ start: r.startDate, frequency: r.frequency, endDate: r.endDate, from: now }) : null,
@@ -104,6 +107,7 @@ export async function generateDueRecurringExpenses(organizationId: string, now: 
           spentAt,
           paymentMethod: t.paymentMethod,
           supplierName: t.supplierName,
+          supplierId: t.supplierId,
           notes: t.notes,
           recordedByUserId: t.createdByUserId,
           recurringExpenseId: t.id,

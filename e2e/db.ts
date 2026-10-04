@@ -31,6 +31,8 @@ export async function cleanupOnboardingTestUser(email: string): Promise<void> {
     // execution — deleting `event` explicitly first, before `organization`,
     // avoids `event_required_inventory`'s onDelete: Restrict on inventoryId
     // ever firing against a row that's about to cascade away anyway.
+    // Chunk 18 — recipe_ingredient is onDelete: Restrict to inventory; same hazard.
+    await pool.query('DELETE FROM recipe WHERE "organizationId" = ANY($1)', [orgIds]);
     await pool.query('DELETE FROM event WHERE "organizationId" = ANY($1)', [orgIds]);
     // Chunk 10 — same ordering hazard: `order`.customerId is onDelete:
     // Restrict, and Postgres gives no guarantee it resolves organization's

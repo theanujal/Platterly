@@ -34,6 +34,7 @@ export interface ExpenseRowData {
   spentAt: string;
   paymentMethod: string | null;
   supplierName: string | null;
+  supplierId?: string | null;
   notes: string | null;
   recurringExpenseId?: string | null;
   /** The schedule that booked this expense, when one did. */
@@ -91,6 +92,7 @@ function SelectField({ id, label, value, onChange, options }: { id: string; labe
 export function ExpenseDialog({
   orderId,
   orderOptions,
+  suppliers = [],
   state,
   canStopRepeating = false,
   onClose,
@@ -98,6 +100,8 @@ export function ExpenseDialog({
 }: {
   orderId: string | null;
   orderOptions?: { id: string; label: string }[];
+  /** Active suppliers to pick from; a name can still be typed for a one-off shop. */
+  suppliers?: { id: string; name: string }[];
   state: { mode: "add" } | { mode: "edit"; row: ExpenseRowData };
   /** May this person delete a repeating schedule (owner only)? */
   canStopRepeating?: boolean;
@@ -113,7 +117,8 @@ export function ExpenseDialog({
   const [amount, setAmount] = useState(row ? String(row.amount) : "");
   const [spentAt, setSpentAt] = useState(row ? row.spentAt.slice(0, 10) : todayIso());
   const [method, setMethod] = useState(row?.paymentMethod ?? "NONE");
-  const [supplier, setSupplier] = useState(row?.supplierName ?? "");
+  const [supplierId, setSupplierId] = useState(row?.supplierId ?? "");
+  const [supplier, setSupplier] = useState(row?.supplierId ? "" : (row?.supplierName ?? ""));
   const [notes, setNotes] = useState(row?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -159,10 +164,10 @@ export function ExpenseDialog({
     const value = Number(amount);
     if (!(value > 0)) return setError("Enter an amount greater than zero.");
     setPending(true);
-    const form = { category, amount: value, spentAt, paymentMethod: method, supplierName: supplier, notes };
+    const form = { category, amount: value, spentAt, paymentMethod: method, supplierName: supplier, supplierId, notes };
     const targetOrderId = row ? row.orderId : forOrder ? target : null;
     if (repeating) {
-      const made = await createRecurringExpenseAction({ category, amount: value, frequency, startDate: spentAt, endDate, paymentMethod: method, supplierName: supplier, notes });
+      const made = await createRecurringExpenseAction({ category, amount: value, frequency, startDate: spentAt, endDate, paymentMethod: method, supplierName: supplier, supplierId, notes });
       setPending(false);
       if (!made.ok) return setError(made.error);
       router.refresh();
@@ -207,6 +212,7 @@ export function ExpenseDialog({
         endDate: schedule.endDate ?? "",
         paymentMethod: method,
         supplierName: supplier,
+        supplierId,
         notes,
       });
       if (!future.ok) {
@@ -333,7 +339,26 @@ export function ExpenseDialog({
           )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="exp-supplier">Supplier (optional)</Label>
-            <IconInput icon={Store} id="exp-supplier" placeholder="Who you paid" value={supplier} onChange={(e) => setSupplier(e.target.value)} />
+            {suppliers.length > 0 && (
+              <Select
+                items={{ other: "Not in the list", ...Object.fromEntries(suppliers.map((s) => [s.id, s.name])) }}
+                value={supplierId || "other"}
+                onValueChange={(v) => setSupplierId(!v || v === "other" ? "" : v)}
+              >
+                <SelectTrigger id="exp-supplier-pick" aria-label="Supplier list" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="other">Not in the list</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {!supplierId && <IconInput icon={Store} id="exp-supplier" placeholder="Who you paid" value={supplier} onChange={(e) => setSupplier(e.target.value)} />}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="exp-notes">Notes (optional)</Label>

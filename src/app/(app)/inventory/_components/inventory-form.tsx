@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, IndianRupee, PackagePlus, BellRing, CalendarDays, MapPin, Store, Phone } from "lucide-react";
+import { Boxes, IndianRupee, PackagePlus, BellRing, CalendarDays, MapPin } from "lucide-react";
 import { DrawerForm } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
@@ -51,8 +51,8 @@ export interface InventoryFormValues {
   lowStockThreshold: string;
   costPerUnit: string;
   storageLocation: string;
-  supplierName: string;
-  supplierContact: string;
+  /** Empty string = no supplier. */
+  supplierId: string;
   expiryDate: string;
   imageUrl: string | null;
 }
@@ -65,8 +65,7 @@ export const EMPTY_INVENTORY_VALUES: InventoryFormValues = {
   lowStockThreshold: "",
   costPerUnit: "",
   storageLocation: "",
-  supplierName: "",
-  supplierContact: "",
+  supplierId: "",
   expiryDate: "",
   imageUrl: null,
 };
@@ -75,13 +74,14 @@ interface InventoryFormProps {
   initialValues?: Partial<InventoryFormValues>;
   /** Opening Stock is only offered at creation — every change after that goes through a Stock In/Out/Adjustment entry, never a direct field edit. */
   showOpeningStock?: boolean;
+  suppliers: { id: string; name: string }[];
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
   onCancel: () => void;
 }
 
-export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
+export function InventoryForm({ initialValues, showOpeningStock, suppliers, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
   const [openingStock, setOpeningStock] = useState("");
   const [image, setImage] = useState<File | null>(null);
@@ -105,8 +105,7 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
     formData.set("lowStockThreshold", values.lowStockThreshold);
     formData.set("costPerUnit", values.costPerUnit);
     formData.set("storageLocation", values.storageLocation);
-    formData.set("supplierName", values.supplierName);
-    formData.set("supplierContact", values.supplierContact);
+    formData.set("supplierId", values.supplierId);
     formData.set("expiryDate", values.expiryDate);
     if (showOpeningStock) formData.set("openingStock", openingStock);
     if (image) formData.set("image", image);
@@ -232,12 +231,24 @@ export function InventoryForm({ initialValues, showOpeningStock, onSubmit, onSuc
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-supplier-name">Supplier Name</Label>
-          <IconInput icon={Store} id="inv-supplier-name" value={values.supplierName} onChange={(e) => setField("supplierName", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-supplier-contact">Supplier Contact</Label>
-          <IconInput icon={Phone} id="inv-supplier-contact" type="tel" value={values.supplierContact} onChange={(e) => setField("supplierContact", e.target.value)} />
+          <Label htmlFor="inv-supplier">Supplier</Label>
+          <Select
+            items={{ none: "No supplier", ...Object.fromEntries(suppliers.map((s) => [s.id, s.name])) }}
+            value={values.supplierId || "none"}
+            onValueChange={(v) => setField("supplierId", !v || v === "none" ? "" : v)}
+          >
+            <SelectTrigger id="inv-supplier" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No supplier</SelectItem>
+              {suppliers.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

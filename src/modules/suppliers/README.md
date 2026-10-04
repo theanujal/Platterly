@@ -1,5 +1,3 @@
 # suppliers
 
-Owning chunk: Chunk 18 — Recipe-Driven Inventory, Purchasing & Kitchen Production Planning.
-
-Empty by design until that chunk lands — this folder exists to hold the §57 module boundary map from Chunk 1 Group 1.1.
+Chunk 18.2 — a Supplier record per kitchen (name unique ignoring case). Inventory items point at it with `supplierId` (the old free-text name and contact columns were migrated into Supplier rows and dropped). Expenses and repeating expenses can point at it too; they also keep `supplierName`, which is copied from the supplier when one is picked and stands alone for a typed one-off shop. Renaming a supplier updates the expenses that point at it. Deleting is refused while anything uses it; deactivate instead. `/suppliers` lists and edits them; `/suppliers/[id]` shows the items they supply and the expenses booked against them. Outstanding balance and purchase orders arrive with 18.3.

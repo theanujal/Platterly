@@ -27,3 +27,5 @@ platform components, same pattern as `menus`/`addons`/`events`.
 `Inventory.storageLocation` is a plain text field, not a `Store` FK —
 matches Updated doc §13 exactly; multi-location `Store` assignment is
 Chunk 23 UI on the schema Chunk 1 already stubbed.
+
+**Update (Chunk 18.2):** the supplier name and contact text fields are gone; an item now points at a Supplier record (`supplierId`). See `src/modules/suppliers/README.md`.

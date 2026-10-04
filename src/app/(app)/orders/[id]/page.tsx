@@ -26,6 +26,7 @@ import { OrderApprovalPanel } from "./_components/order-approval-panel";
 import { OrderSummaryCard } from "./_components/order-summary-card";
 import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
+import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
 import { MenuStatusBanner } from "./_components/menu-status-banner";
@@ -101,6 +102,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     hasPermission({ expenses: ["delete"] }, organizationId),
   ]);
   const expenses = canViewExpenses ? await listOrderExpenses(organizationId, id) : [];
+  const supplierOptions = canViewExpenses ? await listSupplierOptions(organizationId) : [];
   const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
     id: p.id,
     amount: Number(p.amount),
@@ -336,9 +338,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 spentAt: e.spentAt.toISOString(),
                 paymentMethod: e.paymentMethod,
                 supplierName: e.supplierName,
+                supplierId: e.supplierId,
                 notes: e.notes,
                 attachments: e.attachments,
               }))}
+              suppliers={supplierOptions}
               canCreate={canCreateExpense}
               canEdit={canEditExpense}
               canDelete={canDeleteExpense}

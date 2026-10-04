@@ -61,8 +61,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     lowStockThreshold: numberField(formData, "lowStockThreshold"),
     costPerUnit: numberField(formData, "costPerUnit"),
     storageLocation: stringField(formData, "storageLocation"),
-    supplierName: stringField(formData, "supplierName"),
-    supplierContact: stringField(formData, "supplierContact"),
+    supplierId: stringField(formData, "supplierId") ?? null,
     expiryDate: dateField(formData, "expiryDate"),
   };
 }

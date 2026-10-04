@@ -1,6 +1,7 @@
 import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { resolveSupplierFields } from "@/modules/suppliers/supplier";
 import { audit } from "@/lib/audit/audit";
 import { deleteStoredFiles } from "./attachment";
 import { nextOccurrence } from "./recurrence";
@@ -15,10 +16,12 @@ export interface ExpenseInput {
   spentAt: Date;
   paymentMethod?: PaymentMethod | null;
   supplierName?: string | null;
+  /** A pick from the supplier list; its name replaces `supplierName`. */
+  supplierId?: string | null;
   notes?: string | null;
 }
 
-function clean(input: ExpenseInput, forOrder: boolean) {
+async function clean(organizationId: string, input: ExpenseInput, forOrder: boolean) {
   const allowed: readonly string[] = forOrder ? EXPENSE_CATEGORIES : COMPANY_EXPENSE_CATEGORIES;
   if (!allowed.includes(input.category)) throw new ExpenseError(forOrder ? "Choose a category." : "Choose a category for a company expense.");
   const amount = Math.round((input.amount + Number.EPSILON) * 100) / 100;
@@ -29,7 +32,7 @@ function clean(input: ExpenseInput, forOrder: boolean) {
     amount,
     spentAt: input.spentAt,
     paymentMethod: input.paymentMethod ?? null,
-    supplierName: input.supplierName?.trim() || null,
+    ...(await resolveSupplierFields(organizationId, input)),
     notes: input.notes?.trim() || null,
   };
 }
@@ -38,7 +41,7 @@ function clean(input: ExpenseInput, forOrder: boolean) {
 export async function createExpense(organizationId: string, orderId: string | null, input: ExpenseInput, actorUserId?: string) {
   validateInput(input, RULES.expense);
   if (orderId) await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { id: true } });
-  const expense = await prisma.expense.create({ data: { organizationId, orderId, recordedByUserId: actorUserId, ...clean(input, orderId !== null) } });
+  const expense = await prisma.expense.create({ data: { organizationId, orderId, recordedByUserId: actorUserId, ...(await clean(organizationId, input, orderId !== null)) } });
   await audit({ organizationId, actorUserId, action: "expense.create", recordType: "Expense", recordId: expense.id, after: { orderId, category: expense.category, amount: Number(expense.amount) } });
   return expense;
 }
@@ -46,7 +49,7 @@ export async function createExpense(organizationId: string, orderId: string | nu
 export async function updateExpense(organizationId: string, id: string, input: ExpenseInput, actorUserId?: string) {
   validateInput(input, RULES.expense);
   const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId } });
-  const expense = await prisma.expense.update({ where: { id }, data: clean(input, before.orderId !== null) });
+  const expense = await prisma.expense.update({ where: { id }, data: await clean(organizationId, input, before.orderId !== null) });
   await audit({
     organizationId,
     actorUserId,
@@ -124,6 +127,7 @@ export interface ExpenseListRow {
   spentAt: Date;
   paymentMethod: PaymentMethod | null;
   supplierName: string | null;
+  supplierId: string | null;
   notes: string | null;
   recurringExpenseId: string | null;
   /** The schedule that booked this expense, when one did. */
@@ -152,6 +156,7 @@ export async function listExpenses(organizationId: string): Promise<ExpenseListR
     spentAt: e.spentAt,
     paymentMethod: e.paymentMethod,
     supplierName: e.supplierName,
+    supplierId: e.supplierId,
     notes: e.notes,
     recurringExpenseId: e.recurringExpenseId,
     recurring: e.recurringExpense

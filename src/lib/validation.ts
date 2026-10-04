@@ -93,6 +93,8 @@ export const RULES = {
   addOn: { name: ["name"], money: ["price"], text: { description: 5000 } } satisfies Rules,
   category: { name: ["name"], text: { description: 5000 } } satisfies Rules,
   eventType: { name: ["name"], text: { description: 5000 }, count: ["minGuests"] } satisfies Rules,
-  inventoryItem: { name: ["name"], text: { category: 100, unit: 50, supplierName: 200, supplierContact: 200, storageLocation: 200 } } satisfies Rules,
+  inventoryItem: { name: ["name"], text: { category: 100, unit: 50, storageLocation: 200 } } satisfies Rules,
+  supplier: { name: ["name"], email: ["email"], text: { contactPerson: 200, address: 1000, gstin: 20, notes: 5000 } } satisfies Rules,
+  recipe: { text: { notes: 2000 } } satisfies Rules,
   expense: { text: { notes: 2000, supplierName: 200 }, money: ["amount"] } satisfies Rules,
 };

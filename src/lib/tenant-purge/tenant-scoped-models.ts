@@ -28,6 +28,7 @@ export const TENANT_SCOPED_DELEGATES = [
   // own; they cascade automatically (DB-level onDelete: Cascade) when their
   // parent menu/menuItem/menuCategory/eventType row here is deleted.
   "menuCategory",
+  "recipe", // recipeIngredient cascades off it; must precede "menuItem"/"inventory" (Restrict to inventory)
   "menuItem",
   "menu",
   // Chunk 11 (2026-09-17) — menuSelection has its own organizationId (used
@@ -55,6 +56,7 @@ export const TENANT_SCOPED_DELEGATES = [
   // cascades automatically (DB-level onDelete: Cascade) off its parent
   // inventory row.
   "inventory",
+  "supplier", // inventory / expense / recurringExpense point at it with SetNull, so order does not matter
   // Chunk 10 — orderItem/mealPlanEntry have no organizationId of their own;
   // they cascade automatically off their parent order row. Order.customerId
   // is onDelete: Restrict (same reasoning as Event's), so "order" must

@@ -5,7 +5,7 @@ import { AddDrawer } from "@/components/catalog/form-drawer";
 import { InventoryForm } from "./inventory-form";
 import { createInventoryItemAction } from "../actions";
 
-export function AddInventoryDialog({ variant = "button" }: { variant?: "button" | "tile" }) {
+export function AddInventoryDialog({ variant = "button", suppliers }: { variant?: "button" | "tile"; suppliers: { id: string; name: string }[] }) {
   const router = useRouter();
 
   return (
@@ -13,6 +13,7 @@ export function AddInventoryDialog({ variant = "button" }: { variant?: "button" 
       {(close) => (
         <InventoryForm
           showOpeningStock
+          suppliers={suppliers}
           submitLabel="Create item"
           onSubmit={createInventoryItemAction}
           onCancel={close}
