@@ -42,3 +42,6 @@ Thumbs.db
 
 # User-uploaded content (Chunk 2 local storage driver) — not source
 /public/uploads/
+
+# Database backups (contain customer data, never commit)
+/backups/

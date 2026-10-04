@@ -14,7 +14,9 @@
     "test:e2e:headed": "PW_HEADED=1 playwright test",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "check:migrations": "node scripts/check-migrations.mjs",
+    "db:backup": "bash scripts/backup-db.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

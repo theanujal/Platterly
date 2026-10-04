@@ -39,6 +39,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run check:migrations
+
       - run: npx prisma migrate deploy
 
       - run: npm run lint
