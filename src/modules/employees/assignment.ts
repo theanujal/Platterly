@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { RULES, validateInput } from "@/lib/validation";
 import type { StaffDuty } from "@/generated/prisma/enums";
 import { isStaffDuty } from "./duty";
+import { onStaffAssigned } from "@/modules/notifications/triggers";
 
 export class StaffAssignmentError extends Error {}
 
@@ -66,6 +67,7 @@ export async function assignStaff(organizationId: string, eventId: string, input
     data: { organizationId, eventId, staffMemberId: input.staffMemberId ?? null, memberId: input.memberId ?? null, duty: input.duty, notes: input.notes?.trim() || null, createdByUserId: actorUserId },
   });
   await audit({ organizationId, actorUserId, action: "staff_assignment.create", recordType: "StaffAssignment", recordId: assignment.id, after: { eventId, person: label, duty: input.duty } });
+  await onStaffAssigned(organizationId, eventId, input.memberId ?? null, input.duty, actorUserId);
   return { assignment, conflicts: await findConflicts(organizationId, eventId, input) };
 }
 
@@ -114,7 +116,7 @@ export async function listUpcomingSchedule(organizationId: string, days = 14) {
   const events = await prisma.event.findMany({
     where: { organizationId, endDate: { gte: start }, startDate: { lt: end }, OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] },
     orderBy: { startDate: "asc" },
-    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffAssignments: { select: { duty: true } } },
+    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffAssignments: { select: { duty: true } }, tasks: { select: { done: true } }, logistics: { select: { dispatchStatus: true } } },
   });
-  return events.map((e) => ({ id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, assigned: e.staffAssignments.length }));
+  return events.map((e) => ({ id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, assigned: e.staffAssignments.length, tasksOpen: e.tasks.filter((t) => !t.done).length, tasksTotal: e.tasks.length, dispatchStatus: e.logistics?.dispatchStatus ?? "NOT_DISPATCHED" }));
 }

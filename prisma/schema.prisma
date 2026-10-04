@@ -214,6 +214,8 @@ model Organization {
   supplierPayments SupplierPayment[]
   staffMembers     StaffMember[]
   staffAssignments StaffAssignment[]
+  eventTasks       EventTask[]
+  eventLogistics   EventLogistics[]
   suppliers        Supplier[]
   customers        Customer[]
   events           Event[]
@@ -979,6 +981,74 @@ model Supplier {
   @@map("supplier")
 }
 
+// Chunk 19.3 — Event tasks and logistics (AJ, 2026-10-04). A plain checklist per event, filled in by hand like staffing.
+// A task can be given to someone already scheduled on the event; removing that person leaves the task unassigned.
+model EventTask {
+  id                String           @id @default(cuid())
+  organizationId    String
+  organization      Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId           String
+  event             Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  title             String
+  notes             String?
+  dueDate           DateTime?        @db.Date
+  assignmentId      String?
+  assignment        StaffAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  done              Boolean          @default(false)
+  completedAt       DateTime?
+  completedByUserId String?
+  createdByUserId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([eventId])
+  @@map("event_task")
+}
+
+enum DispatchStatus {
+  NOT_DISPATCHED
+  LOADING
+  DISPATCHED
+  DELIVERED
+}
+
+enum SetupStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+}
+
+// One row per event: vehicle, driver, dispatch and setup. The delivery address itself is the order's venue details.
+model EventLogistics {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId        String       @unique
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  vehicleType       String?
+  vehicleNumber     String?
+  driverName        String?
+  driverPhone       String?
+  // When the food should leave, and when it actually did / arrived (stamped when the status moves).
+  dispatchPlannedAt DateTime?
+  dispatchStatus    DispatchStatus @default(NOT_DISPATCHED)
+  dispatchedAt      DateTime?
+  deliveredAt       DateTime?
+
+  setupStatus SetupStatus @default(NOT_STARTED)
+  setupTime   DateTime?
+  setupNotes  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("event_logistics")
+}
+
 // Chunk 19.2 — Staff scheduling (AJ, 2026-10-04). The kitchen team fills it in by hand; nothing is predicted from the
 // guest count. A StaffMember is a person with no Platterly login (floor staff); people with a login are Members and
 // can be assigned too. An assignment points at exactly one of the two (also enforced by a CHECK in the migration).
@@ -1024,6 +1094,8 @@ model StaffAssignment {
   duty            StaffDuty
   notes           String?
   createdByUserId String?
+
+  tasks EventTask[]
 
   createdAt DateTime @default(now())
 
@@ -1281,6 +1353,8 @@ model Event {
 
   requiredInventory EventRequiredInventory[]
   staffAssignments  StaffAssignment[]
+  tasks             EventTask[]
+  logistics         EventLogistics?
   // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
   // is @unique).
   menuSelection     MenuSelection?

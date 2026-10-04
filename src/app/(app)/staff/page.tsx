@@ -4,6 +4,7 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { listStaffMembers } from "@/modules/employees/staff-member";
 import { listAssignableMembers, listUpcomingSchedule } from "@/modules/employees/assignment";
 import { STAFF_DUTY_LABEL } from "@/modules/employees/duty";
+import { DISPATCH_STATUS_LABEL, DISPATCH_STATUS_TONE } from "@/modules/logistics/labels";
 import { roleLabel } from "@/lib/auth/role-metadata";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +62,8 @@ export default async function StaffPage() {
                   <TableHead>Date</TableHead>
                   <TableHead>Guests</TableHead>
                   <TableHead>Staff</TableHead>
+                  <TableHead>Tasks</TableHead>
+                  <TableHead>Dispatch</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -74,6 +77,10 @@ export default async function StaffPage() {
                     <TableCell>{formatDate(e.startDate)}</TableCell>
                     <TableCell>{e.guestCount ?? "—"}</TableCell>
                     <TableCell>{e.assigned === 0 ? <Badge variant="warning">No staff yet</Badge> : <Badge variant="success">{e.assigned} assigned</Badge>}</TableCell>
+                    <TableCell>{e.tasksTotal === 0 ? "—" : `${e.tasksTotal - e.tasksOpen}/${e.tasksTotal} done`}</TableCell>
+                    <TableCell>
+                      <Badge variant={DISPATCH_STATUS_TONE[e.dispatchStatus]}>{DISPATCH_STATUS_LABEL[e.dispatchStatus]}</Badge>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

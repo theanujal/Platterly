@@ -1127,7 +1127,7 @@ export function OrderForm({
         ]
       : []),
     ...(expensesTab ? [{ id: "expenses", label: "Expenses", panel: expensesTab }] : []),
-    ...(staffingTab ? [{ id: "staffing", label: "Staffing", panel: staffingTab }] : []),
+    ...(staffingTab ? [{ id: "staffing", label: "Staffing & Logistics", panel: staffingTab }] : []),
   ];
 
   return (

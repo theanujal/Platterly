@@ -41,7 +41,7 @@ test("add staff with no login, schedule them on an event, change the duty, remov
 
   // Schedule them from the order's Staffing tab
   await page.goto(`/orders/${orderId}`);
-  await page.getByRole("tab", { name: "Staffing" }).click();
+  await page.getByRole("tab", { name: "Staffing & Logistics" }).click();
   const card = page.getByTestId("staffing-card");
   await expect(card).toContainText("Nobody is scheduled yet");
   await card.getByLabel("Person").click();
@@ -52,12 +52,44 @@ test("add staff with no login, schedule them on an event, change the duty, remov
   await expect(card.getByText(person)).toBeVisible();
   await expect(card).toContainText("Staff on this event (1)");
 
+  // Tasks: add two, give one to Ravi, tick one off
+  const tasks = page.getByTestId("tasks-card");
+  await tasks.getByLabel("Task", { exact: true }).fill("Load the chafing dishes");
+  await tasks.getByLabel("Give to").click();
+  await page.getByRole("option", { name: person }).click();
+  await tasks.getByRole("button", { name: "Add task" }).click();
+  await expect(tasks).toContainText("Load the chafing dishes");
+  await expect(tasks).toContainText(person);
+  await tasks.getByLabel("Task", { exact: true }).fill("Check the vehicle");
+  await tasks.getByLabel("Task", { exact: true }).press("Enter"); // Enter adds the task, it does not submit the order
+  await expect(tasks).toContainText("Check the vehicle");
+  await expect(tasks).toContainText("Tasks (2 open)");
+  await tasks.getByRole("checkbox", { name: "Done: Check the vehicle" }).click();
+  await expect(tasks).toContainText("Tasks (1 open, 1 done)");
+
+  // Logistics: the order's delivery address is shown; save vehicle, driver and move the dispatch status
+  const logistics = page.getByTestId("logistics-card");
+  await expect(logistics.getByTestId("delivery-address")).toBeVisible();
+  await logistics.getByLabel("Vehicle number").fill("ka01ab1234");
+  await logistics.getByLabel("Driver", { exact: true }).fill("Suresh");
+  await logistics.getByLabel("Dispatch status").click();
+  await page.getByRole("option", { name: "On the way" }).click();
+  await logistics.getByRole("button", { name: "Save logistics" }).click();
+  await expect(logistics.getByText("Saved")).toBeVisible();
+  await expect(logistics).toContainText(/Left .*20/);
+  await page.reload();
+  await page.getByRole("tab", { name: "Staffing & Logistics" }).click();
+  await expect(page.getByTestId("logistics-card").getByLabel("Vehicle number")).toHaveValue("KA01AB1234");
+
   // Change the duty, then the staff page shows them as assigned
   await card.getByLabel(`Duty for ${person}`).click();
   await page.getByRole("option", { name: "Setup" }).click();
   await expect(card.getByLabel(`Duty for ${person}`)).toContainText("Setup");
   await page.goto("/staff");
-  await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("1 assigned");
+  const row = page.getByRole("row", { name: new RegExp(orderNumber) });
+  await expect(row).toContainText("1 assigned");
+  await expect(row).toContainText("1/2 done");
+  await expect(row).toContainText("On the way");
 
   // The kitchen role can open Staff, add people and schedule them on the event page (it cannot open the order itself)
   await setMemberRole(email, "kitchen");

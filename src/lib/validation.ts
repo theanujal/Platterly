@@ -97,6 +97,8 @@ export const RULES = {
   supplier: { name: ["name"], email: ["email"], text: { contactPerson: 200, address: 1000, gstin: 20, notes: 5000 } } satisfies Rules,
   staffMember: { name: ["name"], text: { notes: 2000 } } satisfies Rules,
   staffAssignment: { text: { notes: 500 } } satisfies Rules,
+  eventTask: { name: ["title"], text: { notes: 1000 } } satisfies Rules,
+  eventLogistics: { text: { vehicleType: 100, vehicleNumber: 30, driverName: 200, setupNotes: 2000 } } satisfies Rules,
   recipe: { text: { notes: 2000 } } satisfies Rules,
   expense: { text: { notes: 2000, supplierName: 200 }, money: ["amount"] } satisfies Rules,
 };

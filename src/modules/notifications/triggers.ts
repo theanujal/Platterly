@@ -294,6 +294,81 @@ export function onPaymentActivity(organizationId: string, orderId: string, amoun
   });
 }
 
+// --- staffing, tasks and dispatch (Chunk 19) --------------------------------------------------------------
+
+/** In-app + push to one person (not the whole team): "you were scheduled", "a task is yours". */
+export async function notifyUser(params: { organizationId: string; userId: string; event: string; title: string; message: string; payload: Payload }) {
+  const payload = JSON.parse(JSON.stringify({ ...params.payload, title: params.title, message: params.message }));
+  await notify({ organizationId: params.organizationId, channel: "IN_APP", event: params.event, recipient: { userId: params.userId }, payload });
+  await notify({ organizationId: params.organizationId, channel: "PUSH", event: params.event, recipient: { userId: params.userId }, payload });
+}
+
+/** What a staffing / task / dispatch message calls the event: the order number and customer, else the event's own name. */
+async function loadEventLabel(organizationId: string, eventId: string) {
+  const e = await prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { name: true, startDate: true, order: { select: { orderNumber: true } }, customer: { select: { name: true } } } });
+  const label = e.order?.orderNumber ? `${e.order.orderNumber} for ${e.customer.name}` : `${e.name} for ${e.customer.name}`;
+  return { label, date: formatDate(e.startDate) };
+}
+
+/** The login user behind a Member id (floor staff have no login and get no alert). */
+async function userOfMember(organizationId: string, memberId: string | null | undefined) {
+  if (!memberId) return null;
+  const m = await prisma.member.findFirst({ where: { id: memberId, organizationId, disabledAt: null }, select: { userId: true } });
+  return m?.userId ?? null;
+}
+
+const DUTY_TEXT: Record<string, string> = { EVENT_MANAGER: "Event Manager", KITCHEN: "Kitchen", SERVING: "Serving", DELIVERY: "Delivery", SETUP: "Setup", STORE: "Store" };
+
+/** A team member with a login was put on an event. Only they are told, and not when they scheduled themselves. */
+export function onStaffAssigned(organizationId: string, eventId: string, memberId: string | null, duty: string, actorUserId: string) {
+  return safely("onStaffAssigned", async () => {
+    const userId = await userOfMember(organizationId, memberId);
+    if (!userId || userId === actorUserId) return;
+    const { label, date } = await loadEventLabel(organizationId, eventId);
+    await notifyUser({
+      organizationId,
+      userId,
+      event: "staff.assigned",
+      title: "You are on an event",
+      message: `You are scheduled for ${label}${date ? ` on ${date}` : ""} as ${DUTY_TEXT[duty] ?? duty}.`,
+      payload: { href: `/staff/events/${eventId}`, eventId },
+    });
+  });
+}
+
+/** A task was given to someone with a login. Floor staff have no login, so the kitchen team passes it on. */
+export function onTaskAssigned(organizationId: string, eventId: string, assignmentId: string | null | undefined, title: string, dueDate: Date | null, actorUserId: string) {
+  return safely("onTaskAssigned", async () => {
+    if (!assignmentId) return;
+    const assignment = await prisma.staffAssignment.findFirst({ where: { id: assignmentId, organizationId }, select: { memberId: true } });
+    const userId = await userOfMember(organizationId, assignment?.memberId);
+    if (!userId || userId === actorUserId) return;
+    const { label } = await loadEventLabel(organizationId, eventId);
+    await notifyUser({
+      organizationId,
+      userId,
+      event: "task.assigned",
+      title: "A task is yours",
+      message: `${title} (${label}${dueDate ? `, due ${formatDate(dueDate)}` : ""}).`,
+      payload: { href: `/staff/events/${eventId}`, eventId },
+    });
+  });
+}
+
+/** The vehicle left or the food arrived. Everyone on the team is told, in-app and by push. */
+export function onDispatchChanged(organizationId: string, eventId: string, status: "DISPATCHED" | "DELIVERED", driverName?: string | null) {
+  return safely("onDispatchChanged", async () => {
+    const { label } = await loadEventLabel(organizationId, eventId);
+    await notifyTeam({
+      organizationId,
+      event: status === "DISPATCHED" ? "logistics.dispatched" : "logistics.delivered",
+      title: status === "DISPATCHED" ? "Food is on the way" : "Food delivered",
+      message: status === "DISPATCHED" ? `${label} has left${driverName ? ` with ${driverName}` : ""}.` : `${label} has been delivered.`,
+      payload: { href: `/staff/events/${eventId}`, eventId },
+    });
+  });
+}
+
 // --- scheduled: reminders and payment dues ---------------------------------------------------------------
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -319,6 +394,8 @@ export interface DueRunResult {
   eventReminders: number;
   paymentDue: number;
   paymentOverdue: number;
+  taskDue: number;
+  taskOverdue: number;
 }
 
 /**
@@ -329,7 +406,7 @@ export interface DueRunResult {
  *   payment overdue: the day after the event while a balance is open
  */
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
-  const result: DueRunResult = { trialNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0 };
+  const result: DueRunResult = { trialNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0 };
 
   // Trial ending: 3 days and 1 day before, and once it has ended.
   const trials = await prisma.subscription.findMany({
@@ -401,6 +478,30 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
       await notifyCustomer({ organizationId, event: "payment.overdue", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c, { dedupeKey: key }) });
       result.paymentOverdue += 1;
     });
+  }
+
+  // Event tasks: once on the day they are due and once the day after, while still open. The person it was given to
+  // is told; a task with nobody, or given to floor staff (no login), goes to the whole team.
+  const tasksOn = (offset: number) =>
+    prisma.eventTask.findMany({
+      where: { done: false, dueDate: { gte: istDay(now, offset), lt: istDay(now, offset + 1) }, event: { OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] } },
+      select: { id: true, organizationId: true, eventId: true, title: true, assignment: { select: { memberId: true } } },
+    });
+  for (const [offset, kind] of [[0, "due"], [-1, "overdue"]] as const) {
+    for (const task of await tasksOn(offset)) {
+      const key = `${task.id}:${kind}`;
+      if (await alreadySent(task.organizationId, `task.${kind}`, key)) continue;
+      await safely(`task ${kind}`, async () => {
+        const { label } = await loadEventLabel(task.organizationId, task.eventId);
+        const text = { title: kind === "due" ? "Task due today" : "Task overdue", message: `${task.title} (${label}) ${kind === "due" ? "is due today" : "was due yesterday and is not done"}.` };
+        const payload = { href: `/staff/events/${task.eventId}`, eventId: task.eventId, dedupeKey: key };
+        const userId = await userOfMember(task.organizationId, task.assignment?.memberId);
+        if (userId) await notifyUser({ organizationId: task.organizationId, userId, event: `task.${kind}`, ...text, payload });
+        else await notifyTeam({ organizationId: task.organizationId, event: `task.${kind}`, ...text, payload });
+        if (kind === "due") result.taskDue += 1;
+        else result.taskOverdue += 1;
+      });
+    }
   }
 
   return result;

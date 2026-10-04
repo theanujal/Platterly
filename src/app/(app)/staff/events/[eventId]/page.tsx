@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
-import { listEventAssignments, listAssignableMembers } from "@/modules/employees/assignment";
-import { listStaffMembers } from "@/modules/employees/staff-member";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { StaffingCard } from "../../../orders/[id]/_components/staffing-card";
+import { EventOps } from "../../_components/event-ops";
 
 export const metadata: Metadata = {
   title: "Event Staffing — Platterly",
@@ -23,13 +21,6 @@ export default async function EventStaffingPage({ params }: { params: Promise<{ 
     include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } } },
   });
   if (!event) notFound();
-
-  const [canAdd, canEdit] = await Promise.all([hasPermission({ staffing: ["create"] }, organizationId), hasPermission({ staffing: ["edit"] }, organizationId)]);
-  const [assignments, floorStaff, teamMembers] = await Promise.all([
-    listEventAssignments(organizationId, eventId),
-    canAdd ? listStaffMembers(organizationId) : Promise.resolve([]),
-    canAdd ? listAssignableMembers(organizationId) : Promise.resolve([]),
-  ]);
 
   const dates = event.startDate.getTime() === event.endDate.getTime() ? [event.startDate] : [event.startDate, event.endDate];
   const when = dates.map((d) => d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })).join(" to ");
@@ -49,18 +40,7 @@ export default async function EventStaffingPage({ params }: { params: Promise<{ 
         </p>
       </div>
       <Separator />
-      <StaffingCard
-        orderId={event.order?.id ?? null}
-        eventId={event.id}
-        data={{
-          assignments,
-          floorStaff: floorStaff.filter((s) => s.isActive).map((s) => ({ id: s.id, name: s.name, defaultDuty: s.defaultDuty })),
-          teamMembers,
-        }}
-        canAdd={canAdd}
-        canEdit={canEdit}
-        canRemove={canEdit}
-      />
+      <EventOps organizationId={organizationId} eventId={event.id} orderId={event.order?.id ?? null} />
     </div>
   );
 }

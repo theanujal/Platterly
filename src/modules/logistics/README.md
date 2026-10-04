@@ -1,5 +1,5 @@
 # logistics
 
-Owning chunk: Chunk 19 — Employees, Staff Scheduling, Event Tasks & Logistics.
+Chunk 19.3 — what happens around an event. `task.ts`: a checklist per event, ticked off by hand (who and when are stamped); a task can be given to someone already scheduled on that event, and removing them leaves it unassigned. `logistics.ts`: one row per event with vehicle, driver, dispatch status (not dispatched, loading, on the way, delivered) and setup (status, time, notes). Moving the dispatch status stamps the real departure and arrival times and clears the later stamp if it moves back. The delivery address is not copied: it is read from the order's own venue details. Times typed in the form are stored and shown exactly as typed; the stamped times are real moments shown in India time. Dispatch status here is separate from the kitchen's production stage (Pending / In Preparation / Ready / Delivered), which is about the food, not the vehicle.
 
-Empty by design until that chunk lands — this folder exists to hold the §57 module boundary map from Chunk 1 Group 1.1.
+Notifications (all in `src/modules/notifications/triggers.ts`): a team member scheduled on an event, a task given to a team member, dispatch moving to On the way or Delivered (whole team), and due-today / overdue task reminders from the daily job. Internal only: in-app and push.
