@@ -2,6 +2,7 @@
 
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
+import { assertPurchaseOrderAtMyLocationById, getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createPurchaseOrder, updatePurchaseOrder, markOrdered, cancelPurchaseOrder, deletePurchaseOrder, receiveStock } from "@/modules/purchasing/purchase-order";
 import { recordSupplierPayment, deleteSupplierPayment } from "@/modules/purchasing/supplier-payment";
@@ -38,7 +39,9 @@ export async function createPurchaseOrderAction(payload: PurchaseOrderPayload): 
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["create"] }, organizationId);
   try {
-    const po = await createPurchaseOrder(organizationId, toInput(payload), session.user.id);
+    // A new order is for the location the person is working in (the owner's switcher, or their own); none = all locations.
+    const { locationId } = await getActiveLocation(organizationId, session.user.id);
+    const po = await createPurchaseOrder(organizationId, { ...toInput(payload), locationId }, session.user.id);
     refresh();
     return { ok: true, id: po.id };
   } catch (error) {
@@ -49,6 +52,7 @@ export async function createPurchaseOrderAction(payload: PurchaseOrderPayload): 
 export async function updatePurchaseOrderAction(id: string, payload: PurchaseOrderPayload): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await updatePurchaseOrder(organizationId, id, toInput(payload), session.user.id);
   } catch (error) {
@@ -61,6 +65,7 @@ export async function updatePurchaseOrderAction(id: string, payload: PurchaseOrd
 export async function markOrderedAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await markOrdered(organizationId, id, session.user.id);
   } catch (error) {
@@ -73,6 +78,7 @@ export async function markOrderedAction(id: string): Promise<ActionResult> {
 export async function cancelPurchaseOrderAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await cancelPurchaseOrder(organizationId, id, session.user.id);
   } catch (error) {
@@ -85,6 +91,7 @@ export async function cancelPurchaseOrderAction(id: string): Promise<ActionResul
 export async function deletePurchaseOrderAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["delete"] }, organizationId);
+  await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await deletePurchaseOrder(organizationId, id, session.user.id);
   } catch (error) {
@@ -97,6 +104,7 @@ export async function deletePurchaseOrderAction(id: string): Promise<ActionResul
 export async function receiveStockAction(id: string, lines: { itemId: string; quantity: number }[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await receiveStock(organizationId, id, lines, session.user.id);
   } catch (error) {

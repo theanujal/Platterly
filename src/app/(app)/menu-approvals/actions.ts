@@ -1,5 +1,6 @@
 "use server";
 
+import { assertMenuSelectionAtMyLocation, assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -35,6 +36,7 @@ function revalidate(id: string) {
 export async function updateMenuApprovalItemsAction(id: string, items: MenuSelectionItemInput[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await setMenuSelectionItems(organizationId, id, items, session.user.id);
   } catch (error) {
@@ -48,6 +50,7 @@ export async function updateMenuApprovalItemsAction(id: string, items: MenuSelec
 export async function approveAndSendToKitchenAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await approveAndSendToKitchen(organizationId, id, session.user.id);
   } catch (error) {
@@ -62,6 +65,7 @@ export async function approveAndSendToKitchenAction(id: string): Promise<ActionR
 export async function changeMenuStatusAction(id: string, status: MenuSelectionStatus, reason: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     const target: ManualStatusTarget = { kind: "MENU", status };
     await changeStatusManually(organizationId, { menuSelectionId: id, target, reason, actorUserId: session.user.id });
@@ -79,6 +83,8 @@ export type SendMenuResult = { ok: true; url: string; versionNumber: number } | 
 export async function sendMenuForApprovalAction(target: { orderId: string } | { menuSelectionId: string }, note?: string): Promise<SendMenuResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  if ("orderId" in target) await assertOrderAtMyLocation(organizationId, session.user.id, target.orderId);
+  else await assertMenuSelectionAtMyLocation(organizationId, session.user.id, target.menuSelectionId);
   try {
     const sent = await sendMenuForApproval(organizationId, target, session.user.id, note);
     revalidate(sent.menuSelectionId);
@@ -94,6 +100,7 @@ export async function sendMenuForApprovalAction(target: { orderId: string } | { 
 export async function recallMenuAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await recallMenuFromCustomer(organizationId, id, session.user.id);
   } catch (error) {
@@ -107,6 +114,7 @@ export async function recallMenuAction(id: string): Promise<ActionResult> {
 export async function setCustomMenuPriceAction(id: string, pricePerPlate: number): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await setCustomMenuPricePerPlate(organizationId, id, pricePerPlate, session.user.id);
   } catch (error) {
@@ -130,6 +138,7 @@ export interface MealPlanEntryPayload {
 export async function updateMenuApprovalMealPlanAction(id: string, entries: MealPlanEntryPayload[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await updateMenuApprovalMealPlan(
       organizationId,
@@ -162,6 +171,7 @@ export async function getMenuForApprovalPickerAction(menuId: string): Promise<Me
 export async function addMenuApprovalNoteAction(id: string, body: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     if (!body.trim()) return { ok: false, error: "Write a note first." };
     if (body.length > 2000) return { ok: false, error: "Keep the note under 2000 characters." };

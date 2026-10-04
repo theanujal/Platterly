@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, givePlanWithMultiLocation } from "./db";
+import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, seedPurchaseOrder } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -79,5 +79,51 @@ test("locations stay hidden until the plan allows them and the kitchen switches 
   // Switching the feature off removes the switcher again.
   await page.goto("/settings/kitchen/kitchen-rules");
   await page.getByRole("switch", { name: /more than one location/i }).click();
+  await expect(page.getByRole("combobox", { name: "Location" })).toHaveCount(0);
+});
+
+test("a person held to a location cannot open another location's order or sheets by typing the address", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-held-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email, { firstName: "Held", lastName: "Manager", phone: "9800000055" });
+  await givePlanWithMultiLocation(email);
+  await page.goto("/settings/kitchen/kitchen-rules");
+  await page.getByRole("switch", { name: /more than one location/i }).click();
+  await expect(page.getByText("Main", { exact: true })).toBeVisible();
+  await page.getByLabel("New location name").fill("North Branch");
+  await page.getByRole("button", { name: "Add Location" }).click();
+  await expect(page.getByText("North Branch", { exact: true })).toBeVisible();
+
+  const north = await seedOrderWithEvent(email);
+  const main = await seedOrderWithEvent(email);
+  await assignOrderEventToLocation(north.orderId, "North Branch");
+  await assignOrderEventToLocation(main.orderId, "Main");
+  const poNorth = await seedPurchaseOrder(email, "North Branch");
+  const poMain = await seedPurchaseOrder(email, "Main");
+  const poShared = await seedPurchaseOrder(email, null);
+  await holdMemberToLocation(email, "North Branch");
+
+  // Held to North Branch: its order opens, Main's is a 404, and the Orders list shows only North's.
+  const own = await page.goto(`/orders/${north.orderId}`);
+  expect(own?.status()).toBe(200);
+  const other = await page.goto(`/orders/${main.orderId}`);
+  expect(other?.status()).toBe(404);
+  await page.goto("/orders");
+  await expect(page.getByText(north.orderNumber).first()).toBeVisible();
+  await expect(page.getByText(main.orderNumber)).toHaveCount(0);
+  // Purchasing: North's order and the one tied to no location open, Main's is a 404.
+  expect((await page.goto(`/purchasing/${poNorth}`))?.status()).toBe(200);
+  expect((await page.goto(`/purchasing/${poShared}`))?.status()).toBe(200);
+  expect((await page.goto(`/purchasing/${poMain}`))?.status()).toBe(404);
+  await page.goto("/purchasing");
+  await expect(page.getByText("PO-").filter({ hasText: poNorth.slice(3) })).toHaveCount(1);
+  await expect(page.getByText(poMain.slice(3))).toHaveCount(0);
+  // Reports and the Dashboard say or show which location they are for.
+  await page.goto("/reports");
+  await expect(page.getByTestId("report-location")).toContainText("North Branch");
+  await expect(page.getByTestId("sales-orders")).toContainText("1");
+  expect((await page.goto("/dashboard"))?.status()).toBe(200);
+  // No switcher for someone who is held.
   await expect(page.getByRole("combobox", { name: "Location" })).toHaveCount(0);
 });

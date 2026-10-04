@@ -1,5 +1,6 @@
 "use server";
 
+import { assertExpenseAtMyLocation, assertExpenseAttachmentAtMyLocation, assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { ExpenseError, createExpense, deleteExpense, updateExpense, type ExpenseInput } from "@/modules/expenses/expense";
@@ -53,6 +54,7 @@ async function guarded(orderId: string | null, task: () => Promise<void>): Promi
 export async function createExpenseAction(orderId: string | null, form: ExpenseFormInput): Promise<ExpenseCreateResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ expenses: ["create"] }, organizationId);
+  if (orderId) await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
   let expenseId = "";
   const result = await guarded(orderId, async () => {
     const expense = await createExpense(organizationId, orderId, toInput(form), session.user.id);
@@ -64,6 +66,7 @@ export async function createExpenseAction(orderId: string | null, form: ExpenseF
 export async function updateExpenseAction(orderId: string | null, expenseId: string, form: ExpenseFormInput): Promise<ExpenseActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ expenses: ["edit"] }, organizationId);
+  await assertExpenseAtMyLocation(organizationId, session.user.id, expenseId);
   return guarded(orderId, async () => {
     await updateExpense(organizationId, expenseId, toInput(form), session.user.id);
   });
@@ -72,6 +75,7 @@ export async function updateExpenseAction(orderId: string | null, expenseId: str
 export async function deleteExpenseAction(orderId: string | null, expenseId: string): Promise<ExpenseActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ expenses: ["delete"] }, organizationId);
+  await assertExpenseAtMyLocation(organizationId, session.user.id, expenseId);
   return guarded(orderId, async () => {
     await deleteExpense(organizationId, expenseId, session.user.id);
   });
@@ -83,6 +87,7 @@ export async function uploadExpenseAttachmentAction(orderId: string | null, expe
   if (!(await hasPermission({ expenses: ["create"] }, organizationId)) && !(await hasPermission({ expenses: ["edit"] }, organizationId))) {
     return { ok: false, error: "You do not have permission to attach files." };
   }
+  await assertExpenseAtMyLocation(organizationId, session.user.id, expenseId);
   const file = formData.get("file");
   if (!(file instanceof File)) return { ok: false, error: "Choose a file to attach." };
   return guarded(orderId, async () => {
@@ -93,6 +98,7 @@ export async function uploadExpenseAttachmentAction(orderId: string | null, expe
 export async function removeExpenseAttachmentAction(orderId: string | null, attachmentId: string): Promise<ExpenseActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ expenses: ["edit"] }, organizationId);
+  await assertExpenseAttachmentAtMyLocation(organizationId, session.user.id, attachmentId);
   return guarded(orderId, async () => {
     await removeExpenseAttachment(organizationId, attachmentId, session.user.id);
   });

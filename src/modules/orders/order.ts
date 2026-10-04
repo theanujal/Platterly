@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { onOrderCreated } from "@/modules/notifications/triggers";
+import { orderAt } from "@/modules/locations/scope";
 import { createEvent, listKitchens } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
 import type { Prisma } from "@/generated/prisma/client";
@@ -542,9 +543,9 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
 }
 
 /** Feeds the Dashboard's Partial Payments card — mirrors getInventoryOverviewStats' shape/purpose for its own domain. */
-export async function getPartialPaymentsOverview(organizationId: string) {
+export async function getPartialPaymentsOverview(organizationId: string, locationId?: string | null) {
   const orders = await prisma.order.findMany({
-    where: { organizationId, status: { not: "CANCELLED" }, paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] }, balance: { gt: 0 } },
+    where: { organizationId, ...orderAt(locationId), status: { not: "CANCELLED" }, paymentStatus: { in: ["PARTIALLY_PAID", "UNPAID"] }, balance: { gt: 0 } },
     orderBy: { balance: "desc" },
     select: {
       id: true,
@@ -650,11 +651,11 @@ export class OrderEventTypeRequiredError extends Error {}
  * Event's own operational fields (kitchen, status, required inventory) are
  * never touched here. No Event Type yet means no Event yet, which is fine.
  */
-export async function syncOrderEvent(organizationId: string, orderId: string, actorUserId?: string) {
+export async function syncOrderEvent(organizationId: string, orderId: string, actorUserId?: string, locationId?: string | null) {
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId } });
   if (!order.eventTypeId) return null;
   const linked = await prisma.event.findMany({ where: { organizationId, orderId }, select: { id: true } });
-  if (linked.length === 0) return createEventForOrder(organizationId, orderId, actorUserId);
+  if (linked.length === 0) return createEventForOrder(organizationId, orderId, actorUserId, locationId);
   await prisma.event.updateMany({
     where: { organizationId, orderId },
     data: {
@@ -669,7 +670,8 @@ export async function syncOrderEvent(organizationId: string, orderId: string, ac
   return null;
 }
 
-export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string) {
+/** `locationId` puts the event at that location (a person held to one); without it the default location is used. */
+export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string, locationId?: string | null) {
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { customer: true } });
   if (!order.eventTypeId) {
     throw new OrderEventTypeRequiredError("Set an Event Type on this Order before creating an Event for it.");
@@ -680,7 +682,7 @@ export async function createEventForOrder(organizationId: string, orderId: strin
   const event = await createEvent(
     organizationId,
     {
-      assignedKitchenId: defaultLocation?.id,
+      assignedKitchenId: locationId ?? defaultLocation?.id,
       customerId: order.customerId,
       eventTypeId: order.eventTypeId,
       name: `${order.customer.name}'s Event`,

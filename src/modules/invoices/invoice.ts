@@ -195,9 +195,9 @@ export async function cancelInvoice(organizationId: string, id: string, actorUse
   await audit({ organizationId, actorUserId, action: "invoice.cancel", recordType: "Invoice", recordId: id, before: { status: invoice.status } });
 }
 
-export async function listInvoices(organizationId: string, filter: { type?: "INVOICE" | "RECEIPT"; search?: string } = {}) {
+export async function listInvoices(organizationId: string, filter: { type?: "INVOICE" | "RECEIPT"; search?: string; locationId?: string | null } = {}) {
   const invoices = await prisma.invoice.findMany({
-    where: { organizationId, ...(filter.type ? { type: filter.type } : {}) },
+    where: { organizationId, ...(filter.type ? { type: filter.type } : {}), ...(filter.locationId ? { order: { events: { some: { assignedKitchenId: filter.locationId } } } } : {}) },
     orderBy: { createdAt: "desc" },
     include: { order: { select: { id: true, orderNumber: true, customer: { select: { name: true } }, venue: true } } },
   });

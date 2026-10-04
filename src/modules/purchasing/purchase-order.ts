@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { checkMoney, checkText } from "@/lib/validation";
 import type { PurchaseOrderStatus } from "@/generated/prisma/enums";
+import { sharedOrAt } from "@/modules/locations/scope";
 import { remainingQuantity, statusAfterReceipt } from "./po-math";
 
 export class PurchaseOrderError extends Error {}
@@ -11,6 +12,8 @@ export interface PurchaseOrderInput {
   supplierId: string;
   expectedDate?: Date | null;
   notes?: string | null;
+  /** Chunk 23: the location this order is for; null or omitted = not tied to one (shown at every location). */
+  locationId?: string | null;
   items: { inventoryId: string; quantity: number; unitCost: number }[];
 }
 
@@ -37,6 +40,7 @@ async function checkInput(organizationId: string, input: PurchaseOrderInput) {
   const supplier = await prisma.supplier.findFirst({ where: { id: input.supplierId, organizationId }, select: { id: true, isActive: true } });
   if (!supplier) throw new PurchaseOrderError("Choose a supplier.");
   if ((await prisma.inventory.count({ where: { id: { in: ids }, organizationId } })) !== ids.length) throw new PurchaseOrderError("One of the items is not in your inventory.");
+  if (input.locationId && !(await prisma.kitchen.findFirst({ where: { id: input.locationId, organizationId }, select: { id: true } }))) throw new PurchaseOrderError("That location does not exist.");
 }
 
 /** PO-0001, PO-0002… per kitchen. The unique key makes two at once safe: the loser retries with the next number. */
@@ -57,6 +61,7 @@ export async function createPurchaseOrder(organizationId: string, input: Purchas
           supplierId: input.supplierId,
           expectedDate: input.expectedDate ?? null,
           notes: input.notes?.trim() || null,
+          kitchenId: input.locationId ?? null,
           createdByUserId: actorUserId,
           items: { create: input.items.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity, unitCost: i.unitCost })) },
         },
@@ -165,17 +170,18 @@ export async function getPurchaseOrder(organizationId: string, id: string) {
   return prisma.purchaseOrder.findFirst({ where: { id, organizationId }, include: poInclude });
 }
 
-export async function listPurchaseOrders(organizationId: string, status?: PurchaseOrderStatus, supplierId?: string) {
+/** With a `locationId`, that location's orders plus the ones not tied to a location. */
+export async function listPurchaseOrders(organizationId: string, status?: PurchaseOrderStatus, supplierId?: string, locationId?: string | null) {
   return prisma.purchaseOrder.findMany({
-    where: { organizationId, ...(status ? { status } : {}), ...(supplierId ? { supplierId } : {}) },
+    where: { organizationId, ...sharedOrAt(locationId), ...(status ? { status } : {}), ...(supplierId ? { supplierId } : {}) },
     orderBy: { createdAt: "desc" },
     include: { supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true } } },
   });
 }
 
 /** Items at or below their low-stock alert, with a suggested quantity, to start a purchase request from. */
-export async function suggestReorder(organizationId: string) {
-  const items = await prisma.inventory.findMany({ where: { organizationId, lowStockThreshold: { not: null } }, orderBy: { name: "asc" }, select: { id: true, name: true, unit: true, stockCount: true, lowStockThreshold: true, costPerUnit: true } });
+export async function suggestReorder(organizationId: string, locationId?: string | null) {
+  const items = await prisma.inventory.findMany({ where: { organizationId, ...sharedOrAt(locationId), lowStockThreshold: { not: null } }, orderBy: { name: "asc" }, select: { id: true, name: true, unit: true, stockCount: true, lowStockThreshold: true, costPerUnit: true } });
   return items
     .filter((i) => Number(i.stockCount) <= Number(i.lowStockThreshold))
     .map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: Number(i.stockCount), suggested: Math.max(1, Math.ceil(Number(i.lowStockThreshold) * 2 - Number(i.stockCount))), costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));

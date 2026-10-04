@@ -1,5 +1,6 @@
 import { RULES, validateInput, checkMoney } from "@/lib/validation";
 import "server-only";
+import { sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import type { InventoryTransactionType } from "@/generated/prisma/enums";
@@ -237,9 +238,9 @@ export async function recordStockTransaction(
 }
 
 /** Feeds the Dashboard's Inventory Overview card (Chunk 5 placeholder, wired for real here). */
-export async function getInventoryOverviewStats(organizationId: string) {
+export async function getInventoryOverviewStats(organizationId: string, locationId?: string | null) {
   const items = await prisma.inventory.findMany({
-    where: { organizationId },
+    where: { organizationId, ...sharedOrAt(locationId) },
     select: { category: true, stockCount: true, lowStockThreshold: true, costPerUnit: true, expiryDate: true },
   });
 
@@ -275,9 +276,9 @@ export async function getInventoryOverviewStats(organizationId: string) {
 }
 
 /** Low-stock flag, per the chunk plan's "low-stock flag feeding the dashboard Inventory Overview card". */
-export async function listLowStockItems(organizationId: string) {
+export async function listLowStockItems(organizationId: string, locationId?: string | null) {
   const items = await prisma.inventory.findMany({
-    where: { organizationId, lowStockThreshold: { not: null } },
+    where: { organizationId, ...sharedOrAt(locationId), lowStockThreshold: { not: null } },
     orderBy: { name: "asc" },
   });
   return items.filter((item) => Number(item.stockCount) <= Number(item.lowStockThreshold));

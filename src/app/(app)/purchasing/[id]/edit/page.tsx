@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getPurchaseOrder } from "@/modules/purchasing/purchase-order";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
@@ -15,12 +16,13 @@ export const metadata: Metadata = {
 
 export default async function EditPurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
   const po = await getPurchaseOrder(organizationId, id);
   if (!po) notFound();
+  await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
   if (po.status !== "DRAFT") redirect(`/purchasing/${id}`);
-  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId, po.supplierId), listInventoryItems(organizationId)]);
+  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId, po.supplierId), listInventoryItems(organizationId, po.kitchenId)]);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

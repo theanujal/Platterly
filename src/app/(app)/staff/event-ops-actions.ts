@@ -1,5 +1,6 @@
 "use server";
 
+import { assertEventAtMyLocationById, assertEventTaskAtMyLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -29,6 +30,7 @@ const naive = (value: string): Date | null => {
 export async function createTaskAction(orderId: string | null, eventId: string, form: { title: string; notes: string; dueDate: string; assignmentId: string }): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["create"] }, organizationId);
+  await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
   try {
     await createTask(organizationId, eventId, { title: form.title, notes: form.notes, dueDate: naive(form.dueDate), assignmentId: form.assignmentId || null }, session.user.id);
   } catch (error) {
@@ -41,6 +43,7 @@ export async function createTaskAction(orderId: string | null, eventId: string, 
 export async function setTaskDoneAction(orderId: string | null, id: string, done: boolean): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
+  await assertEventTaskAtMyLocation(organizationId, session.user.id, id);
   try {
     await setTaskDone(organizationId, id, done, session.user.id);
   } catch (error) {
@@ -53,6 +56,7 @@ export async function setTaskDoneAction(orderId: string | null, id: string, done
 export async function deleteTaskAction(orderId: string | null, id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
+  await assertEventTaskAtMyLocation(organizationId, session.user.id, id);
   try {
     await deleteTask(organizationId, id, session.user.id);
   } catch (error) {
@@ -77,6 +81,7 @@ export interface LogisticsForm {
 export async function saveLogisticsAction(orderId: string | null, eventId: string, form: LogisticsForm): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
+  await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
   try {
     if (!DISPATCH_STATUSES.includes(form.dispatchStatus as DispatchStatus) || !SETUP_STATUSES.includes(form.setupStatus as SetupStatus)) throw new Error("Choose a status.");
     await saveLogistics(

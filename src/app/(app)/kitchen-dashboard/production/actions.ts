@@ -1,5 +1,6 @@
 "use server";
 
+import { assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -11,6 +12,7 @@ export type TakeStockResult = { ok: true; shortages: { name: string; short: numb
 export async function takeOrderStockAction(orderId: string): Promise<TakeStockResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
   try {
     const result = await takeOrderStock(organizationId, orderId, session.user.id);
     revalidatePath(`/orders/${orderId}`);

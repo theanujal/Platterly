@@ -1,5 +1,6 @@
 "use server";
 
+import { assertInventoryItemAtMyLocation, myHeldLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -73,6 +74,9 @@ export async function createInventoryItemAction(formData: FormData): Promise<Act
   await requirePermission({ inventory: ["create"] }, organizationId);
   try {
     const input = await buildInput(organizationId, formData);
+    // A person held to a location creates items at that location.
+    const held = await myHeldLocation(organizationId, session.user.id);
+    if (held) input.kitchenId = held;
     const openingStock = numberField(formData, "openingStock");
     await createInventoryItem(organizationId, input, session.user.id, openingStock);
   } catch (error) {
@@ -90,8 +94,11 @@ export async function updateInventoryItemAction(
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, id);
   try {
     const input = await buildInput(organizationId, formData, existingImage);
+    // ...and cannot move an item to another location or make it shared.
+    if (await myHeldLocation(organizationId, session.user.id)) input.kitchenId = undefined;
     await updateInventoryItem(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -104,6 +111,7 @@ export async function updateInventoryItemAction(
 export async function deleteInventoryItemAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["delete"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, id);
   try {
     await deleteInventoryItem(organizationId, id, session.user.id);
   } catch (error) {
@@ -120,6 +128,7 @@ export async function recordStockTransactionAction(
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
   try {
     const type = stringField(formData, "type") as InventoryTransactionType | undefined;
     if (type !== "STOCK_IN" && type !== "STOCK_OUT" && type !== "ADJUSTMENT") {

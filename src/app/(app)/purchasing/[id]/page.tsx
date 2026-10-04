@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
 import { getPurchaseOrder } from "@/modules/purchasing/purchase-order";
 import { orderedValue, receivedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { Badge } from "@/components/ui/badge";
@@ -21,10 +22,11 @@ const formatDate = (d: Date | null) => (d ? d.toLocaleDateString("en-IN", { day:
 
 export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
   const [po, canEdit, canDelete] = await Promise.all([getPurchaseOrder(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId), hasPermission({ inventory: ["delete"] }, organizationId)]);
   if (!po) notFound();
+  await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
 
   const lines = po.items.map((i) => ({ id: i.id, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
 

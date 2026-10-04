@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { getInvoice, confirmedPaidForOrder } from "@/modules/invoices/invoice";
 import { invoiceDisplayStatus } from "@/modules/invoices/invoice-status";
 import { longDate } from "@/modules/invoices/invoice-format";
@@ -19,10 +20,11 @@ export const metadata: Metadata = {
 
 export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["view"] }, organizationId);
   const invoice = await getInvoice(organizationId, id);
   if (!invoice) notFound();
+  await assertOrderAtMyLocation(organizationId, session.user.id, invoice.orderId);
 
   const [paid, payments, canEditInvoice, canDelete, canRecord, canManage] = await Promise.all([
     confirmedPaidForOrder(invoice.orderId),

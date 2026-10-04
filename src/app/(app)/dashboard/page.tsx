@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/modules/tenants/slug";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { getDashboardSnapshot } from "./_data";
 import { OnboardingNudgeBanner } from "./_components/onboarding-nudge-banner";
 import { CustomLinkDialog } from "./_components/custom-link-dialog";
@@ -34,7 +35,8 @@ export default async function DashboardPage() {
   const { session, organizationId } = await requireActiveOrganization();
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
   const suggestedSlug = organization.name !== "Unnamed Business" ? slugify(organization.name) : undefined;
-  const snapshot = await getDashboardSnapshot(organizationId);
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
+  const snapshot = await getDashboardSnapshot(organizationId, locationId);
   // Only the person who can actually save a slug change should see the
   // popup nudging them to (AJ, 2026-09-19) — it was showing to every role,
   // including staff who'd just hit a permission error trying to use it.
@@ -108,8 +110,8 @@ export default async function DashboardPage() {
 
       {(canViewInventory || canSeeMoney || canViewOrders) && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {canViewInventory && <InventoryOverviewCard organizationId={organizationId} />}
-          {canSeeMoney && <PartialPaymentsCard organizationId={organizationId} />}
+          {canViewInventory && <InventoryOverviewCard organizationId={organizationId} locationId={locationId} />}
+          {canSeeMoney && <PartialPaymentsCard organizationId={organizationId} locationId={locationId} />}
           {canViewOrders && <OrdersCalendarCard orderCountsByDay={snapshot.orderCountsByDay} />}
         </div>
       )}

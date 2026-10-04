@@ -8,7 +8,8 @@ import { BarList, ReportSection, ReportTile } from "./report-ui";
 const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const whole = (n: number) => n.toLocaleString("en-IN");
 
-export function SalesView({ sales }: { sales: SalesReport }) {
+/** `byLocation`: the figures are one location's, and customers and quotations have no location, so those four tiles are left out. */
+export function SalesView({ sales, byLocation = false }: { sales: SalesReport; byLocation?: boolean }) {
   return (
     <div className="flex flex-col gap-4" data-testid="sales-report">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
@@ -16,10 +17,14 @@ export function SalesView({ sales }: { sales: SalesReport }) {
         <ReportTile label="Orders" value={whole(sales.orders)} hint="Cancelled orders are left out" testId="sales-orders" />
         <ReportTile label="Average order value" value={sales.averageOrderValue === null ? "—" : inr(sales.averageOrderValue)} testId="sales-aov" />
         <ReportTile label="Confirmed order value" value={inr(sales.confirmedOrderValue)} hint={`${whole(sales.confirmedOrders)} approved, in the kitchen or completed`} testId="sales-confirmed" />
-        <ReportTile label="Enquiries" value={whole(sales.enquiries)} hint="People added in the period" testId="sales-enquiries" />
-        <ReportTile label="Conversion rate" value={percent(sales.conversionRate)} hint={`${whole(sales.converted)} of ${whole(sales.enquiries)} placed an order`} testId="sales-conversion" />
-        <ReportTile label="Quotation value" value={inr(sales.quotationValue)} hint={`${whole(sales.quotationsSent)} sent, drafts not counted`} testId="sales-quotations" />
-        <ReportTile label="Accepted quotation value" value={inr(sales.acceptedQuotationValue)} testId="sales-accepted" />
+        {!byLocation && (
+          <>
+            <ReportTile label="Enquiries" value={whole(sales.enquiries)} hint="People added in the period" testId="sales-enquiries" />
+            <ReportTile label="Conversion rate" value={percent(sales.conversionRate)} hint={`${whole(sales.converted)} of ${whole(sales.enquiries)} placed an order`} testId="sales-conversion" />
+            <ReportTile label="Quotation value" value={inr(sales.quotationValue)} hint={`${whole(sales.quotationsSent)} sent, drafts not counted`} testId="sales-quotations" />
+            <ReportTile label="Accepted quotation value" value={inr(sales.acceptedQuotationValue)} testId="sales-accepted" />
+          </>
+        )}
       </div>
       <ReportSection title="Revenue by month" description="Orders counted in the month they were placed.">
         <BarList rows={sales.revenueByMonth.map((m) => ({ label: m.label, value: m.revenue, text: inr(m.revenue), sub: `${whole(m.count)} ${m.count === 1 ? "order" : "orders"}` }))} />

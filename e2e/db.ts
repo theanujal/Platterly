@@ -386,6 +386,40 @@ export async function seedOrderWithEvent(email: string): Promise<{ orderId: stri
   return { orderId, orderNumber };
 }
 
+/** Chunk 23: puts an order's event at a named location. */
+export async function assignOrderEventToLocation(orderId: string, locationName: string): Promise<void> {
+  await pool.query(
+    `UPDATE event SET "assignedKitchenId" = (SELECT k.id FROM kitchen k WHERE k.name = $2 AND k."organizationId" = event."organizationId") WHERE "orderId" = $1`,
+    [orderId, locationName],
+  );
+}
+
+/** Chunk 23: a draft purchase order for a named location (null = not tied to one). */
+export async function seedPurchaseOrder(email: string, locationName: string | null): Promise<string> {
+  const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
+  const organizationId = rows[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  await pool.query('INSERT INTO supplier (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`sup_${suffix}`, organizationId, `Supplier ${suffix}`]);
+  await pool.query('INSERT INTO inventory (id, "organizationId", name, category, unit, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [`inv_${suffix}`, organizationId, `Item ${suffix}`, "Grains", "kg"]);
+  await pool.query(
+    `INSERT INTO purchase_order (id, "organizationId", number, "supplierId", "kitchenId", "updatedAt")
+     VALUES ($1, $2, $3, $4, (SELECT k.id FROM kitchen k WHERE k.name = $5 AND k."organizationId" = $2), now())`,
+    [`po_${suffix}`, organizationId, `PO-${suffix}`, `sup_${suffix}`, locationName],
+  );
+  await pool.query('INSERT INTO purchase_order_item (id, "purchaseOrderId", "inventoryId", quantity, "unitCost") VALUES ($1, $2, $3, 5, 40)', [`poi_${suffix}`, `po_${suffix}`, `inv_${suffix}`]);
+  return `po_${suffix}`;
+}
+
+/** Chunk 23: makes the signed-up person a manager held to a named location (the owner cannot be held). */
+export async function holdMemberToLocation(email: string, locationName: string): Promise<void> {
+  await pool.query(
+    `UPDATE member SET role = 'manager', "locationId" = (SELECT k.id FROM kitchen k WHERE k.name = $2 AND k."organizationId" = member."organizationId")
+     WHERE "userId" = (SELECT id FROM "user" WHERE email = $1)`,
+    [email, locationName],
+  );
+}
+
 /** A PENDING Razorpay payment, as `startRazorpayCheckout` records it before the customer pays. */
 export async function seedPendingRazorpayPayment(organizationId: string, orderId: string, razorpayOrderId: string, amount: number): Promise<void> {
   await pool.query(

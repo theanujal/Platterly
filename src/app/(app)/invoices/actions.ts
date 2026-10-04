@@ -1,5 +1,6 @@
 "use server";
 
+import { assertInvoiceAtMyLocation, assertOrderAtMyLocation, assertPaymentAtMyLocation } from "@/modules/locations/active-location";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { InvoiceError, cancelInvoice, generateInvoiceFromOrder } from "@/modules/invoices/invoice";
@@ -36,6 +37,7 @@ const emailNote = (emailActive: boolean, hasEmail: boolean) =>
 export async function createInvoiceAction(orderId: string, input: { gstType: GstType; gstRate: number; dueDate: string }): Promise<ActionResult<{ invoiceId: string }>> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["create"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
   return guarded(async () => {
     const invoice = await generateInvoiceFromOrder(organizationId, orderId, {
       gstType: input.gstType === "IGST" ? "IGST" : "CGST_SGST",
@@ -51,6 +53,7 @@ export async function createInvoiceAction(orderId: string, input: { gstType: Gst
 export async function sendInvoiceAction(invoiceId: string): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["edit"] }, organizationId);
+  await assertInvoiceAtMyLocation(organizationId, session.user.id, invoiceId);
   return guarded(async () => {
     const sent = await sendInvoiceDocument(organizationId, invoiceId, session.user.id);
     refresh(undefined, invoiceId);
@@ -61,6 +64,7 @@ export async function sendInvoiceAction(invoiceId: string): Promise<ActionResult
 export async function cancelInvoiceAction(invoiceId: string): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["delete"] }, organizationId);
+  await assertInvoiceAtMyLocation(organizationId, session.user.id, invoiceId);
   return guarded(async () => {
     await cancelInvoice(organizationId, invoiceId, session.user.id);
     refresh(undefined, invoiceId);
@@ -82,6 +86,7 @@ export interface RecordPaymentFormValues {
 export async function recordPaymentAction(input: RecordPaymentFormValues): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["create"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, input.orderId);
   if (!TYPES.includes(input.type as PaymentType) || !METHODS.includes(input.method as PaymentMethod)) return { ok: false, error: "Choose a payment type and method." };
   return guarded(async () => {
     const payment = await recordPayment({
@@ -108,6 +113,7 @@ export async function recordPaymentAction(input: RecordPaymentFormValues): Promi
 export async function confirmPaymentAction(paymentId: string, sendReceipt: boolean): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["manage"] }, organizationId);
+  await assertPaymentAtMyLocation(organizationId, session.user.id, paymentId);
   return guarded(async () => {
     const payment = await confirmPayment(organizationId, paymentId, session.user.id);
     let message = "Payment confirmed.";
@@ -123,6 +129,7 @@ export async function confirmPaymentAction(paymentId: string, sendReceipt: boole
 export async function rejectPaymentAction(paymentId: string): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["manage"] }, organizationId);
+  await assertPaymentAtMyLocation(organizationId, session.user.id, paymentId);
   return guarded(async () => {
     await rejectPayment(organizationId, paymentId, session.user.id);
     refresh();
@@ -133,6 +140,7 @@ export async function rejectPaymentAction(paymentId: string): Promise<ActionResu
 export async function sendReceiptAction(paymentId: string): Promise<ActionResult> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["manage"] }, organizationId);
+  await assertPaymentAtMyLocation(organizationId, session.user.id, paymentId);
   return guarded<object>(async () => {
     const sent = await sendReceiptForPayment(organizationId, paymentId, session.user.id);
     if (!sent) return { ok: false as const, error: "This payment has no receipt yet." };
@@ -143,6 +151,7 @@ export async function sendReceiptAction(paymentId: string): Promise<ActionResult
 export async function createPaymentLinkAction(input: { orderId: string; invoiceId?: string | null; kind: PaymentLinkKind; amount?: number; send: boolean }): Promise<ActionResult<{ url: string; amount: number }>> {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["create"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, input.orderId);
   return guarded(async () => {
     const { link, url } = await createPaymentLink({ organizationId, orderId: input.orderId, invoiceId: input.invoiceId ?? null, kind: input.kind, amount: input.amount, actorUserId: session.user.id });
     let message = "Payment link ready.";

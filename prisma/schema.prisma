@@ -316,9 +316,10 @@ model Kitchen {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  events    Event[]
-  members   Member[]
-  inventory Inventory[]
+  events         Event[]
+  members        Member[]
+  inventory      Inventory[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -594,27 +595,27 @@ model SubscriptionPayment {
 // Platterly's own details printed on plan invoices (the seller). One row, id "platform", edited by the Super Admin.
 // Every field is optional so it can be filled in later; a blank field is simply left off the invoice.
 model PlatformBillingProfile {
-  id           String   @id
-  legalName    String?
-  addressLine1 String?
-  addressLine2 String?
-  city         String?
-  state        String?
+  id            String   @id
+  legalName     String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  state         String?
   // The two-digit GST state code (e.g. 29 for Karnataka). Decides CGST + SGST versus IGST.
-  stateCode    String?
-  postalCode   String?
-  country      String?
-  gstin        String?
-  pan          String?
+  stateCode     String?
+  postalCode    String?
+  country       String?
+  gstin         String?
+  pan           String?
   // Service accounting code printed on each invoice line. 998314 is hosting / IT infrastructure; confirm with your CA.
-  sacCode      String   @default("998314")
+  sacCode       String   @default("998314")
   // Start of every invoice number: <prefix><caterer initials>-<yy>-<mm>-<n>.
-  invoicePrefix String  @default("FP")
-  email        String?
-  phone        String?
-  website      String?
-  invoiceNote  String?
-  updatedAt    DateTime @updatedAt
+  invoicePrefix String   @default("FP")
+  email         String?
+  phone         String?
+  website       String?
+  invoiceNote   String?
+  updatedAt     DateTime @updatedAt
 
   @@map("platform_billing_profile")
 }
@@ -1223,6 +1224,9 @@ model PurchaseOrder {
   receivedAt      DateTime?
   notes           String?
   createdByUserId String?
+  // Chunk 23: the location this order is for. Null = not tied to one, shown at every location.
+  kitchenId       String?
+  kitchen         Kitchen?            @relation(fields: [kitchenId], references: [id], onDelete: SetNull)
 
   items PurchaseOrderItem[]
 
@@ -1232,6 +1236,7 @@ model PurchaseOrder {
   @@unique([organizationId, number])
   @@index([organizationId, status])
   @@index([supplierId])
+  @@index([kitchenId])
   @@map("purchase_order")
 }
 

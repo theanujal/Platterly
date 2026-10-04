@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { assertOrderAtMyLocation, getActiveLocation } from "@/modules/locations/active-location";
 import { getOrder } from "@/modules/orders/order";
 import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
 import { listStatusChanges } from "@/modules/menu-approvals/status-history";
@@ -74,8 +75,10 @@ function formatCurrency(amount: number) {
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, id);
+  const active = await getActiveLocation(organizationId, session.user.id);
   const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
@@ -286,7 +289,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             <EventOperationsCard
               orderId={order.id}
               event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
-              kitchens={kitchens.map((k) => ({ id: k.id, name: k.name }))}
+              kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
             />
           </>
         }

@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
+import { orderAt } from "@/modules/locations/scope";
 import { computeEvents, computeKitchens, computeSales, monthKey, monthLabel, type ReportOrder, type ReportOrderStatus } from "./report-math";
 
 /**
@@ -8,7 +9,7 @@ import { computeEvents, computeKitchens, computeSales, monthKey, monthLabel, typ
  * whole platform (`{ all: true }`, Super Admin only; the caller must have checked that). The figures themselves come
  * from `report-math.ts`.
  */
-export type ReportScope = { organizationId: string } | { all: true };
+export type ReportScope = { organizationId: string; locationId?: string | null } | { all: true };
 export interface ReportRange {
   from: Date | null;
   to: Date | null;
@@ -16,6 +17,10 @@ export interface ReportRange {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const scopeWhere = (scope: ReportScope) => ("organizationId" in scope ? { organizationId: scope.organizationId } : {});
+/** Chunk 23: orders only, limited to one location when the scope has one. */
+export const orderScope = (scope: ReportScope) => ({ ...scopeWhere(scope), ...orderAt("organizationId" in scope ? scope.locationId : null) });
+/** Customers and quotations belong to no location, so a location-scoped report leaves them out. */
+export const byLocation = (scope: ReportScope) => "organizationId" in scope && Boolean(scope.locationId);
 
 /** `from` and `to` are calendar dates (both included), in India time for "when it was created". */
 export function dateFilter(range: ReportRange, tz: "ist" | "utc"): { gte?: Date; lt?: Date } | undefined {
@@ -60,9 +65,9 @@ const toReportOrder = (o: OrderRowFromDb): ReportOrder => ({
 export async function loadSalesReport(scope: ReportScope, range: ReportRange) {
   const created = dateFilter(range, "ist");
   const [orders, customers, quotations] = await Promise.all([
-    prisma.order.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: orderSelect }),
-    prisma.customer.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: { createdAt: true, orders: { select: { id: true }, take: 1 } } }),
-    prisma.quotation.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: { total: true, status: true } }),
+    prisma.order.findMany({ where: { ...orderScope(scope), ...(created ? { createdAt: created } : {}) }, select: orderSelect }),
+    byLocation(scope) ? Promise.resolve([]) : prisma.customer.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: { createdAt: true, orders: { select: { id: true }, take: 1 } } }),
+    byLocation(scope) ? Promise.resolve([]) : prisma.quotation.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: { total: true, status: true } }),
   ]);
   const reportOrders = orders.map(toReportOrder);
   return {
@@ -77,7 +82,7 @@ export async function loadSalesReport(scope: ReportScope, range: ReportRange) {
 
 export async function loadEventsReport(scope: ReportScope, range: ReportRange) {
   const when = dateFilter(range, "utc");
-  const orders = await prisma.order.findMany({ where: { ...scopeWhere(scope), ...(when ? { eventStartDate: when } : {}) }, select: orderSelect });
+  const orders = await prisma.order.findMany({ where: { ...orderScope(scope), ...(when ? { eventStartDate: when } : {}) }, select: orderSelect });
   return computeEvents(orders.map(toReportOrder));
 }
 

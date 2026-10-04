@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Clock, ChefHat, PackageCheck, Truck } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listKitchenProductionBoard } from "@/modules/menu-approvals/menu-approval";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
@@ -26,10 +27,11 @@ const COLUMNS: { key: KitchenProductionStatus; label: string; icon: LucideIcon; 
 ];
 
 export default async function KitchenDashboardPage() {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ menus: ["view"] }, organizationId);
 
-  const [menuSelections, { daysBeforeEvent }] = await Promise.all([listKitchenProductionBoard(organizationId), getKitchenRules(organizationId)]);
+  const [menuSelections, { daysBeforeEvent }] = await Promise.all([listKitchenProductionBoard(organizationId, locationId), getKitchenRules(organizationId)]);
   const windowText = daysBeforeEvent === 0 ? "today" : `today through the next ${daysBeforeEvent} ${daysBeforeEvent === 1 ? "day" : "days"}`;
 
   return (

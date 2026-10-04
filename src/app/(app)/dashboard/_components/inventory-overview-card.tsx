@@ -6,10 +6,10 @@ import { StatusOverviewCard } from "./status-overview-card";
 // (Inventory, Basic), redesigned to a reference screenshot's "Inventory
 // Status" look (AJ, 2026-09-16) — same StatusOverviewCard shell the new
 // Partial Payments card uses.
-export async function InventoryOverviewCard({ organizationId }: { organizationId: string }) {
+export async function InventoryOverviewCard({ organizationId, locationId }: { organizationId: string; locationId?: string | null }) {
   const [stats, lowStockItems] = await Promise.all([
-    getInventoryOverviewStats(organizationId),
-    listLowStockItems(organizationId),
+    getInventoryOverviewStats(organizationId, locationId),
+    listLowStockItems(organizationId, locationId),
   ]);
 
   return (

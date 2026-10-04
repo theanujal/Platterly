@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { User, CalendarDays, MapPin } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listInvoices } from "@/modules/invoices/invoice";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
@@ -24,11 +25,12 @@ const FILTERS = [
 ] as const;
 
 export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ invoices: ["view"] }, organizationId);
   const { type } = await searchParams;
   const activeType = type === "INVOICE" || type === "RECEIPT" ? type : undefined;
-  const invoices = await listInvoices(organizationId, { type: activeType });
+  const invoices = await listInvoices(organizationId, { type: activeType, locationId });
 
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },

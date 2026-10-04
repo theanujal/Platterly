@@ -2,7 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { ExpenseCategoryValue } from "@/modules/expenses/profitability";
 import { VISIT_SOURCE_LABEL } from "@/modules/storefront-visits/visit-math";
-import { dateFilter, scopeWhere, type ReportRange, type ReportScope } from "./reports";
+import { dateFilter, orderScope, scopeWhere, type ReportRange, type ReportScope } from "./reports";
+import { sharedOrAt } from "@/modules/locations/scope";
 import { computeMenuReport } from "./menu-math";
 import { computeMovements, computePurchases, computeStock } from "./inventory-math";
 import { computeFinance, computePayables, computeReceivables } from "./finance-math";
@@ -18,7 +19,7 @@ export async function loadMenuReport(scope: ReportScope, range: ReportRange) {
   const created = dateFilter(range, "ist");
   const [orders, catalog] = await Promise.all([
     prisma.order.findMany({
-      where: { ...scopeWhere(scope), status: { not: "CANCELLED" }, ...(created ? { createdAt: created } : {}) },
+      where: { ...orderScope(scope), status: { not: "CANCELLED" }, ...(created ? { createdAt: created } : {}) },
       select: {
         id: true,
         total: true,
@@ -39,14 +40,15 @@ export async function loadMenuReport(scope: ReportScope, range: ReportRange) {
 
 export async function loadInventoryReport(scope: ReportScope, range: ReportRange) {
   const when = dateFilter(range, "ist");
+  const locationId = "organizationId" in scope ? scope.locationId : null;
   const [items, transactions, purchaseOrders] = await Promise.all([
-    prisma.inventory.findMany({ where: scopeWhere(scope), select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, expiryDate: true } }),
+    prisma.inventory.findMany({ where: { ...scopeWhere(scope), ...sharedOrAt(locationId) }, select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, expiryDate: true } }),
     prisma.inventoryTransaction.findMany({
-      where: { inventory: scopeWhere(scope), ...(when ? { createdAt: when } : {}) },
+      where: { inventory: { ...scopeWhere(scope), ...sharedOrAt(locationId) }, ...(when ? { createdAt: when } : {}) },
       select: { type: true, quantity: true, inventoryId: true, orderId: true, inventory: { select: { name: true, unit: true, costPerUnit: true } } },
     }),
     prisma.purchaseOrder.findMany({
-      where: { ...scopeWhere(scope), status: { in: ["ORDERED", "PARTIALLY_RECEIVED", "RECEIVED"] }, ...(when ? { orderedAt: when } : {}) },
+      where: { ...scopeWhere(scope), ...sharedOrAt(locationId), status: { in: ["ORDERED", "PARTIALLY_RECEIVED", "RECEIVED"] }, ...(when ? { orderedAt: when } : {}) },
       select: { id: true, supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true } } },
     }),
   ]);
@@ -86,15 +88,17 @@ export async function loadInventoryReport(scope: ReportScope, range: ReportRange
 export async function loadFinanceReport(scope: ReportScope, range: ReportRange, now: Date = new Date()) {
   const created = dateFilter(range, "ist");
   const spent = dateFilter(range, "utc");
+  const located = "organizationId" in scope && Boolean(scope.locationId);
   const [orders, expenses, owing, receipts, payments] = await Promise.all([
-    prisma.order.findMany({ where: { ...scopeWhere(scope), ...(created ? { createdAt: created } : {}) }, select: { total: true, createdAt: true, status: true } }),
-    prisma.expense.findMany({ where: { ...scopeWhere(scope), ...(spent ? { spentAt: spent } : {}) }, select: { amount: true, spentAt: true, category: true } }),
+    prisma.order.findMany({ where: { ...orderScope(scope), ...(created ? { createdAt: created } : {}) }, select: { total: true, createdAt: true, status: true } }),
+    // A company expense belongs to no location, so a location only counts the expenses of its own orders.
+    prisma.expense.findMany({ where: { ...scopeWhere(scope), ...(located ? { order: orderScope(scope) } : {}), ...(spent ? { spentAt: spent } : {}) }, select: { amount: true, spentAt: true, category: true } }),
     prisma.order.findMany({
-      where: { ...scopeWhere(scope), status: { not: "CANCELLED" }, balance: { gt: 0 } },
+      where: { ...orderScope(scope), status: { not: "CANCELLED" }, balance: { gt: 0 } },
       select: { id: true, orderNumber: true, balance: true, eventStartDate: true, customer: { select: { name: true } }, organization: { select: { name: true } } },
     }),
     prisma.purchaseOrder.findMany({
-      where: { ...scopeWhere(scope), status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] } },
+      where: { ...scopeWhere(scope), ...sharedOrAt("organizationId" in scope ? scope.locationId : null), status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] } },
       select: { receivedAt: true, orderedAt: true, createdAt: true, supplier: { select: { id: true, name: true } }, items: { select: { receivedQuantity: true, unitCost: true } } },
     }),
     prisma.supplierPayment.groupBy({ by: ["supplierId"], where: scopeWhere(scope), _sum: { amount: true } }),

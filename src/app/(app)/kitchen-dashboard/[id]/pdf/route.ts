@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { kitchenAtMyLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getKitchenPrepSheet } from "@/modules/menu-approvals/menu-approval";
 import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
@@ -13,11 +14,11 @@ const formatDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toL
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ menus: ["view"] }, organizationId);
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
-  if (!sheet) return new Response("Not found", { status: 404 });
+  if (!sheet || !(await kitchenAtMyLocation(organizationId, session.user.id, sheet.selection.event.assignedKitchenId))) return new Response("Not found", { status: 404 });
   const { selection, meals, guests, extraPercent, kitchenNotes, kitchenNotesUpdatedAt } = sheet;
   const { event } = selection;
 

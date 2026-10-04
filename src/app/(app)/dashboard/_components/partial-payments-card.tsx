@@ -16,8 +16,8 @@ function formatCurrency(amount: number) {
 // scoped to PARTIALLY_PAID/UNPAID orders specifically (not every order with
 // a balance regardless of status) — Needs Attention already covers the
 // broader "balance due" signal; this card is about payment collection.
-export async function PartialPaymentsCard({ organizationId }: { organizationId: string }) {
-  const overview = await getPartialPaymentsOverview(organizationId);
+export async function PartialPaymentsCard({ organizationId, locationId }: { organizationId: string; locationId?: string | null }) {
+  const overview = await getPartialPaymentsOverview(organizationId, locationId);
   const totalValue = overview.totalDue + overview.totalCollected;
 
   return (

@@ -418,9 +418,10 @@ export async function getMenuSelectionByEventId(organizationId: string, eventId:
 }
 
 /** Group 11.5 — Kitchen Dashboard's own listing, no separate data model. */
-export async function listMenuSelectionsForKitchen(organizationId: string, statuses?: MenuSelectionStatus[]) {
+/** With a `locationId`, only events assigned to that location (Chunk 23). */
+export async function listMenuSelectionsForKitchen(organizationId: string, statuses?: MenuSelectionStatus[], locationId?: string | null) {
   return prisma.menuSelection.findMany({
-    where: { organizationId, ...(statuses ? { status: { in: statuses } } : {}) },
+    where: { organizationId, ...(statuses ? { status: { in: statuses } } : {}), ...(locationId ? { event: { assignedKitchenId: locationId } } : {}) },
     include: { items: true, event: { include: { customer: true, eventType: true, assignedKitchen: true } } },
     orderBy: { updatedAt: "desc" },
   });
@@ -476,7 +477,7 @@ export async function listKitchenProductionQueue(organizationId: string, product
  * production. The window is computed from the current date on every call,
  * so it rolls forward on its own with no separate refresh job.
  */
-export async function listKitchenProductionBoard(organizationId: string) {
+export async function listKitchenProductionBoard(organizationId: string, locationId?: string | null) {
   const { daysBeforeEvent } = await getKitchenRules(organizationId);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -488,7 +489,7 @@ export async function listKitchenProductionBoard(organizationId: string) {
       organizationId,
       status: "FINAL_LOCKED",
       kitchenProductionStatus: { in: [...KITCHEN_PRODUCTION_BOARD_STAGES] },
-      event: { startDate: { gte: startOfToday, lt: endOfWindow } },
+      event: { startDate: { gte: startOfToday, lt: endOfWindow }, ...(locationId ? { assignedKitchenId: locationId } : {}) },
     },
     include: KITCHEN_PRODUCTION_INCLUDE,
     orderBy: { event: { startDate: "asc" } },

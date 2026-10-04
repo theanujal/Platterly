@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
 import { orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
@@ -23,10 +24,11 @@ const formatDate = (d: Date | null) => (d ? d.toLocaleDateString("en-IN", { day:
 
 export default async function PurchasingPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status } = await searchParams;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ inventory: ["view"] }, organizationId);
   const filter = STATUSES.includes(status as PurchaseOrderStatus) ? (status as PurchaseOrderStatus) : undefined;
-  const [orders, canCreate] = await Promise.all([listPurchaseOrders(organizationId, filter), hasPermission({ inventory: ["create"] }, organizationId)]);
+  const [orders, canCreate] = await Promise.all([listPurchaseOrders(organizationId, filter, undefined, locationId), hasPermission({ inventory: ["create"] }, organizationId)]);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

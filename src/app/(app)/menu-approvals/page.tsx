@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, ChefHat, Circle, Clock, TriangleAlert, Check, Lock, User } from "lucide-react";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listMenuSelectionsForKitchen } from "@/modules/menu-approvals/menu-approval";
 import { Badge } from "@/components/ui/badge";
@@ -43,12 +44,13 @@ interface MenuApprovalsPageProps {
 }
 
 export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsPageProps) {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ menus: ["approve"] }, organizationId);
   const { status } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as MenuSelectionStatus) : undefined;
 
-  const menuSelections = await listMenuSelectionsForKitchen(organizationId, validStatus ? [validStatus] : undefined);
+  const menuSelections = await listMenuSelectionsForKitchen(organizationId, validStatus ? [validStatus] : undefined, locationId);
 
   const entries: CatalogEntry[] = menuSelections.map((menuSelection) => {
     const StatusIcon = STATUS_ICON[menuSelection.status];

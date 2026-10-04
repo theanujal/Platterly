@@ -1,5 +1,6 @@
 "use server";
 
+import { assertEventAtMyLocationById, assertMayMoveEventTo, assertOrderAtMyLocation, myHeldLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -145,7 +146,7 @@ export async function createOrderAction(formData: FormData): Promise<ActionResul
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, input, session.user.id);
-    await syncOrderEvent(organizationId, order.id, session.user.id);
+    await syncOrderEvent(organizationId, order.id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -161,7 +162,7 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, input, session.user.id);
-    await syncOrderEvent(organizationId, order.id, session.user.id);
+    await syncOrderEvent(organizationId, order.id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
     await sendOrderWhatsApp(organizationId, order.id, session.user.id);
   } catch (error) {
@@ -174,11 +175,12 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
 export async function updateOrderAction(id: string, formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, id);
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
-    await syncOrderEvent(organizationId, id, session.user.id);
+    await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -191,11 +193,12 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
 export async function updateOrderAndNotifyAction(id: string, formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, id);
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     await updateOrder(organizationId, id, input, session.user.id);
-    await syncOrderEvent(organizationId, id, session.user.id);
+    await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
     await sendOrderWhatsApp(organizationId, id, session.user.id);
   } catch (error) {
@@ -209,6 +212,7 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
 export async function deleteOrderAction(id: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["delete"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, id);
   try {
     await deleteOrder(organizationId, id, session.user.id);
   } catch (error) {
@@ -230,6 +234,9 @@ export async function updateEventOperationsAction(
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
+  await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
+  await assertMayMoveEventTo(organizationId, session.user.id, patch.assignedKitchenId);
   try {
     const event = await getEvent(organizationId, eventId);
     if (!event || event.orderId !== orderId) throw new Error("Event not found.");
@@ -329,6 +336,7 @@ export async function getOrderCountsByDayAction(fromIso: string, toIso: string):
 export async function changeOrderStatusAction(orderId: string, status: OrderStatus, reason: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["edit"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
   try {
     await changeStatusManually(organizationId, { orderId, target: { kind: "ORDER", status }, reason, actorUserId: session.user.id });
   } catch (error) {

@@ -1,5 +1,6 @@
 "use server";
 
+import { assertEventAtMyLocationById, assertStaffAssignmentAtMyLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -70,6 +71,7 @@ export async function deleteStaffMemberAction(id: string): Promise<ActionResult>
 export async function assignStaffAction(orderId: string | null, eventId: string, person: { staffMemberId?: string; memberId?: string }, duty: string, notes: string): Promise<AssignResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["create"] }, organizationId);
+  await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
   try {
     if (!isStaffDuty(duty)) throw new Error("Choose a duty.");
     const result = await assignStaff(organizationId, eventId, { ...person, duty, notes }, session.user.id);
@@ -83,6 +85,7 @@ export async function assignStaffAction(orderId: string | null, eventId: string,
 export async function updateAssignmentAction(orderId: string | null, id: string, duty: string, notes: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
+  await assertStaffAssignmentAtMyLocation(organizationId, session.user.id, id);
   try {
     if (!isStaffDuty(duty)) throw new Error("Choose a duty.");
     await updateAssignment(organizationId, id, { duty, notes }, session.user.id);
@@ -97,6 +100,7 @@ export async function removeAssignmentAction(orderId: string | null, id: string)
   const { session, organizationId } = await requireActiveOrganization();
   // Taking someone off an event is editing the schedule; "delete" is for removing a floor staff record.
   await requirePermission({ staffing: ["edit"] }, organizationId);
+  await assertStaffAssignmentAtMyLocation(organizationId, session.user.id, id);
   try {
     await removeAssignment(organizationId, id, session.user.id);
   } catch (error) {

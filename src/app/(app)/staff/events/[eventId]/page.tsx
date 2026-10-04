@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { assertKitchenAtMyLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { Separator } from "@/components/ui/separator";
@@ -14,13 +15,14 @@ export const metadata: Metadata = {
 /** Where the kitchen team staffs one event. They cannot open the order itself, so this stands on its own. */
 export default async function EventStaffingPage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ staffing: ["view"] }, organizationId);
   const event = await prisma.event.findFirst({
     where: { id: eventId, organizationId },
     include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } } },
   });
   if (!event) notFound();
+  await assertKitchenAtMyLocation(organizationId, session.user.id, event.assignedKitchenId);
 
   const dates = event.startDate.getTime() === event.endDate.getTime() ? [event.startDate] : [event.startDate, event.endDate];
   const when = dates.map((d) => d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })).join(" to ");

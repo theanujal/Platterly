@@ -1,3 +1,4 @@
+import { eventAt, orderAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { getInventoryOverviewStats } from "@/modules/inventory/inventory";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
@@ -24,7 +25,9 @@ function dateKey(d: Date): string {
  * derive from the same Order rows. Inventory keeps its own existing helper
  * (getInventoryOverviewStats) since InventoryOverviewCard is unchanged.
  */
-export async function getDashboardSnapshot(organizationId: string) {
+export async function getDashboardSnapshot(organizationId: string, locationId?: string | null) {
+  // Chunk 23: with a location chosen (or held), every figure below is that location's. Quotations have no location, so they drop out.
+  const atOrder = orderAt(locationId);
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
   // 1 year back covers the Orders card's revenue trend's longest range
@@ -47,14 +50,14 @@ export async function getDashboardSnapshot(organizationId: string) {
     revenueOrdersRaw,
     orderCountsByDay,
   ] = await Promise.all([
-    prisma.order.groupBy({ by: ["status"], where: { organizationId }, _count: { _all: true }, _sum: { total: true } }),
+    prisma.order.groupBy({ by: ["status"], where: { organizationId, ...atOrder }, _count: { _all: true }, _sum: { total: true } }),
     prisma.order.aggregate({
-      where: { organizationId, status: { not: "CANCELLED" }, balance: { gt: 0 } },
+      where: { organizationId, ...atOrder, status: { not: "CANCELLED" }, balance: { gt: 0 } },
       _sum: { balance: true },
       _count: { _all: true },
     }),
     prisma.event.findMany({
-      where: { organizationId, startDate: { gte: startOfToday }, status: { not: "CANCELLED" } },
+      where: { organizationId, ...eventAt(locationId), startDate: { gte: startOfToday }, status: { not: "CANCELLED" } },
       orderBy: { startDate: "asc" },
       take: 5,
       select: {
@@ -68,13 +71,13 @@ export async function getDashboardSnapshot(organizationId: string) {
         eventType: { select: { name: true } },
       },
     }),
-    prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
-    getInventoryOverviewStats(organizationId),
+    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
+    getInventoryOverviewStats(organizationId, locationId),
     prisma.order.findMany({
-      where: { organizationId, createdAt: { gte: revenueTrendStart }, status: { not: "CANCELLED" } },
+      where: { organizationId, ...atOrder, createdAt: { gte: revenueTrendStart }, status: { not: "CANCELLED" } },
       select: { createdAt: true, total: true, status: true },
     }),
-    getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd)),
+    getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd), locationId),
   ]);
 
   const countFor = (status: OrderStatus) => statusCounts.find((s) => s.status === status)?._count._all ?? 0;

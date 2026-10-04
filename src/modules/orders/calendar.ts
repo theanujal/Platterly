@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { orderAt } from "@/modules/locations/scope";
 import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, EventStatus } from "@/generated/prisma/enums";
 
@@ -75,10 +76,10 @@ const liveEvent: Prisma.EventWhereInput = {
 };
 
 /** "YYYY-MM-DD" -> number of confirmed Orders happening that day. */
-export async function getOrderCountsByDay(organizationId: string, fromIso: string, toIso: string): Promise<Record<string, number>> {
+export async function getOrderCountsByDay(organizationId: string, fromIso: string, toIso: string, locationId?: string | null): Promise<Record<string, number>> {
   const w = overlapsWindow(fromIso, toIso);
   const orders = await prisma.order.findMany({
-    where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte } },
+    where: { organizationId, status: { in: CALENDAR_ORDER_STATUSES }, eventStartDate: { lte: w.lte }, eventEndDate: { gte: w.gte }, ...orderAt(locationId) },
     select: { eventStartDate: true, eventEndDate: true },
   });
   return countByDay(

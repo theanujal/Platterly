@@ -153,14 +153,15 @@ export function InventoryView({ stock, movements, purchases }: { stock: StockRep
 
 // ------------------------------------------------------------- Finance
 
-export function FinanceView({ finance, receivables, payables, showKitchen = false, orderLinks = false }: { finance: FinanceReport; receivables: ReceivablesReport; payables: PayablesReport; showKitchen?: boolean; orderLinks?: boolean }) {
+/** `byLocation`: one location's orders and their own expenses; supplier payments belong to no location, so payables are left out. */
+export function FinanceView({ finance, receivables, payables, showKitchen = false, orderLinks = false, byLocation = false }: { finance: FinanceReport; receivables: ReceivablesReport; payables: PayablesReport; showKitchen?: boolean; orderLinks?: boolean; byLocation?: boolean }) {
   return (
     <div className="flex flex-col gap-4" data-testid="finance-report">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <ReportTile label="Revenue (order totals)" value={inr(finance.revenue)} hint="Cancelled orders are left out" testId="fin-revenue" />
         <ReportTile label="Expenses" value={inr(finance.expenses)} testId="fin-expenses" />
         <ReportTile label="Profit" value={inr(finance.profit)} hint={finance.marginPercent === null ? undefined : `${percent(finance.marginPercent)} of revenue`} testId="fin-profit" />
-        <ReportTile label="Owed to you" value={inr(receivables.total)} hint={`${whole(receivables.orders)} ${receivables.orders === 1 ? "order" : "orders"} with a balance. You owe ${inr(payables.total)}`} testId="fin-owed" />
+        <ReportTile label="Owed to you" value={inr(receivables.total)} hint={`${whole(receivables.orders)} ${receivables.orders === 1 ? "order" : "orders"} with a balance.${byLocation ? "" : ` You owe ${inr(payables.total)}`}`} testId="fin-owed" />
       </div>
       <ReportSection title="Revenue and expenses by month" description="Revenue by the month the order was placed, expenses by the date they were spent.">
         {finance.months.length === 0 ? (
@@ -206,12 +207,14 @@ export function FinanceView({ finance, receivables, payables, showKitchen = fals
           />
         )}
       </ReportSection>
+      {!byLocation && (
       <ReportSection title="Payables: what you owe suppliers" description="Stock received minus payments made, as of today. Payments are applied to the oldest receipts first.">
         <BarList rows={payables.buckets.map((b) => ({ label: b.label, value: b.amount, text: inr(b.amount) }))} />
         {payables.suppliers.length > 0 && (
           <Table testId="fin-payables" columns={[{ label: "Supplier" }, { label: "Oldest unpaid", align: "right" }, { label: "Outstanding", align: "right" }]} rows={payables.suppliers.map((s) => [s.supplierName, `${s.oldestDays} ${s.oldestDays === 1 ? "day" : "days"}`, inr(s.outstanding)])} min="22rem" />
         )}
       </ReportSection>
+      )}
     </div>
   );
 }

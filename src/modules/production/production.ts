@@ -1,4 +1,5 @@
 import "server-only";
+import { orderAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
@@ -136,7 +137,7 @@ export async function takeOrderStock(organizationId: string, orderId: string, ac
  * Production planning across the board's own window (today through the Kitchen Rules' days): every order Sent to the
  * kitchen with an event in that window, its needs, and the combined shortfall for orders whose stock is not taken yet.
  */
-export async function getProductionPlan(organizationId: string) {
+export async function getProductionPlan(organizationId: string, locationId?: string | null) {
   const { daysBeforeEvent, extraPercent } = await getKitchenRules(organizationId);
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -144,7 +145,7 @@ export async function getProductionPlan(organizationId: string) {
   end.setDate(end.getDate() + daysBeforeEvent + 1);
 
   const orders = await prisma.order.findMany({
-    where: { organizationId, status: "SENT_TO_KITCHEN", eventStartDate: { gte: start, lt: end } },
+    where: { organizationId, ...orderAt(locationId), status: "SENT_TO_KITCHEN", eventStartDate: { gte: start, lt: end } },
     orderBy: { eventStartDate: "asc" },
     include: { customer: { select: { name: true } }, ...ORDER_PLAN_INCLUDE },
   });

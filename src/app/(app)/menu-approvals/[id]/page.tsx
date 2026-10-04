@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { assertKitchenAtMyLocation } from "@/modules/locations/active-location";
 import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getMenuSelection, listMenuApprovalNotes } from "@/modules/menu-approvals/menu-approval";
 import { listStatusChanges } from "@/modules/menu-approvals/status-history";
@@ -35,11 +36,12 @@ export default async function MenuApprovalDetailPage({
 }) {
   const { id } = await params;
   const { version } = await searchParams;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
 
   const menuSelection = await getMenuSelection(organizationId, id);
   if (!menuSelection?.event.orderId) notFound();
+  await assertKitchenAtMyLocation(organizationId, session.user.id, menuSelection.event.assignedKitchenId);
 
   const [order, menus, notes, statusChanges, approvalUrl, canOpenOrder] = await Promise.all([
     getOrder(organizationId, menuSelection.event.orderId),

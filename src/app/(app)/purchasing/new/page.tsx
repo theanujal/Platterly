@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { listInventoryItems } from "@/modules/inventory/inventory";
@@ -15,9 +16,10 @@ export const metadata: Metadata = {
 /** `?from=low-stock` starts the request with everything at or below its alert; `?items=id:qty,id:qty` starts it with those (from production planning). */
 export default async function NewPurchaseOrderPage({ searchParams }: { searchParams: Promise<{ from?: string; items?: string }> }) {
   const { from, items: itemsParam } = await searchParams;
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ inventory: ["create"] }, organizationId);
-  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId), listInventoryItems(organizationId)]);
+  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId), listInventoryItems(organizationId, locationId)]);
   const options = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
   const known = new Map(options.map((o) => [o.id, o]));
 
@@ -29,7 +31,7 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
       .filter(([id, qty]) => known.has(id) && Number.parseFloat(qty) > 0)
       .map(([id, qty]) => ({ inventoryId: id, quantity: String(Number.parseFloat(qty)), unitCost: known.get(id)?.costPerUnit != null ? String(known.get(id)?.costPerUnit) : "" }));
   } else if (from === "low-stock") {
-    seeded = (await suggestReorder(organizationId)).map((s) => ({ inventoryId: s.id, quantity: String(s.suggested), unitCost: s.costPerUnit !== null ? String(s.costPerUnit) : "" }));
+    seeded = (await suggestReorder(organizationId, locationId)).map((s) => ({ inventoryId: s.id, quantity: String(s.suggested), unitCost: s.costPerUnit !== null ? String(s.costPerUnit) : "" }));
   }
 
   return (

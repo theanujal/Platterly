@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { prisma } from "@/lib/db";
+import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { loadEventsReport, loadSalesReport } from "@/modules/reports/reports";
 import { loadFinanceReport, loadInventoryReport, loadMenuReport, loadStorefrontReport } from "@/modules/reports/more-reports";
@@ -21,8 +23,10 @@ type Query = { tab?: string; range?: string; from?: string; to?: string };
 // needs `inventory` view and Finance needs `expenses` view, because they show cost and profit; the recent-visitor list
 // (IP addresses) is for roles that can see the business profile (owner and manager).
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Query> }) {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ reports: ["view"] }, organizationId);
+  const { locationId } = await getActiveLocation(organizationId, session.user.id);
+  const location = locationId ? await prisma.kitchen.findFirst({ where: { id: locationId, organizationId }, select: { name: true } }) : null;
   const query = await searchParams;
   const [canInventory, canFinance, canSeeVisitors, canOpenOrders] = await Promise.all([
     hasPermission({ inventory: ["view"] }, organizationId),
@@ -33,7 +37,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const allowed = ["sales", "events", "menu", ...(canInventory ? ["inventory"] : []), ...(canFinance ? ["finance"] : []), "storefront"];
   const tab = allowed.includes(query.tab ?? "") ? (query.tab as string) : "sales";
   const range = resolveRange(query);
-  const scope = { organizationId };
+  const scope = { organizationId, locationId };
 
   const [sales, events, menu, inventory, finance, storefront] = await Promise.all([
     tab === "sales" ? loadSalesReport(scope, range) : null,
@@ -68,6 +72,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       <p className="text-sm text-muted-foreground" data-testid="report-period">
         {periodText}
       </p>
+      {location && (
+        <p className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground" data-testid="report-location">
+          Showing <b className="font-medium text-foreground">{location.name}</b> only.{" "}
+          {tab === "sales" && "Enquiries, conversion and quotations are not split by location, so they are left out."}
+          {tab === "finance" && "Company expenses and supplier payments are not split by location, so only the expenses of this location's orders are counted and payables are left out."}
+          {tab === "inventory" && "Items shared by every location are included."}
+          {tab === "storefront" && "There is one public link for the whole kitchen, so visits are not split by location."}
+        </p>
+      )}
       <ReportTabs
         tabs={[
           { id: "sales", label: "Sales" },
@@ -81,11 +94,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         basePath="/reports"
         keep={keep}
       />
-      {sales && <SalesView sales={sales} />}
+      {sales && <SalesView sales={sales} byLocation={Boolean(locationId)} />}
       {events && <EventsView events={events} orderLinks={canOpenOrders} />}
       {menu && <MenuView menu={menu} />}
       {inventory && <InventoryView stock={inventory.stock} movements={inventory.movements} purchases={inventory.purchases} />}
-      {finance && <FinanceView finance={finance.finance} receivables={finance.receivables} payables={finance.payables} orderLinks={canOpenOrders} />}
+      {finance && <FinanceView finance={finance.finance} receivables={finance.receivables} payables={finance.payables} orderLinks={canOpenOrders} byLocation={Boolean(locationId)} />}
       {storefront && <StorefrontView storefront={storefront.storefront} channels={storefront.channels} recent={canSeeVisitors ? storefront.recent : null} />}
     </div>
   );
