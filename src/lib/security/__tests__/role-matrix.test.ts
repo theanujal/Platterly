@@ -139,7 +139,8 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "edit"
     ],
     "reports": [
-      "view"
+      "view",
+      "export"
     ],
     "audit": [
       "view"
@@ -169,7 +170,8 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "view"
     ],
     "reports": [
-      "view"
+      "view",
+      "export"
     ]
   },
   "kitchen": {
@@ -193,7 +195,8 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "delete"
     ],
     "reports": [
-      "view"
+      "view",
+      "export"
     ]
   },
   "accounts": {
@@ -245,7 +248,8 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
       "approve"
     ],
     "reports": [
-      "view"
+      "view",
+      "export"
     ]
   }
 };
@@ -299,8 +303,8 @@ describe("role permission matrix", () => {
     }
   });
 
-  it("the read-only Staff role can only view", () => {
-    for (const actions of Object.values(EXPECTED.staff)) expect(actions).toEqual(["view"]);
+  it("the read-only Staff role can only view (and download the reports it can already read)", () => {
+    for (const [resource, actions] of Object.entries(EXPECTED.staff)) expect(actions).toEqual(resource === "reports" ? ["view", "export"] : ["view"]);
   });
 
   it("Kitchen cannot touch money or customers; Accounts cannot touch orders or menus", () => {

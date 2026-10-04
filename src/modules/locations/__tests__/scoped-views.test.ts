@@ -14,6 +14,8 @@ const userIds: string[] = [];
 
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
+  // A purchase order line restricts deleting its inventory item, so the orders go first (the database cascade has no safe order here).
+  await prisma.purchaseOrder.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   orgIds.length = userIds.length = 0;

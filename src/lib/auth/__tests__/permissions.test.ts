@@ -69,6 +69,9 @@ describe("Owner is the only top-tier role; Staff stays read-only (Team Admin rem
     expect(roles.staff.authorize({ customers: ["view"] }).success).toBe(true);
     expect(roles.staff.authorize({ orders: ["view"] }).success).toBe(true);
     expect(roles.staff.authorize({ reports: ["view"] }).success).toBe(true);
+    // Anyone who can read reports can also download them (Chunk 24, AJ 2026-10-04); the kitchen role has no reports at all.
+    for (const role of ["manager", "staff", "inventoryTeam", "salesEvents"] as const) expect(roles[role].authorize({ reports: ["export"] }).success, role).toBe(true);
+    expect(roles.kitchen.authorize({ reports: ["export"] }).success).toBe(false);
   });
 });
 
