@@ -107,7 +107,7 @@ export async function listEventAssignments(organizationId: string, eventId: stri
   });
 }
 
-/** Events in the next `days` days with who is on them, so the kitchen team can see what still needs filling. */
+/** Events in the next `days` days with how many people each needs, so the kitchen team can see what still needs filling. */
 export async function listUpcomingSchedule(organizationId: string, days = 14) {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
@@ -116,7 +116,7 @@ export async function listUpcomingSchedule(organizationId: string, days = 14) {
   const events = await prisma.event.findMany({
     where: { organizationId, endDate: { gte: start }, startDate: { lt: end }, OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] },
     orderBy: { startDate: "asc" },
-    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffAssignments: { select: { duty: true } }, tasks: { select: { done: true } }, logistics: { select: { dispatchStatus: true } } },
+    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffCounts: { select: { duty: true, count: true } }, logistics: { select: { dispatchStatus: true } } },
   });
-  return events.map((e) => ({ id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, assigned: e.staffAssignments.length, tasksOpen: e.tasks.filter((t) => !t.done).length, tasksTotal: e.tasks.length, dispatchStatus: e.logistics?.dispatchStatus ?? "NOT_DISPATCHED" }));
+  return events.map((e) => ({ id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, staff: Object.fromEntries(e.staffCounts.map((c) => [c.duty, c.count])) as Partial<Record<StaffDuty, number>>, staffTotal: e.staffCounts.reduce((sum, c) => sum + c.count, 0), dispatchStatus: e.logistics?.dispatchStatus ?? "NOT_DISPATCHED" }));
 }

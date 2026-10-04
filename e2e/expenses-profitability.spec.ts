@@ -74,12 +74,12 @@ test("add, edit and delete expenses on an order; the Profitability page follows"
 
   // The left-menu Profitability page shows the same order
   await page.goto("/profitability");
-  await expect(page.getByRole("heading", { name: "Profitability", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finance", exact: true })).toBeVisible();
   await expect(page.getByTestId("total-revenue")).toHaveText("₹20,000.00");
   await expect(page.getByTestId("total-cost")).toHaveText("₹10,000.00");
   await expect(page.getByTestId("total-profit")).toHaveText("₹10,000.00");
   await expect(page.getByTestId("total-margin")).toHaveText("50%");
-  await expect(page.getByRole("link", { name: "Profitability" }).first()).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Finance" }).getByRole("link", { name: "Profitability" })).toBeVisible();
 
   // Delete both: the profit is the order total again
   await page.goto(`/orders/${orderId}`);
@@ -105,7 +105,7 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
 
   // ===== Owner: a company expense (rent) and an order expense, both from the Expenses page =====
   await page.goto("/expenses");
-  await expect(page.getByRole("heading", { name: "Expenses", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Finance", exact: true })).toBeVisible();
   await expect(page.getByText("No expenses recorded yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "Add Expense" }).click();
@@ -173,11 +173,11 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
   await setMemberRole(accountsEmail, "accounts");
 
   await accounts.goto("/dashboard");
-  await expect(accounts.getByRole("link", { name: "Expenses", exact: true })).toBeVisible();
-  await expect(accounts.getByRole("link", { name: "Profitability" })).toBeVisible();
+  await expect(accounts.getByRole("link", { name: "Finance", exact: true })).toBeVisible();
   await expect(accounts.getByRole("link", { name: "Orders", exact: true })).toHaveCount(0);
-  await accounts.getByRole("link", { name: "Expenses", exact: true }).click();
-  await expect(accounts.getByRole("heading", { name: "Expenses", exact: true })).toBeVisible();
+  await accounts.getByRole("link", { name: "Finance", exact: true }).click();
+  await expect(accounts.getByRole("heading", { name: "Finance", exact: true })).toBeVisible();
+  await expect(accounts.getByRole("navigation", { name: "Finance" }).getByRole("link", { name: "Profitability" })).toBeVisible();
   await expect(accounts.getByTestId("expense-row")).toHaveCount(2);
 
   // Accounts adds a company expense (salaries) and an order expense, edits one; delete is owner-only

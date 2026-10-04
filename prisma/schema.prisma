@@ -220,6 +220,7 @@ model Organization {
   staffAssignments StaffAssignment[]
   eventTasks       EventTask[]
   eventLogistics   EventLogistics[]
+  eventStaffCounts EventStaffCount[]
   suppliers        Supplier[]
   customers        Customer[]
   events           Event[]
@@ -1204,6 +1205,41 @@ model StaffAssignment {
   @@map("staff_assignment")
 }
 
+// Staffing as numbers only (AJ, 2026-10-04): "Event Managers 2, Serving 10". One row per event and duty; a duty with no
+// row means zero. Replaces picking people one by one; StaffAssignment and EventTask stay in the database, unused, until
+// a later release removes them (expand/contract, docs/data-safety.md).
+model EventStaffCount {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventId        String
+  event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  duty           StaffDuty
+  count          Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventId, duty])
+  @@index([organizationId])
+  @@map("event_staff_count")
+}
+
+// The box at the bottom of every kitchen's sidebar (AJ, 2026-10-04). One row, id "platform", edited by the Super Admin.
+// Switched on, its text and button replace the trial card for every kitchen; switched off, the trial card shows
+// during a trial and nothing shows otherwise.
+model PlatformNotice {
+  id          String   @id
+  enabled     Boolean  @default(false)
+  title       String?
+  message     String?
+  buttonLabel String?
+  buttonUrl   String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("platform_notice")
+}
+
 // Chunk 18.3 — Purchasing. DRAFT is the purchase request; ORDERED is sent to the supplier; receiving writes real
 // STOCK_IN ledger rows. Restrict to the supplier and inventory so a used record cannot vanish; the purge list and
 // the e2e cleanup remove purchase orders first.
@@ -1456,6 +1492,7 @@ model Event {
   requiredInventory EventRequiredInventory[]
   staffAssignments  StaffAssignment[]
   tasks             EventTask[]
+  staffCounts       EventStaffCount[]
   logistics         EventLogistics?
   // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
   // is @unique).
@@ -1728,6 +1765,8 @@ model Order {
   kitchenNotes          String?
   // Set whenever the kitchen notes change; the prep sheet shows it (AJ, 2026-09-30: a timestamp, no author).
   kitchenNotesUpdatedAt DateTime?
+  // Staffing and logistics notes (AJ, 2026-10-04): free text under Additional Details; replaces per-person and per-task notes.
+  staffingNotes         String?
 
   items           OrderItem[]
   mealPlanEntries MealPlanEntry[]

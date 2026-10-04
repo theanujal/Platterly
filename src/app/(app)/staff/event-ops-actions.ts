@@ -1,10 +1,10 @@
 "use server";
 
-import { assertEventAtMyLocationById, assertEventTaskAtMyLocation } from "@/modules/locations/active-location";
+import { assertEventAtMyLocationById } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createTask, setTaskDone, deleteTask } from "@/modules/logistics/task";
+import { saveStaffCounts } from "@/modules/employees/staff-counts";
 import { saveLogistics } from "@/modules/logistics/logistics";
 import { DISPATCH_STATUSES, SETUP_STATUSES } from "@/modules/logistics/labels";
 import type { DispatchStatus, SetupStatus } from "@/generated/prisma/enums";
@@ -27,38 +27,12 @@ const naive = (value: string): Date | null => {
   return new Date(iso);
 };
 
-export async function createTaskAction(orderId: string | null, eventId: string, form: { title: string; notes: string; dueDate: string; assignmentId: string }): Promise<ActionResult> {
+export async function saveStaffCountsAction(orderId: string | null, eventId: string, counts: Record<string, number>): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ staffing: ["create"] }, organizationId);
+  await requirePermission({ staffing: ["edit"] }, organizationId);
   await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
   try {
-    await createTask(organizationId, eventId, { title: form.title, notes: form.notes, dueDate: naive(form.dueDate), assignmentId: form.assignmentId || null }, session.user.id);
-  } catch (error) {
-    return fail(error);
-  }
-  refresh(orderId);
-  return { ok: true };
-}
-
-export async function setTaskDoneAction(orderId: string | null, id: string, done: boolean): Promise<ActionResult> {
-  const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ staffing: ["edit"] }, organizationId);
-  await assertEventTaskAtMyLocation(organizationId, session.user.id, id);
-  try {
-    await setTaskDone(organizationId, id, done, session.user.id);
-  } catch (error) {
-    return fail(error);
-  }
-  refresh(orderId);
-  return { ok: true };
-}
-
-export async function deleteTaskAction(orderId: string | null, id: string): Promise<ActionResult> {
-  const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ staffing: ["edit"] }, organizationId);
-  await assertEventTaskAtMyLocation(organizationId, session.user.id, id);
-  try {
-    await deleteTask(organizationId, id, session.user.id);
+    await saveStaffCounts(organizationId, eventId, counts, session.user.id);
   } catch (error) {
     return fail(error);
   }
@@ -75,7 +49,6 @@ export interface LogisticsForm {
   dispatchStatus: string;
   setupStatus: string;
   setupTime: string;
-  setupNotes: string;
 }
 
 export async function saveLogisticsAction(orderId: string | null, eventId: string, form: LogisticsForm): Promise<ActionResult> {
@@ -96,7 +69,6 @@ export async function saveLogisticsAction(orderId: string | null, eventId: strin
         dispatchStatus: form.dispatchStatus as DispatchStatus,
         setupStatus: form.setupStatus as SetupStatus,
         setupTime: naive(form.setupTime),
-        setupNotes: form.setupNotes,
       },
       session.user.id,
     );

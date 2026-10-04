@@ -22,7 +22,11 @@ afterEach(async () => {
 });
 
 const NONE = { from: null, to: null };
-const day = (offset: number) => new Date(new Date().toISOString().slice(0, 10) + "T00:00:00.000Z").getTime() + offset * 86_400_000;
+// Today as the app sees it (the local date, stored as midnight UTC), so the test also holds between midnight and 05:30 in India.
+const day = (offset: number) => {
+  const now = new Date();
+  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) + offset * 86_400_000;
+};
 
 /** One kitchen with two locations and three orders: 1000 at North, 2000 at South, 4000 at neither. */
 async function seed() {

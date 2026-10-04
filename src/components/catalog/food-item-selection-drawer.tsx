@@ -332,7 +332,7 @@ export function FoodItemSelectionDrawer({
                 return (
                   <div key={section.categoryId ?? "other"} className="flex flex-col" data-testid={`picker-section-${section.categoryName}`}>
                     {needed !== null && (
-                      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted px-4 py-2">
                         <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Included items</span>
                         <Badge variant={met ? "success" : "warning"}>
                           {regular}/{section.maxSelection}
@@ -385,7 +385,7 @@ export function FoodItemSelectionDrawer({
 
               {visibleAddOns.length > 0 && (
                 <div className="flex flex-col" data-testid="picker-addons">
-                  <div className="border-b border-border bg-muted/40 px-4 py-2">
+                  <div className="border-b border-border bg-muted px-4 py-2">
                     <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Add-ons (Optional)</span>
                   </div>
                   <Table>

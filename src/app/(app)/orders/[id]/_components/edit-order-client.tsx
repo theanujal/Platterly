@@ -15,6 +15,7 @@ interface EditOrderClientProps {
   expensesTab?: React.ReactNode;
   staffingTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
+  billingPanel?: React.ReactNode;
   menuPlanBanner?: React.ReactNode;
   eventTypes: { id: string; name: string }[];
   menus: {
@@ -45,6 +46,7 @@ export function EditOrderClient({
   expensesTab,
   staffingTab,
   pricingExtra,
+  billingPanel,
   menuPlanBanner,
 }: EditOrderClientProps) {
   const router = useRouter();
@@ -58,6 +60,7 @@ export function EditOrderClient({
       expensesTab={expensesTab}
       staffingTab={staffingTab}
       pricingExtra={pricingExtra}
+      billingPanel={billingPanel}
       menuPlanReadOnly
       menuPlanBanner={menuPlanBanner}
       customers={customers}

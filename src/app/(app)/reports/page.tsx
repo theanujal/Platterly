@@ -10,8 +10,8 @@ import { EventsView, SalesView } from "@/components/reports/report-views";
 import { FinanceView, InventoryView, MenuView, StorefrontView } from "@/components/reports/more-report-views";
 import { ReportTabs } from "@/components/reports/report-ui";
 import { ExportMenu } from "@/components/reports/export-menu";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 
 export const metadata: Metadata = {
   title: "Reports — Platterly",
@@ -65,15 +65,15 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Reports" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Reports & Activity" }]} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Reports</h1>
+          <h1 className="text-2xl font-semibold">Reports & Activity</h1>
           <p className="text-sm text-muted-foreground">How your catering business is doing: sales, events, menu, stock, finance and storefront visitors, for any period.</p>
         </div>
         {canExport && <ExportMenu href="/reports/export" params={{ tab, ...keep }} />}
       </div>
-      <Separator />
+      <SectionTabs group="reports" active="/reports" organizationId={organizationId} />
       <RangeFilter preset={range.preset} from={range.from ? toIsoDate(range.from) : ""} to={range.to ? toIsoDate(range.to) : ""} basePath="/reports" extra={{ tab }} />
       <p className="text-sm text-muted-foreground" data-testid="report-period">
         {periodText}

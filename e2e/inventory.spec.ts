@@ -35,9 +35,9 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   // dismissed.
   await page.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("link", { name: "Inventory" }).click();
+  await page.getByRole("link", { name: "Stock & Supplies", exact: true }).click();
   await expect(page).toHaveURL(/\/inventory$/);
-  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Stock & Supplies", exact: true })).toBeVisible();
 
   // --- Add Item with an opening stock, via the "Add Item" drawer ---
   const itemName = `Basmati Rice ${suffix}`;
@@ -115,7 +115,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await expect(page.getByText("Low stock", { exact: true })).toBeVisible();
 
   // --- Delete ---
-  await page.getByRole("link", { name: "Inventory" }).click();
+  await page.getByRole("link", { name: "Stock & Supplies", exact: true }).click();
   await page.getByRole("button", { name: `Delete ${itemName}` }).click();
   await page.getByRole("button", { name: "Delete" }).click();
   // The confirm dialog's own title repeats the item name, so wait for it to close first.

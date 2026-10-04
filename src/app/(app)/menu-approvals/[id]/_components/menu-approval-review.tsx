@@ -161,7 +161,7 @@ function stageBanner(status: MenuSelectionStatus, currentVersion: number, status
 const BANNER_CLASS = {
   danger: "border-destructive/30 bg-destructive/10 text-destructive",
   info: "border-info/30 bg-info/10 text-info",
-  neutral: "border-border bg-muted/40 text-muted-foreground",
+  neutral: "border-border bg-muted text-muted-foreground",
 } as const;
 
 export function MenuApprovalReview({
@@ -662,7 +662,7 @@ export function MenuApprovalReview({
             ) : (
               <ul className="flex max-h-96 flex-col gap-3 overflow-y-auto">
                 {notesNewestFirst.map((note) => (
-                  <li key={note.id} className="flex flex-col gap-1.5 rounded-lg bg-muted/40 p-3 text-sm" data-testid="menu-note">
+                  <li key={note.id} className="flex flex-col gap-1.5 rounded-lg bg-muted p-3 text-sm" data-testid="menu-note">
                     <p className="whitespace-pre-wrap">{note.body}</p>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <Badge variant={AUTHOR_TONE[note.authorType]}>{AUTHOR_LABEL[note.authorType]}</Badge>

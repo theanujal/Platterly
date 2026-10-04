@@ -3,7 +3,7 @@ import Link from "next/link";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listStaffMembers } from "@/modules/employees/staff-member";
 import { listAssignableMembers, listUpcomingSchedule } from "@/modules/employees/assignment";
-import { STAFF_DUTY_LABEL } from "@/modules/employees/duty";
+import { STAFF_DUTIES, STAFF_DUTY_LABEL } from "@/modules/employees/duty";
 import { DISPATCH_STATUS_LABEL, DISPATCH_STATUS_TONE } from "@/modules/logistics/labels";
 import { roleLabel } from "@/lib/auth/role-metadata";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,7 @@ export default async function StaffPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Staff</h1>
-          <p className="text-sm text-muted-foreground">Who works your events. The kitchen team picks people for each event on the order&apos;s Staffing tab; nothing is worked out for you.</p>
+          <p className="text-sm text-muted-foreground">Who works your events. The kitchen team enters how many people each event needs (by duty) on the order&apos;s Staffing tab; nothing is worked out for you.</p>
         </div>
         {canCreate && <AddStaffMemberDialog />}
       </div>
@@ -61,8 +61,7 @@ export default async function StaffPage() {
                   <TableHead>Event</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Guests</TableHead>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Tasks</TableHead>
+                  <TableHead>Staffing</TableHead>
                   <TableHead>Dispatch</TableHead>
                 </TableRow>
               </TableHeader>
@@ -76,8 +75,16 @@ export default async function StaffPage() {
                     </TableCell>
                     <TableCell>{formatDate(e.startDate)}</TableCell>
                     <TableCell>{e.guestCount ?? "—"}</TableCell>
-                    <TableCell>{e.assigned === 0 ? <Badge variant="warning">No staff yet</Badge> : <Badge variant="success">{e.assigned} assigned</Badge>}</TableCell>
-                    <TableCell>{e.tasksTotal === 0 ? "—" : `${e.tasksTotal - e.tasksOpen}/${e.tasksTotal} done`}</TableCell>
+                    <TableCell>
+                      {e.staffTotal === 0 ? (
+                        <Badge variant="warning">Not entered yet</Badge>
+                      ) : (
+                        <span className="text-sm">
+                          <span className="font-medium">{e.staffTotal}</span>{" "}
+                          <span className="text-muted-foreground">({STAFF_DUTIES.filter((d) => e.staff[d]).map((d) => `${STAFF_DUTY_LABEL[d]} ${e.staff[d]}`).join(", ")})</span>
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={DISPATCH_STATUS_TONE[e.dispatchStatus]}>{DISPATCH_STATUS_LABEL[e.dispatchStatus]}</Badge>
                     </TableCell>

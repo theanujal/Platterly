@@ -124,7 +124,7 @@ export function ExpensesBrowser({
       ) : (
         <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
           <Table>
-            <TableHeader className="bg-muted/40">
+            <TableHeader className="bg-muted">
               <TableRow>
                 {["Date", "Applies to", "Category", "Supplier", "Method", "Notes", "Files", "Amount"].map((h, i) => (
                   <TableHead key={h} className={cn("h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase", i === 7 && "text-right")}>

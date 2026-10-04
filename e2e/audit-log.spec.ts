@@ -18,9 +18,10 @@ test("the owner reads the audit log: entries in plain words, search, record filt
   await signUpCaterer(page, email, { firstName: "Audit", lastName: "Tester", phone: "9800000022" });
 
   // The sidebar shows it, and signing up already left entries behind.
-  await page.getByRole("link", { name: "Audit Log" }).click();
+  await page.getByRole("link", { name: "Reports & Activity", exact: true }).click();
+  await page.getByRole("navigation", { name: "Reports & Activity" }).getByRole("link", { name: "Activity" }).click();
   await expect(page).toHaveURL(/\/audit-log$/);
-  await expect(page.getByRole("heading", { name: "Audit Log", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reports & Activity", exact: true })).toBeVisible();
   const rows = page.getByTestId("audit-row");
   await expect(rows.first()).toBeVisible();
   await expect(page.getByText("Kitchen account created")).toBeVisible();

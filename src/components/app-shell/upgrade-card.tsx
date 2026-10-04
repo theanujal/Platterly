@@ -3,10 +3,15 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface UpgradeCardProps {
-  planName: string;
-  isTrialing: boolean;
   trialDaysLeft: number | null;
   trialTotalDays: number | null;
+}
+
+export interface SidebarNotice {
+  title: string | null;
+  message: string | null;
+  buttonLabel: string | null;
+  buttonUrl: string | null;
 }
 
 /**
@@ -20,9 +25,9 @@ interface UpgradeCardProps {
  * Subscription settings page — the only place plan/limit info actually
  * lives today; there's no self-serve checkout yet, so this never claims one.
  */
-export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDays }: UpgradeCardProps) {
+export function UpgradeCard({ trialDaysLeft, trialTotalDays }: UpgradeCardProps) {
   const progressPercent =
-    isTrialing && trialDaysLeft !== null && trialTotalDays
+    trialDaysLeft !== null && trialTotalDays
       ? Math.min(100, Math.max(0, ((trialTotalDays - trialDaysLeft) / trialTotalDays) * 100))
       : null;
 
@@ -31,11 +36,7 @@ export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDay
       <div className="flex items-center gap-1.5">
         <Sparkles className="size-3.5 shrink-0" />
         <span className="text-xs font-semibold">
-          {isTrialing && trialDaysLeft !== null
-            ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your trial`
-            : isTrialing
-              ? "You're on a free trial"
-              : `${planName} plan`}
+          {trialDaysLeft !== null ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left on your trial` : "You're on a free trial"}
         </span>
       </div>
       {progressPercent !== null && (
@@ -44,9 +45,7 @@ export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDay
         </div>
       )}
       <p className="text-xs leading-snug text-white/90">
-        {isTrialing
-          ? "Upgrade to keep every feature after your trial ends."
-          : "Unlock higher limits and more team seats on a bigger plan."}
+        Upgrade to keep every feature after your trial ends.
       </p>
       {/*
         size="md" (h-[38px]) — formalized 2026-09-19 as a real Button size
@@ -63,6 +62,35 @@ export function UpgradeCard({ planName, isTrialing, trialDaysLeft, trialTotalDay
       >
         Upgrade Now
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The Super Admin's own words in the same green box (AJ, 2026-10-04): a title, some text and an optional button that
+ * opens a page in Platterly or a secure outside address. Shown to every kitchen while it is switched on.
+ */
+export function NoticeBox({ notice }: { notice: SidebarNotice }) {
+  const external = notice.buttonUrl?.startsWith("https://") ?? false;
+  return (
+    <div data-testid="sidebar-notice" className="flex flex-col gap-2.5 rounded-xl bg-gradient-to-br from-success to-success/85 p-3 text-white">
+      {notice.title && (
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="size-3.5 shrink-0" />
+          <span className="text-xs font-semibold">{notice.title}</span>
+        </div>
+      )}
+      {notice.message && <p className="text-xs leading-snug whitespace-pre-line text-white/90">{notice.message}</p>}
+      {notice.buttonLabel && notice.buttonUrl && (
+        <Button
+          size="md"
+          className="w-full bg-white text-success hover:bg-white/90"
+          render={external ? <a href={notice.buttonUrl} target="_blank" rel="noopener noreferrer" /> : <Link href={notice.buttonUrl} />}
+          nativeButton={false}
+        >
+          {notice.buttonLabel}
+        </Button>
+      )}
     </div>
   );
 }

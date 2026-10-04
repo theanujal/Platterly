@@ -151,18 +151,8 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   // The Event was created when the order was saved; there is nothing to create here (AJ, 2026-09-27).
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
 
-  const operations = page.getByTestId("event-operations-card");
-  // The Event Status dropdown was removed (2026-09-30); the card is the assigned kitchen only, and saves as it changes.
-  await operations.getByLabel("Assigned Kitchen", { exact: true }).click();
-  await expect(page.getByRole("listbox")).toBeVisible();
-  const kitchenOptions = page.getByRole("listbox").getByRole("option").filter({ hasNotText: "Not assigned" });
-  if ((await kitchenOptions.count()) > 0) {
-    await kitchenOptions.first().click();
-    await expect(operations.getByText("Saved", { exact: true })).toBeVisible();
-  } else {
-    await page.keyboard.press("Escape");
-  }
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  // A kitchen with a single location has no assigned-kitchen card (AJ, 2026-10-04); the picker shows once locations are on.
+  await expect(page.getByTestId("event-operations-card")).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Inventory" }).click();
   const inventoryCard = page.getByTestId("required-inventory-card");

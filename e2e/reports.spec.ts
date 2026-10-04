@@ -23,9 +23,9 @@ test("a kitchen reads its Sales and Events reports and filters them by date", as
   await seedOrderForBilling(email, 50_000);
   await seedOrderForBilling(email, 25_000);
 
-  await page.getByRole("link", { name: "Reports" }).click();
+  await page.getByRole("link", { name: "Reports & Activity", exact: true }).click();
   await expect(page).toHaveURL(/\/reports$/);
-  await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Reports & Activity", exact: true })).toBeVisible();
 
   // Sales (the default tab): two orders just placed
   const tile = (id: string) => page.getByTestId(id);

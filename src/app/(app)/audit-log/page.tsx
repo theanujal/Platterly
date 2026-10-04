@@ -5,8 +5,8 @@ import { hasPermission, requireActiveOrganization, requirePermission } from "@/l
 import { listAuditLog } from "@/modules/audit/audit-log";
 import { parseIsoDate } from "@/modules/expenses/date-range";
 import { ExportMenu } from "@/components/reports/export-menu";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { AuditFilters } from "./_components/audit-filters";
 import { AuditTable } from "./_components/audit-table";
@@ -45,15 +45,15 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Audit Log" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Reports & Activity" }]} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Audit Log</h1>
+          <h1 className="text-2xl font-semibold">Reports & Activity</h1>
           <p className="text-sm text-muted-foreground">Who changed what, and when. Every change to your orders, customers, money, menus and settings is recorded here and cannot be edited.</p>
         </div>
         {canExport && <ExportMenu href="/audit-log/export" params={{ q: query.q, type: query.type, who: query.who, from: query.from, to: query.to }} />}
       </div>
-      <Separator />
+      <SectionTabs group="reports" active="/audit-log" organizationId={organizationId} />
       <AuditFilters
         initial={{ q: query.q ?? "", type: query.type ?? "", who: query.who ?? "", from: query.from ?? "", to: query.to ?? "" }}
         recordTypes={log.recordTypes}

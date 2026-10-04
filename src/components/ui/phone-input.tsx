@@ -4,6 +4,7 @@ import "react-phone-number-input/style.css";
 import PhoneInputWithCountrySelect from "react-phone-number-input";
 import { isValidPhoneNumber } from "react-phone-number-input/max";
 import { Input } from "@/components/ui/input";
+import { normalizePhone } from "@/lib/phone";
 import { cn } from "cn";
 
 interface PhoneInputProps {
@@ -26,7 +27,11 @@ interface PhoneInputProps {
  * pieces read as one control, matching this library's standard shadcn
  * integration pattern.
  */
-export function PhoneInput({ id, value, onChange, required, disabled, className }: PhoneInputProps) {
+export function PhoneInput({ id, value: rawValue, onChange, required, disabled, className }: PhoneInputProps) {
+  // The library wants E.164 ("+919800000003"). Older records hold a bare 10-digit number, so read those as Indian
+  // numbers instead of tripping the library's console error; anything it still cannot read starts the field empty.
+  const normalized = rawValue ? normalizePhone(rawValue) : "";
+  const value = normalized.startsWith("+") ? normalized : "";
   return (
     <PhoneInputWithCountrySelect
       id={id}

@@ -300,7 +300,7 @@ export function ExpenseDialog({
             </div>
           )}
           {schedule && (
-            <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3" data-testid="repeat-box">
+            <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted p-3" data-testid="repeat-box">
               <div className="flex items-center gap-3">
                 <Repeat className="size-5 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1 text-sm">

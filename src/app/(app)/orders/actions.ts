@@ -129,6 +129,7 @@ function buildInput(formData: FormData): OrderInput {
     status: stringField(formData, "status") as OrderStatus | undefined,
     notes: stringField(formData, "notes"),
     kitchenNotes: stringField(formData, "kitchenNotes"),
+    staffingNotes: stringField(formData, "staffingNotes"),
     // The order page shows the meal plan read-only (Menu Approvals edits it), so it sends no meals; leave them as they are.
     mealPlanEntries: formData.get("mealPlanLocked") === "true" ? undefined : buildMealPlanEntries(formData),
   };

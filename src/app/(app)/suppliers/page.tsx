@@ -5,7 +5,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listSuppliers } from "@/modules/suppliers/supplier";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, formatRupees } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
@@ -87,15 +87,15 @@ export default async function SuppliersPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Suppliers" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Stock & Supplies" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Suppliers</h1>
+          <h1 className="text-2xl font-semibold">Stock & Supplies</h1>
           <p className="text-sm text-muted-foreground">Who you buy from. Pick them on inventory items and expenses.</p>
         </div>
         <AddSupplierDialog />
       </div>
-      <Separator />
+      <SectionTabs group="stock" active="/suppliers" organizationId={organizationId} />
       <CatalogBrowser
         entries={entries}
         addTile={<AddSupplierDialog variant="tile" />}

@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createStaffMember, updateStaffMember, setStaffMemberActive, deleteStaffMember, listStaffMembers, StaffMemberError } from "@/modules/employees/staff-member";
 import { assignStaff, updateAssignment, removeAssignment, listEventAssignments, listAssignableMembers, listUpcomingSchedule, StaffAssignmentError } from "@/modules/employees/assignment";
+import { saveStaffCounts } from "@/modules/employees/staff-counts";
 import { STAFF_DUTIES, isStaffDuty } from "@/modules/employees/duty";
 
 const orgIds: string[] = [];
@@ -10,6 +11,7 @@ const userIds: string[] = [];
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.staffAssignment.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.eventStaffCount.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.event.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.eventType.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -126,10 +128,9 @@ describe("Staff members and scheduling (Chunk 19.2)", () => {
     const { org, actor, member, event } = await setup();
     const soon = await event(1, 1);
     const later = await event(40, 40);
-    const p = await createStaffMember(org.id, { name: "Ravi", defaultDuty: "SERVING" }, actor.id);
-    await assignStaff(org.id, soon.id, { staffMemberId: p.id, duty: "SERVING" }, actor.id);
+    await saveStaffCounts(org.id, soon.id, { EVENT_MANAGER: 2, SERVING: 10 }, actor.id);
     const schedule = await listUpcomingSchedule(org.id, 14);
-    expect(schedule.map((s) => [s.id, s.assigned])).toEqual([[soon.id, 1]]);
+    expect(schedule.map((s) => [s.id, s.staffTotal])).toEqual([[soon.id, 12]]);
     expect(schedule.some((s) => s.id === later.id)).toBe(false);
     await prisma.member.update({ where: { id: member.id }, data: { disabledAt: new Date() } });
     await expect(assignStaff(org.id, soon.id, { memberId: member.id, duty: "KITCHEN" }, actor.id)).rejects.toThrow();

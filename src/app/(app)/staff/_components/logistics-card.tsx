@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DISPATCH_STATUSES, DISPATCH_STATUS_LABEL, DISPATCH_STATUS_TONE, SETUP_STATUSES, SETUP_STATUS_LABEL } from "@/modules/logistics/labels";
 import type { DispatchStatus } from "@/generated/prisma/enums";
@@ -110,10 +109,6 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
               </Select>
             </div>
             {field("lg-setup-time", "Setup time", "setupTime", { type: "datetime-local" })}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="lg-setup-notes">Setup notes</Label>
-            <Textarea id="lg-setup-notes" disabled={!canEdit} value={form.setupNotes} onChange={(e) => set("setupNotes", e.target.value)} />
           </div>
 
           {(data.dispatchedAt || data.deliveredAt) && (

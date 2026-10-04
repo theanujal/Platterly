@@ -95,6 +95,8 @@ export interface OrderInput {
   notes?: string;
   /** "Order Details" section — internal kitchen-facing notes, distinct from the customer-facing `notes` above. */
   kitchenNotes?: string;
+  /** Staffing and logistics notes, shown under Additional Details. */
+  staffingNotes?: string;
   /** Sync (not blind replace — see replaceMealPlanEntries) of this Order's Meal Planning selections. */
   mealPlanEntries?: MealPlanEntryInput[];
 }
@@ -371,6 +373,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       notes: input.notes,
       kitchenNotes: input.kitchenNotes,
       kitchenNotesUpdatedAt: input.kitchenNotes?.trim() ? new Date() : null,
+      staffingNotes: input.staffingNotes,
     },
   });
   await replaceMealPlanEntries(organizationId, order.id, input.mealPlanEntries);
@@ -443,6 +446,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       status: input.status ?? before.status,
       notes: input.notes,
       kitchenNotes: input.kitchenNotes,
+      staffingNotes: input.staffingNotes,
       // Only a real change moves the timestamp, so re-saving the order does not.
       ...(input.kitchenNotes !== undefined && (input.kitchenNotes.trim() || null) !== (before.kitchenNotes?.trim() || null) ? { kitchenNotesUpdatedAt: input.kitchenNotes.trim() ? new Date() : null } : {}),
     },

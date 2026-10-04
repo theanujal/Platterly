@@ -7,7 +7,7 @@ import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
 import { orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupees } from "@/components/catalog/catalog-display";
@@ -32,10 +32,10 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Purchasing" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Stock & Supplies" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Purchasing</h1>
+          <h1 className="text-2xl font-semibold">Stock & Supplies</h1>
           <p className="text-sm text-muted-foreground">Purchase requests and orders to your suppliers. Receiving an order adds the stock.</p>
         </div>
         {canCreate && (
@@ -49,7 +49,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
           </div>
         )}
       </div>
-      <Separator />
+      <SectionTabs group="stock" active="/purchasing" organizationId={organizationId} />
 
       <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
         <Button size="md" variant={filter ? "outline" : "default"} render={<Link href="/purchasing" />} nativeButton={false}>

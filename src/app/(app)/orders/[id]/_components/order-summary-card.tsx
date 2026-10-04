@@ -14,6 +14,7 @@ export function OrderSummaryCard({
   orderNumber,
   status,
   assignedKitchen,
+  showKitchen,
   createdAt,
   updatedAt,
   customer,
@@ -32,6 +33,8 @@ export function OrderSummaryCard({
   orderNumber: string | null;
   status: OrderStatus;
   assignedKitchen: string | null;
+  /** Only a kitchen that works from more than one location has an assigned kitchen to show. */
+  showKitchen: boolean;
   createdAt: Date;
   updatedAt: Date;
 }) {
@@ -44,7 +47,7 @@ export function OrderSummaryCard({
     `Event Date: ${eventDate}`,
     `Venue: ${venue || "Not set"}`,
     `Guests: ${guests.total} (${guests.adults} Adults, ${guests.below5} Children <5, ${guests.from5to10} Children 5–10)`,
-    `Assigned Kitchen: ${assignedKitchen ?? "Not assigned"}`,
+    ...(showKitchen ? [`Assigned Kitchen: ${assignedKitchen ?? "Not assigned"}`] : []),
     `Created on: ${fmt(createdAt)}`,
     `Last updated: ${fmt(updatedAt)}`,
   ].join("\n");
@@ -75,9 +78,11 @@ export function OrderSummaryCard({
           ({guests.adults} Adults, {guests.below5} Children &lt;5, {guests.from5to10} Children 5–10)
         </span>
       </SummaryRow>
-      <SummaryRow icon={ChefHat} label="Kitchen">
-        <span className="break-words">{assignedKitchen ?? "Not assigned"}</span>
-      </SummaryRow>
+      {showKitchen && (
+        <SummaryRow icon={ChefHat} label="Kitchen">
+          <span className="break-words">{assignedKitchen ?? "Not assigned"}</span>
+        </SummaryRow>
+      )}
       <SummaryRow icon={CalendarClock} label="Created on">
         {fmt(createdAt)}
       </SummaryRow>

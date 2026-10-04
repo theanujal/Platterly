@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, getTrialSubscriptionStatus, getLatestEmailOtp } from "./db";
 import { maskEmail } from "../src/lib/auth/mask-email";
+import { signOutFromMenu } from "./auth-helpers";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
@@ -147,7 +148,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // requireActiveOrganization() restores it from the existing Member row;
   // this proves that restoration path lands on the Dashboard directly,
   // never back at the onboarding wizard.
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutFromMenu(page);
   await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
   await expect(page).toHaveURL(/^https?:\/\/catering\.[^/]+\/$/); // signing out lands on the catering root
 

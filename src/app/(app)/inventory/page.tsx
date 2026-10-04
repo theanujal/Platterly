@@ -6,7 +6,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
@@ -149,15 +149,15 @@ export default async function InventoryPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Inventory" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Stock & Supplies" }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Inventory</h1>
+          <h1 className="text-2xl font-semibold">Stock & Supplies</h1>
           <p className="text-sm text-muted-foreground">Track stock on hand, low-stock alerts, and supplier contacts.</p>
         </div>
         <AddInventoryDialog suppliers={supplierOptions} locations={locations} />
       </div>
-      <Separator />
+      <SectionTabs group="stock" active="/inventory" organizationId={organizationId} />
 
       <CatalogBrowser
         entries={entries}

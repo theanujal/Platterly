@@ -245,8 +245,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save Event details" })).toHaveCount(0);
   const operations = page.getByTestId("event-operations-card");
-  await expect(operations.getByLabel("Assigned Kitchen")).toBeVisible();
-  await expect(operations.getByLabel("Event Status")).toHaveCount(0); // removed 2026-09-30
+  // A kitchen with a single location has no assigned kitchen to pick or show (AJ, 2026-10-04).
+  await expect(operations).toHaveCount(0);
+  await expect(page.getByText("Assigned Kitchen")).toHaveCount(0);
   await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card")).toBeVisible();
 

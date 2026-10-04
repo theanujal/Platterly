@@ -128,6 +128,7 @@ export interface OrderFormValues {
   notes: string;
   /** Internal, kitchen-facing — distinct from the customer-facing Notes above. */
   kitchenNotes: string;
+  staffingNotes: string;
   mealPlanEntries: MealSelection[];
 }
 
@@ -171,6 +172,7 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   status: "PENDING_REVIEW",
   notes: "",
   kitchenNotes: "",
+  staffingNotes: "",
   mealPlanEntries: [],
 };
 
@@ -255,6 +257,8 @@ interface OrderFormProps {
   /** The Staffing tab (Chunk 19.2): who is on this order's event. Only on the order's own page. */
   staffingTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
+  /** Order detail only: invoice button and the payments list, shown beside the pricing editor in the Pricing & Payment tab. */
+  billingPanel?: React.ReactNode;
   /**
    * Edit page only (AJ, 2026-09-30): the menu is planned in Menu Approvals, so here it is shown read-only and the
    * form sends no meals (the server leaves the meal plan alone). The banner carries the "Edit Menu" link.
@@ -291,6 +295,7 @@ export function OrderForm({
   expensesTab,
   staffingTab,
   pricingExtra,
+  billingPanel,
   menuPlanReadOnly = false,
   menuPlanBanner = null,
   cancelHref = "/orders",
@@ -466,6 +471,7 @@ export function OrderForm({
     formData.set("paymentStatus", values.paymentStatus);
     formData.set("notes", values.notes);
     formData.set("kitchenNotes", values.kitchenNotes);
+    formData.set("staffingNotes", values.staffingNotes);
     if (menuPlanReadOnly) formData.set("mealPlanLocked", "true");
     for (const entry of menuPlanReadOnly ? [] : values.mealPlanEntries) {
       formData.append("mealDate", entry.date);
@@ -574,7 +580,7 @@ export function OrderForm({
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-customer-email">Email</Label>
-        <Input id="order-customer-email" readOnly tabIndex={-1} className="bg-muted/40" value={selectedCustomer?.email ?? ""} placeholder="Filled in from the customer" />
+        <Input id="order-customer-email" readOnly tabIndex={-1} className="bg-muted" value={selectedCustomer?.email ?? ""} placeholder="Filled in from the customer" />
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-customer-phone">Phone</Label>
@@ -608,7 +614,7 @@ export function OrderForm({
             disabled={option.value === "SINGLE" && multiRequired}
             className={cn(
               "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-              selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+              selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
             )}
           >
             <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
@@ -813,7 +819,7 @@ export function OrderForm({
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-total-guests">Total Guests</Label>
-        <Input id="order-total-guests" readOnly tabIndex={-1} className="bg-muted/40" value={String(guestsComputed)} />
+        <Input id="order-total-guests" readOnly tabIndex={-1} className="bg-muted" value={String(guestsComputed)} />
       </div>
     </div>
   </FormSection>
@@ -857,6 +863,11 @@ export function OrderForm({
         <Label htmlFor="order-kitchen-notes">Kitchen Notes</Label>
         <Textarea id="order-kitchen-notes" value={values.kitchenNotes} onChange={(e) => setField("kitchenNotes", e.target.value)} />
         <p className="text-xs text-muted-foreground">Internal — visible to the kitchen team, not the customer.</p>
+      </div>
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        <Label htmlFor="order-staffing-notes">Staffing &amp; Logistics Notes</Label>
+        <Textarea id="order-staffing-notes" value={values.staffingNotes} onChange={(e) => setField("staffingNotes", e.target.value)} />
+        <p className="text-xs text-muted-foreground">Internal — anything about the crew, vehicles, timings or setup. The numbers per duty go in the Staffing &amp; Logistics tab.</p>
       </div>
     </div>
   </FormSection>
@@ -1097,12 +1108,18 @@ export function OrderForm({
     {
       id: "pricing",
       label: "Pricing & Payment",
+      // Two columns on a wide screen: what the order costs on the left, what has been paid on the right.
       panel: (
-        <>
-          {pricingExtra}
-          {pricingEditorCard}
-          {paymentCard}
-        </>
+        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-4">
+            {pricingExtra}
+            {pricingEditorCard}
+          </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            {paymentCard}
+            {billingPanel}
+          </div>
+        </div>
       ),
     },
     ...(inventoryTab
@@ -1173,7 +1190,7 @@ export function OrderForm({
           {/* ---------------- Summary column ---------------- */}
           <aside className="flex min-w-0 flex-col gap-4">
             {sidebarTop ?? orderSummaryCard}
-            {pricingSummaryCard}
+            {!sidebarTop && pricingSummaryCard}
           </aside>
         </div>
       </form>

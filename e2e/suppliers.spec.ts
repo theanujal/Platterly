@@ -22,7 +22,8 @@ test("supplier: create, pick on inventory and expense, profile, delete guard", a
   await page.getByRole("button", { name: "Close" }).click();
 
   // Create from the sidebar link
-  await page.getByRole("link", { name: "Suppliers" }).click();
+  await page.getByRole("link", { name: "Stock & Supplies", exact: true }).click();
+  await page.getByRole("navigation", { name: "Stock & Supplies" }).getByRole("link", { name: "Suppliers" }).click();
   await expect(page).toHaveURL(/\/suppliers$/);
   await page.getByRole("button", { name: "Add Supplier" }).click();
   await page.getByLabel("Supplier Name").fill(supplier);

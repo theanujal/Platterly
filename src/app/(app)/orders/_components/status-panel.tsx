@@ -43,7 +43,7 @@ function formatWhen(date: Date) {
 function HistoryItem({ entry }: { entry: StatusHistoryEntry }) {
   const manual = entry.source === "MANUAL";
   return (
-    <li className="flex flex-col gap-1 rounded-lg bg-muted/40 p-3 text-sm" data-testid="status-history-entry">
+    <li className="flex flex-col gap-1 rounded-lg bg-muted p-3 text-sm" data-testid="status-history-entry">
       <div className="flex flex-wrap items-center gap-1.5 font-medium">
         <span>{labelFor(entry, entry.fromStatus)}</span>
         <ArrowRight className="size-3.5 text-muted-foreground" />

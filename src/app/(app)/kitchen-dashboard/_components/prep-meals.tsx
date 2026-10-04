@@ -54,7 +54,7 @@ export function PrepMeals({ meals, guests, extraPercent, isMultiOrder }: { meals
               onClick={() => setSelectedKey(meal.key)}
               className={cn(
                 "flex min-w-40 flex-1 flex-col gap-0.5 rounded-xl border bg-card p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                meal.key === selected.key ? "border-primary bg-accent/40" : "border-border hover:bg-muted/40",
+                meal.key === selected.key ? "border-primary bg-accent/40" : "border-border hover:bg-muted",
               )}
             >
               <span className="flex items-center justify-between gap-2">

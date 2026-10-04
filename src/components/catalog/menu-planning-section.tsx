@@ -224,7 +224,7 @@ export function MenuPlanningSection({
               Menu
             </Label>
             {readOnly ? (
-              <div className="flex h-10 items-center rounded-lg border border-input bg-muted/40 px-3 text-sm">{assignedMenu?.name ?? "No menu assigned"}</div>
+              <div className="flex h-10 items-center rounded-lg border border-input bg-muted px-3 text-sm">{assignedMenu?.name ?? "No menu assigned"}</div>
             ) : (
               <Select
                 items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
@@ -263,7 +263,7 @@ export function MenuPlanningSection({
                 <span className="shrink-0 text-xs text-muted-foreground">/ plate</span>
               </div>
             ) : (
-              <div className="flex h-10 items-center justify-between rounded-lg border border-input bg-muted/40 px-3 text-sm">
+              <div className="flex h-10 items-center justify-between rounded-lg border border-input bg-muted px-3 text-sm">
                 <span>
                   {individualPricingEnabled
                     ? entry.price
@@ -358,7 +358,7 @@ export function MenuPlanningSection({
               onClick={() => toggleMeal(date, meal.value)}
               className={cn(
                 "flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors",
-                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
               )}
             >
               <span className="flex items-center gap-2 text-sm font-medium">
@@ -404,7 +404,7 @@ export function MenuPlanningSection({
                   onClick={() => onMenuPreferenceChange(selected ? "" : option.value)}
                   className={cn(
                     "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                    selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                    selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
                   )}
                 >
                   <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
@@ -478,7 +478,7 @@ export function MenuPlanningSection({
                     <PopoverTrigger
                       type="button"
                       disabled={!activeDateHasMeals}
-                      className="flex h-9 items-center gap-2 rounded-lg border border-input bg-transparent px-3 text-sm outline-none transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-9 items-center gap-2 rounded-lg border border-input bg-transparent px-3 text-sm outline-none transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Copy className="size-4" />
                       Copy to other dates

@@ -78,7 +78,7 @@ export function validateInput(input: object, rules: Rules): void {
 export const ORDER_LIKE_RULES: Rules = {
   money: ["discount", "taxes", "additionalCharges", "deliveryCharges", "transportationCost", "otherCharges", "advance", "individualChildBelow5Rate", "individualChild5To10Rate"],
   count: ["adultCount", "childBelow5Count", "child5To10Count", "totalParticipants"],
-  text: { notes: 5000, kitchenNotes: 5000, terms: 5000, venue: 300, eventAddress: 1000, deliveryInstructions: 2000, cookingInstructions: 2000, venueAccessInstructions: 2000, venueLandmark: 300, venueContactName: 200 },
+  text: { notes: 5000, kitchenNotes: 5000, staffingNotes: 5000, terms: 5000, venue: 300, eventAddress: 1000, deliveryInstructions: 2000, cookingInstructions: 2000, venueAccessInstructions: 2000, venueLandmark: 300, venueContactName: 200 },
 };
 
 export function validateOrderLike(input: { mealPlanEntries?: Array<{ price?: unknown }> } & object): void {

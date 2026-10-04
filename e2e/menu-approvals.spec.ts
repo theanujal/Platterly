@@ -404,7 +404,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await orderCard().getByRole("link", { name: customerName }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByTestId("order-approval-panel")).toBeVisible();
-  await expect(page.getByTestId("event-operations-card")).toBeVisible();
+  // A kitchen with one location has no assigned-kitchen card (AJ, 2026-10-04).
+  await expect(page.getByTestId("event-operations-card")).toHaveCount(0);
   await page.getByRole("button", { name: "View History" }).click();
   const versions = page.getByRole("dialog", { name: "Menu version history" });
   await expect(versions.getByTestId("menu-version-row")).toHaveCount(2);

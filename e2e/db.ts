@@ -521,3 +521,8 @@ export async function seedLeadFromVisit(email: string, source: string): Promise<
   );
   return customerId;
 }
+
+/** Resets the Super Admin's sidebar notice to off and empty (the notice is one shared row, so a spec that sets it must put it back). */
+export async function clearPlatformNotice(): Promise<void> {
+  await pool.query(`DELETE FROM platform_notice WHERE id = 'platform'`);
+}

@@ -6,8 +6,8 @@ import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
 import { RangeFilter } from "./_components/range-filter";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { ExportMenu } from "@/components/reports/export-menu";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import { TableCell } from "@/components/ui/table";
 import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { cn } from "cn";
@@ -114,15 +114,15 @@ export default async function ProfitabilityPage({ searchParams }: { searchParams
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Profitability" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Finance" }]} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Profitability</h1>
+          <h1 className="text-2xl font-semibold">Finance</h1>
           <p className="text-sm text-muted-foreground">Profit on every order: the order total minus the expenses recorded on its Expenses tab. Cancelled orders are left out.</p>
         </div>
         {canExport && <ExportMenu href="/profitability/export" params={{ range: query.range, from: query.from, to: query.to }} />}
       </div>
-      <Separator />
+      <SectionTabs group="finance" active="/profitability" organizationId={organizationId} />
       <div className="flex flex-col gap-3">
         <RangeFilter preset={range.preset} from={range.preset === "custom" && range.from ? toIsoDate(range.from) : ""} to={range.preset === "custom" && range.to ? toIsoDate(range.to) : ""} />
         <p className="text-sm text-muted-foreground" data-testid="range-summary">

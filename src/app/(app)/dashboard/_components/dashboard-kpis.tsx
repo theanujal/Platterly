@@ -45,7 +45,7 @@ export function DashboardKpis({ statusBreakdown, outstandingBalance, outstanding
             <Link
               key={status}
               href={`/orders?status=${status}`}
-              className="flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10 transition-colors hover:bg-muted/40"
+              className="flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10 transition-colors hover:bg-muted"
             >
               <div className={`flex size-9 items-center justify-center rounded-lg ${chip}`}>
                 <Icon className="size-4" />

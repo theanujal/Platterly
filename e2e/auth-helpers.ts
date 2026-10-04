@@ -63,6 +63,12 @@ export async function signUpCaterer(page: Page, email: string, options: SignUpOp
  * trigger does nothing and a plain `click()` then waits for an option that never appears. The option
  * is only clicked once it is showing, and the trigger only clicked while it is not.
  */
+/** Signs out through the account menu at the top right (Settings, Billing and Sign out live there). */
+export async function signOutFromMenu(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
+}
+
 export async function selectOption(page: Page, trigger: Locator, optionName: string | RegExp): Promise<void> {
   await expect(async () => {
     const option = page.getByRole("option", { name: optionName });

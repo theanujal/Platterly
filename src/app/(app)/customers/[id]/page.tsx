@@ -72,7 +72,7 @@ function Stat({ caption, children }: { caption: string; children: React.ReactNod
 
 function RowShell({ href, icon, children }: { href?: string; icon: React.ReactNode; children: React.ReactNode }) {
   const body = (
-    <div className="flex items-center gap-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-colors hover:bg-muted/40">
+    <div className="flex items-center gap-4 rounded-xl bg-card p-4 ring-1 ring-foreground/10 transition-colors hover:bg-muted">
       <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">{icon}</div>
       <div className="grid min-w-0 flex-1 grid-cols-2 items-center gap-x-4 gap-y-3 @2xl:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))_auto]">{children}</div>
       {href && <ChevronRight className="size-5 shrink-0 text-muted-foreground" aria-hidden />}

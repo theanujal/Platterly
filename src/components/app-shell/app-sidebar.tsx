@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, TrendingUp, Wallet, ScrollText, BarChart3, Truck, PackageCheck, UserRoundCog, Settings as SettingsIcon } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, Wallet, BarChart3, UserRoundCog } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -16,10 +16,9 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
-import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
-import { UpgradeCard } from "@/components/app-shell/upgrade-card";
+import { NoticeBox, UpgradeCard, type SidebarNotice } from "@/components/app-shell/upgrade-card";
 import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
+import { NAV_GROUPS, type NavGroupId } from "@/components/app-shell/nav-groups";
 
 // AJ's explicit nav order, 2026-09-19 — 3 groups (sales/catalog, inventory,
 // kitchen), each its own SidebarMenu so a SidebarSeparator can mark the
@@ -32,20 +31,14 @@ const SALES_AND_CATALOG_ITEMS = [
   { label: "Abandoned Orders", href: "/abandoned-orders", icon: ShoppingBasket },
   { label: "Quotations", href: "/quotations", icon: FileText },
   { label: "Invoices", href: "/invoices", icon: Receipt },
-  { label: "Expenses", href: "/expenses", icon: Wallet },
-  { label: "Profitability", href: "/profitability", icon: TrendingUp },
-  { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Menu Catalog", href: "/menu-catalog", icon: ChefHat },
 ] as const;
 
-const INVENTORY_ITEMS = [
-  { label: "Inventory", href: "/inventory", icon: Boxes },
-  { label: "Suppliers", href: "/suppliers", icon: Truck },
-  { label: "Purchasing", href: "/purchasing", icon: PackageCheck },
-] as const;
-
-const ADMIN_ITEMS = [{ label: "Audit Log", href: "/audit-log", icon: ScrollText }] as const;
+// Merged entries (AJ, 2026-10-04): one menu item, several pages as tabs. `groupId` points at NAV_GROUPS.
+const FINANCE_ITEM = { label: "Finance", groupId: "finance", icon: Wallet } as const;
+const REPORTS_ITEM = { label: "Reports & Activity", groupId: "reports", icon: BarChart3 } as const;
+const STOCK_ITEM = { label: "Stock & Supplies", groupId: "stock", icon: Boxes } as const;
 
 const KITCHEN_ITEMS = [
   { label: "Menu Approvals", href: "/menu-approvals", icon: ClipboardCheck },
@@ -56,7 +49,18 @@ const KITCHEN_ITEMS = [
 interface NavItem {
   label: string;
   href: string;
+  /** Other addresses that keep this entry highlighted (the other tabs of a merged entry). */
+  also?: readonly string[];
   icon: React.ComponentType<{ className?: string }>;
+}
+
+const on = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+/** A merged entry as a plain nav item: it opens the first tab this role may open, and is lit on any of its tabs. */
+function groupItem(entry: { label: string; groupId: NavGroupId; icon: NavItem["icon"] }, allowedHrefs: string[]): NavItem | null {
+  const tabs = NAV_GROUPS[entry.groupId].tabs.filter((t) => allowedHrefs.includes(t.href));
+  if (tabs.length === 0) return null;
+  return { label: entry.label, href: tabs[0].href, also: tabs.map((t) => t.href), icon: entry.icon };
 }
 
 function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname: string }) {
@@ -64,7 +68,7 @@ function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname
   return (
     <SidebarMenu>
       {items.map((item) => {
-        const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const isActive = on(pathname, item.href) || (item.also ?? []).some((h) => on(pathname, h));
         return (
           <SidebarMenuItem key={item.href}>
             <SidebarMenuButton
@@ -85,19 +89,24 @@ function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname
 
 interface AppSidebarProps {
   organizationName: string;
-  /** Null when the tenant has no active subscription row at all — the card is skipped rather than showing a fabricated plan. */
   /** Links the signed-in role may open; anything in `NAV_PERMISSIONS` that is missing here is hidden. */
   allowedHrefs: string[];
-  subscription: { planName: string; isTrialing: boolean; trialDaysLeft: number | null; trialTotalDays: number | null } | null;
+  /** The Super Admin's own box. When present it replaces the trial card for every kitchen. */
+  notice: SidebarNotice | null;
+  /** Set only while the kitchen is on a free trial; null otherwise (nothing shows for a paid plan). */
+  trial: { trialDaysLeft: number | null; trialTotalDays: number | null } | null;
 }
 
-export function AppSidebar({ organizationName, subscription, allowedHrefs }: AppSidebarProps) {
+export function AppSidebar({ organizationName, trial, notice, allowedHrefs }: AppSidebarProps) {
   const pathname = usePathname();
   const visible = <T extends NavItem>(items: readonly T[]) => items.filter((item) => !(item.href in NAV_PERMISSIONS) || allowedHrefs.includes(item.href));
-  const salesItems = visible(SALES_AND_CATALOG_ITEMS);
-  const inventoryItems = visible(INVENTORY_ITEMS);
+  const finance = groupItem(FINANCE_ITEM, allowedHrefs);
+  const reports = groupItem(REPORTS_ITEM, allowedHrefs);
+  const stock = groupItem(STOCK_ITEM, allowedHrefs);
+  const salesItems = [...visible(SALES_AND_CATALOG_ITEMS), ...(finance ? [finance] : [])];
+  const inventoryItems = stock ? [stock] : [];
   const kitchenItems = visible(KITCHEN_ITEMS);
-  const adminItems = visible(ADMIN_ITEMS);
+  const adminItems = reports ? [reports] : [];
 
   return (
     <Sidebar collapsible="icon">
@@ -129,40 +138,11 @@ export function AppSidebar({ organizationName, subscription, allowedHrefs }: App
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="gap-3">
-        {subscription && (
+        {(notice || trial) && (
           <div className="group-data-[collapsible=icon]:hidden">
-            <UpgradeCard
-              planName={subscription.planName}
-              isTrialing={subscription.isTrialing}
-              trialDaysLeft={subscription.trialDaysLeft}
-              trialTotalDays={subscription.trialTotalDays}
-            />
+            {notice ? <NoticeBox notice={notice} /> : trial && <UpgradeCard trialDaysLeft={trial.trialDaysLeft} trialTotalDays={trial.trialTotalDays} />}
           </div>
         )}
-        <Separator className="group-data-[collapsible=icon]:hidden" />
-        {allowedHrefs.includes("/settings") && (
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              isActive={pathname === "/settings" || pathname.startsWith("/settings/")}
-              tooltip="Settings"
-              render={<Link href="/settings" />}
-              className="cursor-pointer"
-            >
-              <SettingsIcon />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        )}
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SignOutButton
-              size="default"
-              className="w-full justify-start rounded-md px-4 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-2!"
-            />
-          </SidebarMenuItem>
-        </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

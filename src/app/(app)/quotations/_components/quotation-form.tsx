@@ -573,7 +573,7 @@ export function QuotationForm({
               disabled={option.value === "SINGLE" && multiRequired}
               className={cn(
                 "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted/40",
+                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
               )}
             >
               <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
@@ -626,7 +626,7 @@ export function QuotationForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="quote-total-guests">Total Guests</Label>
-          <Input id="quote-total-guests" readOnly tabIndex={-1} className="bg-muted/40" value={String(guestsComputed)} />
+          <Input id="quote-total-guests" readOnly tabIndex={-1} className="bg-muted" value={String(guestsComputed)} />
         </div>
       </div>
     </FormSection>

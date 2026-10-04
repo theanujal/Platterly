@@ -65,6 +65,8 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
 
   // ===== Order page: create the invoice =====
   await page.goto(`/orders/${orderId}`);
+  // Invoice and payments sit in the Pricing & Payment tab, not the sidebar (AJ, 2026-10-04).
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByTestId("order-billing")).toBeVisible();
   await expect(page.getByTestId("balance-amount")).toHaveText("₹20,000.00");
   await page.getByRole("button", { name: "Create Invoice" }).click();

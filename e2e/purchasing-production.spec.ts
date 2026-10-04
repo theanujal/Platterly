@@ -58,7 +58,8 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- 18.3: a purchase request for 40 kg, ordered, then received ---
-  await page.getByRole("link", { name: "Purchasing" }).click();
+  await page.getByRole("link", { name: "Stock & Supplies", exact: true }).click();
+  await page.getByRole("navigation", { name: "Stock & Supplies" }).getByRole("link", { name: "Purchasing" }).click();
   await expect(page).toHaveURL(/\/purchasing$/);
   await page.getByRole("button", { name: "New order" }).click();
   await page.getByLabel("Supplier", { exact: true }).click();

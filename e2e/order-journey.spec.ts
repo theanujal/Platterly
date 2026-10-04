@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId } from "./db";
-import { pickCalendarDate, selectOption, signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
+import { pickCalendarDate, selectOption, signOutFromMenu, signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
 import { submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
@@ -194,7 +194,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   for (const name of ["Orders", "Calendar", "Menu Catalog", "Kitchen Dashboard"]) {
     await expect(sidebar.getByRole("link", { name, exact: true })).toBeVisible();
   }
-  for (const name of ["Quotations", "Customers", "Inventory", "Menu Approvals", "Settings"]) {
+  for (const name of ["Quotations", "Customers", "Stock & Supplies", "Menu Approvals", "Settings"]) {
     await expect(sidebar.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
   await expect(kitchenPage.getByText("Pending Revenue")).toHaveCount(0);
@@ -253,7 +253,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   // ===== Kitchen member: signs out and straight back in, no second email code =====
   await kitchenPage.goto("/dashboard");
-  await kitchenPage.getByRole("button", { name: "Sign out" }).click();
+  await signOutFromMenu(kitchenPage);
   await kitchenPage.getByLabel("Email").fill(kitchenEmail);
   await kitchenPage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await kitchenPage.getByRole("button", { name: "Sign in to your account" }).click();

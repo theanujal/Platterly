@@ -313,7 +313,7 @@ export function CatalogBrowser({
         <>
           <div className={richList ? "overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10" : undefined}>
             <Table>
-              <TableHeader className={richList ? "bg-muted/40" : undefined}>
+              <TableHeader className={richList ? "bg-muted" : undefined}>
                 <TableRow>
                   {columns.map((column, index) => {
                     const headClassName = richList ? "h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase" : undefined;

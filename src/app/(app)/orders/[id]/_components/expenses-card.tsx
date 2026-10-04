@@ -17,7 +17,7 @@ const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString(
 
 function Tile({ label, value, tone, testId }: { label: string; value: string; tone?: "success" | "danger"; testId?: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-xl bg-muted/40 p-4">
+    <div className="flex flex-col gap-1 rounded-xl bg-muted p-4">
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className={`text-lg font-bold tabular-nums break-words ${tone === "success" ? "text-success" : tone === "danger" ? "text-destructive" : ""}`} data-testid={testId}>
         {value}

@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
-import Link from "next/link";
 import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
+import { getActiveNotice } from "@/modules/subscriptions/platform-notice";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
+import { UserMenu } from "@/components/app-shell/user-menu";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
 import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
@@ -55,14 +56,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultOpen = sidebarState !== "false";
 
-  const subscriptionCardProps = subscription
-    ? {
-        planName: subscription.subscriptionPlan.name,
-        isTrialing: subscription.status === "TRIALING",
-        trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null,
-        trialTotalDays: subscription.subscriptionPlan.trialDurationDays,
-      }
-    : null;
+  const trial =
+    subscription?.status === "TRIALING"
+      ? { trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null, trialTotalDays: subscription.subscriptionPlan.trialDurationDays }
+      : null;
+  const notice = await getActiveNotice();
 
   const fullName = `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || session.user.name;
   const initials =
@@ -70,7 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar organizationName={organization.name} subscription={subscriptionCardProps} allowedHrefs={allowedHrefs} />
+      <AppSidebar organizationName={organization.name} trial={trial} notice={notice} allowedHrefs={allowedHrefs} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />
@@ -81,19 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex items-center gap-1">
             {activeLocation.canSwitch && <LocationSwitcher locations={switcherLocations.map((l) => ({ id: l.id, name: l.name }))} activeId={activeLocation.locationId} />}
             <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
-            <Link
-              href="/settings/account/user-profile"
-              aria-label="Account settings"
-              className="flex items-center gap-2 rounded-lg py-1 pr-1 pl-2 transition-colors hover:bg-muted"
-            >
-              <div className="hidden flex-col items-end leading-tight sm:flex">
-                <span className="text-xs font-medium">{fullName}</span>
-                <span className="text-[11px] text-muted-foreground">{session.user.email}</span>
-              </div>
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                {initials}
-              </div>
-            </Link>
+            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} />
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>

@@ -4,8 +4,8 @@ import { listExpenses, listOrderOptions } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { ExportMenu } from "@/components/reports/export-menu";
+import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { Separator } from "@/components/ui/separator";
 import { ExpensesBrowser } from "./_components/expenses-browser";
 
 export const metadata: Metadata = {
@@ -30,15 +30,15 @@ export default async function ExpensesPage() {
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
-      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Expenses" }]} />
+      <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Finance" }]} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Expenses</h1>
+          <h1 className="text-2xl font-semibold">Finance</h1>
           <p className="text-sm text-muted-foreground">Everything the business spends: costs of an order&apos;s event, and company expenses such as rent and salaries that belong to no order.</p>
         </div>
         {canExport && <ExportMenu href="/expenses/export" />}
       </div>
-      <Separator />
+      <SectionTabs group="finance" active="/expenses" organizationId={organizationId} />
       <ExpensesBrowser
         rows={expenses.map((e) => ({
           id: e.id,

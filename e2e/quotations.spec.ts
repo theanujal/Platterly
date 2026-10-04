@@ -216,5 +216,7 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await expect(page.getByTestId("meal-slot-2026-12-15-LUNCH").getByText(itemName)).toBeVisible();
   // subtotal = 6000 (the meal on its Menu); otherCharges = 10+5+2 = 17; total = 6000-20+17 = 5997
-  await expect(page.getByRole("complementary").getByText("₹5997.00")).toBeVisible();
+  // The total now sits in the Pricing & Payment tab, not the sidebar (AJ, 2026-10-04).
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByText("₹5997.00").first()).toBeVisible();
 });

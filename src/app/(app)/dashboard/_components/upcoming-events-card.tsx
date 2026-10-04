@@ -70,7 +70,7 @@ export function UpcomingEventsCard({ events }: { events: UpcomingEvent[] }) {
                 <Link
                   key={event.id}
                   href={`/orders/${event.orderId}`}
-                  className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors first:pt-0 last:pb-0 hover:bg-muted/40"
+                  className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors first:pt-0 last:pb-0 hover:bg-muted"
                 >
                   {rowContent}
                 </Link>

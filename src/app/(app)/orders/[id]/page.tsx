@@ -164,6 +164,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     status: order.status,
     notes: order.notes ?? "",
     kitchenNotes: order.kitchenNotes ?? "",
+    staffingNotes: order.staffingNotes ?? "",
     mealPlanEntries: order.mealPlanEntries.map((entry) => ({
       date: toDateInputValue(entry.date),
       mealType: entry.mealType,
@@ -254,6 +255,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               orderNumber={order.orderNumber}
               status={order.status}
               assignedKitchen={event?.assignedKitchen?.name ?? null}
+              showKitchen={active.enabled}
               createdAt={order.createdAt}
               updatedAt={order.updatedAt}
               customer={order.customer.name}
@@ -269,7 +271,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               }}
             />
             <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
-            <div className="flex flex-col gap-3" data-testid="order-billing">
+            {active.enabled && (
+              <EventOperationsCard
+                orderId={order.id}
+                event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
+                kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
+              />
+            )}
+          </>
+        }
+        billingPanel={
+          <div className="flex flex-col gap-3" data-testid="order-billing">
               {activeInvoice ? (
                 <OpenInvoiceLink invoiceId={activeInvoice.id} number={activeInvoice.number} />
               ) : (
@@ -286,12 +298,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 canManage={canManagePayment}
               />
             </div>
-            <EventOperationsCard
-              orderId={order.id}
-              event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
-              kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
-            />
-          </>
         }
         pricingExtra={
           <>
