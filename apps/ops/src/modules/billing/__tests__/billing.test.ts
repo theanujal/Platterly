@@ -32,7 +32,6 @@ let baseUrl = "";
 let outboundSecret = "";
 let inboundSecret = "";
 let commands: Record<string, unknown>[] = [];
-let seq: { last_value: bigint; is_called: boolean };
 let profileBefore: Awaited<ReturnType<typeof prisma.platformBillingProfile.findUnique>>;
 const savedEnv: Record<string, string | undefined> = {};
 let razorpayCalls: { url: string; headers: Record<string, string>; body: { amount: number; currency: string; notes: Record<string, string> } }[] = [];
@@ -41,6 +40,7 @@ let razorpayCounter = 0;
 const businessId = () => `biz_${Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32)}`;
 
 async function clean() {
+  await prisma.messageLog.deleteMany({ where: { productKey: KEY } });
   await prisma.subscriptionPayment.deleteMany({ where: { productKey: KEY } });
   await prisma.subscription.deleteMany({ where: { productKey: KEY } });
   await prisma.business.deleteMany({ where: { name: { startsWith: "BillTest" } } });
@@ -82,7 +82,6 @@ const webhook = (event: string, orderId: string, paymentId: string, amountPaise:
 
 beforeAll(async () => {
   for (const k of ["RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET"]) savedEnv[k] = process.env[k];
-  seq = (await prisma.$queryRaw<{ last_value: bigint; is_called: boolean }[]>`select last_value, is_called from subscription_invoice_seq`)[0];
   profileBefore = await prisma.platformBillingProfile.findUnique({ where: { id: "platform" } });
   server = createServer((req, res) => {
     let body = "";
@@ -99,8 +98,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await clean();
-  // Shared state goes back exactly as it was: the invoice sequence (it is the real running number) and the seller profile.
-  await prisma.$queryRaw`select setval('subscription_invoice_seq', ${seq.last_value}, ${seq.is_called})`;
+  // Shared state goes back exactly as it was: the seller profile. (Invoice numbers are per product, so the test product's counter goes with it.)
   if (profileBefore) await prisma.platformBillingProfile.update({ where: { id: "platform" }, data: { ...profileBefore, updatedAt: undefined } });
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v === undefined) delete process.env[k];
@@ -217,7 +215,8 @@ describe("checkout and confirmation", () => {
 
     const paid = await verifyCheckout({ businessId: biz, productKey: KEY, razorpayOrderId, razorpayPaymentId: "pay_x", signature: razorpaySig(razorpayOrderId, "pay_x") });
     expect(paid).toMatchObject({ status: "PAID", razorpayPaymentId: "pay_x" });
-    expect(paid!.invoiceNumber).toMatch(/^FPSRC-\d{2}-\d{2}-\d+$/);
+    // The product's own prefix (derived from its key "billtest"), not the seller profile's fallback "FP".
+    expect(paid!.invoiceNumber).toMatch(/^BILSRC-\d{2}-\d{2}-1$/);
     expect(paid!.periodEnd!.getTime() - paid!.periodStart!.getTime()).toBe(30 * DAY);
 
     const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
@@ -245,6 +244,10 @@ describe("checkout and confirmation", () => {
     expect(parallel.every((p) => p!.invoiceNumber === first!.invoiceNumber)).toBe(true);
     expect(await prisma.subscription.count({ where: { businessId: biz, productKey: KEY } })).toBe(1);
     expect(await prisma.subscriptionPayment.count({ where: { businessId: biz, status: "PAID" } })).toBe(1);
+    // One payment is one receipt email, however many times it is confirmed.
+    const receipts = await prisma.messageLog.findMany({ where: { businessId: biz, template: "payment_received" } });
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].variables).toMatchObject({ planName: pro.name, invoiceNumber: first!.invoiceNumber });
   });
 
   it("two payments at the same moment get different invoice numbers, in order", async () => {
@@ -257,7 +260,9 @@ describe("checkout and confirmation", () => {
     const n = (p: { invoiceNumber: string | null } | null) => Number(p!.invoiceNumber!.split("-").at(-1));
     expect(new Set([pa!.invoiceNumber, pb!.invoiceNumber]).size).toBe(2);
     expect(Math.abs(n(pa) - n(pb))).toBeGreaterThanOrEqual(1);
-    expect(Math.min(n(pa), n(pb))).toBeGreaterThan(Number(seq.is_called ? seq.last_value : seq.last_value - BigInt(1)));
+    // This product's own counter: a fresh product starts at 1, so the two payments are numbers 1 and 2, in some order.
+    expect([n(pa), n(pb)].sort()).toEqual([1, 2]);
+    expect(await prisma.invoiceCounter.findUniqueOrThrow({ where: { productKey: KEY } })).toMatchObject({ lastNumber: 2 });
   });
 
   it("IGST for a buyer in another state, one plain GST line when the state is unknown", async () => {
@@ -315,9 +320,13 @@ describe("checkout and confirmation", () => {
     expect(await confirmPayment(razorpayOrderId, "pay_x", new Date(), 100)).toBeNull();
     expect((await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId } })).status).toBe("PENDING");
     expect(await confirmPayment("order_unknown", "pay_x")).toBeNull();
+    expect(await prisma.messageLog.count({ where: { businessId: biz } })).toBe(0);
     await failPayment(razorpayOrderId);
     expect((await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId } })).status).toBe("FAILED");
     await failPayment(razorpayOrderId);
+    // Told once, and a payment that was never confirmed gets no receipt.
+    expect(await prisma.messageLog.findMany({ where: { businessId: biz }, select: { template: true } })).toEqual([{ template: "payment_failed" }]);
+    await failPayment("order_unknown");
   });
 
   it("without the buyer details the invoice still prints the business name", async () => {
@@ -408,7 +417,7 @@ describe("the routes a product calls", () => {
 
     expect((await verifyPOST(route(`${base}/verify`, "POST", { razorpayOrderId: answer.razorpayOrderId, razorpayPaymentId: "pay_r", signature: "0".repeat(64) }), p)).status).toBe(400);
     const verified = await verifyPOST(route(`${base}/verify`, "POST", { razorpayOrderId: answer.razorpayOrderId, razorpayPaymentId: "pay_r", signature: razorpaySig(answer.razorpayOrderId, "pay_r") }), p);
-    expect(await verified.json()).toMatchObject({ ok: true, status: "PAID", invoiceNumber: expect.stringMatching(/^FP/) });
+    expect(await verified.json()).toMatchObject({ ok: true, status: "PAID", invoiceNumber: expect.stringMatching(/^BIL/) });
 
     const view = await (await billingGET(route(base, "GET"), p)).json();
     expect(view).toMatchObject({ subscription: { status: "ACTIVE", plan: { code: "pro" } }, payments: [{ total: 1180 }] });

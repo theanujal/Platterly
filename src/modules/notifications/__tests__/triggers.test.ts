@@ -100,29 +100,25 @@ describe("notification triggers (Chunk 16)", () => {
   });
 });
 
-describe("system alerts, Super Admin alerts, trial notices and opt-out (2026-10-04)", () => {
-  it("a plan change tells the whole team and every Super Admin; the sign-up trial does not", async () => {
+describe("system alerts, trial notices and opt-out (2026-10-04)", () => {
+  it("a plan change tells the whole team", async () => {
     const t = await makeTeam();
-    const admin = await prisma.user.create({ data: { id: crypto.randomUUID(), name: "SA", email: `sa-${crypto.randomUUID()}@example.test`, emailVerified: true, isSuperAdmin: true } });
-    userIds.push(admin.id);
     const { onPlanChanged } = await import("@/modules/notifications/triggers");
     await onPlanChanged(t.org.id, "Professional", "Trial");
 
     const alerts = (await rows(t.org.id, "system.alert")).filter((n) => n.channel === "IN_APP");
     expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, t.sales.id, t.kitchen.id, t.accounts.id].sort());
     expect(JSON.stringify(alerts[0].payload)).toContain("Trial to Professional");
-    const superAlert = (await rows(t.org.id, "caterer.plan_changed")).find((n) => n.recipientUserId === admin.id);
-    expect(superAlert).toBeTruthy();
+    // Platform staff change plans in Ops, so no platform-side alert is created here any more.
+    expect(await rows(t.org.id, "caterer.plan_changed")).toHaveLength(0);
   });
 
-  it("suspending a kitchen tells its team and the Super Admins", async () => {
+  it("suspending a kitchen tells its team", async () => {
     const t = await makeTeam();
-    const admin = await prisma.user.create({ data: { id: crypto.randomUUID(), name: "SA", email: `sa-${crypto.randomUUID()}@example.test`, emailVerified: true, isSuperAdmin: true } });
-    userIds.push(admin.id);
     const { onTenantStatusChanged } = await import("@/modules/notifications/triggers");
     await onTenantStatusChanged(t.org.id, "SUSPENDED");
     expect((await rows(t.org.id, "system.alert")).some((n) => JSON.stringify(n.payload).includes("suspended"))).toBe(true);
-    expect((await rows(t.org.id, "caterer.suspended")).some((n) => n.recipientUserId === admin.id)).toBe(true);
+    expect(await rows(t.org.id, "caterer.suspended")).toHaveLength(0);
   });
 
   it("trial notices go out 3 days and 1 day before the end, once each", async () => {
@@ -136,6 +132,25 @@ describe("system alerts, Super Admin alerts, trial notices and opt-out (2026-10-
       expect((await runDueNotifications(new Date("2026-12-03T06:00:00Z"))).trialNotices).toBe(1);
       expect((await rows(t.org.id, "system.alert")).some((n) => JSON.stringify(n.payload).includes("ends in 3 days"))).toBe(true);
     } finally {
+      await prisma.subscription.deleteMany({ where: { organizationId: t.org.id } });
+      await prisma.subscriptionPlan.delete({ where: { id: plan.id } });
+    }
+  });
+
+  it("with OPS_BILLING on, the local trial notices stop (ops sends them from its own subscription)", async () => {
+    const t = await makeTeam();
+    const plan = await prisma.subscriptionPlan.create({ data: { code: `trial-${crypto.randomUUID().slice(0, 8)}`, name: "Trial test", isTrial: true, trialDurationDays: 7 } });
+    await prisma.subscription.create({ data: { organizationId: t.org.id, subscriptionPlanId: plan.id, status: "TRIALING", startDate: new Date("2026-11-27"), trialEndsAt: new Date("2026-12-04T10:00:00Z") } });
+    const saved = { url: process.env.OPS_BASE_URL, event: process.env.OPS_EVENT_SECRET, cmd: process.env.OPS_COMMAND_SECRETS, billing: process.env.OPS_BILLING };
+    Object.assign(process.env, { OPS_BASE_URL: "http://127.0.0.1:9", OPS_EVENT_SECRET: "e", OPS_COMMAND_SECRETS: "c", OPS_BILLING: "1" });
+    try {
+      expect((await runDueNotifications(new Date("2026-12-01T06:00:00Z"))).trialNotices).toBe(0);
+      expect((await rows(t.org.id, "system.alert")).some((n) => JSON.stringify(n.payload).includes("ends in 3 days"))).toBe(false);
+    } finally {
+      for (const [k, v] of [["OPS_BASE_URL", saved.url], ["OPS_EVENT_SECRET", saved.event], ["OPS_COMMAND_SECRETS", saved.cmd], ["OPS_BILLING", saved.billing]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
       await prisma.subscription.deleteMany({ where: { organizationId: t.org.id } });
       await prisma.subscriptionPlan.delete({ where: { id: plan.id } });
     }

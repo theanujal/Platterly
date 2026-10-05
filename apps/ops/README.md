@@ -11,7 +11,10 @@ The control plane for every Platterly product. Its own Next.js app with its own 
 - **Event receiver** `POST /api/products/events`: finds the product, verifies the signature, validates, de-duplicates by event id, applies. A product can only change businesses it registered itself.
 - **Audit log**: every operator change is written to `audit_log`.
 
-Not built yet: plans, subscriptions, billing, messaging, commands to products (steps 4 to 8 in the contract doc).
+- **Sidebar notice** (`/notices`): one notice per product, sent to every business as `notice.set`; the cron queues it again for businesses that joined later. Delivery is shown under the form.
+- **Owner emails** (`src/modules/messages`): ZeptoMail, the Platterly layout, templates `welcome_owner`, `trial_ending`, `trial_ended`, `payment_received`, `payment_failed`, `plan_changed`, and a `message_log` with retries. Products ask with `message.requested`; ops sends its own billing messages.
+
+Still to do: step 8 of the contract doc (remove `/super` from catering).
 
 ## Run it
 

@@ -7,6 +7,7 @@ import { orderBalance } from "@/modules/payments/payment";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { canSendPromotions, isPromotionalEvent } from "./opt-out";
+import { opsBillingOn } from "@/modules/ops-link/config";
 
 /**
  * Chunk 16: who gets told what, and when. Every business event that sends a message calls ONE function here, so the
@@ -122,23 +123,6 @@ export async function notifyTeam(params: { organizationId: string; roles?: strin
   }
 }
 
-/** Platform alert for every Super Admin (bell + push). It is stored under the caterer it is about. */
-export async function notifySuperAdmins(params: { organizationId: string; event: string; title: string; message: string; href: string }) {
-  const payload = { title: params.title, message: params.message, href: params.href };
-  const admins = await prisma.user.findMany({ where: { isSuperAdmin: true }, select: { id: true } });
-  for (const admin of admins) {
-    await notify({ organizationId: params.organizationId, channel: "IN_APP", event: params.event, recipient: { userId: admin.id }, payload });
-    await notify({ organizationId: params.organizationId, channel: "PUSH", event: params.event, recipient: { userId: admin.id }, payload });
-  }
-}
-
-/** A new caterer signed up on their own. */
-export function onCatererSignedUp(organizationId: string, ownerName: string) {
-  return safely("onCatererSignedUp", () =>
-    notifySuperAdmins({ organizationId, event: "caterer.signed_up", title: "New caterer signed up", message: `${ownerName || "A new caterer"} just created an account.`, href: `/super/tenants/${organizationId}` }),
-  );
-}
-
 /** A notice about the kitchen's account, to the whole team: bell, push and (if switched on) email. */
 export function onSystemAlert(organizationId: string, alert: { title: string; message: string; href?: string; event?: string }) {
   return safely("onSystemAlert", async () => {
@@ -154,41 +138,25 @@ export function onSystemAlert(organizationId: string, alert: { title: string; me
   });
 }
 
-/** Platterly suspended, re-activated or deactivated a kitchen: the team and every Super Admin are told. */
+/** Platterly suspended, re-activated or deactivated a kitchen: the team is told. (Platform staff made the change in Ops, so they need no alert.) */
 export function onTenantStatusChanged(organizationId: string, status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED") {
   return safely("onTenantStatusChanged", async () => {
-    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
     const copy = {
       SUSPENDED: ["Account suspended", "Your account has been suspended. Sign-in and your customer links are paused. Please contact Platterly to restore it."],
       DEACTIVATED: ["Account deactivated", "Your account has been deactivated. Please contact Platterly if this is unexpected."],
       ACTIVE: ["Account active again", "Your account is active again. Sign-in and your customer links work as before."],
     }[status];
     await onSystemAlert(organizationId, { title: copy[0], message: copy[1], event: `tenant.${status.toLowerCase()}` });
-    await notifySuperAdmins({
-      organizationId,
-      event: `caterer.${status.toLowerCase()}`,
-      title: `Caterer ${status === "ACTIVE" ? "activated" : status.toLowerCase()}`,
-      message: `${org.name} is now ${status.toLowerCase()}.`,
-      href: `/super/tenants/${organizationId}`,
-    });
   });
 }
 
 /** A kitchen moved to another plan (not the trial that comes with sign-up). */
 export function onPlanChanged(organizationId: string, planName: string, previousPlanName: string | null) {
   return safely("onPlanChanged", async () => {
-    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
     await onSystemAlert(organizationId, {
       title: "Your plan changed",
       message: previousPlanName ? `Your plan changed from ${previousPlanName} to ${planName}.` : `You are now on the ${planName} plan.`,
       event: "plan.changed",
-    });
-    await notifySuperAdmins({
-      organizationId,
-      event: "caterer.plan_changed",
-      title: "Caterer plan changed",
-      message: `${org.name}: ${previousPlanName ? `${previousPlanName} to ${planName}` : planName}.`,
-      href: `/super/tenants/${organizationId}`,
     });
   });
 }
@@ -409,8 +377,12 @@ export interface DueRunResult {
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
   const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0 };
 
+  // With OPS_BILLING on, ops owns the subscription and sends these emails itself (docs/ops-contract.md 9), so the local
+  // trial and paid-plan notices below are skipped: the rows they read are no longer the truth.
+  const opsSendsPlanNotices = opsBillingOn();
+
   // Trial ending: 3 days and 1 day before, and once it has ended.
-  const trials = await prisma.subscription.findMany({
+  const trials = opsSendsPlanNotices ? [] : await prisma.subscription.findMany({
     where: { status: "TRIALING", endDate: null, trialEndsAt: { not: null } },
     select: { id: true, organizationId: true, trialEndsAt: true },
   });
@@ -433,7 +405,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
 
   // Paid plan ending (Chunk 20): 3 days and 1 day before the paid period runs out, and once it has. Renewing moves the
   // period end, which starts a fresh set of keys.
-  const paid = await prisma.subscription.findMany({
+  const paid = opsSendsPlanNotices ? [] : await prisma.subscription.findMany({
     where: { status: "ACTIVE", endDate: null, currentPeriodEnd: { not: null } },
     select: { id: true, organizationId: true, currentPeriodEnd: true },
   });

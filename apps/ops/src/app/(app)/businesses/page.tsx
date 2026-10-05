@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Button, Empty, PageHeader, Table, formatWhen, inputClass } from "@/components/ui";
+import { Badge, Button, Empty, LinkButton, PageHeader, Table, formatWhen, inputClass } from "@/components/ui";
 import { listBusinesses } from "@/modules/directory/businesses";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export default async function BusinessesPage({ searchParams }: { searchParams: P
 
   return (
     <>
-      <PageHeader title="Businesses" description="Every business across every product." />
+      <PageHeader title="Businesses" description="Every business across every product." actions={<LinkButton href="/businesses/new" size="md">New business</LinkButton>} />
       <form className="mb-4 flex gap-2" role="search">
         <input name="q" defaultValue={q ?? ""} placeholder="Search by name or owner email" aria-label="Search businesses" className={`${inputClass} max-w-sm`} />
         <Button type="submit" variant="outline">Search</Button>

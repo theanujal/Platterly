@@ -1,6 +1,7 @@
 import "server-only";
 import { isProductKey, newId, parseManifest, signedHeaders, verifyRequest, type ProductManifest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
+import { derivePrefix } from "@/modules/billing/numbering";
 import { audit } from "@/lib/audit";
 import { decryptSecret, encryptSecret, newSigningSecret } from "@/lib/secret-box";
 import type { Product } from "@/generated/prisma/client";
@@ -35,8 +36,10 @@ export async function registerProduct(input: { key: string; name: string; baseUr
   if (await prisma.product.findUnique({ where: { key } })) throw new RegistryError(`A product with the key "${key}" is already registered.`);
 
   const secrets: ProductSecrets = { outbound: newSigningSecret(), inbound: newSigningSecret() };
+  const taken = (await prisma.product.findMany({ where: { invoicePrefix: { not: null } }, select: { invoicePrefix: true } })).map((p) => p.invoicePrefix!);
   const product = await prisma.product.create({
-    data: { key, name, baseUrl, outboundSecret: encryptSecret(secrets.outbound), inboundSecret: encryptSecret(secrets.inbound) },
+    // Its own invoice prefix and running number from the start (billing/numbering.ts); the prefix can be changed on the product page.
+    data: { key, name, baseUrl, outboundSecret: encryptSecret(secrets.outbound), inboundSecret: encryptSecret(secrets.inbound), invoicePrefix: derivePrefix(key, taken), invoiceCounter: { create: {} } },
   });
   await audit({ actorUserId: input.actorUserId, action: "product.registered", subject: key, detail: { baseUrl } });
   return { product, secrets };

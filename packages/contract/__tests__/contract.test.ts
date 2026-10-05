@@ -3,6 +3,8 @@ import {
   CONTRACT_VERSION,
   DELETE_RETENTION_DAYS,
   GRACE_DAYS,
+  REPORT_LIMITS,
+  parseReportDoc,
   evaluateAccess,
   getLimit,
   isFlagOn,
@@ -43,6 +45,7 @@ const manifest = {
   messageTemplates: ["welcome_owner"],
   tabs: [{ key: "overview", label: "Overview" }],
   actions: ["suspend"],
+  reports: [{ key: "sales", label: "Sales" }],
 };
 
 function snapshot(over: Partial<EntitlementSnapshot> = {}): EntitlementSnapshot {
@@ -253,6 +256,26 @@ describe("commands", () => {
     expect(notice("javascript:alert(1)").ok).toBe(false);
   });
 
+  it("business.update needs at least one valid field and keeps only known ones", () => {
+    const update = (payload: unknown) => parseCommand({ ...base, type: "business.update", payload });
+    const ok = update({ businessName: " Spice Co ", slug: "spice-co", junk: 1 });
+    expect(ok.ok && ok.value.type === "business.update" && ok.value.payload).toEqual({ businessName: "Spice Co", slug: "spice-co" });
+    expect(update({}).ok).toBe(false);
+    expect(update({ businessName: "  " }).ok).toBe(false);
+    expect(update({ ownerEmail: "no-at-sign" }).ok).toBe(false);
+    expect(update({ businessName: 5 }).ok).toBe(false);
+    expect(update({ slug: "x".repeat(64) }).ok).toBe(false);
+  });
+
+  it("provider.set needs a known channel and a true/false", () => {
+    const set = (payload: unknown) => parseCommand({ ...base, type: "provider.set", payload });
+    expect(set({ channel: "whatsapp", connected: true }).ok).toBe(true);
+    expect(set({ channel: "email", connected: false }).ok).toBe(true);
+    expect(set({ channel: "sms", connected: true }).ok).toBe(false);
+    expect(set({ channel: "email", connected: "yes" }).ok).toBe(false);
+    expect(set({}).ok).toBe(false);
+  });
+
   it("delete needs a typed confirmation and defaults to 30 days' retention", () => {
     expect(DELETE_RETENTION_DAYS).toBe(30);
     const parsed = parseCommand({ ...base, type: "business.delete", payload: { confirmation: "Spice Co" } });
@@ -339,5 +362,58 @@ describe("billing API requests", () => {
     expect(parseDowngradeRequest({ planId: "plan_1", interval: "MONTHLY" }).ok).toBe(true);
     expect(parseDowngradeRequest({ planId: "", interval: "MONTHLY" }).ok).toBe(false);
     expect(parseDowngradeRequest({ planId: "plan_1" }).ok).toBe(false);
+  });
+});
+
+describe("report documents", () => {
+  const doc = {
+    report: "sales",
+    title: "Sales",
+    period: { from: "2026-10-01", to: null },
+    blocks: [
+      { type: "tiles", tiles: [{ label: "Revenue", value: "₹1,000", hint: "Cancelled left out" }, { label: "Orders", value: "4" }] },
+      { type: "bars", title: "By month", rows: [{ label: "Oct 2026", value: 1000, text: "₹1,000", sub: "4 orders" }] },
+      { type: "table", title: "Kitchens", columns: [{ label: "Kitchen" }, { label: "Revenue", align: "right" }], rows: [["Spice Co", "₹1,000"]] },
+      { type: "text", title: "How this is worked out", lines: ["One line."] },
+    ],
+  };
+
+  it("accepts a well-formed document and keeps only what it knows", () => {
+    const parsed = parseReportDoc({ ...doc, extra: 1 });
+    expect(parsed.ok && parsed.value).toEqual(doc);
+  });
+
+  it("accepts an empty document and a missing period", () => {
+    expect(parseReportDoc({ report: "x", title: "X", blocks: [] })).toMatchObject({ ok: true, value: { period: { from: null, to: null } } });
+  });
+
+  it("refuses markup-sized or malformed content", () => {
+    expect(parseReportDoc("nope").ok).toBe(false);
+    expect(parseReportDoc({ ...doc, title: "" }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "script", src: "x" }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "tiles", tiles: [{ label: "a", value: 5 }] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "bars", title: "t", rows: [{ label: "a", value: "5", text: "5" }] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "bars", title: "t", rows: [{ label: "a", value: Infinity, text: "5" }] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "table", title: "t", columns: [{ label: "a" }, { label: "b" }], rows: [["only one"]] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "table", title: "t", columns: [{ label: "a", align: "centre" }], rows: [] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "table", title: "t", columns: [{ label: "a" }], rows: [[5]] }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, period: { from: "x".repeat(20) } }).ok).toBe(false);
+  });
+
+  it("caps sizes", () => {
+    expect(parseReportDoc({ ...doc, blocks: Array.from({ length: REPORT_LIMITS.blocks + 1 }, () => ({ type: "text", title: "t", lines: [] })) }).ok).toBe(false);
+    const rows = Array.from({ length: REPORT_LIMITS.rows + 1 }, () => ["a"]);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "table", title: "t", columns: [{ label: "a" }], rows }] }).ok).toBe(false);
+    expect(parseReportDoc({ ...doc, blocks: [{ type: "tiles", tiles: [{ label: "a", value: "x".repeat(61) }] }] }).ok).toBe(false);
+  });
+
+  it("a manifest may list reports, or none (older manifests stay valid)", () => {
+    const withReports = parseManifest(manifest);
+    expect(withReports.ok && withReports.value.reports).toEqual([{ key: "sales", label: "Sales" }]);
+    const { reports, ...older } = manifest;
+    expect(reports).toBeDefined();
+    const without = parseManifest(older);
+    expect(without.ok && without.value.reports).toEqual([]);
+    expect(parseManifest({ ...manifest, reports: [{ key: "bad key", label: "x" }] }).ok).toBe(false);
   });
 });

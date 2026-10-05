@@ -4,8 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { generatePlaceholderSlug } from "./slug";
 import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
-import { onCatererSignedUp } from "@/modules/notifications/triggers";
-import { emitBusinessSignedUp } from "@/modules/ops-link/events";
+import { emitBusinessSignedUp, emitWelcomeRequested } from "@/modules/ops-link/events";
 import { opsBillingOn } from "@/modules/ops-link/config";
 
 /**
@@ -92,9 +91,9 @@ export async function provisionTenantForNewUser(
     const trialPlan = await ensureTrialPlan();
     await assignPlan(organization.id, trialPlan.id, userId);
   }
-  await onCatererSignedUp(organization.id, user.name);
   // Tells Platterly Ops this business exists (does nothing until the ops link is configured; never fails the sign-up).
   await emitBusinessSignedUp(organization.id);
+  await emitWelcomeRequested(organization.id);
 
   return { organizationId: organization.id };
 }

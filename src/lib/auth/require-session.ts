@@ -4,7 +4,6 @@ import { redirect, forbidden } from "next/navigation";
 import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
-import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { isLocked } from "@/modules/ops-link/entitlements";
 import type { statement } from "./permissions";
 
@@ -22,8 +21,8 @@ export async function requireSession() {
   const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) {
     // No session (never signed in, or it expired): send the visitor to the sign-in page of the
-    // host they are on, instead of throwing a 500. The ops host signs in at /super.
-    redirect(hostKind(requestHost(requestHeaders)) === "ops" ? "/super" : "/");
+    // host they are on, instead of throwing a 500.
+    redirect("/");
   }
   return session;
 }
@@ -173,17 +172,4 @@ export async function hasPermission<Resource extends keyof Statement>(
     },
   });
   return result.success;
-}
-
-/**
- * Platform-level check for Super Admin-only routes (Chunk 3). A Super Admin
- * has no organization membership — this never touches the access-control
- * engine above.
- */
-export async function requireSuperAdmin() {
-  const session = await requireSession();
-  if (!session.user.isSuperAdmin) {
-    forbidden();
-  }
-  return session;
 }

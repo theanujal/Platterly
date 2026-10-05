@@ -38,16 +38,23 @@ export async function currentSubscription(businessId: string, productKey: string
   return prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null }, include: { plan: true } });
 }
 
+/** Uses up the next version number and builds the snapshot, without sending it (provisioning carries the first one inside its own command). */
+export async function prepareSnapshot(businessId: string, productKey: string, now: Date = new Date()): Promise<EntitlementSnapshot | null> {
+  const sub = await currentSubscription(businessId, productKey);
+  if (!sub) return null;
+  const link = await prisma.businessProduct.update({ where: { businessId_productKey: { businessId, productKey } }, data: { snapshotVersion: { increment: 1 }, snapshotIssuedAt: now }, select: { snapshotVersion: true } });
+  return buildSnapshot(sub, businessId, productKey, link.snapshotVersion, now);
+}
+
 /**
  * Builds the next snapshot (version +1) from the business's current subscription and sends it to the product as a
  * `snapshot.push` command (queued first, so an unreachable product just retries). Returns null when the business has no
  * current subscription (nothing to issue; the version is not used up).
  */
 export async function issueSnapshot(businessId: string, productKey: string, now: Date = new Date()): Promise<EntitlementSnapshot | null> {
-  const sub = await currentSubscription(businessId, productKey);
-  if (!sub) return null;
-  const link = await prisma.businessProduct.update({ where: { businessId_productKey: { businessId, productKey } }, data: { snapshotVersion: { increment: 1 }, snapshotIssuedAt: now }, select: { snapshotVersion: true } });
-  const snapshot = buildSnapshot(sub, businessId, productKey, link.snapshotVersion, now);
+  const snapshot = await prepareSnapshot(businessId, productKey, now);
+  if (!snapshot) return null;
+  const link = { snapshotVersion: snapshot.version };
   await sendCommand({ productKey, dedupeKey: `snapshot:${businessId}:${productKey}:${link.snapshotVersion}`, command: { type: "snapshot.push", businessId, payload: { snapshot } } });
   return snapshot;
 }

@@ -18,7 +18,7 @@ const url = process.env.DATABASE_URL!;
 let source: pg.Client; // what the import reads: it becomes read-only once the import has run, like in real use
 let admin: pg.Client; // sets up and changes the stand-in catering data
 let target: pg.Client;
-let seqBefore: { last_value: string; is_called: boolean };
+let counterBefore: { lastNumber: number } | null;
 
 const manifest = { contract: 1, productKey: KEY, name: "Import Test", version: "1", baseUrl: "https://x.example", entitlements: [...LIMIT_COLUMNS.map((k: string) => ({ key: k, type: "limit", label: k })), { key: "multiLocation", type: "flag", label: "Multi" }], trial: { days: 7, entitlements: {} } };
 const biz = (n: number) => `biz_${String(n).padStart(32, "0")}`;
@@ -78,13 +78,11 @@ beforeAll(async () => {
   admin = new pg.Client({ connectionString: url, options: `-c search_path=${SCHEMA}` });
   target = new pg.Client({ connectionString: url });
   await Promise.all([admin.connect(), target.connect()]);
-  seqBefore = (await target.query("select last_value, is_called from subscription_invoice_seq")).rows[0];
+  counterBefore = (await target.query('select "lastNumber" from invoice_counter where "productKey" = $1', [KEY])).rows[0] ?? null;
 });
 afterAll(async () => {
   await clean();
   await admin.query(`drop schema if exists ${SCHEMA} cascade`);
-  // The ops invoice sequence is shared state: put it back exactly as it was.
-  await target.query("select setval('subscription_invoice_seq', $1, $2)", [seqBefore.last_value, seqBefore.is_called]);
   await Promise.all([source.end(), admin.end(), target.end()]);
 });
 beforeEach(async () => {
@@ -95,7 +93,6 @@ beforeEach(async () => {
   await source.connect();
   await createSource();
   await seedTarget();
-  await target.query("select setval('subscription_invoice_seq', $1, $2)", [seqBefore.last_value, seqBefore.is_called]);
 });
 afterEach(clean);
 
@@ -126,7 +123,7 @@ describe("the catering import", () => {
     expect(result.applied!.inserted).toEqual({ plans: 2, subscriptions: 3, payments: 2, profile: expect.any(Number) });
     expect(result.reconciliation!.checks.every((c: { ok: boolean }) => c.ok)).toBe(true);
     expect(await counts()).toEqual({ plans: 0, subscriptions: 0, payments: 0 });
-    expect((await target.query("select last_value, is_called from subscription_invoice_seq")).rows[0]).toEqual(seqBefore);
+    expect((await target.query('select "lastNumber" from invoice_counter where "productKey" = $1', [KEY])).rows[0] ?? null).toEqual(counterBefore);
   });
 
   it("applying commits the rows with exact values, keeps history, and raises the invoice sequence to catering's", async () => {
@@ -152,8 +149,7 @@ describe("the catering import", () => {
     expect(pay.importedFrom).toBe("catering:pay2");
 
     expect(result.sequence!).toMatchObject({ catering: 43, opsAfter: Math.max(43, result.sequence!.opsBefore) });
-    const next = (await target.query("select nextval('subscription_invoice_seq') as n")).rows[0].n;
-    expect(Number(next)).toBeGreaterThan(43);
+    expect((await target.query('select "lastNumber" from invoice_counter where "productKey" = $1', [KEY])).rows[0].lastNumber).toBe(Math.max(43, result.sequence!.opsBefore));
   });
 
   it("running it again changes nothing and never overwrites what staff edited in ops", async () => {
@@ -223,13 +219,13 @@ describe("the catering import", () => {
     expect(Number((await source.query("select last_value from subscription_invoice_seq")).rows[0].last_value)).toBe(43);
   });
 
-  it("the invoice sequence only ever moves forward", async () => {
-    await target.query("select setval('subscription_invoice_seq', 500, true)");
-    const result = await syncSequence(target, { last_value: "43", is_called: true });
+  it("the product's invoice number only ever moves forward", async () => {
+    await target.query('insert into invoice_counter ("productKey", "lastNumber") values ($1, 500) on conflict ("productKey") do update set "lastNumber" = 500', [KEY]);
+    const result = await syncSequence(target, { last_value: "43", is_called: true }, KEY);
     expect(result).toEqual({ catering: 43, opsBefore: 500, opsAfter: 500 });
-    expect(Number((await target.query("select nextval('subscription_invoice_seq') as n")).rows[0].n)).toBe(501);
+    expect((await target.query('select "lastNumber" from invoice_counter where "productKey" = $1', [KEY])).rows[0].lastNumber).toBe(500);
     // A sequence that was never used yet counts as "nothing issued".
-    expect(await syncSequence(target, { last_value: "1", is_called: false })).toMatchObject({ catering: 0 });
+    expect(await syncSequence(target, { last_value: "1", is_called: false }, KEY)).toMatchObject({ catering: 0 });
   });
 
   it("refuses to run with the same connection as source and target", async () => {

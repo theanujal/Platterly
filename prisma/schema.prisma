@@ -2740,6 +2740,20 @@ model OpsSnapshot {
   @@map("ops_snapshot")
 }
 
+// The sidebar notice ops last set for a business (notice.set). Read instead of the single PlatformNotice row when OPS_BILLING is on.
+model OpsNotice {
+  businessId     String   @id
+  organizationId String   @unique
+  enabled        Boolean  @default(false)
+  title          String?
+  message        String?
+  buttonLabel    String?
+  buttonUrl      String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("ops_notice")
+}
+
 // Every command ops sent, kept so a repeated command id gets the same answer and is applied once.
 model OpsCommand {
   commandId  String   @id

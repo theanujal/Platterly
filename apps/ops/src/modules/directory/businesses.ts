@@ -21,6 +21,6 @@ export async function listBusinesses(opts: { q?: string; productKey?: string; pa
 export async function getBusiness(id: string) {
   return prisma.business.findUnique({
     where: { id },
-    include: { products: { include: { product: { select: { name: true, baseUrl: true } } } }, alerts: { orderBy: { createdAt: "desc" }, take: 20 } },
+    include: { products: { include: { product: { select: { name: true, baseUrl: true, manifest: true } } } }, alerts: { orderBy: { createdAt: "desc" }, take: 20 } },
   });
 }

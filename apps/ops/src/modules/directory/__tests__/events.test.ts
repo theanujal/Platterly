@@ -20,6 +20,7 @@ async function send(body: Record<string, unknown>, opts: { secret?: string; id?:
 }
 
 async function clean() {
+  await prisma.messageLog.deleteMany({ where: { productKey: { in: [A, B] } } });
   await prisma.business.deleteMany({ where: { name: { startsWith: "EvTest" } } });
   await prisma.product.deleteMany({ where: { key: { in: [A, B] } } });
 }
@@ -137,15 +138,21 @@ describe("receiveEvent", () => {
     expect(await prisma.alert.count({ where: { businessId: String(body.businessId) } })).toBe(0);
   });
 
-  it("keeps a message request without sending it (messaging moves to ops later)", async () => {
+  it("sends a message request through ops and logs it", async () => {
     const su = signup();
     await send(su);
     const msg = event("message.requested", { template: "welcome_owner", variables: { name: "Asha" } }, { businessId: su.businessId });
     const reply = await send(msg);
-    expect(reply.status).toBe(202);
-    const stored = await prisma.inboundEvent.findUniqueOrThrow({ where: { eventId: String(msg.eventId) } });
-    expect(stored.processedAt).toBeNull();
-    expect(stored.error).toMatch(/not enabled/);
+    // Accepted and recorded; with no mail provider in tests the message is logged as skipped, not lost.
+    expect(reply.status).toBe(200);
+    expect((await prisma.inboundEvent.findUniqueOrThrow({ where: { eventId: String(msg.eventId) } })).processedAt).not.toBeNull();
+    expect(await prisma.messageLog.findFirst({ where: { businessId: su.businessId, template: "welcome_owner" } })).toMatchObject({ status: "SKIPPED", dedupeKey: `event:${msg.eventId}` });
+    // A template ops does not have is the product's mistake: 202 with the reason, nothing logged.
+    const bad = event("message.requested", { template: "no_such_template", variables: {} }, { businessId: su.businessId });
+    const badReply = await send(bad);
+    expect(badReply.status).toBe(202);
+    expect((await prisma.inboundEvent.findUniqueOrThrow({ where: { eventId: String(bad.eventId) } })).error).toMatch(/unknown template/);
+    expect(await prisma.messageLog.count({ where: { businessId: su.businessId } })).toBe(1);
   });
 
   it("a second product can join an existing business without overwriting it", async () => {

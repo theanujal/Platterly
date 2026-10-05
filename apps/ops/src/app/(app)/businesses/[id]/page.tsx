@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getBusiness } from "@/modules/directory/businesses";
 import { listSubscriptions } from "@/modules/subscriptions/subscriptions";
 import { AssignForm } from "./assign-form";
+import { IdentityForm, ProviderButtons, StatusControls } from "./lifecycle-forms";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +14,18 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
   if (!business) notFound();
   const [subscriptions, plans] = await Promise.all([listSubscriptions(id), prisma.plan.findMany({ where: { isActive: true, productKey: { in: business.products.map((p) => p.productKey) } }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] })]);
   const when = (d: Date | null) => (d ? formatWhen(d) : "—");
+  const actionsOf = (manifest: unknown): string[] => ((manifest as { actions?: string[] } | null)?.actions ?? []);
   const STATUS_TONE = { TRIALING: "info", ACTIVE: "success", PAST_DUE: "warning", LOCKED: "danger", CANCELLED: "neutral" } as const;
 
   return (
     <>
       <PageHeader title={business.name} description={`${business.ownerName ?? "Owner unknown"} · ${business.ownerEmail ?? "no email"}`} actions={<Badge tone={business.status === "ACTIVE" ? "success" : business.status === "SUSPENDED" ? "warning" : "danger"}>{business.status === "PENDING_DELETE" ? "Pending delete" : business.status === "SUSPENDED" ? "Suspended" : "Active"}</Badge>} />
       <p className="mb-6 font-mono text-xs text-muted-foreground">{business.id}</p>
+
+      <h2 className="mb-3 text-base font-semibold">Status</h2>
+      <div className="mb-8">
+        {business.products.length > 0 ? <StatusControls businessId={business.id} productKey={business.products[0].productKey} businessName={business.name} status={business.status} deleteAfter={business.deleteAfter ? formatWhen(business.deleteAfter) : null} /> : <Empty>Not on any product.</Empty>}
+      </div>
 
       <h2 className="mb-3 text-base font-semibold">Products</h2>
       {business.products.length === 0 ? (
@@ -31,6 +38,13 @@ export default async function BusinessPage({ params }: { params: Promise<{ id: s
               <Card key={bp.productKey}>
                 <p className="font-semibold">{bp.product.name}</p>
                 <p className="mb-3 text-xs text-muted-foreground">Last active {formatWhen(bp.lastActiveAt)} · usage reported {formatWhen(bp.usageReportedAt)}</p>
+                <details className="mb-3 text-sm">
+                  <summary className="cursor-pointer font-medium">Change details{actionsOf(bp.product.manifest).includes("provider") ? " and message providers" : ""}</summary>
+                  <div className="mt-3 grid gap-4">
+                    <IdentityForm businessId={business.id} productKey={bp.productKey} name={business.name} ownerName={business.ownerName ?? ""} ownerEmail={business.ownerEmail ?? ""} hasSlug={actionsOf(bp.product.manifest).includes("slug")} />
+                    {actionsOf(bp.product.manifest).includes("provider") ? <ProviderButtons businessId={business.id} productKey={bp.productKey} /> : null}
+                  </div>
+                </details>
                 {Object.keys(counts).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No usage reported yet.</p>
                 ) : (

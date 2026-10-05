@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { NumberingError, setInvoicePrefix } from "@/modules/billing/numbering";
 import { requireStaff } from "@/lib/session";
 import { RegistryError, finishRotation, refreshManifest, registerProduct, rotateSecrets, updateProduct } from "@/modules/registry/products";
 
@@ -62,4 +64,17 @@ export async function updateProductAction(formData: FormData): Promise<void> {
   });
   revalidatePath(`/products/${key}`);
   revalidatePath("/products");
+}
+
+export async function setInvoicePrefixAction(formData: FormData): Promise<void> {
+  const staff = await requireStaff();
+  const key = String(formData.get("key") ?? "");
+  try {
+    await setInvoicePrefix(key, String(formData.get("invoicePrefix") ?? ""), staff.id);
+  } catch (error) {
+    if (!(error instanceof NumberingError)) throw error;
+    redirect(`/products/${key}?prefixError=${encodeURIComponent(error.message)}`);
+  }
+  revalidatePath(`/products/${key}`);
+  revalidatePath("/billing");
 }

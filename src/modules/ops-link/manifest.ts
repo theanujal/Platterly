@@ -1,6 +1,7 @@
 import "server-only";
 import { CONTRACT_VERSION, type EntitlementDef, type ProductManifest } from "@platterly/contract";
 import { originFor } from "@/lib/routing/hosts";
+import { CATERING_REPORTS } from "./reports";
 import { TRIAL_DURATION_DAYS } from "@/modules/subscriptions/trial-plan";
 
 /** The plan limits catering enforces today (`SubscriptionPlan` columns and `limits.ts`), declared once for ops's plan editor. */
@@ -31,9 +32,10 @@ export function buildManifest(productKey: string): ProductManifest {
     entitlements: CATERING_ENTITLEMENTS,
     // A new trial carries no limits (null = unlimited), exactly like the Trial plan today.
     trial: { days: TRIAL_DURATION_DAYS, entitlements: { ...Object.fromEntries(CATERING_ENTITLEMENTS.filter((e) => e.type === "limit").map((e) => [e.key, null])), multiLocation: false } },
-    events: ["business.signed_up", "business.updated", "usage.reported"],
-    messageTemplates: [],
+    events: ["business.signed_up", "business.updated", "usage.reported", "message.requested"],
+    messageTemplates: ["welcome_owner"],
     tabs: [{ key: "overview", label: "Overview" }],
-    actions: ["suspend", "reactivate"],
+    reports: CATERING_REPORTS,
+    actions: ["suspend", "reactivate", "update", "slug", "provider", "delete", "restore"],
   };
 }

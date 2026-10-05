@@ -3,6 +3,7 @@ import { CONTRACT_VERSION, HEADERS, parseEvent, verifyRequest, type ProductEvent
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { secretsOf } from "@/modules/registry/products";
+import { sendMessage } from "@/modules/messages/messages";
 import { startTrial } from "@/modules/subscriptions/subscriptions";
 
 export interface EventReply {
@@ -13,7 +14,7 @@ export interface EventReply {
 const UNAUTHORIZED: EventReply = { status: 401, body: { error: "unauthorized" } };
 
 type Tx = Prisma.TransactionClient;
-type Outcome = { applied: true; startTrial?: boolean } | { applied: false; reason: string };
+type Outcome = { applied: true; startTrial?: boolean; sendMessage?: boolean } | { applied: false; reason: string };
 
 async function ownsBusiness(tx: Tx, productKey: string, businessId: string): Promise<boolean> {
   return (await tx.businessProduct.findUnique({ where: { businessId_productKey: { businessId, productKey } } })) !== null;
@@ -58,8 +59,8 @@ async function apply(tx: Tx, event: ProductEvent): Promise<Outcome> {
       });
       return { applied: true };
     case "message.requested":
-      // Sending moves to ops in a later step (docs/ops-contract.md section 9). Until then the request is kept, not sent.
-      return { applied: false, reason: "messaging is not enabled in ops yet" };
+      // Sent after the event is safely recorded (see receiveEvent): a slow or failing mail provider never fails the event.
+      return { applied: true, sendMessage: true };
   }
 }
 
@@ -94,7 +95,7 @@ export async function receiveEvent(rawBody: string, headers: Headers): Promise<E
       await tx.inboundEvent.create({ data: { eventId: event.eventId, productKey, businessId: event.businessId, type: event.type, payload: json as Prisma.InputJsonValue, occurredAt: new Date(event.occurredAt) } });
       const outcome = await apply(tx, event);
       await tx.inboundEvent.update({ where: { eventId: event.eventId }, data: outcome.applied ? { processedAt: new Date() } : { error: outcome.reason } });
-      return { reply: outcome.applied ? { status: 200, body: { ok: true } } : { status: 202, body: { ok: true, applied: false, reason: outcome.reason } }, trial: outcome.applied && outcome.startTrial === true };
+      return { reply: outcome.applied ? { status: 200, body: { ok: true } } : { status: 202, body: { ok: true, applied: false, reason: outcome.reason } }, trial: outcome.applied && outcome.startTrial === true, message: outcome.applied && outcome.sendMessage === true };
     });
     // A new business starts on the product's trial plan. After the event is safely recorded, and never able to fail it.
     if (result.trial) {
@@ -102,6 +103,14 @@ export async function receiveEvent(rawBody: string, headers: Headers): Promise<E
         await startTrial(event.businessId, event.productKey);
       } catch (error) {
         console.error("[ops events] could not start a trial for", event.businessId, error);
+      }
+    }
+    if (result.message && event.type === "message.requested") {
+      const sent = await sendMessage({ businessId: event.businessId, productKey: event.productKey, template: event.data.template, variables: event.data.variables, dedupeKey: `event:${event.eventId}` });
+      // An unknown template or a missing variable is the product's mistake: say so (202), and keep the reason on the event.
+      if (!sent.ok) {
+        await prisma.inboundEvent.update({ where: { eventId: event.eventId }, data: { error: sent.error } });
+        return { status: 202, body: { ok: true, applied: false, reason: sent.error } };
       }
     }
     return result.reply;

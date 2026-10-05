@@ -25,10 +25,6 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * /menu-approval/*, /{slug}/plan/*; every admin page; the whole ops host)
  * gets `X-Robots-Tag: noindex` here, in one place, instead of per page.
  */
-const OPS_ALLOWED = ["/super", "/api/auth", "/api/health", "/sw.js"];
-// The brand marks the Super Admin sidebar and sign-in page draw (public/platterly-mark.svg, platterly-logo.*).
-const OPS_BRAND_ASSET = /^\/platterly-[a-z-]+\.(svg|png)$/;
-
 function isStorefrontPath(pathname: string): boolean {
   const segments = pathname.split("/").filter(Boolean);
   return segments.length === 1 && !isReservedPathSegment(segments[0]);
@@ -42,15 +38,10 @@ function withIndexing(response: NextResponse, indexable: boolean): NextResponse 
 export function proxy(request: NextRequest) {
   const kind = hostKind(requestHost(request.headers));
   const { pathname } = request.nextUrl;
-  const isSuperPath = pathname === "/super" || pathname.startsWith("/super/");
 
+  // The platform admin is Platterly Ops, its own app (apps/ops). This app serves nothing on the ops host, only the uptime check.
   if (kind === "ops") {
-    if (pathname === "/") return withIndexing(NextResponse.rewrite(new URL("/super", request.url)), false);
-    const allowed = OPS_ALLOWED.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || OPS_BRAND_ASSET.test(pathname);
-    if (!allowed) return withIndexing(new NextResponse("Not found", { status: 404 }), false);
-    return withIndexing(NextResponse.next(), false);
-  }
-  if (kind === "catering" && isSuperPath) {
+    if (pathname === "/api/health") return withIndexing(NextResponse.next(), false);
     return withIndexing(new NextResponse("Not found", { status: 404 }), false);
   }
   if (kind === "catering" && (pathname === "/kitchenlogin" || pathname === "/kitchenlogin/")) {

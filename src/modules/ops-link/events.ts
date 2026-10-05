@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
-import { opsLink } from "./config";
+import { opsBillingOn, opsLink } from "./config";
 import { usageCounts } from "./directory";
 import { emitEvent, enqueueEvent, runDueOutbox } from "./outbox";
 import { pullDueSnapshots } from "./pull";
@@ -28,6 +28,21 @@ export async function emitBusinessSignedUp(organizationId: string): Promise<void
     await emitEvent({ type: "business.signed_up", businessId: owner.businessId, dedupeKey: `signed_up:${owner.businessId}`, data: { businessName: owner.businessName, ownerName: owner.ownerName, ownerEmail: owner.ownerEmail } });
   } catch (error) {
     console.error("[ops-link] sign-up event failed:", error);
+  }
+}
+
+/**
+ * Asks ops to send the owner a welcome email (docs/ops-contract.md 9: products never send Platterly's own messages). Only once
+ * ops owns billing and messaging (OPS_BILLING on); queued after the sign-up event, once per business.
+ */
+export async function emitWelcomeRequested(organizationId: string): Promise<void> {
+  try {
+    if (!opsBillingOn()) return;
+    const owner = await ownerOf(organizationId);
+    if (!owner) return;
+    await emitEvent({ type: "message.requested", businessId: owner.businessId, dedupeKey: `welcome:${owner.businessId}`, data: { template: "welcome_owner", variables: {} } });
+  } catch (error) {
+    console.error("[ops-link] welcome request failed:", error);
   }
 }
 

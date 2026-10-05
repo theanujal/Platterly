@@ -100,6 +100,10 @@ model Product {
   inboundSecretPrevious  String?
   secretsRotatedAt       DateTime?
 
+  // Start of every invoice number for this product: <prefix><business initials>-<yy>-<mm>-<n>. Unique across products, so
+  // two products never print the same number. Numbers run per product (see InvoiceCounter).
+  invoicePrefix String? @unique
+
   // The last manifest read from the product (see packages/contract manifest).
   manifest          Json?
   manifestVersion   String?
@@ -116,6 +120,8 @@ model Product {
   plans         Plan[]
   subscriptions Subscription[]
   payments      SubscriptionPayment[]
+  notice        ProductNotice?
+  invoiceCounter InvoiceCounter?
 
   @@map("product")
 }
@@ -257,6 +263,66 @@ model OutboundCommand {
   @@index([status, nextAttemptAt])
   @@index([productKey, createdAt])
   @@map("outbound_command")
+}
+
+// The sidebar notice for one product's businesses. Saving it queues one `notice.set` command per business (docs/ops-contract.md 6);
+// the scheduled job queues it again for any business that joined later. `updatedAt` is part of the commands' dedupe key.
+model ProductNotice {
+  productKey  String   @id
+  product     Product  @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  enabled     Boolean  @default(false)
+  title       String?
+  message     String?
+  buttonLabel String?
+  buttonUrl   String?
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@map("product_notice")
+}
+
+// The running invoice number of one product (one counter per product, so numbering follows the product, not the whole
+// platform). `lastNumber` is the highest number issued; the next invoice takes lastNumber + 1, atomically.
+model InvoiceCounter {
+  productKey String  @id
+  product    Product @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  lastNumber Int     @default(0)
+
+  @@map("invoice_counter")
+}
+
+// ---------- Messages from Platterly to a business owner (docs/ops-contract.md 9) ----------
+
+enum MessageStatus {
+  PENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+// Every email ops sends to an owner, whether a product asked for it (`message.requested`) or ops itself did (receipts, trial
+// notices). Written before sending, so a failed send is retried by the scheduled job from the stored template and variables.
+// `dedupeKey` makes "the same fact again" (a retried event, a daily sweep) send once.
+model MessageLog {
+  id              String        @id @default(cuid())
+  businessId      String
+  productKey      String?
+  template        String
+  variables       Json
+  toEmail         String?
+  subject         String?
+  status          MessageStatus @default(PENDING)
+  attempts        Int           @default(0)
+  nextAttemptAt   DateTime?
+  providerMessage String?
+  error           String?
+  dedupeKey       String?       @unique
+  createdAt       DateTime      @default(now())
+  sentAt          DateTime?
+
+  @@index([businessId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@map("message_log")
 }
 
 // ---------- Plans and subscriptions (docs/ops-contract.md section 8) ----------

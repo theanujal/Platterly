@@ -10,7 +10,9 @@ import { GET as businessGET } from "@/app/api/ops/businesses/[businessId]/route"
 import { GET as healthGET } from "@/app/api/ops/health/route";
 import { updateTenant } from "@/modules/tenants/tenant";
 import { attemptDelivery, enqueueEvent, MAX_ATTEMPTS, RETRY_DELAYS_SECONDS, runDueOutbox } from "../outbox";
-import { emitBusinessSignedUp, runOpsLinkJobs } from "../events";
+import { getActiveNotice, savePlatformNotice } from "@/modules/subscriptions/platform-notice";
+import { getChannelSettings } from "@/modules/notifications/channel-settings";
+import { emitBusinessSignedUp, emitWelcomeRequested, runOpsLinkJobs } from "../events";
 
 const COMMAND_SECRET = "opssec_command_test";
 const OLD_COMMAND_SECRET = "opssec_command_old";
@@ -37,6 +39,7 @@ afterEach(async () => {
   await prisma.opsOutbox.deleteMany({ where: { createdAt: { gte: startedAt } } });
   await prisma.opsCommand.deleteMany({ where: { receivedAt: { gte: startedAt } } });
   // The scheduled job also pulls snapshots (and remembers the ones ops has none for); none of that may outlive the test.
+  await prisma.opsNotice.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.opsPull.deleteMany({ where: { lastPulledAt: { gte: startedAt } } });
   await prisma.opsSnapshot.deleteMany({ where: { receivedAt: { gte: startedAt } } });
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -131,12 +134,12 @@ describe("the ops routes", () => {
   });
 });
 
-describe("commands", () => {
-  async function send(body: unknown) {
-    const res = await commandsPOST(opsRequest("/api/ops/commands", { method: "POST", body }));
-    return { status: res.status, body: await res.json() };
-  }
+async function send(body: unknown) {
+  const res = await commandsPOST(opsRequest("/api/ops/commands", { method: "POST", body }));
+  return { status: res.status, body: await res.json() };
+}
 
+describe("commands", () => {
   it("stores a snapshot, ignores an older or repeated version, and refuses an unknown business", async () => {
     const org = await makeOrg();
     expect((await send(command(org.businessId, "snapshot.push", { snapshot: snapshotFor(org.businessId, 2) }))).body).toMatchObject({ ok: true, applied: true, version: 2 });
@@ -182,13 +185,137 @@ describe("commands", () => {
     expect((await prisma.organization.findUniqueOrThrow({ where: { id: dead.id } })).status).toBe("DEACTIVATED");
   });
 
-  it("says plainly that provisioning, the notice and deletion are not built yet, and 400s on garbage", async () => {
-    const org = await makeOrg();
-    expect((await send(command(org.businessId, "business.restore"))).status).toBe(501);
-    expect((await send(command(org.businessId, "business.delete", { confirmation: "x" }))).body).toMatchObject({ error: "not_supported_yet" });
-    expect((await send(command(org.businessId, "notice.set", { enabled: false }))).status).toBe(501);
+  it("400s on garbage", async () => {
     expect((await send({ nonsense: true })).status).toBe(400);
     expect((await commandsPOST(opsRequest("/api/ops/commands", { method: "POST", body: "not json" as unknown as object }))).status).toBe(400);
+  });
+});
+
+const isProviderConnected = async (organizationId: string, channel: "email" | "whatsapp") => (await getChannelSettings(organizationId, channel)).providerConnected;
+
+describe("business lifecycle commands", () => {
+  const provisionBody = (businessId: string) => command(businessId, "business.provision", { businessName: "Ops Made Kitchen", ownerEmail: "boss@opsmade.example.test", ownerName: "Ravi Kumar Singh", snapshot: snapshotFor(businessId, 1) });
+
+  it("provision creates the kitchen under ops's business id with its first snapshot, and a repeat answers the same kitchen", async () => {
+    const businessId = newId("business");
+    const first = await send(provisionBody(businessId));
+    expect(first.status).toBe(200);
+    const org = await prisma.organization.findUniqueOrThrow({ where: { businessId } });
+    orgIds.push(org.id);
+    expect(first.body).toMatchObject({ ok: true, organizationId: org.id, existing: false });
+    expect(org).toMatchObject({ name: "Ops Made Kitchen", ownerFirstName: "Ravi", ownerLastName: "Kumar Singh", contactEmail: "boss@opsmade.example.test", status: "ACTIVE" });
+    expect(org.slug).toMatch(/^biz-/);
+    expect(await prisma.opsSnapshot.findUnique({ where: { businessId } })).toMatchObject({ organizationId: org.id, version: 1 });
+    const again = await send(provisionBody(businessId));
+    expect(again.body).toMatchObject({ organizationId: org.id, existing: true });
+    expect(await prisma.organization.count({ where: { businessId } })).toBe(1);
+  });
+
+  it("provision refuses a snapshot for another business", async () => {
+    const businessId = newId("business");
+    const body = command(businessId, "business.provision", { businessName: "X", ownerEmail: "a@b.test", ownerName: "A", snapshot: snapshotFor(newId("business"), 1) });
+    expect((await send(body)).status).toBe(400);
+    expect(await prisma.organization.count({ where: { businessId } })).toBe(0);
+  });
+
+  it("update changes the name and owner, the contact, and the slug, and tells ops about a rename", async () => {
+    const org = await makeOrg({ name: "Before Name" });
+    const reply = await send(command(org.businessId, "business.update", { businessName: "After Name", ownerFirstName: "Meera", contactPhone: "9876543210", slug: "after-name-1" }));
+    expect(reply).toMatchObject({ status: 200, body: { ok: true } });
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).toMatchObject({ name: "After Name", ownerFirstName: "Meera", ownerLastName: "K", contactPhone: "9876543210", slug: "after-name-1" });
+    const queued = await prisma.opsOutbox.findMany({ where: { businessId: org.businessId, type: "business.updated" } });
+    expect(queued.map((e) => (e.payload as { data: unknown }).data)).toContainEqual({ businessName: "After Name", ownerName: "Meera K" });
+  });
+
+  it("update on only the slug leaves the profile alone; a taken slug is 409 and a badly formed one 400", async () => {
+    const a = await makeOrg({ name: "Slug A" });
+    const b = await makeOrg({ name: "Slug B" });
+    expect((await send(command(a.businessId, "business.update", { slug: "slug-only-1" }))).status).toBe(200);
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: a.id } })).toMatchObject({ name: "Slug A", slug: "slug-only-1" });
+    expect((await send(command(b.businessId, "business.update", { slug: "slug-only-1" }))).status).toBe(409);
+    expect((await send(command(b.businessId, "business.update", { slug: "bad slug!" }))).status).toBe(400);
+    expect((await send(command("biz_" + "7".repeat(32), "business.update", { businessName: "x" }))).status).toBe(404);
+  });
+
+  it("provider.set connects and disconnects a channel, and disconnecting switches it off for the kitchen", async () => {
+    const org = await makeOrg();
+    expect((await send(command(org.businessId, "provider.set", { channel: "email", connected: true }))).status).toBe(200);
+    expect(await isProviderConnected(org.id, "email")).toBe(true);
+    expect((await send(command(org.businessId, "provider.set", { channel: "email", connected: false }))).status).toBe(200);
+    expect(await isProviderConnected(org.id, "email")).toBe(false);
+    expect((await prisma.auditLog.findMany({ where: { organizationId: org.id, action: { startsWith: "notifications.email_provider" } } })).map((a) => a.action).sort()).toEqual(["notifications.email_provider_connected", "notifications.email_provider_disconnected"]);
+  });
+
+  it("delete needs the typed business name, then suspends (restorable) and removes no data; restore reactivates", async () => {
+    const org = await makeOrg({ name: "Delete Me Kitchen" });
+    expect((await send(command(org.businessId, "business.delete", { confirmation: "wrong name", retentionDays: 30 }))).body).toMatchObject({ error: "confirmation_mismatch" });
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).status).toBe("ACTIVE");
+    expect((await send(command(org.businessId, "business.delete", { confirmation: "Delete Me Kitchen", retentionDays: 30 }))).body).toMatchObject({ ok: true, status: "SUSPENDED", dataRemoved: false });
+    expect(await prisma.organization.findUnique({ where: { id: org.id } })).toMatchObject({ status: "SUSPENDED" });
+    expect((await send(command(org.businessId, "business.restore"))).body).toMatchObject({ ok: true, status: "ACTIVE" });
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).status).toBe("ACTIVE");
+    expect((await prisma.auditLog.findMany({ where: { organizationId: org.id, action: { startsWith: "tenant.delete" } } })).map((a) => a.action).sort()).toEqual(["tenant.delete_requested", "tenant.delete_restored"]);
+  });
+
+  it("delete and restore leave a deactivated business alone (409)", async () => {
+    const org = await makeOrg({ name: "Gone Kitchen", status: "DEACTIVATED" });
+    expect((await send(command(org.businessId, "business.delete", { confirmation: "Gone Kitchen" }))).status).toBe(409);
+    expect((await send(command(org.businessId, "business.restore"))).status).toBe(409);
+  });
+});
+
+describe("notice.set", () => {
+  const notice = { enabled: true, title: "Diwali offer", message: "20% off yearly plans.", buttonLabel: "See plans", buttonUrl: "/subscribe" };
+
+  it("stores the notice for that business only, and a later one replaces it", async () => {
+    const org = await makeOrg();
+    const other = await makeOrg();
+    expect((await send(command(org.businessId, "notice.set", notice))).body).toEqual({ ok: true });
+    expect(await prisma.opsNotice.findUnique({ where: { businessId: org.businessId } })).toMatchObject({ organizationId: org.id, enabled: true, title: "Diwali offer", buttonUrl: "/subscribe" });
+    expect(await prisma.opsNotice.findUnique({ where: { businessId: other.businessId } })).toBeNull();
+    await send(command(org.businessId, "notice.set", { enabled: false, title: null, message: null, buttonLabel: null, buttonUrl: null }));
+    expect(await prisma.opsNotice.findUnique({ where: { businessId: org.businessId } })).toMatchObject({ enabled: false, title: null });
+  });
+
+  it("applies a repeated command once and refuses text over this product's limits with 400", async () => {
+    const org = await makeOrg();
+    const cmd = command(org.businessId, "notice.set", notice);
+    expect((await send(cmd)).status).toBe(200);
+    await prisma.opsNotice.update({ where: { businessId: org.businessId }, data: { title: "edited" } });
+    expect((await send(cmd)).status).toBe(200);
+    expect((await prisma.opsNotice.findUniqueOrThrow({ where: { businessId: org.businessId } })).title).toBe("edited");
+    const long = await send(command(org.businessId, "notice.set", { ...notice, message: "x".repeat(300) }));
+    expect(long.status).toBe(400);
+    expect(await send(command(org.businessId, "notice.set", { ...notice, buttonUrl: "javascript:alert(1)" }))).toMatchObject({ status: 400 });
+  });
+
+  it("is refused from the old Super Admin form once ops owns it, and works there as before while the flag is off", async () => {
+    const form = { enabled: false, title: "", message: "", buttonLabel: "", buttonUrl: "" };
+    await expect(savePlatformNotice(form)).resolves.toBeTruthy();
+    process.env.OPS_BILLING = "1";
+    try {
+      await expect(savePlatformNotice(form)).rejects.toThrow(/managed in Platterly Ops/);
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+  });
+
+  it("answers 404 for a business this product does not have", async () => {
+    expect((await send(command("biz_" + "0".repeat(32), "notice.set", notice))).status).toBe(404);
+  });
+
+  it("is what a kitchen sees only with OPS_BILLING on; off, the single Super Admin row decides", async () => {
+    const org = await makeOrg();
+    await send(command(org.businessId, "notice.set", notice));
+    process.env.OPS_BILLING = "1";
+    try {
+      expect(await getActiveNotice(org.id)).toEqual({ title: "Diwali offer", message: "20% off yearly plans.", buttonLabel: "See plans", buttonUrl: "/subscribe" });
+      expect(await getActiveNotice((await makeOrg()).id)).toBeNull();
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+    const global = await getActiveNotice(org.id);
+    expect(global?.title).not.toBe("Diwali offer");
   });
 });
 
@@ -278,6 +405,30 @@ describe("events to ops", () => {
     expect(mine).toHaveLength(1);
     expect(JSON.parse(mine[0].body)).toMatchObject({ type: "business.signed_up", data: { businessName: "Spice Route", ownerName: "Asha K", ownerEmail: "asha@spice.example.test" } });
     expect(JSON.parse(mine[0].body).data.backfill).toBeUndefined();
+  });
+
+  it("asks ops to send the welcome email once, only when ops owns billing", async () => {
+    const org = await makeOrg({ name: "Welcome Kitchen" });
+    const mine = () => received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === org.businessId && e.type === "message.requested");
+    await emitWelcomeRequested(org.id);
+    expect(mine()).toHaveLength(0);
+    process.env.OPS_BILLING = "1";
+    try {
+      await emitWelcomeRequested(org.id);
+      await emitWelcomeRequested(org.id);
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+    expect(mine()).toHaveLength(1);
+    expect(mine()[0].data).toEqual({ template: "welcome_owner", variables: {} });
+    const noEmail = await makeOrg({ ownerEmail: null });
+    process.env.OPS_BILLING = "1";
+    try {
+      await emitWelcomeRequested(noEmail.id);
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+    expect(received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === noEmail.businessId)).toHaveLength(0);
   });
 
   it("sends nothing for a business with no known email", async () => {

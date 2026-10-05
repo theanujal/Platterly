@@ -2,14 +2,15 @@ import { notFound } from "next/navigation";
 import type { ProductManifest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { Badge, Button, Card, Field, PageHeader, Table, formatWhen, inputClass } from "@/components/ui";
-import { finishRotationAction, refreshManifestAction, updateProductAction } from "../actions";
+import { finishRotationAction, refreshManifestAction, setInvoicePrefixAction, updateProductAction } from "../actions";
 import { RotateForm } from "./rotate-form";
 
 export const dynamic = "force-dynamic";
 
-export default async function ProductPage({ params }: { params: Promise<{ key: string }> }) {
+export default async function ProductPage({ params, searchParams }: { params: Promise<{ key: string }>; searchParams: Promise<{ prefixError?: string }> }) {
   const { key } = await params;
-  const product = await prisma.product.findUnique({ where: { key }, include: { _count: { select: { businesses: true, events: true } } } });
+  const { prefixError } = await searchParams;
+  const product = await prisma.product.findUnique({ where: { key }, include: { _count: { select: { businesses: true, events: true } }, invoiceCounter: true } });
   if (!product) notFound();
   const manifest = product.manifest as unknown as ProductManifest | null;
   const rotating = product.outboundSecretPrevious !== null || product.inboundSecretPrevious !== null;
@@ -35,6 +36,17 @@ export default async function ProductPage({ params }: { params: Promise<{ key: s
             </Field>
             <div><Button type="submit">Save settings</Button></div>
           </form>
+        </Card>
+
+        <Card>
+          <h2 className="mb-1 text-base font-semibold">Invoice numbering</h2>
+          <p className="mb-4 text-sm text-muted-foreground">This product&apos;s invoices carry its own prefix and run on their own number: {product.invoiceCounter?.lastNumber ?? 0} issued so far. Changing the prefix affects new invoices only; issued ones keep what was printed.</p>
+          <form action={setInvoicePrefixAction} className="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="key" value={product.key} />
+            <Field label="Invoice prefix" htmlFor="invoicePrefix" hint="1 to 6 letters or digits, different for every product."><input id="invoicePrefix" name="invoicePrefix" defaultValue={product.invoicePrefix ?? ""} maxLength={6} required className={`${inputClass} w-40 font-mono uppercase`} /></Field>
+            <Button type="submit" size="md">Save prefix</Button>
+          </form>
+          {prefixError ? <p role="alert" className="mt-3 text-sm text-destructive">{prefixError}</p> : null}
         </Card>
 
         <Card>

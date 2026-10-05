@@ -7,8 +7,6 @@ import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications/notify";
 import { PROMPT_MAX_ASKS, nextPromptRecord, shouldShowPrompt } from "@/modules/notifications/push-prompt";
 import { answerPrompt, getPushState, savePushSubscription, sendPushToUser, setPushEnabled } from "@/modules/notifications/push";
-import { getInbox } from "@/modules/notifications/inbox";
-import { onCatererSignedUp } from "@/modules/notifications/triggers";
 
 const send = webpush.sendNotification as unknown as ReturnType<typeof vi.fn>;
 const userIds: string[] = [];
@@ -104,20 +102,5 @@ describe("sending push", () => {
     expect(JSON.parse(send.mock.calls[0][1]).url).toBe("/orders/o1");
 
     await answerPrompt(user.id, "later"); // re-asking is allowed to change state, never to throw
-  });
-});
-
-describe("Super Admin alerts", () => {
-  it("a new caterer sign-up reaches every Super Admin's bell, and only theirs", async () => {
-    const admin = await makeUser(true);
-    const other = await makeUser(false);
-    const org = await prisma.organization.create({ data: { id: crypto.randomUUID(), name: "New Kitchen", slug: `sa-${crypto.randomUUID().slice(0, 8)}`, createdAt: new Date() } });
-    orgIds.push(org.id);
-
-    await onCatererSignedUp(org.id, "Asha Rao");
-    const inbox = await getInbox(null, admin.id);
-    expect(inbox.items[0]).toMatchObject({ title: "New caterer signed up", href: `/super/tenants/${org.id}`, read: false });
-    expect(inbox.items[0].message).toContain("Asha Rao");
-    expect((await getInbox(null, other.id)).items).toHaveLength(0);
   });
 });

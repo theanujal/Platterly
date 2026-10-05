@@ -5,7 +5,7 @@ import { newId, parseSnapshot, signedHeaders, verifyRequest } from "@platterly/c
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan, PlanError, setPlanActive, updatePlan, type PlanInput } from "@/modules/plans/plans";
-import { assignPlan, startTrial, SubscriptionError, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { assignPlan, startTrial, SubscriptionError, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
 import { receiveEvent } from "@/modules/directory/events";
 import { GET as pullGET } from "@/app/api/products/[productKey]/snapshots/[businessId]/route";
 import { GET as cronGET } from "@/app/api/cron/route";
@@ -30,6 +30,7 @@ const businessId = () => `biz_${Math.random().toString(16).slice(2).padEnd(32, "
 const planInput = (over: Partial<PlanInput> = {}): PlanInput => ({ productKey: KEY, code: "pro", name: "Pro", isTrial: false, priceMonthly: 999, priceAnnual: 9999, gstPercent: 18, highlights: ["One", "Two"], entitlements: { maxCustomers: 100, multiLocation: true }, ...over });
 
 async function clean() {
+  await prisma.messageLog.deleteMany({ where: { productKey: KEY } });
   await prisma.business.deleteMany({ where: { name: { startsWith: "SnapTest" } } });
   await prisma.plan.deleteMany({ where: { productKey: KEY } });
   await prisma.product.deleteMany({ where: { key: KEY } });
@@ -186,6 +187,30 @@ describe("subscriptions", () => {
     const sent = commands.map((x) => (x.body.payload as { snapshot: { status: string } }).snapshot.status);
     expect(sent.sort()).toEqual(["LOCKED", "LOCKED"]);
     expect(await sweepExpired(new Date(), KEY)).toBe(0);
+    // Only the trial gets an "ended" email, once; a paid period that lapsed does not. (Hand-assigned paid plans send "plan changed".)
+    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "trial_ended" }, select: { businessId: true } })).toEqual([{ businessId: a }]);
+    expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "plan_changed" } })).toBe(2);
+  });
+
+  it("trial notices go out at 3 days and at 1 day, once each, and never for an ended, paid or far-off trial", async () => {
+    const trial = await createPlan(planInput({ code: "trial", name: "Trial", isTrial: true, trialDurationDays: 30, priceMonthly: null, priceAnnual: null, entitlements: {} }), null);
+    const [a, b, c] = [await makeBusiness(), await makeBusiness(), await makeBusiness()];
+    const subA = await assignPlan({ businessId: a, productKey: KEY, planId: trial.id, actorUserId: null });
+    const subB = await assignPlan({ businessId: b, productKey: KEY, planId: trial.id, actorUserId: null });
+    await assignPlan({ businessId: c, productKey: KEY, planId: trial.id, actorUserId: null });
+    const now = new Date();
+    await prisma.subscription.update({ where: { id: subA.id }, data: { trialEndsAt: new Date(now.getTime() + 2.5 * DAY) } });
+    await prisma.subscription.update({ where: { id: subB.id }, data: { trialEndsAt: new Date(now.getTime() + 0.5 * DAY) } });
+    expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "plan_changed" } })).toBe(0); // a sign-up trial is not a plan change
+    expect(await sendTrialNotices(now, KEY)).toBe(2);
+    expect(await sendTrialNotices(now, KEY)).toBe(2);
+    const rows = await prisma.messageLog.findMany({ where: { productKey: KEY, template: "trial_ending" }, select: { businessId: true, variables: true } });
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.businessId === a)!.variables).toEqual({ daysLeft: 3 });
+    expect(rows.find((r) => r.businessId === b)!.variables).toEqual({ daysLeft: 1 });
+    // A day later the first trial is in its last day: it gets the "1 day" notice too, but still not a second "3 days".
+    await sendTrialNotices(new Date(now.getTime() + 1.6 * DAY), KEY);
+    expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "trial_ending", businessId: a } })).toBe(2);
   });
 });
 

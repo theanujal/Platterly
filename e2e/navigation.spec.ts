@@ -1,12 +1,12 @@
 import "dotenv/config";
 import { test, expect } from "@playwright/test";
-import { activatePaidPlan, assignOrderEventToLocation, cleanupOnboardingTestUser, clearPlatformNotice, givePlanWithMultiLocation, seedOrderForBilling } from "./db";
+import { activatePaidPlan, assignOrderEventToLocation, cleanupOnboardingTestUser, clearPlatformNotice, givePlanWithMultiLocation, seedOrderForBilling, setPlatformNotice, switchOffPlatformNotice } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
  * AJ's navigation round (2026-10-04): Reports & Activity, Finance and Stock & Supplies are one menu entry each with the
  * old pages as tabs; Settings, Billing and Sign out live in the account menu at the top right; the green sidebar box is
- * the trial countdown by default and the Super Admin's own notice when one is switched on; the Order page keeps pricing
+ * the trial countdown by default and the platform's own notice when one is switched on; the Order page keeps pricing
  * and payments in the Pricing & Payment tab, in two columns.
  */
 
@@ -17,9 +17,6 @@ test.afterEach(async () => {
   if (email) await cleanupOnboardingTestUser(email);
 });
 
-const SUPER_ADMIN_EMAIL = process.env.SUPER_ADMIN_EMAIL;
-const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD;
-const OPS_URL = process.env.PW_OPS_URL ?? "http://ops.localhost:3000";
 
 test("merged menus open as tabs, and Settings, Billing and Sign out are in the account menu", async ({ page }) => {
   test.setTimeout(150_000);
@@ -111,9 +108,8 @@ test("the Order page: no pricing or payments in the sidebar, payments beside the
   await expect(page.locator("aside").getByText("Kitchen", { exact: true })).toBeVisible();
 });
 
-test("the green box: trial countdown by default, nothing on a paid plan, the Super Admin's own notice for everyone, and hidden again when switched off", async ({ page, browser }) => {
+test("the green box: trial countdown by default, nothing on a paid plan, the platform's own notice for everyone, and hidden again when switched off", async ({ page }) => {
   test.setTimeout(180_000);
-  test.skip(!SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD, "Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD in .env to run this spec.");
   const email = `e2e-box-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   await clearPlatformNotice();
@@ -129,27 +125,10 @@ test("the green box: trial countdown by default, nothing on a paid plan, the Sup
   await page.goto("/dashboard");
   await expect(sidebar).not.toContainText(/left on your trial/);
 
-  // The Super Admin writes a notice with a button and switches it on
-  const adminContext = await browser.newContext();
-  const admin = await adminContext.newPage();
+  // Platform staff write a notice with a button and switch it on (in Ops; the row it lands in is set directly here, and the form's
+  // own checks are covered by Ops's specs).
   try {
-    await admin.goto(`${OPS_URL}/super`);
-    await admin.getByLabel("Email").fill(SUPER_ADMIN_EMAIL!);
-    await admin.getByLabel("Password").fill(SUPER_ADMIN_PASSWORD!);
-    await admin.getByRole("button", { name: "Sign in" }).click();
-    await expect(admin).toHaveURL(/\/super\/dashboard$/);
-    await admin.getByRole("link", { name: "Sidebar notice" }).click();
-    await expect(admin.getByRole("heading", { name: "Sidebar notice", exact: true })).toBeVisible();
-    await admin.getByLabel("Title").fill("Diwali offer");
-    await admin.getByLabel("Text").fill("20% off yearly plans until 31 Oct.");
-    await admin.getByLabel("Button label (optional)").fill("See plans");
-    await admin.getByLabel("Button link").fill("javascript:alert(1)");
-    await admin.getByRole("switch", { name: "Show this box to every kitchen" }).click();
-    await admin.getByRole("button", { name: "Save notice" }).click();
-    await expect(admin.locator("p[role=alert]")).toContainText("must start with");
-    await admin.getByLabel("Button link").fill("/subscribe");
-    await admin.getByRole("button", { name: "Save notice" }).click();
-    await expect(admin.getByRole("status")).toContainText("Saved");
+    await setPlatformNotice({ title: "Diwali offer", message: "20% off yearly plans until 31 Oct.", buttonLabel: "See plans", buttonUrl: "/subscribe" });
 
     // Every kitchen sees it, even one on a paid plan
     await page.goto("/dashboard");
@@ -159,13 +138,10 @@ test("the green box: trial countdown by default, nothing on a paid plan, the Sup
     await expect(notice.locator('a[href="/subscribe"]')).toContainText("See plans");
 
     // Switched off: gone again
-    await admin.getByRole("switch", { name: "Show this box to every kitchen" }).click();
-    await admin.getByRole("button", { name: "Save notice" }).click();
-    await expect(admin.getByRole("status")).toContainText("Saved");
+    await switchOffPlatformNotice();
     await page.goto("/dashboard");
     await expect(page.getByTestId("sidebar-notice")).toHaveCount(0);
   } finally {
-    await adminContext.close();
     await clearPlatformNotice();
   }
 });

@@ -68,7 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : subscription?.status === "TRIALING"
       ? { trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null, trialTotalDays: subscription.subscriptionPlan.trialDurationDays }
       : null;
-  const notice = await getActiveNotice();
+  const notice = await getActiveNotice(organizationId);
 
   const fullName = `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || session.user.name;
   const initials =

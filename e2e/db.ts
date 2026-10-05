@@ -522,7 +522,21 @@ export async function seedLeadFromVisit(email: string, source: string): Promise<
   return customerId;
 }
 
-/** Resets the Super Admin's sidebar notice to off and empty (the notice is one shared row, so a spec that sets it must put it back). */
+/** Resets the platform sidebar notice to off and empty (the notice is one shared row, so a spec that sets it must put it back). */
 export async function clearPlatformNotice(): Promise<void> {
   await pool.query(`DELETE FROM platform_notice WHERE id = 'platform'`);
+}
+
+/** Switches the platform sidebar notice on, as Platterly Ops's notice screen does for a product (the row catering reads while OPS_BILLING is off). */
+export async function setPlatformNotice(notice: { title: string; message: string; buttonLabel: string; buttonUrl: string }): Promise<void> {
+  await pool.query(
+    `INSERT INTO platform_notice (id, enabled, title, message, "buttonLabel", "buttonUrl", "updatedAt") VALUES ('platform', true, $1, $2, $3, $4, now())
+     ON CONFLICT (id) DO UPDATE SET enabled = true, title = $1, message = $2, "buttonLabel" = $3, "buttonUrl" = $4, "updatedAt" = now()`,
+    [notice.title, notice.message, notice.buttonLabel, notice.buttonUrl],
+  );
+}
+
+/** Switches the platform sidebar notice off (what Ops's "show the notice" switch does), keeping its text. */
+export async function switchOffPlatformNotice(): Promise<void> {
+  await pool.query(`UPDATE platform_notice SET enabled = false WHERE id = 'platform'`);
 }

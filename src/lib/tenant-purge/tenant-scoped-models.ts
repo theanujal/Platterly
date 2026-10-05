@@ -118,5 +118,7 @@ export const TENANT_SCOPED_DELEGATES = [
  *   matching existing precedent (`tenant.ts`'s `deactivateTenant` comment).
  * - OpsSnapshot: the plan and lock state Platterly Ops issued for the kitchen. It is the kitchen's standing with
  *   Platterly, not its data: purging it would drop an unpaid kitchen's lock (or its paid limits) until ops pushed again.
+ * - OpsNotice: the sidebar notice Platterly Ops set for the kitchen. It is Platterly's message to the kitchen, not the
+ *   kitchen's data; purging it would hide the notice until ops sent it again.
  */
-export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog", "OpsSnapshot"] as const;
+export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog", "OpsSnapshot", "OpsNotice"] as const;

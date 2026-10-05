@@ -1,7 +1,7 @@
 // One-time import of catering's plans, subscriptions, paid plan payments and billing profile into ops
 // (docs/ops-contract.md, step 6c). It READS catering and WRITES only ops:
 //  - the catering connection is a read-only transaction, so a write there is refused by the database itself;
-//  - the invoice sequence is read with SELECT (never nextval), so catering's numbering is not advanced.
+//  - catering's invoice sequence is read with SELECT (never nextval), so catering's numbering is not advanced.
 // Safe to run again: every row has a deterministic id and is inserted only if missing, so a second run changes nothing and
 // never overwrites what staff edited in ops since.
 import { createHash } from "node:crypto";
@@ -236,14 +236,17 @@ export async function reconcile(client, built, applied, productKey = PRODUCT_KEY
 const issued = (seq) => (seq.is_called ? Number(seq.last_value) : Number(seq.last_value) - 1);
 
 /**
- * Raises ops's invoice sequence to catering's, so the next invoice number issued anywhere is higher than every number already
- * printed. It never moves backwards. Run AFTER the commit: a sequence change cannot be rolled back.
+ * Raises the product's running invoice number in ops to the source's, so the next invoice ops issues for that product is
+ * higher than every number already printed. It never moves backwards. Run AFTER the commit: a counter change is not rolled back
+ * with the rows. (Numbering is per product; the old shared sequence is no longer used.)
  */
-export async function syncSequence(client, sourceSeq) {
-  const target = (await client.query("select last_value, is_called from subscription_invoice_seq")).rows[0];
-  const from = issued(target);
+export async function syncSequence(client, sourceSeq, productKey = PRODUCT_KEY) {
+  const row = (await client.query('select "lastNumber" from invoice_counter where "productKey" = $1', [productKey])).rows[0];
+  const from = row ? row.lastNumber : 0;
   const to = Math.max(from, issued(sourceSeq));
-  if (to > from) await client.query("select setval('subscription_invoice_seq', $1, true)", [to]);
+  if (to > from || !row) {
+    await client.query('insert into invoice_counter ("productKey", "lastNumber") values ($1, $2) on conflict ("productKey") do update set "lastNumber" = excluded."lastNumber"', [productKey, to]);
+  }
   return { catering: issued(sourceSeq), opsBefore: from, opsAfter: to };
 }
 
@@ -270,7 +273,7 @@ export async function runImport({ source, target, dryRun, productKey = PRODUCT_K
       return { ok: rec.ok, errors: [], built, applied, reconciliation: rec, committed: false, dryRun };
     }
     await target.query("commit");
-    const sequence = await syncSequence(target, data.sequence);
+    const sequence = await syncSequence(target, data.sequence, productKey);
     return { ok: true, errors: [], built, applied, reconciliation: rec, sequence, committed: true, dryRun: false };
   } catch (error) {
     await target.query("rollback").catch(() => undefined);

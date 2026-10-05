@@ -5,7 +5,7 @@ import { signUpCaterer } from "./auth-helpers";
 /**
  * Host routing (AJ, 2026-10-03): each product lives on its own host and nothing leaks onto another.
  *   catering.<root>/  shows the kitchen sign-in / sign-up straight away (the URL stays "/")
- *   ops.<root>        is the Super Admin and serves only /super and the sign-in API
+ *   ops.<root>        is Platterly Ops (its own app, apps/ops); this app serves nothing there except /api/health
  *   anything else     (the bare host, the apex, an IP) serves no page and no API except /api/health
  */
 const CATERING = process.env.PW_BASE_URL ?? "http://catering.localhost:3000";
@@ -45,16 +45,16 @@ test("a signed-in caterer who opens the catering root lands on the Dashboard", a
   }
 });
 
-test("the ops root is the Super Admin sign-in and the caterer sign-in is not served there", async ({ page }) => {
-  await page.goto(`${OPS}/`);
-  await expect(page.getByRole("heading", { name: "Super Admin" })).toBeVisible();
-  const kitchen = await page.request.get(`${OPS}/kitchenlogin`, { headers: { "sec-fetch-dest": "document" } });
-  expect(kitchen.status()).toBe(404);
+test("this app serves no page on the ops host: the platform admin is Platterly Ops, a separate app", async ({ page }) => {
+  for (const path of ["/", "/kitchenlogin", "/super", "/super/dashboard", "/dashboard"]) {
+    expect((await page.request.get(`${OPS}${path}`, { headers: { "sec-fetch-dest": "document" } })).status(), path).toBe(404);
+  }
 });
 
-test("the Super Admin pages are not served on the catering host", async ({ page }) => {
-  const response = await page.request.get(`${CATERING}/super/dashboard`);
-  expect(response.status()).toBe(404);
+test("there is no Super Admin on the catering host either", async ({ page }) => {
+  for (const path of ["/super", "/super/dashboard", "/super/tenants", "/super/reports"]) {
+    expect((await page.request.get(`${CATERING}${path}`, { headers: { "sec-fetch-dest": "document" } })).status(), path).toBe(404);
+  }
 });
 
 test("a bare or unknown host serves no page and no API except the health check", async ({ page }) => {
@@ -72,7 +72,8 @@ test("a bare or unknown host serves no page and no API except the health check",
 test("the APIs answer on their own hosts", async ({ page }) => {
   expect((await page.request.get(`${CATERING}/api/health`)).status()).toBe(200);
   expect((await page.request.get(`${CATERING}/api/auth/get-session`)).status()).toBe(200);
-  expect((await page.request.get(`${OPS}/api/auth/get-session`)).status()).toBe(200);
+  // The ops host belongs to Platterly Ops: this app answers only the uptime check there.
+  expect((await page.request.get(`${OPS}/api/auth/get-session`)).status()).toBe(404);
   expect((await page.request.get(`${OPS}/api/health`)).status()).toBe(200);
   // The Razorpay webhook belongs to the catering host only: unknown kitchen, so it refuses, but it is routed
   expect((await page.request.post(`${CATERING}/api/webhooks/razorpay/no-such-kitchen`, { data: "{}" })).status()).not.toBe(404);

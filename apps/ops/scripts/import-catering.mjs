@@ -1,6 +1,6 @@
 // One-time import from catering into ops (step 6c). Dry run by default; --apply commits.
 //   npm run ops:import-catering                 # dry run: does everything, checks it, then rolls back
-//   npm run ops:import-catering -- --apply      # the same, then commits and raises the invoice sequence
+//   npm run ops:import-catering -- --apply      # the same, then commits and raises the product's invoice number
 // Catering is only ever READ (a read-only transaction). Source: CATERING_DATABASE_URL, else DATABASE_URL in the repo root .env.
 import "dotenv/config";
 import { readFileSync } from "node:fs";
@@ -44,7 +44,7 @@ try {
       console.error("\nA check failed. Everything was rolled back.");
       process.exitCode = 1;
     } else if (result.committed) {
-      console.log(`\nCommitted. Invoice sequence: catering at ${result.sequence.catering}, ops ${result.sequence.opsBefore} -> ${result.sequence.opsAfter}.`);
+      console.log(`\nCommitted. Invoice number: catering at ${result.sequence.catering}, ops ${result.sequence.opsBefore} -> ${result.sequence.opsAfter}.`);
     } else {
       console.log("\nDry run finished. Nothing was kept.");
     }

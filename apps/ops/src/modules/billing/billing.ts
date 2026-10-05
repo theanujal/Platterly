@@ -4,6 +4,8 @@ import type { BillingView, Buyer, CheckoutAnswer, PlanOffer, PriceView } from "@
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { nextInvoiceNumber } from "./numbering";
+import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
 import { createRazorpayOrder, platformRazorpay, verifyCheckoutSignature } from "./razorpay";
@@ -139,7 +141,6 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
   const periodStart = renewing ? previous!.currentPeriodEnd! : now;
   const periodEnd = periodEndFrom(periodStart, interval);
 
-  const [{ nextval }] = await prisma.$queryRaw<{ nextval: bigint }[]>`select nextval('subscription_invoice_seq')`;
   const seller = await getProfile();
   const stored = (payment.buyer ?? {}) as Partial<Buyer>;
   const buyer = {
@@ -152,7 +153,8 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
     country: stored.country ?? null,
     gstin: stored.gstin ?? null,
   };
-  const invoiceNumber = formatInvoiceNumber(seller.invoicePrefix, buyer.name, now, Number(nextval));
+  const product = await prisma.product.findUniqueOrThrow({ where: { key: productKey }, select: { invoicePrefix: true } });
+  const prefix = product.invoicePrefix ?? seller.invoicePrefix;
   const kind = gstKind(seller, buyer);
   const snapshot: InvoiceSnapshot = {
     seller: {
@@ -177,7 +179,10 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
     highlights: payment.plan.highlights,
   };
 
+  let invoiceNumber = "";
   await prisma.$transaction(async (tx) => {
+    // The number is taken here, with the payment's own update, so a failure leaves no gap in the product's numbering.
+    invoiceNumber = formatInvoiceNumber(prefix, buyer.name, now, await nextInvoiceNumber(tx, productKey));
     if (renewing) {
       await tx.subscription.update({ where: { id: previous!.id }, data: { currentPeriodEnd: periodEnd, billingInterval: interval, pendingPlanId: null, pendingInterval: null } });
     } else {
@@ -193,11 +198,22 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
   } catch (error) {
     console.error("[billing] could not issue a snapshot after payment", payment.id, error);
   }
+  await tellOwner({
+    businessId,
+    productKey,
+    template: "payment_received",
+    variables: { planName: payment.plan.name, amount: Number(payment.total), invoiceNumber, validUntil: new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(periodEnd) },
+    dedupeKey: `payment_received:${payment.id}`,
+  });
   return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
 }
 
 export async function failPayment(razorpayOrderId: string) {
-  await prisma.subscriptionPayment.updateMany({ where: { razorpayOrderId, status: "PENDING" }, data: { status: "FAILED" } });
+  const payment = await prisma.subscriptionPayment.findUnique({ where: { razorpayOrderId }, include: { plan: { select: { name: true } } } });
+  if (!payment) return;
+  const failed = await prisma.subscriptionPayment.updateMany({ where: { id: payment.id, status: "PENDING" }, data: { status: "FAILED" } });
+  // Only the call that flips PENDING to FAILED tells the owner, so a repeated webhook sends one email.
+  if (failed.count > 0) await tellOwner({ businessId: payment.businessId, productKey: payment.productKey, template: "payment_failed", variables: { planName: payment.plan.name }, dedupeKey: `payment_failed:${payment.id}` });
 }
 
 /** A lower plan chosen mid-period starts at the next payment, never now. */

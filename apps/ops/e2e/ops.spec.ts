@@ -153,16 +153,138 @@ test("staff edit the seller's billing details: a bad GSTIN is refused, a good on
 
     await page.getByLabel("GSTIN").fill("29ABCDE1234F1Z5");
     await page.getByLabel("State code").fill("29");
-    await page.getByLabel("Invoice prefix").fill("e2e");
+    await page.getByLabel("Fallback invoice prefix").fill("e2e");
     await page.getByRole("button", { name: "Save billing details" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await page.reload();
     await expect(page.getByLabel("Legal name")).toHaveValue("E2E Platterly Pvt Ltd");
-    await expect(page.getByLabel("Invoice prefix")).toHaveValue("E2E");
-    await expect(page.getByText(/next invoice would look like/)).toContainText("E2EEB");
+    await expect(page.getByLabel("Fallback invoice prefix")).toHaveValue("E2E");
+    // Numbering follows the product: the preview uses each product's own prefix (catering keeps FP), not the fallback just saved.
+    await expect(page.getByText(/Catering: next invoice/)).toContainText("FPEB");
   } finally {
     const cols = ["legalName", "addressLine1", "addressLine2", "city", "state", "stateCode", "postalCode", "country", "gstin", "pan", "sacCode", "invoicePrefix", "email", "phone", "website", "invoiceNote"];
     await pool.query(`update platform_billing_profile set ${cols.map((c, i) => `"${c}" = $${i + 1}`).join(", ")} where id = 'platform'`, cols.map((c) => before[c]));
   }
 });
 
+
+test("staff set a sidebar notice: a bad link is refused, a good one is saved and queued for the product's business", async ({ page }) => {
+  const key = `e2enotice${randomBytes(3).toString("hex")}`;
+  const bizId = `biz_${randomBytes(16).toString("hex")}`;
+  await pool.query('insert into product (key, name, "baseUrl", "outboundSecret", "inboundSecret", "updatedAt") values ($1, $2, $3, $4, $5, now())', [key, "E2E Notice Product", "http://127.0.0.1:9", "v1.x.x.x", "v1.x.x.x"]);
+  await pool.query('insert into business (id, name, "updatedAt") values ($1, $2, now())', [bizId, `E2E Notice Kitchen ${randomBytes(3).toString("hex")}`]);
+  await pool.query('insert into business_product ("businessId", "productKey") values ($1, $2)', [bizId, key]);
+  try {
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(EMAIL);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Sidebar notice" }).first().click();
+    const form = page.locator("form").filter({ hasText: "E2E Notice Product sidebar notice" });
+    await form.getByLabel("Show the notice").check();
+    await form.getByLabel("Title").fill("Diwali offer");
+    await form.getByLabel("Button label").fill("See plans");
+    await form.getByLabel("Button link").fill("javascript:alert(1)");
+    await form.getByRole("button", { name: "Save and send to every business" }).click();
+    await expect(form.locator("p[role=alert]")).toContainText("must start with /");
+
+    await form.getByLabel("Button link").fill("/subscribe");
+    await form.getByRole("button", { name: "Save and send to every business" }).click();
+    await expect(form.getByRole("status")).toContainText("Saved and sent to 1 of 1 business");
+    // This test product has placeholder secrets and no server, so delivery cannot succeed; the screen must say so rather than hide it.
+    await expect(page.getByText("1 failed")).toBeVisible();
+    const queued = await pool.query("select payload from outbound_command where \"productKey\" = $1 and type = 'notice.set'", [key]);
+    expect(queued.rows).toHaveLength(1);
+    expect(queued.rows[0].payload).toMatchObject({ businessId: bizId, payload: { enabled: true, title: "Diwali offer", buttonUrl: "/subscribe" } });
+  } finally {
+    await pool.query("delete from business where id = $1", [bizId]);
+    await pool.query("delete from product where key = $1", [key]);
+  }
+});
+
+test("staff create a business and manage its status: input is checked, and what the product refuses is shown", async ({ page }) => {
+  const key = `e2elife${randomBytes(3).toString("hex")}`;
+  const bizId = `biz_${randomBytes(16).toString("hex")}`;
+  const bizName = `E2E Life Kitchen ${randomBytes(3).toString("hex")}`;
+  const manifest = { contract: 1, productKey: key, name: "E2E Life Product", version: "1", baseUrl: "https://x.example", entitlements: [], trial: { days: 7, entitlements: {} }, actions: ["slug", "provider"] };
+  await pool.query('insert into product (key, name, "baseUrl", "outboundSecret", "inboundSecret", manifest, "manifestVersion", "updatedAt") values ($1, $2, $3, $4, $5, $6, $7, now())', [key, "E2E Life Product", "http://127.0.0.1:9", "v1.x.x.x", "v1.x.x.x", JSON.stringify(manifest), "1"]);
+  await pool.query('insert into business (id, name, "ownerEmail", "ownerName", "updatedAt") values ($1, $2, $3, $4, now())', [bizId, bizName, "o@e2e.example", "Owner"]);
+  await pool.query('insert into business_product ("businessId", "productKey") values ($1, $2)', [bizId, key]);
+  try {
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(EMAIL);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+    // A product with no trial plan cannot start a business.
+    await page.goto("/businesses/new");
+    await page.getByLabel("Product").selectOption(key);
+    await page.getByLabel("Business name").fill("Nobody Kitchen");
+    await page.getByLabel("Owner's name").fill("Nobody");
+    await page.getByLabel("Owner's email").fill("nobody@e2e.example");
+    await page.getByRole("button", { name: "Create business" }).click();
+    await expect(page.locator("p[role=alert]")).toContainText("no active trial plan");
+
+    await page.goto(`/businesses/${bizId}`);
+    await expect(page.getByRole("heading", { name: "Status" })).toBeVisible();
+    // Deleting needs the exact business name; a wrong one is refused before anything is sent.
+    await page.getByLabel("Delete", { exact: true }).fill("not the name");
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.locator("p[role=alert]")).toContainText("Type the business name exactly");
+    // A product that cannot be reached with these placeholder secrets: the reason is shown, not swallowed.
+    await page.getByLabel("Suspend").fill("non-payment");
+    await page.getByRole("button", { name: "Suspend" }).click();
+    await expect(page.locator("p[role=alert]").last()).toBeVisible();
+    expect((await pool.query('select status from business where id = $1', [bizId])).rows[0].status).toBe("ACTIVE");
+    // The change-details panel is there, with the product's own link and provider controls.
+    await page.getByText("Change details and message providers").click();
+    await expect(page.getByLabel("Public link")).toBeVisible();
+    await expect(page.getByLabel("Message provider")).toBeVisible();
+  } finally {
+    await pool.query("delete from business where id = $1 or name = 'Nobody Kitchen'", [bizId]);
+    await pool.query("delete from product where key = $1", [key]);
+  }
+});
+
+test("staff open Reports: Subscriptions and Sign-ups come from ops, a product's own report shows why it could not load", async ({ page }) => {
+  const key = `e2erep${randomBytes(3).toString("hex")}`;
+  const manifest = { contract: 1, productKey: key, name: "E2E Report Product", version: "1", baseUrl: "http://127.0.0.1:9", entitlements: [], trial: { days: 7, entitlements: {} }, reports: [{ key: "sales", label: "Sales" }] };
+  await pool.query('insert into product (key, name, "baseUrl", "outboundSecret", "inboundSecret", manifest, "manifestVersion", "updatedAt") values ($1, $2, $3, $4, $5, $6, $7, now())', [key, "E2E Report Product", "http://127.0.0.1:9", "v1.x.x.x", "v1.x.x.x", JSON.stringify(manifest), "1"]);
+  try {
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(EMAIL);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+    await page.getByRole("link", { name: "Reports" }).first().click();
+    await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();
+    // With no product chosen, the two reports ops owns are there.
+    await expect(page.getByRole("tab", { name: "Subscriptions" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("MRR (monthly recurring revenue)")).toBeVisible();
+    // The report on screen downloads as a file (a signed-in request: the page's own cookies).
+    const file = await page.request.get((await page.getByRole("link", { name: "Download as CSV" }).getAttribute("href"))!);
+    expect(file.status()).toBe(200);
+    expect(file.headers()["content-type"]).toContain("text/csv");
+    expect(await file.text()).toContain("MRR by plan");
+    await page.getByRole("tab", { name: "Sign-ups" }).click();
+    await expect(page.getByText("New in the period")).toBeVisible();
+
+    // A product's own report is asked of the product; this one cannot be reached, and the page says so instead of failing.
+    await page.getByLabel("Product").selectOption(key);
+    await page.getByRole("button", { name: "Apply" }).click();
+    // The tab the person was on stays (Sign-ups is valid for every product); the product's own report is one click away.
+    await expect(page.getByRole("tab", { name: "Sign-ups" })).toHaveAttribute("aria-selected", "true");
+    await page.getByRole("tab", { name: "Sales" }).click();
+    await expect(page.getByRole("tab", { name: "Sales" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("p[role=alert]")).toContainText(/signing secret|Could not reach/);
+    // The tabs and the range stay usable.
+    await page.getByRole("tab", { name: "Subscriptions" }).click();
+    await expect(page.getByText("Revenue collected")).toBeVisible();
+  } finally {
+    await pool.query("delete from product where key = $1", [key]);
+  }
+});

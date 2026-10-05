@@ -29,6 +29,8 @@ export interface ProductManifest {
   messageTemplates: string[];
   tabs: { key: string; label: string }[];
   actions: string[];
+  /** Reports the product publishes for the platform team (GET /api/ops/reports/{key}); see reports.ts. Optional, so older manifests stay valid. */
+  reports: { key: string; label: string }[];
 }
 
 const KEY = /^[a-zA-Z][a-zA-Z0-9]{0,63}$/;
@@ -88,6 +90,9 @@ export function parseManifest(input: unknown): ParseResult<ProductManifest> {
   const tabsRaw = input.tabs ?? [];
   if (!Array.isArray(tabsRaw) || !tabsRaw.every((t) => isRecord(t) && typeof t.key === "string" && typeof t.label === "string")) return fail("tabs must be a list of {key, label}");
 
+  const reportsRaw = input.reports ?? [];
+  if (!Array.isArray(reportsRaw) || reportsRaw.length > 20 || !reportsRaw.every((r) => isRecord(r) && typeof r.key === "string" && KEY.test(r.key) && typeof r.label === "string" && r.label.trim())) return fail("reports must be a list of {key, label}");
+
   return ok({
     contract: CONTRACT_VERSION,
     productKey: input.productKey,
@@ -100,5 +105,6 @@ export function parseManifest(input: unknown): ParseResult<ProductManifest> {
     messageTemplates: templates.value,
     tabs: tabsRaw.map((t) => ({ key: String((t as Record<string, unknown>).key), label: String((t as Record<string, unknown>).label) })),
     actions: actions.value,
+    reports: reportsRaw.map((r) => ({ key: String((r as Record<string, unknown>).key), label: String((r as Record<string, unknown>).label).trim() })),
   });
 }

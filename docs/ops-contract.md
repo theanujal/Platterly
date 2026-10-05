@@ -245,8 +245,8 @@ Existing data: every current `Organization` gets a `businessId`, and its current
 | 4 | Catering admin API (manifest, commands, reads) and event emitter. **Built: `src/modules/ops-link`, `/api/ops/*`, outbox, `organization.businessId`.** | Ops shows live catering data without touching its DB |
 | 5 | Snapshot in catering, `limits.ts` reads it, lock follows it (plan tables still the source). **Built: `src/modules/ops-link/entitlements.ts`.** | Behaviour unchanged, tests green |
 | 6 | Move plans, subscriptions, payments and invoice numbering to ops (sub-steps 6a to 6e below) | Catering has no plan tables in use |
-| 7 | Move Platterly's Razorpay checkout and webhook, GST invoices, platform messages and notice | Subscribe flow works through ops |
-| 8 | Remove `/super` from catering, drop old tables | Ops is the only admin |
+| 7 | Move Platterly's Razorpay checkout and webhook, GST invoices, platform messages and notice. **Billing parts built in 6d. Messages and notice built: section 21.** | Subscribe flow works through ops |
+| 8 | Remove `/super` from catering, drop old tables. **Built in four parts: 8a/8b business lifecycle (section 22), 8c reports and dashboard (section 23), invoice numbering by product (section 24), 8d `/super` removed from catering (section 25). The `OPS_BILLING` flag and the old tables stay until the cutover (section 25).** | Ops is the only admin |
 
 Each step ships on its own and is tested against a copy of the dev DB first. The old path keeps working until its replacement is verified.
 
@@ -391,6 +391,72 @@ With `OPS_BILLING` off (the default, and how the dev server runs today) catering
 
 **To switch on** (a checklist, in this order): back up catering's database; in `apps/ops` run `npm run ops:import-catering` (dry run) then `-- --apply` again right before the cutover (it picks up plans, subscriptions and payments made since, and raises ops's invoice sequence to catering's current value, which matters because catering's own invoices keep using the shared numbers until then); set `RAZORPAY_*` in ops and register `/api/webhooks/razorpay` there; set `OPS_BILLING=1` for catering and restart it; check a sign-up, `/subscribe` and Settings → Subscription. **To roll back:** unset `OPS_BILLING` and restart; catering reads its own rows again (anything paid through ops meanwhile must be re-imported or recorded by hand).
 
-**Known gaps until step 8** (when the old code and tables go): the Super Admin dashboards and the Subscriptions analytics still read catering's own plan rows, so they go stale once the flag is on; plan-change notification emails to owners are not sent (messaging moves to ops in step 7); history-row PDFs as above.
+**Known gaps until step 8** (when the old code and tables go): the Super Admin dashboards and the Subscriptions analytics still read catering's own plan rows, so they go stale once the flag is on; history-row PDFs as above. (Plan-change emails are now sent by ops: section 21.)
 
 **Verified live (2026-10-05, throwaway kitchen):** with the flag on, a new kitchen signed up, ops started its trial and pushed the snapshot, Settings → Subscription showed the trial from ops (7 days, unlimited limits), `/subscribe` showed ops's Premium plan at ₹3,000 + 18% GST with "Online payment is not switched on yet" (no Razorpay keys), and the Super Admin plan and billing screens showed the managed-in-Ops banner. The throwaway kitchen and its ops records were removed.
+
+## 21. The sidebar notice and owner messages (step 7)
+
+Both are behind `OPS_BILLING`, like everything else in the cutover. Off, catering behaves exactly as before.
+
+**Sidebar notice.** Ops (`/notices`) keeps one notice per product (`product_notice`). Saving it queues one `notice.set` per business of that product through the command outbox (dedupe key holds the notice's version, so it is queued once) and tries to send at once. The scheduled job (`/api/cron`, `noticesQueued`) queues it again for any business that joined later, so a new kitchen gets the current notice within a minute or two. The screen shows how many were delivered, are waiting, or failed. Ops enforces catering's limits (title 80, message 240, button label 30, link 500; the contract allows more) and the same link rule (`/path` or `https://`). Catering stores what arrives in `ops_notice` (per business, no foreign key) and, with the flag on, reads that instead of the single `platform_notice` row; a business ops never sent a notice to sees none (the trial card decides). The old `/super/notice` form shows "managed in Platterly Ops" and its action is refused. A repeated command is applied once; a notice over catering's limits or with a bad link is answered 400 (ops marks it failed and shows it).
+
+**Owner messages.** Products never send Platterly's own emails. Ops owns the wording and design (`apps/ops/src/modules/messages`): templates `welcome_owner`, `trial_ending` (3 and 1 day), `trial_ended`, `payment_received`, `payment_failed`, `plan_changed`. A product asks with `message.requested` (template key plus text or number variables); an unknown template or a missing variable is answered 202 with the reason on the event. Variables are always escaped. Every message is written to `message_log` first (so a send that fails is retried from the stored template and variables at 1m, 5m, 30m, 2h, 12h), then sent through ZeptoMail. With no `ZEPTOMAIL_TOKEN` in ops, or no owner email, the message is logged as `skipped`. A dedupe key makes the same fact send once (a retried event, a repeated webhook, a daily sweep).
+
+| Message | Sent by | When |
+|---|---|---|
+| `welcome_owner` | catering asks (`message.requested`, once per business, only with the flag on) | right after sign-up |
+| `payment_received` | ops | a payment is confirmed (once per payment) |
+| `payment_failed` | ops | Razorpay says a payment failed (once per payment) |
+| `trial_ending` | ops cron | 3 days and 1 day before the trial ends |
+| `trial_ended` | ops cron | when the sweep locks the trial |
+| `plan_changed` | ops | a plan other than the sign-up trial is assigned |
+
+With the flag on, catering's own trial-ending and paid-plan-ending emails and bell notices (`runDueNotifications`) are skipped, because the local subscription rows they read are no longer the truth.
+
+**Known gaps (step 8 or later):** the in-app bell for "your trial is ending" is not recreated from ops (the email is); a notice command retried after a newer one could briefly show the older text (commands carry no version; retries are rare and stop after 12 hours); `welcome_owner` is queued behind the sign-up event, so if ops is down for sign-up and back for the welcome request only, the welcome is answered 202 and not repeated; WhatsApp delivery waits for Chunk 21; ops's cron must run (the same `/api/cron` call as before) for retries, trial notices and late notices.
+
+## 22. Step 8a and 8b: managing a business from ops
+
+AJ chose (2026-10-05) to close the gaps in ops first and only then remove `/super`, and to keep the old catering plan tables for now (no table is dropped). New commands are additive (no contract bump): `business.update` (name, owner first/last name, owner email, phone, slug; at least one) and `provider.set` (channel `whatsapp` or `email`, connected true or false). `business.provision`, `business.delete` and `business.restore`, which answered 501, are now built.
+
+| Operator action in ops | Command | What catering does |
+|---|---|---|
+| New business (`/businesses/new`) | `business.provision` | Creates the kitchen record under ops's `businessId` with a placeholder public link and the first snapshot; a repeat of the same id answers the same kitchen. Like the old "create caterer" it creates the Organization only: the owner signs in through the normal sign-up. |
+| Change details (business page) | `business.update` | Updates the profile through the same code as before (audited, tells ops about a rename); the slug uses the Super Admin override (409 if taken, 400 if badly formed). |
+| Suspend / Reactivate | `business.suspend` / `business.reactivate` | As before. |
+| Delete / Restore | `business.delete` / `business.restore` | Delete needs the business name typed (checked in ops and again in catering), suspends the kitchen and writes an audit entry; restore reactivates it. **Nothing is removed**: no data is deleted, now or after the 30 days. Ops shows "pending delete" and the date. The final removal of a business's data is not built and needs AJ's decision, because catering has never hard-deleted a kitchen. |
+| Message providers | `provider.set` | Connects or disconnects WhatsApp or Email for the kitchen (disconnecting also switches it off and tells the team). |
+
+Ops creates the business and its trial first, then sends the first snapshot inside `business.provision` (never a separate `snapshot.push` to a kitchen that does not exist yet). Ops's own status (Suspended, Pending delete, Active) changes only once the product confirmed the command; a command that could not be reached is queued and the screen says so; a refusal shows the product's reason (a taken link, a mismatch). Catering's manifest now lists the actions `update`, `slug`, `provider`, `delete`, `restore`, and ops shows the slug and provider controls only for a product that declares them.
+
+**The dashboard and reports** moved in section 23; the Super Admin notification bell is replaced by Ops's own alerts (section 25).
+
+## 23. Reports and the Overview (step 8c)
+
+AJ chose (2026-10-05) to build a signed read endpoint and the ops screens, and to leave no admin page in catering.
+
+**A report is a display-ready document** (`packages/contract/src/reports.ts`): a list of blocks, each a row of tiles, a bar list, a table or a text block, with every value already formatted by the product (currency, dates, percentages). Ops therefore shows any product's reports without knowing what an order or a recipe is, and a new product only has to publish its own. The document is checked before it is shown: known block types only, plain text and numbers only, capped sizes (40 blocks, 500 rows, 12 columns), so a product can never make ops render markup or an unbounded page.
+
+| Piece | Where | What it does |
+|---|---|---|
+| `GET {product}/api/ops/reports/{key}?from=YYYY-MM-DD&to=YYYY-MM-DD` | catering `/api/ops/reports/[key]` | Signed like every ops read (401 unsigned, 404 with the link off or an unknown report, 400 on a bad date). The answer is signed with the event secret. |
+| `reports` in the manifest | `ProductManifest.reports` (optional) | The reports a product offers, as `{key, label}`. Older manifests without it stay valid. Catering lists Sales, Events, Finance, Inventory and Storefront. |
+| Ops screen `/reports` | `apps/ops` | Product and period filters (this month, last month, this or last financial year April to March, all time, or a custom from/to), one tab per report the product lists, plus **Subscriptions** and **Sign-ups**, which ops builds from its own records. **Download as CSV** exports the report on screen. |
+| Ops Overview `/` | `apps/ops` | Businesses by state, new this week, paying / trial / locked subscriptions, trials ending within a week, and one row per product with the usage its businesses last reported. Replaces the old Super Admin dashboard. |
+
+The catering reports are the same figures the Super Admin reports showed, added up across every kitchen. **What changed on purpose:** no customer name leaves catering (the contract's rule that products send minimal data only), so the "biggest events" and "biggest balances" tables show the order number and the kitchen, not the customer; the Storefront report no longer lists recent visitors (it never did at platform level). **Not carried over:** the Excel (`.xlsx`) export of platform reports; CSV is there. The Subscriptions arithmetic (MRR, ARR, churn, trial conversion) is the catering code ported to ops with its tests, reading ops's own subscriptions and payments.
+
+## 24. Invoice numbering by product
+
+AJ chose (2026-10-05): the seller's tax details stay **one shared profile** (legal name, GSTIN, PAN, SAC, state, address, note: Billing screen), and **numbering follows the product**. Each product has its own **invoice prefix** (unique across products, 1 to 6 letters or digits) and its own **running number** (`invoice_counter`), so catering's invoices run `FP...-1, -2, -3` whatever another product issues. The format is unchanged: prefix, the business's initials, year, month, number. The number is taken inside the transaction that confirms the payment (so a payment that fails to confirm leaves no gap, and two payments at once get different numbers). A new product gets a prefix derived from its key (`CAT`, `CAT2` if taken) and a counter at zero; the prefix is edited on the product's page, and the Billing screen lists each product's next number. The seller profile's prefix is now only a fallback for a product with none.
+
+**Issued invoices are untouched.** The migration gives catering the prefix it already used and starts its counter at the number the old shared sequence had reached (263 in dev), so nothing is renumbered or repeated. The old shared sequence `subscription_invoice_seq` is left in the database, unused, for rollback. The catering import now raises the **product's** counter to catering's last number (never backwards), so run it again right before the cutover as before.
+
+## 25. Step 8d: `/super` is gone from catering
+
+Catering has no admin page left. Removed: the whole `/super` tree (sign-in, dashboard, caterers list and detail, plans, billing details, sidebar notice, reports and their export), `requireSuperAdmin`, the Super Admin bell and push alerts (`notifySuperAdmins`: ops raises its own alert when a business signs up, and staff make every other change themselves in ops), the old product nav registry, and the Super Admin tests and e2e specs (their ops equivalents are in `apps/ops`). On the ops host this app now answers 404 for everything except `/api/health`; `/super/*` on the catering host is a 404. Platform staff sign in to Platterly Ops only.
+
+**Kept on purpose, until the cutover:** the `OPS_BILLING` flag and the old billing code and tables (plans, subscriptions, payments, invoice numbering, the seller profile, the sidebar-notice row) stay, because removing them is the production switch-over itself and takes away the rollback: with the flag off, catering still runs on its own plan rows, which are now edited only through the import from ops (or by hand in the database). The `user.isSuperAdmin` column stays (no data is dropped); nothing reads it. When the cutover has been done and watched, the flag and those tables can go in one reviewed migration.
+
+**What an operator can no longer do in catering, and where it is now:** create or edit a caterer, change its link, suspend, reactivate, delete, connect a provider, assign a plan, edit plans and the seller's billing details, set the sidebar notice, read the platform reports: all in Platterly Ops (sections 6, 7, 22, 23 and 24).

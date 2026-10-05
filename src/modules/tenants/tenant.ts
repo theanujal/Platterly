@@ -100,7 +100,7 @@ export async function createTenant(input: TenantProfileInput, actorUserId: strin
 }
 
 /** Business-profile fields only — status and slug have their own dedicated actions. */
-export async function updateTenant(id: string, input: TenantProfileUpdateInput, actorUserId: string) {
+export async function updateTenant(id: string, input: TenantProfileUpdateInput, actorUserId?: string) {
   const before = await prisma.organization.findUniqueOrThrow({ where: { id } });
 
   const after = await prisma.organization.update({
@@ -253,7 +253,7 @@ export async function setCustomSlug(id: string, newSlug: string, actorUserId: st
  * (the self-service UI is the thing that will enforce the limit; this is
  * the "only a Super Admin can force a further change" bypass).
  */
-export async function overrideSlug(id: string, newSlug: string, actorUserId: string) {
+export async function overrideSlug(id: string, newSlug: string, actorUserId?: string) {
   const validation = validateSlugFormat(newSlug);
   if (!validation.valid) {
     throw new InvalidSlugError(validation.error);
