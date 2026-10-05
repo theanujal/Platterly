@@ -3,6 +3,9 @@ import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-ses
 import { prisma } from "@/lib/db";
 import { getActiveNotice } from "@/modules/subscriptions/platform-notice";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
+import { opsBillingOn } from "@/modules/ops-link/config";
+import { getEntitlements } from "@/modules/ops-link/entitlements";
+import { TRIAL_DURATION_DAYS } from "@/modules/subscriptions/trial-plan";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
@@ -56,8 +59,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const sidebarState = cookieStore.get("sidebar_state")?.value;
   const defaultOpen = sidebarState !== "false";
 
-  const trial =
-    subscription?.status === "TRIALING"
+  // With OPS_BILLING on the trial's dates come from the entitlement snapshot (ops owns the subscription); otherwise from the plan rows.
+  const ops = opsBillingOn() ? await getEntitlements(organizationId) : null;
+  const trial = ops
+    ? ops.status === "TRIALING" && !ops.locked
+      ? { trialDaysLeft: ops.trialEndsAt ? daysUntil(ops.trialEndsAt) : null, trialTotalDays: TRIAL_DURATION_DAYS }
+      : null
+    : subscription?.status === "TRIALING"
       ? { trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null, trialTotalDays: subscription.subscriptionPlan.trialDurationDays }
       : null;
   const notice = await getActiveNotice();

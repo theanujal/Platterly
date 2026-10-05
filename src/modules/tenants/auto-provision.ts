@@ -5,6 +5,8 @@ import { generatePlaceholderSlug } from "./slug";
 import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { onCatererSignedUp } from "@/modules/notifications/triggers";
+import { emitBusinessSignedUp } from "@/modules/ops-link/events";
+import { opsBillingOn } from "@/modules/ops-link/config";
 
 /**
  * Runs immediately after a new caterer/kitchen-admin account is created
@@ -84,9 +86,15 @@ export async function provisionTenantForNewUser(
     after: JSON.parse(JSON.stringify(organization)),
   });
 
-  const trialPlan = await ensureTrialPlan();
-  await assignPlan(organization.id, trialPlan.id, userId);
+  // With OPS_BILLING on, the trial comes from Platterly Ops: it starts one when it hears of the sign-up (below) and sends the
+  // snapshot. Until that arrives the kitchen runs on the manifest's trial defaults, so sign-up never waits on ops.
+  if (!opsBillingOn()) {
+    const trialPlan = await ensureTrialPlan();
+    await assignPlan(organization.id, trialPlan.id, userId);
+  }
   await onCatererSignedUp(organization.id, user.name);
+  // Tells Platterly Ops this business exists (does nothing until the ops link is configured; never fails the sign-up).
+  await emitBusinessSignedUp(organization.id);
 
   return { organizationId: organization.id };
 }

@@ -4,7 +4,7 @@ import { rateLimitState } from "@/lib/rate-limit";
 import { ValidationError } from "@/lib/errors";
 import { authenticateApiKey } from "@/modules/api/keys";
 import type { ApiScope } from "@/modules/api/scopes";
-import { billingLockReason } from "@/modules/subscriptions/billing-math";
+import { isLocked } from "@/modules/ops-link/entitlements";
 import { ApiValidationError } from "./schema";
 
 /**
@@ -108,12 +108,12 @@ export function apiRoute<P extends Record<string, string> = Record<string, strin
       });
       if (limited) return failure(429, "RATE_LIMITED", "Too many requests. Slow down and retry shortly.", { ...headers, "Retry-After": headers["X-RateLimit-Reset"] });
 
-      const [organization, subscription] = await Promise.all([
+      const [organization, locked] = await Promise.all([
         prisma.organization.findUnique({ where: { id: auth.organizationId }, select: { status: true } }),
-        prisma.subscription.findFirst({ where: { organizationId: auth.organizationId, endDate: null }, orderBy: { startDate: "desc" }, select: { status: true, trialEndsAt: true, currentPeriodEnd: true } }),
+        isLocked(auth.organizationId),
       ]);
       if (!organization || organization.status !== "ACTIVE") return failure(403, "ACCOUNT_INACTIVE", "This kitchen's account is not active.", headers);
-      if (billingLockReason(subscription)) return failure(403, "ACCOUNT_LOCKED", "This kitchen's plan has ended. Renew it to use the API again.", headers);
+      if (locked) return failure(403, "ACCOUNT_LOCKED", "This kitchen's plan has ended. Renew it to use the API again.", headers);
 
       if (options.scope && !auth.scopes.includes(options.scope)) return failure(403, "INSUFFICIENT_SCOPE", `This API key does not have the "${options.scope}" permission.`, headers);
 

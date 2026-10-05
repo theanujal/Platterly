@@ -1,10 +1,10 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
-import { getCurrentSubscription } from "./subscription";
+import { flagOf, getEntitlements, limitOf } from "@/modules/ops-link/entitlements";
 
 /**
- * Chunk 20 Verify: the plan's limits actually stop usage. A null limit on the plan is unlimited, so the trial plan
+ * Chunk 20 Verify: the plan's limits actually stop usage. A null limit is unlimited, so the trial plan
  * (which carries no limits). Team seats are checked where invitations are sent (`getSeatUsage`) and any plan without a number never block anything.
  */
 export type LimitKey = "maxCustomers" | "maxOrders" | "maxEvents";
@@ -31,8 +31,7 @@ export class PlanLimitError extends ValidationError {
 
 /** Chunk 23: whether the kitchen's current plan includes multiple locations. No subscription means no. */
 export async function hasMultiLocationPlan(organizationId: string): Promise<boolean> {
-  const subscription = await getCurrentSubscription(organizationId);
-  return subscription?.subscriptionPlan.multiLocation === true;
+  return flagOf(await getEntitlements(organizationId), "multiLocation");
 }
 
 export async function assertMultiLocationPlan(organizationId: string): Promise<void> {
@@ -41,8 +40,8 @@ export async function assertMultiLocationPlan(organizationId: string): Promise<v
 
 /** Throws a plain-language error when adding one more would pass the plan's limit. */
 export async function assertWithinPlanLimit(organizationId: string, key: LimitKey): Promise<void> {
-  const subscription = await getCurrentSubscription(organizationId);
-  const limit = subscription?.subscriptionPlan[key] ?? null;
-  if (limit === null || limit === undefined) return;
-  if ((await used(organizationId, key)) >= limit) throw new PlanLimitError(key, limit, subscription!.subscriptionPlan.name);
+  const entitlements = await getEntitlements(organizationId);
+  const limit = limitOf(entitlements, key) ?? null;
+  if (limit === null) return;
+  if ((await used(organizationId, key)) >= limit) throw new PlanLimitError(key, limit, entitlements.planName ?? "current");
 }

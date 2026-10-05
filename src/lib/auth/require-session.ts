@@ -5,7 +5,7 @@ import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { hostKind, requestHost } from "@/lib/routing/hosts";
-import { billingLockReason } from "@/modules/subscriptions/billing-math";
+import { isLocked } from "@/modules/ops-link/entitlements";
 import type { statement } from "./permissions";
 
 
@@ -123,12 +123,7 @@ export async function requireActiveOrganization(options: { allowLocked?: boolean
   // Chunk 20: a kitchen whose trial or paid period has run out can sign in but reach nothing except the payment
   // page (`/subscribe`, which passes allowLocked). This is the one place every page and Server Action goes through.
   if (!options.allowLocked) {
-    const current = await prisma.subscription.findFirst({
-      where: { organizationId, endDate: null },
-      orderBy: { startDate: "desc" },
-      select: { status: true, trialEndsAt: true, currentPeriodEnd: true },
-    });
-    if (billingLockReason(current)) redirect("/subscribe");
+    if (await isLocked(organizationId)) redirect("/subscribe");
   }
 
   return { session, organizationId };

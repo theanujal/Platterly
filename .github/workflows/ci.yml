@@ -50,3 +50,52 @@ jobs:
       - run: npm run test
 
       - run: npm run build
+
+  # Ops (apps/ops) has its own install and its own database; it shares only packages/contract with the other apps.
+  ops:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: platterly_app
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: platterly_ops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: apps/ops
+
+    env:
+      DATABASE_URL: postgresql://platterly_app:ci_only_password@localhost:5432/platterly_ops?schema=public
+      BETTER_AUTH_SECRET: ci-only-secret-not-for-real-use
+      BETTER_AUTH_URL: http://ops.localhost:3200
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/ops/package-lock.json
+
+      - run: npm ci
+
+      - run: npx prisma migrate deploy
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm run test
+
+      - run: npm run build

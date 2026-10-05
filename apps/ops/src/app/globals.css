@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* Tokens are the Platterly design system's real values (the same ones catering ships), so ops looks like the rest. */
+@theme inline {
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, Menlo, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #111827;
+  --card: #ffffff;
+  --primary: #ff6900;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f4f6;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #fff7ed;
+  --accent-foreground: #9a3412;
+  --border: #e5e7eb;
+  --destructive: #ef4444;
+  --success: #16a34a;
+  --warning: #d97706;
+  --info: #2563eb;
+  --sidebar: #fff7ed;
+  --sidebar-border: #fed7aa;
+  --sidebar-accent: #ffedd5;
+  --sidebar-accent-foreground: #9a3412;
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground font-sans antialiased; }
+}

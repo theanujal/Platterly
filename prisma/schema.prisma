@@ -151,6 +151,10 @@ model Organization {
   webhookDeliveries  WebhookDelivery[]
   apiIdempotency     ApiIdempotencyKey[]
 
+  // Ops link (docs/ops-contract.md): the business's global id in Platterly Ops. Every creation path gets one from the
+  // database default, so no code has to remember to set it. Never changes and is never reused.
+  businessId String @unique @default(dbgenerated("('biz_'::text || replace((gen_random_uuid())::text, '-'::text, ''::text))"))
+
   // --- Chunk 3 Group 3.2: Super Admin tenant management (PRD §8) ---
   status          TenantStatus @default(ACTIVE)
   ownerFirstName  String?
@@ -2720,4 +2724,64 @@ model ApiIdempotencyKey {
   @@unique([organizationId, key])
   @@index([createdAt])
   @@map("api_idempotency_key")
+}
+
+// ---------- Ops link (docs/ops-contract.md). No foreign keys: these hold nothing a kitchen owns. ----------
+
+// The newest entitlement snapshot ops pushed for a business. Only a higher version replaces it.
+model OpsSnapshot {
+  businessId     String   @id
+  // The kitchen it belongs to, so a request can find its snapshot with one indexed lookup (no join, no foreign key).
+  organizationId String?  @unique
+  version        Int
+  data           Json
+  receivedAt     DateTime @default(now())
+
+  @@map("ops_snapshot")
+}
+
+// Every command ops sent, kept so a repeated command id gets the same answer and is applied once.
+model OpsCommand {
+  commandId  String   @id
+  type       String
+  businessId String
+  result     Json
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+  @@map("ops_command")
+}
+
+enum OpsOutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// Events waiting to go to ops (or sent). `dedupeKey` lets a once-a-day event be queued once.
+model OpsOutbox {
+  eventId       String          @id
+  type          String
+  businessId    String
+  payload       Json
+  status        OpsOutboxStatus @default(PENDING)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime?
+  lastError     String?
+  dedupeKey     String?         @unique
+  createdAt     DateTime        @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@map("ops_outbox")
+}
+
+// When catering last asked ops for a business's snapshot (the daily backup to ops's pushes), so a business ops has no
+// subscription for is not asked again every minute.
+model OpsPull {
+  businessId   String   @id
+  lastPulledAt DateTime
+  lastStatus   Int
+
+  @@map("ops_pull")
 }

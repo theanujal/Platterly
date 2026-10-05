@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { userMessage } from "@/lib/errors";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import type { BillingInterval } from "@/generated/prisma/enums";
-import { cancelScheduledDowngrade, scheduleDowngrade, startSubscriptionCheckout, verifySubscriptionCheckout } from "@/modules/subscriptions/billing";
+import { cancelScheduledDowngrade, scheduleDowngrade, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
 
 // Paying for a plan is the owner's call (`tenant: edit`), the same people who can change the business profile.
 // Each action states its own check, so the guard is visible where the action is.
@@ -17,7 +17,7 @@ export async function startCheckoutAction(planId: string, interval: string) {
   const userId = session.user.id;
   if (!isInterval(interval)) return { ok: false as const, error: "Choose monthly or yearly." };
   try {
-    return { ok: true as const, ...(await startSubscriptionCheckout(organizationId, planId, interval, userId)) };
+    return { ok: true as const, ...(await startCheckout(organizationId, planId, interval, userId)) };
   } catch (error) {
     return { ok: false as const, error: userMessage(error, "We could not start the payment. Please try again.") };
   }
@@ -27,7 +27,7 @@ export async function verifyCheckoutAction(response: { razorpay_order_id: string
   const { organizationId } = await requireActiveOrganization({ allowLocked: true });
   await requirePermission({ tenant: ["edit"] }, organizationId);
   try {
-    await verifySubscriptionCheckout(organizationId, { razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, signature: response.razorpay_signature });
+    await verifyCheckout(organizationId, { razorpayOrderId: response.razorpay_order_id, razorpayPaymentId: response.razorpay_payment_id, signature: response.razorpay_signature });
   } catch (error) {
     return { ok: false as const, error: userMessage(error, "We could not verify this payment.") };
   }

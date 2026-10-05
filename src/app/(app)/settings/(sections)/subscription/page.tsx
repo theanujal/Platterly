@@ -2,11 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, CreditCard, Download, Gift, History, Receipt, Sparkles } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { getCurrentSubscription, listSubscriptionHistory } from "@/modules/subscriptions/subscription";
-import { listSubscriptionPayments } from "@/modules/subscriptions/billing";
+import { getSubscriptionPageData } from "@/modules/subscriptions/billing-source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { prisma } from "@/lib/db";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 
 export const metadata: Metadata = {
@@ -35,12 +33,17 @@ const statusLabel = (status: string) => STATUS_LABEL[status] ?? status.charAt(0)
 export default async function SubscriptionPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["view"] }, organizationId);
-  const [current, history, payments] = await Promise.all([getCurrentSubscription(organizationId), listSubscriptionHistory(organizationId), listSubscriptionPayments(organizationId)]);
-  const pendingPlan = current?.pendingPlanId ? await prisma.subscriptionPlan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
+  const { current, history, payments, unavailable, historyInvoices } = await getSubscriptionPageData(organizationId);
+  const pendingPlan = current?.pendingPlanName ? { name: current.pendingPlanName } : null;
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
 
   return (
     <SettingsCard title="Subscription" description="Your current plan and subscription history.">
+      {unavailable && (
+        <InfoBox tone="warning">
+          <p>Your billing details are temporarily unavailable. Your plan and limits keep working; please check again in a few minutes.</p>
+        </InfoBox>
+      )}
       <SettingsPanel>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <PanelHeader
@@ -55,7 +58,7 @@ export default async function SubscriptionPage() {
           <>
             <div>
               <p className="text-lg font-semibold">
-                {current.subscriptionPlan.name}
+                {current.planName}
                 {trialing && current.trialEndsAt && <span className="ml-2 text-sm font-medium text-tone-orange">({daysUntil(current.trialEndsAt)} days left)</span>}
               </p>
               {trialing && current.trialEndsAt && (
@@ -96,11 +99,11 @@ export default async function SubscriptionPage() {
 
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               {[
-                ["Monthly price", formatMoney(current.subscriptionPlan.priceMonthly, current.subscriptionPlan.currency)],
-                ["Annual price", formatMoney(current.subscriptionPlan.priceAnnual, current.subscriptionPlan.currency)],
-                ["Team members", formatLimit(current.subscriptionPlan.maxUsers)],
-                ["Events", formatLimit(current.subscriptionPlan.maxEvents)],
-                ["Orders", formatLimit(current.subscriptionPlan.maxOrders)],
+                ["Monthly price", formatMoney(current.priceMonthly, current.currency)],
+                ["Annual price", formatMoney(current.priceAnnual, current.currency)],
+                ["Team members", formatLimit(current.limits.maxUsers)],
+                ["Events", formatLimit(current.limits.maxEvents)],
+                ["Orders", formatLimit(current.limits.maxOrders)],
               ].map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-4 border-b border-border pb-2">
                   <dt className="text-muted-foreground">{label}</dt>
@@ -119,21 +122,23 @@ export default async function SubscriptionPage() {
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
               <div className="flex flex-col gap-1.5">
                 <span className="flex flex-wrap items-center gap-3">
-                  <Badge variant="info">{row.subscriptionPlan.name}</Badge>
+                  <Badge variant="info">{row.planName}</Badge>
                   <span className="font-medium">
                     {formatDate(row.startDate)} – {row.endDate ? formatDate(row.endDate) : row.trialEndsAt && row.status === "TRIALING" ? formatDate(row.trialEndsAt) : "ongoing"}
                   </span>
                 </span>
                 <span className="flex flex-wrap items-center gap-3 text-muted-foreground">
-                  {row.status === "TRIALING" ? "Payment: ₹0" : `Plan price: ${formatMoney(row.subscriptionPlan.priceMonthly, row.subscriptionPlan.currency)}`}
+                  {row.status === "TRIALING" ? "Payment: ₹0" : `Plan price: ${formatMoney(row.priceMonthly, row.currency)}`}
                   {row.status === "TRIALING" && <span>Free Trial</span>}
                   <Badge variant={row.status === "TRIALING" ? "warning" : "neutral"}>{row.status === "TRIALING" ? "Trial" : statusLabel(row.status)}</Badge>
                 </span>
               </div>
-              <Button variant="outline" size="md" render={<a href={`/settings/subscription/invoice/${row.id}`} download />} nativeButton={false}>
-                <Download data-icon="inline-start" />
-                Invoice
-              </Button>
+              {historyInvoices && (
+                <Button variant="outline" size="md" render={<a href={`/settings/subscription/invoice/${row.id}`} download />} nativeButton={false}>
+                  <Download data-icon="inline-start" />
+                  Invoice
+                </Button>
+              )}
             </li>
           ))}
           {history.length === 0 && <li className="text-sm text-muted-foreground">No subscription history yet.</li>}
@@ -152,7 +157,7 @@ export default async function SubscriptionPage() {
               <li key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm">
                 <span className="flex flex-col gap-0.5">
                   <span className="font-medium">
-                    {payment.subscriptionPlan.name}, {payment.interval === "ANNUAL" ? "1 year" : "30 days"}
+                    {payment.planName}, {payment.interval === "ANNUAL" ? "1 year" : "30 days"}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {payment.invoiceNumber} · {payment.paidAt ? formatDate(payment.paidAt) : ""}

@@ -1,4 +1,5 @@
 import "server-only";
+import { guardNotManagedByOps } from "@/modules/ops-link/guard";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 
@@ -33,6 +34,7 @@ export type PlatformBillingProfileRow = Awaited<ReturnType<typeof getPlatformBil
 
 // No audit row: the audit log is per kitchen, and this is Platterly's own record.
 export async function savePlatformBillingProfile(input: PlatformBillingInput) {
+  guardNotManagedByOps();
   const clean = (value: string) => value.trim() || null;
   const gstin = input.gstin.trim().toUpperCase();
   const pan = input.pan.trim().toUpperCase();

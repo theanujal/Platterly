@@ -1,4 +1,5 @@
 import "server-only";
+import { guardNotManagedByOps } from "@/modules/ops-link/guard";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { onPlanChanged } from "@/modules/notifications/triggers";
@@ -10,6 +11,7 @@ import { onPlanChanged } from "@/modules/notifications/triggers";
  * (endDate: null) rows at once.
  */
 export async function assignPlan(organizationId: string, subscriptionPlanId: string, actorUserId: string) {
+  guardNotManagedByOps();
   const plan = await prisma.subscriptionPlan.findUniqueOrThrow({ where: { id: subscriptionPlanId } });
   const now = new Date();
   const previous = await prisma.subscription.findFirst({ where: { organizationId, endDate: null }, include: { subscriptionPlan: { select: { name: true } } } });

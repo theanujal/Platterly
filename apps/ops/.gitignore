@@ -1,0 +1,7 @@
+/src/generated/
+/.next/
+/node_modules/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts

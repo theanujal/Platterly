@@ -11,7 +11,7 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * A bare or unknown host (plain `localhost`, the apex, an IP) serves no page of
  * this app and is never redirected: that host is reserved for the landing page,
  * which is hosted separately. A browser visit there gets a 404 for now.
- * `/api/health` stays reachable on any host for uptime checks. Every other `/api/*` route (sign-in, the
+ * `/api/health` (and the signed `/api/ops/*`) stay reachable on any host. Every other `/api/*` route (sign-in, the
  * Razorpay webhook) answers only on its own product host; on a bare or unknown host it is a 404 for every
  * kind of request, not just a browser page load.
  *
@@ -63,7 +63,9 @@ export function proxy(request: NextRequest) {
     return withIndexing(NextResponse.rewrite(new URL("/kitchenlogin", request.url)), false);
   }
   // An API route is never served on a bare or unknown host (only the uptime check is).
-  if (kind === "other" && (pathname === "/api" || pathname.startsWith("/api/")) && pathname !== "/api/health") {
+  // `/api/ops/*` is the exception: Platterly Ops calls it by whatever address the server has (127.0.0.1 on one machine),
+  // and every request is HMAC-signed, so the host name decides nothing there.
+  if (kind === "other" && (pathname === "/api" || pathname.startsWith("/api/")) && pathname !== "/api/health" && !pathname.startsWith("/api/ops/")) {
     return withIndexing(new NextResponse("Not found", { status: 404 }), false);
   }
   // Only a real browser page load is refused. Next's own internal requests (e.g. the

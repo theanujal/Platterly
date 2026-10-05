@@ -2,8 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { jsPDF } from "jspdf";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { prisma } from "@/lib/db";
-import type { InvoiceSnapshot } from "@/modules/subscriptions/invoice-snapshot";
+import { getPaymentInvoice } from "@/modules/subscriptions/billing-source";
 
 const SUCCESS: [number, number, number] = [22, 163, 74];
 const SUCCESS_TINT: [number, number, number] = [232, 246, 237];
@@ -29,9 +28,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { organizationId } = await requireActiveOrganization({ allowLocked: true });
   await requirePermission({ settings: ["view"] }, organizationId);
 
-  const payment = await prisma.subscriptionPayment.findFirst({ where: { id, organizationId, status: "PAID" }, include: { subscriptionPlan: true } });
-  const snapshot = payment?.invoiceSnapshot as InvoiceSnapshot | null | undefined;
-  if (!payment || !snapshot || !payment.invoiceNumber || !payment.paidAt) return new Response("Not found", { status: 404 });
+  // Catering's own rows by default; Platterly Ops's frozen invoice when OPS_BILLING is on. Same layout either way.
+  const invoice = await getPaymentInvoice(organizationId, id);
+  if (!invoice) return new Response("Not found", { status: 404 });
+  const payment = { ...invoice, subscriptionPlan: { name: invoice.planName } };
+  const snapshot = invoice.snapshot;
   const { seller, buyer, gst } = snapshot;
 
   const doc = new jsPDF({ unit: "pt", format: "a4" });

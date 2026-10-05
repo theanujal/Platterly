@@ -1,10 +1,11 @@
 import "server-only";
-import { billingLockReason } from "@/modules/subscriptions/billing-math";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import type { TenantStatus } from "@/generated/prisma/enums";
 import { onTenantStatusChanged } from "@/modules/notifications/triggers";
 import { validateSlugFormat } from "./slug";
+import { emitBusinessUpdated } from "@/modules/ops-link/events";
+import { isLocked, lockedOrganizationIds } from "@/modules/ops-link/entitlements";
 
 export interface TenantProfileInput {
   name: string;
@@ -138,11 +139,13 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
+  // Ops keeps the business's name and owner; tell it when either changed (no-op until the ops link is configured).
+  await emitBusinessUpdated(before, id);
 
   return after;
 }
 
-async function setStatus(id: string, status: TenantStatus, action: string, actorUserId: string) {
+async function setStatus(id: string, status: TenantStatus, action: string, actorUserId?: string) {
   const before = await prisma.organization.findUniqueOrThrow({ where: { id } });
 
   const after = await prisma.organization.update({ where: { id }, data: { status } });
@@ -161,10 +164,11 @@ async function setStatus(id: string, status: TenantStatus, action: string, actor
   return after;
 }
 
-export const suspendTenant = (id: string, actorUserId: string) =>
+// `actorUserId` is absent when Platterly Ops suspends or reactivates a business (the audit entry then has no actor).
+export const suspendTenant = (id: string, actorUserId?: string) =>
   setStatus(id, "SUSPENDED", "tenant.suspend", actorUserId);
 
-export const activateTenant = (id: string, actorUserId: string) =>
+export const activateTenant = (id: string, actorUserId?: string) =>
   setStatus(id, "ACTIVE", "tenant.activate", actorUserId);
 
 /** Soft-deactivate only — no hard delete; the Organization row and its AuditLog history survive. */
@@ -314,22 +318,18 @@ export async function getTenant(id: string) {
  * with no separate "unpublish" flag needed.
  */
 export async function getPublishedTenantBySlug(slug: string) {
-  const organization = await prisma.organization.findFirst({
-    where: { slug, status: "ACTIVE", slugChangeCount: { gt: 0 } },
-    include: { subscriptions: { where: { endDate: null }, orderBy: { startDate: "desc" }, take: 1 } },
-  });
+  const organization = await prisma.organization.findFirst({ where: { slug, status: "ACTIVE", slugChangeCount: { gt: 0 } } });
   // Chunk 20: a kitchen locked for non-payment is suspended publicly too, not just behind its login.
-  if (!organization || billingLockReason(organization.subscriptions[0] ?? null)) return null;
-  const { subscriptions, ...rest } = organization;
-  void subscriptions;
-  return rest;
+  if (!organization || (await isLocked(organization.id))) return null;
+  return organization;
 }
 
 /** Feeds `sitemap.xml` — same "published" definition as `getPublishedTenantBySlug`. */
 export async function listPublishedTenantSlugs() {
   const organizations = await prisma.organization.findMany({
     where: { status: "ACTIVE", slugChangeCount: { gt: 0 } },
-    select: { slug: true, subscriptions: { where: { endDate: null }, orderBy: { startDate: "desc" }, take: 1 } },
+    select: { id: true, slug: true, createdAt: true, subscriptions: { where: { endDate: null }, orderBy: { startDate: "desc" }, take: 1, include: { subscriptionPlan: true } } },
   });
-  return organizations.filter((organization) => !billingLockReason(organization.subscriptions[0] ?? null)).map(({ slug }) => ({ slug }));
+  const locked = await lockedOrganizationIds(organizations.map((o) => ({ id: o.id, createdAt: o.createdAt, subscription: o.subscriptions[0] ?? null })));
+  return organizations.filter((organization) => !locked.has(organization.id)).map(({ slug }) => ({ slug }));
 }

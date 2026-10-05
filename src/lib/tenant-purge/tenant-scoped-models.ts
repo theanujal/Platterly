@@ -116,5 +116,7 @@ export const TENANT_SCOPED_DELEGATES = [
  * - AuditLog: the audit trail — including the entry this very purge routine
  *   writes describing itself — is permanent regardless of data purges,
  *   matching existing precedent (`tenant.ts`'s `deactivateTenant` comment).
+ * - OpsSnapshot: the plan and lock state Platterly Ops issued for the kitchen. It is the kitchen's standing with
+ *   Platterly, not its data: purging it would drop an unpaid kitchen's lock (or its paid limits) until ops pushed again.
  */
-export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog"] as const;
+export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog", "OpsSnapshot"] as const;

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { ManagedInOps } from "../_components/managed-in-ops";
 import { PageHeader } from "../_components/page-header";
 
 const LIMITS = [
@@ -98,6 +99,7 @@ export default async function PlansPage() {
 
   return (
     <>
+      <ManagedInOps what="Plans" />
       <PageHeader
         crumbs={[{ label: "Catering" }, { label: "Plans" }]}
         title="Plans"

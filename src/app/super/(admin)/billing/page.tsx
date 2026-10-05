@@ -1,6 +1,7 @@
 import { requireSuperAdminOrRedirect } from "../../_lib/guard";
 import { getPlatformBillingProfile } from "@/modules/subscriptions/platform-billing";
 import { formatInvoiceNumber } from "@/modules/subscriptions/invoice-number";
+import { ManagedInOps } from "../_components/managed-in-ops";
 import { PageHeader } from "../_components/page-header";
 import { BillingProfileForm } from "./_components/billing-profile-form";
 
@@ -10,6 +11,7 @@ export default async function BillingDetailsPage() {
   const profile = await getPlatformBillingProfile();
   return (
     <>
+      <ManagedInOps what="Billing details" />
       <PageHeader
         crumbs={[{ label: "Platform" }, { label: "Billing details" }]}
         title="Billing details"

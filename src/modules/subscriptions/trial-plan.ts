@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 
 export const TRIAL_PLAN_CODE = "trial";
-const TRIAL_DURATION_DAYS = 7;
+export const TRIAL_DURATION_DAYS = 7;
 
 /**
  * Chunk 3 Group 3.3 — idempotent upsert, not a seed script. `update: {}`

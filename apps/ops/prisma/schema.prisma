@@ -1,0 +1,404 @@
+// Ops database. Holds only what belongs to no single product: staff accounts, the product registry, the business
+// directory, alerts and the ops audit trail. Never orders, menus or customers. Later steps add plans, subscriptions
+// and billing here (docs/ops-contract.md section 8).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Ops staff (Better Auth). Separate from every product's logins. ----------
+
+model User {
+  id            String     @id
+  name          String
+  email         String
+  emailVerified Boolean    @default(false)
+  image         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+  auditLogs     AuditLog[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ---------- Product registry ----------
+
+enum ProductStatus {
+  ACTIVE
+  DISABLED
+}
+
+// One row per product (catering, restaurant, ...). `key` is the contract's productKey and the subdomain.
+model Product {
+  key     String        @id
+  name    String
+  status  ProductStatus @default(ACTIVE)
+  // Where ops reaches the product (commands, manifest, reads). A setting, never assumed to be localhost, so moving a
+  // product to another server changes this value only.
+  baseUrl String
+
+  // Signing secrets, one per direction, AES-256-GCM encrypted. The `Previous` pair stays valid during a rotation.
+  outboundSecret         String
+  outboundSecretPrevious String?
+  inboundSecret          String
+  inboundSecretPrevious  String?
+  secretsRotatedAt       DateTime?
+
+  // The last manifest read from the product (see packages/contract manifest).
+  manifest          Json?
+  manifestVersion   String?
+  manifestFetchedAt DateTime?
+  manifestError     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  businesses    BusinessProduct[]
+  events        InboundEvent[]
+  alerts        Alert[]
+  commands      OutboundCommand[]
+  plans         Plan[]
+  subscriptions Subscription[]
+  payments      SubscriptionPayment[]
+
+  @@map("product")
+}
+
+// ---------- Business directory ----------
+
+enum BusinessStatus {
+  ACTIVE
+  SUSPENDED
+  // Deleted by ops: suspended and restorable until `deleteAfter`, then the product really deletes it.
+  PENDING_DELETE
+}
+
+// One row per business. `id` is the contract's businessId (biz_<32 hex>), minted by whichever side created the business.
+model Business {
+  id          String         @id
+  name        String
+  ownerName   String?
+  ownerEmail  String?
+  status      BusinessStatus @default(ACTIVE)
+  deleteAfter DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  products      BusinessProduct[]
+  alerts        Alert[]
+  subscriptions Subscription[]
+  payments      SubscriptionPayment[]
+
+  @@index([createdAt])
+  @@map("business")
+}
+
+// A business using a product. Usage counts come from `usage.reported` events (summaries only, never product data).
+model BusinessProduct {
+  businessId       String
+  business         Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productKey       String
+  product          Product   @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  usage            Json?
+  usageReportedAt  DateTime?
+  lastActiveAt     DateTime?
+  // The newest entitlement snapshot ops issued for this business and product. The version only goes up.
+  snapshotVersion  Int       @default(0)
+  snapshotIssuedAt DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@id([businessId, productKey])
+  @@index([productKey])
+  @@map("business_product")
+}
+
+// ---------- Events from products (product -> ops) ----------
+
+// Every received event, kept for de-duplication (a retry reuses the event id) and as a delivery log.
+model InboundEvent {
+  eventId     String    @id
+  productKey  String
+  product     Product   @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  businessId  String?
+  type        String
+  payload     Json
+  occurredAt  DateTime
+  receivedAt  DateTime  @default(now())
+  // Set when the event was applied. A null value with an `error` means ops accepted it but could not apply it yet.
+  processedAt DateTime?
+  error       String?
+
+  @@index([productKey, receivedAt])
+  @@map("inbound_event")
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id             String        @id @default(cuid())
+  productKey     String
+  product        Product       @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  businessId     String?
+  business       Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  severity       AlertSeverity
+  code           String
+  message        String
+  createdAt      DateTime      @default(now())
+  acknowledgedAt DateTime?
+
+  @@index([acknowledgedAt, createdAt])
+  @@map("alert")
+}
+
+// ---------- Ops audit trail ----------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  action      String
+  subject     String?
+  detail      Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("audit_log")
+}
+
+// ---------- Commands to products (ops -> product) ----------
+
+enum CommandStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// Every command ops sends, kept for retries and as a delivery log. A command is written first, then sent; the scheduled
+// job (/api/cron) retries what is left. `dedupeKey` lets a command that is "the same fact again" be queued once.
+model OutboundCommand {
+  commandId      String        @id
+  productKey     String
+  product        Product       @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  businessId     String
+  type           String
+  // The whole command body as it is sent, signed at send time.
+  payload        Json
+  status         CommandStatus @default(PENDING)
+  attempts       Int           @default(0)
+  nextAttemptAt  DateTime?
+  lastStatusCode Int?
+  lastError      String?
+  // What the product answered (verified), once it answered.
+  response       Json?
+  dedupeKey      String?       @unique
+  createdAt      DateTime      @default(now())
+  sentAt         DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([productKey, createdAt])
+  @@map("outbound_command")
+}
+
+// ---------- Plans and subscriptions (docs/ops-contract.md section 8) ----------
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  LOCKED
+  CANCELLED
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+// A plan belongs to one product. Its allowances are `entitlements`, a JSON object of the keys that product's manifest declares.
+model Plan {
+  id                String   @id @default(cuid())
+  productKey        String
+  product           Product  @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  // Stable machine key (for example "trial"), unique within the product.
+  code              String
+  name              String
+  description       String?
+  isTrial           Boolean  @default(false)
+  trialDurationDays Int?
+  // Prices are before GST; `gstPercent` is added at checkout.
+  priceMonthly      Decimal? @db.Decimal(10, 2)
+  priceAnnual       Decimal? @db.Decimal(10, 2)
+  currency          String   @default("INR")
+  gstPercent        Decimal  @default(18) @db.Decimal(5, 2)
+  highlights        String[] @default([])
+  entitlements      Json     @default("{}")
+  // Retire a plan without breaking subscription history; a plan is never hard-deleted.
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subscriptions Subscription[]
+  payments      SubscriptionPayment[]
+
+  @@unique([productKey, code])
+  @@map("plan")
+}
+
+// One business's subscription to one product. History is kept: a change ends the current row (`endDate`) and starts a new one.
+// At most one row per business and product has no `endDate` (a partial unique index in the migration enforces it).
+model Subscription {
+  id               String             @id
+  businessId       String
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productKey       String
+  product          Product            @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  planId           String
+  plan             Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status           SubscriptionStatus
+  startDate        DateTime           @default(now())
+  trialEndsAt      DateTime?
+  endDate          DateTime?
+  billingInterval  BillingInterval?
+  currentPeriodEnd DateTime?
+  // A downgrade chosen mid-period starts at the next payment, never now.
+  pendingPlanId    String?
+  pendingInterval  BillingInterval?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  @@index([businessId, productKey])
+  @@index([planId])
+  @@map("subscription")
+}
+
+// ---------- Payments and invoices (docs/ops-contract.md section 8) ----------
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+// What a business pays Platterly for a plan (one row per attempt). This is Platterly's own accounting record, so it is
+// never deleted with a business or a plan (Restrict). The price, GST and invoice details are frozen when it is paid.
+model SubscriptionPayment {
+  id                String          @id
+  businessId        String
+  business          Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  productKey        String
+  product           Product         @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  planId            String
+  plan              Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  interval          BillingInterval
+  // Rupees. amount + gstAmount = total.
+  amount            Decimal         @db.Decimal(10, 2)
+  gstPercent        Decimal         @db.Decimal(5, 2)
+  gstAmount         Decimal         @db.Decimal(10, 2)
+  total             Decimal         @db.Decimal(10, 2)
+  status            PaymentStatus   @default(PENDING)
+  razorpayOrderId   String?         @unique
+  razorpayPaymentId String?
+  invoiceNumber     String?         @unique
+  periodStart       DateTime?
+  periodEnd         DateTime?
+  paidAt            DateTime?
+  // The business's name, address and GSTIN as the product sent them at checkout, kept so a payment confirmed later by
+  // Razorpay's webhook (when no product is involved) can still print the right buyer on the invoice.
+  buyer             Json?
+  // The seller, the buyer and the GST split as they were on the day it was paid, so an invoice never changes later.
+  invoiceSnapshot   Json?
+  // Where an imported row came from (for example "catering:<payment id>"); null for payments made through ops.
+  importedFrom      String?
+  createdAt         DateTime        @default(now())
+
+  @@index([businessId, createdAt])
+  @@map("subscription_payment")
+}
+
+// Platterly's own details printed on plan invoices (the seller). One row, id "platform". Every field is optional so it can be
+// filled in later; a blank field is simply left off the invoice.
+model PlatformBillingProfile {
+  id            String   @id
+  legalName     String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  state         String?
+  // The two-digit GST state code (for example 29 for Karnataka). Decides CGST + SGST versus IGST.
+  stateCode     String?
+  postalCode    String?
+  country       String?
+  gstin         String?
+  pan           String?
+  // Service accounting code printed on each invoice line. 998314 is hosting / IT infrastructure; confirm with your CA.
+  sacCode       String   @default("998314")
+  // Start of every invoice number: <prefix><business initials>-<yy>-<mm>-<n>.
+  invoicePrefix String   @default("FP")
+  email         String?
+  phone         String?
+  website       String?
+  invoiceNote   String?
+  updatedAt     DateTime @updatedAt
+
+  @@map("platform_billing_profile")
+}

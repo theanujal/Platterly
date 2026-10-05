@@ -15,6 +15,8 @@ import { StatusActions } from "./_components/status-actions";
 import { EditTenantDialog } from "./_components/edit-tenant-dialog";
 import { SlugOverrideForm } from "./_components/slug-override-form";
 import { AssignPlan } from "./_components/assign-plan";
+import { ManagedInOps } from "../../_components/managed-in-ops";
+import { opsBillingOn } from "@/modules/ops-link/config";
 import { ProviderConnect } from "./_components/provider-connect";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { cn } from "cn";
@@ -188,7 +190,7 @@ export default async function TenantDetailPage({ params, searchParams }: { param
             )}
           </SettingsSection>
           <SettingsSection title="Assign a plan" description="Assigning a plan by hand gives access with no payment and no end date.">
-            <AssignPlan tenantId={tenant.id} plans={plans} currentPlanId={subscription?.subscriptionPlanId} />
+            {opsBillingOn() ? <ManagedInOps what="Plans and subscriptions" /> : <AssignPlan tenantId={tenant.id} plans={plans} currentPlanId={subscription?.subscriptionPlanId} />}
           </SettingsSection>
         </SettingsPanel>
       )}

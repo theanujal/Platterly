@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { ValidationError } from "@/lib/errors";
-import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
+import { getEntitlements, limitOf } from "@/modules/ops-link/entitlements";
 
 export class CannotDisableOwnerError extends Error {}
 
@@ -105,12 +105,12 @@ export async function enableMember(organizationId: string, memberId: string, act
  * pending invite already holds a seat, so a full team can't over-invite.
  */
 export async function getSeatUsage(organizationId: string) {
-  const [members, pendingInvites, subscription] = await Promise.all([
+  const [members, pendingInvites, entitlements] = await Promise.all([
     prisma.member.count({ where: { organizationId, disabledAt: null } }),
     prisma.invitation.count({ where: { organizationId, status: "pending", expiresAt: { gt: new Date() } } }),
-    getCurrentSubscription(organizationId),
+    getEntitlements(organizationId),
   ]);
-  const limit = subscription?.subscriptionPlan.maxUsers ?? null;
+  const limit = limitOf(entitlements, "maxUsers") ?? null;
   return { members, pendingInvites, limit, full: limit !== null && members + pendingInvites >= limit };
 }
 

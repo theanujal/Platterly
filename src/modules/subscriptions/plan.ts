@@ -1,4 +1,5 @@
 import "server-only";
+import { guardNotManagedByOps } from "@/modules/ops-link/guard";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 
@@ -45,11 +46,13 @@ function validatePricing(input: Partial<PlanInput>) {
 }
 
 export async function createPlan(input: PlanInput) {
+  guardNotManagedByOps();
   validatePricing(input);
   return prisma.subscriptionPlan.create({ data: input });
 }
 
 export async function updatePlan(id: string, input: Omit<PlanInput, "code">) {
+  guardNotManagedByOps();
   validatePricing(input);
   return prisma.subscriptionPlan.update({ where: { id }, data: input });
 }
@@ -64,5 +67,6 @@ export async function getPlan(id: string) {
 
 /** Retire without deleting — Subscription's FK to this plan is onDelete: Restrict anyway. */
 export async function deactivatePlan(id: string) {
+  guardNotManagedByOps();
   return prisma.subscriptionPlan.update({ where: { id }, data: { isActive: false } });
 }

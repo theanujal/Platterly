@@ -11,3 +11,7 @@
 | Backups | Postgres daily + restore drill |
 | Monitoring | Sentry DSN; log review |
 | WhatsApp | Not implemented (Pending) |
+| Ops link: `OPS_BASE_URL`, `OPS_EVENT_SECRET`, `OPS_COMMAND_SECRETS`, `OPS_PRODUCT_KEY` | Set from the ops registry (Products); ops `OPS_SECRETS_KEY` set and never changed; link off if unset |
+| Ops app (`apps/ops`) | Own database and `prisma migrate deploy`; `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`; Nginx routes `ops.platterly.in` to it; staff created with `npm run ops:create-staff` |
+| Cron for the ops link | Same `/api/cron/daily` job; every minute or two so events are retried and a first catch-up drains (50 per run) |
+| Billing cutover (`OPS_BILLING=1`) | Only after: catering backup, `ops:import-catering` dry run then `--apply` (raises ops invoice sequence), ops `RAZORPAY_*` + webhook `/api/webhooks/razorpay`, ops cron every minute or two, then a real sign-up and payment check. Roll back by unsetting it. |
