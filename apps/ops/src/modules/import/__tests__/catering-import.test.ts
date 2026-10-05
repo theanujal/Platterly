@@ -211,6 +211,26 @@ describe("the catering import", () => {
     await target.query("rollback");
   });
 
+  it("ops locking an ended trial is the same fact as catering's still-trialing row, but locking one that has not ended is a difference", async () => {
+    // s2's trial ended on 2026-09-08 (long past); s1b's paid period runs to 2026-11-11 (still ahead).
+    await source.query(`update subscription set "trialEndsAt" = '2026-09-08' where id = 's2'`);
+    const data = await readSource(source, PROFILE);
+    const built = buildImport(data, new Set([biz(1), biz(2)]), new Set(manifest.entitlements.map((e) => e.key)));
+    await target.query("begin");
+    try {
+      const applied = await applyImport(target, built, KEY);
+      // (An imported row keeps its id, so find the current row by business.)
+      const lock = async (business: string) => (await target.query(`update subscription set status = 'LOCKED' where "businessId" = $1 and "endDate" is null`, [business])).rowCount;
+      expect(await lock(biz(2))).toBe(1);
+      expect((await reconcile(target, built, applied, KEY)).ok, "an ended trial that ops locked").toBe(true);
+      expect(await lock(biz(1))).toBe(1);
+      const broken = await reconcile(target, built, applied, KEY);
+      expect(broken.ok, "a paid period still running that was locked").toBe(false);
+    } finally {
+      await target.query("rollback");
+    }
+  });
+
   it("only ever reads catering: a write on the source connection is refused by the database", async () => {
     await runImport({ source, target, dryRun: true, productKey: KEY, profileId: PROFILE });
     await expect(source.query(`insert into organization values ('o9', 'biz_x', 'X')`)).rejects.toThrow(/read-only transaction/);

@@ -203,10 +203,14 @@ export async function reconcile(client, built, applied, productKey = PRODUCT_KEY
   const rows = (await client.query('select id, "businessId", status, "startDate", "trialEndsAt", "endDate", "currentPeriodEnd", "billingInterval" from subscription where id = any($1)', [subs.map((s) => s.id)])).rows;
   add("subscriptions: rows present in ops (of those to import)", subs.length, rows.length);
   const opsSub = new Map(rows.map((r) => [r.id, r]));
+  // Ops's scheduled sweep marks an ended trial or paid period LOCKED; catering never rewrites its row (it locks by the date itself).
+  // So "ops LOCKED, catering still TRIALING/ACTIVE with that period already over" is the same fact, not a difference.
+  const now = new Date();
+  const lockedByExpiry = (o, s) => o.status === "LOCKED" && ((s.status === "TRIALING" && s.trialEndsAt && new Date(s.trialEndsAt) < now) || (s.status === "ACTIVE" && s.currentPeriodEnd && new Date(s.currentPeriodEnd) < now));
   let subDiffs = 0;
   for (const s of subs) {
     const o = opsSub.get(s.id);
-    if (!o || o.businessId !== s.businessId || o.status !== s.status || day(o.startDate) !== day(s.startDate) || day(o.trialEndsAt) !== day(s.trialEndsAt) || day(o.endDate) !== day(s.endDate) || day(o.currentPeriodEnd) !== day(s.currentPeriodEnd) || o.billingInterval !== s.billingInterval) subDiffs += 1;
+    if (!o || o.businessId !== s.businessId || (o.status !== s.status && !lockedByExpiry(o, s)) || day(o.startDate) !== day(s.startDate) || day(o.trialEndsAt) !== day(s.trialEndsAt) || day(o.endDate) !== day(s.endDate) || day(o.currentPeriodEnd) !== day(s.currentPeriodEnd) || o.billingInterval !== s.billingInterval) subDiffs += 1;
   }
   add("subscriptions: rows whose dates, status and interval differ from catering", 0, subDiffs);
   const currentByBusiness = (await client.query('select "businessId", count(*)::int as n from subscription where "productKey" = $1 and "endDate" is null group by 1 having count(*) > 1', [productKey])).rows;
