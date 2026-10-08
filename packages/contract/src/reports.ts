@@ -6,7 +6,7 @@ import { fail, isRecord, ok, type ParseResult } from "./result";
  * (currency, dates, percentages), so ops can show any product's reports without knowing what an order or a recipe is.
  * Product-wide figures only, never one customer's details (docs/ops-contract.md section 3).
  */
-export const REPORT_LIMITS = { blocks: 40, tiles: 24, rows: 500, columns: 12, text: 500 } as const;
+export const REPORT_LIMITS = { blocks: 40, tiles: 24, rows: 500, columns: 12, text: 500, points: 60, series: 4 } as const;
 
 export interface ReportTile {
   label: string;
@@ -25,8 +25,17 @@ export interface ReportColumn {
   align?: "left" | "right";
 }
 
+/** One line (or set of bars) on a chart: a name and one number per label of the chart. */
+export interface ReportSeries {
+  name: string;
+  values: number[];
+  /** How the numbers read on the axis and in the tooltip. Default "number". */
+  format?: "number" | "currency";
+}
+
 export type ReportBlock =
   | { type: "tiles"; tiles: ReportTile[] }
+  | { type: "chart"; title: string; description?: string; kind: "line" | "area" | "bar"; labels: string[]; series: ReportSeries[]; emptyText?: string }
   | { type: "bars"; title: string; description?: string; rows: ReportBarRow[]; emptyText?: string }
   | { type: "table"; title: string; description?: string; columns: ReportColumn[]; rows: string[][]; emptyText?: string }
   | { type: "text"; title: string; lines: string[] };
@@ -120,6 +129,26 @@ export function parseReportDoc(input: unknown): ParseResult<ReportDoc> {
           rows.push(cells as string[]);
         }
         blocks.push({ type: "table", title, ...(description ? { description } : {}), columns, rows, ...(emptyText ? { emptyText } : {}) });
+        break;
+      }
+      case "chart": {
+        const title = short(raw.title, 200);
+        const description = optional(raw.description);
+        const emptyText = optional(raw.emptyText);
+        if (!title || description === null || emptyText === null) return fail(`${where}: a chart needs a title`);
+        if (raw.kind !== "line" && raw.kind !== "area" && raw.kind !== "bar") return fail(`${where}: a chart is a line, an area or a bar chart`);
+        if (!Array.isArray(raw.labels) || raw.labels.length > REPORT_LIMITS.points) return fail(`${where}: a chart has at most ${REPORT_LIMITS.points} points`);
+        const labels = raw.labels.map((l) => short(l, 60));
+        if (labels.some((l) => l === null)) return fail(`${where}: every chart label must be short text`);
+        if (!Array.isArray(raw.series) || raw.series.length === 0 || raw.series.length > REPORT_LIMITS.series) return fail(`${where}: a chart needs 1 to ${REPORT_LIMITS.series} series`);
+        const series: ReportSeries[] = [];
+        for (const sr of raw.series) {
+          const name = isRecord(sr) ? short(sr.name, 80) : null;
+          if (!name || !isRecord(sr) || !Array.isArray(sr.values) || sr.values.length !== labels.length || !sr.values.every((v) => typeof v === "number" && Number.isFinite(v))) return fail(`${where}: a series needs a name and one number per label`);
+          if (sr.format !== undefined && sr.format !== "number" && sr.format !== "currency") return fail(`${where}: a series format is number or currency`);
+          series.push({ name, values: sr.values as number[], ...(sr.format ? { format: sr.format as "number" | "currency" } : {}) });
+        }
+        blocks.push({ type: "chart", title, ...(description ? { description } : {}), kind: raw.kind, labels: labels as string[], series, ...(emptyText ? { emptyText } : {}) });
         break;
       }
       case "text": {

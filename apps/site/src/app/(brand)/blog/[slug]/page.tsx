@@ -18,7 +18,10 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const post = await getPost((await params).slug);
   if (!post) return {};
-  return { title: post.title, description: post.excerpt, alternates: { canonical: `/blog/${post.slug}/` }, openGraph: { type: "article", publishedTime: post.date, title: post.title, description: post.excerpt, images: [{ url: "/og.png", width: 1200, height: 630, alt: "Platterly" }] } };
+  const title = post.metaTitle || post.title;
+  const description = post.metaDescription || post.excerpt;
+  const image = post.ogImage ? (/^https:\/\//.test(post.ogImage) ? post.ogImage : `/uploads/${post.ogImage}`) : "/og.png";
+  return { title, description, alternates: { canonical: `/blog/${post.slug}/` }, openGraph: { type: "article", publishedTime: post.date, title, description, images: [{ url: image, ...(post.ogImage ? {} : { width: 1200, height: 630 }), alt: post.title }] } };
 }
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {

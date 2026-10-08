@@ -12,7 +12,7 @@ import {
 import { SitePublishError, publishSite, siteStatus } from "../publish";
 
 const SECRET = "site-test-secret-0123456789";
-const post = { slug: "sitetest-post", title: "A post", excerpt: "Short.", date: "2026-10-08", author: "The Platterly team", tags: "Kitchen, Planning", colourway: "citrus", body: "Hello" };
+const post = { slug: "sitetest-post", title: "A post", excerpt: "Short.", date: "2026-10-08", author: "The Platterly team", tags: "Kitchen, Planning", colourway: "citrus", body: "Hello", metaTitle: "", metaDescription: "", ogImage: "", status: "PUBLISHED", publishAt: "" };
 
 async function clean() {
   await prisma.sitePublish.deleteMany();

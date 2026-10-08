@@ -45,3 +45,6 @@ Thumbs.db
 
 # Database backups (contain customer data, never commit)
 /backups/
+
+# Ops: website pictures uploaded through the media library (SITE_MEDIA_DIR default)
+/apps/ops/.data/

@@ -3,6 +3,7 @@ import { runDueCommands } from "@/modules/commands/outbox";
 import { runDueMessages } from "@/modules/messages/messages";
 import { syncNotices } from "@/modules/notices/notices";
 import { refreshDueManifests } from "@/modules/registry/products";
+import { publishDueScheduled } from "@/modules/site-content/publish";
 import { refreshDueSnapshots } from "@/modules/snapshots/issue";
 import { sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
 
@@ -30,12 +31,13 @@ async function run(request: Request) {
   const product = new URL(request.url).searchParams.get("product") ?? undefined;
   const locked = await sweepExpired(now, product);
   const manifestsRead = await refreshDueManifests(now);
+  const sitePublished = await publishDueScheduled(now);
   const snapshotsRefreshed = await refreshDueSnapshots(now, 200, product);
   const trialNotices = await sendTrialNotices(now, product);
   const noticesQueued = await syncNotices(product);
   const commandsSent = await runDueCommands(now, 50, product);
   const messagesSent = await runDueMessages(now);
-  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, snapshotsRefreshed, trialNotices, noticesQueued, commandsSent, messagesSent });
+  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, noticesQueued, commandsSent, messagesSent });
 }
 
 export const GET = run;

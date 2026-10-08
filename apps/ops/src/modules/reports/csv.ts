@@ -15,6 +15,8 @@ export function reportToCsv(doc: ReportDoc): string {
       rows.push(line(["Summary", "Value", "Note"]), ...block.tiles.map((t) => line([t.label, t.value, t.hint ?? ""])));
     } else if (block.type === "bars") {
       rows.push(line([block.title]), line(["Item", "Value", "Note"]), ...block.rows.map((r) => line([r.label, r.text, r.sub ?? ""])));
+    } else if (block.type === "chart") {
+      rows.push(line([block.title]), line(["Label", ...block.series.map((x) => x.name)]), ...block.labels.map((label, i) => line([label, ...block.series.map((x) => String(x.values[i]))])));
     } else if (block.type === "table") {
       rows.push(line([block.title]), line(block.columns.map((c) => c.label)), ...block.rows.map((r) => line(r)));
     } else {

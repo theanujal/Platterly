@@ -50,6 +50,23 @@ export async function recordPublishResult(publishId: string, ok: boolean, messag
   return done.count > 0;
 }
 
+/**
+ * The daily job's check for scheduled posts: when one has come due since the last successful publish, start a publish so it goes
+ * live without anyone pressing the button. Does nothing when publishing is not set up or one is already running.
+ */
+export async function publishDueScheduled(now: Date = new Date()): Promise<boolean> {
+  if (!siteSecret() || !process.env.SITE_DEPLOY_HOOK_URL) return false;
+  const last = await prisma.sitePublish.findFirst({ where: { status: "SUCCEEDED" }, orderBy: { requestedAt: "desc" } });
+  const due = await prisma.sitePost.count({ where: { status: "PUBLISHED", publishAt: { lte: now, ...(last ? { gt: last.requestedAt } : {}) } } });
+  if (due === 0) return false;
+  try {
+    await publishSite(null, now);
+    return true;
+  } catch {
+    return false; // already running, or the hook is down: the next run tries again
+  }
+}
+
 export async function siteStatus() {
   const [changedRow, last, lastSuccess, history] = await Promise.all([
     prisma.siteSetting.findUnique({ where: { key: "changed" } }),

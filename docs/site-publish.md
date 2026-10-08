@@ -20,6 +20,7 @@ How a text change made in Ops (Website) reaches platterly.in. Contract: `docs/op
 | Nginx, site | `root /var/www/platterly-site/current;` for platterly.in (the site uses trailing slashes: `try_files $uri $uri/ =404;`). |
 | Nginx, hook | A TLS-only `location = /deploy` (for example on a private host name) that proxies to `http://127.0.0.1:3300`. Ops' `SITE_DEPLOY_HOOK_URL` is its public address. The hook rejects anything without a valid signature, but keep the address unlisted. |
 | Ops environment | `SITE_SECRET`, `SITE_DEPLOY_HOOK_URL`. Without both, Publish is switched off and `/api/site/*` answers 404. |
+| Pictures | Set `SITE_MEDIA_DIR` in Ops to a folder that survives deploys and is in the backups, for example `/var/lib/platterly-ops/site-media` (the web user must be able to write it). Pictures are copied into each site build, so Nginx needs nothing extra. |
 | First content | In `apps/ops`: `npm run ops:import-site`, then `npm run ops:import-site -- --apply`. Run before the first Publish, or the blog and legal pages would come out empty. |
 
 ## Checks and rollback
@@ -32,3 +33,11 @@ How a text change made in Ops (Website) reaches platterly.in. Contract: `docs/op
 | Ops is down at build time | The build stops with *Platterly Ops refused or could not be reached*; the live site is untouched. |
 
 Not covered: the site's code (home and Catering page copy, design) still deploys from `main` through the same hook, so pressing Publish also ships any code that was pushed since the last build.
+
+## Pictures and scheduled posts
+
+| Topic | How it works |
+|---|---|
+| Where pictures live | On the Ops server, in `SITE_MEDIA_DIR`. Back that folder up with the database: a lost folder means the library shows broken pictures and the next site build fails with "used by the content but Ops answered 404". |
+| How they reach the site | The build copies every picture the content uses into the site, so platterly.in does not call Ops when a visitor loads a page. |
+| Scheduled posts | A post with a future go-live time is left out until it is due. Ops's daily job starts a publish when one comes due. |

@@ -10,6 +10,8 @@ export const SITE_LIMITS = {
   tag: 30,
   releaseBody: 600,
   summary: 300,
+  metaTitle: 70,
+  metaDescription: 160,
   postBody: 40_000,
   pageBody: 60_000,
 } as const;

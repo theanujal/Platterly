@@ -86,10 +86,11 @@ test("staff edit the notice bar, add an update and a post with categories, and s
   await page.getByRole("link", { name: "Blog" }).click();
   await page.getByRole("link", { name: "New post" }).click();
   await page.getByLabel("Address").fill(SLUG);
-  await page.getByLabel("Title").fill("E2E post");
+  await page.getByLabel("Title", { exact: true }).fill("E2E post");
   await page.getByLabel("Summary").fill("A short summary.");
   await page.getByLabel("Categories").fill("E2E Cat, Kitchen");
-  await page.getByLabel("Post text").fill("## Heading\n\nBody text.");
+  await page.getByRole("textbox", { name: "Post text" }).click();
+  await page.keyboard.type("Body text.");
   await page.getByRole("button", { name: "Add post" }).click();
   await expect(page.locator("p[role=status]")).toContainText("Saved");
   await page.goto("/site/posts");

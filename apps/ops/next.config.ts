@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
   devIndicators: { position: "bottom-right" },
   turbopack: { root: repoRoot },
   outputFileTracingRoot: repoRoot,
+  async rewrites() {
+    // The editor shows pictures as /uploads/<name>, the address the live site uses; in Ops they come from the library.
+    return [{ source: "/uploads/:name", destination: "/api/site/media/:name" }];
+  },
   async headers() {
     // Ops is never indexed and never framed.
     return [

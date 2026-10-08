@@ -8,6 +8,7 @@ export const metadata = { title: "Blog" };
 
 export default async function PostsPage() {
   const [posts, categories] = await Promise.all([listSitePosts(), postCategories()]);
+  const now = new Date().getTime();
   return (
     <div className="grid gap-8">
       <section className="grid gap-3">
@@ -21,7 +22,7 @@ export default async function PostsPage() {
               <tr key={p.slug}>
                 <td><Link className="font-medium text-accent-foreground hover:underline" href={`/site/posts/${p.slug}`}>{p.title}</Link><div className="font-mono text-xs text-muted-foreground">/blog/{p.slug}/</div></td>
                 <td><div className="flex flex-wrap gap-1">{p.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div></td>
-                <td>{p.date}</td>
+                <td>{p.date}{p.status === "DRAFT" ? <div><Badge tone="neutral">Draft</Badge></div> : p.publishAt && p.publishAt.getTime() > now ? <div><Badge tone="info">Scheduled</Badge></div> : null}</td>
               </tr>
             ))}
           </Table>

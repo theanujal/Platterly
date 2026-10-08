@@ -2,6 +2,7 @@ import "server-only";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { COLOURWAYS, LEGAL_SLUGS, RELEASE_KINDS, SITE_LIMITS } from "./limits";
+import { isMediaName } from "./media";
 
 /**
  * The text of the marketing site (platterly.in), kept in ops. The site reads it at build time through /api/site/content;
@@ -154,7 +155,31 @@ export interface PostInput {
   tags: string;
   colourway: string;
   body: string;
+  metaTitle: string;
+  metaDescription: string;
+  /** A library picture (its file name or /uploads/<name>) or an https address; empty for none. */
+  ogImage: string;
+  status: string;
+  /** "YYYY-MM-DDTHH:mm" in India time, or empty for "as soon as it is published". */
+  publishAt: string;
 }
+
+/** Share image: a picture in the library (stored as its file name), an https address, or nothing. */
+function shareImage(value: string): string | null {
+  const text = value.trim().replace(/^\/uploads\//, "");
+  if (!text) return null;
+  if (/^https:\/\//.test(text)) { if (text.length > 500) throw new SiteContentError("The share image address is too long."); return text; }
+  if (!isMediaName(text)) throw new SiteContentError("The share image must be a picture from the library or an https:// address.");
+  return text;
+}
+function scheduledAt(value: string): Date | null {
+  const text = value.trim();
+  if (!text) return null;
+  const at = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text) ? new Date(`${text}:00+05:30`) : new Date(Number.NaN);
+  if (Number.isNaN(at.getTime())) throw new SiteContentError("Publish date and time must be a date and a time.");
+  return at;
+}
+
 export function cleanPost(input: PostInput) {
   const colourway = input.colourway.trim();
   if (!(COLOURWAYS as readonly string[]).includes(colourway)) throw new SiteContentError("Choose one of the colour styles.");
@@ -163,6 +188,11 @@ export function cleanPost(input: PostInput) {
   return {
     slug: slug(input.slug), title: required(input.title, "Title", SITE_LIMITS.title), excerpt: required(input.excerpt, "Summary", SITE_LIMITS.excerpt),
     date: isoDay(input.date, "Date"), author: required(input.author, "Author", SITE_LIMITS.author), tags, colourway, body: required(input.body, "Post text", SITE_LIMITS.postBody),
+    metaTitle: optional(input.metaTitle, "Search title", SITE_LIMITS.metaTitle) || null,
+    metaDescription: optional(input.metaDescription, "Search description", SITE_LIMITS.metaDescription) || null,
+    ogImage: shareImage(input.ogImage),
+    status: (() => { if (input.status !== "DRAFT" && input.status !== "PUBLISHED") throw new SiteContentError("Choose Draft or Published."); return input.status; })(),
+    publishAt: scheduledAt(input.publishAt),
   };
 }
 export const listSitePosts = () => prisma.sitePost.findMany({ orderBy: [{ date: "desc" }, { slug: "asc" }] });
@@ -230,14 +260,16 @@ export interface SiteContentBundle {
   notice: SiteNotice | null;
   contact: SiteContact | null;
   releases: { id: string; date: string; title: string; body: string; kind: string }[];
-  posts: { slug: string; title: string; excerpt: string; date: string; author: string; tags: string[]; colourway: string; body: string }[];
+  posts: { slug: string; title: string; excerpt: string; date: string; author: string; tags: string[]; colourway: string; body: string; metaTitle: string | null; metaDescription: string | null; ogImage: string | null }[];
+  /** The library's picture names. The site build copies the ones its content refers to. */
+  media: string[];
   pages: { slug: string; title: string; summary: string; updated: string; body: string }[];
 }
 
 /** An empty section is sent as null/[] only when nothing was ever saved, so the site can tell "not set up" from "set empty". */
 export async function buildBundle(now = new Date()): Promise<SiteContentBundle> {
-  const [notice, contact, releases, posts, pages, noticeRow, contactRow] = await Promise.all([
-    getSiteNotice(), getSiteContact(), listSiteReleases(), listSitePosts(), listLegalPages(),
+  const [notice, contact, releases, allPosts, pages, media, noticeRow, contactRow] = await Promise.all([
+    getSiteNotice(), getSiteContact(), listSiteReleases(), listSitePosts(), listLegalPages(), prisma.siteMedia.findMany({ select: { name: true } }),
     prisma.siteSetting.findUnique({ where: { key: "notice" } }), prisma.siteSetting.findUnique({ where: { key: "contact" } }),
   ]);
   return {
@@ -246,7 +278,9 @@ export async function buildBundle(now = new Date()): Promise<SiteContentBundle> 
     notice: noticeRow ? notice : null,
     contact: contactRow ? contact : null,
     releases: releases.map(({ id, date, title, body, kind }) => ({ id, date, title, body, kind })),
-    posts: posts.map(({ slug: s, title, excerpt, date, author, tags, colourway, body }) => ({ slug: s, title, excerpt, date, author, tags, colourway, body })),
+    // A draft, or a post scheduled for later, is not in the bundle until it is due.
+    posts: allPosts.filter((p) => p.status === "PUBLISHED" && (!p.publishAt || p.publishAt.getTime() <= now.getTime())).map(({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage }) => ({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage })),
+    media: media.map((m) => m.name),
     pages: pages.map(({ slug: s, title, summary, updated, body }) => ({ slug: s, title, summary, updated, body })),
   };
 }

@@ -407,6 +407,28 @@ describe("report documents", () => {
     expect(parseReportDoc({ ...doc, blocks: [{ type: "tiles", tiles: [{ label: "a", value: "x".repeat(61) }] }] }).ok).toBe(false);
   });
 
+  it("accepts a chart block and keeps only what it knows", () => {
+    const chart = { type: "chart", title: "Sales by month", description: "Rupees", kind: "area", labels: ["Aug", "Sep"], series: [{ name: "Sales", values: [10, 20.5], format: "currency", extra: 1 }], emptyText: "none" };
+    const parsed = parseReportDoc({ report: "x", title: "X", blocks: [chart] });
+    expect(parsed).toMatchObject({ ok: true });
+    expect(parsed.ok && parsed.value.blocks[0]).toEqual({ type: "chart", title: "Sales by month", description: "Rupees", kind: "area", labels: ["Aug", "Sep"], series: [{ name: "Sales", values: [10, 20.5], format: "currency" }], emptyText: "none" });
+  });
+
+  it("refuses a malformed or oversized chart", () => {
+    const base = { type: "chart", title: "T", kind: "line", labels: ["a", "b"], series: [{ name: "S", values: [1, 2] }] };
+    const parse = (over: object) => parseReportDoc({ report: "x", title: "X", blocks: [{ ...base, ...over }] }).ok;
+    expect(parse({})).toBe(true);
+    expect(parse({ kind: "pie" })).toBe(false);
+    expect(parse({ series: [{ name: "S", values: [1] }] })).toBe(false); // one number per label
+    expect(parse({ series: [{ name: "S", values: [1, Number.NaN] }] })).toBe(false);
+    expect(parse({ series: [{ name: "S", values: ["1", "2"] }] })).toBe(false);
+    expect(parse({ series: [] })).toBe(false);
+    expect(parse({ series: [{ name: "S", values: [1, 2], format: "percent" }] })).toBe(false);
+    expect(parse({ series: Array.from({ length: REPORT_LIMITS.series + 1 }, (_, n) => ({ name: `S${n}`, values: [1, 2] })) })).toBe(false);
+    const labels = Array.from({ length: REPORT_LIMITS.points + 1 }, (_, n) => `p${n}`);
+    expect(parse({ labels, series: [{ name: "S", values: labels.map(() => 1) }] })).toBe(false);
+  });
+
   it("a manifest may list reports, or none (older manifests stay valid)", () => {
     const withReports = parseManifest(manifest);
     expect(withReports.ok && withReports.value.reports).toEqual([{ key: "sales", label: "Sales" }]);

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/session";
+import { MediaError, deleteMedia, updateMediaAlt } from "@/modules/site-content/media";
 import {
   SiteContentError, deleteSitePost, deleteSiteRelease, renameCategory, saveLegalPage, saveSiteContact, saveSiteNotice, saveSitePost, saveSiteRelease,
 } from "@/modules/site-content/site-content";
@@ -45,7 +46,7 @@ export async function deleteReleaseAction(formData: FormData) {
 }
 
 export const savePostAction = async (_prev: SiteFormState, f: FormData) =>
-  run("Saved. Publish to put it on the site.", (id) => saveSitePost({ slug: text(f, "slug"), title: text(f, "title"), excerpt: text(f, "excerpt"), date: text(f, "date"), author: text(f, "author"), tags: text(f, "tags"), colourway: text(f, "colourway"), body: text(f, "body") }, id), ["/site", "/site/posts"]);
+  run("Saved. Publish to put it on the site.", (id) => saveSitePost({ slug: text(f, "slug"), title: text(f, "title"), excerpt: text(f, "excerpt"), date: text(f, "date"), author: text(f, "author"), tags: text(f, "tags"), colourway: text(f, "colourway"), body: text(f, "body"), metaTitle: text(f, "metaTitle"), metaDescription: text(f, "metaDescription"), ogImage: text(f, "ogImage"), status: text(f, "status") || "PUBLISHED", publishAt: text(f, "publishAt") }, id), ["/site", "/site/posts"]);
 
 export async function deletePostAction(formData: FormData) {
   const staff = await requireStaff();
@@ -81,3 +82,25 @@ export const publishSiteAction = async (): Promise<SiteFormState> => {
   revalidatePath("/site");
   return { saved: "Publish started. The site rebuilds in a minute or two; this page shows when it finishes." };
 };
+
+export const saveAltAction = async (_prev: SiteFormState, f: FormData): Promise<SiteFormState> => {
+  const staff = await requireStaff();
+  try {
+    await updateMediaAlt(text(f, "name"), text(f, "alt"), staff.id);
+  } catch (error) {
+    if (error instanceof MediaError) return { error: error.message };
+    throw error;
+  }
+  revalidatePath("/site/media");
+  return { saved: "Saved." };
+};
+
+export async function deleteMediaAction(formData: FormData): Promise<void> {
+  const staff = await requireStaff();
+  try {
+    await deleteMedia(text(formData, "name"), staff.id);
+  } catch (error) {
+    if (!(error instanceof MediaError)) throw error;
+  }
+  revalidatePath("/site/media");
+}

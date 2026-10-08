@@ -17,6 +17,9 @@ export function Markdown({ children }: { children: string }) {
       components={{
         h2: ({ children }) => <h2 id={slugify(text(children))}>{children}</h2>,
         a: ({ href = "", children }) => (/^(https?:|mailto:|tel:)/.test(href) ? <a href={href}>{children}</a> : <Link href={href}>{children}</Link>),
+        // Only pictures from the library (/uploads/...) or a secure address are drawn; nothing else can be loaded.
+        // eslint-disable-next-line @next/next/no-img-element
+        img: ({ src, alt }) => (typeof src === "string" && /^(\/uploads\/|https:\/\/)/.test(src) ? <img src={src} alt={alt ?? ""} loading="lazy" className="h-auto max-w-full rounded-2xl" /> : null),
         table: ({ children }) => (
           <div className="overflow-x-auto">
             <table>{children}</table>

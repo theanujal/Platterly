@@ -1,5 +1,6 @@
 import type { ReportBlock } from "@platterly/contract";
 import { Card } from "@/components/ui";
+import { ChartBlock } from "./chart-block";
 
 /** Shows a report document: tiles, bar lists, tables, text. Every value is plain text already formatted by whoever built the report, and React escapes it. */
 
@@ -36,6 +37,13 @@ export function ReportBlocks({ blocks }: { blocks: ReportBlock[] }) {
     <div className="flex flex-col gap-4" data-testid="report">
       {blocks.map((block, i) => {
         if (block.type === "tiles") return <Tiles key={i} tiles={block.tiles} />;
+        if (block.type === "chart") {
+          return (
+            <Section key={i} title={block.title} description={block.description}>
+              {block.labels.length === 0 ? <p className="py-4 text-sm text-muted-foreground">{block.emptyText ?? EMPTY}</p> : <ChartBlock kind={block.kind} labels={block.labels} series={block.series} title={block.title} />}
+            </Section>
+          );
+        }
         if (block.type === "text") {
           return (
             <Section key={i} title={block.title}>

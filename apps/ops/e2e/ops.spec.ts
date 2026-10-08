@@ -273,28 +273,33 @@ test("staff open Reports: Subscriptions and Sign-ups come from ops, a product's 
 
     await page.getByRole("link", { name: "Reports" }).first().click();
     await expect(page.getByRole("heading", { name: "Reports", exact: true })).toBeVisible();
-    // With no product chosen, the two reports ops owns are there.
-    await expect(page.getByRole("tab", { name: "Subscriptions" })).toHaveAttribute("aria-selected", "true");
+    // The gallery groups what Ops can say about itself; with no product picked there is no product-report section.
+    for (const group of ["Revenue", "Customers", "Compliance", "Operations"]) await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /E2E Report Product reports/ })).toHaveCount(0); // no product picked yet
+
+    await page.getByRole("link", { name: /^Subscriptions/ }).click();
+    await expect(page.getByRole("heading", { name: "Subscriptions", exact: true })).toBeVisible();
     await expect(page.getByText("MRR (monthly recurring revenue)")).toBeVisible();
     // The report on screen downloads as a file (a signed-in request: the page's own cookies).
     const file = await page.request.get((await page.getByRole("link", { name: "Download as CSV" }).getAttribute("href"))!);
     expect(file.status()).toBe(200);
     expect(file.headers()["content-type"]).toContain("text/csv");
     expect(await file.text()).toContain("MRR by plan");
-    await page.getByRole("tab", { name: "Sign-ups" }).click();
-    await expect(page.getByText("New in the period")).toBeVisible();
 
-    // A product's own report is asked of the product; this one cannot be reached, and the page says so instead of failing.
-    await page.getByLabel("Product", { exact: true }).selectOption(key);
-    await page.getByRole("button", { name: "Apply" }).click();
-    // The tab the person was on stays (Sign-ups is valid for every product); the product's own report is one click away.
-    await expect(page.getByRole("tab", { name: "Sign-ups" })).toHaveAttribute("aria-selected", "true");
-    await page.getByRole("tab", { name: "Sales" }).click();
-    await expect(page.getByRole("tab", { name: "Sales" })).toHaveAttribute("aria-selected", "true");
+    // A chart report draws a chart and still downloads.
+    await page.goto("/reports/revenue-trend");
+    await expect(page.getByRole("img", { name: "MRR at the end of each month" })).toBeVisible();
+    const trend = await page.request.get((await page.getByRole("link", { name: "Download as CSV" }).getAttribute("href"))!);
+    expect(await trend.text()).toContain("MRR at the end of each month");
+    await page.goto("/reports/no-such-report");
+    await expect(page.getByText("This page could not be found")).toBeVisible();
+
+    // A product's own reports show once the product is picked; this one cannot be reached, and the page says so instead of failing.
+    await chooseProduct(page, "E2E Report Product");
+    await page.goto("/reports");
+    await expect(page.getByRole("heading", { name: "E2E Report Product reports" })).toBeVisible();
+    await page.getByRole("link", { name: /^Sales/ }).click();
     await expect(page.locator("p[role=alert]")).toContainText(/signing secret|Could not reach/);
-    // The tabs and the range stay usable.
-    await page.getByRole("tab", { name: "Subscriptions" }).click();
-    await expect(page.getByText("Revenue collected")).toBeVisible();
   } finally {
     await pool.query("delete from product where key = $1", [key]);
   }

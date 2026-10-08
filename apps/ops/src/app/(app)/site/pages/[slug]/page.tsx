@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { LEGAL_SLUGS } from "@/modules/site-content/limits";
+import { listMedia } from "@/modules/site-content/media";
 import { getLegalPage } from "@/modules/site-content/site-content";
 import { LegalForm } from "../../forms";
 
@@ -11,5 +12,6 @@ export default async function EditLegalPage({ params }: { params: Promise<{ slug
   const label = LEGAL_SLUGS.find((l) => l.slug === slug)?.label;
   if (!label) notFound();
   const page = await getLegalPage(slug);
-  return <LegalForm values={page ?? { slug, title: label, summary: "", updated: new Date().toISOString().slice(0, 10), body: "" }} />;
+  const library = (await listMedia()).map((m) => ({ name: m.name, alt: m.alt }));
+  return <LegalForm library={library} values={page ?? { slug, title: label, summary: "", updated: new Date().toISOString().slice(0, 10), body: "" }} />;
 }

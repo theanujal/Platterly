@@ -9,3 +9,5 @@ playwright-report/
 scripts/.raw/
 # content fetched from Platterly Ops before each build (scripts/fetch-content.mjs)
 src/content/.ops/
+# pictures copied from Platterly Ops by scripts/fetch-content.mjs
+public/uploads/

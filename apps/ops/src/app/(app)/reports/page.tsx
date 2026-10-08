@@ -1,87 +1,53 @@
 import Link from "next/link";
-import type { ReportDoc } from "@platterly/contract";
-import { prisma } from "@/lib/db";
-import { Button, Empty, PageHeader, inputClass } from "@/components/ui";
+import { Activity, BarChart3, FileText, IndianRupee, Users, type LucideIcon } from "lucide-react";
+import { Empty, PageHeader } from "@/components/ui";
 import { getSelectedProduct } from "@/lib/selected-product";
-import { RANGE_PRESETS, resolveRange, toIsoDate } from "@/modules/reports/range";
-import { fetchProductReport, reportsOf } from "@/modules/reports/product-reports";
-import { saasToDoc } from "@/modules/reports/saas-doc";
-import { loadSaasReport, loadSignupsByMonth } from "@/modules/reports/saas-report";
-import { ReportBlocks } from "./report-blocks";
+import { prisma } from "@/lib/db";
+import { PLATFORM_REPORTS, REPORT_CATEGORIES, type ReportCategory } from "@/modules/reports/platform-reports";
+import { reportsOf } from "@/modules/reports/product-reports";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Reports" };
 
-type Query = { product?: string; tab?: string; range?: string; from?: string; to?: string };
+const ICON: Record<ReportCategory, LucideIcon> = { Revenue: IndianRupee, Customers: Users, Compliance: FileText, Operations: Activity };
 
-/** Reports across every business: a product's own reports (asked of the product), and what businesses pay Platterly (from ops's own records). */
-export default async function ReportsPage({ searchParams }: { searchParams: Promise<Query> }) {
-  const query = await searchParams;
-  const products = await prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, select: { key: true, name: true, manifest: true } });
-  // The sidebar's product is the default; the page's own Product box can still override it (including "All products").
-  const sidebar = await getSelectedProduct();
-  const wanted = query.product ?? sidebar?.key;
-  const selected = wanted && wanted !== "all" ? products.find((p) => p.key === wanted) : undefined;
-  const productKey = selected?.key;
-  const productReports = selected ? reportsOf(selected.manifest) : [];
-  const tabs = [...productReports.map((r) => ({ id: r.key, label: r.label })), { id: "subscriptions", label: "Subscriptions" }, { id: "signups", label: "Sign-ups" }];
-  const tab = tabs.find((t) => t.id === query.tab)?.id ?? tabs[0].id;
-  const range = resolveRange(query);
-  const fromIso = range.from ? toIsoDate(range.from) : null;
-  const toIso = range.to ? toIsoDate(range.to) : null;
+function Card({ href, icon: Icon, title, text, foot }: { href: string; icon: LucideIcon; title: string; text: string; foot?: string }) {
+  return (
+    <Link href={href} className="flex flex-col gap-3 rounded-[14px] bg-card p-5 shadow-[0_0_0_1px_rgba(17,24,39,0.1)] transition-shadow hover:shadow-[0_0_0_1px_rgba(255,105,0,0.45)]">
+      <span className="flex size-10 items-center justify-center rounded-[10px] bg-primary/10 text-primary"><Icon className="size-5" aria-hidden /></span>
+      <div><h3 className="text-base font-semibold">{title}</h3><p className="mt-1 text-sm text-muted-foreground">{text}</p></div>
+      {foot ? <p className="mt-auto text-xs text-muted-foreground">{foot}</p> : null}
+    </Link>
+  );
+}
 
-  let doc: ReportDoc | null = null;
-  let error: string | null = null;
-  if (tab === "subscriptions") {
-    doc = saasToDoc(await loadSaasReport(range, productKey), { periodChosen: Boolean(range.from), from: fromIso, to: toIso });
-  } else if (tab === "signups") {
-    const s = await loadSignupsByMonth(range, productKey);
-    doc = {
-      report: "signups",
-      title: "Sign-ups",
-      period: { from: fromIso, to: toIso },
-      blocks: [
-        { type: "tiles", tiles: [{ label: "Businesses", value: s.total.toLocaleString("en-IN"), hint: productKey ? "On this product" : "On every product" }, { label: "New in the period", value: s.inRange.toLocaleString("en-IN") }] },
-        { type: "bars", title: "Sign-ups by month", rows: s.byMonth.map((m) => ({ label: m.label, value: m.count, text: String(m.count) })) },
-      ],
-    };
-  } else if (productKey) {
-    const result = await fetchProductReport(productKey, tab, { from: fromIso, to: toIso });
-    if (result.ok) doc = result.doc;
-    else error = result.error;
-  }
-
-  const keep = (over: Partial<Query>) => new URLSearchParams(Object.entries({ product: productKey ?? "all", tab, ...(query.from || query.to ? { from: query.from ?? "", to: query.to ?? "" } : { range: range.preset === "custom" ? "this-month" : range.preset }), ...over }).filter(([, v]) => v) as [string, string][]);
-
+/** The report gallery: what Platterly can say about itself (from Ops's records), then the picked product's own reports. */
+export default async function ReportsPage() {
+  const selected = await getSelectedProduct();
+  const own = selected ? reportsOf((await prisma.product.findUnique({ where: { key: selected.key }, select: { manifest: true } }))?.manifest) : [];
   return (
     <>
-      <PageHeader title="Reports" description="Across every business. A product's own reports are asked of the product when you open them; subscriptions and sign-ups come from Ops's own records." />
-      <form className="mb-4 flex flex-wrap items-end gap-2" role="search" aria-label="Report filters">
-        <input type="hidden" name="tab" value={tab} />
-        <div className="flex flex-col gap-1.5"><label htmlFor="product" className="text-sm font-medium">Product</label>
-          <select id="product" name="product" defaultValue={productKey ?? "all"} className={`${inputClass} w-48`}>
-            <option value="all">All products</option>
-            {products.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1.5"><label htmlFor="range" className="text-sm font-medium">Period</label>
-          <select id="range" name="range" defaultValue={range.preset === "custom" ? "this-month" : range.preset} className={`${inputClass} w-52`}>
-            {RANGE_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1.5"><label htmlFor="from" className="text-sm font-medium">From</label><input id="from" name="from" type="date" defaultValue={query.from ?? ""} className={`${inputClass} w-40`} /></div>
-        <div className="flex flex-col gap-1.5"><label htmlFor="to" className="text-sm font-medium">To</label><input id="to" name="to" type="date" defaultValue={query.to ?? ""} className={`${inputClass} w-40`} /></div>
-        <Button type="submit" size="md" variant="outline">Apply</Button>
-      </form>
-      <p className="mb-3 text-xs text-muted-foreground">A From or To date overrides the period. {range.from ? `Showing ${toIsoDate(range.from)}${range.to ? ` to ${toIsoDate(range.to)}` : " onwards"}.` : "Showing all time."}</p>
-      <div role="tablist" aria-label="Reports" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
-        {tabs.map((t) => (
-          <Link key={t.id} role="tab" aria-selected={tab === t.id} href={`/reports?${keep({ tab: t.id })}`} className={`-mb-px inline-flex shrink-0 items-center border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap ${tab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>{t.label}</Link>
+      <PageHeader title="Reports" description={selected ? `Platterly reports for ${selected.name}, and the reports ${selected.name} publishes itself.` : "What Platterly can tell you about its businesses, money and activity. Pick a product to narrow them, or to see its own reports."} />
+      <div className="grid gap-8">
+        {selected ? (
+          <section>
+            <h2 className="mb-3 flex items-center gap-2 text-base font-semibold"><BarChart3 className="size-4 text-primary" aria-hidden />{selected.name} reports</h2>
+            {own.length === 0 ? <Empty>{selected.name} does not publish reports yet, or Ops has not read what it offers.</Empty> : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                {own.map((r) => <Card key={r.key} href={`/reports/product/${r.key}`} icon={BarChart3} title={r.label} text={`Asked of ${selected.name} each time you open it, so it is always current.`} foot={selected.name} />)}
+              </div>
+            )}
+          </section>
+        ) : null}
+        {REPORT_CATEGORIES.map((category) => (
+          <section key={category}>
+            <h2 className="mb-3 text-base font-semibold">{category}</h2>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {PLATFORM_REPORTS.filter((r) => r.category === category).map((r) => <Card key={r.key} href={`/reports/${r.key}`} icon={ICON[category]} title={r.label} text={r.description} foot={r.scoped ? (selected ? `Showing ${selected.name}` : "All products") : "About Ops itself"} />)}
+            </div>
+          </section>
         ))}
       </div>
-      {doc ? <p className="mb-3"><a className="text-sm font-medium text-accent-foreground hover:underline" href={`/reports/export?${keep({})}`}>Download as CSV</a></p> : null}
-      {error ? <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p> : null}
-      {doc ? <ReportBlocks blocks={doc.blocks} /> : error ? null : <Empty>Choose a product to see its reports.</Empty>}
     </>
   );
 }

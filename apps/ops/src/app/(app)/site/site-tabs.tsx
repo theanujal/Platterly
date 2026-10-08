@@ -10,6 +10,7 @@ const TABS = [
   { href: "/site/releases", label: "What's new" },
   { href: "/site/posts", label: "Blog" },
   { href: "/site/pages", label: "Legal pages" },
+  { href: "/site/media", label: "Pictures" },
 ] as const;
 
 export function SiteTabs() {

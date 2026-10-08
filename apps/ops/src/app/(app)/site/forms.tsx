@@ -1,10 +1,11 @@
 "use client";
 
 import { Button, Card, Field, inputClass } from "@/components/ui";
+import { RichEditor, type LibraryPicture } from "@/components/rich-editor";
 import { useFormAction } from "@/lib/use-form-action";
 import { SITE_LIMITS } from "@/modules/site-content/limits";
 import {
-  publishSiteAction, renameCategoryAction, saveContactAction, saveLegalAction, savePostAction, saveNoticeAction, saveReleaseAction, type SiteFormState,
+  publishSiteAction, renameCategoryAction, saveAltAction, saveContactAction, saveLegalAction, savePostAction, saveNoticeAction, saveReleaseAction, type SiteFormState,
 } from "./actions";
 
 const areaClass = `${inputClass} h-auto py-2`;
@@ -77,29 +78,54 @@ export function ReleaseForm({ values, isNew }: { values: { id: string; date: str
   );
 }
 
-export function PostForm({ values, isNew }: { values: { slug: string; title: string; excerpt: string; date: string; author: string; tags: string; colourway: string; body: string }; isNew: boolean }) {
+export function PostForm({ values, isNew, library }: { values: { slug: string; title: string; excerpt: string; date: string; author: string; tags: string; colourway: string; body: string; metaTitle: string; metaDescription: string; ogImage: string; status: string; publishAt: string }; isNew: boolean; library: LibraryPicture[] }) {
   const { state, onSubmit, pending } = useFormAction(savePostAction, {});
   return (
     <form onSubmit={onSubmit} className="grid gap-4">
-      <Card>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Address" htmlFor="slug" hint={isNew ? "Lower-case letters, numbers and hyphens. It becomes /blog/<address>/." : "Fixed once saved, so links keep working."}><input id="slug" name="slug" defaultValue={values.slug} readOnly={!isNew} className={inputClass} /></Field>
-          <Field label="Date" htmlFor="date"><input id="date" name="date" type="date" defaultValue={values.date} className={inputClass} /></Field>
-          <div className="sm:col-span-2"><Field label="Title" htmlFor="title"><input id="title" name="title" maxLength={SITE_LIMITS.title} defaultValue={values.title} className={inputClass} /></Field></div>
-          <div className="sm:col-span-2"><Field label="Summary" htmlFor="excerpt" hint="Shown on the blog list."><textarea id="excerpt" name="excerpt" rows={2} maxLength={SITE_LIMITS.excerpt} defaultValue={values.excerpt} className={areaClass} /></Field></div>
-          <Field label="Author" htmlFor="author"><input id="author" name="author" maxLength={SITE_LIMITS.author} defaultValue={values.author} className={inputClass} /></Field>
-          <Field label="Categories" htmlFor="tags" hint="Separate with commas. At most 6."><input id="tags" name="tags" defaultValue={values.tags} className={inputClass} /></Field>
-          <Field label="Colour style" htmlFor="colourway"><select id="colourway" name="colourway" defaultValue={values.colourway} className={inputClass}>{["sunrise", "blossom", "citrus", "dusk"].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
-          <div className="sm:col-span-2"><Field label="Post text" htmlFor="body" hint="Markdown: ## for headings, - for lists, **bold**."><textarea id="body" name="body" rows={18} defaultValue={values.body} className={`${areaClass} font-mono`} /></Field></div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card>
+          <div className="grid gap-4">
+            <Field label="Title" htmlFor="title"><input id="title" name="title" maxLength={SITE_LIMITS.title} defaultValue={values.title} className={inputClass} /></Field>
+            <Field label="Summary" htmlFor="excerpt" hint="Shown on the blog list."><textarea id="excerpt" name="excerpt" rows={2} maxLength={SITE_LIMITS.excerpt} defaultValue={values.excerpt} className={areaClass} /></Field>
+            <RichEditor name="body" label="Post text" initial={values.body} library={library} />
+          </div>
+        </Card>
+        <div className="grid content-start gap-4">
+          <Card>
+            <h2 className="mb-3 text-sm font-semibold">Publishing</h2>
+            <div className="grid gap-4">
+              <Field label="Status" htmlFor="status" hint="A draft is never put on the site."><select id="status" name="status" defaultValue={values.status} className={inputClass}><option value="PUBLISHED">Published</option><option value="DRAFT">Draft</option></select></Field>
+              <Field label="Go live at" htmlFor="publishAt" hint="India time. Leave empty for the next publish. A later time schedules it."><input id="publishAt" name="publishAt" type="datetime-local" defaultValue={values.publishAt} className={inputClass} /></Field>
+              <Field label="Date shown" htmlFor="date"><input id="date" name="date" type="date" defaultValue={values.date} className={inputClass} /></Field>
+              <Field label="Address" htmlFor="slug" hint={isNew ? "Lower-case letters, numbers and hyphens. It becomes /blog/<address>/." : "Fixed once saved, so links keep working."}><input id="slug" name="slug" defaultValue={values.slug} readOnly={!isNew} className={inputClass} /></Field>
+            </div>
+          </Card>
+          <Card>
+            <h2 className="mb-3 text-sm font-semibold">Details</h2>
+            <div className="grid gap-4">
+              <Field label="Author" htmlFor="author"><input id="author" name="author" maxLength={SITE_LIMITS.author} defaultValue={values.author} className={inputClass} /></Field>
+              <Field label="Categories" htmlFor="tags" hint="Separate with commas. At most 6."><input id="tags" name="tags" defaultValue={values.tags} className={inputClass} /></Field>
+              <Field label="Colour style" htmlFor="colourway"><select id="colourway" name="colourway" defaultValue={values.colourway} className={inputClass}>{["sunrise", "blossom", "citrus", "dusk"].map((c) => <option key={c} value={c}>{c}</option>)}</select></Field>
+            </div>
+          </Card>
+          <Card>
+            <h2 className="mb-3 text-sm font-semibold">Search and sharing</h2>
+            <div className="grid gap-4">
+              <Field label="Search title" htmlFor="metaTitle" hint="Shown by Google. Empty uses the post title."><input id="metaTitle" name="metaTitle" maxLength={SITE_LIMITS.metaTitle} defaultValue={values.metaTitle} className={inputClass} /></Field>
+              <Field label="Search description" htmlFor="metaDescription" hint="About 150 characters. Empty uses the summary."><textarea id="metaDescription" name="metaDescription" rows={3} maxLength={SITE_LIMITS.metaDescription} defaultValue={values.metaDescription} className={areaClass} /></Field>
+              <Field label="Share picture" htmlFor="ogImage" hint="Shown when the post is shared. Pick one from the library, or paste an https:// address."><input id="ogImage" name="ogImage" list="library-pictures" defaultValue={values.ogImage} className={inputClass} /></Field>
+              <datalist id="library-pictures">{library.map((p) => <option key={p.name} value={p.name}>{p.alt}</option>)}</datalist>
+            </div>
+          </Card>
         </div>
-      </Card>
+      </div>
       <Feedback state={state} />
       <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : isNew ? "Add post" : "Save"}</Button></div>
     </form>
   );
 }
 
-export function LegalForm({ values }: { values: { slug: string; title: string; summary: string; updated: string; body: string } }) {
+export function LegalForm({ values, library }: { values: { slug: string; title: string; summary: string; updated: string; body: string }; library: LibraryPicture[] }) {
   const { state, onSubmit, pending } = useFormAction(saveLegalAction, {});
   return (
     <form onSubmit={onSubmit} className="grid gap-4">
@@ -109,7 +135,7 @@ export function LegalForm({ values }: { values: { slug: string; title: string; s
           <div className="sm:col-span-2"><Field label="Title" htmlFor="title"><input id="title" name="title" maxLength={SITE_LIMITS.title} defaultValue={values.title} className={inputClass} /></Field></div>
           <Field label="Last updated" htmlFor="updated" hint="Shown on the page as “Last updated”."><input id="updated" name="updated" type="date" defaultValue={values.updated} className={inputClass} /></Field>
           <div className="sm:col-span-2"><Field label="Summary" htmlFor="summary" hint="The line under the title."><textarea id="summary" name="summary" rows={2} maxLength={SITE_LIMITS.summary} defaultValue={values.summary} className={areaClass} /></Field></div>
-          <div className="sm:col-span-2"><Field label="Page text" htmlFor="body" hint="Markdown: ## for headings, - for lists, **bold**."><textarea id="body" name="body" rows={24} defaultValue={values.body} className={`${areaClass} font-mono`} /></Field></div>
+          <div className="sm:col-span-2"><RichEditor name="body" label="Page text" initial={values.body} library={library} /></div>
         </div>
       </Card>
       <Feedback state={state} />
@@ -138,6 +164,18 @@ export function PublishButton({ disabled }: { disabled: boolean }) {
     <form onSubmit={onSubmit} className="grid gap-3">
       <div><Button type="submit" disabled={pending || disabled}>{pending ? "Starting…" : "Publish to the site"}</Button></div>
       <Feedback state={state} />
+    </form>
+  );
+}
+
+export function AltForm({ name, alt }: { name: string; alt: string }) {
+  const { state, onSubmit, pending } = useFormAction(saveAltAction, {});
+  return (
+    <form onSubmit={onSubmit} className="grid gap-1.5">
+      <input type="hidden" name="name" value={name} />
+      <label htmlFor={`alt-${name}`} className="text-xs font-medium">Describe it (alt text)</label>
+      <div className="flex gap-2"><input id={`alt-${name}`} name="alt" maxLength={200} defaultValue={alt} className={`${inputClass} h-9!`} /><Button type="submit" variant="outline" size="md" disabled={pending}>Save</Button></div>
+      {state.error ? <p role="alert" className="text-xs text-destructive">{state.error}</p> : state.saved ? <p role="status" className="text-xs text-success">{state.saved}</p> : null}
     </form>
   );
 }

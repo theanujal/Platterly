@@ -26,6 +26,11 @@ export interface PostDoc {
   /** Markdown. */
   body: string;
   readingMinutes: number;
+  /** Search and sharing, from Platterly Ops. Empty means: use the title, summary and the site picture. */
+  metaTitle?: string | null;
+  metaDescription?: string | null;
+  /** A picture file name from the Ops library, or an https address. */
+  ogImage?: string | null;
 }
 
 export interface Release {
