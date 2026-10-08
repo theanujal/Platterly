@@ -64,7 +64,7 @@ test("catering: every section, the pricing figures and the ten questions", async
 });
 
 test("the people photos and the gradient load, and each feature shows a small designed card, not a whole-page screenshot", async ({ page, request }) => {
-  await page.goto("/");
+  await page.goto("/catering/");
   await loadLazyImages(page);
   const photos = page.locator("#final").locator("xpath=ancestor::section").locator("img");
   await expect(photos).toHaveCount(4);
@@ -385,7 +385,7 @@ test("without motion the same card shows in a plain panel, with no pinning", asy
   await context.close();
 });
 
-test("the four step cards are an accordion: hover one and it widens while the others fold back", async ({ page }) => {
+test("the three step cards are an accordion: hover one and it widens while the others fold back", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/");
   const cards = page.locator("ol.mt-14 > li");
@@ -400,7 +400,7 @@ test("the four step cards are an accordion: hover one and it widens while the ot
   expect(after[2]).toBeGreaterThan(after[1]);
   // regression: a card must stay visible after the hover re-renders it (its "revealed" class used to be wiped)
   for (const card of await cards.all()) await expect(card).toHaveCSS("opacity", "1");
-  await expect(cards.nth(2).getByText("Pending, In Preparation, Ready")).toBeVisible();
+  await expect(cards.nth(2).getByText("Reports on sales and events")).toBeVisible();
   await cards.nth(0).hover();
   await expect.poll(async () => (await widths())[0]).toBeGreaterThan(after[0] + 60);
   for (const card of await cards.all()) await expect(card).toHaveCSS("opacity", "1");
@@ -420,11 +420,11 @@ test("home: a chapter dedicated to Catering, with arrows to the product page and
   await expect(chapter.getByRole("button", { name: "Events and calendar" })).toHaveAttribute("aria-expanded", "false");
 });
 
-test("the closing band shows photo scenes that move on, and stands still for reduced motion", async ({ page, browser }) => {
-  await page.goto("/");
+test("the Catering closing band shows photo scenes that move on, and stands still for reduced motion", async ({ page, browser }) => {
+  await page.goto("/catering/");
   const band = page.locator("section", { has: page.locator("#final") });
   await band.scrollIntoViewIfNeeded();
-  await expect(band.getByRole("heading", { name: "From the first enquiry to the final delivery" })).toBeVisible();
+  await expect(band.getByRole("heading", { name: "Your next event shouldn't start with another spreadsheet." })).toBeVisible();
   const slides = band.locator("figure");
   await expect(slides).toHaveCount(4);
   for (const slide of await slides.all()) expect((await slide.getAttribute("aria-label"))?.length ?? 0).toBeGreaterThan(10);
@@ -440,7 +440,7 @@ test("the closing band shows photo scenes that move on, and stands still for red
 
   const calm = await browser.newContext({ reducedMotion: "reduce" });
   const still = await calm.newPage();
-  await still.goto("/");
+  await still.goto("/catering/");
   const stillBand = still.locator("section", { has: still.locator("#final") });
   await stillBand.scrollIntoViewIfNeeded();
   await still.waitForTimeout(6500);
@@ -489,4 +489,21 @@ test("motion: sections reveal on scroll, and reduced motion or no scripts show e
   await expect(plain.locator("#how")).toBeVisible();
   await expect(plain.locator(".reveal").first()).toHaveCSS("opacity", "1");
   await bare.close();
+});
+
+test("home: the platform band shows what is live and what is next, and only Catering links anywhere", async ({ page }) => {
+  await page.goto("/");
+  const band = page.locator("section[aria-labelledby=platform]");
+  await band.scrollIntoViewIfNeeded();
+  await expect(band.getByRole("heading", { name: /Catering is where we start/ })).toBeVisible();
+  const cards = band.locator("article");
+  await expect(cards).toHaveCount(3);
+  await expect(cards.first()).toContainText("Live now");
+  await expect(cards.first().getByRole("link", { name: /Explore Catering/ })).toHaveAttribute("href", /\/catering\//);
+  await expect(cards.nth(1)).toContainText("Rivo");
+  await expect(cards.nth(1)).toContainText("Coming soon");
+  await expect(band.locator("article a")).toHaveCount(1);
+  const dots = band.getByRole("group", { name: "Choose a product" }).getByRole("button");
+  await dots.nth(1).click();
+  await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
 });

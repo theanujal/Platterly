@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { ArrowRight } from "@/components/icons";
 import { FeatureShowcase } from "@/components/feature-showcase";
-import { PeopleBand } from "@/components/people-band";
+import { PlatformBand } from "@/components/platform-band";
 import { ProductScene } from "@/components/product-scene";
 import { UiCard } from "@/components/ui-cards";
 import { Voices } from "@/components/proof";
 import { Reveal } from "@/components/reveal";
 import { StepCards } from "@/components/step-cards";
 import { ButtonLink, Panel } from "@/components/ui";
+import { PLATFORM } from "@/content/platform";
 import { HOME, HOME_CHAPTER, HOME_SCENE, HOME_STEPS } from "@/content/home";
 import { CATERING_PRODUCT } from "@/content/products";
 import { SITE, TESTIMONIALS } from "@/content/site";
@@ -66,11 +67,11 @@ export default function HomePage() {
 
       <Voices items={TESTIMONIALS} />
 
-      {/* 03 Closing band: a heading, a line, one button, then the scenes */}
-      <PeopleBand eyebrow="Get started" title="From the first enquiry to the final delivery">
-        <p className="text-slate-gray">{HOME.direction.copy}</p>
+      {/* 03 Closing band: where Platterly is today and what is next in line */}
+      <PlatformBand>
+        <p className="text-slate-gray">{PLATFORM.copy}</p>
         <ButtonLink href={SITE.appUrl}>Start for free</ButtonLink>
-      </PeopleBand>
+      </PlatformBand>
     </>
   );
 }
