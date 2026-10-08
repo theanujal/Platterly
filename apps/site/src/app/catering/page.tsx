@@ -101,14 +101,19 @@ export default function CateringPage() {
             {CATERING.useCases.title}
           </h2>
         </Reveal>
-        <Reveal as="ul" className="mt-14 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Reveal as="ul" className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {CATERING.useCases.items.map((item, index) => (
-            <li key={item.title} style={d(index * 100)} className="rv-child lift flex min-h-64 flex-col gap-4 rounded-[28px] p-8 hover:shadow-product" >
-              <span style={productVars(CATERING_PRODUCT)} className="flex size-12 items-center justify-center rounded-xl bg-product text-ink-navy">
-                <Icon name={["calendar", "users", "book", "truck"][index]} className="size-6" />
-              </span>
-              <h3 className="h-sub !text-2xl">{item.title}</h3>
-              <p className="text-base leading-relaxed text-slate-gray">{item.text}</p>
+            <li key={item.title} style={d(index * 100)} className="rv-child lift group flex flex-col overflow-hidden rounded-[32px] bg-paper hover:shadow-product">
+              <div className={`cw-${(["sunrise", "blossom", "citrus", "dusk"] as const)[index]} relative flex aspect-[5/4] items-center justify-center overflow-hidden`}>
+                <div aria-hidden className="bars absolute inset-x-0 top-[24%] h-[52%] opacity-50" />
+                <span className="relative flex size-20 items-center justify-center rounded-[26px] bg-paper shadow-product transition-transform duration-500 ease-calendly group-hover:-translate-y-1 group-hover:scale-105">
+                  <Icon name={["calendar", "clipboard", "users", "truck"][index]} className="size-9 text-brand" />
+                </span>
+              </div>
+              <div className="flex flex-1 flex-col gap-2 p-7">
+                <h3 className="h-sub !text-[1.375rem]">{item.title}</h3>
+                <p className="text-base leading-relaxed text-slate-gray">{item.text}</p>
+              </div>
             </li>
           ))}
         </Reveal>

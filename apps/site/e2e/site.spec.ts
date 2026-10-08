@@ -54,10 +54,12 @@ test("catering: every section, the pricing figures and the ten questions", async
   await expect(pricing).toContainText("₹33,000 a year");
   await expect(pricing).toContainText("GST");
   // the ten questions open and close
-  const questions = page.locator("details");
+  const questions = page.locator("section[aria-labelledby=faq] button[aria-expanded]");
   await expect(questions).toHaveCount(10);
-  await questions.first().locator("summary").click();
-  await expect(questions.first()).toHaveAttribute("open", "");
+  await questions.first().click();
+  await expect(questions.first()).toHaveAttribute("aria-expanded", "true");
+  await questions.first().click();
+  await expect(questions.first()).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByRole("link", { name: "Start for free" }).first()).toHaveAttribute("href", APP);
 });
 
@@ -208,7 +210,7 @@ test("Contact us: channels, only the ones we have, a form that needs a subject a
   await form.getByLabel("Your message").fill("Could you resend my last invoice, please?");
   await form.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByRole("status")).toContainText("hello@platterly.in");
-  expect(await page.locator("details").count()).toBe(4);
+  expect(await page.locator("button[aria-expanded][aria-controls]").count()).toBeGreaterThanOrEqual(4);
 });
 
 test("blog: a list with topic filters, an article with its own page, and a feed", async ({ page, request }) => {

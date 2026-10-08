@@ -17,10 +17,7 @@ export const CATERING = {
     groups: [
       { id: "events", icon: "calendar", title: "Events", text: "Manage dates, guests, meals and event details, including multi-day events.", card: "calendar" },
       { id: "menus", icon: "book", title: "Menus", text: "Create menus, assign meals and organise selections for every event.", card: "menu" },
-      { id: "customers", icon: "users", title: "Customers", text: "Manage enquiries, customers and each customer's event history.", card: "customers" },
-      { id: "orders", icon: "clipboard", title: "Orders", text: "Track orders from pending to delivered.", card: "orders" },
       { id: "kitchen", icon: "chef", title: "Kitchen", text: "Give the team a clear operational view of what to prepare and when.", card: "kitchen" },
-      { id: "transport", icon: "truck", title: "Transport", text: "Manage delivery requirements and transport pricing.", card: "staffing" },
       { id: "payments", icon: "wallet", title: "Payments", text: "Track payment status and outstanding amounts.", card: "payment" },
     ] satisfies ShowcaseItem[],
   },
