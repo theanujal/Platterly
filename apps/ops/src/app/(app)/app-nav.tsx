@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Boxes, Building2, Crown, LayoutDashboard, LogOut, Megaphone, Receipt, BarChart3 } from "lucide-react";
+import { Bell, Boxes, Building2, Crown, Globe, LayoutDashboard, LogOut, Megaphone, Receipt, BarChart3 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 const ITEMS = [
@@ -13,6 +13,7 @@ const ITEMS = [
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/notices", label: "Sidebar notice", icon: Megaphone },
+  { href: "/site", label: "Website", icon: Globe },
   { href: "/alerts", label: "Alerts", icon: Bell },
 ] as const;
 

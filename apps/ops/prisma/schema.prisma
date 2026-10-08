@@ -468,3 +468,68 @@ model PlatformBillingProfile {
 
   @@map("platform_billing_profile")
 }
+
+// ---- Marketing site content (platterly.in). The site fetches this at build time from /api/site/content. ----
+
+// Small one-row settings: key "notice" (the bar above the header), "contact" (how people reach us) and "changed" (when
+// anything on the site last changed, so the screen can say there is something to publish).
+model SiteSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("site_setting")
+}
+
+// What's new. Dates are ISO days (2026-10-04), as the site reads them.
+model SiteRelease {
+  id        String   @id
+  date      String
+  title     String
+  body      String
+  kind      String   @default("new")
+  updatedAt DateTime @updatedAt
+
+  @@map("site_release")
+}
+
+model SitePost {
+  slug      String   @id
+  title     String
+  excerpt   String
+  date      String
+  author    String   @default("The Platterly team")
+  // The post's categories, shown as tags on the blog.
+  tags      String[]
+  colourway String   @default("sunrise")
+  body      String
+  updatedAt DateTime @updatedAt
+
+  @@map("site_post")
+}
+
+// The legal pages: privacy, terms, refund, cookie-policy, shipping-and-delivery, security.
+model SiteLegalPage {
+  slug      String   @id
+  title     String
+  summary   String
+  updated   String
+  body      String
+  updatedAt DateTime @updatedAt
+
+  @@map("site_legal_page")
+}
+
+// One row per press of "Publish". The site's deploy script reports back and the row ends SUCCEEDED or FAILED.
+model SitePublish {
+  id          String    @id @default(cuid())
+  requestedBy String?
+  // REQUESTED -> SUCCEEDED | FAILED
+  status      String    @default("REQUESTED")
+  message     String?
+  requestedAt DateTime  @default(now())
+  finishedAt  DateTime?
+
+  @@index([requestedAt])
+  @@map("site_publish")
+}

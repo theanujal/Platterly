@@ -15,3 +15,4 @@
 | Ops app (`apps/ops`) | Own database and `prisma migrate deploy`; `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`; Nginx routes `ops.platterly.in` to it; staff created with `npm run ops:create-staff` |
 | Cron for the ops link | Same `/api/cron/daily` job; every minute or two so events are retried and a first catch-up drains (50 per run) |
 | Billing cutover (`OPS_BILLING=1`) | Only after: catering backup, `ops:import-catering` dry run then `--apply` (raises ops invoice sequence), ops `RAZORPAY_*` + webhook `/api/webhooks/razorpay`, ops cron every minute or two, then a real sign-up and payment check. Roll back by unsetting it. |
+| Marketing site publish (`docs/site-publish.md`) | Ops `SITE_SECRET` + `SITE_DEPLOY_HOOK_URL`; the hook (`scripts/site-deploy-hook.mjs`) running on the VPS with the same secret; Nginx root `.../current`; `npm run ops:import-site -- --apply` once before the first Publish |

@@ -4,7 +4,7 @@ import { EnquiryForm } from "@/components/enquiry-form";
 import { Faq } from "@/components/faq";
 import { PageHero } from "@/components/page-hero";
 import { Reveal } from "@/components/reveal";
-import { CONTACT } from "@/content/site";
+import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Contact us",
@@ -12,14 +12,16 @@ export const metadata: Metadata = {
   alternates: { canonical: "/contact/" },
 };
 
-const FAQ = [
-  { q: "How quickly will you reply?", a: `${CONTACT.reply} If your message is about something that is stopping you from running an event, say so in the subject and we will look at it first.` },
+const faqFor = (reply: string) => [
+  { q: "How quickly will you reply?", a: `${reply} If your message is about something that is stopping you from running an event, say so in the subject and we will look at it first.` },
   { q: "I would like to see Catering by Platterly. What should I do?", a: "Use the Talk to us page. A person will call you back, show you around and answer your questions. You can also create a free account and look around on your own for seven days." },
   { q: "I cannot sign in. Can you help?", a: "Use Forgot password on the sign-in page to get a one-time code by email. If that does not work, write to us from the email address on your account and tell us your kitchen name." },
   { q: "Where do I send a question about an invoice?", a: "Write to us from the email address on your account with the invoice number and your kitchen name, choosing Billing or an invoice as the subject." },
 ];
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const CONTACT = await getContact();
+  const FAQ = faqFor(CONTACT.reply);
   const channels = [
     { icon: Mail, title: "Email", value: CONTACT.email, href: `mailto:${CONTACT.email}`, note: CONTACT.reply },
     CONTACT.phone && { icon: Phone, title: "Phone", value: CONTACT.phone, href: `tel:${CONTACT.phone.replace(/\s/g, "")}`, note: "During business hours." },
@@ -70,7 +72,7 @@ export default function ContactPage() {
             <div className="rounded-[30px] bg-paper p-6 shadow-product sm:p-10">
               <h2 className="h-sub">Send us a message</h2>
               <p className="mb-8 mt-2 text-slate-gray">Tell us what you need and we will come back to you.</p>
-              <EnquiryForm kind="contact" />
+              <EnquiryForm kind="contact" contact={CONTACT} />
             </div>
           </div>
         </Reveal>

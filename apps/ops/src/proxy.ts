@@ -5,7 +5,7 @@ import type { NextRequest } from "next/server";
  * Optimistic gate only: a request with no session cookie goes to the sign-in page. Real authorisation happens in each
  * page and action (`requireStaff`). The API routes answer for themselves: auth, health, and the signed product events.
  */
-const PUBLIC_PREFIXES = ["/sign-in", "/api/auth", "/api/health", "/api/products", "/api/webhooks", "/api/cron"];
+const PUBLIC_PREFIXES = ["/sign-in", "/api/auth", "/api/health", "/api/products", "/api/webhooks", "/api/cron", "/api/site"];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

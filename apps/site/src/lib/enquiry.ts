@@ -1,5 +1,3 @@
-import { CONTACT } from "@/content/site";
-
 export type EnquiryKind = "talk" | "contact";
 
 export interface EnquiryValues {
@@ -42,19 +40,19 @@ export function validateEnquiry(kind: EnquiryKind, input: EnquiryValues): Enquir
 /** Where an enquiry goes: a form endpoint when one is set at build time (Platterly Ops, later), otherwise a ready-written email to us. */
 export const ENQUIRY_ENDPOINT = process.env.NEXT_PUBLIC_ENQUIRY_ENDPOINT ?? "";
 
-export function enquiryMailto(kind: EnquiryKind, input: EnquiryValues): string {
+export function enquiryMailto(kind: EnquiryKind, input: EnquiryValues, toEmail: string): string {
   const subject = kind === "talk" ? "Talk to us: Catering by Platterly" : `Contact: ${input.subject}`;
   const lines = [`Name: ${input.name.trim()}`, `Email: ${input.email.trim()}`];
   if (input.phone.trim()) lines.push(`Phone: ${input.phone.trim()}`);
   if (input.businessType) lines.push(`Business: ${input.businessType}`);
   lines.push("", input.message.trim());
-  return `mailto:${CONTACT.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
+  return `mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join("\n"))}`;
 }
 
 /** "sent" when it reached our form endpoint, "email" when it opened the visitor's email app instead. Throws if the endpoint refuses it. */
-export async function submitEnquiry(kind: EnquiryKind, input: EnquiryValues): Promise<"sent" | "email"> {
+export async function submitEnquiry(kind: EnquiryKind, input: EnquiryValues, toEmail: string): Promise<"sent" | "email"> {
   if (!ENQUIRY_ENDPOINT) {
-    window.location.href = enquiryMailto(kind, input);
+    window.location.href = enquiryMailto(kind, input, toEmail);
     return "email";
   }
   const payload = { kind, ...Object.fromEntries(Object.entries(input).map(([k, v]) => [k, v.trim()])), page: window.location.pathname, source: "platterly.in" };

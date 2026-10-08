@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: ".",
-  testMatch: "ops.spec.ts",
+  testMatch: /(ops|site)\.spec\.ts/,
   workers: 1,
   reporter: [["list"]],
   expect: { timeout: 10_000 },

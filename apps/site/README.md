@@ -28,11 +28,11 @@ A static site, separate from the catering app: its own `package.json`, lockfile,
 Taken from calendly.com's current design (midnight buttons on warm magnolia, linen panels, Geist). Platterly's own orange and peach where Calendly uses blue; Catering's tile is the app's `#ff6900`. See `DESIGN-SYSTEM.md`. Pages live in two route groups: `src/app/(brand)` and `src/app/catering`, each with its own layout.
 
 ## Where things live
-- **Content** is read through one module, `src/lib/content.ts` (`getNotice`, `getPage`, `getPosts`, `getPost`, `getReleases`, `getUpcoming`). Today it reads files; when Platterly Ops gets its content area, the same functions call Ops and no page changes.
-  - Policy and information pages: Markdown in `src/content/pages/*.md` (front matter: title, summary, updated). A lawyer can edit these directly.
+- **Content** is read through one module, `src/lib/content.ts` (`getNotice`, `getContact`, `getPage`, `getPosts`, `getPost`, `getReleases`, `getUpcoming`). The notice bar, contact details, What's new, the blog (with categories) and the six legal pages are **managed in Platterly Ops** (Website). When `OPS_CONTENT_URL` and `SITE_SECRET` are set, `scripts/fetch-content.mjs` fetches them before `dev` and `build` (and fails the build if Ops refuses); with neither set, the files below are used, which is also what CI does. Publishing from Ops: `../../docs/site-publish.md`.
+  - Policy and information pages: Markdown in `src/content/pages/*.md` (front matter: title, summary, updated). Used when Ops is not configured.
   - Blog posts: Markdown in `src/content/posts/*.md` (front matter: title, excerpt, date, author, tags, colourway).
-  - The top notice: `src/content/notice.ts` (`enabled: false` hides it). What's new: `src/content/releases.ts`. Upcoming: `src/content/upcoming.ts`.
-  - Contact details, company details: `src/content/site.ts`. Phone, WhatsApp and hours on the Contact page appear only when filled in there.
+  - The top notice: `src/content/notice.ts` (`enabled: false` hides it). What's new: `src/content/releases.ts`. Upcoming: `src/content/upcoming.ts` (not managed in Ops yet).
+  - Contact details: `CONTACT` in `src/content/site.ts`. Company details and the address in the footer and About page (`SITE`, `COMPANY`) are code, not Ops. Phone, WhatsApp and hours on the Contact page appear only when filled in.
   - Home and Catering page text: `src/content/home.ts`, `catering.ts`. Pricing: `catering.ts` (typed from the product's plans; ops will own it later).
 - The people photos and the gradient are in `public/media` (credits in `public/media/people/CREDITS.md`). The product visuals are small designed cards (`src/components/ui-cards.tsx`), not screenshots.
 - Legal pages are plain-language **drafts for a lawyer to review before launch**, written for Fragen Network Private Limited, Bangalore. No refunds; the account is paused 7 days after a missed payment.

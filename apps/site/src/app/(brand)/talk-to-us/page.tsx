@@ -4,6 +4,7 @@ import { PageHero } from "@/components/page-hero";
 import { Reveal } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
 import { SITE } from "@/content/site";
+import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Talk to us",
@@ -17,7 +18,8 @@ const STEPS = [
   { title: "You try it free", text: "Every account starts with seven days of full access and no card. Bring your own events and see if it fits." },
 ];
 
-export default function TalkToUsPage() {
+export default async function TalkToUsPage() {
+  const contact = await getContact();
   return (
     <>
       <PageHero eyebrow="Talk to us" title="Let's see how Platterly fits your kitchen">
@@ -50,7 +52,7 @@ export default function TalkToUsPage() {
             <div className="rounded-[30px] bg-paper p-6 shadow-product sm:p-10">
               <h2 className="h-sub">Request a call</h2>
               <p className="mb-8 mt-2 text-slate-gray">It takes a minute.</p>
-              <EnquiryForm kind="talk" />
+              <EnquiryForm kind="talk" contact={contact} />
             </div>
           </div>
         </Reveal>

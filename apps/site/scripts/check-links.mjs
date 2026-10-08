@@ -56,11 +56,7 @@ for (const page of pages) {
   }
 }
 
-// every file the content refers to by name: the people photos and the gradient
-const people = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "content", "people.ts"), "utf8");
-for (const match of people.matchAll(/photo: "([a-z-]+)"/g)) {
-  if (!existsSync(join(out, "media", "people", `${match[1]}.webp`))) problems.push(`media: missing people/${match[1]}.webp`);
-}
+// files the pages refer to by name
 if (!existsSync(join(out, "media", "gradient.webp"))) problems.push("media: missing gradient.webp");
 for (const required of ["sitemap.xml", "robots.txt", "og.png", "platterly-logo.svg"]) if (!existsSync(join(out, required))) problems.push(`missing ${required}`);
 

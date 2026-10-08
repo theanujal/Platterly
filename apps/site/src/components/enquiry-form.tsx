@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
-import { CONTACT } from "@/content/site";
 import { BUSINESS_TYPES, EMPTY_ENQUIRY, SUBJECTS, submitEnquiry, validateEnquiry, type EnquiryErrors, type EnquiryKind, type EnquiryValues } from "@/lib/enquiry";
 
 const INPUT = "mt-2 block min-h-12 w-full rounded-[12px] border border-ink-navy/25 bg-paper px-4 py-3 text-base text-ink-navy outline-none transition-colors duration-150 placeholder:text-slate-gray/70 hover:border-ink-navy/50 focus:border-ink-navy focus:ring-2 focus:ring-ink-navy/20 aria-[invalid=true]:border-[#b3261e]";
@@ -27,7 +26,7 @@ function Field({ id, label, optional, error, children }: { id: string; label: st
  * see; no timing tricks that could swallow a real person's message), and sends to the form endpoint when there is one,
  * otherwise opens a ready-written email so nothing is lost.
  */
-export function EnquiryForm({ kind }: { kind: EnquiryKind }) {
+export function EnquiryForm({ kind, contact }: { kind: EnquiryKind; contact: { email: string; reply: string } }) {
   const [values, setValues] = useState<EnquiryValues>(EMPTY_ENQUIRY);
   const [errors, setErrors] = useState<EnquiryErrors>({});
   const [state, setState] = useState<"idle" | "sending" | "sent" | "email" | "failed">("idle");
@@ -48,7 +47,7 @@ export function EnquiryForm({ kind }: { kind: EnquiryKind }) {
     }
     setState("sending");
     try {
-      setState(await submitEnquiry(kind, values));
+      setState(await submitEnquiry(kind, values, contact.email));
     } catch {
       setState("failed");
     }
@@ -59,7 +58,7 @@ export function EnquiryForm({ kind }: { kind: EnquiryKind }) {
       <div role="status" className="rounded-[24px] bg-badge-fill p-8">
         <h2 className="h-sub">{state === "sent" ? "Thank you, we have it." : "One last step: send the email."}</h2>
         <p className="mt-3 text-lg leading-relaxed text-slate-gray">
-          {state === "sent" ? CONTACT.reply : `We opened an email to ${CONTACT.email} with your details filled in. Press send in your email app to reach us.`}
+          {state === "sent" ? contact.reply : `We opened an email to ${contact.email} with your details filled in. Press send in your email app to reach us.`}
         </p>
       </div>
     );
@@ -110,14 +109,14 @@ export function EnquiryForm({ kind }: { kind: EnquiryKind }) {
       </div>
       {state === "failed" && (
         <p role="alert" className="text-sm text-[#b3261e]">
-          That did not go through. Please try again, or email us at <a className="underline" href={`mailto:${CONTACT.email}`}>{CONTACT.email}</a>.
+          That did not go through. Please try again, or email us at <a className="underline" href={`mailto:${contact.email}`}>{contact.email}</a>.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-4">
         <button type="submit" disabled={state === "sending"} className="inline-flex min-h-12 items-center justify-center rounded-button bg-ink-navy px-6 py-2.5 text-base font-medium text-cloud transition-colors duration-150 hover:bg-[#1b2f48] disabled:opacity-60">
           {state === "sending" ? "Sending…" : kind === "talk" ? "Request a call" : "Send message"}
         </button>
-        <p className="text-sm text-slate-gray">{CONTACT.reply}</p>
+        <p className="text-sm text-slate-gray">{contact.reply}</p>
       </div>
     </form>
   );

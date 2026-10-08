@@ -7,3 +7,5 @@ test-results/
 playwright-report/
 # raw capture output (the optimised files in public/media are the ones kept)
 scripts/.raw/
+# content fetched from Platterly Ops before each build (scripts/fetch-content.mjs)
+src/content/.ops/
