@@ -1,4 +1,5 @@
 import "server-only";
+import { notifySafely } from "@/modules/notifications/notifications";
 import { randomBytes } from "node:crypto";
 import type { BillingView, Buyer, CheckoutAnswer, PlanOffer, PriceView } from "@platterly/contract";
 import type { Prisma } from "@/generated/prisma/client";
@@ -198,6 +199,7 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
   } catch (error) {
     console.error("[billing] could not issue a snapshot after payment", payment.id, error);
   }
+  await notifySafely({ productKey, businessId, kind: "payment.received", title: "Payment received", body: `${payment.plan.name}: ₹${Number(payment.total).toLocaleString("en-IN")} (invoice ${invoiceNumber}).`, link: `/payments/${payment.id}`, dedupeKey: `payment_received:${payment.id}` });
   await tellOwner({
     businessId,
     productKey,
@@ -213,6 +215,7 @@ export async function failPayment(razorpayOrderId: string) {
   if (!payment) return;
   const failed = await prisma.subscriptionPayment.updateMany({ where: { id: payment.id, status: "PENDING" }, data: { status: "FAILED" } });
   // Only the call that flips PENDING to FAILED tells the owner, so a repeated webhook sends one email.
+  if (failed.count > 0) await notifySafely({ productKey: payment.productKey, businessId: payment.businessId, kind: "payment.failed", severity: "WARNING", title: "A payment failed", body: `A ${payment.plan.name} payment did not go through. The business has been told.`, link: `/payments/${payment.id}`, dedupeKey: `payment_failed:${payment.id}` });
   if (failed.count > 0) await tellOwner({ businessId: payment.businessId, productKey: payment.productKey, template: "payment_failed", variables: { planName: payment.plan.name }, dedupeKey: `payment_failed:${payment.id}` });
 }
 

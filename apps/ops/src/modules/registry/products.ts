@@ -1,4 +1,5 @@
 import "server-only";
+import { notifySafely } from "@/modules/notifications/notifications";
 import { isProductKey, newId, parseManifest, signedHeaders, verifyRequest, type ProductManifest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { derivePrefix } from "@/modules/billing/numbering";
@@ -98,6 +99,7 @@ export async function refreshManifest(key: string, actorUserId: string | null, f
 
   const fail = async (error: string) => {
     await prisma.product.update({ where: { key }, data: { manifestError: error } });
+    if (product.manifestFetchedAt) await notifySafely({ productKey: key, kind: "product.manifest_failed", severity: "WARNING", title: `${product.name} could not be read`, body: error, link: `/settings/products/${key}`, dedupeKey: `manifest:${key}:${error.slice(0, 80)}` });
     return { ok: false as const, error };
   };
 
@@ -132,4 +134,20 @@ export async function refreshManifest(key: string, actorUserId: string | null, f
   } catch (error) {
     return await fail(error instanceof Error ? `Could not reach the product: ${error.message}` : "Could not reach the product.");
   }
+}
+
+/**
+ * The scheduled manifest check: every active product is read again once a day, and one that has never been read (it is still
+ * being connected) is tried every ten minutes. Returns how many products were read successfully.
+ */
+export async function refreshDueManifests(now: Date = new Date(), fetchImpl: typeof fetch = fetch): Promise<number> {
+  const day = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const tenMinutes = new Date(now.getTime() - 10 * 60 * 1000);
+  const due = await prisma.product.findMany({
+    where: { status: "ACTIVE", OR: [{ manifestFetchedAt: { lt: day } }, { manifestFetchedAt: null, updatedAt: { lt: tenMinutes } }] },
+    select: { key: true },
+  });
+  let read = 0;
+  for (const { key } of due) if ((await refreshManifest(key, null, fetchImpl)).ok) read += 1;
+  return read;
 }

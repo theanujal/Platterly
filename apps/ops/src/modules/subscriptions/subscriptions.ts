@@ -1,4 +1,5 @@
 import "server-only";
+import { notifySafely } from "@/modules/notifications/notifications";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { tellOwner } from "@/modules/messages/messages";
@@ -71,6 +72,7 @@ export async function sweepExpired(now: Date = new Date(), productKey?: string):
     } catch (error) {
       console.error("[ops subscriptions] could not issue after lock", sub.businessId, error);
     }
+    if (sub.status === "TRIALING") await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "trial.ended", title: "A trial ended", body: "The trial ended without a paid plan, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `trial_ended:${sub.id}` });
     if (sub.status === "TRIALING") await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "trial_ended", dedupeKey: `trial:${sub.id}:ended` });
   }
   return due.length;
@@ -89,6 +91,7 @@ export async function sendTrialNotices(now: Date = new Date(), productKey?: stri
   for (const trial of trials) {
     const daysLeft = Math.ceil((trial.trialEndsAt!.getTime() - now.getTime()) / DAY);
     const stage = daysLeft <= 1 ? 1 : 3;
+    await notifySafely({ productKey: trial.productKey, businessId: trial.businessId, kind: "trial.ending", severity: "WARNING", title: stage === 1 ? "A trial ends tomorrow" : "A trial ends in 3 days", body: "No paid plan yet. The business has been emailed.", link: `/businesses/${trial.businessId}`, dedupeKey: `trial_ending:${trial.id}:${stage}` });
     await tellOwner({ businessId: trial.businessId, productKey: trial.productKey, template: "trial_ending", variables: { daysLeft: stage }, dedupeKey: `trial:${trial.id}:${stage}` });
     sent += 1;
   }

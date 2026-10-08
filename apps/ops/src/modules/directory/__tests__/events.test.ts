@@ -36,7 +36,7 @@ describe("receiveEvent", () => {
   });
   afterAll(clean);
 
-  it("creates the business, links it to the product and raises an info alert on sign-up", async () => {
+  it("creates the business, links it to the product and raises an info notification on sign-up", async () => {
     const body = signup();
     const reply = await send(body);
     expect(reply.status).toBe(200);
@@ -44,7 +44,7 @@ describe("receiveEvent", () => {
     expect(business.name).toBe("EvTest Spice Co");
     expect(business.ownerEmail).toBe("asha@example.com");
     expect(business.products.map((p) => p.productKey)).toEqual([A]);
-    expect(await prisma.alert.count({ where: { businessId: business.id, code: "business.signed_up", severity: "INFO" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { businessId: business.id, kind: "business.signed_up", severity: "INFO" } })).toBe(1);
   });
 
   it("accepts the same event twice but applies it once (a retry reuses the event id)", async () => {
@@ -53,7 +53,7 @@ describe("receiveEvent", () => {
     const again = await send(body);
     expect(again.status).toBe(200);
     expect(again.body).toMatchObject({ duplicate: true });
-    expect(await prisma.alert.count({ where: { businessId: String(body.businessId) } })).toBe(1);
+    expect(await prisma.notification.count({ where: { businessId: String(body.businessId) } })).toBe(1);
     expect(await prisma.inboundEvent.count({ where: { eventId: String(body.eventId) } })).toBe(1);
   });
 
@@ -108,20 +108,20 @@ describe("receiveEvent", () => {
     expect((await prisma.inboundEvent.findUniqueOrThrow({ where: { eventId: String(hijack.eventId) } })).error).toMatch(/unknown business/);
   });
 
-  it("updates the owner email, and raises alerts with their severity", async () => {
+  it("updates the owner email, and raises notifications with their severity", async () => {
     const su = signup();
     await send(su);
     await send(event("owner.changed", { ownerEmail: "new@example.com" }, { businessId: su.businessId }));
     expect((await prisma.business.findUniqueOrThrow({ where: { id: String(su.businessId) } })).ownerEmail).toBe("new@example.com");
     await send(event("alert.raised", { severity: "critical", code: "db.down", message: "Database unreachable" }, { businessId: su.businessId }));
-    expect(await prisma.alert.count({ where: { businessId: String(su.businessId), severity: "CRITICAL", code: "db.down" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { businessId: String(su.businessId), severity: "CRITICAL", kind: "db.down" } })).toBe(1);
   });
 
-  it("a repeated sign-up raises no second alert, and business.updated renames the business", async () => {
+  it("a repeated sign-up raises no second notification, and business.updated renames the business", async () => {
     const su = signup();
     await send(su);
     await send(signup({ businessId: su.businessId }));
-    expect(await prisma.alert.count({ where: { businessId: String(su.businessId), code: "business.signed_up" } })).toBe(1);
+    expect(await prisma.notification.count({ where: { businessId: String(su.businessId), kind: "business.signed_up" } })).toBe(1);
     expect((await send(event("business.updated", { businessName: "EvTest Renamed", ownerName: "Asha K" }, { businessId: su.businessId }))).status).toBe(200);
     const business = await prisma.business.findUniqueOrThrow({ where: { id: String(su.businessId) } });
     expect(business.name).toBe("EvTest Renamed");
@@ -131,11 +131,11 @@ describe("receiveEvent", () => {
     expect((await prisma.business.findUniqueOrThrow({ where: { id: String(su.businessId) } })).name).toBe("EvTest Renamed");
   });
 
-  it("a backfilled business is recorded without a sign-up alert", async () => {
+  it("a backfilled business is recorded without a sign-up notification", async () => {
     const body = event("business.signed_up", { businessName: "EvTest Old Kitchen", ownerName: "Asha", ownerEmail: "old@example.com", backfill: true });
     expect((await send(body)).status).toBe(200);
     expect(await prisma.business.count({ where: { id: String(body.businessId) } })).toBe(1);
-    expect(await prisma.alert.count({ where: { businessId: String(body.businessId) } })).toBe(0);
+    expect(await prisma.notification.count({ where: { businessId: String(body.businessId) } })).toBe(0);
   });
 
   it("sends a message request through ops and logs it", async () => {

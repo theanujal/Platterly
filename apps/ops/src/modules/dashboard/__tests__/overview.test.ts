@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { countUnread, listNotifications } from "@/modules/notifications/notifications";
+import { listBusinesses } from "@/modules/directory/businesses";
 import { getOverview } from "../overview";
 
 const KEY = "dashtest";
@@ -45,5 +47,26 @@ describe("overview", () => {
     expect(after.subscriptions.locked - before.subscriptions.locked).toBe(1);
     expect(after.trialsEndingSoon.some((t) => t.name === "DashTest Trial Soon" && t.productKey === KEY)).toBe(true);
     expect(after.products.find((p) => p.key === KEY)).toEqual({ key: KEY, name: "Dash Test", businesses: 4, usage: { orders: 15, events: 3 } });
+  });
+
+  it("scopes every figure to one product when the sidebar has one picked", async () => {
+    // Left over from the test above: KEY has 4 businesses (2 active, 1 suspended, 1 pending delete), 1 trial, 1 paying, 1 locked.
+    await prisma.notification.create({ data: { productKey: KEY, severity: "WARNING", kind: "dash.test", title: "DASH_TEST", body: "scoped", businessId: ids[0] } });
+    const only = await getOverview(now, KEY);
+    expect(only.businesses).toEqual({ total: 4, active: 2, suspended: 1, pendingDelete: 1, newThisWeek: 1 });
+    expect(only.subscriptions).toEqual({ trialing: 1, paying: 1, locked: 1 });
+    expect(only.products.map((p) => p.key)).toEqual([KEY]);
+    expect(only.trialsEndingSoon.every((t) => t.productKey === KEY)).toBe(true);
+
+    const none = await getOverview(now, "no-such-product");
+    expect(none.businesses.total).toBe(0);
+    expect(none.products).toEqual([]);
+
+    expect((await listBusinesses({ productKey: KEY })).total).toBe(4);
+    expect((await listNotifications({ productKey: KEY })).map((a) => a.title)).toEqual(["DASH_TEST"]);
+    expect(await countUnread(KEY)).toBe(1);
+    expect(await listNotifications({ productKey: "no-such-product" })).toEqual([]);
+    expect(await countUnread("no-such-product")).toBe(0);
+    await prisma.notification.deleteMany({ where: { productKey: KEY } });
   });
 });

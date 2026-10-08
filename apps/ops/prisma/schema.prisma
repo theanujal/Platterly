@@ -116,6 +116,7 @@ model Product {
   businesses    BusinessProduct[]
   events        InboundEvent[]
   alerts        Alert[]
+  notifications Notification[]
   commands      OutboundCommand[]
   plans         Plan[]
   subscriptions Subscription[]
@@ -148,6 +149,7 @@ model Business {
 
   products      BusinessProduct[]
   alerts        Alert[]
+  notifications Notification[]
   subscriptions Subscription[]
   payments      SubscriptionPayment[]
 
@@ -532,4 +534,28 @@ model SitePublish {
 
   @@index([requestedAt])
   @@map("site_publish")
+}
+
+// What staff are told: a business signed up, a payment failed, a trial is ending, a product reported a problem, a publish
+// finished. Replaces Alert (kept, unused, until a reviewed migration drops it). `productKey` is empty for platform-wide
+// news (a site publish); `readAt` is shared by every staff member.
+model Notification {
+  id         String        @id @default(cuid())
+  productKey String?
+  product    Product?      @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  businessId String?
+  business   Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  kind       String
+  severity   AlertSeverity @default(INFO)
+  title      String
+  body       String
+  link       String?
+  // One notification per fact: a repeated job or webhook with the same key adds nothing.
+  dedupeKey  String?       @unique
+  createdAt  DateTime      @default(now())
+  readAt     DateTime?
+
+  @@index([readAt, createdAt])
+  @@index([productKey, createdAt])
+  @@map("notification")
 }

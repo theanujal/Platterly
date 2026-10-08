@@ -8,21 +8,24 @@ const DAY = 86_400_000;
  * many are new, how many subscriptions are trials and how many paid, which trials end soon, and one row per product with
  * the usage counts its businesses last reported. All from ops's own records.
  */
-export async function getOverview(now: Date = new Date()) {
+export async function getOverview(now: Date = new Date(), productKey?: string) {
+  // One product picked in the sidebar: every figure below is about that product only.
+  const ofProduct = productKey ? { products: { some: { productKey } } } : {};
+  const subs = productKey ? { productKey } : {};
   const [byStatus, newThisWeek, trialing, paying, locked, endingSoon, products, usage] = await Promise.all([
-    prisma.business.groupBy({ by: ["status"], _count: true }),
-    prisma.business.count({ where: { createdAt: { gte: new Date(now.getTime() - 7 * DAY) } } }),
-    prisma.subscription.count({ where: { status: "TRIALING", endDate: null } }),
-    prisma.subscription.count({ where: { status: "ACTIVE", endDate: null, plan: { isTrial: false } } }),
-    prisma.subscription.count({ where: { status: "LOCKED", endDate: null } }),
+    prisma.business.groupBy({ by: ["status"], where: ofProduct, _count: true }),
+    prisma.business.count({ where: { ...ofProduct, createdAt: { gte: new Date(now.getTime() - 7 * DAY) } } }),
+    prisma.subscription.count({ where: { ...subs, status: "TRIALING", endDate: null } }),
+    prisma.subscription.count({ where: { ...subs, status: "ACTIVE", endDate: null, plan: { isTrial: false } } }),
+    prisma.subscription.count({ where: { ...subs, status: "LOCKED", endDate: null } }),
     prisma.subscription.findMany({
-      where: { status: "TRIALING", endDate: null, trialEndsAt: { not: null, lte: new Date(now.getTime() + 7 * DAY) } },
+      where: { ...subs, status: "TRIALING", endDate: null, trialEndsAt: { not: null, lte: new Date(now.getTime() + 7 * DAY) } },
       orderBy: { trialEndsAt: "asc" },
       take: 5,
       select: { businessId: true, productKey: true, trialEndsAt: true, business: { select: { name: true } } },
     }),
-    prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, select: { key: true, name: true, _count: { select: { businesses: true } } } }),
-    prisma.businessProduct.findMany({ select: { productKey: true, usage: true } }),
+    prisma.product.findMany({ where: { status: "ACTIVE", ...(productKey ? { key: productKey } : {}) }, orderBy: { name: "asc" }, select: { key: true, name: true, _count: { select: { businesses: true } } } }),
+    prisma.businessProduct.findMany({ where: subs, select: { productKey: true, usage: true } }),
   ]);
   const count = (status: string) => byStatus.find((s) => s.status === status)?._count ?? 0;
   const totals = new Map<string, Record<string, number>>();

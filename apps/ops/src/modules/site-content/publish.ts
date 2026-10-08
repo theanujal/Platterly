@@ -2,6 +2,7 @@ import "server-only";
 import { signedHeaders } from "@platterly/contract";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
+import { notifySafely } from "@/modules/notifications/notifications";
 
 /**
  * Publishing the site. The site is built into plain files, so a change only goes live when it is rebuilt: Publish asks the
@@ -44,6 +45,7 @@ export async function recordPublishResult(publishId: string, ok: boolean, messag
     where: { id: publishId, status: "REQUESTED" },
     data: { status: ok ? "SUCCEEDED" : "FAILED", message: message?.slice(0, 500) ?? null, finishedAt: new Date() },
   });
+  if (done.count) await notifySafely({ kind: "site.publish", severity: ok ? "INFO" : "WARNING", title: ok ? "Website published" : "Website publish failed", body: ok ? "platterly.in now shows the latest text." : (message ?? "The build failed."), link: "/site", dedupeKey: `site_publish:${publishId}` });
   if (done.count) await audit({ actorUserId: null, action: ok ? "site.publish.succeeded" : "site.publish.failed", subject: publishId, detail: { message } });
   return done.count > 0;
 }

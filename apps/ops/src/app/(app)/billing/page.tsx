@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Badge, Empty, PageHeader, Table, formatWhen } from "@/components/ui";
 import { formatInvoiceNumber } from "@/modules/billing/math";
+import { getSelectedProduct } from "@/lib/selected-product";
 import { getProfile } from "@/modules/billing/profile";
 import { platformRazorpay } from "@/modules/billing/razorpay";
 import { ProfileForm } from "./profile-form";
@@ -12,10 +13,11 @@ export const metadata = { title: "Billing" };
 const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function BillingPage() {
+  const selected = await getSelectedProduct();
   const [profile, payments, products] = await Promise.all([
     getProfile(),
-    prisma.subscriptionPayment.findMany({ where: { status: "PAID" }, orderBy: { paidAt: "desc" }, take: 50, include: { business: { select: { id: true, name: true } }, plan: { select: { name: true } }, product: { select: { name: true } } } }),
-    prisma.product.findMany({ orderBy: { name: "asc" }, select: { key: true, name: true, invoicePrefix: true, invoiceCounter: { select: { lastNumber: true } } } }),
+    prisma.subscriptionPayment.findMany({ where: { status: "PAID", ...(selected ? { productKey: selected.key } : {}) }, orderBy: { paidAt: "desc" }, take: 50, include: { business: { select: { id: true, name: true } }, plan: { select: { name: true } }, product: { select: { name: true } } } }),
+    prisma.product.findMany({ where: selected ? { key: selected.key } : {}, orderBy: { name: "asc" }, select: { key: true, name: true, invoicePrefix: true, invoiceCounter: { select: { lastNumber: true } } } }),
   ]);
   const numbering = products.map((p) => ({ key: p.key, name: p.name, issued: p.invoiceCounter?.lastNumber ?? 0, preview: formatInvoiceNumber(p.invoicePrefix ?? profile.invoicePrefix, "Example Business", new Date(), (p.invoiceCounter?.lastNumber ?? 0) + 1) }));
   const razorpay = platformRazorpay();
@@ -40,7 +42,7 @@ export default async function BillingPage() {
         </div>
       </div>
 
-      <h2 className="mb-3 text-base font-semibold">Payments received</h2>
+      <h2 className="mb-3 text-base font-semibold">Payments received{selected ? ` on ${selected.name}` : ""}</h2>
       {payments.length === 0 ? (
         <Empty>No payments yet.</Empty>
       ) : (

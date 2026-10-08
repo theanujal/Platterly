@@ -1,108 +1,95 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
-import { Badge, Card, Empty, PageHeader, Table, formatWhen } from "@/components/ui";
-import { listAlerts } from "@/modules/alerts/alerts";
-import { getOverview } from "@/modules/dashboard/overview";
+import { AlertTriangle, ArrowRight, CheckCircle2, Layers } from "lucide-react";
+import { Badge, Card, Empty, PageHeader } from "@/components/ui";
+import { getSelectedProduct } from "@/lib/selected-product";
+import { RANGES, getDashboard, inr } from "@/modules/dashboard/dashboard";
+import { GrowthChart, MrrChart } from "./overview/charts";
+import { KpiCard } from "./overview/kpi-card";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
 
-export default async function OverviewPage() {
-  const [overview, openAlerts, recent, alerts] = await Promise.all([
-    getOverview(),
-    prisma.alert.count({ where: { acknowledgedAt: null } }),
-    prisma.business.findMany({ orderBy: { createdAt: "desc" }, take: 5, include: { products: true } }),
-    listAlerts({ take: 5 }),
-  ]);
-  const b = overview.businesses;
-  const s = overview.subscriptions;
+const CONNECTION = { ok: ["success", "Connected"], error: ["danger", "Problem"], waiting: ["warning", "Waiting"] } as const;
+
+export default async function OverviewPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
+  const { range } = await searchParams;
+  const selected = await getSelectedProduct();
+  const d = await getDashboard(new Date(), selected?.key, Number(range) || 30);
+  const label = RANGES.find((r) => r.days === d.days)!.label;
 
   return (
     <>
-      <PageHeader title="Overview" description="Every product and business in one place." />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          { label: "Businesses", value: b.total, hint: `${b.active} active · ${b.suspended} suspended${b.pendingDelete ? ` · ${b.pendingDelete} pending delete` : ""}`, href: "/businesses" },
-          { label: "New this week", value: b.newThisWeek, hint: "Signed up in the last 7 days", href: "/reports?tab=signups" },
-          { label: "Subscriptions", value: s.paying, hint: `paying · ${s.trialing} on trial · ${s.locked} locked`, href: "/reports?tab=subscriptions" },
-          { label: "Open alerts", value: openAlerts, hint: "Need attention", href: "/alerts" },
-        ].map((tile) => (
-          <Link key={tile.label} href={tile.href}>
-            <Card>
-              <p className="text-sm text-muted-foreground">{tile.label}</p>
-              <p className="mt-1 text-3xl font-semibold">{tile.value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{tile.hint}</p>
-            </Card>
-          </Link>
-        ))}
+      <PageHeader
+        title="Overview"
+        description={selected ? `${selected.name}: how it is doing. Switch product in the sidebar.` : "Every product and business, in one place."}
+        actions={
+          <nav aria-label="Period" className="flex gap-1 rounded-[10px] border border-border bg-white p-1">
+            {RANGES.map((r) => (
+              <Link key={r.days} href={`/?range=${r.days}`} aria-current={r.days === d.days ? "page" : undefined} className={`flex h-8 items-center rounded-lg px-3 text-[13px] font-medium ${r.days === d.days ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{r.label}</Link>
+            ))}
+          </nav>
+        }
+      />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {d.kpis.map((kpi) => <KpiCard key={kpi.key} kpi={kpi} />)}
       </div>
+
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-3 text-base font-semibold">Products</h2>
-          {overview.products.length === 0 ? (
-            <Empty>No products registered yet.</Empty>
-          ) : (
-            <Table head={["Product", "Businesses", "Reported usage"]}>
-              {overview.products.map((p) => (
-                <tr key={p.key}>
-                  <td><Link className="font-medium text-accent-foreground hover:underline" href={`/products/${p.key}`}>{p.name}</Link></td>
-                  <td>{p.businesses}</td>
-                  <td className="text-xs text-muted-foreground">{Object.entries(p.usage).map(([k, v]) => `${k} ${v.toLocaleString("en-IN")}`).join(" · ") || "—"}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </div>
-        <div>
-          <h2 className="mb-3 text-base font-semibold">Trials ending soon</h2>
-          {overview.trialsEndingSoon.length === 0 ? (
-            <Empty>No trial ends in the next week.</Empty>
-          ) : (
-            <Table head={["Business", "Product", "Trial ends"]}>
-              {overview.trialsEndingSoon.map((t) => (
-                <tr key={t.businessId + t.productKey}>
-                  <td><Link className="font-medium text-accent-foreground hover:underline" href={`/businesses/${t.businessId}`}>{t.name}</Link></td>
-                  <td>{t.productKey}</td>
-                  <td>{formatWhen(t.trialEndsAt)}</td>
-                </tr>
-              ))}
-            </Table>
-          )}
-        </div>
+        <Card>
+          <h2 className="text-base font-semibold">Business growth</h2>
+          <p className="mb-2 text-sm text-muted-foreground">Total and paying businesses at the end of each month</p>
+          <GrowthChart data={d.growth} />
+          <p className="mt-2 flex justify-center gap-5 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><i className="inline-block size-2 rounded-full bg-primary" />Total</span><span className="flex items-center gap-1.5"><i className="inline-block size-2 rounded-full bg-violet-600" />Paying</span></p>
+        </Card>
+        <Card>
+          <h2 className="text-base font-semibold">Monthly recurring revenue</h2>
+          <p className="mb-2 text-sm text-muted-foreground">What paying businesses pay per month, before GST</p>
+          <MrrChart data={d.mrr} />
+        </Card>
       </div>
+
       <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-3 text-base font-semibold">Newest businesses</h2>
-          {recent.length === 0 ? (
-            <Empty>No businesses yet. They appear here when a product reports a sign-up.</Empty>
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-semibold"><AlertTriangle className="size-4 text-primary" aria-hidden /> Needs attention</h2>
+            <Link href="/notifications" className="text-sm font-medium text-accent-foreground hover:underline">View all</Link>
+          </div>
+          {d.attention.length === 0 ? (
+            <p className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-6 text-sm text-success"><CheckCircle2 className="size-4" aria-hidden /> Nothing needs attention. {label.toLowerCase()}.</p>
           ) : (
-            <Table head={["Business", "Products", "Joined"]}>
-              {recent.map((b) => (
-                <tr key={b.id}>
-                  <td><Link className="font-medium text-accent-foreground hover:underline" href={`/businesses/${b.id}`}>{b.name}</Link></td>
-                  <td>{b.products.map((p) => p.productKey).join(", ") || "—"}</td>
-                  <td>{formatWhen(b.createdAt)}</td>
-                </tr>
+            <ul className="divide-y divide-border">
+              {d.attention.map((item) => (
+                <li key={item.key} className="flex items-center gap-3 py-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{item.count}</span>
+                  <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{item.title}</p><p className="truncate text-xs text-muted-foreground">{item.detail}</p></div>
+                  <Link href={item.href} className="flex shrink-0 items-center gap-1 text-sm font-medium text-accent-foreground hover:underline">{item.action}<ArrowRight className="size-3.5" aria-hidden /></Link>
+                </li>
               ))}
-            </Table>
+            </ul>
           )}
-        </div>
-        <div>
-          <h2 className="mb-3 text-base font-semibold">Latest alerts</h2>
-          {alerts.length === 0 ? (
-            <Empty>Nothing needs attention.</Empty>
-          ) : (
-            <Table head={["Alert", "Product", "When"]}>
-              {alerts.map((a) => (
-                <tr key={a.id}>
-                  <td><Badge tone={a.severity === "CRITICAL" ? "danger" : a.severity === "WARNING" ? "warning" : "info"}>{a.code}</Badge></td>
-                  <td>{a.product.name}</td>
-                  <td>{formatWhen(a.createdAt)}</td>
-                </tr>
-              ))}
-            </Table>
+        </Card>
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-base font-semibold"><Layers className="size-4 text-primary" aria-hidden /> Products</h2>
+            <Link href="/settings/products" className="text-sm font-medium text-accent-foreground hover:underline">Manage</Link>
+          </div>
+          {d.products.length === 0 ? <Empty>No products added yet.</Empty> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead><tr className="text-left text-[11px] font-bold uppercase tracking-wider text-muted-foreground"><th className="pb-2">Product</th><th className="pb-2">Businesses</th><th className="pb-2">Paying</th><th className="pb-2">MRR</th><th className="pb-2">Status</th></tr></thead>
+                <tbody className="[&_td]:border-t [&_td]:py-3">
+                  {d.products.map((p) => (
+                    <tr key={p.key}>
+                      <td className="font-medium">{p.name}</td><td>{p.businesses}</td><td>{p.paying}</td><td>{inr(p.mrr)}</td>
+                      <td><Badge tone={CONNECTION[p.connection][0]}>{CONNECTION[p.connection][1]}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
-        </div>
+        </Card>
       </div>
     </>
   );

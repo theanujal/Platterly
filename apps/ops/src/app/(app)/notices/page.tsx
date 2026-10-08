@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { Badge, Empty, PageHeader } from "@/components/ui";
+import { PickProduct } from "@/components/pick-product";
+import { getSelectedProduct } from "@/lib/selected-product";
 import { getNotice, noticeDelivery } from "@/modules/notices/notices";
 import { NoticeForm } from "./notice-form";
 
@@ -7,7 +9,9 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Sidebar notice" };
 
 export default async function NoticesPage() {
-  const products = await prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" } });
+  const selected = await getSelectedProduct();
+  if (!selected) return (<><PageHeader title="Sidebar notice" description="A short message with an optional button, shown in every business's sidebar for a product." /><PickProduct what="Sidebar notices" /></>);
+  const products = await prisma.product.findMany({ where: { status: "ACTIVE", ...(selected ? { key: selected.key } : {}) }, orderBy: { name: "asc" } });
   const rows = await Promise.all(products.map(async (p) => ({ product: p, notice: await getNotice(p.key), delivery: await noticeDelivery(p.key) })));
   return (
     <>

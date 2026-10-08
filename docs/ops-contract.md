@@ -474,3 +474,10 @@ The marketing site is not a product (no businesses, plans or snapshots), but its
 **Rules.** Dates are ISO days. A post's or update's address and a legal page's address cannot be changed once saved (the links people have keep working). Links must start with `/` or `https://`. Every save and every publish is in the audit log (`site.*`). First load of today's text into Ops: `npm run ops:import-site` (dry run) then `-- --apply`; it never overwrites a row already in Ops. Same-day updates are ordered by address, not by the old file order.
 
 Setup on the server: `docs/site-publish.md`.
+
+## 27. Notifications replace alerts (2026-10-09)
+
+What staff are told lives in `notification` (product, business, kind, severity INFO/WARNING/CRITICAL, title, body, link, a dedupe key, read time; read is shared by all staff). A product's `alert.raised` event now creates a notification (the event's `code` becomes `kind` and title, `message` the body); the contract is unchanged. Ops itself raises: new business signed up, payment received, payment failed, trial ends in 3 days or 1 day, trial ended, a product that was readable could not be read, and the result of a website publish. A repeat with the same dedupe key adds nothing. WARNING and CRITICAL are also emailed to `STAFF_NOTIFY_EMAILS` (comma separated) when ZeptoMail is configured; mail trouble never loses the row. The old `alert` table is kept, unused, until a reviewed migration drops it; its rows were copied across (code as kind and title, message as body, acknowledged as read).
+
+Products are added under Settings, Products (name and address; the key is made from the name). Ops reads each product's manifest by itself: a product that has never been read is tried every ten minutes, every other active product once a day (`refreshDueManifests`, in `/api/cron`). Rotating secrets and a manual check are under Advanced on the product page. The invoice prefix is edited on the product page only.
+

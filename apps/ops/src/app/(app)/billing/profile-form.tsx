@@ -54,14 +54,14 @@ export function ProfileForm({ values, numbering }: { values: ProfileValues; numb
       </Card>
       <Card>
         <h2 className="mb-1 text-base font-semibold">Invoice numbering</h2>
-        <p className="mb-3 text-sm text-muted-foreground">Format: the product&apos;s prefix, the business&apos;s initials, year, month and a running number. Every product has its own prefix and its own running number (set on the product&apos;s page), and a number never repeats.</p>
+        <p className="mb-3 text-sm text-muted-foreground">Format: the product&apos;s prefix, the business&apos;s initials, year, month and a running number. Every product has its own prefix and its own running number (change it under Settings, Products), and a number never repeats.</p>
         <ul className="mb-4 grid gap-1 text-sm">
           {numbering.map((n) => (
             <li key={n.key}><span className="font-medium">{n.name}</span>: next invoice <span className="font-mono">{n.preview}</span> ({n.issued} issued so far)</li>
           ))}
         </ul>
         <div className="grid gap-4 sm:grid-cols-2">
-          {text("invoicePrefix", "Fallback invoice prefix", "1 to 6 letters or digits. Used only for a product that has no prefix of its own.")}
+          <input type="hidden" name="invoicePrefix" value={values.invoicePrefix} />
           <div className="sm:col-span-2">
             <Field label="Note printed on every invoice" htmlFor="invoiceNote">
               <textarea id="invoiceNote" name="invoiceNote" rows={3} defaultValue={values.invoiceNote} className={`${inputClass} h-auto py-2`} />

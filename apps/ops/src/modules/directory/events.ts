@@ -1,4 +1,5 @@
 import "server-only";
+import { notify } from "@/modules/notifications/notifications";
 import { CONTRACT_VERSION, HEADERS, parseEvent, verifyRequest, type ProductEvent } from "@platterly/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -34,7 +35,7 @@ async function apply(tx: Tx, event: ProductEvent): Promise<Outcome> {
     await tx.businessProduct.upsert({ where: { businessId_productKey: { businessId, productKey } }, create: { businessId, productKey, lastActiveAt: new Date(event.occurredAt) }, update: {} });
     // Only a genuinely new business raises an alert: not a repeat, not a second product joining, not a backfill of businesses that existed before the link.
     const brandNew = isNew && !event.data.backfill;
-    if (brandNew) await tx.alert.create({ data: { productKey, businessId, severity: "INFO", code: "business.signed_up", message: `${event.data.businessName} signed up (${event.data.ownerEmail}).` } });
+    if (brandNew) await notify({ productKey, businessId, kind: "business.signed_up", title: "New business signed up", body: `${event.data.businessName} signed up (${event.data.ownerEmail}).`, link: `/businesses/${businessId}`, dedupeKey: `signed_up:${businessId}` }, tx);
     return { applied: true, startTrial: brandNew };
   }
 
@@ -54,9 +55,7 @@ async function apply(tx: Tx, event: ProductEvent): Promise<Outcome> {
       await tx.business.update({ where: { id: businessId }, data: { ownerEmail: event.data.ownerEmail } });
       return { applied: true };
     case "alert.raised":
-      await tx.alert.create({
-        data: { productKey, businessId, severity: event.data.severity.toUpperCase() as "INFO" | "WARNING" | "CRITICAL", code: event.data.code, message: event.data.message },
-      });
+      await notify({ productKey, businessId, kind: event.data.code, severity: event.data.severity.toUpperCase() as "INFO" | "WARNING" | "CRITICAL", title: event.data.code, body: event.data.message, link: `/businesses/${businessId}` }, tx);
       return { applied: true };
     case "message.requested":
       // Sent after the event is safely recorded (see receiveEvent): a slow or failing mail provider never fails the event.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReportDoc } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { Button, Empty, PageHeader, inputClass } from "@/components/ui";
+import { getSelectedProduct } from "@/lib/selected-product";
 import { RANGE_PRESETS, resolveRange, toIsoDate } from "@/modules/reports/range";
 import { fetchProductReport, reportsOf } from "@/modules/reports/product-reports";
 import { saasToDoc } from "@/modules/reports/saas-doc";
@@ -17,7 +18,10 @@ type Query = { product?: string; tab?: string; range?: string; from?: string; to
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Query> }) {
   const query = await searchParams;
   const products = await prisma.product.findMany({ where: { status: "ACTIVE" }, orderBy: { name: "asc" }, select: { key: true, name: true, manifest: true } });
-  const selected = query.product && query.product !== "all" ? products.find((p) => p.key === query.product) : undefined;
+  // The sidebar's product is the default; the page's own Product box can still override it (including "All products").
+  const sidebar = await getSelectedProduct();
+  const wanted = query.product ?? sidebar?.key;
+  const selected = wanted && wanted !== "all" ? products.find((p) => p.key === wanted) : undefined;
   const productKey = selected?.key;
   const productReports = selected ? reportsOf(selected.manifest) : [];
   const tabs = [...productReports.map((r) => ({ id: r.key, label: r.label })), { id: "subscriptions", label: "Subscriptions" }, { id: "signups", label: "Sign-ups" }];

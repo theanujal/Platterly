@@ -15,6 +15,14 @@ function databaseUrl(): string {
   return /^DATABASE_URL="?([^"\n]+)"?/m.exec(env)![1];
 }
 
+/** Picks a product in the sidebar switcher (Plans and Sidebar notice are about one product). */
+async function chooseProduct(page: import("@playwright/test").Page, name: string) {
+  const switcher = page.getByRole("button", { name: /Change product$/ }).first();
+  await switcher.click();
+  await page.getByRole("option", { name, exact: true }).click();
+  await expect(switcher).toContainText(name);
+}
+
 const pool = new pg.Pool({ connectionString: databaseUrl() });
 
 test.beforeAll(async () => {
@@ -31,13 +39,13 @@ test.afterAll(async () => {
 });
 
 test("a protected page sends a signed-out visitor to sign-in, and the event endpoint refuses unsigned posts", async ({ page, request }) => {
-  await page.goto("/products");
+  await page.goto("/settings/products");
   await expect(page).toHaveURL(/\/sign-in$/);
   expect((await request.post("/api/products/events", { data: {} })).status()).toBe(401);
   expect((await request.get("/api/health")).status()).toBe(200);
 });
 
-test("staff sign in, register a product, receive a signed sign-up, acknowledge its alert and sign out", async ({ page, request }) => {
+test("staff sign in, register a product, receive a signed sign-up, read its notification and sign out", async ({ page, request }) => {
   await page.goto("/sign-in");
   await page.getByLabel("Email").fill(EMAIL);
   await page.getByLabel("Password").fill("wrong-password-123");
@@ -48,14 +56,16 @@ test("staff sign in, register a product, receive a signed sign-up, acknowledge i
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Products" }).first().click();
+  await page.getByRole("link", { name: "Settings" }).first().click();
+  await page.getByRole("link", { name: /Products/ }).click();
+  await page.getByText("Advanced").first().click();
   await page.getByLabel("Key").fill(PRODUCT);
   await page.getByLabel("Name").fill("E2E Product");
-  await page.getByLabel("Base URL").fill("http://127.0.0.1:3999");
-  await page.getByRole("button", { name: "Register product" }).click();
-  const panel = page.getByRole("status").filter({ hasText: "Copy these secrets now" });
+  await page.getByLabel("Address").fill("http://127.0.0.1:3999");
+  await page.getByRole("button", { name: "Add product" }).click();
+  const panel = page.getByRole("status").filter({ hasText: "Copy these connection settings now" });
   await expect(panel).toBeVisible();
-  const [, inbound] = (await panel.locator("dd").allTextContents()).map((s) => s.trim());
+  const inbound = /OPS_EVENT_SECRET=(\S+)/.exec((await panel.locator("pre").textContent()) ?? "")![1];
 
   // Signed here with plain HMAC, independently of the contract package, so a drift in the format would fail this test.
   const eventId = `evt_${randomBytes(16).toString("hex")}`;
@@ -66,18 +76,19 @@ test("staff sign in, register a product, receive a signed sign-up, acknowledge i
   expect((await request.post("/api/products/events", { data: body, headers })).status()).toBe(200); // a retry is accepted once, applied once
 
   await page.getByRole("link", { name: "Businesses" }).first().click();
-  await page.getByRole("link", { name: BUSINESS }).click();
+  await page.getByRole("link", { name: BUSINESS, exact: true }).click();
   await expect(page.getByRole("heading", { name: BUSINESS })).toBeVisible();
 
-  await page.getByRole("link", { name: /Alerts/ }).first().click();
-  const row = page.getByRole("row").filter({ hasText: BUSINESS });
-  await expect(row).toHaveCount(1);
-  await row.getByRole("button", { name: "Acknowledge" }).click();
-  await expect(page.getByRole("row").filter({ hasText: BUSINESS })).toHaveCount(0);
+  await page.getByRole("link", { name: /Notifications/ }).first().click();
+  await page.getByRole("link", { name: "Unread" }).click();
+  const item = page.getByRole("listitem").filter({ hasText: BUSINESS });
+  await expect(item).toHaveCount(1);
+  await item.getByRole("button", { name: "Mark read" }).click();
+  await expect(page.getByRole("listitem").filter({ hasText: BUSINESS })).toHaveCount(0);
 
-  await page.getByRole("link", { name: "Products" }).first().click();
+  await page.goto("/settings/products");
   await page.getByRole("link", { name: "E2E Product" }).click();
-  await page.getByRole("button", { name: "Refresh manifest" }).click();
+  await page.getByRole("button", { name: "Check connection now" }).click();
   await expect(page.getByRole("alert").filter({ hasText: /Could not reach/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign out" }).click();
@@ -100,6 +111,7 @@ test("staff create a plan from a product's manifest, assign it to a business and
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
+    await chooseProduct(page, "E2E Plan Product");
     await page.getByRole("link", { name: "Plans" }).first().click();
     await page.getByRole("link", { name: "New E2E Plan Product plan" }).click();
     await page.getByLabel("Name", { exact: true }).fill("E2E Pro");
@@ -117,7 +129,7 @@ test("staff create a plan from a product's manifest, assign it to a business and
     await expect(page.locator("p[role=alert]")).toContainText("trial length");
     await page.getByLabel("This is the trial plan").uncheck();
 
-    await page.goto(`/businesses/${bizId}`);
+    await page.goto(`/businesses/${bizId}?tab=subscription`);
     await expect(page.getByText("No subscription")).toBeVisible();
     await page.getByLabel("Assign a plan").selectOption({ label: "E2E Pro" });
     await page.getByRole("button", { name: "Assign plan" }).click();
@@ -153,12 +165,10 @@ test("staff edit the seller's billing details: a bad GSTIN is refused, a good on
 
     await page.getByLabel("GSTIN").fill("29ABCDE1234F1Z5");
     await page.getByLabel("State code").fill("29");
-    await page.getByLabel("Fallback invoice prefix").fill("e2e");
     await page.getByRole("button", { name: "Save billing details" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
     await page.reload();
     await expect(page.getByLabel("Legal name")).toHaveValue("E2E Platterly Pvt Ltd");
-    await expect(page.getByLabel("Fallback invoice prefix")).toHaveValue("E2E");
     // Numbering follows the product: the preview uses each product's own prefix (catering keeps FP), not the fallback just saved.
     await expect(page.getByText(/Catering: next invoice/)).toContainText("FPEB");
   } finally {
@@ -181,6 +191,7 @@ test("staff set a sidebar notice: a bad link is refused, a good one is saved and
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
 
+    await chooseProduct(page, "E2E Notice Product");
     await page.getByRole("link", { name: "Sidebar notice" }).first().click();
     const form = page.locator("form").filter({ hasText: "E2E Notice Product sidebar notice" });
     await form.getByLabel("Show the notice").check();
@@ -221,7 +232,7 @@ test("staff create a business and manage its status: input is checked, and what 
 
     // A product with no trial plan cannot start a business.
     await page.goto("/businesses/new");
-    await page.getByLabel("Product").selectOption(key);
+    await page.getByLabel("Product", { exact: true }).selectOption(key);
     await page.getByLabel("Business name").fill("Nobody Kitchen");
     await page.getByLabel("Owner's name").fill("Nobody");
     await page.getByLabel("Owner's email").fill("nobody@e2e.example");
@@ -274,7 +285,7 @@ test("staff open Reports: Subscriptions and Sign-ups come from ops, a product's 
     await expect(page.getByText("New in the period")).toBeVisible();
 
     // A product's own report is asked of the product; this one cannot be reached, and the page says so instead of failing.
-    await page.getByLabel("Product").selectOption(key);
+    await page.getByLabel("Product", { exact: true }).selectOption(key);
     await page.getByRole("button", { name: "Apply" }).click();
     // The tab the person was on stays (Sign-ups is valid for every product); the product's own report is one click away.
     await expect(page.getByRole("tab", { name: "Sign-ups" })).toHaveAttribute("aria-selected", "true");

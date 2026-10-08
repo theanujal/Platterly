@@ -49,31 +49,17 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           {prefixError ? <p role="alert" className="mt-3 text-sm text-destructive">{prefixError}</p> : null}
         </Card>
 
-        <Card>
-          <h2 className="mb-1 text-base font-semibold">Signing secrets</h2>
-          <p className="mb-4 text-sm text-muted-foreground">
-            {product.secretsRotatedAt ? `Last rotated ${formatWhen(product.secretsRotatedAt)}.` : "Never rotated."} Old secrets stay valid until you finish the rotation.
-          </p>
-          <RotateForm productKey={product.key} />
-          {rotating ? (
-            <form action={finishRotationAction} className="mt-4 rounded-xl bg-muted p-4 text-sm">
-              <input type="hidden" name="key" value={product.key} />
-              <p className="mb-3">The previous secrets are still accepted. Once the product runs on the new ones, finish the rotation.</p>
-              <Button type="submit" variant="outline" size="md">Finish rotation</Button>
-            </form>
-          ) : null}
-        </Card>
       </div>
 
       <Card className="mt-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold">Manifest</h2>
-            <p className="text-sm text-muted-foreground">{manifest ? `Version ${product.manifestVersion}, read ${formatWhen(product.manifestFetchedAt)}.` : "Not read yet. The product must serve /api/ops/manifest."}</p>
+            <h2 className="text-base font-semibold">What it offers</h2>
+            <p className="text-sm text-muted-foreground">{manifest ? `What this product offers (plans, limits, reports). Read ${formatWhen(product.manifestFetchedAt)}; Ops checks again by itself every day.` : "Waiting for the product to connect. Once its connection settings are in its environment and it is running, Ops reads what it offers by itself."}</p>
           </div>
           <form action={refreshManifestAction}>
             <input type="hidden" name="key" value={product.key} />
-            <Button type="submit" variant="outline" size="md">Refresh manifest</Button>
+            <Button type="submit" variant="outline" size="md">Check connection now</Button>
           </form>
         </div>
         {product.manifestError ? <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{product.manifestError}</p> : null}
@@ -95,6 +81,25 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
           </div>
         ) : null}
       </Card>
+
+      <details className="mt-6 rounded-xl bg-card p-5 shadow-[0_0_0_1px_rgba(17,24,39,0.1)]">
+        <summary className="cursor-pointer text-base font-semibold">Advanced: connection secrets</summary>
+        <p className="mb-4 mt-3 text-sm text-muted-foreground">Only needed if a connection secret has leaked or the product moves to a new server.</p>
+        <div>
+          <h3 className="mb-1 text-sm font-semibold">Rotate the secrets</h3>
+          <p className="mb-4 text-sm text-muted-foreground">
+            {product.secretsRotatedAt ? `Last rotated ${formatWhen(product.secretsRotatedAt)}.` : "Never rotated."} Old secrets stay valid until you finish the rotation.
+          </p>
+          <RotateForm productKey={product.key} />
+          {rotating ? (
+            <form action={finishRotationAction} className="mt-4 rounded-xl bg-muted p-4 text-sm">
+              <input type="hidden" name="key" value={product.key} />
+              <p className="mb-3">The previous secrets are still accepted. Once the product runs on the new ones, finish the rotation.</p>
+              <Button type="submit" variant="outline" size="md">Finish rotation</Button>
+            </form>
+          ) : null}
+        </div>
+      </details>
     </>
   );
 }

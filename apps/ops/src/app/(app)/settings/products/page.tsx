@@ -18,7 +18,7 @@ export default async function ProductsPage() {
         <Table head={["Product", "Status", "Manifest", "Businesses", "Base URL"]}>
           {products.map((p) => (
             <tr key={p.key}>
-              <td><Link className="font-medium text-accent-foreground hover:underline" href={`/products/${p.key}`}>{p.name}</Link><div className="font-mono text-xs text-muted-foreground">{p.key}</div></td>
+              <td><Link className="font-medium text-accent-foreground hover:underline" href={`/settings/products/${p.key}`}>{p.name}</Link><div className="font-mono text-xs text-muted-foreground">{p.key}</div></td>
               <td><Badge tone={p.status === "ACTIVE" ? "success" : "neutral"}>{p.status === "ACTIVE" ? "Active" : "Disabled"}</Badge></td>
               <td>{p.manifestError ? <Badge tone="danger">Error</Badge> : p.manifestVersion ? <span>v{p.manifestVersion}<div className="text-xs text-muted-foreground">{formatWhen(p.manifestFetchedAt)}</div></span> : <Badge tone="warning">Not read yet</Badge>}</td>
               <td>{p._count.businesses}</td>
