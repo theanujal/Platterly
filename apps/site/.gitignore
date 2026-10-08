@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+test-results/
+playwright-report/
+# raw capture output (the optimised files in public/media are the ones kept)
+scripts/.raw/

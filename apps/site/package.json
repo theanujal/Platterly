@@ -1,0 +1,35 @@
+{
+  "name": "platterly-site",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Platterly marketing site (platterly.in). Its own app: nothing here is shared with the catering app.",
+  "scripts": {
+    "dev": "next dev -p 3100",
+    "build": "next build",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "check:links": "node scripts/check-links.mjs",
+    "test:e2e": "cd ../.. && npx playwright test -c apps/site/e2e/playwright.config.ts",
+    "capture": "cd ../.. && npx playwright test -c apps/site/capture/capture.config.ts && cd apps/site && node scripts/optimize-media.mjs",
+    "optimize:media": "node scripts/optimize-media.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^1.52.0",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "sharp": "^0.34.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

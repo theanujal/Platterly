@@ -1,0 +1,267 @@
+@import "tailwindcss";
+
+/*
+ * Platterly marketing site. Structure and tokens follow calendly.com's own stylesheet (2026-10-08): midnight ink on warm
+ * magnolia, linen panels, midnight buttons. The colour is Platterly's own: the orange and peach of the catering app
+ * where Calendly uses its blues. Geist is the free typeface Calendly itself uses
+ * for its UI. This site has its own design system; it does not share tokens with the catering app.
+ *
+ * Existing class names are kept and re-pointed: ink-navy = Midnight, cloud = Magnolia, pebble = Linen,
+ * badge-fill = Rain, paper = white.
+ */
+@theme {
+  --color-ink-navy: #071a31;
+  --color-paper: #ffffff;
+  --color-cloud: #fcfbf8;
+  --color-pebble: #f5f3ee;
+  --color-badge-fill: #fff3e6;
+  --color-slate-gray: #49535c;
+  --color-mist-gray: #a4aeb7;
+  --color-hairline: #e1e4e7;
+
+  /* Accent: Lake for lines and icons, Cornflower for fills. Catering swaps both to its orange below. */
+  --color-brand: #ff6900;
+  --color-accent: #ffb067;
+  --color-brand-dark: #e65f00;
+  --color-brand-ink: #071a31;
+  --color-sky: #ffd39d;
+  --color-blob-a: #ffd39d;
+  --color-blob-b: #ff9a47;
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --radius-button: 8px;
+  --radius-product: 16px;
+  --radius-panel: 32px;
+
+  --shadow-card: rgba(7, 26, 49, 0.04) 0px 2px 4px 0px, rgba(7, 26, 49, 0.05) 0px 8px 24px 0px;
+  --shadow-product: rgba(7, 26, 49, 0.05) 0px 4px 8px 0px, rgba(7, 26, 49, 0.1) 0px 24px 48px 0px;
+  --shadow-button: none;
+
+  --ease-calendly: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Product colours are read at the element, so a tile can wear its own product's colour. */
+@theme inline {
+  --color-product: var(--product);
+  --color-product-tint: var(--product-tint);
+}
+
+/*
+ * One palette for every page. A product only lends its own colour (--product, --product-tint, set inline from
+ * src/content/products.ts) to its icon tile, its label, the tint behind its pictures and the line under its active
+ * feature, the way calendly.com keeps its blue and midnight on every product page.
+ */
+:root {
+  /*
+   * Colour: the soft gradient from Pexels (public/media/gradient.webp: lavender, rose, cream, butter and orange).
+   * It is used as the background of every coloured surface, cropped to a different corner for each, so one calm
+   * palette runs through the page. Midnight text on any part of it is above 7:1.
+   */
+  --aurora: url(/media/gradient.webp) 70% 38% / cover no-repeat, #f3d9d4;
+  --stage-bg: var(--aurora);
+  --scene-bg: url(/media/gradient.webp) 85% 85% / cover no-repeat, #f6b88a;
+  --band-bg: linear-gradient(180deg, rgba(252, 251, 248, 0) 58%, #fcfbf8 100%), url(/media/gradient.webp) 75% 52% / cover no-repeat, #f6c9b0;
+  --cw-sunrise: url(/media/gradient.webp) 100% 100% / 300% auto no-repeat, #f6a86a;
+  --cw-blossom: url(/media/gradient.webp) 100% 4% / 300% auto no-repeat, #d9a0d4;
+  --cw-citrus: url(/media/gradient.webp) 28% 92% / 300% auto no-repeat, #efe0a0;
+  --cw-dusk: url(/media/gradient.webp) 0% 2% / 300% auto no-repeat, #cfc8f6;
+  --product: #ff6900;
+  --product-tint: #fff3e6;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 96px;
+}
+
+body {
+  background: var(--color-cloud);
+  color: var(--color-ink-navy);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Motion. Transform and opacity only. Everything is visible without scripts: the hidden starting state needs the
+ * `js` class (set in the layout) and a visitor who has not asked for reduced motion.
+ */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pop {
+  from { opacity: 0; transform: translateY(48px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes swap {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes drop {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .enter { animation: rise 0.9s cubic-bezier(0.4, 0, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+  .enter-pop { animation: pop 1.1s cubic-bezier(0.4, 0, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+  .float { animation: bob 6s ease-in-out infinite; animation-delay: var(--d, 0ms); }
+  .fill-line { transform-origin: left; animation: fill 7s linear both; }
+  .tab-swap { animation: swap 0.45s cubic-bezier(0.4, 0, 0.2, 1) both; }
+  .menu-drop { animation: drop 0.25s ease-out both; }
+
+  .js .reveal,
+  .js .rv-child {
+    opacity: 0;
+    transform: translateY(28px);
+    transition: opacity 0.85s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0ms), transform 0.85s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0ms);
+  }
+  .js .reveal-left { transform: translateX(-40px); }
+  .js .reveal-right { transform: translateX(40px); }
+  .js .reveal-scale { transform: translateY(40px) scale(0.97); }
+  .js .reveal.in,
+  .js .in .rv-child {
+    opacity: 1;
+    transform: none;
+  }
+  .js .line-grow {
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 1.6s cubic-bezier(0.65, 0, 0.35, 1) 0.2s;
+  }
+  .js .in .line-grow { transform: scaleX(1); }
+
+  .lift { transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease; }
+  .lift:hover { transform: translateY(-3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-ink-navy);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Calendly's type scale: huge 72/60/40, h1 60/48/36, h2 48/36/28, h3 36/28/24; weight 500, tight tracking, line-height 1.1. */
+.h-display {
+  text-wrap: balance;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -2px;
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+}
+.h-hero {
+  text-wrap: balance;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+  font-size: clamp(2.25rem, 4.2vw, 3.75rem);
+}
+.h-section {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  font-size: clamp(2.25rem, 3.9vw, 3.5rem);
+}
+.h-sub {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  font-size: clamp(1.5rem, 2.3vw, 1.875rem);
+}
+.h-serif {
+  font-family: var(--font-serif), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  font-size: clamp(2.25rem, 3.6vw, 3.25rem);
+}
+.eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+
+/* Policy and article pages read as long text. */
+.prose-legal { font-size: 1.0625rem; }
+.prose-legal h2 {
+  margin: 3rem 0 1rem;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 1.875rem;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  scroll-margin-top: 7rem;
+}
+.prose-legal h2:first-child { margin-top: 0; }
+.prose-legal h3 { margin: 1.75rem 0 0.5rem; font-size: 1.1875rem; font-weight: 600; }
+.prose-legal p,
+.prose-legal li { color: var(--color-slate-gray); line-height: 1.75; }
+.prose-legal p { margin: 0 0 1.1rem; }
+.prose-legal ul { margin: 0 0 1.25rem; padding-left: 1.25rem; list-style: disc; }
+.prose-legal ol { margin: 0 0 1.25rem; padding-left: 1.25rem; list-style: decimal; }
+.prose-legal li { margin-bottom: 0.45rem; }
+.prose-legal a { color: var(--color-ink-navy); text-decoration: underline; text-underline-offset: 3px; }
+.prose-legal strong { color: var(--color-ink-navy); font-weight: 600; }
+.prose-legal blockquote { margin: 1.5rem 0; border-left: 3px solid var(--color-brand); padding-left: 1.25rem; font-family: var(--font-serif), Georgia, serif; font-size: 1.25rem; color: var(--color-ink-navy); }
+.prose-legal table { width: 100%; margin: 1.5rem 0; border-collapse: collapse; font-size: 0.95rem; }
+.prose-legal th, .prose-legal td { border-bottom: 1px solid rgba(7, 26, 49, 0.12); padding: 0.75rem 0.75rem 0.75rem 0; text-align: left; vertical-align: top; color: var(--color-slate-gray); }
+.prose-legal th { color: var(--color-ink-navy); font-weight: 600; }
+
+/* The four colourways: each shows a different corner of the gradient photo, so one palette runs through the page. */
+.cw-sunrise { background: var(--cw-sunrise); }
+.cw-blossom { background: var(--cw-blossom); }
+.cw-citrus { background: var(--cw-citrus); }
+.cw-dusk { background: var(--cw-dusk); }
+/* The thin vertical bars across a card, from calendly.com's scene cards. */
+.bars {
+  background-image: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.85) 0 2px, transparent 2px 14px);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 22%, #000 78%, transparent 100%);
+}
+
+/*
+ * The pinned product scene is only used where it can work: a wide, tall screen, scripts on, and a visitor who has not
+ * asked for less motion. Everywhere else the same card shows in a plain gradient panel.
+ */
+.scene-pinned { display: none; }
+@media (min-width: 1024px) and (min-height: 640px) and (prefers-reduced-motion: no-preference) {
+  .js .scene-pinned { display: block; }
+  .js .scene-static { display: none; }
+}
+/* The floating bar steps aside while the pinned scene is on screen. */
+html[data-pinned="true"] .floating-nav { opacity: 0; pointer-events: none; transform: translateY(-12px); }

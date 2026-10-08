@@ -51,6 +51,31 @@ jobs:
 
       - run: npm run build
 
+  # The marketing site (apps/site) is its own app with its own install; it never touches the catering job above.
+  site:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/site
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/site/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm run build
+
+      - run: npm run check:links
+
   # Ops (apps/ops) has its own install and its own database; it shares only packages/contract with the other apps.
   ops:
     runs-on: ubuntu-latest
