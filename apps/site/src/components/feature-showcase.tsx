@@ -25,7 +25,7 @@ export interface ShowcaseItem {
  * item in a white frame. The first item is open in the HTML, so it works without scripts.
  */
 const WAYS = ["sunrise", "blossom", "citrus", "dusk"] as const;
-export function FeatureShowcase({ id, label, product, title, items, flip = false }: { id?: string; label: string; product: Product; title: string; items: readonly ShowcaseItem[]; flip?: boolean }) {
+export function FeatureShowcase({ id, label, product, title, subtitle, items, flip = false }: { id?: string; label: string; product: Product; title: string; subtitle?: string; items: readonly ShowcaseItem[]; flip?: boolean }) {
   const [open, setOpen] = useState(0);
   const base = useId();
   const item = items[open];
@@ -39,12 +39,13 @@ export function FeatureShowcase({ id, label, product, title, items, flip = false
       <div className={`grid gap-10 lg:items-stretch lg:gap-16 ${flip ? "lg:grid-cols-[1fr_1fr]" : "lg:grid-cols-[1fr_1fr]"}`}>
         <Reveal from={flip ? "right" : "left"} className={flip ? "lg:order-2" : ""}>
           <p className="inline-flex items-center gap-2 text-base font-medium">
-            <ProductTile product={product} className="size-6 !rounded-md" iconClass="size-4" />
+            <ProductTile product={product} className="size-6 !rounded-md !text-white" iconClass="size-4" />
             {label}
           </p>
           <h2 id={id} className="h-serif mt-4 max-w-[16ch] text-balance sm:max-w-none">
             {title}
           </h2>
+          {subtitle && <p className="mt-4 max-w-xl text-lg leading-relaxed text-slate-gray sm:text-xl">{subtitle}</p>}
           <ul className="mt-12 border-t border-ink-navy/15">
             {items.map((entry, index) => {
               const selected = index === open;

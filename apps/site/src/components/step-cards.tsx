@@ -2,20 +2,18 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
-import { UiCard, type UiCardName } from "@/components/ui-cards";
 import { Reveal } from "@/components/reveal";
 
 export interface Step {
   title: string;
   text: string;
   points: readonly string[];
-  card: UiCardName;
 }
 
 /**
- * Calendly's "Book / Prep / Capture / Follow up" row. Four tall white cards share one row; the one you hover or focus
- * widens (twice the others) and shows its steps and a real close-up; the others fold back to a title and one line, with
- * only a faint tint where the close-up will be, so one thing at a time asks for attention. The first card is open to begin with. Below 1024px every card is open, one under the other.
+ * Calendly's "Book / Prep / Capture / Follow up" row, here three cards. Tall white cards share one row; the one you hover or focus
+ * widens (twice the others) and shows its steps; the others fold back to a title and one line. Each card ends in a band
+ * of its own colour gradient (full colour on the open card, softer on the others), with no screenshot inside. The first card is open to begin with. Below 1024px every card is open, one under the other.
  */
 export function StepCards({ steps }: { steps: readonly Step[] }) {
   const [active, setActive] = useState(0);
@@ -25,7 +23,7 @@ export function StepCards({ steps }: { steps: readonly Step[] }) {
       {steps.map((step, index) => {
         const on = index === active;
         return (
-          <Reveal as="li" key={step.title} delay={index * 90} className={`flex min-h-[26rem] flex-col overflow-hidden rounded-[32px] bg-paper transition-[flex-grow,box-shadow] duration-500 ease-calendly lg:min-h-[34rem] lg:basis-0 ${on ? "lg:grow-[2] lg:shadow-product" : "lg:grow"}`}>
+          <Reveal as="li" key={step.title} delay={index * 90} className={`flex min-h-[20rem] flex-col overflow-hidden rounded-[32px] bg-paper transition-[flex-grow,box-shadow] duration-500 ease-calendly lg:min-h-[21rem] lg:basis-0 ${on ? "lg:grow-[2] lg:shadow-product" : "lg:grow"}`}>
             <div tabIndex={0} onMouseEnter={() => setActive(index)} onFocus={() => setActive(index)} className="flex flex-1 flex-col outline-none focus-visible:ring-2 focus-visible:ring-ink-navy">
               <div className="p-6 lg:p-7">
                 <h3 className="h-sub !text-[1.5rem] sm:!text-[1.75rem] lg:!text-[1.375rem] xl:!text-[1.5rem] lg:whitespace-nowrap">{step.title}</h3>
@@ -41,12 +39,7 @@ export function StepCards({ steps }: { steps: readonly Step[] }) {
                   ))}
                 </ul>
               </div>
-              <div className="relative mt-auto h-[23rem] shrink-0 overflow-hidden">
-                <div aria-hidden className={`cw-${ways[index % ways.length]} absolute inset-0 transition-opacity duration-500 ease-calendly ${on ? "" : "lg:opacity-15"}`} />
-                <div className={`relative flex h-full items-end justify-center px-4 pb-4 pt-8 transition duration-500 ease-calendly ${on ? "" : "lg:translate-y-6 lg:opacity-0"}`}>
-                  <UiCard name={step.card} size="sm" className="mx-auto max-w-[320px]" />
-                </div>
-              </div>
+              <div aria-hidden className={`cw-${ways[index % ways.length]} mt-auto h-24 shrink-0 transition-opacity duration-500 ease-calendly ${on ? "" : "lg:opacity-40"}`} />
             </div>
           </Reveal>
         );

@@ -39,7 +39,7 @@ export default function HomePage() {
             </ButtonLink>
           </div>
           <p style={d(320)} className="enter mt-4 text-sm text-slate-gray">
-            Free for 7 days • No credit card required
+            Starting with Catering, more products on the way.
           </p>
         </div>
         <div style={d(440)} className="enter-pop mt-12 md:mt-16">
@@ -61,7 +61,7 @@ export default function HomePage() {
 
       {/* 02 The chapter dedicated to Catering, as calendly.com has one for Scheduling */}
       <div className="py-8 md:py-16">
-        <FeatureShowcase id="catering-chapter" label={HOME_CHAPTER.label} product={CATERING_PRODUCT} title={HOME_CHAPTER.title} items={HOME_CHAPTER.items} />
+        <FeatureShowcase id="catering-chapter" label={HOME_CHAPTER.label} product={CATERING_PRODUCT} title={HOME_CHAPTER.title} subtitle={HOME_CHAPTER.subtitle} items={HOME_CHAPTER.items} />
       </div>
 
       <Voices items={TESTIMONIALS} />

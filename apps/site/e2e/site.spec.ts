@@ -410,7 +410,7 @@ test("home: a chapter dedicated to Catering, with arrows to the product page and
   await page.goto("/");
   const chapter = page.locator("section", { has: page.locator("#catering-chapter") });
   await chapter.scrollIntoViewIfNeeded();
-  await expect(chapter.getByRole("heading", { name: "A better way to run your catering business" })).toBeVisible();
+  await expect(chapter.getByRole("heading", { name: "Meet Catering by Platterly." })).toBeVisible();
   await expect(chapter.getByText("Catering by Platterly").first()).toBeVisible();
   await expect(chapter.getByRole("link", { name: /Learn more about/ }).first()).toHaveAttribute("href", /\/catering\//);
   await expect(chapter.locator("span[style*='--product']").first()).toHaveCSS("background-color", "rgb(255, 105, 0)");
