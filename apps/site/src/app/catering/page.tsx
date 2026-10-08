@@ -7,7 +7,7 @@ import { HowSteps } from "@/components/how-steps";
 import { ProductTile } from "@/components/product-tile";
 import { Voices } from "@/components/proof";
 import { Reveal } from "@/components/reveal";
-import { PeopleBand } from "@/components/people-band";
+import { ClosingBand } from "@/components/closing-band";
 import { Badge, ButtonLink, Panel } from "@/components/ui";
 import { CATERING, PRICING } from "@/content/catering";
 import { CATERING_PRODUCT, productVars } from "@/content/products";
@@ -202,7 +202,7 @@ export default function CateringPage() {
       </section>
 
       {/* 10 Closing band */}
-      <PeopleBand eyebrow="Get started" title={CATERING.cta.title}>
+      <ClosingBand eyebrow="Get started" title={CATERING.cta.title}>
         <p className="text-slate-gray">{CATERING.cta.copy}</p>
         <div className="flex flex-wrap justify-center gap-3">
           <ButtonLink href={SITE.appUrl}>
@@ -210,7 +210,7 @@ export default function CateringPage() {
           </ButtonLink>
           <ButtonLink href="/talk-to-us/" variant="outline">Book a demo</ButtonLink>
         </div>
-      </PeopleBand>
+      </ClosingBand>
     </>
   );
 }

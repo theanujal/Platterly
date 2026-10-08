@@ -63,16 +63,10 @@ test("catering: every section, the pricing figures and the ten questions", async
   await expect(page.getByRole("link", { name: "Start for free" }).first()).toHaveAttribute("href", APP);
 });
 
-test("the people photos and the gradient load, and each feature shows a small designed card, not a whole-page screenshot", async ({ page, request }) => {
+test("the gradient loads, and each feature shows a small designed card, not a whole-page screenshot", async ({ page, request }) => {
   await page.goto("/catering/");
   await loadLazyImages(page);
-  const photos = page.locator("#final").locator("xpath=ancestor::section").locator("img");
-  await expect(photos).toHaveCount(4);
-  for (const photo of await photos.all()) {
-    await expect(photo).toHaveJSProperty("complete", true);
-    expect(await photo.evaluate((el: HTMLImageElement) => el.naturalHeight)).toBeGreaterThan(600);
-    expect((await photo.getAttribute("alt"))?.length ?? 0).toBeGreaterThan(10);
-  }
+  await expect(page.locator("#final").locator("xpath=ancestor::section").locator("img")).toHaveCount(0);
   expect((await request.get("/media/gradient.webp")).ok()).toBe(true);
   // the product visuals are designed cards (title plus a few rows), with no browser screenshots left in the page
   await expect(page.locator("main img[src*='/media/'][src*='orders'], main img[src*='dashboard']")).toHaveCount(0);
@@ -420,32 +414,15 @@ test("home: a chapter dedicated to Catering, with arrows to the product page and
   await expect(chapter.getByRole("button", { name: "Events and calendar" })).toHaveAttribute("aria-expanded", "false");
 });
 
-test("the Catering closing band shows photo scenes that move on, and stands still for reduced motion", async ({ page, browser }) => {
+test("the Catering closing band is just the heading, copy and its two buttons", async ({ page }) => {
   await page.goto("/catering/");
   const band = page.locator("section", { has: page.locator("#final") });
   await band.scrollIntoViewIfNeeded();
   await expect(band.getByRole("heading", { name: "Your next event shouldn't start with another spreadsheet." })).toBeVisible();
-  const slides = band.locator("figure");
-  await expect(slides).toHaveCount(4);
-  for (const slide of await slides.all()) expect((await slide.getAttribute("aria-label"))?.length ?? 0).toBeGreaterThan(10);
-  // each scene is a real person (a cut-out photo) with a state chip across the middle
-  await expect(slides.first().locator("img")).toHaveAttribute("src", /\/media\/people\/\w+\.webp$/);
-  const dots = band.getByRole("group", { name: "Choose a scene" }).getByRole("button");
-  await expect(dots.first()).toHaveAttribute("aria-current", "true");
-  await dots.nth(3).click();
-  await expect(dots.nth(3)).toHaveAttribute("aria-current", "true");
-  await expect(slides.nth(3).locator("figcaption")).toHaveText("Payment received");
-  // it moves on by itself (the pointer is on the dots, not on the pictures)
-  await expect(dots.first()).toHaveAttribute("aria-current", "true", { timeout: 9000 });
-
-  const calm = await browser.newContext({ reducedMotion: "reduce" });
-  const still = await calm.newPage();
-  await still.goto("/catering/");
-  const stillBand = still.locator("section", { has: still.locator("#final") });
-  await stillBand.scrollIntoViewIfNeeded();
-  await still.waitForTimeout(6500);
-  await expect(stillBand.getByRole("group", { name: "Choose a scene" }).getByRole("button").first()).toHaveAttribute("aria-current", "true");
-  await calm.close();
+  await expect(band.getByRole("link", { name: /Start for free/ })).toBeVisible();
+  await expect(band.getByRole("link", { name: "Book a demo" })).toBeVisible();
+  await expect(band.locator("figure")).toHaveCount(0);
+  await expect(band.locator("img")).toHaveCount(0);
 });
 
 test("the footer has Products, Discover and Support, and no Features group", async ({ page }) => {
