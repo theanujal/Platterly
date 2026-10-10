@@ -179,9 +179,12 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
             <SummaryRow label="Event Date" value={summary.eventDate} />
             <SummaryRow label="Meals Required" value={summary.mealType} />
             <SummaryRow label="Preference" value={summary.menuPreferenceLabel} />
-            <SummaryRow label="Guests" value={String(summary.guests)} />
+            <SummaryRow label="Adults" value={String(summary.guests)} />
             <SummaryRow label="Kids (0–5)" value={String(summary.childBelow5Count)} />
             <SummaryRow label="Kids (5–10)" value={String(summary.child5To10Count)} />
+            <div role="separator" className="border-t border-border" />
+            <SummaryRow label="Total Guests" value={String(summary.guests + summary.childBelow5Count + summary.child5To10Count)} testId="review-total-guests" />
+            <div role="separator" className="border-t border-border" />
             <SummaryRow label="Menu" value={quote.isCustomMenu ? "Custom Menu" : (quote.menuName ?? "—")} />
             <SummaryRow label="Event Location" value={summary.venueLine} />
           </dl>
@@ -231,8 +234,8 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
         </p>
       )}
       <StepFooter onBack={() => router.push(`/${tenantSlug}/plan/${draftId}?step=menu`)}>
-        <Button type="button" disabled={pending} onClick={handleSubmit}>
-          {pending ? "Working…" : "Submit for Menu Approval"}
+        <Button type="button" size="lg" disabled={pending} onClick={handleSubmit}>
+          {pending ? "Working…" : <span>Submit<span className="max-sm:sr-only"> for Menu Approval</span></span>}
           <Send />
         </Button>
       </StepFooter>
@@ -254,9 +257,9 @@ function RemoveButton({ label, disabled, onClick }: { label: string; disabled: b
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value, testId }: { label: string; value: string; testId?: string }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div className="flex items-start justify-between gap-4" data-testid={testId}>
       <dt className="text-muted-foreground">{label}:</dt>
       <dd className="text-right font-semibold">{value}</dd>
     </div>

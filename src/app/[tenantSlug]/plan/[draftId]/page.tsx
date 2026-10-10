@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { CheckCircle2, Clock } from "lucide-react";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
@@ -13,11 +13,15 @@ import { WizardStepper } from "../../_components/wizard-stepper";
 import { EventDetailsForm } from "../../_components/event-details-form";
 import { BuildMenuStep } from "../../_components/build-menu-step";
 import { ReviewStep } from "../../_components/review-step";
+import { ScrollToTop } from "../../_components/scroll-to-top";
 
 interface PlanPageProps {
   params: Promise<{ tenantSlug: string; draftId: string }>;
   searchParams: Promise<{ step?: string }>;
 }
+
+// `cover` lets the bottom bar sit clear of a phone's home indicator (it pads by the safe-area inset).
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export async function generateMetadata({ params }: PlanPageProps): Promise<Metadata> {
   const { tenantSlug } = await params;
@@ -208,6 +212,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
       title={step === "details" ? "Plan Your Event" : undefined}
       subtitle={step === "details" ? "Check your details, then continue to your menu." : undefined}
     >
+      <ScrollToTop key={step} />
       <WizardStepper tenantSlug={tenantSlug} draftId={draft.id} current={step} reachedStep={draft.currentStep} />
       {content}
     </Shell>

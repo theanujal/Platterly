@@ -202,19 +202,19 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
 
         <FormSection icon={Users} title="Guests" description="Tell us who is coming. Children are optional and help us plan the right quantities.">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-guests" required>Number of Guests</Label>
+            <Label htmlFor="ed-guests" required>Number of Adults</Label>
             <IconInput
               icon={Users}
               id="ed-guests"
               type="number"
               min={minGuests ?? 1}
               required
-              placeholder={minGuests ? `Minimum ${minGuests} guests` : "Number of guests"}
+              placeholder={minGuests ? `Minimum ${minGuests} adults` : "Number of adults"}
               value={values.guestCount}
               onChange={(e) => setField("guestCount", e.target.value)}
             />
             {/* Shown from the start: the minimum depends on the event type, so until one is chosen it says so. */}
-            <p className="text-xs text-muted-foreground">{minGuests ? `Minimum ${minGuests} guests required` : "The minimum number of guests depends on your event type."}</p>
+            <p className="text-xs text-muted-foreground">{minGuests ? `Minimum ${minGuests} adults required` : "The minimum number of adults depends on your event type."}</p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -291,8 +291,8 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
         </p>
       )}
       <StepFooter>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : "Continue to Build Your Menu"}
+        <Button type="submit" size="lg" disabled={pending}>
+          {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Build Your Menu</span></span>}
           <ArrowRight />
         </Button>
       </StepFooter>

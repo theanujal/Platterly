@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { formatInr } from "@/lib/format-currency";
@@ -14,7 +14,6 @@ import { estimateQuoteAction, saveBuildMenuAction } from "../actions";
 import { MenuSection } from "./menu-section";
 import { DishesSection } from "./dishes-section";
 import { AddOnsSection, type StorefrontAddOn } from "./addons-section";
-import { cn } from "cn";
 
 export interface BuildMenuEventSummary {
   date: string;
@@ -39,6 +38,15 @@ interface BuildMenuStepProps {
 
 const sameChoice = (a: MenuChoice | null, b: MenuChoice | null) => JSON.stringify(a) === JSON.stringify(b);
 
+/** A saved draft that already has a complete menu opens with the dishes folded. */
+function initialDishesComplete(menus: StorefrontMenu[], customSections: StorefrontMenuSection[], initial: { choice: MenuChoice | null; itemIds: string[] }) {
+  if (!initial.choice || initial.itemIds.length === 0) return false;
+  if (initial.choice.kind === "CUSTOM") return true;
+  const menuId = initial.choice.menuId;
+  const menu = menus.find((m) => m.id === menuId);
+  return menu !== undefined && requiredShortfalls(menu.sections, initial.itemIds).length === 0;
+}
+
 function scrollToRef(element: HTMLElement | null) {
   if (!element) return;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -51,11 +59,17 @@ function scrollToRef(element: HTMLElement | null) {
  * its dishes appear; once every required category is complete the optional add-ons appear. The Estimated Total and
  * the counts sit in a sidebar on a big screen and in the bottom bar on a phone. Saving, the limits, the extras and
  * the prices are the same code as before.
+ *
+ * One bottom bar on every screen size and every step (Back left, Continue right, AJ 2026-10-10), like the other steps.
+ * Once the dishes are complete they fold into a one-line accordion (tap to reopen and change them) and the Add-ons card
+ * is brought into view.
  */
 export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addOns, guests, event, initial }: BuildMenuStepProps) {
   const router = useRouter();
   const [choice, setChoice] = useState<MenuChoice | null>(initial.choice);
   const [listOpen, setListOpen] = useState(initial.choice === null);
+  // The dishes card folds away once complete; the customer can reopen it. Reopening never survives dropping below complete.
+  const [dishesOpen, setDishesOpen] = useState(() => !initialDishesComplete(menus, customSections, initial));
   const [itemIds, setItemIds] = useState<string[]>(initial.itemIds);
   const [addOnIds, setAddOnIds] = useState<string[]>(initial.addOnIds);
   const [quote, setQuote] = useState<DraftQuote | null>(null);
@@ -76,6 +90,7 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
   const split = useMemo(() => splitPicks(sections, itemIds), [sections, itemIds]);
   const cappedSections = sections.filter((section) => section.maxSelection !== null);
   const categoriesDone = isCustomMenu ? 0 : cappedSections.length - short.length;
+  const dishesFolded = complete && !dishesOpen;
 
   function choose(next: MenuChoice) {
     if (!sameChoice(choice, next)) setItemIds([]); // a different menu has different dishes (the server clears them too)
@@ -86,15 +101,21 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
     requestAnimationFrame(() => scrollToRef(dishesRef.current));
   }
 
-  // The add-ons open up the moment the dishes are complete (not on first load of an already-complete draft).
-  const wasComplete = useRef(complete);
-  useEffect(() => {
-    if (complete && !wasComplete.current && addOns.length > 0) {
-      setAnnouncement("Your dishes are complete. Add-ons and live counters are optional below.");
-      requestAnimationFrame(() => scrollToRef(addOnsRef.current));
+  // The moment the dishes become complete they fold away and the add-ons are brought into view; dropping below complete reopens them.
+  function changeItems(update: (previous: string[]) => string[]) {
+    const next = update(itemIds);
+    setItemIds(next);
+    const nowComplete = hasMenu && next.length > 0 && (isCustomMenu || requiredShortfalls(sections, next).length === 0);
+    if (nowComplete && !complete) {
+      setDishesOpen(false);
+      if (addOns.length > 0) {
+        setAnnouncement("Your dishes are complete and folded away. Add-ons and live counters are optional below.");
+        // After the dishes fold, so the add-ons land at the top of the screen.
+        setTimeout(() => requestAnimationFrame(() => scrollToRef(addOnsRef.current)), 50);
+      }
     }
-    wasComplete.current = complete;
-  }, [complete, addOns.length]);
+    if (!nowComplete && complete) setDishesOpen(true);
+  }
 
   // The running Estimated Total is the server's own calculation, run on the picks as they stand (not saved).
   useEffect(() => {
@@ -131,7 +152,7 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
   const backToDetails = () => router.push(`/${tenantSlug}/plan/${draftId}?step=details`);
 
   return (
-    <div className="flex flex-col gap-6 pb-28 lg:pb-8">
+    <div className="flex flex-col gap-6 pb-28">
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold">Build Your Menu</h2>
         <p className="text-sm text-muted-foreground">Choose a menu, select dishes from each category and add any extras you need.</p>
@@ -146,21 +167,29 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
           <MenuSection menus={menus} choice={hasMenu ? choice : null} listOpen={listOpen || !hasMenu} onChoose={choose} onChange={() => setListOpen(true)} onCancelChange={() => setListOpen(false)} />
 
           {hasMenu && (
-            <div ref={dishesRef} className="scroll-mt-4">
-              <DishesSection
-                key={isCustomMenu ? "custom" : (pickedMenu?.id ?? "none")}
-                menuName={pickedMenu?.name ?? null}
-                sections={sections}
-                guests={guests}
-                isCustomMenu={isCustomMenu}
-                itemIds={itemIds}
-                onItemIdsChange={(update) => setItemIds(update)}
-              />
+            <div ref={dishesRef} className="flex scroll-mt-4 flex-col gap-3">
+              <div>
+                <DishesSection
+                  key={isCustomMenu ? "custom" : (pickedMenu?.id ?? "none")}
+                  menuName={pickedMenu?.name ?? null}
+                  sections={sections}
+                  guests={guests}
+                  isCustomMenu={isCustomMenu}
+                  itemIds={itemIds}
+                  onItemIdsChange={changeItems}
+                  fold={complete ? { folded: dishesFolded, onToggle: () => setDishesOpen((open) => !open), summary: `${dishesLine}${!isCustomMenu && cappedSections.length > 0 ? ` · ${categoriesDone} of ${cappedSections.length} categories` : ""}` } : undefined}
+                />
+              </div>
             </div>
           )}
 
           {complete && addOns.length > 0 && (
-            <div ref={addOnsRef} className="scroll-mt-4">
+            <div ref={addOnsRef} className="flex scroll-mt-4 flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {dishesFolded && (
+                <p className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
+                  <Sparkles className="size-4" /> Dishes done. Want to make it special? Add live counters or extras, or skip to continue.
+                </p>
+              )}
               <AddOnsSection addOns={addOns} guests={guests} addOnIds={addOnIds} onAddOnIdsChange={(update) => setAddOnIds(update)} />
             </div>
           )}
@@ -229,42 +258,30 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
             </span>
             <span className="text-xs text-muted-foreground">Final pricing is confirmed by the kitchen after reviewing your menu and event requirements.</span>
           </div>
-
-          <div className="flex flex-col gap-2">
-            <Button type="button" size="lg" disabled={!complete || pending} onClick={handleContinue} aria-describedby={whyDisabled ? "continue-why" : undefined}>
-              {pending ? "Saving…" : "Continue to Review"}
-              <ArrowRight />
-            </Button>
-            {whyDisabled && (
-              <p id="continue-why" className="text-center text-xs text-muted-foreground">
-                {whyDisabled}
-              </p>
-            )}
-            <Button type="button" variant="outline" onClick={backToDetails}>
-              <ArrowLeft /> Back
-            </Button>
-          </div>
         </aside>
       </div>
 
-      <div className="lg:hidden">
-        <StepFooter
-          onBack={backToDetails}
-          summary={
-            <span className="flex flex-col items-center leading-tight">
-              <span>{hasMenu && !isCustomMenu ? `${categoriesDone} of ${cappedSections.length} categories` : dishesLine}</span>
-              <span className={cn("font-semibold text-foreground")}>
-                {totalLabel}: {total}
-              </span>
+      <StepFooter
+        onBack={backToDetails}
+        summary={
+          <span className="flex flex-col items-center leading-tight lg:flex-row lg:gap-4">
+            <span>{hasMenu && !isCustomMenu ? `${categoriesDone} of ${cappedSections.length} categories` : dishesLine}</span>
+            <span className="font-semibold text-foreground">
+              {totalLabel}: {total}
             </span>
-          }
-        >
-          <Button type="button" disabled={!complete || pending} onClick={handleContinue}>
-            {pending ? "Saving…" : "Continue"}
-            <ArrowRight />
-          </Button>
-        </StepFooter>
-      </div>
+            {whyDisabled && (
+              <span id="continue-why" className="sr-only">
+                {whyDisabled}
+              </span>
+            )}
+          </span>
+        }
+      >
+        <Button type="button" size="lg" disabled={!complete || pending} onClick={handleContinue} aria-describedby={whyDisabled ? "continue-why" : undefined}>
+          {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Review</span></span>}
+          <ArrowRight />
+        </Button>
+      </StepFooter>
     </div>
   );
 }

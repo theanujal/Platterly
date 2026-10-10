@@ -273,7 +273,7 @@ describe("quote + final submit (Order created only here)", () => {
     const order = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
     expect(order.customerId).toBe(customer.id);
     expect(Number(order.total)).toBe(39300);
-    // "Number of Guests" is the adults; the two 5-10 kids sit on top.
+    // "Number of Adults" is the adults; the two 5-10 kids sit on top.
     // Only the location is known before approval; the venue and delivery details come later.
     expect(order.eventAddress).toBe("Whitefield, Bangalore");
     expect(order.venueDoorNumber).toBeNull();

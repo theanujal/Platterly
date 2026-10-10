@@ -137,7 +137,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await pickCalendarDate(publicPage, publicPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
-  await publicPage.getByLabel("Number of Guests").fill("100");
+  await publicPage.getByLabel("Number of Adults").fill("100");
   await publicPage.getByRole("checkbox", { name: "Dinner" }).click();
   await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
   await expect(publicPage.getByRole("checkbox", { name: /Keep me posted/ })).toBeChecked();
@@ -215,6 +215,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(publicPage.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
   await expect(publicPage.getByTestId("selection-needed")).toContainText(categoryName);
   await tikkaCard.getByRole("button", { name: "Select", exact: true }).click();
+  // Complete: the dishes fold into a one-line accordion (Add-ons come next); reopen it to keep going.
+  await expect(publicPage.getByTestId("dishes-accordion-summary")).toContainText("1 dish selected");
+  await expect(publicPage.getByTestId("dishes-section")).toBeHidden();
+  await publicPage.getByRole("button", { name: /Select Dishes/ }).click();
   await expect(tikkaCard.getByRole("button", { name: "Selected" })).toBeVisible();
   await expect(counter).toHaveText("1/1 selected");
   await expect(publicPage.getByTestId("selection-needed")).toHaveCount(0);
@@ -264,6 +268,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // Step 3 — Review & Submit: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000
   await expect(publicPage.getByTestId("review-items")).toContainText(itemName);
   await expect(publicPage.getByText("Whitefield, Bangalore")).toBeVisible(); // the Event Location
+  // Order Summary: Adults, the two kid bands, then Total Guests (100 adults, no kids here).
+  await expect(publicPage.getByText("Adults:", { exact: true })).toBeVisible();
+  await expect(publicPage.getByTestId("review-total-guests")).toContainText("Total Guests:100");
   await expect(publicPage.getByTestId("review-pricing")).toContainText("Extra Items");
   await expect(publicPage.getByText("Children Guests & Pricing")).toHaveCount(0);
   await expect(publicPage.getByRole("heading", { name: "Selected Menu Items" })).toBeVisible();
@@ -287,7 +294,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await pickCalendarDate(publicPage, publicPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 5 * 86_400_000)));
   await publicPage.getByLabel("Event Type").click();
   await publicPage.getByRole("option", { name: eventTypeName }).click();
-  await publicPage.getByLabel("Number of Guests").fill("80");
+  await publicPage.getByLabel("Number of Adults").fill("80");
   await publicPage.getByRole("checkbox", { name: "Lunch" }).click();
   await publicPage.getByRole("radio", { name: /^Vegetarian/ }).click();
   await publicPage.getByLabel("Venue Location").fill("Koramangala, Bangalore");

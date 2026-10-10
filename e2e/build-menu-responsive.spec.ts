@@ -80,7 +80,7 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
     await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0,10));
     await p.getByLabel("Event Type").click();
     await p.getByRole("option", { name: et }).click();
-    await p.getByLabel("Number of Guests").fill("40");
+    await p.getByLabel("Number of Adults").fill("40");
     await p.getByRole("checkbox", { name: "Dinner" }).click();
     await p.getByRole("radio", { name: /^Vegetarian/ }).click();
     await p.getByLabel("Venue Location").fill("Whitefield, Bangalore");
@@ -98,6 +98,7 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
       }
     }
     for (const [name, , c] of dishes) {
+      if (await p.getByTestId("dishes-section").isHidden()) break; // complete: the dishes have folded into the accordion
       const card = p.getByTestId("item-card").filter({ hasText: name });
       if (sz.n === "desktop") { await p.getByRole("tab", { name: new RegExp(cats[c]) }).click(); }
       const done = (await p.getByTestId("category-counter").filter({ hasText: cats[c] }).count()) >= 0;
@@ -108,7 +109,16 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
         if (Number(m[1]) < Number(m[2])) await card.getByRole("button", { name: "Select", exact: true }).click();
       }
     }
+    // The dishes fold into an accordion once complete and the add-ons are showcased; the bar stays on screen at every size.
+    await expect(p.getByTestId("dishes-accordion-summary")).toBeVisible();
+    await expect(p.getByTestId("dishes-section")).toBeHidden();
+    await expect(p.getByText("Add-ons & Live Counters").first()).toBeVisible();
+    await expect(p.getByRole("button", { name: "Back" })).toBeInViewport();
+    await expect(p.getByRole("button", { name: "Continue to Review" })).toBeInViewport();
     await shot("4-addons", true);
+    // Reopen the dishes to add an extra.
+    await p.getByRole("button", { name: /Select Dishes/ }).click();
+    await expect(p.getByTestId("dishes-section")).toBeVisible();
     // an extra: pick a 3rd starter
     if (sz.n === "desktop") await p.getByRole("tab", { name: new RegExp(cats[1]) }).click();
     await p.getByTestId("item-card").filter({ hasText: "Spring Roll" }).getByRole("button", { name: "Select", exact: true }).click();

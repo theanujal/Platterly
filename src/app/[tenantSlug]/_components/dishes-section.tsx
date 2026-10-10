@@ -24,6 +24,8 @@ interface DishesSectionProps {
   isCustomMenu: boolean;
   itemIds: string[];
   onItemIdsChange: (update: (previous: string[]) => string[]) => void;
+  /** Set once the dishes are complete: the card's heading then folds and unfolds the dishes (an accordion). */
+  fold?: { folded: boolean; onToggle: () => void; summary: string };
 }
 
 const sectionKey = (section: StorefrontMenuSection) => section.categoryId ?? "other";
@@ -33,7 +35,7 @@ const sectionKey = (section: StorefrontMenuSection) => section.categoryId ?? "ot
  * category's table; a phone shows every category as a folding section with its progress. A category past its limit
  * reads "2/2 selected + 1 extra". The "Additional Option" popup, the limits and the extra charges are unchanged.
  */
-export function DishesSection({ menuName, sections, guests, isCustomMenu, itemIds, onItemIdsChange }: DishesSectionProps) {
+export function DishesSection({ menuName, sections, guests, isCustomMenu, itemIds, onItemIdsChange, fold }: DishesSectionProps) {
   const compact = useIsMobile();
   const setItemIds = onItemIdsChange;
   const [detail, setDetail] = useState<{ item: StorefrontMenuItem; categoryName: string } | null>(null);
@@ -183,143 +185,172 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
   const picked = split.regularIds.length + split.extraIds.length;
 
   return (
-    <div className="flex flex-col gap-6" ref={sectionsRef} data-testid="dishes-section">
+    <div className="flex flex-col gap-6" ref={sectionsRef}>
       <FormCard className="gap-5">
-        <SectionHeading
-          number={2}
-          title={isCustomMenu ? "Build Your Custom Menu" : "Select Dishes"}
-          description={
-            isCustomMenu
-              ? "Select any dishes you like. Our team will confirm the price per plate."
-              : `${menuName ?? "Your menu"}: choose dishes from each category. Selection limits are shown for each category; extras beyond a limit are charged separately.`
-          }
-        />
-        {sections.length === 0 && <p className="text-center text-sm text-muted-foreground">No dishes are available yet — please check back soon.</p>}
-
-        {sections.length > 0 && (
-          <div className={cn("grid gap-5", !compact && "lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6")}>
-            {/* The category rail on a big screen: one category shows at a time. A phone lists every category instead. */}
-            {!compact && (
-            <div role="tablist" aria-label="Categories" className="flex flex-col gap-2">
-              {sections.map((section) => {
-                const key = sectionKey(section);
-                const active = category === key && needle === "";
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    onClick={() => {
-                      setCategory(key);
-                      setQuery("");
-                    }}
-                    className={cn(
-                      "inline-flex w-full min-h-11 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-                      active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    )}
-                  >
-                    <Layers className="size-4 shrink-0" />
-                    <span className="flex-1 text-left">{section.categoryName}</span>
-                    <CategoryProgress section={section} regular={split.regularIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} extras={split.extraIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} isCustomMenu={isCustomMenu} />
-                  </button>
-                );
-              })}
-            </div>
-            )}
-
-            <div className="flex min-w-0 flex-col gap-5">
-              {/* Find dishes quickly: search, the category and diet dropdowns, and the Grid / List switch on one row. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="min-w-48 flex-1">
-                  <IconInput icon={Search} type="search" aria-label="Search dishes" placeholder="Search dishes…" value={query} onChange={(e) => setQuery(e.target.value)} />
-                </div>
-                {!compact && (
-                <Select items={categoryItems} value={category} onValueChange={(value) => setCategory(value ?? category)}>
-                  <SelectTrigger aria-label="Filter by category" className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sections.map((section) => (
-                      <SelectItem key={sectionKey(section)} value={sectionKey(section)}>
-                        {section.categoryName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {(() => {
+          const heading = (
+            <SectionHeading
+              number={2}
+              title={isCustomMenu ? "Build Your Custom Menu" : "Select Dishes"}
+              description={
+                isCustomMenu
+                  ? "Select any dishes you like. Our team will confirm the price per plate."
+                  : `${menuName ?? "Your menu"}: choose dishes from each category. Selection limits are shown for each category; extras beyond a limit are charged separately.`
+              }
+            />
+          );
+          if (!fold) return heading;
+          return (
+            <button
+              type="button"
+              aria-expanded={!fold.folded}
+              aria-controls="dishes-panel"
+              onClick={fold.onToggle}
+              className="flex w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-2">
+                {heading}
+                {fold.folded && (
+                  <span className="ml-11 inline-flex items-center gap-1.5 text-sm font-medium text-success" data-testid="dishes-accordion-summary">
+                    <Check className="size-4" /> {fold.summary}
+                  </span>
                 )}
-                {hasBothFoodTypes && (
-                  <Select items={{ ALL: "All Types", VEGETARIAN: "Veg", NON_VEGETARIAN: "Non-Veg" }} value={foodType} onValueChange={(value) => setFoodType(value ?? "ALL")}>
-                    <SelectTrigger aria-label="Filter by type" className="w-36">
+              </span>
+              <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-primary">
+                {fold.folded ? "Edit" : "Hide"}
+                {fold.folded ? <ChevronDown className="size-5" /> : <ChevronUp className="size-5" />}
+              </span>
+            </button>
+          );
+        })()}
+        <div id="dishes-panel" hidden={fold?.folded} className="flex flex-col gap-5" data-testid="dishes-section">
+          {sections.length === 0 && <p className="text-center text-sm text-muted-foreground">No dishes are available yet — please check back soon.</p>}
+
+          {sections.length > 0 && (
+            <div className={cn("grid gap-5", !compact && "lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-6")}>
+              {/* The category rail on a big screen: one category shows at a time. A phone lists every category instead. */}
+              {!compact && (
+              <div role="tablist" aria-label="Categories" className="flex flex-col gap-2">
+                {sections.map((section) => {
+                  const key = sectionKey(section);
+                  const active = category === key && needle === "";
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => {
+                        setCategory(key);
+                        setQuery("");
+                      }}
+                      className={cn(
+                        "inline-flex w-full min-h-11 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                        active ? "bg-accent text-accent-foreground ring-1 ring-primary/40" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      )}
+                    >
+                      <Layers className="size-4 shrink-0" />
+                      <span className="flex-1 text-left">{section.categoryName}</span>
+                      <CategoryProgress section={section} regular={split.regularIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} extras={split.extraIds.filter((id) => sectionOfItem.get(id) === sections.indexOf(section)).length} isCustomMenu={isCustomMenu} />
+                    </button>
+                  );
+                })}
+              </div>
+              )}
+
+              <div className="flex min-w-0 flex-col gap-5">
+                {/* Find dishes quickly: search, the category and diet dropdowns, and the Grid / List switch on one row. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="min-w-48 flex-1">
+                    <IconInput icon={Search} type="search" aria-label="Search dishes" placeholder="Search dishes…" value={query} onChange={(e) => setQuery(e.target.value)} />
+                  </div>
+                  {!compact && (
+                  <Select items={categoryItems} value={category} onValueChange={(value) => setCategory(value ?? category)}>
+                    <SelectTrigger aria-label="Filter by category" className="w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="ALL">All Types</SelectItem>
-                      <SelectItem value="VEGETARIAN">Veg</SelectItem>
-                      <SelectItem value="NON_VEGETARIAN">Non-Veg</SelectItem>
+                      {sections.map((section) => (
+                        <SelectItem key={sectionKey(section)} value={sectionKey(section)}>
+                          {section.categoryName}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
-                )}
-              </div>
+                  )}
+                  {hasBothFoodTypes && (
+                    <Select items={{ ALL: "All Types", VEGETARIAN: "Veg", NON_VEGETARIAN: "Non-Veg" }} value={foodType} onValueChange={(value) => setFoodType(value ?? "ALL")}>
+                      <SelectTrigger aria-label="Filter by type" className="w-36">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Types</SelectItem>
+                        <SelectItem value="VEGETARIAN">Veg</SelectItem>
+                        <SelectItem value="NON_VEGETARIAN">Non-Veg</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
 
-              {visibleSections.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No dishes match your search.</p>}
+                {visibleSections.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No dishes match your search.</p>}
 
-              {visibleSections.map(({ section, index, items }) => {
-                const key = sectionKey(section);
-                const regularInSection = split.regularIds.filter((id) => sectionOfItem.get(id) === index).length;
-                const extrasInSection = split.extraIds.filter((id) => sectionOfItem.get(id) === index).length;
-                // A search or diet filter always shows what it found, even in a folded category.
-                const open = searching || (compact ? (openKeys ?? new Set([defaultOpenKey])).has(key) : !foldedKeys.has(key));
-                const capped = !isCustomMenu && section.maxSelection !== null;
-                const needed = capped ? Math.min(section.maxSelection ?? 0, section.items.length) : 0;
-                const full = capped && regularInSection >= (section.maxSelection ?? 0);
-                return (
-                  <section key={key} className="flex flex-col gap-3" data-testid="item-section">
-                    <button type="button" aria-expanded={open} onClick={() => toggleOpen(key)} className="flex w-full items-center gap-3 text-left">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                        <Layers className="size-5" />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="text-base font-semibold">{section.categoryName}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {capped ? `Select at least ${needed} item${needed === 1 ? "" : "s"} from this category.` : "Choose as many as you like."}
+                {visibleSections.map(({ section, index, items }) => {
+                  const key = sectionKey(section);
+                  const regularInSection = split.regularIds.filter((id) => sectionOfItem.get(id) === index).length;
+                  const extrasInSection = split.extraIds.filter((id) => sectionOfItem.get(id) === index).length;
+                  // A search or diet filter always shows what it found, even in a folded category.
+                  const open = searching || (compact ? (openKeys ?? new Set([defaultOpenKey])).has(key) : !foldedKeys.has(key));
+                  const capped = !isCustomMenu && section.maxSelection !== null;
+                  const needed = capped ? Math.min(section.maxSelection ?? 0, section.items.length) : 0;
+                  const full = capped && regularInSection >= (section.maxSelection ?? 0);
+                  return (
+                    <section key={key} className="flex flex-col gap-3" data-testid="item-section">
+                      <button type="button" aria-expanded={open} onClick={() => toggleOpen(key)} className="flex w-full items-center gap-3 text-left">
+                        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Layers className="size-5" />
                         </span>
-                      </span>
-                      {capped && (
-                        <Badge variant={regularInSection >= needed ? "success" : "neutral"} data-testid="category-counter">
-                          {regularInSection >= needed && <Check />}
-                          {regularInSection}/{section.maxSelection} selected{extrasInSection > 0 ? ` + ${extrasInSection} extra` : ""}
-                        </Badge>
-                      )}
-                      {!capped && extrasInSection > 0 && <Badge variant="neutral">{extrasInSection} selected</Badge>}
-                      {open ? <ChevronUp className="size-5 shrink-0 text-muted-foreground" /> : <ChevronDown className="size-5 shrink-0 text-muted-foreground" />}
-                    </button>
-
-                    {open && (
-                      <>
-                        <div className="overflow-hidden rounded-xl border border-border bg-card">
-                          <div className={cn("hidden gap-3 bg-muted/60 px-4 py-2.5 text-[11px] font-bold tracking-wide text-muted-foreground uppercase sm:grid", tableColumns)}>
-                            <span>Dish</span>
-                            <span>Type</span>
-                            {!isCustomMenu && <span>Status</span>}
-                            <span className="sr-only">Actions</span>
-                          </div>
-                          {items.map((item) => renderDish(item, section, full))}
-                        </div>
-                        {full && (
-                          <p className="flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
-                            <CircleAlert className="size-4 shrink-0" />
-                            You can select only {section.maxSelection} item{section.maxSelection === 1 ? "" : "s"} from {section.categoryName} without an extra charge.
-                          </p>
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="text-base font-semibold">{section.categoryName}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {capped ? `Select at least ${needed} item${needed === 1 ? "" : "s"} from this category.` : "Choose as many as you like."}
+                          </span>
+                        </span>
+                        {capped && (
+                          <Badge variant={regularInSection >= needed ? "success" : "neutral"} data-testid="category-counter">
+                            {regularInSection >= needed && <Check />}
+                            {regularInSection}/{section.maxSelection} selected{extrasInSection > 0 ? ` + ${extrasInSection} extra` : ""}
+                          </Badge>
                         )}
-                      </>
-                    )}
-                  </section>
-                );
-              })}
+                        {!capped && extrasInSection > 0 && <Badge variant="neutral">{extrasInSection} selected</Badge>}
+                        {open ? <ChevronUp className="size-5 shrink-0 text-muted-foreground" /> : <ChevronDown className="size-5 shrink-0 text-muted-foreground" />}
+                      </button>
+
+                      {open && (
+                        <>
+                          <div className="overflow-hidden rounded-xl border border-border bg-card">
+                            <div className={cn("hidden gap-3 bg-muted/60 px-4 py-2.5 text-[11px] font-bold tracking-wide text-muted-foreground uppercase sm:grid", tableColumns)}>
+                              <span>Dish</span>
+                              <span>Type</span>
+                              {!isCustomMenu && <span>Status</span>}
+                              <span className="sr-only">Actions</span>
+                            </div>
+                            {items.map((item) => renderDish(item, section, full))}
+                          </div>
+                          {full && (
+                            <p className="flex items-center gap-2 rounded-lg bg-warning/10 px-3 py-2 text-sm text-warning">
+                              <CircleAlert className="size-4 shrink-0" />
+                              You can select only {section.maxSelection} item{section.maxSelection === 1 ? "" : "s"} from {section.categoryName} without an extra charge.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </FormCard>
 
       {!isCustomMenu && short.length > 0 && (

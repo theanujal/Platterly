@@ -87,7 +87,7 @@ async function validateEventDetails(organizationId: string, details: EventDetail
   }
 
   const isCount = (n: number) => Number.isInteger(n) && n >= 0;
-  if (!Number.isInteger(details.guestCount) || details.guestCount < 1) throw new StorefrontDraftError("Number of Guests is required.");
+  if (!Number.isInteger(details.guestCount) || details.guestCount < 1) throw new StorefrontDraftError("Number of Adults is required.");
   if (eventType.minGuests && details.guestCount < eventType.minGuests) {
     throw new StorefrontDraftError(`${eventType.name} needs at least ${eventType.minGuests} guests.`);
   }
@@ -302,7 +302,7 @@ export interface DraftQuote {
   isCustomMenu: boolean;
   menuName: string | null;
   pricePerPlate: number | null;
-  /** Adults (the "Number of Guests" on the form); the menu price applies to them. */
+  /** Adults (the "Number of Adults" on the form); the menu price applies to them. */
   guests: number;
   /** How many meals were asked for; every amount below already covers all of them. */
   meals: number;
@@ -397,7 +397,7 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       orderKind: mealTypes.length > 1 ? "MULTI" : "SINGLE",
       // Only the location is known at this point; the venue and delivery details come after the customer approves.
       eventAddress: data.venueLocation,
-      // "Number of Guests" on the form is the adults; children are counted on top.
+      // "Number of Adults" on the form is the adults; children are counted on top.
       adultCount: guests,
       totalParticipants: guests + data.childBelow5Count + data.child5To10Count,
       childBelow5Count: data.childBelow5Count,

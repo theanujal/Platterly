@@ -107,7 +107,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await pickCalendarDate(customerPage, customerPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));
   await customerPage.getByLabel("Event Type").click();
   await customerPage.getByRole("option", { name: eventTypeName }).click();
-  await customerPage.getByLabel("Number of Guests").fill("100");
+  await customerPage.getByLabel("Number of Adults").fill("100");
   await customerPage.getByRole("checkbox", { name: "Dinner" }).click();
   await customerPage.getByRole("radio", { name: /^Vegetarian/ }).click();
   await customerPage.getByLabel("Venue Location").fill("Whitefield, Bangalore");

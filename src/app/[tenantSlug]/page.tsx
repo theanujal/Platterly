@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
@@ -13,6 +13,9 @@ import { VISIT_RETENTION_DAYS } from "@/modules/storefront-visits/visits";
 interface StorefrontPageProps {
   params: Promise<{ tenantSlug: string }>;
 }
+
+// `cover` lets the bottom bar sit clear of a phone's home indicator (it pads by the safe-area inset).
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export async function generateMetadata({ params }: StorefrontPageProps): Promise<Metadata> {
   const { tenantSlug } = await params;
