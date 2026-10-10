@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { getInvoice, confirmedPaidForOrder } from "@/modules/invoices/invoice";
 import { invoiceDisplayStatus } from "@/modules/invoices/invoice-status";
-import { longDate } from "@/modules/invoices/invoice-format";
+import { buildInvoiceDocument } from "@/modules/invoices/invoice-document";
 import { listOrderPayments } from "@/modules/payments/payment";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -66,7 +66,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       </div>
       <Separator />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <InvoicePaper invoice={{ ...invoice, eventLabel: [invoice.order.eventType?.name, invoice.order.eventStartDate ? longDate(invoice.order.eventStartDate) : null].filter(Boolean).join(" · ") || null }} />
+        <InvoicePaper doc={buildInvoiceDocument(invoice, paid)} />
         <PaymentsPanel orderId={invoice.orderId} invoiceId={invoice.type === "INVOICE" ? invoice.id : undefined} total={orderTotal} paid={paid} balance={Math.max(orderTotal - paid, 0)} payments={rows} canRecord={canRecord} canManage={canManage} />
       </div>
     </div>

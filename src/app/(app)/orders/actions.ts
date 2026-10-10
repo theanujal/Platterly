@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
   createOrder,
-  updateOrder,
   deleteOrder,
   getOrder,
   sendOrderWhatsApp,
@@ -17,6 +16,9 @@ import {
 } from "@/modules/orders/order";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
+import { saveOrderWithMeals } from "@/modules/menu-approvals/menu-approval";
+import { recordInitialAdvance } from "@/modules/payments/payment";
+import { prisma } from "@/lib/db";
 import { changeStatusManually, ManualStatusChangeError } from "@/modules/menu-approvals/manual-status";
 import { getEvent, updateEventOperations, type RequiredInventoryInput } from "@/modules/events/event";
 import { listCustomers, createCustomer } from "@/modules/customers/customer";
@@ -142,15 +144,34 @@ function assertEventDateAllowed(eventStartDate: Date, unchangedFrom?: Date) {
   if (isBackdated(eventStartDate, unchangedFrom)) throw new Error("Event Date can't be in the past.");
 }
 
+/** Whether this order already has a confirmed payment (from then on the Payment Summary, not the order form, owns the money). */
+const hasConfirmedPayment = async (orderId: string) => (await prisma.payment.count({ where: { orderId, status: "CONFIRMED" } })) > 0;
+
+/** The advance typed on the order form, recorded as a real payment (see `recordInitialAdvance`). Returns a message when it could not be. */
+function recordAdvanceFromForm(organizationId: string, orderId: string, formData: FormData, actorUserId: string) {
+  return recordInitialAdvance(
+    organizationId,
+    orderId,
+    { amount: numberField(formData, "advance") ?? 0, paidInFull: stringField(formData, "paymentStatus") === "PAID", method: stringField(formData, "advanceMethod"), reference: stringField(formData, "advanceReference") },
+    actorUserId,
+  );
+}
+
 export async function createOrderAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["create"] }, organizationId);
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate);
-    const order = await createOrder(organizationId, input, session.user.id);
+    // The advance is recorded as a payment below, not stored as a bare number.
+    const order = await createOrder(organizationId, { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
+    const advanceError = await recordAdvanceFromForm(organizationId, order.id, formData, session.user.id);
+    if (advanceError) {
+      revalidatePath("/orders");
+      return { ok: false, error: `The order was saved, but the advance could not be recorded: ${advanceError} Record it from the order's Pricing & Payment tab.` };
+    }
   } catch (error) {
     return toErrorResult(error);
   }
@@ -164,9 +185,14 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate);
-    const order = await createOrder(organizationId, input, session.user.id);
+    const order = await createOrder(organizationId, { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
+    const advanceError = await recordAdvanceFromForm(organizationId, order.id, formData, session.user.id);
+    if (advanceError) {
+      revalidatePath("/orders");
+      return { ok: false, error: `The order was saved, but the advance could not be recorded: ${advanceError} Record it from the order's Pricing & Payment tab.` };
+    }
     await sendOrderWhatsApp(organizationId, order.id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -182,9 +208,17 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
-    await updateOrder(organizationId, id, input, session.user.id);
+    const recorded = await hasConfirmedPayment(id);
+    // With payments on file the Payment Summary owns the money; without, the advance typed here becomes a payment below.
+    await saveOrderWithMeals(organizationId, id, recorded ? { ...input, advance: undefined, paymentStatus: undefined } : { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
+    const advanceError = recorded ? null : await recordAdvanceFromForm(organizationId, id, formData, session.user.id);
+    if (advanceError) {
+      revalidatePath("/orders");
+      revalidatePath(`/orders/${id}`);
+      return { ok: false, error: `The order was saved, but the advance could not be recorded: ${advanceError}` };
+    }
   } catch (error) {
     return toErrorResult(error);
   }
@@ -200,9 +234,16 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
   try {
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
-    await updateOrder(organizationId, id, input, session.user.id);
+    const recorded = await hasConfirmedPayment(id);
+    await saveOrderWithMeals(organizationId, id, recorded ? { ...input, advance: undefined, paymentStatus: undefined } : { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
+    const advanceError = recorded ? null : await recordAdvanceFromForm(organizationId, id, formData, session.user.id);
+    if (advanceError) {
+      revalidatePath("/orders");
+      revalidatePath(`/orders/${id}`);
+      return { ok: false, error: `The order was saved, but the advance could not be recorded: ${advanceError}` };
+    }
     await sendOrderWhatsApp(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);

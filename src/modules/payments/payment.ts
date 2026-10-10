@@ -103,6 +103,40 @@ export async function recordPayment(input: RecordPaymentInput) {
   return payment;
 }
 
+const ADVANCE_METHODS: PaymentMethod[] = ["CASH", "UPI", "CARD", "NET_BANKING", "BANK_TRANSFER"];
+
+/**
+ * The advance collected up front, recorded as a real payment (AJ, 2026-10-10) so it shows as paid on the order, the invoice and the
+ * receipts, instead of staying a bare number that the first recorded payment would overwrite. "Paid in full" records the whole
+ * balance as the final payment. Returns a message when it could not be recorded (the order is already saved), otherwise null.
+ */
+export async function recordInitialAdvance(
+  organizationId: string,
+  orderId: string,
+  input: { amount: number; paidInFull: boolean; method?: string | null; reference?: string | null },
+  actorUserId?: string,
+): Promise<string | null> {
+  if (input.amount <= 0 && !input.paidInFull) return null;
+  try {
+    const { balance } = await orderBalance(organizationId, orderId);
+    const amount = input.paidInFull ? balance : round2(input.amount);
+    if (amount <= 0) return null;
+    const method = ADVANCE_METHODS.find((m) => m === input.method) ?? "CASH";
+    await recordPayment({
+      organizationId,
+      orderId,
+      amount,
+      type: input.paidInFull || amount >= balance - 0.005 ? "FINAL" : "ADVANCE",
+      method,
+      reference: input.reference ?? undefined,
+      actorUserId,
+    });
+    return null;
+  } catch (error) {
+    return error instanceof PaymentError ? error.message : "Something went wrong.";
+  }
+}
+
 /** The kitchen team confirms a UPI payment once it has reached their account. */
 export async function confirmPayment(organizationId: string, paymentId: string, actorUserId?: string) {
   const payment = await prisma.payment.findFirstOrThrow({ where: { id: paymentId, organizationId } });

@@ -1,13 +1,15 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit/audit";
 import { getSetting } from "@/lib/settings/settings";
+import { DEFAULT_GST_RATE, getAutoInvoice, getGstSettings } from "@/modules/payments/payment-settings";
 import { menuGuestCount, itemMovesPrice, mealBaseAmount } from "@/modules/orders/meal-pricing";
 import { parseCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
 import { computeInvoiceStatus, splitInclusiveGst } from "./invoice-status";
 
 const INVOICE_TERMS_KEY = "communication.invoiceTerms";
-export const DEFAULT_GST_RATE = 5;
+export { DEFAULT_GST_RATE };
 // Outdoor catering services.
 const DEFAULT_SAC = "996333";
 
@@ -46,7 +48,7 @@ export function buildInvoiceLines(order: {
   customCharges?: CustomCharge[];
   discount: number;
   total: number;
-  mealPlanEntries: { date: Date; mealType: string; price: number | null; menuName: string | null; menuPricePerPlate: number | null; items: { name: string; itemType: string; unitPrice: number; quantity: number; isExtra: boolean }[] }[];
+  mealPlanEntries: { date: Date; mealType: string; price: number | null; menuName: string | null; menuPricePerPlate: number | null; items: { name: string; itemType: string; unitPrice: number; quantity: number; isExtra: boolean; addOnType?: string | null }[] }[];
 }): DraftLine[] {
   const guests = menuGuestCount(order);
   const lines: DraftLine[] = [];
@@ -55,15 +57,14 @@ export function buildInvoiceLines(order: {
     const base = mealBaseAmount(meal, order.individualPricingEnabled, guests);
     const detail = `${MEAL_LABEL[entry.mealType] ?? entry.mealType}, ${dayLabel(entry.date)}`;
     if (base > 0 || entry.menuName) {
-      lines.push(
-        order.individualPricingEnabled
-          ? { description: entry.menuName ?? "Catering", detail, quantity: 1, rate: base }
-          : { description: entry.menuName ?? "Catering", detail, quantity: guests, rate: entry.menuPricePerPlate ?? 0 },
-      );
+      // The selected menu x the guests (AJ, 2026-10-10): a per-plate price either way, the Menu's or the one typed on the meal under
+      // Individual Pricing. Dishes inside the menu are never listed; only the menu, extra items, add-ons and live counters are.
+      lines.push({ description: entry.menuName ?? "Catering", detail: `${detail} · ${guests} guests`, quantity: guests, rate: (order.individualPricingEnabled ? entry.price : entry.menuPricePerPlate) ?? 0 });
     }
     for (const item of entry.items) {
       if (!itemMovesPrice(item) || item.unitPrice * item.quantity === 0) continue;
-      lines.push({ description: item.name, detail: `${item.isExtra ? "Extra item" : "Add-on"}, ${MEAL_LABEL[entry.mealType] ?? entry.mealType}`, quantity: item.quantity, rate: item.unitPrice });
+      const kind = item.itemType === "ADD_ON" ? (item.addOnType === "LIVE_COUNTER" ? "Live counter" : "Add-on") : "Extra item";
+      lines.push({ description: item.name, detail: `${kind}, ${MEAL_LABEL[entry.mealType] ?? entry.mealType}`, quantity: item.quantity, rate: item.unitPrice });
     }
   }
   if (order.childrenCharge > 0) lines.push({ description: "Children charges", quantity: 1, rate: order.childrenCharge });
@@ -89,7 +90,7 @@ export async function generateInvoiceFromOrder(organizationId: string, orderId: 
   const [order, organization, terms] = await Promise.all([
     prisma.order.findFirstOrThrow({
       where: { id: orderId, organizationId },
-      include: { customer: true, mealPlanEntries: { orderBy: [{ date: "asc" }, { mealType: "asc" }], include: { items: true, menu: true } } },
+      include: { customer: true, mealPlanEntries: { orderBy: [{ date: "asc" }, { mealType: "asc" }], include: { items: { include: { addOn: { select: { type: true } } } }, menu: true } } },
     }),
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId } }),
     getSetting<string>(organizationId, INVOICE_TERMS_KEY),
@@ -101,9 +102,11 @@ export async function generateInvoiceFromOrder(organizationId: string, orderId: 
   if (total <= 0) throw new InvoiceError("This order has no amount yet, so there is nothing to invoice.");
 
   const gstEnabled = organization.gstShowOnInvoices === true;
-  const gstRate = gstEnabled ? (options.gstRate ?? DEFAULT_GST_RATE) : 0;
+  // The kitchen's saved rate and type (Settings -> Payments) are the defaults; a manual Create Invoice can override them.
+  const gstDefaults = await getGstSettings(organizationId);
+  const gstRate = gstEnabled ? (options.gstRate ?? gstDefaults.rate) : 0;
   if (gstRate < 0 || gstRate > 28) throw new InvoiceError("GST rate must be between 0 and 28.");
-  const gstType = options.gstType ?? "CGST_SGST";
+  const gstType = options.gstType ?? gstDefaults.type;
   const split = splitInclusiveGst(total, gstRate, gstType);
 
   const lines = buildInvoiceLines({
@@ -122,7 +125,7 @@ export async function generateInvoiceFromOrder(organizationId: string, orderId: 
       price: e.price === null ? null : Number(e.price),
       menuName: e.menu?.name ?? null,
       menuPricePerPlate: e.menu ? Number(e.menu.pricePerPlate) : null,
-      items: e.items.map((i) => ({ name: i.name, itemType: i.itemType, unitPrice: Number(i.unitPrice), quantity: i.quantity, isExtra: i.isExtra })),
+      items: e.items.map((i) => ({ name: i.name, itemType: i.itemType, unitPrice: Number(i.unitPrice), quantity: i.quantity, isExtra: i.isExtra, addOnType: i.addOn?.type ?? null })),
     })),
   });
 
@@ -185,11 +188,60 @@ export async function syncInvoiceStatuses(orderId: string) {
   }
 }
 
+/** What the invoice document needs from its order: event details, guests, and the menu with each dish's category. */
+const DOCUMENT_ORDER_SELECT = {
+  id: true,
+  orderNumber: true,
+  total: true,
+  discount: true,
+  eventStartDate: true,
+  eventEndDate: true,
+  venue: true,
+  totalParticipants: true,
+  adultCount: true,
+  childBelow5Count: true,
+  child5To10Count: true,
+  eventType: { select: { name: true } },
+  mealPlanEntries: {
+    orderBy: [{ date: "asc" as const }, { mealType: "asc" as const }],
+    select: {
+      menu: { select: { name: true } },
+      items: { select: { name: true, itemType: true, isExtra: true, menuItem: { select: { categories: { select: { category: { select: { name: true } } }, take: 1 } } } } },
+    },
+  },
+} satisfies Prisma.OrderSelect;
+
 export async function getInvoice(organizationId: string, id: string) {
   return prisma.invoice.findFirst({
     where: { id, organizationId },
-    include: { items: { orderBy: { sortOrder: "asc" } }, order: { select: { id: true, orderNumber: true, total: true, eventStartDate: true, eventType: { select: { name: true } } } } },
+    include: { items: { orderBy: { sortOrder: "asc" } }, order: { select: DOCUMENT_ORDER_SELECT } },
   });
+}
+
+/**
+ * Called when an order is sent to the kitchen (AJ, 2026-10-10): creates its invoice as a Draft with the kitchen's saved GST
+ * defaults, so nobody has to click Create Invoice for every order. It does nothing when the switch is off, the order already
+ * has an invoice, or there is no amount yet. It never throws: a failure is written to the audit log and the hand-off carries on.
+ */
+export async function createInvoiceOnKitchenHandoff(organizationId: string, orderId: string, actorUserId?: string) {
+  try {
+    if (!(await getAutoInvoice(organizationId))) return null;
+    const existing = await prisma.invoice.findFirst({ where: { organizationId, orderId, type: "INVOICE", status: { not: "CANCELLED" } }, select: { id: true } });
+    if (existing) return null;
+    const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { total: true, status: true } });
+    if (!order || order.status === "CANCELLED" || Number(order.total) <= 0) return null;
+    return await generateInvoiceFromOrder(organizationId, orderId, { actorUserId });
+  } catch (error) {
+    await audit({
+      organizationId,
+      actorUserId,
+      action: "invoice.auto_create_failed",
+      recordType: "Order",
+      recordId: orderId,
+      after: { error: error instanceof Error ? error.message : "Unknown error" },
+    }).catch(() => undefined);
+    return null;
+  }
 }
 
 export async function cancelInvoice(organizationId: string, id: string, actorUserId: string) {
@@ -215,7 +267,7 @@ export async function listInvoices(organizationId: string, filter: { type?: "INV
 export async function getInvoiceForCustomer(organizationId: string, id: string) {
   const invoice = await prisma.invoice.findFirst({
     where: { id, organizationId },
-    include: { items: { orderBy: { sortOrder: "asc" } }, order: { select: { orderNumber: true, eventStartDate: true, eventType: { select: { name: true } } } } },
+    include: { items: { orderBy: { sortOrder: "asc" } }, order: { select: DOCUMENT_ORDER_SELECT } },
   });
   if (!invoice) return null;
   const paid = invoice.type === "INVOICE" ? await confirmedPaidForOrder(invoice.orderId) : Number(invoice.total);

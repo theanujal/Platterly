@@ -324,7 +324,8 @@ export async function seedOrderForBilling(email: string, total: number): Promise
   );
   await pool.query(
     `INSERT INTO meal_plan_entry (id, "orderId", date, "mealType", price) VALUES ($1, $2, now() + interval '10 days', 'DINNER', $3)`,
-    [`mpe_${suffix}`, orderId, total],
+    // Individual Pricing is a per-plate price (AJ, 2026-10-10): 100 adults at total / 100 each make the order total.
+    [`mpe_${suffix}`, orderId, total / 100],
   );
   return { orderId, organizationId, orderNumber };
 }

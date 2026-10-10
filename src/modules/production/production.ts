@@ -1,6 +1,8 @@
 import "server-only";
 import { orderAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
+import type { OrderStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit/audit";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { cookQuantity } from "@/modules/menu-approvals/kitchen-production-status";
@@ -15,7 +17,7 @@ function guestsFor(order: { totalParticipants: number | null; adultCount: number
 }
 
 const ORDER_PLAN_INCLUDE = {
-  events: { select: { guestCount: true } },
+  events: { select: { guestCount: true, requiredInventory: { select: { inventoryId: true, quantity: true } } } },
   mealPlanEntries: {
     include: {
       items: {
@@ -56,22 +58,102 @@ async function stockOf(organizationId: string, ids: string[]) {
   return new Map(rows.map((r) => [r.id, Number(r.stockCount)]));
 }
 
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+/** Items can be set once the customer has approved the menu (AJ, 2026-10-10): the order is Approved, or already with the kitchen. */
+const SENDABLE_STATUSES: OrderStatus[] = ["APPROVED", "SENT_TO_KITCHEN"];
+const CLOSED_STATUSES: OrderStatus[] = ["COMPLETED", "CANCELLED"];
+
+export interface OrderInventoryLine {
+  inventoryId: string;
+  name: string;
+  unit: string;
+  /** What the dishes' recipes need (guests plus the extra percentage). */
+  fromRecipes: number;
+  /** What the team added by hand on the order (no recipe: gas, disposables). */
+  extra: number;
+  required: number;
+  /** Net sent to this order so far (sent minus returned). */
+  sent: number;
+  /** Still to send: required minus sent. */
+  remaining: number;
+  /** Sent beyond what is now required (the menu shrank): can be returned. */
+  surplus: number;
+  inStock: number;
+  /** Of what is still to send, how much the shelf cannot cover. */
+  short: number;
+  forDishes: string[];
+}
+
 /**
- * What one order needs from the store: every dish in its meal plan, cooked for the guests plus the kitchen's extra
- * percentage, turned into ingredient quantities through each dish's recipe, set against what is on hand.
+ * The order's Inventory tab (AJ, 2026-10-10): what the order requires (every dish's recipe plus the extra items added by
+ * hand), what has already been sent to it, what is still to send, and whether the shelf can cover it. Sent is read from
+ * the ledger (stock-out rows tagged with the order, less stock-in rows for returns), so it is always what really moved.
  */
-export async function getOrderStockPlan(organizationId: string, orderId: string) {
+export async function getOrderInventory(organizationId: string, orderId: string) {
   const order = await loadPlanOrder(organizationId, orderId);
   if (!order) return null;
   const { extraPercent } = await getKitchenRules(organizationId);
   const guests = guestsFor(order);
   const servings = guests > 0 ? cookQuantity(guests, extraPercent) : 0;
-  const { lines, withoutRecipe } = aggregateNeeds(dishesOf(order, servings));
-  const stocked = withStock(lines, await stockOf(organizationId, lines.map((l) => l.inventoryId)));
+  const { lines: recipeLines, withoutRecipe } = aggregateNeeds(dishesOf(order, servings));
 
-  const taken = order.stockDeductedAt
-    ? await prisma.inventoryTransaction.findMany({ where: { orderId }, orderBy: { createdAt: "asc" }, select: { quantity: true, note: true, inventory: { select: { name: true, unit: true } } } })
-    : [];
+  const extras = new Map<string, number>();
+  for (const event of order.events) for (const r of event.requiredInventory) extras.set(r.inventoryId, round3((extras.get(r.inventoryId) ?? 0) + Number(r.quantity)));
+
+  const moved = await prisma.inventoryTransaction.groupBy({ by: ["inventoryId", "type"], where: { orderId }, _sum: { quantity: true } });
+  const sentBy = new Map<string, number>();
+  for (const row of moved) {
+    const qty = Number(row._sum.quantity ?? 0);
+    if (row.type === "STOCK_OUT") sentBy.set(row.inventoryId, round3((sentBy.get(row.inventoryId) ?? 0) + qty));
+    else if (row.type === "STOCK_IN") sentBy.set(row.inventoryId, round3((sentBy.get(row.inventoryId) ?? 0) - qty));
+  }
+
+  const ids = [...new Set([...recipeLines.map((l) => l.inventoryId), ...extras.keys(), ...[...sentBy.entries()].filter(([, q]) => q !== 0).map(([id]) => id)])];
+  const items = await prisma.inventory.findMany({ where: { organizationId, id: { in: ids } }, select: { id: true, name: true, unit: true, stockCount: true } });
+  const itemById = new Map(items.map((i) => [i.id, i]));
+  const recipeById = new Map(recipeLines.map((l) => [l.inventoryId, l]));
+
+  const lines: OrderInventoryLine[] = ids
+    .flatMap((id) => {
+      const item = itemById.get(id);
+      if (!item) return [];
+      const fromRecipes = recipeById.get(id)?.needed ?? 0;
+      const extra = extras.get(id) ?? 0;
+      const required = round3(fromRecipes + extra);
+      const sent = Math.max(0, sentBy.get(id) ?? 0);
+      const remaining = Math.max(0, round3(required - sent));
+      const inStock = Number(item.stockCount);
+      return [
+        {
+          inventoryId: id,
+          name: item.name,
+          unit: item.unit,
+          fromRecipes,
+          extra,
+          required,
+          sent,
+          remaining,
+          surplus: Math.max(0, round3(sent - required)),
+          inStock,
+          short: Math.max(0, round3(remaining - inStock)),
+          forDishes: recipeById.get(id)?.forDishes ?? [],
+        },
+      ];
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const approved = SENDABLE_STATUSES.includes(order.status);
+  const closed = CLOSED_STATUSES.includes(order.status);
+  const toSend = lines.some((l) => l.remaining > 0);
+  const blockedReason = closed
+    ? `This order is ${order.status === "COMPLETED" ? "completed" : "cancelled"}, so items can no longer be sent.`
+    : !approved
+      ? "Items can be set once the customer approves the menu."
+      : lines.length === 0
+        ? "Nothing to send yet: add recipes to the dishes, or add extra items."
+        : !toSend
+        ? "Everything this order requires has been sent."
+        : null;
 
   return {
     orderNumber: order.orderNumber,
@@ -79,58 +161,89 @@ export async function getOrderStockPlan(organizationId: string, orderId: string)
     guests,
     servings,
     extraPercent,
-    lines: stocked,
+    lines,
     withoutRecipe,
+    approved,
+    closed,
+    hasEvent: order.events.length > 0,
+    canSend: blockedReason === null,
+    canReturn: !closed,
+    blockedReason,
     deductedAt: order.stockDeductedAt,
-    taken: taken.map((t) => ({ name: t.inventory.name, unit: t.inventory.unit, quantity: Number(t.quantity), note: t.note })),
-    /** Stock is taken once, when the order is with the kitchen. */
-    canTake: order.status === "SENT_TO_KITCHEN" && !order.stockDeductedAt && guests > 0 && lines.length > 0,
   };
 }
 
+/** The ledger rows are written under a lock on the order, so two people clicking at once cannot send the same items twice. */
+async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId} FOR UPDATE`;
+}
+
+async function netSent(tx: Prisma.TransactionClient, orderId: string, inventoryId: string) {
+  const rows = await tx.inventoryTransaction.groupBy({ by: ["type"], where: { orderId, inventoryId }, _sum: { quantity: true } });
+  const out = Number(rows.find((r) => r.type === "STOCK_OUT")?._sum.quantity ?? 0);
+  const back = Number(rows.find((r) => r.type === "STOCK_IN")?._sum.quantity ?? 0);
+  return round3(out - back);
+}
+
 /**
- * The confirmed stock take (AJ, 2026-10-04): runs once, only while the order is Sent to Kitchen. The person has seen the
- * needs and shortfalls and approved them; each ingredient is taken as a STOCK_OUT ledger row tagged with the order. Where
- * stock is short, what is on hand is taken and the shortfall is written on the row, so stock never goes below zero.
+ * "Send items to this order": takes what is still required from the shelf and records it against the order. Only once the
+ * customer has approved the menu. It can be run again after the menu or the extra items change, and then sends only the
+ * difference. Where stock is short it takes what is there (never below zero) and writes the shortfall on the row.
  */
-export async function takeOrderStock(organizationId: string, orderId: string, actorUserId: string) {
-  const plan = await getOrderStockPlan(organizationId, orderId);
+export async function sendOrderItems(organizationId: string, orderId: string, actorUserId: string) {
+  const plan = await getOrderInventory(organizationId, orderId);
   if (!plan) throw new StockTakeError("Order not found.");
-  if (plan.deductedAt) throw new StockTakeError("Stock for this order has already been taken.");
-  if (plan.status !== "SENT_TO_KITCHEN") throw new StockTakeError("Stock is taken when the order is sent to the kitchen.");
-  if (plan.guests <= 0) throw new StockTakeError("Add the guest count to the order first.");
-  if (plan.lines.length === 0) throw new StockTakeError("None of this order's dishes has a recipe, so there is nothing to take.");
+  if (plan.blockedReason) throw new StockTakeError(plan.blockedReason);
 
   const shortages: { name: string; short: number }[] = [];
+  const sentLines: { name: string; quantity: number }[] = [];
   await prisma.$transaction(async (tx) => {
-    // One winner: a second click or a second person finds this already set.
-    const claimed = await tx.order.updateMany({ where: { id: orderId, organizationId, stockDeductedAt: null }, data: { stockDeductedAt: new Date(), stockDeductedByUserId: actorUserId } });
-    if (claimed.count === 0) throw new StockTakeError("Stock for this order has already been taken.");
-
+    await lockOrder(tx, orderId);
     for (const line of plan.lines) {
+      const already = Math.max(0, await netSent(tx, orderId, line.inventoryId));
+      const remaining = Math.max(0, round3(line.required - already));
+      if (remaining === 0) continue;
       const fresh = await tx.inventory.findFirstOrThrow({ where: { id: line.inventoryId, organizationId }, select: { stockCount: true } });
-      const take = quantityToTake(line.needed, Number(fresh.stockCount));
-      const short = Math.round((line.needed - take) * 1000) / 1000;
+      const take = quantityToTake(remaining, Number(fresh.stockCount));
+      const short = round3(remaining - take);
       if (take > 0) {
         const done = await tx.inventory.updateMany({ where: { id: line.inventoryId, stockCount: { gte: take } }, data: { stockCount: { decrement: take } } });
         if (done.count === 0) throw new StockTakeError("Stock changed while you were confirming. Review it and try again.");
         await tx.inventoryTransaction.create({
           data: { inventoryId: line.inventoryId, type: "STOCK_OUT", quantity: take, orderId, actorUserId, note: short > 0 ? `${plan.orderNumber} (short by ${short} ${line.unit})` : plan.orderNumber },
         });
+        sentLines.push({ name: line.name, quantity: take });
       }
       if (short > 0) shortages.push({ name: line.name, short });
     }
+    // A second click that lost the race finds nothing left to send.
+    if (sentLines.length === 0 && shortages.length === 0) throw new StockTakeError("Everything this order requires has been sent.");
+    await tx.order.updateMany({ where: { id: orderId, organizationId, stockDeductedAt: null }, data: { stockDeductedAt: new Date(), stockDeductedByUserId: actorUserId } });
   });
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "order.stock_taken",
-    recordType: "Order",
-    recordId: orderId,
-    after: { lines: plan.lines.length, shortages },
+  await audit({ organizationId, actorUserId, action: "order.items_sent", recordType: "Order", recordId: orderId, after: { lines: sentLines.length, shortages } });
+  return { lines: sentLines.length, shortages };
+}
+
+/** Undo: puts what was sent for one item back on the shelf (a stock-in row tagged with the order). Until the order is completed. */
+export async function returnOrderItem(organizationId: string, orderId: string, inventoryId: string, actorUserId: string) {
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true, status: true } });
+  if (!order) throw new StockTakeError("Order not found.");
+  if (CLOSED_STATUSES.includes(order.status)) throw new StockTakeError("This order is closed, so its items cannot be returned here. Use a Stock In on the Inventory page.");
+  const item = await prisma.inventory.findFirst({ where: { id: inventoryId, organizationId }, select: { name: true, unit: true } });
+  if (!item) throw new StockTakeError("Item not found.");
+
+  const quantity = await prisma.$transaction(async (tx) => {
+    await lockOrder(tx, orderId);
+    const sent = await netSent(tx, orderId, inventoryId);
+    if (sent <= 0) throw new StockTakeError("Nothing is sent to this order for that item.");
+    await tx.inventory.update({ where: { id: inventoryId }, data: { stockCount: { increment: sent } } });
+    await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: sent, orderId, actorUserId, note: `Returned from ${order.orderNumber ?? "order"}` } });
+    return sent;
   });
-  return { lines: plan.lines.length, shortages };
+
+  await audit({ organizationId, actorUserId, action: "order.item_returned", recordType: "Order", recordId: orderId, after: { item: item.name, quantity } });
+  return { name: item.name, unit: item.unit, quantity };
 }
 
 /**

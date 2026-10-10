@@ -7,6 +7,7 @@ import { syncOrderStatus } from "./menu-approval";
 import { ensureOrderMenuSelection, revokeOutstandingApprovalLinks } from "./approval-link";
 import { addMenuApprovalNote } from "./menu-approval";
 import { recordStatusChange } from "./status-history";
+import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
 import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "@/generated/prisma/enums";
 
 export class ManualStatusChangeError extends Error {}
@@ -65,6 +66,7 @@ export async function changeStatusManually(
     await emitOrder(organizationId, "order.status_changed", orderId, order.status);
     await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId });
     await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } });
+    if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId);
     return { unchanged: false as const };
   }
 
@@ -95,6 +97,7 @@ export async function changeStatusManually(
 
   // The order follows (no separate history row for it: this manual row is the record).
   await syncOrderStatus(organizationId, selectionId, input.actorUserId, { record: false });
+  if (wanted.menu === "FINAL_LOCKED") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId);
   const orderAfter = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
 
   const menuFrom = MENU_SELECTION_STATUS_LABEL[selection.status];

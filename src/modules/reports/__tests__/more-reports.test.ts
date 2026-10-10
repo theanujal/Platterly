@@ -35,13 +35,13 @@ beforeAll(async () => {
   const paneer = await prisma.menuItem.create({ data: { organizationId: a.org, name: "Paneer Tikka", foodType: "VEGETARIAN", price: 0 } });
   const dal = await prisma.menuItem.create({ data: { organizationId: a.org, name: "Dal Makhani", foodType: "VEGETARIAN", price: 0 } });
   await prisma.menuItem.create({ data: { organizationId: a.org, name: "Gulab Jamun", foodType: "VEGETARIAN", price: 0 } });
-  const order = await createOrder(a.org, { customerId: a.customer, eventStartDate: day("2027-01-10"), eventEndDate: day("2027-01-10"), totalParticipants: 50, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-10"), mealType: "DINNER", price: 4000 }] } as never, a.user);
+  const order = await createOrder(a.org, { customerId: a.customer, eventStartDate: day("2027-01-10"), eventEndDate: day("2027-01-10"), totalParticipants: 50, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-10"), mealType: "DINNER", price: 4000 }] } as never, a.user);
   const entry = await prisma.mealPlanEntry.findFirstOrThrow({ where: { orderId: order.id } });
   await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { menuId: menu.id } });
   for (const item of [paneer, dal]) await prisma.orderItem.create({ data: { orderId: order.id, mealPlanEntryId: entry.id, itemType: "MENU_ITEM", menuItemId: item.id, name: item.name, unitPrice: 0 } });
   await prisma.order.update({ where: { id: order.id }, data: { balance: 1500 } });
   // B has its own, much bigger order and balance that must never show up in A's reports.
-  const bOrder = await createOrder(b.org, { customerId: b.customer, eventStartDate: day("2027-01-12"), eventEndDate: day("2027-01-12"), totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-12"), mealType: "DINNER", price: 99999 }] } as never, b.user);
+  const bOrder = await createOrder(b.org, { customerId: b.customer, eventStartDate: day("2027-01-12"), eventEndDate: day("2027-01-12"), totalParticipants: 10, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-12"), mealType: "DINNER", price: 99999 }] } as never, b.user);
   await prisma.order.update({ where: { id: bOrder.id }, data: { balance: 88888 } });
 
   // --- inventory, purchases, payables, expenses ---

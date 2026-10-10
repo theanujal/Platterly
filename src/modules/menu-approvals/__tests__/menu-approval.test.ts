@@ -18,6 +18,7 @@ import {
   setKitchenProductionStatus,
   syncOrderStatus,
   updateMenuApprovalMealPlan,
+  saveOrderWithMeals,
   listMenuApprovalNotes,
   addMenuApprovalNote,
   InvalidMenuSelectionTransitionError,
@@ -700,6 +701,26 @@ describe("Menu Approvals edits the order's own meal plan (AJ, 2026-09-30)", () =
       ["Dal", false],
       ["Rabdi", true],
     ]);
+  });
+
+  it("the order page's save goes through the same path: meals re-price and mirror, other fields save, and a sent menu is refused", async () => {
+    const { org, actor, menu, dal, order, selection } = await setupPlan();
+    const base = { customerId: order.customerId, eventStartDate: order.eventStartDate, eventEndDate: order.eventEndDate };
+    const meals = [{ date: new Date("2026-12-01"), mealType: "DINNER" as const, menuId: menu.id, items: [{ itemType: "MENU_ITEM" as const, catalogId: dal.id, quantity: 1 }] }];
+
+    await saveOrderWithMeals(org.id, order.id, { ...base, notes: "Via the order page", mealPlanEntries: meals }, actor.id);
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { mealPlanEntries: true } });
+    expect(saved.notes).toBe("Via the order page");
+    expect(saved.mealPlanEntries).toHaveLength(1);
+    expect(Number(saved.total)).toBe(400 * 50);
+    expect((await prisma.menuSelectionItem.findMany({ where: { menuSelectionId: selection.id } })).map((i) => i.name)).toEqual(["Dal"]);
+
+    // No meals sent: the plan is left alone.
+    await saveOrderWithMeals(org.id, order.id, { ...base, notes: "Only a note" }, actor.id);
+    expect(await prisma.mealPlanEntry.count({ where: { orderId: order.id } })).toBe(1);
+
+    await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+    await expect(saveOrderWithMeals(org.id, order.id, { ...base, mealPlanEntries: [] }, actor.id)).rejects.toBeInstanceOf(InvalidMenuSelectionTransitionError);
   });
 
   it("refuses an edit once the menu is with the customer", async () => {

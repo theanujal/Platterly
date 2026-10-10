@@ -388,7 +388,6 @@ export async function submitDraft(organizationId: string, draftId: string, notes
 
     // Each meal is its own entry on the event day, carrying the same menu, dishes and add-ons (AJ, 2026-10-01).
     const mealTypes = data.eventMealTypes;
-    const perMealMenuAmount = quote.menuAmount / mealTypes.length;
     const order = await createOrder(organizationId, {
       customerId: draft.customerId,
       eventTypeId: data.eventTypeId,
@@ -408,7 +407,8 @@ export async function submitDraft(organizationId: string, draftId: string, notes
         date: eventDate,
         mealType,
         menuId: data.menuChoice!.kind === "MENU" ? data.menuChoice!.menuId : null,
-        price: perMealMenuAmount,
+        // Individual Pricing is a per-plate price: the menu's own (nothing for a Custom Menu until the kitchen quotes it).
+        price: quote.pricePerPlate ?? 0,
         items: mealItems,
       })),
     });

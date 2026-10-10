@@ -4,11 +4,11 @@ import { prisma } from "@/lib/db";
 import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { resolveToken } from "@/lib/secure-access/token";
-import { generateInvoiceFromOrder, InvoiceError } from "@/modules/invoices/invoice";
+import { generateInvoiceFromOrder, createInvoiceOnKitchenHandoff, InvoiceError } from "@/modules/invoices/invoice";
 import { sendInvoiceDocument } from "@/modules/invoices/invoice-send";
-import { confirmPayment, recordPayment, rejectPayment, PaymentError } from "../payment";
+import { confirmPayment, recordPayment, recordInitialAdvance, rejectPayment, PaymentError } from "../payment";
 import { createPaymentLink, resolvePaymentLink } from "../payment-links";
-import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveRazorpay, saveUpi, setMethodEnabled, buildUpiUri, PaymentSettingsError } from "../payment-settings";
+import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveGstSettings, setAutoInvoice, saveRazorpay, saveUpi, setMethodEnabled, buildUpiUri, PaymentSettingsError } from "../payment-settings";
 import { decryptSecret, encryptSecret } from "../secret-box";
 import { verifyCheckoutSignature, verifyWebhookSignature } from "../razorpay";
 import { advanceAmount, derivePaymentState } from "../payment-math";
@@ -45,7 +45,7 @@ async function makeOrderWithTotal(total = 10000, gst = false) {
       eventStartDate: new Date("2026-12-05"),
       eventEndDate: new Date("2026-12-05"),
       totalParticipants: 100,
-      individualPricingEnabled: true,
+      adultCount: 1, individualPricingEnabled: true,
       mealPlanEntries: [{ date: new Date("2026-12-05"), mealType: "DINNER", price: total }],
     },
     actor.id,
@@ -271,5 +271,107 @@ describe("payment links", () => {
     const token = url.split("/pay/")[1];
     expect((await resolveToken(token))?.organizationId).toBe(a.org.id);
     expect(await resolvePaymentLink("not-a-token")).toBeNull();
+  });
+});
+
+describe("GST settings (Payments page, AJ 2026-10-10)", () => {
+  it("start at 5% CGST + SGST, save the number, switch, rate and type, and reject bad input", async () => {
+    const { org } = await makeOrderWithTotal();
+    expect((await getPaymentSettingsView(org.id)).gst).toEqual({ number: "", showOnInvoices: false, rate: 5, type: "CGST_SGST" });
+    await saveGstSettings(org.id, { number: "29abcde1234f1z5", showOnInvoices: true, rate: 12, type: "IGST" });
+    expect((await getPaymentSettingsView(org.id)).gst).toEqual({ number: "29ABCDE1234F1Z5", showOnInvoices: true, rate: 12, type: "IGST" });
+    await expect(saveGstSettings(org.id, { number: "bad", showOnInvoices: false, rate: 5, type: "CGST_SGST" })).rejects.toBeInstanceOf(PaymentSettingsError);
+    await expect(saveGstSettings(org.id, { number: "", showOnInvoices: false, rate: 40, type: "CGST_SGST" })).rejects.toBeInstanceOf(PaymentSettingsError);
+    await expect(saveGstSettings(org.id, { number: "", showOnInvoices: false, rate: 5, type: "VAT" })).rejects.toBeInstanceOf(PaymentSettingsError);
+    await expect(saveGstSettings(org.id, { number: "", showOnInvoices: true, rate: 5, type: "IGST" })).rejects.toBeInstanceOf(PaymentSettingsError);
+  });
+
+  it("the saved rate and type are the defaults for a new invoice, and a manual rate still overrides them", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000, true);
+    await saveGstSettings(org.id, { number: "29ABCDE1234F1Z5", showOnInvoices: true, rate: 12, type: "IGST" });
+    const invoice = await generateInvoiceFromOrder(org.id, order.id, { actorUserId: actor.id });
+    expect([Number(invoice.gstRate), invoice.gstType, Number(invoice.igst)]).toEqual([12, "IGST", 1071.43]);
+    await prisma.invoice.update({ where: { id: invoice.id }, data: { status: "CANCELLED" } });
+    const manual = await generateInvoiceFromOrder(org.id, order.id, { gstRate: 18, gstType: "CGST_SGST", actorUserId: actor.id });
+    expect([Number(manual.gstRate), manual.gstType]).toEqual([18, "CGST_SGST"]);
+  });
+});
+
+describe("the invoice is created when the order is sent to the kitchen (AJ, 2026-10-10)", () => {
+  it("creates a Draft once, with the saved GST defaults, and does nothing the second time", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000, true);
+    await saveGstSettings(org.id, { number: "29ABCDE1234F1Z5", showOnInvoices: true, rate: 12, type: "CGST_SGST" });
+    const invoice = await createInvoiceOnKitchenHandoff(org.id, order.id, actor.id);
+    expect(invoice).toMatchObject({ status: "DRAFT", type: "INVOICE" });
+    expect(Number(invoice?.gstRate)).toBe(12);
+    expect(Number(invoice?.total)).toBe(10000);
+    expect(await createInvoiceOnKitchenHandoff(org.id, order.id, actor.id)).toBeNull();
+    expect(await prisma.invoice.count({ where: { orderId: order.id, type: "INVOICE" } })).toBe(1);
+  });
+
+  it("is skipped when switched off, when there is no amount, and for a cancelled order; a cancelled invoice can be replaced", async () => {
+    const off = await makeOrderWithTotal();
+    await setAutoInvoice(off.org.id, false);
+    expect(await createInvoiceOnKitchenHandoff(off.org.id, off.order.id, off.actor.id)).toBeNull();
+
+    const empty = await makeOrderWithTotal(0);
+    expect(await createInvoiceOnKitchenHandoff(empty.org.id, empty.order.id, empty.actor.id)).toBeNull();
+
+    const cancelled = await makeOrderWithTotal();
+    await prisma.order.update({ where: { id: cancelled.order.id }, data: { status: "CANCELLED" } });
+    expect(await createInvoiceOnKitchenHandoff(cancelled.org.id, cancelled.order.id, cancelled.actor.id)).toBeNull();
+
+    const replaced = await makeOrderWithTotal();
+    const first = await createInvoiceOnKitchenHandoff(replaced.org.id, replaced.order.id, replaced.actor.id);
+    await prisma.invoice.update({ where: { id: first!.id }, data: { status: "CANCELLED" } });
+    expect(await createInvoiceOnKitchenHandoff(replaced.org.id, replaced.order.id, replaced.actor.id)).not.toBeNull();
+  });
+
+  it("never throws: a failure is logged and the hand-off carries on", async () => {
+    const { org, actor } = await makeOrderWithTotal();
+    expect(await createInvoiceOnKitchenHandoff(org.id, "no-such-order", actor.id)).toBeNull();
+  });
+});
+
+describe("the advance is recorded as a real payment (AJ, 2026-10-10)", () => {
+  it("an advance with a method books a confirmed Advance payment and a receipt, and the order follows", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    expect(await recordInitialAdvance(org.id, order.id, { amount: 3000, paidInFull: false, method: "UPI", reference: "UPI-123" }, actor.id)).toBeNull();
+    const payments = await prisma.payment.findMany({ where: { orderId: order.id }, include: { receipt: true } });
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({ type: "ADVANCE", method: "UPI", status: "CONFIRMED", reference: "UPI-123" });
+    expect(payments[0].receipt?.number).toMatch(/^RCT-/);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect([Number(after.advance), Number(after.balance), after.paymentStatus]).toEqual([3000, 7000, "PARTIALLY_PAID"]);
+  });
+
+  it("a later payment adds to the advance instead of replacing it", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    await recordInitialAdvance(org.id, order.id, { amount: 5000, paidInFull: false, method: "CASH" }, actor.id);
+    await recordPayment({ organizationId: org.id, orderId: order.id, amount: 2000, type: "PARTIAL", method: "CASH", actorUserId: actor.id });
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect([Number(after.advance), Number(after.balance)]).toEqual([7000, 3000]);
+  });
+
+  it("'Paid' records the whole balance as the final payment, an advance above the total is refused, and nothing is recorded for zero", async () => {
+    const paid = await makeOrderWithTotal(10000);
+    expect(await recordInitialAdvance(paid.org.id, paid.order.id, { amount: 0, paidInFull: true, method: "CARD" }, paid.actor.id)).toBeNull();
+    const payment = await prisma.payment.findFirstOrThrow({ where: { orderId: paid.order.id } });
+    expect([Number(payment.amount), payment.type, payment.method]).toEqual([10000, "FINAL", "CARD"]);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: paid.order.id } })).paymentStatus).toBe("PAID");
+
+    const over = await makeOrderWithTotal(10000);
+    expect(await recordInitialAdvance(over.org.id, over.order.id, { amount: 20000, paidInFull: false }, over.actor.id)).toMatch(/more than the balance/);
+    expect(await prisma.payment.count({ where: { orderId: over.order.id } })).toBe(0);
+
+    const none = await makeOrderWithTotal(10000);
+    expect(await recordInitialAdvance(none.org.id, none.order.id, { amount: 0, paidInFull: false }, none.actor.id)).toBeNull();
+    expect(await prisma.payment.count({ where: { orderId: none.order.id } })).toBe(0);
+  });
+
+  it("an unknown method falls back to cash", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    await recordInitialAdvance(org.id, order.id, { amount: 1000, paidInFull: false, method: "BITCOIN" }, actor.id);
+    expect((await prisma.payment.findFirstOrThrow({ where: { orderId: order.id } })).method).toBe("CASH");
   });
 });

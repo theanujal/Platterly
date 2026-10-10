@@ -331,7 +331,7 @@ describe("real activity queues the right events", () => {
     await updateCustomer(k.orgId, customer.id, { name: "Asha R", phone: "+919876500123" }, k.userId);
     const eventType = await prisma.eventType.create({ data: { organizationId: k.orgId, name: "Wedding" } });
     const day = new Date("2031-05-01");
-    const order = await createOrder(k.orgId, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: day, eventEndDate: day, totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: [{ date: day, mealType: "DINNER", price: 500 }] }, k.userId);
+    const order = await createOrder(k.orgId, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: day, eventEndDate: day, totalParticipants: 10, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day, mealType: "DINNER", price: 500 }] }, k.userId);
     await updateOrder(k.orgId, order.id, { customerId: customer.id, eventStartDate: day, eventEndDate: day, status: "APPROVED" }, k.userId);
     await createEvent(k.orgId, { customerId: customer.id, eventTypeId: eventType.id, name: "Direct event", startDate: day, endDate: day }, k.userId);
     const upi = await recordPayment({ organizationId: k.orgId, orderId: order.id, amount: 300, type: "ADVANCE", method: "UPI", source: "UPI_QR", actorUserId: k.userId });

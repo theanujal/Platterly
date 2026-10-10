@@ -37,7 +37,7 @@ async function makeOrder(total = 10000) {
       eventStartDate: new Date("2026-12-05"),
       eventEndDate: new Date("2026-12-05"),
       totalParticipants: 100,
-      individualPricingEnabled: true,
+      adultCount: 1, individualPricingEnabled: true,
       mealPlanEntries: [{ date: new Date("2026-12-05"), mealType: "DINNER", price: total }],
     },
     actor.id,
@@ -329,7 +329,7 @@ describe("Profitability date range", () => {
     const { org, actor } = await makeOrder(1000);
     const customer = await prisma.customer.findFirstOrThrow({ where: { organizationId: org.id } });
     const make = (iso: string) =>
-      createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(iso), eventEndDate: new Date(iso), totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: [{ date: new Date(iso), mealType: "DINNER", price: 500 }] }, actor.id);
+      createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(iso), eventEndDate: new Date(iso), totalParticipants: 10, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: new Date(iso), mealType: "DINNER", price: 500 }] }, actor.id);
     await make("2026-11-10");
     await make("2026-11-30");
     await make("2027-01-05");

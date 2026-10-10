@@ -16,10 +16,11 @@ describe("meal-pricing (the one rule for orders, quotations and previews)", () =
     ).toBe(60 * 50 + 1000);
   });
 
-  it("a meal costs its Menu's price x guests, or the typed price under Individual Pricing", () => {
+  it("a meal costs its Menu's price x guests, or the typed per-plate price x guests under Individual Pricing", () => {
     const meal = { price: 999, menuPricePerPlate: 400 };
     expect(mealBaseAmount(meal, false, 50)).toBe(20000);
-    expect(mealBaseAmount(meal, true, 50)).toBe(999);
+    expect(mealBaseAmount(meal, true, 50)).toBe(49950);
+    expect(mealBaseAmount({ price: null, menuPricePerPlate: 400 }, true, 50)).toBe(0);
     expect(mealBaseAmount({ price: null, menuPricePerPlate: null }, false, 50)).toBe(0);
   });
 

@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 import { resolveToken } from "@/lib/secure-access/token";
 import { getInvoiceForCustomer } from "@/modules/invoices/invoice";
 import { longDate } from "@/modules/invoices/invoice-format";
+import { buildInvoiceDocument } from "@/modules/invoices/invoice-document";
 import { PublicShell } from "@/components/public/public-shell";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
@@ -30,7 +31,7 @@ export default async function CustomerInvoicePage({ params }: { params: Promise<
     );
   }
 
-  const { invoice } = data;
+  const { invoice, paid } = data;
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: resolved.organizationId }, select: { name: true, logo: true } });
   const isReceipt = invoice.type === "RECEIPT";
   return (
@@ -40,7 +41,7 @@ export default async function CustomerInvoicePage({ params }: { params: Promise<
       subtitle={isReceipt ? "Thank you. We have received your payment." : `${invoice.number} · issued ${longDate(invoice.issueDate)}`}
       width="max-w-3xl"
     >
-      <InvoicePaper invoice={{ ...invoice, eventLabel: [invoice.order.eventType?.name, invoice.order.eventStartDate ? longDate(invoice.order.eventStartDate) : null].filter(Boolean).join(" · ") || null }} />
+      <InvoicePaper doc={buildInvoiceDocument(invoice, paid)} />
       <div className="flex justify-end">
         <Button render={<a href={`/invoice/${token}/pdf`} download />} nativeButton={false}>
           <Download />

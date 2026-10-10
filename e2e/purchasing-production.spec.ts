@@ -99,18 +99,35 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   const { orderId } = await seedKitchenOrderWithDish(email, dish);
   await page.goto(`/orders/${orderId}`);
   await page.getByRole("tab", { name: "Inventory" }).click();
-  const card = page.getByTestId("stock-plan-card");
+  const card = page.getByTestId("inventory-required-card");
   await expect(card).toContainText("100 guests plus 10% extra");
-  await expect(card.getByRole("row", { name: new RegExp(ingredient) })).toContainText("22 kg");
-  await expect(card.getByRole("row", { name: new RegExp(ingredient) })).toContainText("40 kg");
+  const line = card.getByTestId("required-line").filter({ hasText: ingredient });
+  await expect(line).toContainText("22 kg");
+  await expect(line).toContainText("40 kg in stock");
+  await expect(page.getByTestId("inventory-sent-card")).toContainText("Nothing has been sent to this order yet.");
 
-  await card.getByRole("button", { name: "Review and take stock" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Confirm and take stock" }).click();
-  await expect(card.getByText("Stock taken", { exact: true }).first()).toBeVisible();
-  await expect(card.getByRole("button", { name: "Review and take stock" })).toHaveCount(0); // once only
+  // Send the items (AJ, 2026-10-10): the order is with the kitchen, so the menu is approved and the button works.
+  await card.getByRole("button", { name: "Send items to this order" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Send items" }).click();
+  const sentCard = page.getByTestId("inventory-sent-card");
+  const sent = sentCard.getByTestId("sent-line").filter({ hasText: ingredient });
+  await expect(sent).toContainText("22 kg sent");
+  await expect(sent).toContainText("18"); // available now
+  await expect(card.getByRole("button", { name: "Send items to this order" })).toBeDisabled(); // nothing left to send
+  await expect(line.getByText("Sent", { exact: true })).toBeVisible();
 
   await page.goto("/inventory");
   await expect(page.getByText("18 kg")).toBeVisible();
+
+  // Undo returns it to the shelf, and it is required again.
+  await page.goto(`/orders/${orderId}`);
+  await page.getByRole("tab", { name: "Inventory" }).click();
+  await page.getByRole("button", { name: `Return ${ingredient} to stock` }).click();
+  await expect(page.getByTestId("inventory-sent-card")).toContainText("Nothing has been sent to this order yet.");
+  await expect(page.getByTestId("inventory-required-card").getByTestId("required-line").filter({ hasText: ingredient })).toContainText("40 kg in stock");
+  await page.getByTestId("inventory-required-card").getByRole("button", { name: "Send items to this order" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Send items" }).click();
+  await expect(page.getByTestId("inventory-sent-card").getByTestId("sent-line")).toHaveCount(1);
 
   // --- Production planning lists the order, with its stock already taken ---
   await page.goto("/kitchen-dashboard/production");

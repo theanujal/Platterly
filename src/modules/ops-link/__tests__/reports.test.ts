@@ -26,7 +26,7 @@ async function kitchen(label: string, customerName: string, total: number) {
   userIds.push(user.id);
   const type = await createEventType(org.id, { name: "Wedding" }, user.id);
   const customer = await createCustomer(org.id, { name: customerName, phone: `98765${Math.floor(10000 + Math.random() * 89999)}` }, user.id);
-  await createOrder(org.id, { customerId: customer.id, eventTypeId: type.id, eventStartDate: day("2027-01-10"), eventEndDate: day("2027-01-10"), totalParticipants: 50, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-10"), mealType: "DINNER", price: total }] } as never, user.id);
+  await createOrder(org.id, { customerId: customer.id, eventTypeId: type.id, eventStartDate: day("2027-01-10"), eventEndDate: day("2027-01-10"), totalParticipants: 50, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-10"), mealType: "DINNER", price: total }] } as never, user.id);
 }
 
 beforeAll(async () => {

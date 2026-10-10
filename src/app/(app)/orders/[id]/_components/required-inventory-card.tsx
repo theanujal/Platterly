@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Boxes } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,9 +15,9 @@ interface Row {
 }
 
 /**
- * Required inventory (AJ, 2026-09-27): which inventory items, and how much of
- * each, this order's event needs. A card of its own after the form's steps; it
- * saves as you tick an item or leave a quantity, with no save button.
+ * Extra items (AJ, 2026-09-27, renamed 2026-10-10): inventory items, and how much of each, this order's event needs on top of
+ * its recipes (gas, disposables, crockery). They are added to the "Required for this order" list and sent with the rest.
+ * It saves as you tick an item or leave a quantity, with no save button, and the list above refreshes.
  */
 export function RequiredInventoryCard({
   orderId,
@@ -27,6 +28,7 @@ export function RequiredInventoryCard({
   event: { id: string; requiredInventory: { inventoryId: string; quantity: number }[] } | null;
   inventoryItems: { id: string; name: string; unit: string }[];
 }) {
+  const router = useRouter();
   const [rows, setRows] = useState<Row[]>(() => {
     const existing = new Map((event?.requiredInventory ?? []).map((r) => [r.inventoryId, r.quantity]));
     return inventoryItems.map((item) => ({
@@ -51,6 +53,7 @@ export function RequiredInventoryCard({
       return;
     }
     setState("saved");
+    router.refresh();
   }
 
   function update(inventoryId: string, patch: Partial<Row>, saveNow: boolean) {
@@ -66,13 +69,13 @@ export function RequiredInventoryCard({
           <Boxes className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold">Required Inventory</h2>
+          <h2 className="text-base font-semibold">Extra items</h2>
           <p className="text-xs text-muted-foreground" aria-live="polite">
             {state === "saving"
               ? "Saving…"
               : state === "saved"
                 ? "Saved"
-                : "Which inventory items, and how much of each, this event needs. Changes save automatically."}
+                : "Items with no recipe that this order also needs (gas, disposables, crockery). Changes save automatically."}
           </p>
         </div>
       </div>

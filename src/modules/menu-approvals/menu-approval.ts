@@ -10,12 +10,15 @@ import {
   recalculateOrderTotals,
   replaceMealPlanEntries,
   deriveStandardChildPricingMenuId,
+  updateOrder,
+  type OrderInput,
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
 import { deriveOrderStatus } from "@/modules/orders/order-status";
 import { recordStatusChange } from "./status-history";
+import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export class InvalidMenuSelectionTransitionError extends Error {}
@@ -274,6 +277,8 @@ async function transitionMenuSelection(organizationId: string, id: string, to: M
     });
   }
   await syncOrderStatus(organizationId, id, options?.actorUserId, { trigger: options?.trigger });
+  // Sent to the kitchen: the order's invoice is created for the team (as a Draft), unless they switched that off.
+  if (to === "FINAL_LOCKED" && orderId) await createInvoiceOnKitchenHandoff(organizationId, orderId, options?.actorUserId);
 
   return after;
 }
@@ -386,7 +391,7 @@ export async function getMenuSelection(organizationId: string, id: string) {
  * Custom Menu (Chunk 12) — the customer hand-picked dishes with no price
  * shown, so the kitchen quotes a per-plate price during review. Stored on the
  * MenuSelection for the review form to prefill, and pushed onto the Order's
- * single meal-plan entry (price x guests) so its totals reflect the quote.
+ * meal-plan entries as their per-plate price (Individual Pricing multiplies it by the adults) so its totals reflect the quote.
  */
 export async function setCustomMenuPricePerPlate(organizationId: string, menuSelectionId: string, pricePerPlate: number, actorUserId: string) {
   if (!Number.isFinite(pricePerPlate) || pricePerPlate < 0) throw new Error("Price per plate must be zero or more.");
@@ -399,9 +404,9 @@ export async function setCustomMenuPricePerPlate(organizationId: string, menuSel
   if (!order) throw new Error("This selection has no Order to price.");
 
   await prisma.menuSelection.update({ where: { id: menuSelectionId }, data: { customPricePerPlate: pricePerPlate } });
-  const guests = order.totalParticipants ?? 0;
+  const guests = order.adultCount ?? order.totalParticipants ?? 0;
   for (const entry of order.mealPlanEntries) {
-    await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate * guests } });
+    await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate } });
   }
   await recalculateOrderTotals(order.id);
 
@@ -702,4 +707,22 @@ export async function updateMenuApprovalMealPlan(organizationId: string, menuSel
     before: { total: Number(before.total) },
     after: { total: Number(after.total), meals: entries.length },
   });
+}
+
+/**
+ * Saves an order from the order page. When the meals come with it and the order already has a menu approval, they go
+ * through the very same save Menu Approvals uses (`updateMenuApprovalMealPlan`: re-prices, re-mirrors the selection,
+ * and refuses a menu that is with the customer or the kitchen), so the order page and Menu Approvals can never
+ * disagree (AJ, 2026-10-10). With no meals, or no approval yet, it is the plain order save.
+ */
+export async function saveOrderWithMeals(organizationId: string, orderId: string, input: OrderInput, actorUserId: string) {
+  const { mealPlanEntries, ...rest } = input;
+  const selection =
+    mealPlanEntries !== undefined ? await prisma.menuSelection.findFirst({ where: { organizationId, event: { orderId } }, orderBy: { createdAt: "asc" }, select: { id: true } }) : null;
+  if (mealPlanEntries !== undefined && selection) {
+    await updateOrder(organizationId, orderId, rest, actorUserId);
+    await updateMenuApprovalMealPlan(organizationId, selection.id, mealPlanEntries, actorUserId);
+    return;
+  }
+  await updateOrder(organizationId, orderId, input, actorUserId);
 }

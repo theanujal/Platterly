@@ -53,11 +53,11 @@ export function InvoiceHeaderActions({ invoiceId, type, canSend, canCancel, canc
 }
 
 /** "Create Invoice" on the Order page. GST fields only appear when the kitchen has GST on its invoices. */
-export function CreateInvoiceButton({ orderId, gstEnabled, defaultDueDate }: { orderId: string; gstEnabled: boolean; defaultDueDate: string }) {
+export function CreateInvoiceButton({ orderId, gstEnabled, defaultDueDate, defaultGstType = "CGST_SGST", defaultGstRate = 5 }: { orderId: string; gstEnabled: boolean; defaultDueDate: string; defaultGstType?: string; defaultGstRate?: number }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [gstType, setGstType] = useState("CGST_SGST");
-  const [gstRate, setGstRate] = useState("5");
+  const [gstType, setGstType] = useState(defaultGstType);
+  const [gstRate, setGstRate] = useState(String(defaultGstRate));
   const [dueDate, setDueDate] = useState(defaultDueDate);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -130,11 +130,18 @@ export function CreateInvoiceButton({ orderId, gstEnabled, defaultDueDate }: { o
   );
 }
 
+/** Once an order has an invoice: a Download invoice button (the PDF), and a small link to the invoice page itself. */
 export function OpenInvoiceLink({ invoiceId, number }: { invoiceId: string; number: string }) {
   return (
-    <Button variant="outline" size="md" render={<Link href={`/invoices/${invoiceId}`} />} nativeButton={false}>
-      <Receipt />
-      {number}
-    </Button>
+    <>
+      <Button variant="outline" size="md" render={<a href={`/invoices/${invoiceId}/pdf`} download />} nativeButton={false}>
+        <Download />
+        Download invoice
+      </Button>
+      <Link href={`/invoices/${invoiceId}`} className="mt-1.5 flex items-center justify-center gap-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline">
+        <Receipt className="size-3.5" />
+        View {number}
+      </Link>
+    </>
   );
 }

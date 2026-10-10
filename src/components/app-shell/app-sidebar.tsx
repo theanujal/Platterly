@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, Wallet, BarChart3, UserRoundCog } from "lucide-react";
+import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, Wallet, BarChart3, UserRoundCog, BookOpenText } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -39,6 +39,9 @@ const SALES_AND_CATALOG_ITEMS = [
 const FINANCE_ITEM = { label: "Finance", groupId: "finance", icon: Wallet } as const;
 const REPORTS_ITEM = { label: "Reports & Activity", groupId: "reports", icon: BarChart3 } as const;
 const STOCK_ITEM = { label: "Stock & Supplies", groupId: "stock", icon: Boxes } as const;
+
+// Recipes sit on their own, just below Stock & Supplies (AJ, 2026-10-10).
+const RECIPES_ITEMS = [{ label: "Recipes", href: "/recipes", icon: BookOpenText }] as const;
 
 const KITCHEN_ITEMS = [
   { label: "Menu Approvals", href: "/menu-approvals", icon: ClipboardCheck },
@@ -104,7 +107,7 @@ export function AppSidebar({ organizationName, trial, notice, allowedHrefs }: Ap
   const reports = groupItem(REPORTS_ITEM, allowedHrefs);
   const stock = groupItem(STOCK_ITEM, allowedHrefs);
   const salesItems = [...visible(SALES_AND_CATALOG_ITEMS), ...(finance ? [finance] : [])];
-  const inventoryItems = stock ? [stock] : [];
+  const inventoryItems = [...(stock ? [stock] : []), ...visible(RECIPES_ITEMS)];
   const kitchenItems = visible(KITCHEN_ITEMS);
   const adminItems = reports ? [reports] : [];
 

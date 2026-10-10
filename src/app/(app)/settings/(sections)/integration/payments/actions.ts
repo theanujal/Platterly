@@ -8,6 +8,8 @@ import {
   disconnectRazorpay,
   getRazorpayCredentials,
   saveAdvancePercent,
+  saveGstSettings,
+  setAutoInvoice,
   saveRazorpay,
   saveUpi,
   setMethodEnabled,
@@ -71,6 +73,27 @@ export async function saveUpiAction(formData: FormData): Promise<ActionResult> {
 export async function saveAdvanceAction(formData: FormData): Promise<ActionResult> {
   const { organizationId } = await guard();
   return run(() => saveAdvancePercent(organizationId, Number(formData.get("advancePercent"))));
+}
+
+export async function saveGstAction(formData: FormData): Promise<ActionResult> {
+  const { organizationId, userId } = await guard();
+  return run(async () => {
+    await saveGstSettings(organizationId, {
+      number: String(formData.get("gstNumber") ?? ""),
+      showOnInvoices: formData.get("gstShowOnInvoices") === "true",
+      rate: Number(formData.get("gstRate")),
+      type: String(formData.get("gstType") ?? ""),
+    });
+    await audit({ organizationId, actorUserId: userId, action: "payments.gst_saved", recordType: "TenantSetting", recordId: "payments.gst", after: { rate: Number(formData.get("gstRate")), type: String(formData.get("gstType") ?? ""), showOnInvoices: formData.get("gstShowOnInvoices") === "true" } });
+  });
+}
+
+export async function setAutoInvoiceAction(enabled: boolean): Promise<ActionResult> {
+  const { organizationId, userId } = await guard();
+  return run(async () => {
+    await setAutoInvoice(organizationId, enabled);
+    await audit({ organizationId, actorUserId: userId, action: "payments.auto_invoice_toggled", recordType: "TenantSetting", recordId: "payments.autoInvoice", after: { enabled } });
+  });
 }
 
 export async function setMethodEnabledAction(method: PaymentMethodKey, enabled: boolean): Promise<ActionResult> {

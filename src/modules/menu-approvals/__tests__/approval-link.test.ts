@@ -71,7 +71,7 @@ async function makeAdminOrder(withEventType = true) {
       eventStartDate: new Date("2026-12-05"),
       eventEndDate: new Date("2026-12-05"),
       totalParticipants: 120,
-      individualPricingEnabled: true,
+      adultCount: 1, individualPricingEnabled: true,
       mealPlanEntries: [{ date: new Date("2026-12-05"), mealType: "DINNER", price: 5000 }],
     },
     actor.id,

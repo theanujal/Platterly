@@ -1,11 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createCustomer } from "@/modules/customers/customer";
-import { createOrder } from "@/modules/orders/order";
+import { createOrder, createEventForOrder } from "@/modules/orders/order";
+import { createEventType } from "@/modules/events/event-type";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem, recordStockTransaction } from "@/modules/inventory/inventory";
 import { saveRecipe } from "@/modules/recipes/recipe";
-import { getOrderStockPlan, takeOrderStock, getProductionPlan, StockTakeError } from "@/modules/production/production";
+import { getOrderInventory, sendOrderItems, returnOrderItem, getProductionPlan, StockTakeError } from "@/modules/production/production";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -13,7 +14,9 @@ const userIds: string[] = [];
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.recipe.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.event.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.order.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.eventType.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.menuItem.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.inventory.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -49,70 +52,125 @@ async function setup(stock: number, guests: number | null = 100, eventDate: Date
 }
 
 const sendToKitchen = (orderId: string) => prisma.order.update({ where: { id: orderId }, data: { status: "SENT_TO_KITCHEN" } });
+const approve = (orderId: string) => prisma.order.update({ where: { id: orderId }, data: { status: "APPROVED" } });
+const stockOf = async (id: string) => Number((await prisma.inventory.findUniqueOrThrow({ where: { id } })).stockCount);
 
 describe("Production planning and stock take (Chunk 18.4)", () => {
   it("works out the need from guests + extra percentage through the recipe, and lists dishes without a recipe", async () => {
     const { org, order } = await setup(50);
-    const plan = await getOrderStockPlan(org.id, order.id);
+    const plan = await getOrderInventory(org.id, order.id);
     expect(plan?.servings).toBe(110);
     expect(plan?.lines).toHaveLength(1);
-    expect(plan?.lines[0]).toMatchObject({ name: "Paneer", needed: 22, inStock: 50, short: 0 });
+    expect(plan?.lines[0]).toMatchObject({ name: "Paneer", fromRecipes: 22, required: 22, sent: 0, remaining: 22, inStock: 50, short: 0 });
     expect(plan?.withoutRecipe).toEqual(["Salad"]);
-    expect(plan?.canTake).toBe(false); // not sent to the kitchen yet
+    expect(plan?.canSend).toBe(false); // the customer has not approved the menu yet
+    expect(plan?.blockedReason).toBe("Items can be set once the customer approves the menu.");
   });
 
-  it("refuses to take stock before the order is with the kitchen", async () => {
+  it("only sends items once the menu is approved", async () => {
     const { org, actor, order } = await setup(50);
-    await expect(takeOrderStock(org.id, order.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
+    await expect(sendOrderItems(org.id, order.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
+    await approve(order.id);
+    expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(true);
+    await sendToKitchen(order.id);
+    expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(true);
   });
 
-  it("takes the stock once: ledger row tagged with the order, balance down, second attempt refused", async () => {
+  it("sends the items: ledger row tagged with the order, balance down; a second click has nothing left to send", async () => {
     const { org, actor, order, paneer } = await setup(50);
-    await sendToKitchen(order.id);
-    expect((await getOrderStockPlan(org.id, order.id))?.canTake).toBe(true);
-    const result = await takeOrderStock(org.id, order.id, actor.id);
+    await approve(order.id);
+    const result = await sendOrderItems(org.id, order.id, actor.id);
     expect(result.shortages).toEqual([]);
-    expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: paneer.id } })).stockCount)).toBe(28);
+    expect(await stockOf(paneer.id)).toBe(28);
     const rows = await prisma.inventoryTransaction.findMany({ where: { orderId: order.id } });
     expect(rows.map((r) => [r.type, Number(r.quantity)])).toEqual([["STOCK_OUT", 22]]);
-    await expect(takeOrderStock(org.id, order.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
-    const after = await getOrderStockPlan(org.id, order.id);
+    await expect(sendOrderItems(org.id, order.id, actor.id)).rejects.toThrow(/has been sent/);
+    const after = await getOrderInventory(org.id, order.id);
+    expect(after?.lines[0]).toMatchObject({ sent: 22, remaining: 0 });
     expect(after?.deductedAt).not.toBeNull();
-    expect(after?.canTake).toBe(false);
-    expect(after?.taken[0]).toMatchObject({ name: "Paneer", quantity: 22 });
   });
 
-  it("two people confirming at once take the stock only once", async () => {
+  it("two people clicking at once send the items only once", async () => {
     const { org, actor, order, paneer } = await setup(50);
-    await sendToKitchen(order.id);
-    const results = await Promise.allSettled([takeOrderStock(org.id, order.id, actor.id), takeOrderStock(org.id, order.id, actor.id)]);
+    await approve(order.id);
+    const results = await Promise.allSettled([sendOrderItems(org.id, order.id, actor.id), sendOrderItems(org.id, order.id, actor.id)]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: paneer.id } })).stockCount)).toBe(28);
+    expect(await stockOf(paneer.id)).toBe(28);
   });
 
-  it("when stock is short it takes what is there (never below zero) and writes the shortfall", async () => {
+  it("when stock is short it sends what is there (never below zero), writes the shortfall, and a later send tops it up", async () => {
     const { org, actor, order, paneer } = await setup(10);
-    await sendToKitchen(order.id);
-    const result = await takeOrderStock(org.id, order.id, actor.id);
+    await approve(order.id);
+    const plan = await getOrderInventory(org.id, order.id);
+    expect(plan?.lines[0]).toMatchObject({ short: 12 });
+    const result = await sendOrderItems(org.id, order.id, actor.id);
     expect(result.shortages).toEqual([{ name: "Paneer", short: 12 }]);
-    expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: paneer.id } })).stockCount)).toBe(0);
+    expect(await stockOf(paneer.id)).toBe(0);
     const row = await prisma.inventoryTransaction.findFirstOrThrow({ where: { orderId: order.id } });
     expect(Number(row.quantity)).toBe(10);
     expect(row.note).toContain("short by 12");
+
+    await recordStockTransaction(org.id, paneer.id, { type: "STOCK_IN", quantity: 30 }, actor.id);
+    const topUp = await sendOrderItems(org.id, order.id, actor.id);
+    expect(topUp.shortages).toEqual([]);
+    expect((await getOrderInventory(org.id, order.id))?.lines[0]).toMatchObject({ sent: 22, remaining: 0 });
+    expect(await stockOf(paneer.id)).toBe(18);
   });
 
-  it("needs the guest count", async () => {
-    const { org, actor, order } = await setup(50, null);
-    await sendToKitchen(order.id);
-    await expect(takeOrderStock(org.id, order.id, actor.id)).rejects.toThrow(/guest count/);
+  it("extra items added by hand are required and sent with the recipe items", async () => {
+    const { org, actor, order } = await setup(50);
+    const gas = await createInventoryItem(org.id, { name: "Gas cylinder", category: "Other", unit: "pcs" }, actor.id, 5);
+    const type = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    await prisma.order.update({ where: { id: order.id }, data: { eventTypeId: type.id } });
+    const event = await createEventForOrder(org.id, order.id, actor.id);
+    await prisma.eventRequiredInventory.create({ data: { eventId: event.id, inventoryId: gas.id, quantity: 2 } });
+    await approve(order.id);
+    const plan = await getOrderInventory(org.id, order.id);
+    expect(plan?.lines.map((l) => [l.name, l.required])).toEqual([["Gas cylinder", 2], ["Paneer", 22]]);
+    await sendOrderItems(org.id, order.id, actor.id);
+    expect(await stockOf(gas.id)).toBe(3);
   });
 
-  it("another kitchen cannot read or take this order's stock", async () => {
+  it("when the menu grows only the difference is sent, and when it shrinks the surplus can be returned", async () => {
+    const { org, actor, order, paneer } = await setup(100);
+    await approve(order.id);
+    await sendOrderItems(org.id, order.id, actor.id);
+    expect(await stockOf(paneer.id)).toBe(78);
+
+    // More guests: 200 guests + 10% = 220 servings = 44 kg, 22 already sent.
+    await prisma.order.update({ where: { id: order.id }, data: { totalParticipants: 200 } });
+    const grown = await getOrderInventory(org.id, order.id);
+    expect(grown?.lines[0]).toMatchObject({ required: 44, sent: 22, remaining: 22 });
+    await sendOrderItems(org.id, order.id, actor.id);
+    expect(await stockOf(paneer.id)).toBe(56);
+
+    // Fewer guests: the surplus is shown, and undo puts back everything sent for the item.
+    await prisma.order.update({ where: { id: order.id }, data: { totalParticipants: 100 } });
+    expect((await getOrderInventory(org.id, order.id))?.lines[0]).toMatchObject({ required: 22, sent: 44, surplus: 22 });
+    const back = await returnOrderItem(org.id, order.id, paneer.id, actor.id);
+    expect(back.quantity).toBe(44);
+    expect(await stockOf(paneer.id)).toBe(100);
+    const ledger = await prisma.inventoryTransaction.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" } });
+    expect(ledger.map((r) => [r.type, Number(r.quantity)])).toEqual([["STOCK_OUT", 22], ["STOCK_OUT", 22], ["STOCK_IN", 44]]);
+    await expect(returnOrderItem(org.id, order.id, paneer.id, actor.id)).rejects.toThrow(/Nothing is sent/);
+  });
+
+  it("a completed order's items can no longer be sent or returned here", async () => {
+    const { org, actor, order, paneer } = await setup(50);
+    await approve(order.id);
+    await sendOrderItems(org.id, order.id, actor.id);
+    await prisma.order.update({ where: { id: order.id }, data: { status: "COMPLETED" } });
+    expect((await getOrderInventory(org.id, order.id))?.canReturn).toBe(false);
+    await expect(returnOrderItem(org.id, order.id, paneer.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
+  });
+
+  it("another kitchen cannot read or send this order's items", async () => {
     const a = await setup(50);
     const b = await setup(50);
-    await sendToKitchen(a.order.id);
-    expect(await getOrderStockPlan(b.org.id, a.order.id)).toBeNull();
-    await expect(takeOrderStock(b.org.id, a.order.id, b.actor.id)).rejects.toThrow();
+    await approve(a.order.id);
+    expect(await getOrderInventory(b.org.id, a.order.id)).toBeNull();
+    await expect(sendOrderItems(b.org.id, a.order.id, b.actor.id)).rejects.toThrow();
+    await expect(returnOrderItem(b.org.id, a.order.id, a.paneer.id, b.actor.id)).rejects.toThrow();
   });
 
   it("the production plan covers orders in the window and totals the shortfall of orders not yet taken", async () => {

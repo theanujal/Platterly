@@ -52,6 +52,14 @@ function startsInPreview(days: number | null): { caption: string; label: string;
   return { caption: "Starts in", label: `${days} ${days === 1 ? "day" : "days"}`, tone: days <= 2 ? "yellow" : "success" };
 }
 
+const PAYMENT_METHOD_OPTIONS = [
+  { value: "CASH", label: "Cash" },
+  { value: "UPI", label: "UPI" },
+  { value: "CARD", label: "Card" },
+  { value: "NET_BANKING", label: "Net Banking" },
+  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+] as const;
+
 const PAYMENT_STATUS_OPTIONS = [
   { value: "UNPAID", label: "Unpaid" },
   { value: "PARTIALLY_PAID", label: "Partially Paid" },
@@ -126,6 +134,9 @@ export interface OrderFormValues {
   /** Team-added label + amount lines (amount typed as text, like the other money fields). */
   customCharges: { label: string; amount: string }[];
   advance: string;
+  /** How the advance was collected (a PaymentMethod); only used when the advance is recorded as a payment. */
+  advanceMethod: string;
+  advanceReference: string;
   paymentStatus: string;
   status: string;
   notes: string;
@@ -172,6 +183,8 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   otherCharges: "0",
   customCharges: [],
   advance: "0",
+  advanceMethod: "CASH",
+  advanceReference: "",
   paymentStatus: "UNPAID",
   status: "PENDING_REVIEW",
   notes: "",
@@ -261,14 +274,26 @@ interface OrderFormProps {
   /** The Staffing tab (Chunk 19.2): who is on this order's event. Only on the order's own page. */
   staffingTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
-  /** Order detail only: invoice button and the payments list, shown beside the pricing editor in the Pricing & Payment tab. */
+  /** Order detail only: the payment summary and the payments list, shown beside the pricing editor in the Pricing & Payment tab. */
   billingPanel?: React.ReactNode;
+  /** Order detail only: the Create / Open Invoice button, shown in the sidebar above Order Status while the Pricing & Payment tab is open (AJ, 2026-10-10). */
+  sidebarInvoiceAction?: React.ReactNode;
   /**
    * Edit page only (AJ, 2026-09-30): the menu is planned in Menu Approvals, so here it is shown read-only and the
    * form sends no meals (the server leaves the meal plan alone). The banner carries the "Edit Menu" link.
    */
   menuPlanReadOnly?: boolean;
-  /** Shown above the read-only planner: the menu approval status and the Edit Menu button. */
+  /**
+   * Edit page: when the planner is editable (the menu is still a draft, 2026-10-10) the meals are sent only if they
+   * were changed, so saving other fields never rewrites the plan or logs a menu edit.
+   */
+  menuPlanOnlyIfChanged?: boolean;
+  /**
+   * Edit page: the order already has payments (AJ, 2026-10-10). The advance is then a real payment, so Payment Status and the advance
+   * are shown, not edited here; more money goes through Record Payment in the Pricing & Payment tab.
+   */
+  paymentsRecorded?: boolean;
+  /** Shown above the planner: the menu approval status and what the team can do with it (edit, recall, view only). */
   menuPlanBanner?: React.ReactNode;
   cancelHref?: string;
   /**
@@ -300,7 +325,10 @@ export function OrderForm({
   staffingTab,
   pricingExtra,
   billingPanel,
+  sidebarInvoiceAction,
   menuPlanReadOnly = false,
+  menuPlanOnlyIfChanged = false,
+  paymentsRecorded = false,
   menuPlanBanner = null,
   cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
@@ -309,6 +337,7 @@ export function OrderForm({
   submitLabel,
   onSubmitAndNotify,
 }: OrderFormProps) {
+  const [activeTab, setActiveTab] = useState<string>("details");
   const [values, setValues] = useState<OrderFormValues>({ ...EMPTY_ORDER_VALUES, ...initialValues });
   // Edit mode's already-selected Customer, found once from the full list
   // passed down — CustomerCombobox only needs this single row to seed its
@@ -474,11 +503,14 @@ export function OrderForm({
     formData.set("otherCharges", values.otherCharges);
     formData.set("customCharges", JSON.stringify(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
     formData.set("advance", values.advance);
+    formData.set("advanceMethod", values.advanceMethod);
+    formData.set("advanceReference", values.advanceReference);
     formData.set("paymentStatus", values.paymentStatus);
     formData.set("notes", values.notes);
     formData.set("kitchenNotes", values.kitchenNotes);
     formData.set("staffingNotes", values.staffingNotes);
-    if (menuPlanReadOnly) formData.set("mealPlanLocked", "true");
+    const mealPlanChanged = JSON.stringify(values.mealPlanEntries) !== JSON.stringify(initialValues?.mealPlanEntries ?? []);
+    if (menuPlanReadOnly || (menuPlanOnlyIfChanged && !mealPlanChanged)) formData.set("mealPlanLocked", "true");
     for (const entry of menuPlanReadOnly ? [] : values.mealPlanEntries) {
       formData.append("mealDate", entry.date);
       formData.append("mealType", entry.mealType);
@@ -521,6 +553,10 @@ export function OrderForm({
     }
     if (values.paymentStatus === "PARTIALLY_PAID" && advanceNum <= 0) {
       setError("Enter the Advance Payment Amount received so far.");
+      return;
+    }
+    if (!paymentsRecorded && advanceNum > total + 0.005) {
+      setError("The advance cannot be more than the order total.");
       return;
     }
     setPending(notifyWhatsApp ? "whatsapp" : "save");
@@ -835,10 +871,10 @@ export function OrderForm({
   <FormSection
     {...sec(5, UtensilsCrossed)}
     title="Menu Planning"
-    description={menuPlanReadOnly ? "Changes to the menu are made in Menu Approvals, so they are approved before they reach the kitchen." : "Select meals and assign menu items for this event."}
+    description={menuPlanReadOnly ? "The menu is with the customer or the kitchen. Recall it to change it; changes are approved again before they reach the kitchen." : "Select meals and assign menu items for this event."}
     action={menuPlanReadOnly ? null : individualToggle}
   >
-    {menuPlanReadOnly && menuPlanBanner}
+    {menuPlanBanner}
     <MenuPlanningSection
       idPrefix="order"
       days={days}
@@ -910,7 +946,7 @@ export function OrderForm({
   <SummaryCard icon={Wallet} title="Pricing Details">
     <p className="text-xs text-muted-foreground">
       {individualOn
-        ? "Individual Pricing is on (switch it in Menu Planning). Set your own price for each meal and each child age band. Children can be Per Plate or a Percentage of the first assigned Menu's price."
+        ? "Individual Pricing is on (switch it in Menu Planning). Set your own per-plate price for each meal and each child age band. Children can be Per Plate or a Percentage of the first assigned Menu's price."
         : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
     </p>
     {individualOn && (
@@ -1051,6 +1087,7 @@ export function OrderForm({
         items={Object.fromEntries(PAYMENT_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
         value={values.paymentStatus}
         onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}
+        disabled={paymentsRecorded}
       >
         <SelectTrigger id="order-payment-status" className="w-full">
           <SelectValue />
@@ -1067,12 +1104,39 @@ export function OrderForm({
     {values.paymentStatus === "PARTIALLY_PAID" ? (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-advance" required>Advance Payment Amount</Label>
-        <Input id="order-advance" type="number" min="0.01" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
+        <Input id="order-advance" type="number" min="0.01" step="0.01" readOnly={paymentsRecorded} value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
       </div>
     ) : (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-advance">Advance Received</Label>
-        <Input id="order-advance" type="number" min="0" step="0.01" value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
+        <Input id="order-advance" type="number" min="0" step="0.01" readOnly={paymentsRecorded} value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
+      </div>
+    )}
+    {!paymentsRecorded && advanceNum > 0 && (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="order-advance-method">Payment method</Label>
+          <Select
+            items={Object.fromEntries(PAYMENT_METHOD_OPTIONS.map((o) => [o.value, o.label]))}
+            value={values.advanceMethod}
+            onValueChange={(v) => setField("advanceMethod", v ?? values.advanceMethod)}
+          >
+            <SelectTrigger id="order-advance-method" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAYMENT_METHOD_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="order-advance-reference">Reference (optional)</Label>
+          <Input id="order-advance-reference" maxLength={80} placeholder="UPI / cheque / transaction no." value={values.advanceReference} onChange={(e) => setField("advanceReference", e.target.value)} />
+        </div>
       </div>
     )}
     <div className="flex items-center justify-between gap-3 text-sm">
@@ -1081,7 +1145,11 @@ export function OrderForm({
     </div>
     <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
       <Info className="mt-0.5 size-4 shrink-0" />
-      <span>Payment details can be updated later from the order page.</span>
+      <span>
+        {paymentsRecorded
+          ? "Payments are recorded in the Payment Summary. Use Record Payment there to add more."
+          : "The advance is recorded as a payment when you save, and a receipt is issued. More payments can be added from the order page."}
+      </span>
     </div>
   </SummaryCard>
   );
@@ -1232,11 +1300,12 @@ export function OrderForm({
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           {/* ---------------- Main column ---------------- */}
           <div className="flex min-w-0 flex-col gap-4">
-            <FormTabs tabs={tabs} idPrefix="order" />
+            <FormTabs tabs={tabs} idPrefix="order" onActiveChange={setActiveTab} />
           </div>
 
           {/* ---------------- Summary column ---------------- */}
           <aside className="flex min-w-0 flex-col gap-4">
+            {activeTab === "pricing" && sidebarInvoiceAction}
             {sidebarTop ?? orderSummaryCard}
             {!sidebarTop && pricingSummaryCard}
           </aside>

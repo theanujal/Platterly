@@ -16,7 +16,12 @@ interface EditOrderClientProps {
   staffingTab?: React.ReactNode;
   pricingExtra?: React.ReactNode;
   billingPanel?: React.ReactNode;
+  sidebarInvoiceAction?: React.ReactNode;
   menuPlanBanner?: React.ReactNode;
+  /** True while the menu is with the customer or the kitchen (see menu-status-banner.tsx's phases). */
+  menuPlanReadOnly: boolean;
+  /** The order already has a confirmed payment, so the advance and payment status are shown, not edited. */
+  paymentsRecorded: boolean;
   eventTypes: { id: string; name: string }[];
   menus: {
     id: string;
@@ -47,7 +52,10 @@ export function EditOrderClient({
   staffingTab,
   pricingExtra,
   billingPanel,
+  sidebarInvoiceAction,
   menuPlanBanner,
+  menuPlanReadOnly,
+  paymentsRecorded,
 }: EditOrderClientProps) {
   const router = useRouter();
 
@@ -61,7 +69,10 @@ export function EditOrderClient({
       staffingTab={staffingTab}
       pricingExtra={pricingExtra}
       billingPanel={billingPanel}
-      menuPlanReadOnly
+      sidebarInvoiceAction={sidebarInvoiceAction}
+      menuPlanReadOnly={menuPlanReadOnly}
+      menuPlanOnlyIfChanged
+      paymentsRecorded={paymentsRecorded}
       menuPlanBanner={menuPlanBanner}
       customers={customers}
       eventTypes={eventTypes}

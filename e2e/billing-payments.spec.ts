@@ -51,6 +51,26 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await page.getByRole("button", { name: "Save Advance" }).click();
   await expect(page.getByText("Advance saved.")).toBeVisible();
 
+  // GST lives here now (AJ, 2026-10-10): the number, the switch, and the default rate and type for new invoices.
+  await page.getByLabel("GST number (optional)").fill("not valid");
+  await page.getByRole("button", { name: "Save GST" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "15 letters and digits" })).toBeVisible();
+  await page.getByLabel("GST number (optional)").fill("29ABCDE1234F1Z5");
+  await page.getByRole("switch", { name: "Show GST details on invoices" }).click();
+  await page.getByLabel("GST rate (%)").fill("12");
+  await page.getByLabel("GST type").click();
+  await page.getByRole("option", { name: "IGST" }).click();
+  await page.getByRole("button", { name: "Save GST" }).click();
+  await expect(page.getByText("GST settings saved.")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Create the invoice automatically" })).toHaveAttribute("aria-checked", "true");
+
+  // Business Profile no longer edits GST: it shows the number read-only and points to Payments.
+  await page.goto("/settings/account/business-profile");
+  await expect(page.getByText("29ABCDE1234F1Z5")).toBeVisible();
+  await page.getByRole("button", { name: "Edit Profile" }).click();
+  await expect(page.getByLabel("GST number (optional)")).toHaveCount(0);
+  await page.goto("/settings/integration/payments");
+
   await page.getByLabel("Key ID").fill("rzp_test_ABCDEF123456");
   await page.getByLabel("Key Secret").fill("test-key-secret");
   await page.getByLabel("Webhook Secret").fill("test-webhook-secret");
@@ -70,14 +90,34 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await expect(page.getByTestId("order-billing")).toBeVisible();
   await expect(page.getByTestId("balance-amount")).toHaveText("₹20,000.00");
   await page.getByRole("button", { name: "Create Invoice" }).click();
+  // The dialog starts from the saved GST defaults.
+  await expect(page.getByRole("dialog").getByLabel("GST rate (%)")).toHaveValue("12");
+  await expect(page.getByRole("dialog").getByLabel("GST type")).toContainText("IGST");
   await page.getByRole("dialog").getByRole("button", { name: "Create Invoice" }).click();
   await expect(page).toHaveURL(/\/invoices\/[a-z0-9]+$/);
   await expect(page.getByRole("heading", { name: /INV-0001/ })).toBeVisible();
   await expect(page.getByTestId("invoice-total")).toHaveText("₹20,000.00");
   await expect(page.getByTestId("invoice-paper")).toContainText("Billing Customer");
+  // Laid out like the sample bill (AJ, 2026-10-10): information cards, payment summary, and Platterly branding at the foot.
+  await expect(page.getByTestId("invoice-paper")).toContainText("Invoice Information");
+  await expect(page.getByTestId("invoice-paper")).toContainText("Customer Information");
+  await expect(page.getByTestId("invoice-status")).toHaveText("UNPAID");
+  await expect(page.getByTestId("invoice-payment-summary")).toContainText("Total After Discount");
+  await expect(page.getByTestId("invoice-balance")).toContainText("₹20,000.00");
+  await expect(page.getByTestId("invoice-powered-by")).toContainText("Powered by Platterly");
   await expect(page.getByText("Draft", { exact: true }).first()).toBeVisible();
   const invoiceUrl = page.url();
   await expectNoSideScroll(page, "the invoice page");
+
+  // Back on the order, the sidebar offers Download invoice (the PDF) on the Pricing & Payment tab only (AJ, 2026-10-10).
+  await page.goBack();
+  await expect(page.getByRole("button", { name: "Download invoice" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByRole("button", { name: "Download invoice" })).toHaveAttribute("href", /\/invoices\/[a-z0-9]+\/pdf$/);
+  await expect(page.getByRole("link", { name: "View INV-0001" })).toBeVisible();
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByRole("button", { name: "Download invoice" })).toHaveCount(0);
+  await page.goto(invoiceUrl);
 
   // Send invoice: marks it Sent. Email isn't connected yet, so the message says so.
   await page.getByRole("button", { name: "Send Invoice" }).click();

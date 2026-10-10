@@ -324,13 +324,54 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- The team checks the real selections (add/remove, no quantity), then sends the menu for approval ---
   await expect(page.getByLabel(/Quantity/)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: `Remove ${itemName}` })).toBeVisible(); // selected, and editable while Needs Review
-  await expect(page.getByRole("button", { name: `Remove ${extraItemName}` })).toBeVisible();
-  await expect(page.getByText("Extra", { exact: true })).toBeVisible();
-  await expect(page.getByText(addOnName)).toBeVisible();
+  // The meal card shows counts, not names (AJ, 2026-10-10); it is editable while Needs Review.
+  const counts = page.getByTestId("meal-item-counts").first();
+  await expect(counts.getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(counts.getByText("1 Extra", { exact: true })).toBeVisible();
+  await expect(counts.getByText("1 Add-on", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Items" }).first()).toBeVisible();
+
+  // --- Both ways, one planner (AJ, 2026-10-10): the draft menu can be edited on the order page and in Menu Approvals ---
+  const reviewUrl = page.url();
+  await page.goto("/orders");
+  await page.getByText(customerName).click();
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "editable");
+  await page.getByRole("button", { name: "Edit Items" }).first().click();
+  const orderDrawer = page.getByRole("dialog", { name: /Select Menu Items/ });
+  await orderDrawer.getByRole("button", { name: "Add-ons" }).click();
+  await orderDrawer.getByRole("button", { name: new RegExp(addOnName) }).click(); // off
+  await orderDrawer.getByRole("button", { name: "Save Items" }).click();
+  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
+    page.getByRole("button", { name: "Save changes" }).first().click(),
+  ]);
+  await page.goto(reviewUrl);
+  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit Items" }).first().click();
+  const reviewDrawer = page.getByRole("dialog", { name: /Select Menu Items/ });
+  await reviewDrawer.getByRole("button", { name: "Add-ons" }).click();
+  await reviewDrawer.getByRole("button", { name: new RegExp(addOnName) }).click(); // back on
+  await reviewDrawer.getByRole("button", { name: "Save Items" }).click();
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/menu-approvals/")),
+    page.getByRole("button", { name: "Save Changes" }).click(),
+  ]);
+  await page.goto(reviewUrl);
+  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Send Menu for Approval" }).click();
   await expect(page.getByText(/Version 1 is with the customer/)).toBeVisible();
   const linkV1 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+
+  // The menu is with the customer: the order's planner is read-only, with Recall to edit (AJ, 2026-10-10).
+  await page.goto("/orders");
+  await page.getByText(customerName).click();
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "recall");
+  await expect(page.getByRole("button", { name: "Recall to edit" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
 
   await page.goto("/orders");
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
@@ -491,6 +532,12 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- A status can be set by hand, but only with a reason, and the change is recorded (AJ, 2026-09-30) ---
   await orderCard().getByRole("link", { name: customerName }).click();
+  // Sent to the kitchen: view only, and nothing to recall (AJ, 2026-10-10).
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "locked");
+  await expect(page.getByRole("button", { name: "Recall to edit" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await page.getByRole("combobox", { name: "Change status" }).click();
   await page.getByRole("option", { name: "Approved", exact: true }).click();

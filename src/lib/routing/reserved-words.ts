@@ -32,6 +32,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "inventory",
   "suppliers",
   "purchasing",
+  "recipes",
   "staff",
   "customers",
   "quotations",

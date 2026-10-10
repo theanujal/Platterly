@@ -28,12 +28,13 @@ import { OrderSummaryCard } from "./_components/order-summary-card";
 import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
-import { getOrderStockPlan } from "@/modules/production/production";
+import { getOrderInventory } from "@/modules/production/production";
+import { getGstSettings } from "@/modules/payments/payment-settings";
 import { EventOps } from "../../staff/_components/event-ops";
-import { StockPlanCard } from "./_components/stock-plan-card";
+import { OrderInventoryPanel } from "./_components/order-inventory-panel";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
-import { MenuStatusBanner } from "./_components/menu-status-banner";
+import { MenuStatusBanner, menuPlanPhase } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import type { OrderKind } from "@/generated/prisma/enums";
@@ -93,7 +94,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   ]);
   if (!order) notFound();
 
-  const [orderPayments, confirmedPaid, activeInvoice, billingOrg, canCreateInvoice, canRecordPayment, canManagePayment] = await Promise.all([
+  const [orderPayments, confirmedPaid, activeInvoice, billingOrg, canCreateInvoice, canRecordPayment, canManagePayment, gstDefaults] = await Promise.all([
     listOrderPayments(organizationId, id),
     confirmedPaidForOrder(id),
     prisma.invoice.findFirst({ where: { organizationId, orderId: id, type: "INVOICE", status: { not: "CANCELLED" } }, select: { id: true, number: true } }),
@@ -101,6 +102,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     hasPermission({ invoices: ["create"] }, organizationId),
     hasPermission({ payments: ["create"] }, organizationId),
     hasPermission({ payments: ["manage"] }, organizationId),
+    getGstSettings(organizationId),
   ]);
   const [canViewExpenses, canCreateExpense, canEditExpense, canDeleteExpense] = await Promise.all([
     hasPermission({ expenses: ["view"] }, organizationId),
@@ -111,7 +113,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const expenses = canViewExpenses ? await listOrderExpenses(organizationId, id) : [];
   const supplierOptions = canViewExpenses ? await listSupplierOptions(organizationId) : [];
   const canViewStaffing = await hasPermission({ staffing: ["view"] }, organizationId);
-  const [stockPlan, canTakeStock] = await Promise.all([getOrderStockPlan(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId)]);
+  const [orderInventory, canTakeStock] = await Promise.all([getOrderInventory(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId)]);
   const paymentRows: PaymentRowData[] = orderPayments.map((p) => ({
     id: p.id,
     amount: Number(p.amount),
@@ -162,6 +164,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     otherCharges: order.otherCharges.toString(),
     customCharges: parseCustomCharges(order.customCharges).map((c) => ({ label: c.label, amount: c.amount.toString() })),
     advance: order.advance.toString(),
+    advanceMethod: "CASH",
+    advanceReference: "",
     paymentStatus: order.paymentStatus,
     status: order.status,
     notes: order.notes ?? "",
@@ -191,6 +195,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <EditOrderClient
         orderId={order.id}
+        menuPlanReadOnly={menuPlanPhase(menuApproval?.status ?? null) !== "editable"}
+        paymentsRecorded={orderPayments.some((p) => p.status === "CONFIRMED")}
         initialValues={initialValues}
         header={
           <div className="flex flex-col gap-4">
@@ -233,6 +239,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             status={menuApproval?.status ?? null}
             version={menuApproval?.currentVersion ?? null}
             editHref={canManageApproval && menuApproval ? `/menu-approvals/${menuApproval.menuSelectionId}` : null}
+            menuSelectionId={menuApproval?.menuSelectionId ?? null}
+            canRecall={canManageApproval}
           />
         }
         sidebarTop={
@@ -282,13 +290,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             )}
           </>
         }
-        billingPanel={
-          <div className="flex flex-col gap-3" data-testid="order-billing">
+        sidebarInvoiceAction={
+          activeInvoice || (canCreateInvoice && orderTotal > 0) ? (
+            <div className="flex flex-col [&>a]:w-full [&>button]:w-full" data-testid="sidebar-invoice-action">
               {activeInvoice ? (
                 <OpenInvoiceLink invoiceId={activeInvoice.id} number={activeInvoice.number} />
               ) : (
-                canCreateInvoice && orderTotal > 0 && <CreateInvoiceButton orderId={order.id} gstEnabled={billingOrg.gstShowOnInvoices === true} defaultDueDate={toDateInputValue(order.eventStartDate)} />
+                <CreateInvoiceButton orderId={order.id} gstEnabled={billingOrg.gstShowOnInvoices === true} defaultDueDate={toDateInputValue(order.eventStartDate)} defaultGstType={gstDefaults.type} defaultGstRate={gstDefaults.rate} />
               )}
+            </div>
+          ) : undefined
+        }
+        billingPanel={
+          <div className="flex flex-col gap-3" data-testid="order-billing">
               <PaymentsPanel
                 orderId={order.id}
                 invoiceId={activeInvoice?.id}
@@ -366,25 +380,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         }
         staffingTab={canViewStaffing && event ? <EventOps organizationId={organizationId} eventId={event.id} orderId={order.id} /> : canViewStaffing ? <p className="text-sm text-muted-foreground">Choose an event type on the order to create its event. Staff, tasks and logistics belong to the event.</p> : undefined}
         inventoryTab={
-          <div className="flex flex-col gap-4">
-            {stockPlan && (
-              <StockPlanCard
-                orderId={order.id}
-                canConfirm={canTakeStock}
-                plan={{
-                  guests: stockPlan.guests,
-                  servings: stockPlan.servings,
-                  extraPercent: stockPlan.extraPercent,
-                  lines: stockPlan.lines,
-                  withoutRecipe: stockPlan.withoutRecipe,
-                  deductedAt: stockPlan.deductedAt ? stockPlan.deductedAt.toISOString() : null,
-                  taken: stockPlan.taken,
-                  canTake: stockPlan.canTake,
-                  sentToKitchen: stockPlan.status === "SENT_TO_KITCHEN",
-                }}
-              />
-            )}
-          <RequiredInventoryCard
+          orderInventory ? (
+            <OrderInventoryPanel
+              orderId={order.id}
+              canEdit={canTakeStock}
+              data={orderInventory}
+              extrasSlot={
+              <RequiredInventoryCard
             orderId={order.id}
             event={
               event
@@ -393,7 +395,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             }
             inventoryItems={inventoryItems.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
           />
-          </div>
+              }
+            />
+          ) : undefined
         }
       />
     </div>

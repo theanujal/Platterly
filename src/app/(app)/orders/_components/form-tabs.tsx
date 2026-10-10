@@ -13,7 +13,7 @@ export interface FormTab {
  * Tabbed layout shared by the Order and Quotation forms (AJ, 2026-09-30).
  * Every panel stays mounted (just hidden) so nothing typed in one tab is lost on switching.
  */
-export function FormTabs({ tabs, idPrefix }: { tabs: FormTab[]; idPrefix: string }) {
+export function FormTabs({ tabs, idPrefix, onActiveChange }: { tabs: FormTab[]; idPrefix: string; onActiveChange?: (id: string) => void }) {
   const [active, setActive] = useState(tabs[0]?.id);
 
   return (
@@ -27,7 +27,10 @@ export function FormTabs({ tabs, idPrefix }: { tabs: FormTab[]; idPrefix: string
             id={`${idPrefix}-tab-${tab.id}`}
             aria-selected={active === tab.id}
             aria-controls={`${idPrefix}-panel-${tab.id}`}
-            onClick={() => setActive(tab.id)}
+            onClick={() => {
+              setActive(tab.id);
+              onActiveChange?.(tab.id);
+            }}
             className={cn(
               "-mb-px shrink-0 border-b-2 px-4 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
               active === tab.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",

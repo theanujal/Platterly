@@ -163,6 +163,11 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await page.goto("/orders");
   await page.getByLabel("Grid view").click();
   await expect(orderCard()).toContainText("Sent to Kitchen");
+  // The invoice was created for the team when the order went to the kitchen (AJ, 2026-10-10): a Draft, ready to send.
+  await orderCard().getByRole("link", { name: customerName }).click();
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByRole("button", { name: "Download invoice" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Invoice" })).toHaveCount(0);
 
   // ===== Owner: invites a Kitchen Team member =====
   await page.goto("/settings/team");

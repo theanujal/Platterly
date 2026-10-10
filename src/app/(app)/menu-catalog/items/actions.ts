@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
-import { saveRecipe, deleteRecipe } from "@/modules/recipes/recipe";
+import { saveRecipe, deleteRecipe, copyRecipe } from "@/modules/recipes/recipe";
 import type {
   FoodType,
   MenuItemOrigin,
@@ -151,6 +151,7 @@ export async function saveRecipeAction(menuItemId: string, payload: RecipePayloa
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/items");
+  revalidatePath("/recipes");
   return { ok: true };
 }
 
@@ -163,5 +164,20 @@ export async function deleteRecipeAction(menuItemId: string): Promise<ActionResu
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/items");
+  revalidatePath("/recipes");
+  return { ok: true };
+}
+
+/** Starts a dish's recipe from another dish's (the Recipes page: "Copy from another dish"). */
+export async function copyRecipeAction(fromMenuItemId: string, toMenuItemId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await copyRecipe(organizationId, fromMenuItemId, toMenuItemId, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  revalidatePath("/recipes");
   return { ok: true };
 }

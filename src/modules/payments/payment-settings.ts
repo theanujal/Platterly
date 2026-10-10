@@ -13,7 +13,12 @@ const RAZORPAY_KEY = "payments.razorpay";
 const UPI_KEY = "payments.upi";
 const ADVANCE_KEY = "payments.advancePercent";
 const ENABLED_KEY = "payments.enabled";
+const GST_KEY = "payments.gst";
+const AUTO_INVOICE_KEY = "payments.autoInvoice";
 export const DEFAULT_ADVANCE_PERCENT = 50;
+/** Outdoor catering, the rate a new kitchen starts with; every kitchen can change it on the Payments settings page. */
+export const DEFAULT_GST_RATE = 5;
+export type GstType = "CGST_SGST" | "IGST";
 
 interface StoredRazorpay {
   keyId: string;
@@ -38,8 +43,19 @@ export interface PaymentSettingsView {
   razorpay: { connected: boolean; keyIdMasked: string | null; enabled: boolean };
   upi: { upiId: string; payeeName: string; enabled: boolean } | null;
   advancePercent: number;
+  /** GST (AJ, 2026-10-10): the number and the show-on-invoices switch live on the business, the rate and type are defaults for every new invoice. */
+  gst: GstSettings;
+  /** Create the invoice automatically when an order is sent to the kitchen. On unless switched off. */
+  autoInvoice: boolean;
   /** True when at least one method is switched on, so customers have something to pay with. */
   customersCanPay: boolean;
+}
+
+export interface GstSettings {
+  number: string;
+  showOnInvoices: boolean;
+  rate: number;
+  type: GstType;
 }
 
 export class PaymentSettingsError extends Error {}
@@ -48,11 +64,13 @@ export class PaymentSettingsError extends Error {}
 const UPI_ID = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
 
 export async function getPaymentSettingsView(organizationId: string): Promise<PaymentSettingsView> {
-  const [razorpay, upi, advance, flags] = await Promise.all([
+  const [razorpay, upi, advance, flags, gst, autoInvoice] = await Promise.all([
     getSetting<StoredRazorpay>(organizationId, RAZORPAY_KEY),
     getSetting<StoredUpi>(organizationId, UPI_KEY),
     getSetting<number>(organizationId, ADVANCE_KEY),
     getSetting<{ razorpay?: boolean; upi?: boolean }>(organizationId, ENABLED_KEY),
+    getGstSettings(organizationId),
+    getAutoInvoice(organizationId),
   ]);
   // A method that is set up is on until the kitchen switches it off.
   const razorpayEnabled = !!razorpay && flags?.razorpay !== false;
@@ -61,6 +79,8 @@ export async function getPaymentSettingsView(organizationId: string): Promise<Pa
     razorpay: { connected: !!razorpay, keyIdMasked: razorpay ? maskKeyId(razorpay.keyId) : null, enabled: razorpayEnabled },
     upi: upi ? { ...upi, enabled: upiEnabled } : null,
     advancePercent: advance ?? DEFAULT_ADVANCE_PERCENT,
+    gst,
+    autoInvoice,
     customersCanPay: razorpayEnabled || upiEnabled,
   };
 }
@@ -110,6 +130,38 @@ export async function saveUpi(organizationId: string, input: { upiId: string; pa
 export async function saveAdvancePercent(organizationId: string, percent: number) {
   if (!Number.isInteger(percent) || percent < 1 || percent > 100) throw new PaymentSettingsError("Advance must be a whole number from 1 to 100.");
   await setSetting(organizationId, ADVANCE_KEY, percent);
+}
+
+/** The kitchen's GST setup: its number and switch (on the business) and the default rate and type for new invoices. */
+export async function getGstSettings(organizationId: string): Promise<GstSettings> {
+  const [org, stored] = await Promise.all([
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { gstNumber: true, gstShowOnInvoices: true } }),
+    getSetting<{ rate?: number; type?: string }>(organizationId, GST_KEY),
+  ]);
+  return {
+    number: org.gstNumber ?? "",
+    showOnInvoices: org.gstShowOnInvoices === true,
+    rate: typeof stored?.rate === "number" ? stored.rate : DEFAULT_GST_RATE,
+    type: stored?.type === "IGST" ? "IGST" : "CGST_SGST",
+  };
+}
+
+export async function saveGstSettings(organizationId: string, input: { number: string; showOnInvoices: boolean; rate: number; type: string }) {
+  const number = input.number.trim().toUpperCase();
+  if (number && !/^[0-9A-Z]{15}$/.test(number)) throw new PaymentSettingsError("A GST number is 15 letters and digits, for example 29ABCDE1234F1Z5.");
+  if (!Number.isFinite(input.rate) || input.rate < 0 || input.rate > 28) throw new PaymentSettingsError("GST rate must be between 0 and 28.");
+  if (input.type !== "CGST_SGST" && input.type !== "IGST") throw new PaymentSettingsError("Choose CGST + SGST or IGST.");
+  if (input.showOnInvoices && !number) throw new PaymentSettingsError("Enter your GST number to show GST on invoices.");
+  await prisma.organization.update({ where: { id: organizationId }, data: { gstNumber: number || null, gstShowOnInvoices: input.showOnInvoices } });
+  await setSetting(organizationId, GST_KEY, { rate: Math.round(input.rate * 100) / 100, type: input.type });
+}
+
+export async function getAutoInvoice(organizationId: string): Promise<boolean> {
+  return (await getSetting<boolean>(organizationId, AUTO_INVOICE_KEY)) !== false;
+}
+
+export async function setAutoInvoice(organizationId: string, enabled: boolean) {
+  await setSetting(organizationId, AUTO_INVOICE_KEY, enabled);
 }
 
 async function prismaDeleteSetting(organizationId: string, key: string) {

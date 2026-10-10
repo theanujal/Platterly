@@ -78,8 +78,6 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     state: stringField(formData, "state"),
     postalCode: stringField(formData, "postalCode"),
     country: stringField(formData, "country"),
-    gstNumber: stringField(formData, "gstNumber"),
-    gstShowOnInvoices: formData.get("gstShowOnInvoices") === "true",
     websiteUrl: stringField(formData, "websiteUrl"),
     instagramUrl: stringField(formData, "instagramUrl"),
     facebookUrl: stringField(formData, "facebookUrl"),

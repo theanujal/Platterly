@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building, FileText, Globe, Hash, Link as LinkIcon, MapPin, Palette, Store } from "lucide-react";
+import { Building, Globe, Hash, Link as LinkIcon, MapPin, Palette, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { useStopEditing } from "../../../../_components/editable-panel";
@@ -23,8 +22,6 @@ export interface BusinessProfileFormValues {
   postalCode: string;
   country: string;
   mobileNumber: string;
-  gstNumber: string;
-  gstShowOnInvoices: boolean;
   websiteUrl: string;
   instagramUrl: string;
   facebookUrl: string;
@@ -62,8 +59,6 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
     formData.set("postalCode", values.postalCode);
     formData.set("country", values.country);
     formData.set("mobileNumber", values.mobileNumber);
-    formData.set("gstNumber", values.gstNumber);
-    formData.set("gstShowOnInvoices", String(values.gstShowOnInvoices));
     formData.set("websiteUrl", values.websiteUrl);
     formData.set("instagramUrl", values.instagramUrl);
     formData.set("facebookUrl", values.facebookUrl);
@@ -145,26 +140,6 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
             value={values.mobileNumber}
             onChange={(value) => setField("mobileNumber", value)}
           />
-        </div>
-      </SettingsSection>
-
-      <SettingsSection icon={FileText} title="GST">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="gstNumber">GST number (optional)</Label>
-          <Input
-            id="gstNumber"
-            maxLength={15}
-            value={values.gstNumber}
-            onChange={(e) => setField("gstNumber", e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="gstShowOnInvoices"
-            checked={values.gstShowOnInvoices}
-            onCheckedChange={(checked) => setField("gstShowOnInvoices", checked === true)}
-          />
-          <Label htmlFor="gstShowOnInvoices">Show GST details on invoices</Label>
         </div>
       </SettingsSection>
 

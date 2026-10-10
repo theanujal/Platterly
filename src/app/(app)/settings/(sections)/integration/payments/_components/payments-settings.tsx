@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Copy, CreditCard, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
+import { CheckCircle2, Copy, CreditCard, FileText, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/settings-ui";
 import type { PaymentSettingsView } from "@/modules/payments/payment-settings";
-import { disconnectRazorpayAction, saveAdvanceAction, saveRazorpayAction, saveUpiAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
+import { disconnectRazorpayAction, saveAdvanceAction, saveGstAction, saveRazorpayAction, saveUpiAction, setAutoInvoiceAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** A save button + status line shared by the three panels. */
 function useSave() {
@@ -79,6 +80,7 @@ export function PaymentsSettings({ settings, webhookUrl }: { settings: PaymentSe
       <RazorpayPanel settings={settings} webhookUrl={webhookUrl} />
       <UpiPanel settings={settings} />
       <AdvancePanel settings={settings} />
+      <GstPanel settings={settings} />
     </div>
   );
 }
@@ -228,6 +230,101 @@ function AdvancePanel({ settings }: { settings: PaymentSettingsView }) {
         </div>
         <Status message={message} />
       </form>
+    </SettingsPanel>
+  );
+}
+
+/** GST and invoices (AJ, 2026-10-10): the number and switch moved here from Business Profile, plus the default rate and type for new invoices. */
+function GstPanel({ settings }: { settings: PaymentSettingsView }) {
+  const router = useRouter();
+  const { pending, message, run } = useSave();
+  const [number, setNumber] = useState(settings.gst.number);
+  const [show, setShow] = useState(settings.gst.showOnInvoices);
+  const [rate, setRate] = useState(String(settings.gst.rate));
+  const [type, setType] = useState<string>(settings.gst.type);
+  const [auto, setAuto] = useState(settings.autoInvoice);
+  const [autoError, setAutoError] = useState<string | null>(null);
+
+  async function changeAuto(next: boolean) {
+    setAutoError(null);
+    setAuto(next);
+    const result = await setAutoInvoiceAction(next);
+    if (!result.ok) {
+      setAuto(!next);
+      setAutoError(result.error);
+      return;
+    }
+    router.refresh();
+  }
+
+  return (
+    <SettingsPanel>
+      <PanelHeader icon={FileText} title="GST & invoices" description="Your GST details, the default rate for new invoices, and when invoices are created." />
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const formData = new FormData();
+          formData.set("gstNumber", number);
+          formData.set("gstShowOnInvoices", String(show));
+          formData.set("gstRate", rate);
+          formData.set("gstType", type);
+          void run(() => saveGstAction(formData), "GST settings saved.");
+        }}
+      >
+        <div className="flex max-w-sm flex-col gap-1.5">
+          <Label htmlFor="gst-number">GST number (optional)</Label>
+          <IconInput icon={FileText} id="gst-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="29ABCDE1234F1Z5" maxLength={15} />
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/60 p-3">
+          <div>
+            <Label htmlFor="gst-show" className="text-sm font-medium">Show GST details on invoices</Label>
+            <p className="text-xs text-muted-foreground">Adds your GST number and the tax split to every new invoice. Prices already include GST.</p>
+          </div>
+          <Switch id="gst-show" checked={show} onCheckedChange={setShow} />
+        </div>
+        <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gst-rate">GST rate (%)</Label>
+            <IconInput icon={Percent} id="gst-rate" type="number" min={0} max={28} step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
+            <p className="text-xs text-muted-foreground">Default for every new invoice. Default 5.</p>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="gst-type">GST type</Label>
+            <Select items={{ CGST_SGST: "CGST + SGST", IGST: "IGST" }} value={type} onValueChange={(v) => setType(v ?? type)}>
+              <SelectTrigger id="gst-type" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CGST_SGST">CGST + SGST</SelectItem>
+                <SelectItem value="IGST">IGST</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">CGST + SGST within your state, IGST across states.</p>
+          </div>
+        </div>
+        <div>
+          <Button type="submit" size="md" disabled={pending}>
+            {pending ? "Saving…" : "Save GST"}
+          </Button>
+        </div>
+        <Status message={message} />
+      </form>
+
+      <div className="flex flex-col gap-1.5 border-t border-border pt-5">
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/60 p-3">
+          <div>
+            <Label htmlFor="auto-invoice" className="text-sm font-medium">Create the invoice automatically</Label>
+            <p className="text-xs text-muted-foreground">When an order is sent to the kitchen, its invoice is created as a draft. You still press Send Invoice.</p>
+          </div>
+          <Switch id="auto-invoice" checked={auto} onCheckedChange={changeAuto} aria-label="Create the invoice automatically" />
+        </div>
+        {autoError && (
+          <p role="alert" className="text-xs text-destructive">
+            {autoError}
+          </p>
+        )}
+      </div>
     </SettingsPanel>
   );
 }

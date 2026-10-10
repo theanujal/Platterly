@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Building2, Globe, Hash, MapPin, Phone, Store } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
@@ -55,6 +56,13 @@ export default async function BusinessProfilePage() {
                   value={organization.gstNumber ? `${organization.gstNumber}${organization.gstShowOnInvoices ? " · shown on invoices" : ""}` : null}
                 />
               </DetailGrid>
+              <p className="text-xs text-muted-foreground">
+                GST details, the GST rate and invoice settings are managed under{" "}
+                <Link href="/settings/integration/payments" className="underline underline-offset-2">
+                  Payments
+                </Link>
+                .
+              </p>
             </SettingsSection>
 
             <SettingsSection icon={MapPin} title="Business Address">
@@ -93,8 +101,6 @@ export default async function BusinessProfilePage() {
               postalCode: organization.postalCode ?? "",
               country: organization.country ?? "",
               mobileNumber: organization.contactPhone ?? "",
-              gstNumber: organization.gstNumber ?? "",
-              gstShowOnInvoices: organization.gstShowOnInvoices ?? false,
               websiteUrl: organization.websiteUrl ?? "",
               instagramUrl: organization.instagramUrl ?? "",
               facebookUrl: organization.facebookUrl ?? "",

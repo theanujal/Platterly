@@ -33,7 +33,7 @@ async function makeTeam() {
 
 async function makeOrder(orgId: string, actorId: string, eventStartDate: Date) {
   const customer = await createCustomer(orgId, { name: "Asha Rao", phone: `98${Math.floor(10000000 + Math.random() * 89999999)}`, email: "asha@example.test" }, actorId);
-  return createOrder(orgId, { customerId: customer.id, eventStartDate, eventEndDate: eventStartDate, totalParticipants: 50, individualPricingEnabled: true, mealPlanEntries: [{ date: eventStartDate, mealType: "DINNER", price: 400 }] }, actorId);
+  return createOrder(orgId, { customerId: customer.id, eventStartDate, eventEndDate: eventStartDate, totalParticipants: 50, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: eventStartDate, mealType: "DINNER", price: 400 }] }, actorId);
 }
 
 const rows = (orgId: string, event: string) => prisma.notification.findMany({ where: { organizationId: orgId, event }, include: { logs: true } });

@@ -293,7 +293,7 @@ describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", ()
         customerId: customer.id,
         eventStartDate: new Date("2026-12-01"),
         eventEndDate: new Date("2026-12-01"),
-        individualPricingEnabled: true,
+        adultCount: 1, individualPricingEnabled: true,
         mealPlanEntries: [
           { date: new Date("2026-12-01"), mealType: "BREAKFAST", price: 100 },
           { date: new Date("2026-12-01"), mealType: "LUNCH", price: 300 },

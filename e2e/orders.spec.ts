@@ -184,7 +184,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
 
   await selectFoodItem(page, lunchSlot, itemName);
   await expect(lunchSlot.getByText("1 item selected")).toBeVisible();
-  await expect(lunchSlot.getByText(itemName, { exact: true })).toBeVisible();
+  // The meal card shows counts, not item names (AJ, 2026-10-10).
+  await expect(lunchSlot.getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(lunchSlot.getByText(itemName, { exact: true })).toHaveCount(0);
 
   // Individual Pricing puts each meal's own price inline on its card (2026-09-29 — no longer a separate Pricing Details list).
   await lunchSlot.getByLabel("Price").fill("300");
@@ -206,18 +208,22 @@ test("create an order with guests/meal planning/venue/payment, then create and e
 
   // Payment Status — Advance Received lives here now (not Order Details).
   await page.getByLabel("Advance Received").fill("50");
+  // The advance is recorded as a real payment, so it asks how it was collected (AJ, 2026-10-10).
+  await page.getByLabel("Payment method").click();
+  await page.getByRole("option", { name: "UPI", exact: true }).click();
 
   // Pricing summary live preview (one rule: a dish inside the menu is included, so the 150 Paneer adds nothing):
-  // subtotal = 300 (custom meal price); total = 300-100+30+20+40 (Generator) = 290; balance = 290-50 = 240.
-  await expect(page.getByText("₹300.00").first()).toBeVisible();
-  await expect(page.getByText("₹290.00").first()).toBeVisible();
-  await expect(page.getByText("₹240.00")).toBeVisible();
+  // The typed Individual Pricing price is per plate (AJ, 2026-10-10): subtotal = 300 x 80 adults = 24,000;
+  // total = 24,000-100+30+20+40 (Generator) = 23,990; balance = 23,990-50 = 23,940.
+  await expect(page.getByText("₹24000.00").first()).toBeVisible();
+  await expect(page.getByText("₹23990.00").first()).toBeVisible();
+  await expect(page.getByText("₹23940.00")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(page.getByText(customerName)).toBeVisible();
-  await expect(page.getByText("₹290", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
+  await expect(page.getByText("₹23,990", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
 
   // --- Orders Dashboard filters ---
   await page.getByLabel("Search").fill("no-such-customer-xyz");
@@ -239,15 +245,23 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByLabel("Charge 1 label")).toHaveValue("Generator");
   await expect(page.getByLabel("Charge 1 amount")).toHaveValue("40");
+  // The advance became a confirmed Advance payment (UPI) with a receipt; the form now shows it read-only.
+  const advanceRow = page.getByTestId("payment-row");
+  await expect(advanceRow).toHaveCount(1);
+  await expect(advanceRow).toContainText("Advance");
+  await expect(advanceRow).toContainText("UPI");
+  await expect(advanceRow).toContainText("₹50.00");
+  await expect(page.getByTestId("paid-amount")).toHaveText("₹50.00");
+  await expect(page.getByLabel("Advance Payment Amount")).toHaveAttribute("readonly", "");
   await page.getByRole("tab", { name: "Order Details" }).click();
   // The detail page splits the order into tabs (AJ, 2026-09-30).
   await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(page.getByTestId("meal-slot-2026-12-01-LUNCH").getByText(itemName)).toBeVisible();
-  // The menu is edited in Menu Approvals now, so the order page shows it read-only (AJ, 2026-09-30).
-  await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Edit Menu" })).toBeVisible();
+  await expect(page.getByTestId("meal-slot-2026-12-01-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  // A draft menu can be edited right here (AJ, 2026-10-10); it saves through the same path as Menu Approvals.
+  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "editable");
+  await expect(page.getByRole("button", { name: "Edit Items" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Menu Approvals" })).toBeVisible();
 
   // --- The Event is created automatically when the order is saved (AJ, 2026-09-27) ---
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
@@ -258,6 +272,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByText("Assigned Kitchen")).toHaveCount(0);
   await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card")).toBeVisible();
+  // Items can only be sent once the customer approves the menu; until then a message says so and the button is off (AJ, 2026-10-10).
+  await expect(page.getByTestId("inventory-not-approved")).toContainText("Items can be set once the customer approves the menu.");
+  await expect(page.getByRole("button", { name: "Send items to this order" })).toBeDisabled();
 
   // Sidebar summary carries the order number, status, kitchen and timestamps.
   await expect(page.getByRole("heading", { name: "Order Summary" })).toBeVisible();
@@ -366,7 +383,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await lunchSlot.getByLabel("Menu").click();
   await page.getByRole("option", { name: lunchMenuName }).click();
   await selectFoodItem(page, lunchSlot, lunchItemName);
-  await expect(lunchSlot.getByText(lunchItemName, { exact: true })).toBeVisible();
+  await expect(lunchSlot.getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
 
   await focusDate(page, "2026-12-06");
   await page.getByRole("button", { name: "Dinner" }).click();
@@ -375,7 +392,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await dinnerSlot.getByLabel("Menu").click();
   await page.getByRole("option", { name: dinnerMenuName }).click();
   await selectFoodItem(page, dinnerSlot, dinnerItemName);
-  await expect(dinnerSlot.getByText(dinnerItemName, { exact: true })).toBeVisible();
+  await expect(dinnerSlot.getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
 
   // Copy to other dates (new, 2026-09-29): Day 2's Dinner selection copies onto Day 1 too, without disturbing Day 1's own Lunch.
   // Scoped to the popover content — its own checkbox-row date format has no
@@ -389,7 +406,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await copyPopover.getByRole("button", { name: /Apply to 1 date/ }).click();
   await focusDate(page, "2026-12-05");
   await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH")).toBeVisible();
-  await expect(page.getByTestId("meal-slot-2026-12-05-DINNER").getByText(dinnerItemName, { exact: true })).toBeVisible();
+  await expect(page.getByTestId("meal-slot-2026-12-05-DINNER").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   // Remove it again so the rest of this test's totals/assertions match the original Lunch-only/Dinner-only plan.
   await page.getByTestId("meal-slot-2026-12-05-DINNER").getByRole("button", { name: "Remove Dinner", exact: true }).click();
   await expect(page.getByTestId("meal-slot-2026-12-05-DINNER")).toHaveCount(0);
@@ -418,9 +435,9 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("heading", { name: "AJ-0001" })).toBeVisible();
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   // The sidebar defaults to focusing Day 1 on a fresh page load.
-  await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH").getByText(lunchItemName)).toBeVisible();
+  await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   await focusDate(page, "2026-12-06");
-  await expect(page.getByTestId("meal-slot-2026-12-06-DINNER").getByText(dinnerItemName)).toBeVisible();
+  await expect(page.getByTestId("meal-slot-2026-12-06-DINNER").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
 
   // --- Order Type filter ---
   await page.goto("/orders");
@@ -648,8 +665,10 @@ test("the food item drawer: category limits are compulsory, extra items are char
   await expect(drawer).not.toBeVisible();
 
   await expect(slot.getByText("3 items selected")).toBeVisible().catch(() => undefined);
-  await expect(slot.getByText("Extra", { exact: true })).toBeVisible();
-  await expect(slot.getByText("Add-on", { exact: true })).toBeVisible();
+  // Counts, not names (AJ, 2026-10-10): the two included dishes, one Extra, one Add-on.
+  await expect(slot.getByTestId("meal-item-counts").getByText("2 Dishes", { exact: true })).toBeVisible();
+  await expect(slot.getByTestId("meal-item-counts").getByText("1 Extra", { exact: true })).toBeVisible();
+  await expect(slot.getByTestId("meal-item-counts").getByText("1 Add-on", { exact: true })).toBeVisible();
   // 300 x 10 adults (the Menu) + the two included dishes (0) + 150 x 10 (extra) + 20 x 10 (add-on) = 4,700.
   await expect(page.getByRole("complementary").getByText("₹4700.00").first()).toBeVisible();
 
@@ -658,6 +677,6 @@ test("the food item drawer: category limits are compulsory, extra items are char
   const again = page.getByRole("dialog", { name: /Select Menu Items/ });
   await again.getByRole("button", { name: "Clear All" }).click();
   await again.getByRole("button", { name: "Cancel" }).click();
-  await expect(slot.getByText("Extra", { exact: true })).toBeVisible();
+  await expect(slot.getByTestId("meal-item-counts").getByText("1 Extra", { exact: true })).toBeVisible();
 });
 

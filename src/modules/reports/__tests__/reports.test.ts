@@ -29,14 +29,14 @@ beforeAll(async () => {
   const asha = await createCustomer(orgA, { name: "Asha Rao", phone: "9876500101" }, a.user.id);
   await createCustomer(orgA, { name: "Lead Only", phone: "9876500102" }, a.user.id); // enquired, never ordered
   const mk = (customerId: string, date: string, price: number, status?: "CANCELLED") =>
-    createOrder(orgA, { customerId, eventTypeId: wedding.id, eventStartDate: day(date), eventEndDate: day(date), totalParticipants: 50, individualPricingEnabled: true, mealPlanEntries: [{ date: day(date), mealType: "DINNER", price }], ...(status ? { status } : {}) } as never, a.user.id);
+    createOrder(orgA, { customerId, eventTypeId: wedding.id, eventStartDate: day(date), eventEndDate: day(date), totalParticipants: 50, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day(date), mealType: "DINNER", price }], ...(status ? { status } : {}) } as never, a.user.id);
   await mk(asha.id, "2027-01-10", 4000);
   await mk(asha.id, "2027-02-14", 6000);
   await mk(asha.id, "2027-02-20", 9999, "CANCELLED");
-  await createQuotation(orgA, { customerId: asha.id, eventStartDate: day("2027-03-01"), eventEndDate: day("2027-03-01"), totalParticipants: 20, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-03-01"), mealType: "DINNER", price: 700 }] } as never, a.user.id);
+  await createQuotation(orgA, { customerId: asha.id, eventStartDate: day("2027-03-01"), eventEndDate: day("2027-03-01"), totalParticipants: 20, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-03-01"), mealType: "DINNER", price: 700 }] } as never, a.user.id);
 
   const rival = await createCustomer(orgB, { name: "Other Kitchen's Customer", phone: "9876500103" }, b.user.id);
-  await createOrder(orgB, { customerId: rival.id, eventStartDate: day("2027-01-12"), eventEndDate: day("2027-01-12"), totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-12"), mealType: "DINNER", price: 123456 }] } as never, b.user.id);
+  await createOrder(orgB, { customerId: rival.id, eventStartDate: day("2027-01-12"), eventEndDate: day("2027-01-12"), totalParticipants: 10, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: [{ date: day("2027-01-12"), mealType: "DINNER", price: 123456 }] } as never, b.user.id);
 });
 
 afterAll(async () => {

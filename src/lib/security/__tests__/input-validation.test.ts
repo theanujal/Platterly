@@ -23,7 +23,7 @@ let customerId = "";
 const day = new Date("2027-03-01");
 const long = "x".repeat(20000);
 const meals = [{ date: day, mealType: "DINNER" as const, price: 400 }];
-const orderBase = { eventStartDate: day, eventEndDate: day, totalParticipants: 10, individualPricingEnabled: true, mealPlanEntries: meals };
+const orderBase = { eventStartDate: day, eventEndDate: day, totalParticipants: 10, adultCount: 1, individualPricingEnabled: true, mealPlanEntries: meals };
 
 beforeAll(async () => {
   const o = await prisma.organization.create({ data: { id: crypto.randomUUID(), name: "Validation", slug: `val-${crypto.randomUUID().slice(0, 6)}`, createdAt: new Date() } });

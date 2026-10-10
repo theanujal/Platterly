@@ -6,7 +6,8 @@
  * A meal costs its Menu's per-plate price x guests (the adults; children are charged by their own rules). Dishes inside the menu are
  * included and add nothing; only an Extra dish (charged per guest), an add-on,
  * or changing the Menu moves the price. With Individual Pricing on, the price
- * typed on the meal replaces the menu-based amount.
+ * typed on the meal replaces the Menu's per-plate price (AJ, 2026-10-10): it is a per-plate price too, so the meal still
+ * costs that price x guests.
  */
 
 export interface PricingItem {
@@ -17,7 +18,7 @@ export interface PricingItem {
 }
 
 export interface PricingMeal {
-  /** The price typed on the meal. Only used when Individual Pricing is on. */
+  /** The per-plate price typed on the meal. Only used when Individual Pricing is on. */
   price: number | null;
   /** The assigned Menu's per-plate price, or null when no Menu is assigned. */
   menuPricePerPlate: number | null;
@@ -35,7 +36,7 @@ export function extrasAndAddOnsAmount(items: PricingItem[]): number {
 
 /** The meal's own amount, before extras and add-ons. */
 export function mealBaseAmount(meal: Pick<PricingMeal, "price" | "menuPricePerPlate">, individualPricingEnabled: boolean, guests: number): number {
-  return individualPricingEnabled ? (meal.price ?? 0) : (meal.menuPricePerPlate ?? 0) * guests;
+  return (individualPricingEnabled ? (meal.price ?? 0) : (meal.menuPricePerPlate ?? 0)) * guests;
 }
 
 export interface MealsPricing {

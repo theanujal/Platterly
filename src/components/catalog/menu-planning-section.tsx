@@ -297,8 +297,10 @@ export function MenuPlanningSection({
             </div>
             {entry.items.length > 0 && (
               <>
-                <div className="flex flex-wrap gap-1.5">
-                  {entry.items.map((item) => {
+                <div className="flex flex-wrap gap-1.5" data-testid="meal-item-counts">
+                  {/* Counts, not names (AJ, 2026-10-10). Menu Approvals' version compare still lists names so added and removed dishes can be marked. */}
+                  {!compare && <ItemCountPills items={entry.items} />}
+                  {compare && entry.items.map((item) => {
                     const highlighted = compare?.highlight.has(`${date}|${mealType}|${item.catalogId}`);
                     return (
                       <Badge key={item.key} variant="outline" className={cn("gap-1", !readOnly && "pr-1", highlighted && "border-warning/60 bg-warning/10")}>
@@ -322,7 +324,7 @@ export function MenuPlanningSection({
                       </Badge>
                     );
                   })}
-                  {(compare?.missing[`${date}|${mealType}`] ?? []).map((gone) => (
+                  {compare && (compare.missing[`${date}|${mealType}`] ?? []).map((gone) => (
                     <Badge key={`missing-${gone.catalogId}`} variant="outline" className="gap-1 border-dashed border-info/60 text-info">
                       <span className="line-through opacity-70">{gone.name}</span>
                       <span className="font-medium">{compare?.missingLabel}</span>
@@ -526,5 +528,25 @@ export function MenuPlanningSection({
         />
       )}
     </div>
+  );
+}
+
+/** "2 Dishes", "1 Extra", "2 Add-ons": what a meal holds, without listing every item. Nothing is shown for a count of zero. */
+function ItemCountPills({ items }: { items: { itemType: string; perGuest?: boolean }[] }) {
+  const addOns = items.filter((item) => item.itemType === "ADD_ON").length;
+  const extras = items.filter((item) => item.itemType !== "ADD_ON" && item.perGuest).length;
+  const dishes = items.length - addOns - extras;
+  const pill = (count: number, singular: string, plural: string, tone?: string) =>
+    count > 0 ? (
+      <Badge variant="outline" className={cn("gap-1", tone)}>
+        {count} {count === 1 ? singular : plural}
+      </Badge>
+    ) : null;
+  return (
+    <>
+      {pill(dishes, "Dish", "Dishes")}
+      {pill(extras, "Extra", "Extras", "text-warning")}
+      {pill(addOns, "Add-on", "Add-ons", "text-primary")}
+    </>
   );
 }

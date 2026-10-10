@@ -290,7 +290,7 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
       org.id,
       {
         customerId: customer.id,
-        individualPricingEnabled: true,
+        adultCount: 1, individualPricingEnabled: true,
         mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "DINNER", price: 500 }],
       },
       actor.id,
