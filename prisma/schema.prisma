@@ -830,6 +830,7 @@ model SystemFoodItem {
   name         String   @unique
   description  String?
   image        String?
+  imageCredit  String?
   foodType     FoodType
   categoryName String
   sortOrder    Int      @default(0)

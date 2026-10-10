@@ -51,4 +51,8 @@ through it; that logic itself is not built here.
   text, never deletes, keeps `isActive`). `addCatalogItems` creates an independent `MenuItem` per dish at price 0 with
   `sourceCatalogId` set (only for the "Added" badge): later edits never flow either way.
 - UI: the chevron next to Add Item on Food Items (`_components/add-item-menu.tsx`).
-- Not built: copying food items between kitchens, catalog images, default recipes (on hold).
+- **Catalog pictures:** `catalog-images.ts` maps 248 dishes to openly licensed Wikimedia Commons photos
+  (`public/catalog/photos`, 640x360 WebP, credits in `CREDITS.md` and in `SystemFoodItem.imageCredit`); every other
+  dish shows its category illustration (`public/catalog/categories/*.svg`). Adding a dish copies a photo into the
+  business's own storage (`bulk-add.ts` `ownImage`); an illustration is shared by URL.
+- Not built: copying food items between kitchens, a photo-credits page in the app, default recipes (on hold).

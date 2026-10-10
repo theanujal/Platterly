@@ -1,0 +1,252 @@
+# Photo credits
+
+Photos in Platterly's food catalog come from Wikimedia Commons under the licences shown. Each licence's text is on the linked file page.
+
+- **Jal Jeera** (jal-jeera.webp): Rutvi Mistry, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Jal_jeera.jpg
+- **Mojito** (mojito.webp): Pratishkhedekar, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Virgin_Mojito_02.jpg
+- **Watermelon Juice** (watermelon-juice.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Watermelon_Juice_1.jpg
+- **Sweet Lime Juice** (sweet-lime-juice.webp): No machine-readable author provided. Ranveig assumed (based on copyright claims)., Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Sweet_lime_and_pomegranate_juice.jpg
+- **Aam Panna** (aam-panna.webp): Mdsmds0, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aam_Panna_(Raw_Mango_Drink).JPG
+- **Tea** (tea.webp): Jubair1985, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Red_Tea.jpg
+- **Black Tea** (black-tea.webp): Ultratomio, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Black-tea.jpg
+- **Green Tea** (green-tea.webp): Kanko* from Nagasaki, Japan, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Green_tea_-_%E7%B7%91%E8%8C%B6_-_Flickr_-_Kanko.jpg
+- **Cream of Tomato Soup** (cream-of-tomato-soup.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Cream_of_Tomato_Soup.JPG
+- **Hot & Sour Soup** (hot-and-sour-soup.webp): Evan-Amos, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Hot-and-Sour-Soup-Bowl.jpg
+- **Minestrone Soup** (minestrone-soup.webp): Katrin Morenz from Aachen, Deutschland, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Minestrone_soup.jpg
+- **Manchow Soup** (manchow-soup.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Manchow_soup.jpg
+- **Lemon Coriander Soup** (lemon-coriander-soup.webp): Harikrishnan N, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Lemon_Chilli_Coriander_Soup_-_The_Asian_Curry_House,_Bangalore_-_Karnataka_-_PXL2005.jpg
+- **Tomato Shorba** (tomato-shorba.webp): Radhikamprabhu82, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Tomato_Shorba(soup).jpg
+- **Mulligatawny Soup** (mulligatawny-soup.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mulligatawny_Soup_(Pepper_Water_Soup).JPG
+- **Cream of Mushroom Soup** (cream-of-mushroom-soup.webp): Redeemer|Vodesnet, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Cream_Mushroom_soup_2.jpg
+- **Tomato Soup** (tomato-soup.webp): Unknown author, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Tomato_soup.jpg
+- **Broccoli Soup** (broccoli-soup.webp): ParentingPatch, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Broccoli_Soup.JPG
+- **Roasted Pumpkin Soup** (roasted-pumpkin-soup.webp): photonome, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pumpkin_soup_with_ginger_and_roasted_pumpkin_seeds.jpg
+- **Sweet Corn Chicken Soup** (sweet-corn-chicken-soup.webp): Thamizhpparithi Maari, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_sweet_corn_soup.jpg
+- **Hot & Sour Chicken Soup** (hot-and-sour-chicken-soup.webp): Sunshinegal10, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Hot_n_Sour_Chicken_Soup.jpg
+- **Paneer Malai Tikka** (paneer-malai-tikka.webp): Saakshi Salgaonker, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Malai_Tikka.jpg
+- **Paneer Tikka** (paneer-tikka.webp): Srikoundinya66, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_tikka_1.jpg
+- **Paneer Manchurian** (paneer-manchurian.webp): Sangam321, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Manchurian.jpg
+- **Paneer Chilli** (paneer-chilli.webp): Gpkp, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Chilli,_Bengaluru_(2026)_02.jpg
+- **Crispy Corn** (crispy-corn.webp): Dikshita Bairagi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Crispy_chilli_baby_corn.....jpg
+- **Honey Chilli Potato** (honey-chilli-potato.webp): Gannu03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Honey_chilli_potato_2.jpg
+- **Hara Bhara Kabab** (hara-bhara-kabab.webp): Kanikatwl, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Hara_bhara_kabab-.JPG
+- **Veg Cutlet** (veg-cutlet.webp): NEHAL NAZIM, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:VEG_CUTLETS.jpg
+- **Baby Corn Golden Fry** (baby-corn-golden-fry.webp): Gowthydaas, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Golden_fry_baby_corn.jpg
+- **Veg Spring Roll** (veg-spring-roll.webp): YKanchan07, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_spring_roll.jpg
+- **Cheese Balls** (cheese-balls.webp): Sushant savla, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Cheese_Balls_-_1.jpg
+- **Veg Lollipop** (veg-lollipop.webp): SS Khurana, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:VEG_LOLLIPOP.jpg
+- **Gobi Manchurian** (gobi-manchurian.webp): scaredy_kat, CC BY 2.5, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Gobi_manchurian.jpg
+- **Baby Corn Manchurian** (baby-corn-manchurian.webp): Sangam321, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Baby_Corn_Manchurian.jpg
+- **Mushroom Manchurian** (mushroom-manchurian.webp): Anuradhayeluri, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mushroom_Manchurian_dry.jpg
+- **Gobi Chilli** (gobi-chilli.webp): Gannu03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chilli_gobi_2.jpg
+- **Baby Corn Chilli** (baby-corn-chilli.webp): Keerthiga, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Baby_Corn_Chilli.jpg
+- **Stuffed Mushroom** (stuffed-mushroom.webp): Crisco 1492, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Stuffed_mushrooms,_2015-06-25.jpg
+- **Veg Seekh Kebab** (veg-seekh-kebab.webp): Meghana Mohanty, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_Seekh_kebab.jpg
+- **Dahi Ke Kabab** (dahi-ke-kabab.webp): Ojaswani gupta, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dahi_ke_Kabab.jpg
+- **French Fries** (french-fries.webp): StockSnap, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:French_Fries.JPG
+- **Nachos with Dip** (nachos-with-dip.webp): Aerous, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Nachos_with_dip.jpg
+- **Cheese Corn Sandwich** (cheese-corn-sandwich.webp): Photosticlife, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Corn_cheese_Sandwich.jpg
+- **Vada Pav** (vada-pav.webp): Marajozkee, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Vada_pav_01.jpg
+- **Masala Vada** (masala-vada.webp): Turbo1232112321, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Masala_vada_02.JPG
+- **Onion Pakoda** (onion-pakoda.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Onion_Pakoda_1.jpg
+- **Bread Pakoda** (bread-pakoda.webp): Prateek Pattanaik, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bread_Pakoda_2.jpg
+- **Aloo Bonda** (aloo-bonda.webp): Iamalwayshungrie, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_bonda_2.jpg
+- **Bajji** (bajji.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Onion_Bajji.jpg
+- **Samosa** (samosa.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Samosa_4.jpg
+- **Kachori** (kachori.webp): Rajeeb Dutta, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kachori_MA23.jpg
+- **Dhokla** (dhokla.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dhokla_6.jpg
+- **Chicken Manchurian** (chicken-manchurian.webp): Abhinaba Basu from Redmond, United States, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Manchurian_(Hyderabad_Style)_(11960049916).jpg
+- **Peri Peri Chicken** (peri-peri-chicken.webp): CNEcija12345, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Peri-Peri_Chicken_dish.jpg
+- **Chicken Chilli** (chicken-chilli.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Chilli_1.jpg
+- **Honey Chilli Chicken** (honey-chilli-chicken.webp): MDRX, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Honey_Chilli_Chicken.jpg
+- **Chicken Tikka** (chicken-tikka.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Tikka_1.jpg
+- **Chicken Kebab** (chicken-kebab.webp): P1898, CC BY 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Hariyali_kebab.jpg
+- **Fish Amritsari** (fish-amritsari.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Amritsari_Fried_Fish.JPG
+- **Chapli Kabab** (chapli-kabab.webp): Miansari66, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chapli_Kabab.JPG
+- **Chicken Satay** (chicken-satay.webp): Elly Suhailee, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:CHICKEN_SATAY.jpg
+- **Chilly Garlic Chicken** (chilly-garlic-chicken.webp): Yummy O Yummy, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Garlic_and_Kashmiri_Chilly_Chicken_(15727276038).jpg
+- **Mutton Seekh Kabab** (mutton-seekh-kabab.webp): Dheerajk88, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mutton_Seekh_Kabab.JPG
+- **Gurda Kaleji** (gurda-kaleji.webp): Syedandy, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Gurda_kaleji.jpg
+- **Kalmi Kabab** (kalmi-kabab.webp): Harsha K R from Bangalore, India, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kalmi_Kabab_(3150331866).jpg
+- **Shikampuri Kabab** (shikampuri-kabab.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Shikampuri_Kabab.JPG
+- **Malai Chicken Kebab** (malai-chicken-kebab.webp): Ranjith Kumar, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Malai_Kebab.JPG
+- **Chicken Reshmi Kebab** (chicken-reshmi-kebab.webp): Prianxi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_reshmi_kebabs.jpg
+- **Chicken Seekh Kebab** (chicken-seekh-kebab.webp): Ishitadsa, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Indian_Chicken_Seekh_Kebab.jpg
+- **Chicken 65** (chicken-65.webp): Amiyashrivastava, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_65_(Dish).jpg
+- **Andhra Chicken Fry** (andhra-chicken-fry.webp): Karteeki4u, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Andhra_chicken_fry.jpg
+- **Tandoori Fish** (tandoori-fish.webp): Tinu alby, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Tandoori_fish.jpg
+- **Masala Omelette** (masala-omelette.webp): SwingingUvula, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Masala_omelette.JPG
+- **Boiled Eggs** (boiled-eggs.webp): Ramesh NG, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Boiled_Egg_-_Crossection.jpg
+- **Fried Eggs** (fried-eggs.webp): Balise42, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Two_fried_eggs.jpg
+- **Paneer Makhani** (paneer-makhani.webp): Divya Kudua, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Makhani_India_August_2013.jpg
+- **Palak Paneer** (palak-paneer.webp): DreamyFlutura11, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Palak_Paneer_(Cottage_cheese_in_spinach_gravy).jpg
+- **Shahi Paneer** (shahi-paneer.webp): Realanant 1995, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Naan_shahi_paneer.jpg
+- **Paneer Lababdar** (paneer-lababdar.webp): Tarundahiya89, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_tikka_lababdar.JPG
+- **Kadai Paneer** (kadai-paneer.webp): Yummy O Yummy, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kadai_Paneer_(15913018051).jpg
+- **Matar Paneer** (matar-paneer.webp): Mdsmds0, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Matar-Paneer.JPG
+- **Paneer Butter Masala** (paneer-butter-masala.webp): Gannu03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_butter_masala_2.jpg
+- **Achari Paneer** (achari-paneer.webp): Anwasha12, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Achari_paneer.JPG
+- **Paneer Methi Malai** (paneer-methi-malai.webp): 1Bongfoodie, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Methi_Paneer_Malai.jpg
+- **Paneer Tikka Masala** (paneer-tikka-masala.webp): Gpkp, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Tikka_Masala_(2026)_01.jpg
+- **Paneer Jalfrezi** (paneer-jalfrezi.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Jalfrezi_2.jpg
+- **Paneer Khurchan** (paneer-khurchan.webp): Saishalini7, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Khurchan.JPG
+- **Malai Kofta Curry** (malai-kofta-curry.webp): Mrudit161187, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Malai_Kofta_Curry.jpg
+- **Mix Veg Dry** (mix-veg-dry.webp): Sattwik03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mix_veg_Bhaja.jpg
+- **Aloo Gobi** (aloo-gobi.webp): Unknown author, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_gobi.jpg
+- **Aloo Jeera** (aloo-jeera.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Jeera_aloo.jpg
+- **Matar Mushroom** (matar-mushroom.webp): Hrishikes, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Matar_mushroom.jpg
+- **Bhindi Masala** (bhindi-masala.webp): Monali.mishra, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bhindi_Masala.jpg
+- **Kadi Pakoda** (kadi-pakoda.webp): Fatimahope, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kadi_pakoda.jpg
+- **Dum Aloo** (dum-aloo.webp): Mrudit161187, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dum_Aloo_Kashmiri.jpg
+- **Methi Malai Matar** (methi-malai-matar.webp): Ujjawaoo7, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Methi_Malai_Matar.jpg
+- **Veg Jalfrezi** (veg-jalfrezi.webp): Fatfoodie, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_Jalfrezi.jpg
+- **Navratan Korma** (navratan-korma.webp): User:Augustgrahl, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Navratan_Korma.jpg
+- **Dum Aloo Kashmiri** (dum-aloo-kashmiri.webp): Mrudit161187, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dum_Aloo_Kashmiri.jpg
+- **Corn Palak** (corn-palak.webp): Kanikatwl, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Corn_spinach-_makai_malai_palak.JPG
+- **Aloo Methi** (aloo-methi.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_Methi_(Aaloo_Methi).JPG
+- **Bhindi Fry** (bhindi-fry.webp): Joli Rumi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bhindi_fry.jpg
+- **Aloo Matar** (aloo-matar.webp): Zeel Patel, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_Matar.JPG
+- **Poori Bhaji** (poori-bhaji.webp): Kanikatwl, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Poori_bhaji.jpg
+- **Chole Bhature** (chole-bhature.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chole_Bhature_1.jpg
+- **Butter Chicken** (butter-chicken.webp): Mack Male from Edmonton, AB, Canada, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Butter_Chicken_(2446546141).jpg
+- **Kadai Murgh** (kadai-murgh.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kadai_Murgh.jpg
+- **Chicken Chettinad** (chicken-chettinad.webp): Shashank7200, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Chettinad_02.JPG
+- **Dum Ka Murgh** (dum-ka-murgh.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dum_ka_Murgh.jpg
+- **Fish Curry** (fish-curry.webp): Solomon The Magnifico, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bangladeshi_Fish_Curry_Rice.jpg
+- **Egg Masala** (egg-masala.webp): வெங்கட்ராமன். தி, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chettinad_Egg_masala.jpg
+- **Chicken Korma** (chicken-korma.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Korma.JPG
+- **Chicken Curry** (chicken-curry.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Curry_9.jpg
+- **Mutton Korma** (mutton-korma.webp): Sharnab neogi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mutton_Korma_(Indian).jpg
+- **Mutton Curry** (mutton-curry.webp): Gaurav Dhwaj Khadka, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mutton_Curry_(44786).jpg
+- **Mutton Rogan Josh** (mutton-rogan-josh.webp): stu_spivack, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mutton_rogan_josh.jpg
+- **Chicken Tikka Masala** (chicken-tikka-masala.webp): Michael Hays, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_tikka_masala.jpg
+- **Chicken Kadai** (chicken-kadai.webp): Keerthi93, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kadai_chicken.jpg
+- **Dal Tadka** (dal-tadka.webp): Southofindia, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Tadka_Dal.jpg
+- **Dal Palak** (dal-palak.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dal_Palak.jpg
+- **Dal Bukhara** (dal-bukhara.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dal_Bukhara.JPG
+- **Dal Makhani** (dal-makhani.webp): Charles Haynes, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dal_Makhani.jpg
+- **Rajma Masala** (rajma-masala.webp): Gaurav Nemade, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Rajma_Masala_(32081557778).jpg
+- **Special Sambar** (special-sambar.webp): Kalaiselvi Murugesan, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pumpkin_sambar.JPG
+- **Rasam** (rasam.webp): Miansari66, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Rasam.JPG
+- **Pav Bhaji** (pav-bhaji.webp): Rishika Palvankar, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pav_Bhaji.jpg
+- **Noodles Manchurian** (noodles-manchurian.webp): PallaviKhale, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Hakka_Noodles,_Veg_Manchurian_PK009.jpg
+- **Honey Chilli Cauliflower** (honey-chilli-cauliflower.webp): Harmeet, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Honey_chilli_cauliflower.jpg
+- **Singapore Fried Noodles** (singapore-fried-noodles.webp): Andy Li, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Singapore_Fried_Noodles_-_Unithai_2025-05-07.jpg
+- **Veg Pulao** (veg-pulao.webp): Sumit Surai, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_Pulao_(Indian_fried_rice).jpg
+- **Veg Fried Rice** (veg-fried-rice.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_Fried_Rice_(51465).jpg
+- **Hyderabadi Biryani** (hyderabadi-biryani.webp): User:Hyderabadi biryani, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Hyderabadi_Biryani_2.jpg
+- **Kashmiri Pulao** (kashmiri-pulao.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kashmiri_Pulao_(cropped).JPG
+- **Curd Rice** (curd-rice.webp): Sudharshan Shanmugasundaram, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Curd_Rice.jpg
+- **Mushroom Biryani** (mushroom-biryani.webp): Mohsinkt, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mushroom_Biryani.JPG
+- **Ghee Rice** (ghee-rice.webp): Triv.rao, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Ghee_Rice.jpg
+- **Bisibele Bath** (bisibele-bath.webp): Vidya pmysore, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mysore_style_bisibele_bath.jpg
+- **Singapore Fried Rice** (singapore-fried-rice.webp): RM Bulseco from Davao City, Philippines., CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Fried_rice,_Singapore_-_20140215.jpg
+- **Chicken Dum Biryani** (chicken-dum-biryani.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Dum_Biryani_03.jpg
+- **Chicken Fried Rice** (chicken-fried-rice.webp): Vee Satayamas from Bangkok, Thailand, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Fried_rice_with_chicken_(17234644521).jpg
+- **Chicken Hyderabadi Biryani** (chicken-hyderabadi-biryani.webp): Dheerajk88, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chicken_Hyderabadi_Biryani.JPG
+- **Egg Fried Rice** (egg-fried-rice.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Egg_Fried_Rice.jpg
+- **Plain Paratha** (plain-paratha.webp): Rupamdas75, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Methi_(fenugreek)_parathas.jpg
+- **Bhatura** (bhatura.webp): [https://www.flickr.com/people/12261156@N00 Michael Cot�] from Austin, Texas, Texas, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bhatura.jpg
+- **Naan** (naan.webp): Shisma, CC BY 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Naan_2.jpg
+- **Butter Naan** (butter-naan.webp): Ganesh Mohan T, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Butter_Naan_2.jpg
+- **Stuffed Naan** (stuffed-naan.webp): Kondiba shinde, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Stuffed_Naan.JPG
+- **Tandoori Roti** (tandoori-roti.webp): Ravi Dwivedi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Tandoori-rotis.jpg
+- **Kulcha** (kulcha.webp): Divya Kudua, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paneer_Kulcha_Baking.jpg
+- **Aloo Kulcha** (aloo-kulcha.webp): Priyanshi pb, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_Kulcha.jpg
+- **Mix Kulcha** (mix-kulcha.webp): Foody1989, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mix_veg_with_garlic_kulcha.jpg
+- **Rumali Roti** (rumali-roti.webp): Unknown author, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Rumali_roti.jpg
+- **Lacha Paratha** (lacha-paratha.webp): Fatimahope, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Lacha_paratha.jpg
+- **Methi Paratha** (methi-paratha.webp): Dharmadhyaksha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Methi_Parathas.JPG
+- **Chapathi** (chapathi.webp): Ashok Kumar P S, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chapathi.jpg
+- **Missi Roti** (missi-roti.webp): Sumit Surai, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Missi_Roti.jpg
+- **Green Salad** (green-salad.webp): Andy Li, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Green_Salad_-_Flat_Iron_2026-02-24.jpg
+- **Greek Salad** (greek-salad.webp): Geoff Peters from Vancouver, BC, Canada, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Greek_salad_(5178297958).jpg
+- **Russian Salad** (russian-salad.webp): Miansari66, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Russian_Salad..JPG
+- **Pasta Salad** (pasta-salad.webp): Brynn, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pasta_salad_closeup.JPG
+- **Corn & Bean Salad** (corn-and-bean-salad.webp): Daniel Sone (Photographer), Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Corn_and_black_bean_salad.jpg
+- **Coleslaw Salad** (coleslaw-salad.webp): MaiDenzel, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Readily_made_Coleslaw_salad_01.jpg
+- **Watermelon and Feta Salad** (watermelon-and-feta-salad.webp): Shoshanah, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Watermelon_%26_Feta_Salad.jpg
+- **Fresh Salad Bar** (fresh-salad-bar.webp): PattayaPatrol, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:DZ3_0604_A_colorful_self-serve_salad_bar_with_fresh_greens_chopped_vegetables_and_toppings_neatly_arranged_in_stainless_steel_trays.jpg
+- **Moong Dal Kosambari** (moong-dal-kosambari.webp): Vidya pmysore, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Totapuri_moong_dal_kosambari.jpg
+- **Papad** (papad.webp): Navaneeth Krishnan S, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Papad_(roasted).jpg
+- **Pudina Chutney** (pudina-chutney.webp): Ramesh NG, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pudina_Chutney.jpg
+- **Raita** (raita.webp): Bssasidhar, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Onion_raita(Close_up).jpg
+- **Boondi Raita** (boondi-raita.webp): Ravi Dwivedi, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Boondi_Raita.jpg
+- **Plain Curd** (plain-curd.webp): 5boi38, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Plain_Curd_Rice.jpg
+- **Coconut Chutney** (coconut-chutney.webp): Balurbala, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Coconut_Chutney_(Indian_Cuisine).jpg
+- **Gulab Jamun** (gulab-jamun.webp): Cabeza2000, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Gulab_jamun_(Gibraltar,_November_2020).jpg
+- **Kala Jamun** (kala-jamun.webp): Patelaahil, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kala_jamun.jpg
+- **Rasgulla** (rasgulla.webp): Prakrutim, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Rasgulla_With_Rabdi.jpg
+- **Gajar Ka Halwa** (gajar-ka-halwa.webp): Sharvarism, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Delicious_Gajar_Ka_Halwa.jpg
+- **Beetroot Halwa** (beetroot-halwa.webp): Gopinath, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Beetroot_halwa.png
+- **Moong Dal Halwa** (moong-dal-halwa.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Moong_Dal_Halwa_2023.jpg
+- **Fruit Salad** (fruit-salad.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Fruit_Salad_4.jpg
+- **Rice Kheer** (rice-kheer.webp): Swayampurna, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kheer_or_rice_pudding.jpg
+- **Pineapple Pastry** (pineapple-pastry.webp): Mk2010, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pineapple_Pastry.JPG
+- **Pumpkin Kheer** (pumpkin-kheer.webp): Dilip2292, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pumpkin_kheer.jpg
+- **Semiya Payasam** (semiya-payasam.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Semiya_payasam_2023.jpg
+- **Payasam** (payasam.webp): Ross thres, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paal_payasam.JPG
+- **Dry Fruit Kheer** (dry-fruit-kheer.webp): Yuvraj Singh 97, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mixed_Dry_Fruit_Kheer_-_Home_-_Chandigarh_-_India_-_00011.jpg
+- **Champakali** (champakali.webp): Vis M, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Champakali.jpg
+- **Malai Sandwich** (malai-sandwich.webp): Silpa11, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Malai_Sandwich_-_Bikash_Babu_Sweets_-_Trivandrum,_Kerala_-_DSC_0016.jpg
+- **Phirni** (phirni.webp): Anusruta, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Phirni_AD.jpg
+- **Fruit Kebab** (fruit-kebab.webp): IndayLiburan, CC BY 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Fruit_Kebabs%22.jpg
+- **Cup Cake** (cup-cake.webp): Saudarh2, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Cup_cake.png
+- **Swiss Roll** (swiss-roll.webp): Ocdp, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Swiss_roll_003.jpg
+- **Kashi Halwa** (kashi-halwa.webp): Harsha K R, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Halwa_Kashi_Sweets_of_India.jpg
+- **Holige** (holige.webp): No machine-readable author provided. Pamri assumed (based on copyright claims)., Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Coconut_holige.jpg
+- **Chiroti** (chiroti.webp): Gpkp, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chiroti_(RR_Nagar,_Bangalore,_2026).jpg
+- **Pheni** (pheni.webp): Wajid Shah, VOA Urdu, Public domain, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pheni_2020_Rawalpindi.png
+- **Mysore Pak** (mysore-pak.webp): Charles Haynes, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mysore_pak.jpg
+- **Motichur Laddu** (motichur-laddu.webp): नाहयान, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Motichur_Laddu_(1).jpg
+- **Badusha** (badusha.webp): Thamizhpparithi Maari, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Badusha.jpg
+- **Badam Puri** (badam-puri.webp): Pratha Bopche, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Badam_puri_sweet.jpg
+- **Chandrakala** (chandrakala.webp): Thamizhpparithi Maari, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chandrakala_sweet.jpg
+- **Jalebi** (jalebi.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Jalebi_1.jpg
+- **Suji Halwa** (suji-halwa.webp): Sushreebbsr, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Suji_Halwa-Odisha.jpg
+- **Vanilla Ice Cream** (vanilla-ice-cream.webp): MichalPL, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Vanilla_ice_cream.jpg
+- **Chocolate Ice Cream** (chocolate-ice-cream.webp): Nive Selvaraju, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chocolate_Ice_cream.jpg
+- **Strawberry Ice Cream** (strawberry-ice-cream.webp): Zuxra.bmr, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Strawberry_ice-cream.jpg
+- **Dry Fruit Kulfi** (dry-fruit-kulfi.webp): Vidya pmysore, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dry_fruits_kulfi_ice_cream.jpg
+- **Cotton Candy** (cotton-candy.webp): FocalPoint, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Cotton_candy_%CE%9C%CE%B1%CE%BB%CE%BB%CE%AF_%CF%84%CE%B7%CF%82_%CE%B3%CF%81%CE%B9%CE%AC%CF%82.JPG
+- **Idli** (idli.webp): Unknown author, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Idli.jpg
+- **Mini Idli** (mini-idli.webp): Nitin Desai, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mini_Idlis.JPG
+- **Vada** (vada.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Vada_Food.jpg
+- **Poori Sagu** (poori-sagu.webp): Wikichethan, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Poori_Sagu_Karnataka_Kannada_%E0%B2%AA%E0%B3%82%E0%B2%B0%E0%B2%BF_%E0%B2%B8%E0%B2%BE%E0%B2%97%E0%B3%81_%E0%B2%95%E0%B2%A8%E0%B3%8D%E0%B2%A8%E0%B2%A1.jpg
+- **Masala Dosa** (masala-dosa.webp): Marajozkee, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Masala_dosa_01.jpg
+- **Set Dosa** (set-dosa.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Set_Dosa_1.jpg
+- **Podi Dosa** (podi-dosa.webp): Manukrishnan80, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Podi_Dosa_(73144).jpg
+- **Plain Dosa** (plain-dosa.webp): Vivekdoshi11, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dosa_(Plain).jpg
+- **Vegetable Upma** (vegetable-upma.webp): Priya1Iyer, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Vegetable_Upma.JPG
+- **Semiya Upma** (semiya-upma.webp): Maharana7573, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Semiya_Upma_1.jpg
+- **Kesaribath** (kesaribath.webp): Udaykumar236, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kesaribath.jpg
+- **Poha** (poha.webp): Gannu03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Poha_4.jpg
+- **Indori Poha** (indori-poha.webp): Kxnyshk, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Indori_Poha,_New_Delhi.jpg
+- **Upma** (upma.webp): Nokib Sarkar, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Rava_Upma.jpg
+- **Aloo Paratha** (aloo-paratha.webp): Gannu03, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_Paratha_(96238).jpg
+- **Paneer Paratha** (paneer-paratha.webp): rovingl, CC BY 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Awadhi_palak_paneer_paratha_dahi.jpg
+- **Gobi Paratha** (gobi-paratha.webp): Daderot, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_gobi_paratha_-_Massachusetts.jpg
+- **Sandwich** (sandwich.webp): Gaurav Dhwaj Khadka, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Sandwich_1.jpg
+- **Mini Croissants** (mini-croissants.webp): Ceeseven, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Mini_Croissants.JPG
+- **Danish Pastries** (danish-pastries.webp): Matt @ PEK from Taipei, Taiwan, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Danish_pastries_(5226580301).jpg
+- **Corn Flakes with Milk** (corn-flakes-with-milk.webp): Th78blue, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kellogg%27s_Corn_Flakes,_with_milk.jpg
+- **Garlic Bread** (garlic-bread.webp): Infrogmation, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Garlic_bread_baguettes_2.jpg
+- **Toast with Butter** (toast-with-butter.webp): Gannu03, CC BY-SA 3.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Butter_Toast.jpg
+- **Muffins** (muffins.webp): Bycro, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Muffins_02.jpg
+- **Appam with Veg Stew** (appam-with-veg-stew.webp): Pranchiyettan, CC BY-SA 2.5 in, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:GKN_Appam_Veg_Stew_DSC_1292.JPG
+- **Paddu** (paddu.webp): Soumendra Kumar Sahoo, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Paddu.jpg
+- **Gol Gappe** (gol-gappe.webp): Anshulavohra, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Gol_gappe_(North_Indian_Style).JPG
+- **Bhalla Papri** (bhalla-papri.webp): Nitin Badhwar from Dubai, UAE, CC BY-SA 2.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bhalla_Papri_Chaat_with_saunth_chutney.jpg
+- **Dahi Poori** (dahi-poori.webp): Thangalavanya, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Dahi_poori.JPG
+- **Dahi Papri Chaat** (dahi-papri-chaat.webp): Nithyasrm, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Delicious_Dahi_papri_chaat.JPG
+- **Sev Puri** (sev-puri.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Sev_Puri_2023.jpg
+- **Bhel Puri** (bhel-puri.webp): Sandhiya Rangasami, CC BY 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Bhel_puri_Snack.jpg
+- **Raj Kachori** (raj-kachori.webp): Puneet vivid, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Raj_Kachori_Haldiram.jpg
+- **Aloo Tikki Chaat** (aloo-tikki-chaat.webp): Nanditamomai, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Aloo_Tikki_Chaat.JPG
+- **Dabeli** (dabeli.webp): Jatan1992, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Kachchi_Dabeli.jpg
+- **Masala Puri** (masala-puri.webp): Kaushik AP, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Masala_puri.jpg
+- **Momos** (momos.webp): Ganesh Mohan T, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_Momos_3.jpg
+- **Loaded Nachos** (loaded-nachos.webp): YKanchan07, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Veg_loaded_nachos_made_by_me.jpg
+- **Paan** (paan.webp): Gpkp, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Chocolate_paan_(2026)_03.jpg
+- **Popcorn** (popcorn.webp): ViajeroExtraviado, CC0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Popcorn_9.jpg
+- **Pizza** (pizza.webp): Yakshitha, CC BY-SA 4.0, via Wikimedia Commons - https://commons.wikimedia.org/wiki/File:Pizza_2023.jpg

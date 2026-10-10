@@ -77,7 +77,7 @@ describe("Platterly catalog", () => {
   it("adds independent copies at price 0 and marks them added, without touching the master or other businesses", async () => {
     const [org, other, actor] = [await makeOrg(), await makeOrg(), await makeActor()];
     const name = `Test Dish ${crypto.randomUUID().slice(0, 6)}`;
-    const master = await prisma.systemFoodItem.create({ data: { name, description: "Nice", foodType: "VEGETARIAN", categoryName: "Starters" } });
+    const master = await prisma.systemFoodItem.create({ data: { name, description: "Nice", foodType: "VEGETARIAN", categoryName: "Starters", image: "/catalog/photos/jal-jeera.webp" } });
     catalogIds.push(master.id);
 
     const result = await addCatalogItems(org.id, [master.id], actor.id);
@@ -85,6 +85,9 @@ describe("Platterly catalog", () => {
     const mine = await prisma.menuItem.findFirstOrThrow({ where: { organizationId: org.id, name } });
     expect(Number(mine.price)).toBe(0);
     expect(mine.sourceCatalogId).toBe(master.id);
+    // a photo is copied into the business's own storage; the master keeps its own file
+    expect(mine.image).toMatch(/^\/uploads\/organizations\/.+\.webp$/);
+    expect(mine.image).not.toBe(master.image);
 
     await prisma.menuItem.update({ where: { id: mine.id }, data: { price: 250, description: "Mine" } });
     expect((await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: master.id } })).description).toBe("Nice");
@@ -92,5 +95,14 @@ describe("Platterly catalog", () => {
     expect((await listCatalog(other.id)).find((c) => c.id === master.id)?.alreadyAdded).toBe(false);
 
     expect((await addCatalogItems(org.id, [master.id], actor.id)).skipped).toHaveLength(1);
+  });
+
+  it("a dish with only a category illustration shares that illustration", async () => {
+    const [org, actor] = [await makeOrg(), await makeActor()];
+    const name = `Test Dish ${crypto.randomUUID().slice(0, 6)}`;
+    const master = await prisma.systemFoodItem.create({ data: { name, foodType: "VEGETARIAN", categoryName: "Desserts", image: "/catalog/categories/desserts.svg" } });
+    catalogIds.push(master.id);
+    await addCatalogItems(org.id, [master.id], actor.id);
+    expect((await prisma.menuItem.findFirstOrThrow({ where: { organizationId: org.id, name } })).image).toBe("/catalog/categories/desserts.svg");
   });
 });

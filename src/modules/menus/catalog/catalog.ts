@@ -24,6 +24,7 @@ export async function addCatalogItems(organizationId: string, catalogIds: string
       price: 0,
       description: i.description ?? undefined,
       categoryNames: [i.categoryName],
+      imageUrl: i.image ?? undefined,
       sourceCatalogId: i.id,
     })),
     actorUserId,

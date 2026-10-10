@@ -1,4 +1,7 @@
 import "server-only";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { getStorageDriver } from "@/lib/storage/storage";
 import { prisma } from "@/lib/db";
 import { createCategory } from "@/modules/menus/category";
 import { createMenuItem, MenuItemNameTakenError } from "@/modules/menus/item";
@@ -11,6 +14,8 @@ export interface BulkEntry {
   price: number;
   description?: string;
   categoryNames: string[];
+  /** A catalog picture: a /catalog/photos file is copied into the business's own storage; an illustration is shared. */
+  imageUrl?: string;
   sourceCatalogId?: string;
 }
 
@@ -18,6 +23,17 @@ export interface BulkResult {
   created: number;
   skipped: { name: string; reason: string }[];
   failed: { name: string; reason: string }[];
+}
+
+const PHOTO_PREFIX = "/catalog/photos/";
+
+/** Photos are copied so the business owns its picture and a later catalog change never touches it. */
+async function ownImage(organizationId: string, imageUrl: string | undefined): Promise<string | undefined> {
+  if (!imageUrl?.startsWith(PHOTO_PREFIX)) return imageUrl;
+  const file = path.basename(imageUrl);
+  const data = await readFile(path.join(process.cwd(), "public", "catalog", "photos", file));
+  const key = `organizations/${organizationId}/catalog/items/${crypto.randomUUID()}.webp`;
+  return (await getStorageDriver().upload(key, data, "image/webp")).url;
 }
 
 /**
@@ -49,7 +65,7 @@ export async function bulkAddFoodItems(organizationId: string, entries: BulkEntr
       }
       const item = await createMenuItem(
         organizationId,
-        { name, foodType: entry.foodType, price: entry.price, description: entry.description, categoryIds },
+        { name, foodType: entry.foodType, price: entry.price, description: entry.description, image: await ownImage(organizationId, entry.imageUrl), categoryIds },
         actorUserId,
       );
       if (entry.sourceCatalogId) await prisma.menuItem.update({ where: { id: item.id }, data: { sourceCatalogId: entry.sourceCatalogId } });

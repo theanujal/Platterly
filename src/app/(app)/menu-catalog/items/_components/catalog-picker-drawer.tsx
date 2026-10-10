@@ -17,6 +17,7 @@ export interface CatalogOption {
   description: string | null;
   foodType: "VEGETARIAN" | "NON_VEGETARIAN";
   categoryName: string;
+  image: string | null;
   alreadyAdded: boolean;
 }
 
@@ -110,6 +111,10 @@ export function CatalogPickerDrawer({ open, onClose, catalog }: { open: boolean;
                 <li key={c.id}>
                   <label className={`flex items-start gap-3 p-3 ${c.alreadyAdded ? "opacity-60" : "cursor-pointer"}`}>
                     <Checkbox checked={c.alreadyAdded || selected.has(c.id)} disabled={c.alreadyAdded} onCheckedChange={() => toggle(c.id)} className="mt-0.5" />
+                    {c.image && (
+                      // eslint-disable-next-line @next/next/no-img-element -- static files under /catalog, same plain-img rule as the catalog cards
+                      <img src={c.image} alt="" loading="lazy" className="aspect-video w-20 shrink-0 rounded-md object-cover" />
+                    )}
                     <span className="flex flex-1 flex-col gap-0.5">
                       <span className="text-sm font-medium">{c.name}</span>
                       <span className="text-xs text-muted-foreground">{c.description ?? c.categoryName}</span>
