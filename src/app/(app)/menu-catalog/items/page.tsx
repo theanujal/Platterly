@@ -14,6 +14,8 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { ActiveBadge, CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell, FoodTypeTag, formatRupees } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { AddItemDialog } from "./_components/add-item-dialog";
+import { AddItemMenu } from "./_components/add-item-menu";
+import { listCatalog } from "@/modules/menus/catalog/catalog";
 import { ItemCardActions } from "./_components/item-card-actions";
 import type { ItemFormValues } from "./_components/item-form";
 
@@ -24,12 +26,13 @@ export const metadata: Metadata = {
 
 export default async function ItemsPage() {
   const { organizationId } = await requireActiveOrganization();
-  const [items, categories, menus, inventory, recipes] = await Promise.all([
+  const [items, categories, menus, inventory, recipes, catalog] = await Promise.all([
     listMenuItems(organizationId),
     listCategories(organizationId),
     listMenus(organizationId),
     listInventoryItems(organizationId),
     listRecipes(organizationId),
+    listCatalog(organizationId),
   ]);
   const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
   const recipeByItem = new Map(
@@ -156,7 +159,7 @@ export default async function ItemsPage() {
           <h1 className="text-2xl font-semibold">Food Items</h1>
           <p className="text-sm text-muted-foreground">Your reusable product catalog — the dishes caterers add to menus.</p>
         </div>
-        <AddItemDialog categories={categoryOptions} menus={menuOptions} />
+        <AddItemMenu categories={categoryOptions} menus={menuOptions} catalog={catalog} />
       </div>
       <Separator />
 

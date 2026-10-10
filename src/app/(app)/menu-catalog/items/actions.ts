@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { importFoodItems } from "@/modules/menus/import/import";
+import { addCatalogItems } from "@/modules/menus/catalog/catalog";
 import { saveRecipe, deleteRecipe, copyRecipe } from "@/modules/recipes/recipe";
 import type {
   FoodType,
@@ -180,4 +182,35 @@ export async function copyRecipeAction(fromMenuItemId: string, toMenuItemId: str
   revalidatePath("/menu-catalog/items");
   revalidatePath("/recipes");
   return { ok: true };
+}
+
+export type BulkActionResult =
+  | { ok: true; created: number; skipped: { name: string; reason: string }[]; failed: { name: string; reason: string }[]; invalidRows?: { row: number; name: string; reason: string }[] }
+  | { ok: false; error: string };
+
+export async function importFoodItemsAction(formData: FormData): Promise<BulkActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["create"] }, organizationId);
+  try {
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel or CSV file." };
+    const result = await importFoodItems(organizationId, { name: file.name, data: new Uint8Array(await file.arrayBuffer()) }, session.user.id);
+    revalidatePath("/menu-catalog/items");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Could not read that file.") };
+  }
+}
+
+export async function addCatalogItemsAction(catalogIds: string[]): Promise<BulkActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["create"] }, organizationId);
+  if (catalogIds.length === 0) return { ok: false, error: "Select at least one dish." };
+  try {
+    const result = await addCatalogItems(organizationId, catalogIds, session.user.id);
+    revalidatePath("/menu-catalog/items");
+    return { ok: true, ...result };
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Could not add those dishes.") };
+  }
 }

@@ -34,3 +34,21 @@ is shared across all three sections and the new `events` section.
 
 `MenuItem.recipeId` is left nullable — Chunk 18 (Phase 2) attaches Recipe/BOM
 through it; that logic itself is not built here.
+
+## Adding food items in bulk (2026-10-10)
+
+- **Names are unique per business, ignoring case.** `createMenuItem` / `updateMenuItem` throw
+  `MenuItemNameTakenError`; Duplicate item becomes "X (Copy)", then "X (Copy 2)". A unique index on
+  `(organizationId, lower(name))` (in migration `20261010143453_...`) backs it up.
+- `import/bulk-add.ts` is the one path both bulk routes use: it skips a name that already exists (or repeats in the
+  batch), finds a category by name or creates it, and reports created / skipped / failed.
+- `import/import.ts` + `food-rows.ts` + `read-table.ts`: Excel (.xlsx) or CSV import (no spreadsheet library; .xlsx is
+  read with fflate). Columns: Item Name, Category, Veg / Non-Veg, Price, Description (common header aliases are
+  accepted). Limits: 4 MB, 1000 rows. A blank price becomes 0. `buildTemplate()` feeds
+  `/menu-catalog/items/template`.
+- `catalog/`: Platterly's master catalog (`SystemFoodItem`, not tenant-scoped). `catalog-data.ts` holds the dishes
+  (from the Bhandary's Kitchen menus, each once); `npm run db:seed-catalog` loads them (matches by name, refreshes
+  text, never deletes, keeps `isActive`). `addCatalogItems` creates an independent `MenuItem` per dish at price 0 with
+  `sourceCatalogId` set (only for the "Added" badge): later edits never flow either way.
+- UI: the chevron next to Add Item on Food Items (`_components/add-item-menu.tsx`).
+- Not built: copying food items between kitchens, catalog images, default recipes (on hold).

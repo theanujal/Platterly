@@ -42,6 +42,17 @@ export interface MenuItemInput {
   keyIngredients?: string | null;
 }
 
+export class MenuItemNameTakenError extends Error {}
+
+/** Food item names are unique per business, ignoring case (AJ, 2026-10-10). `exceptId` lets an item keep its own name. */
+async function assertNameFree(organizationId: string, name: string, exceptId?: string) {
+  const clash = await prisma.menuItem.findFirst({
+    where: { organizationId, name: { equals: name.trim(), mode: "insensitive" }, id: exceptId ? { not: exceptId } : undefined },
+    select: { id: true },
+  });
+  if (clash) throw new MenuItemNameTakenError(`A food item named "${name.trim()}" already exists.`);
+}
+
 async function replaceItemCategories(menuItemId: string, categoryIds: string[] | undefined) {
   if (categoryIds === undefined) return;
   await prisma.menuItemCategory.deleteMany({ where: { menuItemId } });
@@ -62,6 +73,7 @@ async function replaceItemMenus(menuItemId: string, menuIds: string[] | undefine
 
 export async function createMenuItem(organizationId: string, input: MenuItemInput, actorUserId: string) {
   validateInput(input, RULES.menuItem);
+  await assertNameFree(organizationId, input.name);
   const item = await prisma.menuItem.create({
     data: {
       organizationId,
@@ -109,6 +121,7 @@ export async function updateMenuItem(
 ) {
   validateInput(input, RULES.menuItem);
   const before = await prisma.menuItem.findFirstOrThrow({ where: { id, organizationId } });
+  await assertNameFree(organizationId, input.name, id);
 
   const after = await prisma.menuItem.update({
     where: { id },
@@ -200,10 +213,15 @@ export async function getMenuItem(organizationId: string, id: string) {
 export async function duplicateMenuItem(organizationId: string, id: string, actorUserId: string) {
   const source = await getMenuItem(organizationId, id);
   if (!source) throw new Error("Food item not found.");
+  // Names are unique, so a second copy becomes "(Copy 2)", and so on.
+  let copyName = `${source.name} (Copy)`;
+  for (let n = 2; await prisma.menuItem.findFirst({ where: { organizationId, name: { equals: copyName, mode: "insensitive" } } }); n++) {
+    copyName = `${source.name} (Copy ${n})`;
+  }
   const copy = await createMenuItem(
     organizationId,
     {
-      name: `${source.name} (Copy)`,
+      name: copyName,
       description: source.description ?? undefined,
       image: source.image ?? undefined,
       foodType: source.foodType,

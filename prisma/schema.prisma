@@ -801,6 +801,11 @@ model MenuItem {
   // curated fields above. Comma-separated, parsed at the form boundary.
   keyIngredients    String?
 
+  // Set when the item was added from Platterly's master catalog. Only used for the "already added" badge — the
+  // item is an independent copy, so later edits never flow either way. Name is unique per business, case-insensitive
+  // (unique index on lower(name) lives in the migration; Prisma cannot express it).
+  sourceCatalogId String?
+
   // Chunk 18.1 — optional recipe (ingredient list) for this dish.
   recipe Recipe?
 
@@ -816,6 +821,24 @@ model MenuItem {
 
   @@index([organizationId])
   @@map("menu_item")
+}
+
+// Platterly's master catalog of common dishes (not tenant-scoped, maintained by Platterly via the seed script). A
+// caterer adds entries to their own Food Items; each add creates an independent MenuItem.
+model SystemFoodItem {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String?
+  image        String?
+  foodType     FoodType
+  categoryName String
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([categoryName])
+  @@map("system_food_item")
 }
 
 // MenuItem <-> MenuCategory tagging (many-to-many) — independent of which
