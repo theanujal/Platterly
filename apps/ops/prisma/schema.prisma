@@ -110,19 +110,23 @@ model Product {
   manifestFetchedAt DateTime?
   manifestError     String?
 
+  // When ops last asked this product for library candidates (about every half hour at most).
+  libraryCheckedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  businesses    BusinessProduct[]
-  events        InboundEvent[]
-  alerts        Alert[]
-  notifications Notification[]
-  commands      OutboundCommand[]
-  plans         Plan[]
-  subscriptions Subscription[]
-  payments      SubscriptionPayment[]
-  notice        ProductNotice?
-  invoiceCounter InvoiceCounter?
+  businesses        BusinessProduct[]
+  events            InboundEvent[]
+  alerts            Alert[]
+  notifications     Notification[]
+  commands          OutboundCommand[]
+  plans             Plan[]
+  subscriptions     Subscription[]
+  payments          SubscriptionPayment[]
+  notice            ProductNotice?
+  invoiceCounter    InvoiceCounter?
+  libraryCandidates LibraryCandidate[]
 
   @@map("product")
 }
@@ -496,15 +500,15 @@ model SiteRelease {
 }
 
 model SitePost {
-  slug      String   @id
-  title     String
-  excerpt   String
-  date      String
-  author    String   @default("The Platterly team")
+  slug            String    @id
+  title           String
+  excerpt         String
+  date            String
+  author          String    @default("The Platterly team")
   // The post's categories, shown as tags on the blog.
-  tags      String[]
-  colourway String   @default("sunrise")
-  body      String
+  tags            String[]
+  colourway       String    @default("sunrise")
+  body            String
   // Search and sharing: used for the page title, description and share image when set.
   metaTitle       String?
   metaDescription String?
@@ -512,9 +516,9 @@ model SitePost {
   ogImage         String?
   // DRAFT is never published. PUBLISHED with a `publishAt` in the future is scheduled: it goes live in the first
   // publish after that time (the daily job starts one when a scheduled post comes due).
-  status    String   @default("PUBLISHED")
-  publishAt DateTime?
-  updatedAt DateTime @updatedAt
+  status          String    @default("PUBLISHED")
+  publishAt       DateTime?
+  updatedAt       DateTime  @updatedAt
 
   @@map("site_post")
 }
@@ -582,4 +586,43 @@ model SiteMedia {
   createdAt    DateTime @default(now())
 
   @@map("site_media")
+}
+
+// ---------- Library review ----------
+
+// What kitchens added that a product's library lacks, pulled from the product (docs/ops-contract.md section 24) and decided
+// here by a person. Names, category, type, unit and a count only: the product never sends prices, notes or kitchen names.
+enum LibraryStatus {
+  PENDING
+  APPROVED
+  MERGED
+  REJECTED
+  // The product no longer lists it (the kitchens changed or removed the item).
+  WITHDRAWN
+}
+
+model LibraryCandidate {
+  id                 String        @id @default(cuid())
+  productKey         String
+  product            Product       @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  /// The product's own id for the candidate, sent back with the decision.
+  remoteId           String
+  kind               String // FOOD_ITEM | INGREDIENT | PHOTO
+  name               String
+  categoryName       String?
+  foodType           String?
+  unit               String?
+  kitchenCount       Int           @default(0)
+  suggestedMatchId   String?
+  suggestedMatchName String?
+  photoUrl           String?
+  status             LibraryStatus @default(PENDING)
+  decidedAt          DateTime?
+  decidedById        String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([productKey, remoteId])
+  @@index([productKey, status])
+  @@map("library_candidate")
 }

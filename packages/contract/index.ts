@@ -7,3 +7,4 @@ export * from "./src/snapshot";
 export * from "./src/messages";
 export * from "./src/billing";
 export * from "./src/reports";
+export * from "./src/library";

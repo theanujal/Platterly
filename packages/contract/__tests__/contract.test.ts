@@ -17,6 +17,8 @@ import {
   parseCommand,
   parseDowngradeRequest,
   parseEvent,
+  parseLibraryCandidates,
+  parseLibraryDecision,
   parseManifest,
   parseSnapshot,
   parseVerifyRequest,
@@ -437,5 +439,41 @@ describe("report documents", () => {
     const without = parseManifest(older);
     expect(without.ok && without.value.reports).toEqual([]);
     expect(parseManifest({ ...manifest, reports: [{ key: "bad key", label: "x" }] }).ok).toBe(false);
+  });
+});
+
+describe("library review", () => {
+  const candidate = { id: "c1", kind: "FOOD_ITEM", name: "Paneer Tikka Roll", categoryName: "Starters", foodType: "VEGETARIAN", unit: null, kitchenCount: 3, suggestedMatchId: null, suggestedMatchName: null, photoUrl: null, updatedAt: "2026-10-11T00:00:00.000Z" };
+
+  it("reads a list of candidates and keeps only the whitelisted fields", () => {
+    const parsed = parseLibraryCandidates({ candidates: [{ ...candidate, price: 250, kitchenName: "Secret Kitchen" }] });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.value.candidates[0]).toEqual(candidate);
+      expect(JSON.stringify(parsed.value)).not.toMatch(/price|kitchenName|Secret/);
+    }
+  });
+
+  it("refuses bad candidates", () => {
+    expect(parseLibraryCandidates({}).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...candidate, kind: "RECIPE" }] }).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...candidate, foodType: "VEGAN" }] }).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...candidate, kitchenCount: -1 }] }).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...candidate, name: "" }] }).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...candidate, kind: "PHOTO", photoUrl: "javascript:alert(1)" }] }).ok).toBe(false);
+  });
+
+  it("reads approve, merge and reject decisions", () => {
+    expect(parseLibraryDecision({ candidateId: "c1", action: "reject" })).toEqual({ ok: true, value: { candidateId: "c1", action: "reject" } });
+    expect(parseLibraryDecision({ candidateId: "c1", action: "merge", mergeIntoId: "m1" })).toEqual({ ok: true, value: { candidateId: "c1", action: "merge", mergeIntoId: "m1" } });
+    const approve = parseLibraryDecision({ candidateId: "c1", action: "approve", entry: { name: " Paneer Tikka Roll ", categoryName: "Starters", foodType: "VEGETARIAN", unit: null, description: "Roll" } });
+    expect(approve.ok && approve.value.entry?.name).toBe("Paneer Tikka Roll");
+  });
+
+  it("refuses incomplete decisions", () => {
+    expect(parseLibraryDecision({ candidateId: "c1", action: "merge" }).ok).toBe(false);
+    expect(parseLibraryDecision({ candidateId: "c1", action: "delete" }).ok).toBe(false);
+    expect(parseLibraryDecision({ action: "reject" }).ok).toBe(false);
+    expect(parseLibraryDecision({ candidateId: "c1", action: "approve", entry: { name: "X", categoryName: "", foodType: null, unit: null, description: null } }).ok).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { runDueCommands } from "@/modules/commands/outbox";
 import { runDueMessages } from "@/modules/messages/messages";
 import { syncNotices } from "@/modules/notices/notices";
+import { refreshLibraryCandidates } from "@/modules/library/library";
 import { refreshDueManifests } from "@/modules/registry/products";
 import { publishDueScheduled } from "@/modules/site-content/publish";
 import { refreshDueSnapshots } from "@/modules/snapshots/issue";
@@ -37,7 +38,8 @@ async function run(request: Request) {
   const noticesQueued = await syncNotices(product);
   const commandsSent = await runDueCommands(now, 50, product);
   const messagesSent = await runDueMessages(now);
-  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, noticesQueued, commandsSent, messagesSent });
+  const libraryNew = await refreshLibraryCandidates(now, product).catch(() => 0);
+  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, noticesQueued, commandsSent, messagesSent, libraryNew });
 }
 
 export const GET = run;

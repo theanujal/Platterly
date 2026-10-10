@@ -47,7 +47,8 @@ beforeAll(async () => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
-      commands.push({ id: req.headers["x-platterly-event-id"] as string | undefined, body: JSON.parse(body) });
+      // The cron also asks every product for library candidates (a GET with no body); only commands are recorded here.
+      if (req.url === "/api/ops/commands") commands.push({ id: req.headers["x-platterly-event-id"] as string | undefined, body: JSON.parse(body) });
       const reply = JSON.stringify({ ok: true, applied: true });
       res.writeHead(200, signedHeaders(inboundSecret, newId("command"), reply));
       res.end(reply);

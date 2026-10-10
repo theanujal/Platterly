@@ -208,28 +208,29 @@ model Organization {
 
   subscriptions Subscription[]
 
-  menuCategories   MenuCategory[]
-  menuItems        MenuItem[]
-  menus            Menu[]
-  eventTypes       EventType[]
-  addOns           AddOn[]
-  inventoryItems   Inventory[]
-  recipes          Recipe[]
-  purchaseOrders   PurchaseOrder[]
-  supplierPayments SupplierPayment[]
-  staffMembers     StaffMember[]
-  staffAssignments StaffAssignment[]
-  eventTasks       EventTask[]
-  eventLogistics   EventLogistics[]
-  eventStaffCounts EventStaffCount[]
-  suppliers        Supplier[]
-  customers        Customer[]
-  events           Event[]
-  orders           Order[]
-  quotations       Quotation[]
-  menuSelections   MenuSelection[]
-  storefrontDrafts StorefrontDraft[]
-  storefrontVisits StorefrontVisit[]
+  menuCategories          MenuCategory[]
+  menuItems               MenuItem[]
+  libraryCandidateSources LibraryCandidateSource[]
+  menus                   Menu[]
+  eventTypes              EventType[]
+  addOns                  AddOn[]
+  inventoryItems          Inventory[]
+  recipes                 Recipe[]
+  purchaseOrders          PurchaseOrder[]
+  supplierPayments        SupplierPayment[]
+  staffMembers            StaffMember[]
+  staffAssignments        StaffAssignment[]
+  eventTasks              EventTask[]
+  eventLogistics          EventLogistics[]
+  eventStaffCounts        EventStaffCount[]
+  suppliers               Supplier[]
+  customers               Customer[]
+  events                  Event[]
+  orders                  Order[]
+  quotations              Quotation[]
+  menuSelections          MenuSelection[]
+  storefrontDrafts        StorefrontDraft[]
+  storefrontVisits        StorefrontVisit[]
 
   @@unique([slug])
   @@map("organization")
@@ -805,6 +806,9 @@ model MenuItem {
   // item is an independent copy, so later edits never flow either way. Name is unique per business, case-insensitive
   // (unique index on lower(name) lives in the migration; Prisma cannot express it).
   sourceCatalogId String?
+  // Where the picture came from: "library" (copied from Platterly's catalog) or "upload" (the kitchen's own file). Null = unknown
+  // (older rows). Only "upload" pictures can ever be offered to the library review.
+  imageSource     String?
 
   // Chunk 18.1 — optional recipe (ingredient list) for this dish.
   recipe Recipe?
@@ -831,6 +835,8 @@ model SystemFoodItem {
   description  String?
   image        String?
   imageCredit  String?
+  /// Other names kitchens use for the same dish ("Paneer Makhani" for Paneer Butter Masala). Used only for matching.
+  aliases      String[] @default([])
   foodType     FoodType
   categoryName String
   sortOrder    Int      @default(0)
@@ -849,6 +855,8 @@ model SystemIngredient {
   id           String   @id @default(cuid())
   name         String   @unique
   description  String?
+  /// Other names kitchens use for the same ingredient. Used only for matching.
+  aliases      String[] @default([])
   categoryName String
   unit         String
   sortOrder    Int      @default(0)
@@ -858,6 +866,75 @@ model SystemIngredient {
 
   @@index([categoryName])
   @@map("system_ingredient")
+}
+
+// What kitchens add that Platterly's library lacks (or has only as an illustration), found by the nightly scan and
+// reviewed by a person in Ops (AJ, 2026-10-11). Holds names, category, type/unit and a count only: never a price,
+// cost, stock, supplier, note or kitchen name. Recipes are never collected.
+enum LibraryCandidateKind {
+  FOOD_ITEM
+  INGREDIENT
+  PHOTO
+}
+
+enum LibraryCandidateStatus {
+  PENDING
+  APPROVED
+  MERGED
+  REJECTED
+}
+
+model LibraryCandidate {
+  id                 String                   @id @default(cuid())
+  kind               LibraryCandidateKind
+  /// FOOD_ITEM / INGREDIENT: the normalized name. PHOTO: the id of the library dish the photo is for.
+  key                String
+  name               String
+  categoryName       String?
+  foodType           FoodType?
+  unit               String?
+  /// PHOTO only: a kitchen's uploaded picture (relative URL on the catering host) offered as the dish's picture.
+  photoUrl           String?
+  kitchenCount       Int                      @default(0)
+  status             LibraryCandidateStatus   @default(PENDING)
+  /// The library item this looks like (a hint for the reviewer), and the one a MERGED candidate was merged into.
+  suggestedMatchId   String?
+  suggestedMatchName String?
+  mergedIntoId       String?
+  reviewedAt         DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  sources            LibraryCandidateSource[]
+
+  @@unique([kind, key])
+  @@index([status])
+  @@map("library_candidate")
+}
+
+/// One row per library scan, so the nightly job runs about once a day even though the cron route is called every few minutes.
+model LibraryScanRun {
+  id         String   @id @default(cuid())
+  startedAt  DateTime @default(now())
+  scanned    Int      @default(0)
+  candidates Int      @default(0)
+
+  @@map("library_scan_run")
+}
+
+/// Which kitchen records back a candidate. Stays in catering (never sent to Ops): it counts distinct kitchens and lets a
+/// take-down request be traced.
+model LibraryCandidateSource {
+  id             String           @id @default(cuid())
+  candidateId    String
+  candidate      LibraryCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  recordId       String
+  createdAt      DateTime         @default(now())
+
+  @@unique([candidateId, recordId])
+  @@index([organizationId])
+  @@map("library_candidate_source")
 }
 
 // MenuItem <-> MenuCategory tagging (many-to-many) — independent of which

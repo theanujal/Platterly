@@ -30,6 +30,7 @@ export const TENANT_SCOPED_DELEGATES = [
   // parent menu/menuItem/menuCategory/eventType row here is deleted.
   "menuCategory",
   "recipe", // recipeIngredient cascades off it; must precede "menuItem"/"inventory" (Restrict to inventory)
+  "libraryCandidateSource", // 2026-10-11: which kitchen records back a library candidate; a purged kitchen leaves no trace
   "menuItem",
   "menu",
   // Chunk 11 (2026-09-17) — menuSelection has its own organizationId (used
