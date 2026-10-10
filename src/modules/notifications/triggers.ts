@@ -8,6 +8,7 @@ import { canonicalUrl } from "@/lib/seo/canonical";
 import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { canSendPromotions, isPromotionalEvent } from "./opt-out";
 import { opsBillingOn } from "@/modules/ops-link/config";
+import { normalizePhone } from "@/lib/phone";
 
 /**
  * Chunk 16: who gets told what, and when. Every business event that sends a message calls ONE function here, so the
@@ -104,13 +105,25 @@ export async function teamMembers(organizationId: string, roles?: string[]) {
 
 type Payload = Record<string, string | number | boolean | null | undefined>;
 
-/** Email + WhatsApp to a customer (each only if they have the contact detail). */
-export async function notifyCustomer(params: { organizationId: string; event: string; customerId?: string; email?: string | null; phone?: string | null; payload: Payload }) {
+/** Email to a customer. WhatsApp never goes to customers, only to the kitchen's own team (AJ, 2026-10-09). */
+export async function notifyCustomer(params: { organizationId: string; event: string; customerId?: string; email?: string | null; payload: Payload }) {
   // Promotional messages respect the customer's opt-out; everything they asked for is unaffected.
   if (isPromotionalEvent(params.event) && !(params.customerId && (await canSendPromotions(params.customerId)))) return;
   const payload = JSON.parse(JSON.stringify(params.payload));
   if (params.email) await notify({ organizationId: params.organizationId, channel: "EMAIL", event: params.event, recipient: { email: params.email }, payload });
-  if (params.phone) await notify({ organizationId: params.organizationId, channel: "WHATSAPP", event: params.event, recipient: { phone: params.phone }, payload });
+}
+
+/** The one number the kitchen's WhatsApp messages go to: the owner's phone, taken at signup. */
+export async function kitchenWhatsAppPhone(organizationId: string): Promise<string | null> {
+  const owner = await prisma.member.findFirst({ where: { organizationId, role: "owner", disabledAt: null }, orderBy: { createdAt: "asc" }, select: { user: { select: { phone: true } } } });
+  return owner?.user.phone ? normalizePhone(owner.user.phone) : null;
+}
+
+/** One WhatsApp message to the kitchen. `params` fill the template's {{1}}, {{2}}... (see whatsapp/templates.ts). */
+export async function notifyKitchenWhatsApp(organizationId: string, event: string, params: unknown[], dedupeKey?: string) {
+  const phone = await kitchenWhatsAppPhone(organizationId);
+  if (!phone) return;
+  await notify({ organizationId, channel: "WHATSAPP", event, recipient: { phone }, payload: JSON.parse(JSON.stringify({ whatsappParams: params, ...(dedupeKey ? { dedupeKey } : {}) })) });
 }
 
 /** In-app (one row per person, so the bell can show each their own) and optionally email, to the team by role. */
@@ -179,7 +192,7 @@ const orderLabel = (c: OrderContext) => (c.orderNumber ? `Order ${c.orderNumber}
 export function onOrderCreated(organizationId: string, orderId: string) {
   return safely("onOrderCreated", async () => {
     const c = await loadOrderContext(organizationId, orderId);
-    await notifyCustomer({ organizationId, event: "order.created", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c) });
+    await notifyCustomer({ organizationId, event: "order.created", email: c.customerEmail, payload: emailPayload(c) });
     await notifyTeam({
       organizationId,
       event: "order.new_alert",
@@ -188,6 +201,7 @@ export function onOrderCreated(organizationId: string, orderId: string) {
       message: `${orderLabel(c)} from ${c.customerName}${c.eventDate ? ` for ${c.eventDate}` : ""}.`,
       payload: emailPayload(c),
     });
+    await notifyKitchenWhatsApp(organizationId, "order.new_alert", [c.orderNumber, c.customerName, c.eventDate]);
   });
 }
 
@@ -198,7 +212,7 @@ export function onOrderStatusChanged(organizationId: string, orderId: string, st
   return safely("onOrderStatusChanged", async () => {
     if (!CUSTOMER_STATUS_UPDATES.has(status)) return;
     const c = await loadOrderContext(organizationId, orderId);
-    await notifyCustomer({ organizationId, event: "order.status_changed", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c, { status, note: note ?? undefined }) });
+    await notifyCustomer({ organizationId, event: "order.status_changed", email: c.customerEmail, payload: emailPayload(c, { status, note: note ?? undefined }) });
     if (status === "SENT_TO_KITCHEN") {
       await notifyTeam({
         organizationId,
@@ -207,7 +221,16 @@ export function onOrderStatusChanged(organizationId: string, orderId: string, st
         message: `${orderLabel(c)} for ${c.customerName}${c.eventDate ? ` (${c.eventDate})` : ""} is ready for preparation. Review the stock it needs on the order's Inventory tab.`,
         payload: emailPayload(c),
       });
+      await notifyKitchenWhatsApp(organizationId, "order.sent_to_kitchen", [c.orderNumber, c.customerName, c.eventDate]);
     }
+  });
+}
+
+/** The team sent a menu version to the customer for approval. */
+export function onMenuSentForApproval(organizationId: string, orderId: string, versionNumber: number) {
+  return safely("onMenuSentForApproval", async () => {
+    const c = await loadOrderContext(organizationId, orderId);
+    await notifyKitchenWhatsApp(organizationId, "menu_approval.sent", [c.orderNumber, c.customerName, versionNumber]);
   });
 }
 
@@ -229,6 +252,7 @@ export function onCustomerMenuAction(organizationId: string, orderId: string | n
       message: `${c.customerName} ${text[1]}${c.orderNumber ? ` (${c.orderNumber})` : ""}.`,
       payload: emailPayload(c, extra),
     });
+    if (kind === "approved") await notifyKitchenWhatsApp(organizationId, "menu_approval.approved", [c.customerName, c.orderNumber]);
   });
 }
 
@@ -259,6 +283,7 @@ export function onPaymentActivity(organizationId: string, orderId: string, amoun
       message: `${c.customerName} ${kind === "received" ? "paid" : "says they paid"} ${formatInr(amount)}${c.orderNumber ? ` for ${c.orderNumber}` : ""}.`,
       payload: emailPayload(c, { amount }),
     });
+    if (kind === "received") await notifyKitchenWhatsApp(organizationId, "payment.received", [c.customerName, formatInr(amount), c.orderNumber]);
   });
 }
 
@@ -365,6 +390,7 @@ export interface DueRunResult {
   paymentOverdue: number;
   taskDue: number;
   taskOverdue: number;
+  kitchenWhatsApp: number;
 }
 
 /**
@@ -374,8 +400,52 @@ export interface DueRunResult {
  *   payment due:    3 days before the event while a balance is open
  *   payment overdue: the day after the event while a balance is open
  */
+/** "3 events to cater tomorrow" every day, and one overdue-payments digest on Mondays, per kitchen (owner's phone). */
+async function sendKitchenWhatsAppDigests(now: Date, isMonday: boolean): Promise<number> {
+  let sent = 0;
+  const today = istDay(now, 0);
+  const dayKey = today.toISOString().slice(0, 10);
+
+  const tomorrow = await prisma.order.findMany({
+    where: { status: { in: [...OPEN_STATUSES] }, eventStartDate: { gte: istDay(now, 1), lt: istDay(now, 2) } },
+    select: { organizationId: true, customer: { select: { name: true } }, eventType: { select: { name: true } } },
+  });
+  const byKitchen = new Map<string, string[]>();
+  for (const o of tomorrow) byKitchen.set(o.organizationId, [...(byKitchen.get(o.organizationId) ?? []), `${o.customer.name}${o.eventType ? ` (${o.eventType.name})` : ""}`]);
+  for (const [organizationId, events] of byKitchen) {
+    const key = `${organizationId}:tomorrow:${dayKey}`;
+    if (await alreadySent(organizationId, "event.tomorrow_summary", key)) continue;
+    await safely("tomorrow summary", async () => {
+      const list = events.length > 5 ? `${events.slice(0, 5).join(", ")} and ${events.length - 5} more` : events.join(", ");
+      await notifyKitchenWhatsApp(organizationId, "event.tomorrow_summary", [events.length, list], key);
+      sent += 1;
+    });
+  }
+
+  if (isMonday) {
+    const past = await prisma.order.findMany({
+      where: { status: { in: [...BILLABLE_STATUSES] }, eventStartDate: { gte: istDay(now, -365), lt: today } },
+      select: { id: true, organizationId: true },
+    });
+    const totals = new Map<string, { count: number; balance: number }>();
+    for (const { id, organizationId } of past) {
+      const { balance } = await orderBalance(organizationId, id);
+      if (balance > 0) totals.set(organizationId, { count: (totals.get(organizationId)?.count ?? 0) + 1, balance: (totals.get(organizationId)?.balance ?? 0) + balance });
+    }
+    for (const [organizationId, { count, balance }] of totals) {
+      const key = `${organizationId}:overdue:${dayKey}`;
+      if (await alreadySent(organizationId, "payment.overdue_digest", key)) continue;
+      await safely("overdue digest", async () => {
+        await notifyKitchenWhatsApp(organizationId, "payment.overdue_digest", [count, formatInr(balance)], key);
+        sent += 1;
+      });
+    }
+  }
+  return sent;
+}
+
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
-  const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0 };
+  const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0, kitchenWhatsApp: 0 };
 
   // With OPS_BILLING on, ops owns the subscription and sends these emails itself (docs/ops-contract.md 9), so the local
   // trial and paid-plan notices below are skipped: the rows they read are no longer the truth.
@@ -439,7 +509,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
       await safely("event reminder", async () => {
         const c = await loadOrderContext(organizationId, id);
         const payload = emailPayload(c, { daysBefore, dedupeKey: key });
-        await notifyCustomer({ organizationId, event: "event.reminder", email: c.customerEmail, phone: c.customerPhone, payload });
+        await notifyCustomer({ organizationId, event: "event.reminder", email: c.customerEmail, payload });
         if (daysBefore === 1) {
           await notifyTeam({
             organizationId,
@@ -454,13 +524,19 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
     }
   }
 
+  // WhatsApp to each kitchen's owner, from 8 am India time: tomorrow's events (daily) and overdue payments (Mondays).
+  const istNow = new Date(now.getTime() + IST_OFFSET_MS);
+  if (istNow.getUTCHours() >= 8) {
+    result.kitchenWhatsApp += await sendKitchenWhatsAppDigests(now, istNow.getUTCDay() === 1);
+  }
+
   for (const { id, organizationId } of await eventsOn(3, BILLABLE_STATUSES)) {
     const key = `${id}:due`;
     if (await alreadySent(organizationId, "payment.due", key)) continue;
     await safely("payment due", async () => {
       const c = await loadOrderContext(organizationId, id);
       if (c.balance <= 0) return;
-      await notifyCustomer({ organizationId, event: "payment.due", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c, { dedupeKey: key }) });
+      await notifyCustomer({ organizationId, event: "payment.due", email: c.customerEmail, payload: emailPayload(c, { dedupeKey: key }) });
       result.paymentDue += 1;
     });
   }
@@ -471,7 +547,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
     await safely("payment overdue", async () => {
       const c = await loadOrderContext(organizationId, id);
       if (c.balance <= 0) return;
-      await notifyCustomer({ organizationId, event: "payment.overdue", email: c.customerEmail, phone: c.customerPhone, payload: emailPayload(c, { dedupeKey: key }) });
+      await notifyCustomer({ organizationId, event: "payment.overdue", email: c.customerEmail, payload: emailPayload(c, { dedupeKey: key }) });
       result.paymentOverdue += 1;
     });
   }

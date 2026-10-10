@@ -382,7 +382,6 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
     event: "quotation.sent",
     customerId: quotation.customerId,
     email: quotation.customer.email,
-    phone: quotation.customer.phone,
     payload: {
       quotationId: id,
       unsubscribeUrl: unsubscribeUrl(quotation.customerId),

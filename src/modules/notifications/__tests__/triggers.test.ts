@@ -54,6 +54,47 @@ describe("notification triggers (Chunk 16)", () => {
     expect(JSON.stringify(customerEmail?.payload)).toContain(order.orderNumber!);
   });
 
+  it("WhatsApp goes only to the owner's signup phone, never to the customer", async () => {
+    const t = await makeTeam();
+    await prisma.user.update({ where: { id: t.owner.id }, data: { phone: "08860756024" } });
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));
+
+    const all = await prisma.notification.findMany({ where: { organizationId: t.org.id, channel: "WHATSAPP" } });
+    expect(all.map((n) => [n.event, n.recipientPhone])).toEqual([["order.new_alert", "+918860756024"]]);
+    expect(JSON.stringify(all[0].payload)).toContain("whatsappParams");
+  });
+
+  it("sends no WhatsApp when the owner has no phone", async () => {
+    const t = await makeTeam();
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));
+    expect(await prisma.notification.count({ where: { organizationId: t.org.id, channel: "WHATSAPP" } })).toBe(0);
+  });
+
+  it("tells the owner about tomorrow's events once, and about overdue payments on Mondays only", async () => {
+    const t = await makeTeam();
+    await prisma.user.update({ where: { id: t.owner.id }, data: { phone: "8860756024" } });
+    const monday = new Date("2026-12-07T04:00:00Z"); // 9:30 am IST, a Monday
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-08T00:00:00Z"));
+    await prisma.notification.deleteMany({ where: { organizationId: t.org.id } });
+
+    await runDueNotifications(monday);
+    await runDueNotifications(monday);
+    const summary = await prisma.notification.findMany({ where: { organizationId: t.org.id, event: "event.tomorrow_summary" } });
+    expect(summary).toHaveLength(1);
+    expect(JSON.stringify(summary[0].payload)).toContain("Asha Rao");
+
+    const order = await makeOrder(t.org.id, t.sales.id, new Date("2026-12-20T00:00:00Z"));
+    await prisma.order.update({ where: { id: order.id }, data: { eventStartDate: new Date("2026-12-01T00:00:00Z"), eventEndDate: new Date("2026-12-01T00:00:00Z") } });
+    await runDueNotifications(monday);
+    await runDueNotifications(monday);
+    const digest = await prisma.notification.findMany({ where: { organizationId: t.org.id, event: "payment.overdue_digest" } });
+    expect(digest).toHaveLength(1);
+    expect(JSON.stringify(digest[0].payload)).toContain('"whatsappParams":[1,');
+
+    await runDueNotifications(new Date("2026-12-08T04:00:00Z")); // Tuesday: summary only for events on the 9th
+    expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "payment.overdue_digest" } })).toBe(1); // none added on a Tuesday
+  });
+
   it("'sent to kitchen' tells the Kitchen team and the customer", async () => {
     const t = await makeTeam();
     const order = await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));

@@ -113,7 +113,6 @@ export async function sendPaymentLink(params: { organizationId: string; orderId:
     organizationId: params.organizationId,
     event: "payment.link_sent",
     email: context.customerEmail,
-    phone: context.customerPhone,
     payload: emailPayload(context, { template: "paymentRequest", amount: params.amount, url: params.url }),
   });
   return { emailActive: email.active };

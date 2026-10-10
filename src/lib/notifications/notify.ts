@@ -7,6 +7,9 @@ import { MESSAGE_FOR_EVENT } from "@/modules/notifications/channel-settings-conf
 import { sendPushToUser } from "@/modules/notifications/push";
 import { emailForEvent } from "./email/templates";
 import { sendEmail } from "./email/zeptomail";
+import { getSetting } from "@/lib/settings/settings";
+import { sendWacrmMessage, wacrmConfig } from "./whatsapp/wacrm";
+import { WHATSAPP_TEMPLATES, cleanParams, renderTemplate } from "./whatsapp/templates";
 
 export interface NotifyRecipient {
   email?: string;
@@ -25,6 +28,9 @@ export interface NotifyParams {
 
 /** Invitations and security codes always go out; every other email or WhatsApp needs the channel active and its switch on. */
 async function channelAllowed(organizationId: string, channel: "email" | "whatsapp", event: string): Promise<boolean> {
+  // WhatsApp goes only to the kitchen's own team, for a fixed short list of events (AJ, 2026-10-09), so it has no
+  // per-message switches: it is on unless the Platterly team disconnected this kitchen.
+  if (channel === "whatsapp") return (await getSetting<{ connected?: boolean }>(organizationId, "notifications.whatsapp.provider"))?.connected !== false;
   const message = MESSAGE_FOR_EVENT[event];
   if (!message) return true;
   const settings = await getChannelSettings(organizationId, channel);
@@ -41,17 +47,25 @@ async function channelAllowed(organizationId: string, channel: "email" | "whatsa
 export async function notify(params: NotifyParams) {
   // WhatsApp: no message row (nothing queued to send) while the channel is off or this message is switched off.
   const whatsAppBlocked = params.channel === "WHATSAPP" && !(await channelAllowed(params.organizationId, "whatsapp", params.event));
-  const whatsAppMessages: Prisma.WhatsAppMessageCreateWithoutNotificationInput[] =
-    params.channel === "WHATSAPP" && params.recipient.phone && !whatsAppBlocked
-      ? [
-          {
-            organization: { connect: { id: params.organizationId } },
-            toPhone: params.recipient.phone,
-            body: JSON.stringify(params.payload),
-            status: "queued",
-          },
-        ]
-      : [];
+  // WhatsApp really goes out once the Wacrm account is configured, and only for the events that have a template;
+  // before that the row stays queued, as it always was.
+  const template = WHATSAPP_TEMPLATES[params.event];
+  const whatsAppPhone = params.channel === "WHATSAPP" && !whatsAppBlocked ? params.recipient.phone : undefined;
+  const wacrm = wacrmConfig();
+  const templateParams = cleanParams(((params.payload as { whatsappParams?: unknown[] }).whatsappParams ?? []) as unknown[]);
+  const whatsAppText = template ? renderTemplate(template.body, templateParams) : JSON.stringify(params.payload);
+  const sent = whatsAppPhone && wacrm && template ? await sendWacrmMessage(wacrm, { to: whatsAppPhone, text: whatsAppText, template: { name: template.name, params: templateParams } }) : null;
+  const whatsAppMessages: Prisma.WhatsAppMessageCreateWithoutNotificationInput[] = whatsAppPhone
+    ? [
+        {
+          organization: { connect: { id: params.organizationId } },
+          toPhone: sent?.to ?? whatsAppPhone,
+          body: sent ? whatsAppText : JSON.stringify(params.payload),
+          status: sent ? (sent.status === "sent" ? "sent" : "failed") : "queued",
+          providerMessageId: sent?.status === "sent" ? sent.providerMessageId : undefined,
+        },
+      ]
+    : [];
 
   // Email goes out for events that have a template, once ZeptoMail is configured; anything else stays log-only.
   let logEntry = { status: "logged", detail: "No provider configured (Chunk 16)." };
@@ -80,6 +94,7 @@ export async function notify(params: NotifyParams) {
         : { status: result.status, detail: result.reason };
   }
 
+  if (sent) logEntry = sent.status === "sent" ? { status: "sent", detail: sent.providerMessageId } : { status: "failed", detail: sent.reason };
   if (whatsAppBlocked) logEntry = { status: "skipped", detail: "WhatsApp is not connected, not active, or this message is switched off in Settings." };
 
   return prisma.notification.create({

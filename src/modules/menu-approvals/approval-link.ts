@@ -3,7 +3,7 @@ import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import { emailPayload, loadOrderContext, notifyCustomer, onCustomerMenuAction } from "@/modules/notifications/triggers";
+import { emailPayload, loadOrderContext, notifyCustomer, onCustomerMenuAction, onMenuSentForApproval } from "@/modules/notifications/triggers";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder } from "@/modules/orders/order";
@@ -260,9 +260,9 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
     organizationId,
     event: "menu_approval.sent",
     email: context.customerEmail,
-    phone: context.customerPhone,
     payload: emailPayload(context, { menuSelectionId: menuSelection.id, versionNumber, url }),
   });
+  await onMenuSentForApproval(organizationId, orderId, versionNumber);
   await audit({
     organizationId,
     actorUserId,
