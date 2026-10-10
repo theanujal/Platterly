@@ -37,7 +37,13 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await page.goto("/settings/integration/payments");
   await expect(page.getByRole("heading", { name: "Payments", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Payments" })).toHaveClass(/bg-accent.*ring-primary\/40/);
+  // Razorpay and UPI are accordions, closed by default; the closed row already shows each method's label and switch.
+  await expect(page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByText(`/api/webhooks/razorpay/${organizationId}`)).toBeHidden();
+  await page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ }).click();
   await expect(page.getByText(`/api/webhooks/razorpay/${organizationId}`)).toBeVisible();
+  await expect(page.getByTestId("upi-accordion").getByLabel("UPI ID")).toBeHidden();
+  await page.getByTestId("upi-accordion").getByRole("button", { name: /UPI QR/ }).click();
 
   await page.getByLabel("UPI ID").fill("not-a-upi-id");
   await page.getByLabel("Name shown in the UPI app").fill("Billing Kitchen");
@@ -70,13 +76,15 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await page.getByRole("button", { name: "Edit Profile" }).click();
   await expect(page.getByLabel("GST number (optional)")).toHaveCount(0);
   await page.goto("/settings/integration/payments");
-
+  await page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ }).click();
   await page.getByLabel("Key ID").fill("rzp_test_ABCDEF123456");
   await page.getByLabel("Key Secret").fill("test-key-secret");
   await page.getByLabel("Webhook Secret").fill("test-webhook-secret");
   await page.getByRole("button", { name: "Save Razorpay" }).click();
   await expect(page.getByText("Razorpay saved.")).toBeVisible();
   await page.reload();
+  await expect(page.getByTestId("razorpay-accordion").getByText("Customers can pay with Razorpay.")).toBeVisible(); // the closed row already says it is live
+  await page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ }).click();
   await expect(page.getByText("Connected", { exact: true })).toBeVisible();
   await expect(page.getByText("rzp_test_••••••3456")).toBeVisible();
   // The secret is never sent back to the browser.
@@ -249,6 +257,7 @@ test("Razorpay webhook: bad signature refused, a good one confirms the payment o
   const { orderId, organizationId } = await seedOrderForBilling(email, 10000);
 
   await page.goto("/settings/integration/payments");
+  await page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ }).click();
   await page.getByLabel("Key ID").fill("rzp_test_HOOK123456");
   await page.getByLabel("Key Secret").fill("hook-key-secret");
   await page.getByLabel("Webhook Secret").fill("hook-webhook-secret");

@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Copy, CreditCard, FileText, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { CheckCircle2, ChevronDown, Copy, CreditCard, FileText, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/settings-ui";
+import { cn } from "cn";
 import type { PaymentSettingsView } from "@/modules/payments/payment-settings";
 import { disconnectRazorpayAction, saveAdvanceAction, saveGstAction, saveRazorpayAction, saveUpiAction, setAutoInvoiceAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** A save button + status line shared by the three panels. */
-function useSave() {
+function useSave(onFail?: () => void) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -24,6 +26,7 @@ function useSave() {
     setPending(false);
     setMessage(result.ok ? { ok: true, text: result.message ?? success } : { ok: false, text: result.error });
     if (result.ok) router.refresh();
+    else onFail?.();
   }
   return { pending, message, run };
 }
@@ -37,8 +40,12 @@ function Status({ message }: { message: { ok: boolean; text: string } | null }) 
   );
 }
 
-/** "Offer to customers": switches one method on or off. Both on means customers see both. */
-function MethodToggle({ method, label, enabled, configured }: { method: "razorpay" | "upi"; label: string; enabled: boolean; configured: boolean }) {
+/**
+ * One payment method as an accordion (AJ, 2026-10-10), closed by default. The closed row shows the icon, label, a status
+ * line and the "Offer to customers" switch, so which method is live reads without opening anything. The setup form sits
+ * in the body, which stays mounted while closed so a half-typed form survives a fold.
+ */
+function MethodAccordion({ method, icon: Icon, label, description, enabled, configured, open, onOpenChange, children }: { method: "razorpay" | "upi"; icon: LucideIcon; label: string; description: string; enabled: boolean; configured: boolean; open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,20 +57,31 @@ function MethodToggle({ method, label, enabled, configured }: { method: "razorpa
     if (!result.ok) return setError(result.error);
     router.refresh();
   }
+  const status = !configured ? `Save your ${label} details first.` : enabled ? `Customers can pay with ${label}.` : "Hidden from customers.";
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/60 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">Offer {label} to customers</p>
-          <p className="text-xs text-muted-foreground">{!configured ? `Save your ${label} details first.` : enabled ? `Customers can pay with ${label}.` : `Hidden from customers.`}</p>
-        </div>
+    <div className="flex flex-col rounded-xl border border-border bg-card" data-testid={`${method}-accordion`}>
+      <div className="flex items-center gap-3 p-5">
+        <button type="button" id={`${method}-trigger`} aria-expanded={open} aria-controls={`${method}-panel`} onClick={() => onOpenChange(!open)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Icon className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold">{label}</span>
+            <span className="block text-sm text-muted-foreground">{description}</span>
+            <span className={cn("mt-0.5 block text-xs", configured && enabled ? "font-medium text-success" : "text-muted-foreground")}>{status}</span>
+          </span>
+          <ChevronDown className={cn("size-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+        </button>
         <Switch checked={enabled} disabled={!configured || pending} onCheckedChange={change} aria-label={`Offer ${label} to customers`} />
       </div>
       {error && (
-        <p role="alert" className="text-xs text-destructive">
+        <p role="alert" className="px-5 pb-3 text-xs text-destructive">
           {error}
         </p>
       )}
+      <div id={`${method}-panel`} role="region" aria-labelledby={`${method}-trigger`} hidden={!open} className="flex flex-col gap-5 border-t border-border p-5">
+        {children}
+      </div>
     </div>
   );
 }
@@ -77,16 +95,19 @@ export function PaymentsSettings({ settings, webhookUrl }: { settings: PaymentSe
           {offered ? `Customers see: ${offered}.${settings.razorpay.enabled && settings.upi?.enabled ? " Both are offered side by side." : ""}` : "Nothing yet. Set up Razorpay or UPI and switch it on to let customers pay online."}
         </p>
       </InfoBox>
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <AdvancePanel settings={settings} />
+        <GstPanel settings={settings} />
+      </div>
       <RazorpayPanel settings={settings} webhookUrl={webhookUrl} />
       <UpiPanel settings={settings} />
-      <AdvancePanel settings={settings} />
-      <GstPanel settings={settings} />
     </div>
   );
 }
 
 function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView; webhookUrl: string }) {
-  const { pending, message, run } = useSave();
+  const [open, setOpen] = useState(false);
+  const { pending, message, run } = useSave(() => setOpen(true));
   const [copied, setCopied] = useState(false);
   const connected = settings.razorpay.connected;
 
@@ -101,9 +122,7 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
   }
 
   return (
-    <SettingsPanel>
-      <PanelHeader icon={CreditCard} title="Razorpay" description="Use your own Razorpay account. Customers pay you directly; Platterly never holds your money." />
-      <MethodToggle method="razorpay" label="Razorpay" enabled={settings.razorpay.enabled} configured={connected} />
+    <MethodAccordion method="razorpay" icon={CreditCard} label="Razorpay" description="Use your own Razorpay account. Customers pay you directly; Platterly never holds your money." enabled={settings.razorpay.enabled} configured={connected} open={open} onOpenChange={setOpen}>
       {connected && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="flex items-center gap-2 text-sm font-semibold text-success">
@@ -163,16 +182,15 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
         </div>
         <Status message={message} />
       </form>
-    </SettingsPanel>
+    </MethodAccordion>
   );
 }
 
 function UpiPanel({ settings }: { settings: PaymentSettingsView }) {
-  const { pending, message, run } = useSave();
+  const [open, setOpen] = useState(false);
+  const { pending, message, run } = useSave(() => setOpen(true));
   return (
-    <SettingsPanel>
-      <PanelHeader icon={Phone} title="UPI" description="Every payment link and the approval page get a QR with the exact amount." />
-      <MethodToggle method="upi" label="UPI QR" enabled={settings.upi?.enabled ?? false} configured={settings.upi !== null} />
+    <MethodAccordion method="upi" icon={Phone} label="UPI QR" description="Every payment link and the approval page get a QR with the exact amount." enabled={settings.upi?.enabled ?? false} configured={settings.upi !== null} open={open} onOpenChange={setOpen}>
       <form
         className="flex flex-col gap-4"
         onSubmit={(event) => {
@@ -201,7 +219,7 @@ function UpiPanel({ settings }: { settings: PaymentSettingsView }) {
         </div>
         <Status message={message} />
       </form>
-    </SettingsPanel>
+    </MethodAccordion>
   );
 }
 

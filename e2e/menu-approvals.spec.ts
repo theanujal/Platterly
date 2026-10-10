@@ -482,6 +482,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // The kitchen sets its own UPI id and advance (Settings -> Payments); the confirmation then offers payment (Chunk 14).
   await page.goto("/settings/integration/payments");
+  await page.getByTestId("upi-accordion").getByRole("button", { name: /UPI QR/ }).click();
   await page.getByLabel("UPI ID").fill("approvals@okhdfc");
   await page.getByLabel("Name shown in the UPI app").fill("Approval Kitchen");
   await page.getByRole("button", { name: "Save UPI" }).click();
