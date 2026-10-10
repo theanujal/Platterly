@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Mail, ShieldCheck, UserPlus, Users } from "lucide-react";
+import { KeyRound, Mail, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -9,10 +9,13 @@ import { describeRolePermissions } from "@/lib/auth/role-permissions";
 import { applyTeamPrivacy, getSeatUsage, listMembers, listPendingInvitations } from "@/modules/team/team";
 import { INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
 import { getLocationSettings, listLocations } from "@/modules/locations/locations";
+import { EDITABLE_ROLE_IDS } from "@/lib/auth/role-matrix";
+import { defaultGrants, effectiveMatrixGrants, listRoleOverrides } from "@/modules/roles/role-grants";
 import { getTeamPrivacyAction } from "./actions";
 import { InviteMemberForm } from "./_components/invite-member-form";
 import { InvitationRowActions } from "./_components/invitation-row-actions";
 import { MemberRowActions } from "./_components/member-row-actions";
+import { RolePermissionsForm } from "./_components/role-permissions-form";
 import { TeamPrivacyForm } from "./_components/team-privacy-form";
 import { TeamTabs, type TeamTab } from "./_components/team-tabs";
 import { RoleIcon } from "./_components/role-icons";
@@ -65,14 +68,23 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     ...(canInvite ? [{ id: "invite", label: "Invite Member", icon: UserPlus }] : []),
     { id: "pending", label: "Pending Invitations", icon: Mail, count: invitations.length },
     { id: "privacy", label: "Privacy", icon: ShieldCheck },
+    ...(canEditSettings ? [{ id: "permissions", label: "Manage Role Permissions", icon: KeyRound }] : []),
   ];
   const active = tabs.some((t) => t.id === params.tab) ? (params.tab as string) : "members";
 
+  const editableRoles =
+    active === "permissions"
+      ? await Promise.all(
+          EDITABLE_ROLE_IDS.map(async (id) => ({ id, label: roleLabel(id), current: await effectiveMatrixGrants(organizationId, id), defaults: defaultGrants(id) })),
+        )
+      : [];
+
+  const overrides = active === "invite" ? await listRoleOverrides(organizationId) : {};
   const roleOptions = INVITABLE_ROLE_DEFINITIONS.map((r) => ({
     id: r.id,
     label: r.label,
     description: r.description,
-    ...describeRolePermissions(r.id),
+    ...describeRolePermissions(r.id, overrides[r.id]),
   }));
 
   return (
@@ -175,6 +187,8 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
             <p className="text-xs text-muted-foreground">Invitation links are valid for {INVITATION_EXPIRY_HOURS} hours.</p>
           </>
         )}
+
+        {active === "permissions" && <RolePermissionsForm roles={editableRoles} />}
 
         {active === "privacy" && <TeamPrivacyForm initialValues={teamPrivacy} canEdit={canEditSettings} />}
       </SettingsPanel>

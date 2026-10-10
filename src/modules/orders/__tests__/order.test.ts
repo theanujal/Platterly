@@ -1043,6 +1043,28 @@ describe("Order Numbering (per-tenant prefix/counter/padding)", () => {
   });
 });
 
+describe("Order custom charges (label + amount lines on Pricing Details)", () => {
+  it("adds them to the grand total and balance, and updates when edited or cleared", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const order = await createOrder(
+      org.id,
+      { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), otherCharges: 100, advance: 50, customCharges: [{ label: "Generator", amount: 1500 }, { label: "Tent", amount: 250.5 }] },
+      actor.id,
+    );
+    expect(Number(order.total)).toBe(1850.5);
+    expect(Number(order.balance)).toBe(1800.5);
+    expect(order.customCharges).toEqual([{ label: "Generator", amount: 1500 }, { label: "Tent", amount: 250.5 }]);
+
+    const edited = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), customCharges: [{ label: "Generator", amount: 1000 }] }, actor.id);
+    expect(Number(edited.total)).toBe(1100);
+
+    const cleared = await updateOrder(org.id, order.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01"), customCharges: [] }, actor.id);
+    expect(Number(cleared.total)).toBe(100);
+  });
+});
+
 describe("getPartialPaymentsOverview — Dashboard Partial Payments card", () => {
   it("aggregates only non-cancelled Partially Paid/Unpaid orders with a real balance, incl. overdue-by-event-date", async () => {
     const org = await makeOrg();

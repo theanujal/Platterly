@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { getSetting } from "@/lib/settings/settings";
 import { menuGuestCount, itemMovesPrice, mealBaseAmount } from "@/modules/orders/meal-pricing";
+import { parseCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
 import { computeInvoiceStatus, splitInclusiveGst } from "./invoice-status";
 
 const INVOICE_TERMS_KEY = "communication.invoiceTerms";
@@ -42,6 +43,7 @@ export function buildInvoiceLines(order: {
   childrenCharge: number;
   transportationCost: number;
   otherCharges: number;
+  customCharges?: CustomCharge[];
   discount: number;
   total: number;
   mealPlanEntries: { date: Date; mealType: string; price: number | null; menuName: string | null; menuPricePerPlate: number | null; items: { name: string; itemType: string; unitPrice: number; quantity: number; isExtra: boolean }[] }[];
@@ -67,6 +69,7 @@ export function buildInvoiceLines(order: {
   if (order.childrenCharge > 0) lines.push({ description: "Children charges", quantity: 1, rate: order.childrenCharge });
   if (order.transportationCost > 0) lines.push({ description: "Transportation", quantity: 1, rate: order.transportationCost });
   if (order.otherCharges > 0) lines.push({ description: "Other charges", quantity: 1, rate: order.otherCharges });
+  for (const charge of order.customCharges ?? []) lines.push({ description: charge.label, quantity: 1, rate: charge.amount });
   if (order.discount > 0) lines.push({ description: "Discount", quantity: 1, rate: -order.discount });
 
   const sum = round2(lines.reduce((s, l) => s + l.quantity * l.rate, 0));
@@ -110,6 +113,7 @@ export async function generateInvoiceFromOrder(organizationId: string, orderId: 
     childrenCharge: Number(order.childrenCharge),
     transportationCost: Number(order.transportationCost),
     otherCharges: Number(order.otherCharges),
+    customCharges: parseCustomCharges(order.customCharges),
     discount: Number(order.discount),
     total,
     mealPlanEntries: order.mealPlanEntries.map((e) => ({

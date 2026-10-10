@@ -129,17 +129,18 @@ model Verification {
 }
 
 model Organization {
-  id          String       @id
-  name        String
-  slug        String
-  logo        String?
-  createdAt   DateTime
-  metadata    String?
-  members     Member[]
-  invitations Invitation[]
-  branches    Branch[]
-  kitchens    Kitchen[]
-  stores      Store[]
+  id                      String                   @id
+  name                    String
+  slug                    String
+  logo                    String?
+  createdAt               DateTime
+  metadata                String?
+  members                 Member[]
+  rolePermissionOverrides RolePermissionOverride[]
+  invitations             Invitation[]
+  branches                Branch[]
+  kitchens                Kitchen[]
+  stores                  Store[]
 
   notifications      Notification[]
   whatsAppMessages   WhatsAppMessage[]
@@ -246,6 +247,21 @@ enum TenantStatus {
   ACTIVE
   SUSPENDED
   DEACTIVATED
+}
+
+/// A business's own change to what a built-in role may do (Team Management -> Manage Role Permissions).
+/// `grants` maps a module to its allowed actions, e.g. { "orders": ["view","create"] }; modules not listed keep the built-in grants
+/// from src/lib/auth/permissions.ts. The owner role is never overridden.
+model RolePermissionOverride {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           String
+  grants         Json
+  updatedAt      DateTime     @updatedAt
+  updatedBy      String?
+
+  @@unique([organizationId, role])
 }
 
 model Member {
@@ -1756,6 +1772,8 @@ model Order {
   // into `total` by recalculateOrderTotals alongside discount.
   transportationCost Decimal @default(0) @db.Decimal(12, 2)
   otherCharges       Decimal @default(0) @db.Decimal(12, 2)
+  // Team-added lines on Pricing Details: [{ "label": string, "amount": number }], summed into `total` by recalculateOrderTotals.
+  customCharges      Json    @default("[]")
   discount           Decimal @default(0) @db.Decimal(12, 2)
   total              Decimal @default(0) @db.Decimal(12, 2)
   advance            Decimal @default(0) @db.Decimal(12, 2)

@@ -39,8 +39,9 @@ export interface RolePermissionSummary {
   excluded: string[];
 }
 
-export function describeRolePermissions(roleId: keyof typeof roles): RolePermissionSummary {
-  const grants = roles[roleId].statements as Record<string, readonly string[] | undefined>;
+export function describeRolePermissions(roleId: keyof typeof roles, override?: Record<string, readonly string[]>): RolePermissionSummary {
+  // `override` = this business's saved changes (Manage Role Permissions); they replace the built-in grants for the modules they list.
+  const grants = { ...(roles[roleId].statements as Record<string, readonly string[] | undefined>), ...override };
   const included: string[] = [];
   const excluded: string[] = [];
 

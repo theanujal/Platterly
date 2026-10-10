@@ -10,6 +10,8 @@ import { isMultiLocationEnabled } from "@/modules/locations/locations";
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import { audit } from "@/lib/audit/audit";
 import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
+import { isEditableRole } from "@/lib/auth/role-matrix";
+import { defaultGrants, effectiveMatrixGrants, resetRoleGrants, saveRoleGrants } from "@/modules/roles/role-grants";
 import { TEAM_PRIVACY_KEY, DEFAULT_TEAM_PRIVACY, type TeamPrivacySettings } from "./types";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -187,5 +189,50 @@ export async function updateTeamPrivacyAction(formData: FormData): Promise<Actio
   });
 
   revalidatePath("/settings/team");
+  return { ok: true };
+}
+
+/**
+ * Manage Role Permissions: only someone who can edit Settings (the Owner) may change what the other roles can do in this
+ * business. The role is checked against the editable list and the grants are cleaned server-side, so a tampered request can
+ * neither touch the owner role nor grant an action outside the matrix.
+ */
+export async function saveRolePermissionsAction(roleId: string, grants: Record<string, string[]>): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["edit"] }, organizationId);
+  if (!isEditableRole(roleId)) return { ok: false, error: "This role cannot be changed." };
+
+  const before = await effectiveMatrixGrants(organizationId, roleId);
+  const after = await saveRoleGrants(organizationId, roleId, grants, session.user.id);
+  await audit({
+    organizationId,
+    actorUserId: session.user.id,
+    action: "team.role_permissions_update",
+    recordType: "RolePermissionOverride",
+    recordId: roleId,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(after)),
+  });
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function resetRolePermissionsAction(roleId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["edit"] }, organizationId);
+  if (!isEditableRole(roleId)) return { ok: false, error: "This role cannot be changed." };
+
+  const before = await effectiveMatrixGrants(organizationId, roleId);
+  await resetRoleGrants(organizationId, roleId);
+  await audit({
+    organizationId,
+    actorUserId: session.user.id,
+    action: "team.role_permissions_reset",
+    recordType: "RolePermissionOverride",
+    recordId: roleId,
+    before: JSON.parse(JSON.stringify(before)),
+    after: JSON.parse(JSON.stringify(defaultGrants(roleId))),
+  });
+  revalidatePath("/", "layout");
   return { ok: true };
 }

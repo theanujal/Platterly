@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ClipboardList, CreditCard, Info, MapPin, Tag, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { CalendarDays, ClipboardList, CreditCard, Info, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
 import { FormTabs, type FormTab } from "./form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
+import { MAX_CUSTOM_CHARGES, parseCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
 import { getOrderCountsByDayAction, getMenuForOrderPickerAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
 
@@ -122,6 +123,8 @@ export interface OrderFormValues {
   discount: string;
   transportationCost: string;
   otherCharges: string;
+  /** Team-added label + amount lines (amount typed as text, like the other money fields). */
+  customCharges: { label: string; amount: string }[];
   advance: string;
   paymentStatus: string;
   status: string;
@@ -167,6 +170,7 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   discount: "0",
   transportationCost: "0",
   otherCharges: "0",
+  customCharges: [],
   advance: "0",
   paymentStatus: "UNPAID",
   status: "PENDING_REVIEW",
@@ -423,9 +427,10 @@ export function OrderForm({
   const discountNum = Number.parseFloat(values.discount) || 0;
   const transportationCostNum = Number.parseFloat(values.transportationCost) || 0;
   const otherChargesNum = Number.parseFloat(values.otherCharges) || 0;
+  const customChargesNum = sumCustomCharges(parseCustomCharges(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
   const advanceNum = Number.parseFloat(values.advance) || 0;
   // Mirrors order.ts's server-side recalculateOrderTotals exactly.
-  const total = subtotal - discountNum + transportationCostNum + otherChargesNum;
+  const total = subtotal - discountNum + transportationCostNum + otherChargesNum + customChargesNum;
   const balance = total - advanceNum;
 
   function buildFormData(): FormData {
@@ -467,6 +472,7 @@ export function OrderForm({
     formData.set("discount", values.discount);
     formData.set("transportationCost", values.transportationCost);
     formData.set("otherCharges", values.otherCharges);
+    formData.set("customCharges", JSON.stringify(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
     formData.set("advance", values.advance);
     formData.set("paymentStatus", values.paymentStatus);
     formData.set("notes", values.notes);
@@ -988,6 +994,47 @@ export function OrderForm({
           />
         </div>
       ))}
+      {values.customCharges.map((row, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <Input
+            aria-label={`Charge ${index + 1} label`}
+            placeholder="Label (e.g. Generator)"
+            maxLength={80}
+            className="min-w-0 flex-1"
+            value={row.label}
+            onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, label: e.target.value } : c)))}
+          />
+          <Input
+            aria-label={`Charge ${index + 1} amount`}
+            type="number"
+            min="0"
+            step="0.01"
+            className="w-28 text-right"
+            value={row.amount}
+            onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, amount: e.target.value } : c)))}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove charge ${index + 1}`}
+            onClick={() => setField("customCharges", values.customCharges.filter((_, i) => i !== index))}
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
+      ))}
+      {values.customCharges.length < MAX_CUSTOM_CHARGES && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setField("customCharges", [...values.customCharges, { label: "", amount: "" }])}
+        >
+          <Plus className="size-4" /> Add charge
+        </Button>
+      )}
     </div>
     <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
       <span>Grand Total</span>
@@ -1066,6 +1113,7 @@ export function OrderForm({
           ...(childrenCharge > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
           { label: "Transportation Cost", amount: transportationCostNum },
           { label: "Extra / Service Cost", amount: otherChargesNum },
+          ...parseCustomCharges(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))),
           { label: "Discount", amount: discountNum },
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3">

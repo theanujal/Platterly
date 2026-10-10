@@ -10,6 +10,7 @@ import { getOrder } from "@/modules/orders/order";
 import { menuGuestCount } from "@/modules/orders/meal-pricing";
 import { listMenus } from "@/modules/menus/menu";
 import type { MealSelection } from "@/components/catalog/menu-planning-section";
+import { parseCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { MenuApprovalReview } from "./_components/menu-approval-review";
 import { MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
 
@@ -106,6 +107,7 @@ export default async function MenuApprovalDetailPage({
           discount: Number(order.discount),
           transportationCost: Number(order.transportationCost),
           otherCharges: Number(order.otherCharges),
+          customCharges: sumCustomCharges(parseCustomCharges(order.customCharges)),
         }}
         menuPreference={order.menuPreference ?? ""}
         days={days}

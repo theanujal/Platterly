@@ -120,5 +120,7 @@ export const TENANT_SCOPED_DELEGATES = [
  *   Platterly, not its data: purging it would drop an unpaid kitchen's lock (or its paid limits) until ops pushed again.
  * - OpsNotice: the sidebar notice Platterly Ops set for the kitchen. It is Platterly's message to the kitchen, not the
  *   kitchen's data; purging it would hide the notice until ops sent it again.
+ * - RolePermissionOverride: who may do what in the kitchen. It goes with the team (Member is exempt for the same reason), not
+ *   with the business records the purge removes; wiping it would silently widen or narrow every teammate's access.
  */
-export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog", "OpsSnapshot", "OpsNotice"] as const;
+export const PURGE_EXEMPT_MODELS = ["Member", "Subscription", "SubscriptionPayment", "AuditLog", "OpsSnapshot", "OpsNotice", "RolePermissionOverride"] as const;

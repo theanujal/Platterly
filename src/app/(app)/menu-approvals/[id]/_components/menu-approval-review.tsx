@@ -101,6 +101,8 @@ interface MenuApprovalReviewProps {
     discount: number;
     transportationCost: number;
     otherCharges: number;
+    /** Sum of the team-added label + amount lines. */
+    customCharges: number;
   };
   menuPreference: string;
   days: string[];
@@ -261,7 +263,7 @@ export function MenuApprovalReview({
       ),
     [entries, menus, pricing],
   );
-  const chargesAndDiscount = pricing.transportationCost + pricing.otherCharges - pricing.discount;
+  const chargesAndDiscount = pricing.transportationCost + pricing.otherCharges + pricing.customCharges - pricing.discount;
   const total = priced.mealsSubtotal + pricing.childrenCharge + chargesAndDiscount;
   const lastSent = versions.find((v) => !v.superseded) ?? versions[0] ?? null;
   const lastSentTotal = lastSent?.snapshot?.total ?? null;

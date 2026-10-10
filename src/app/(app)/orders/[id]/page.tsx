@@ -35,6 +35,7 @@ import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
 import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
+import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
@@ -159,6 +160,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     discount: order.discount.toString(),
     transportationCost: order.transportationCost.toString(),
     otherCharges: order.otherCharges.toString(),
+    customCharges: parseCustomCharges(order.customCharges).map((c) => ({ label: c.label, amount: c.amount.toString() })),
     advance: order.advance.toString(),
     paymentStatus: order.paymentStatus,
     status: order.status,

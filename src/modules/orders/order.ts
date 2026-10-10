@@ -5,6 +5,7 @@ import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
 import { derivePaymentState } from "@/modules/payments/payment-math";
 import "server-only";
+import { parseCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
@@ -89,6 +90,8 @@ export interface OrderInput {
   /** "Order Details" section (2026-09-19) — folded into `total` by recalculateOrderTotals alongside discount. */
   transportationCost?: number;
   otherCharges?: number;
+  /** Team-added label + amount lines, summed into `total`. */
+  customCharges?: CustomCharge[];
   advance?: number;
   paymentStatus?: OrderPaymentStatus;
   status?: OrderStatus;
@@ -290,7 +293,7 @@ export async function recalculateOrderTotals(orderId: string) {
       ? computeIndividualChildrenCharge(order, referenceMenuPrice, order.childBelow5Count, order.child5To10Count)
       : computeChildrenCharge(order.childPricingMenu, order.childBelow5Count, order.child5To10Count);
   const subtotal = mealsSubtotal + childrenCharge;
-  const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges);
+  const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges) + sumCustomCharges(parseCustomCharges(order.customCharges));
   // Once an order has confirmed payments, they decide advance, balance and payment status (Chunk 14).
   const paid = await prisma.payment.aggregate({ where: { orderId, status: "CONFIRMED" }, _sum: { amount: true } });
   const confirmedPaid = Number(paid._sum.amount ?? 0);
@@ -367,6 +370,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       discount: input.discount ?? 0,
       transportationCost: input.transportationCost ?? 0,
       otherCharges: input.otherCharges ?? 0,
+      customCharges: parseCustomCharges(input.customCharges),
       advance: input.advance ?? 0,
       paymentStatus: input.paymentStatus ?? "UNPAID",
       status: input.status ?? "PENDING_REVIEW",
@@ -441,6 +445,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       discount: input.discount ?? before.discount,
       transportationCost: input.transportationCost ?? before.transportationCost,
       otherCharges: input.otherCharges ?? before.otherCharges,
+      ...(input.customCharges ? { customCharges: parseCustomCharges(input.customCharges) } : {}),
       advance: input.advance ?? before.advance,
       paymentStatus: input.paymentStatus ?? before.paymentStatus,
       status: input.status ?? before.status,

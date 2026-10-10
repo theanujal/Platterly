@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { isLocked } from "@/modules/ops-link/entitlements";
 import type { statement } from "./permissions";
+import { roleAllows } from "@/modules/roles/role-grants";
 
 
 /**
@@ -140,14 +141,7 @@ export async function requirePermission<Resource extends keyof Statement>(
   organizationId?: string,
 ) {
   const session = await requireSession();
-  const result = await auth.api.hasPermission({
-    headers: await nextHeaders(),
-    body: {
-      organizationId: organizationId ?? session.session.activeOrganizationId ?? undefined,
-      permissions,
-    },
-  });
-  if (!result.success) {
+  if (!(await sessionAllows(session, permissions, organizationId))) {
     forbidden();
   }
   return session;
@@ -164,12 +158,22 @@ export async function hasPermission<Resource extends keyof Statement>(
   organizationId?: string,
 ): Promise<boolean> {
   const session = await requireSession();
-  const result = await auth.api.hasPermission({
-    headers: await nextHeaders(),
-    body: {
-      organizationId: organizationId ?? session.session.activeOrganizationId ?? undefined,
-      permissions,
-    },
-  });
-  return result.success;
+  return sessionAllows(session, permissions, organizationId);
+}
+
+/**
+ * The one place a role's grants are read. The built-in grants live in permissions.ts; an owner can change the non-owner roles
+ * per business (Team Management -> Manage Role Permissions), and `roleAllows` applies that saved change on top. A person with
+ * no membership in the organization is denied.
+ */
+async function sessionAllows(
+  session: { user: { id: string }; session: { activeOrganizationId?: string | null } },
+  permissions: Record<string, readonly string[] | undefined>,
+  organizationId?: string,
+): Promise<boolean> {
+  const orgId = organizationId ?? session.session.activeOrganizationId;
+  if (!orgId) return false;
+  const member = await prisma.member.findFirst({ where: { userId: session.user.id, organizationId: orgId }, select: { role: true } });
+  if (!member) return false;
+  return roleAllows(orgId, member.role, permissions);
 }

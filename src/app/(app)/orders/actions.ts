@@ -15,6 +15,7 @@ import {
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
+import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { changeStatusManually, ManualStatusChangeError } from "@/modules/menu-approvals/manual-status";
 import { getEvent, updateEventOperations, type RequiredInventoryInput } from "@/modules/events/event";
@@ -124,6 +125,7 @@ function buildInput(formData: FormData): OrderInput {
     discount: numberField(formData, "discount") ?? 0,
     transportationCost: numberField(formData, "transportationCost") ?? 0,
     otherCharges: numberField(formData, "otherCharges") ?? 0,
+    customCharges: parseCustomCharges(stringField(formData, "customCharges")),
     advance: numberField(formData, "advance") ?? 0,
     paymentStatus: stringField(formData, "paymentStatus") as OrderPaymentStatus | undefined,
     status: stringField(formData, "status") as OrderStatus | undefined,

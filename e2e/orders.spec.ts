@@ -199,21 +199,25 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByLabel("Discount").fill("100");
   await page.getByLabel("Transportation Cost").fill("30");
   await page.getByLabel("Extra / Service Cost").fill("20");
+  // A team-added charge: label + amount, added into the Grand Total.
+  await page.getByRole("button", { name: "Add charge" }).click();
+  await page.getByLabel("Charge 1 label").fill("Generator");
+  await page.getByLabel("Charge 1 amount").fill("40");
 
   // Payment Status — Advance Received lives here now (not Order Details).
   await page.getByLabel("Advance Received").fill("50");
 
   // Pricing summary live preview (one rule: a dish inside the menu is included, so the 150 Paneer adds nothing):
-  // subtotal = 300 (custom meal price); total = 300-100+30+20 = 250; balance = 250-50 = 200.
+  // subtotal = 300 (custom meal price); total = 300-100+30+20+40 (Generator) = 290; balance = 290-50 = 240.
   await expect(page.getByText("₹300.00").first()).toBeVisible();
-  await expect(page.getByText("₹250.00").first()).toBeVisible();
-  await expect(page.getByText("₹200.00")).toBeVisible();
+  await expect(page.getByText("₹290.00").first()).toBeVisible();
+  await expect(page.getByText("₹240.00")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(page.getByText(customerName)).toBeVisible();
-  await expect(page.getByText("₹250", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
+  await expect(page.getByText("₹290", { exact: true })).toBeVisible(); // card trims whole amounts (formatAmount)
 
   // --- Orders Dashboard filters ---
   await page.getByLabel("Search").fill("no-such-customer-xyz");
@@ -232,6 +236,10 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByLabel("Adults")).toHaveValue("80");
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByLabel("Charge 1 label")).toHaveValue("Generator");
+  await expect(page.getByLabel("Charge 1 amount")).toHaveValue("40");
+  await page.getByRole("tab", { name: "Order Details" }).click();
   // The detail page splits the order into tabs (AJ, 2026-09-30).
   await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
