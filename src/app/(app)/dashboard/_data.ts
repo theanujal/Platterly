@@ -1,11 +1,9 @@
-import { eventAt, orderAt } from "@/modules/locations/scope";
+import { eventAt, orderAt, sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
-import { getInventoryOverviewStats } from "@/modules/inventory/inventory";
+import { getInventoryOverviewStats, listLowStockItems } from "@/modules/inventory/inventory";
+import { getGuestCount } from "@/modules/orders/order-card";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
-import { ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
-import type { OrderStatus } from "@/generated/prisma/enums";
-
-const ORDER_STATUSES = ORDER_STATUS_ORDER;
+import type { MealType, OrderStatus } from "@/generated/prisma/enums";
 
 /**
  * Local calendar-day key (YYYY-MM-DD) built from a Date's own local
@@ -18,126 +16,225 @@ function dateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+const DAY_MS = 86_400_000;
+/** Closed orders: neither of these is "active" any more. */
+const CLOSED: OrderStatus[] = ["COMPLETED", "CANCELLED"];
+const MEAL_ORDER: MealType[] = ["BREAKFAST", "LUNCH", "HITEA", "DINNER", "OTHER"];
+const MEAL_LABEL: Record<MealType, string> = { BREAKFAST: "Breakfast", LUNCH: "Lunch", HITEA: "Hi-Tea", DINNER: "Dinner", OTHER: "Other" };
+
+export interface DashboardOrderRow {
+  id: string;
+  orderNumber: string | null;
+  customerName: string;
+  eventTypeName: string | null;
+  eventStartDate: Date;
+  eventEndDate: Date;
+  guests: number | null;
+  total: number;
+  advance: number;
+  status: OrderStatus;
+  paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID";
+}
+
+const ORDER_ROW_SELECT = {
+  id: true,
+  orderNumber: true,
+  eventStartDate: true,
+  eventEndDate: true,
+  total: true,
+  advance: true,
+  status: true,
+  paymentStatus: true,
+  totalParticipants: true,
+  adultCount: true,
+  childBelow5Count: true,
+  child5To10Count: true,
+  customer: { select: { name: true } },
+  eventType: { select: { name: true } },
+} as const;
+
+type OrderRowSource = {
+  id: string;
+  orderNumber: string | null;
+  eventStartDate: Date;
+  eventEndDate: Date;
+  total: unknown;
+  advance: unknown;
+  status: OrderStatus;
+  paymentStatus: DashboardOrderRow["paymentStatus"];
+  totalParticipants: number | null;
+  adultCount: number | null;
+  childBelow5Count: number | null;
+  child5To10Count: number | null;
+  customer: { name: string };
+  eventType: { name: string } | null;
+};
+
+function toRow(order: OrderRowSource): DashboardOrderRow {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customer.name,
+    eventTypeName: order.eventType?.name ?? null,
+    eventStartDate: order.eventStartDate,
+    eventEndDate: order.eventEndDate,
+    guests: getGuestCount(order),
+    total: Number(order.total),
+    advance: Number(order.advance),
+    status: order.status,
+    paymentStatus: order.paymentStatus,
+  };
+}
+
 /**
- * Single aggregation point for the Dashboard's layout — one Promise.all
- * round trip instead of each card component running its own query, since
- * several modules (KPI grid, Orders card, Needs Attention, Calendar) all
- * derive from the same Order rows. Inventory keeps its own existing helper
- * (getInventoryOverviewStats) since InventoryOverviewCard is unchanged.
+ * Single aggregation point for the Dashboard — one Promise.all round trip
+ * instead of each card running its own query. Order and event dates are
+ * stored as UTC midnight of the local calendar day (see orders/calendar.ts),
+ * so "today" below is that same UTC-midnight value.
  */
 export async function getDashboardSnapshot(organizationId: string, locationId?: string | null) {
   // Chunk 23: with a location chosen (or held), every figure below is that location's. Quotations have no location, so they drop out.
   const atOrder = orderAt(locationId);
+  const now = new Date();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  // 1 year back covers the Orders card's revenue trend's longest range
-  // (1Y) — the 1M/3M/6M range-toggle buttons just slice the tail of this
-  // same dense array client-side, no extra round trip per range.
-  const REVENUE_TREND_DAYS = 365;
-  const revenueTrendStart = new Date(startOfToday.getTime() - (REVENUE_TREND_DAYS - 1) * 86400000);
-  // Calendar window: 1 month back to 3 months forward (+/- a week so the
-  // faded adjacent-month days at each edge have counts too) — enough range
-  // for the Orders Calendar's in-browser month navigation without refetching.
+  const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const tomorrowUtc = new Date(todayUtc.getTime() + DAY_MS);
+  const in7DaysUtc = new Date(todayUtc.getTime() + 7 * DAY_MS);
+  // 1 year back covers the activity chart's longest range (1Y); the 7D/30D/3M buttons slice the tail client-side.
+  const TREND_DAYS = 365;
+  const trendStart = new Date(startOfToday.getTime() - (TREND_DAYS - 1) * DAY_MS);
+  // Calendar window: 1 month back to 3 months forward (+/- a week for the faded adjacent-month days), so the Orders
+  // Calendar's month navigation stays in the browser with no extra request.
   const calendarStart = new Date(startOfToday.getFullYear(), startOfToday.getMonth() - 1, -6);
   const calendarEnd = new Date(startOfToday.getFullYear(), startOfToday.getMonth() + 4, 8);
+  const activeWhere = { organizationId, ...atOrder, status: { notIn: CLOSED } };
+  const notCancelled = { organizationId, ...atOrder, status: { not: "CANCELLED" as const } };
 
   const [
-    statusCounts,
-    dueAgg,
-    upcomingEventsRaw,
+    activeOrders,
+    pendingReviewOrders,
+    awaitingApprovalOrders,
+    upcomingEventsCount,
+    nextWeekOrders,
+    openQuotations,
     quotationsAwaitingResponse,
+    dueAgg,
+    overdueAgg,
+    overdueTop,
+    trendOrdersRaw,
+    eventTypeGroups,
+    todayOrders,
+    todayCount,
+    upcomingOrders,
+    upcomingCount,
+    allOrders,
+    allCount,
+    mealEntries,
     inventory,
-    revenueOrdersRaw,
+    expiringSoon,
+    lowStockItems,
     orderCountsByDay,
   ] = await Promise.all([
-    prisma.order.groupBy({ by: ["status"], where: { organizationId, ...atOrder }, _count: { _all: true }, _sum: { total: true } }),
-    prisma.order.aggregate({
-      where: { organizationId, ...atOrder, status: { not: "CANCELLED" }, balance: { gt: 0 } },
-      _sum: { balance: true },
-      _count: { _all: true },
-    }),
-    prisma.event.findMany({
-      where: { organizationId, ...eventAt(locationId), startDate: { gte: startOfToday }, status: { not: "CANCELLED" } },
-      orderBy: { startDate: "asc" },
-      take: 5,
-      select: {
-        id: true,
-        name: true,
-        startDate: true,
-        endDate: true,
-        venue: true,
-        orderId: true,
-        customer: { select: { name: true } },
-        eventType: { select: { name: true } },
-      },
-    }),
-    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
-    getInventoryOverviewStats(organizationId, locationId),
+    prisma.order.count({ where: activeWhere }),
+    prisma.order.count({ where: { organizationId, ...atOrder, status: "PENDING_REVIEW" } }),
+    prisma.order.count({ where: { organizationId, ...atOrder, status: "AWAITING_CUSTOMER_APPROVAL" } }),
+    prisma.event.count({ where: { organizationId, ...eventAt(locationId), status: { not: "CANCELLED" }, startDate: { gte: todayUtc, lt: in7DaysUtc } } }),
     prisma.order.findMany({
-      where: { organizationId, ...atOrder, createdAt: { gte: revenueTrendStart }, status: { not: "CANCELLED" } },
-      select: { createdAt: true, total: true, status: true },
+      where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: in7DaysUtc } },
+      select: { totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true },
     }),
+    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["DRAFT", "SENT", "VIEWED", "CHANGES_REQUESTED"] } } }),
+    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
+    prisma.order.aggregate({ where: { ...notCancelled, balance: { gt: 0 } }, _sum: { balance: true }, _count: { _all: true } }),
+    prisma.order.aggregate({ where: { ...notCancelled, balance: { gt: 0 }, eventStartDate: { lt: todayUtc } }, _sum: { balance: true }, _count: { _all: true } }),
+    prisma.order.findFirst({
+      where: { ...notCancelled, balance: { gt: 0 }, eventStartDate: { lt: todayUtc } },
+      orderBy: { eventStartDate: "asc" },
+      select: { balance: true, orderNumber: true, customer: { select: { name: true } } },
+    }),
+    prisma.order.findMany({
+      where: { ...notCancelled, createdAt: { gte: trendStart } },
+      select: { createdAt: true, total: true, totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true },
+    }),
+    prisma.event.groupBy({ by: ["eventTypeId"], where: { organizationId, ...eventAt(locationId), status: { not: "CANCELLED" } }, _count: { _all: true } }),
+    prisma.order.findMany({ where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: tomorrowUtc } }, orderBy: { createdAt: "desc" }, take: 5, select: ORDER_ROW_SELECT }),
+    prisma.order.count({ where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: tomorrowUtc } } }),
+    prisma.order.findMany({ where: { ...notCancelled, eventStartDate: { gte: tomorrowUtc } }, orderBy: { eventStartDate: "asc" }, take: 5, select: ORDER_ROW_SELECT }),
+    prisma.order.count({ where: { ...notCancelled, eventStartDate: { gte: tomorrowUtc } } }),
+    prisma.order.findMany({ where: { organizationId, ...atOrder }, orderBy: { createdAt: "desc" }, take: 5, select: ORDER_ROW_SELECT }),
+    prisma.order.count({ where: { organizationId, ...atOrder } }),
+    prisma.mealPlanEntry.findMany({
+      where: { date: { gte: todayUtc, lt: tomorrowUtc }, order: { ...notCancelled } },
+      select: { mealType: true, order: { select: { totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true } } },
+    }),
+    getInventoryOverviewStats(organizationId, locationId),
+    prisma.inventory.count({ where: { organizationId, ...sharedOrAt(locationId), expiryDate: { gte: now, lte: new Date(now.getTime() + 7 * DAY_MS) } } }),
+    listLowStockItems(organizationId, locationId),
     getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd), locationId),
   ]);
 
-  const countFor = (status: OrderStatus) => statusCounts.find((s) => s.status === status)?._count._all ?? 0;
-  const totalOrders = statusCounts.reduce((sum, s) => sum + s._count._all, 0);
-  const pendingReviewOrders = countFor("PENDING_REVIEW");
-
-  const statusBreakdown = ORDER_STATUSES.map((status) => {
-    const row = statusCounts.find((s) => s.status === status);
-    return { status, count: row?._count._all ?? 0, totalValue: Number(row?._sum.total ?? 0) };
-  });
-
-  // Revenue trend: sum of Order.total per day (split Completed vs. still-
-  // Pending, i.e. everything short of Completed/Cancelled), created in the
-  // last year, filled dense so every day plots (0 where nothing was booked
-  // that day). Cancelled orders are excluded entirely, same as the
-  // outstanding-balance aggregate above.
-  const totalByDay = new Map<string, number>();
-  const completedByDay = new Map<string, number>();
-  const pendingByDay = new Map<string, number>();
-  for (const order of revenueOrdersRaw) {
+  // Order activity: one row per day (oldest first) of orders created, their value and their guests.
+  const byDay = new Map<string, { orders: number; revenue: number; guests: number }>();
+  for (const order of trendOrdersRaw) {
     const key = dateKey(order.createdAt);
-    const value = Number(order.total);
-    totalByDay.set(key, (totalByDay.get(key) ?? 0) + value);
-    if (order.status === "COMPLETED") {
-      completedByDay.set(key, (completedByDay.get(key) ?? 0) + value);
-    } else {
-      pendingByDay.set(key, (pendingByDay.get(key) ?? 0) + value);
-    }
+    const row = byDay.get(key) ?? { orders: 0, revenue: 0, guests: 0 };
+    row.orders += 1;
+    row.revenue += Number(order.total);
+    row.guests += getGuestCount(order) ?? 0;
+    byDay.set(key, row);
   }
-  const revenueTrend: { date: string; totalValue: number; completedValue: number; pendingValue: number }[] = [];
-  for (let i = 0; i < REVENUE_TREND_DAYS; i++) {
-    const d = new Date(revenueTrendStart.getTime() + i * 86400000);
-    const key = dateKey(d);
-    revenueTrend.push({
-      date: key,
-      totalValue: totalByDay.get(key) ?? 0,
-      completedValue: completedByDay.get(key) ?? 0,
-      pendingValue: pendingByDay.get(key) ?? 0,
-    });
+  const activity: { date: string; orders: number; revenue: number; guests: number }[] = [];
+  for (let i = 0; i < TREND_DAYS; i++) {
+    const key = dateKey(new Date(trendStart.getTime() + i * DAY_MS));
+    activity.push({ date: key, ...(byDay.get(key) ?? { orders: 0, revenue: 0, guests: 0 }) });
   }
+
+  // Event types: the four biggest, the rest folded into "Other".
+  const typeIds = eventTypeGroups.map((g) => g.eventTypeId);
+  const typeNames = new Map((await prisma.eventType.findMany({ where: { id: { in: typeIds } }, select: { id: true, name: true } })).map((t) => [t.id, t.name]));
+  const typeRows = eventTypeGroups.map((g) => ({ name: typeNames.get(g.eventTypeId) ?? "Other", count: g._count._all })).sort((a, b) => b.count - a.count);
+  const eventTypeDistribution = [
+    ...typeRows.slice(0, 4),
+    ...(typeRows.length > 4 ? [{ name: "Other", count: typeRows.slice(4).reduce((sum, r) => sum + r.count, 0) }] : []),
+  ];
+
+  // Kitchen workload today: guests per meal across every order with that meal today.
+  const mealGuests = new Map<MealType, number>();
+  for (const entry of mealEntries) mealGuests.set(entry.mealType, (mealGuests.get(entry.mealType) ?? 0) + (getGuestCount(entry.order) ?? 0));
+  const kitchenWorkload = MEAL_ORDER.filter((meal) => (mealGuests.get(meal) ?? 0) > 0).map((meal) => ({ meal: MEAL_LABEL[meal], guests: mealGuests.get(meal) ?? 0 }));
 
   return {
-    totalOrders,
-    statusBreakdown,
+    activeOrders,
     pendingReviewOrders,
+    awaitingApprovalOrders,
+    upcomingEventsCount,
+    nextWeekGuests: nextWeekOrders.reduce((sum, o) => sum + (getGuestCount(o) ?? 0), 0),
+    openQuotations,
+    quotationsAwaitingResponse,
     outstandingBalance: Number(dueAgg._sum.balance ?? 0),
     outstandingOrdersCount: dueAgg._count._all,
-    upcomingEvents: upcomingEventsRaw.map((e) => ({
-      id: e.id,
-      name: e.name,
-      startDate: e.startDate,
-      endDate: e.endDate,
-      venue: e.venue,
-      customerName: e.customer.name,
-      eventTypeName: e.eventType.name,
-      orderId: e.orderId,
-    })),
-    quotationsAwaitingResponse,
-    inventory,
-    revenueTrend,
+    overdue: {
+      count: overdueAgg._count._all,
+      amount: Number(overdueAgg._sum.balance ?? 0),
+      top: overdueTop ? { customerName: overdueTop.customer.name, orderNumber: overdueTop.orderNumber, balance: Number(overdueTop.balance) } : null,
+    },
+    activity,
+    eventTypeDistribution,
+    eventTotal: typeRows.reduce((sum, r) => sum + r.count, 0),
+    orderTabs: {
+      today: { count: todayCount, rows: todayOrders.map(toRow) },
+      upcoming: { count: upcomingCount, rows: upcomingOrders.map(toRow) },
+      all: { count: allCount, rows: allOrders.map(toRow) },
+    },
     orderCountsByDay,
+    kitchenWorkload,
+    kitchenGuestsToday: kitchenWorkload.reduce((sum, m) => sum + m.guests, 0),
+    inventory: {
+      lowStock: inventory.lowStock,
+      expired: inventory.expired,
+      expiringSoon,
+      keyItems: lowStockItems.slice(0, 3).map((item) => ({ id: item.id, name: item.name, stock: Number(item.stockCount), unit: item.unit })),
+    },
   };
 }

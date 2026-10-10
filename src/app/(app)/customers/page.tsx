@@ -102,6 +102,7 @@ export default async function CustomersPage() {
         addTile={<AddCustomerDialog variant="tile" />}
         columns={["Customer", "Contact", "Status", "Total Orders", "Last Order", ""]}
         richList
+        defaultView="list"
         gridColumnsClassName="grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
         searchPlaceholder="Search customers…"
         emptyLabel="No customers yet."

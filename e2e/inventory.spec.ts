@@ -112,7 +112,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   // getInventoryOverviewStats' own Vitest test, not duplicated here.
   await expect(page.getByText("Inventory Status")).toBeVisible();
   await expect(page.getByText(itemName)).toBeVisible();
-  await expect(page.getByText("Low stock", { exact: true })).toBeVisible();
+  await expect(page.getByText("Low", { exact: true })).toBeVisible();
 
   // --- Delete ---
   await page.getByRole("link", { name: "Stock & Supplies", exact: true }).click();

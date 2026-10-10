@@ -42,7 +42,7 @@ export function OrdersCalendarCard({ orderCountsByDay }: OrdersCalendarCardProps
             <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600">
               <CalendarDays className="size-4" />
             </div>
-            <CardTitle>Orders Calendar</CardTitle>
+            <CardTitle className="whitespace-nowrap">Orders Calendar</CardTitle>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -53,7 +53,7 @@ export function OrdersCalendarCard({ orderCountsByDay }: OrdersCalendarCardProps
             >
               <ChevronLeft className="size-3.5" />
             </button>
-            <span className="w-24 text-center text-xs font-medium">
+            <span className="px-1 text-center text-xs font-medium whitespace-nowrap">
               {cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
             </span>
             <button
