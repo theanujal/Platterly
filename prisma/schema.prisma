@@ -147,10 +147,6 @@ model Organization {
   auditLogs          AuditLog[]
   secureAccessTokens SecureAccessToken[]
   settings           TenantSetting[]
-  apiKeys            ApiKey[]
-  webhookEndpoints   WebhookEndpoint[]
-  webhookDeliveries  WebhookDelivery[]
-  apiIdempotency     ApiIdempotencyKey[]
 
   // Ops link (docs/ops-contract.md): the business's global id in Platterly Ops. Every creation path gets one from the
   // database default, so no code has to remember to set it. Never changes and is never reused.
@@ -2650,98 +2646,6 @@ model StorefrontVisit {
   @@index([organizationId, visitedAt])
   @@index([organizationId, visitorKey])
   @@map("storefront_visit")
-}
-
-// --- Chunk 25: public API and webhooks ---
-// An API key belongs to one kitchen and is the only thing the public API trusts to say which kitchen a request is for.
-// Only a hash of the key is stored; the key itself is shown once, at creation. `prefix` is the non-secret part of the key
-// (it is how a key is looked up and recognised in the list); revoking sets `revokedAt` and the key stops working at once.
-model ApiKey {
-  id              String       @id @default(cuid())
-  organizationId  String
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  name            String
-  prefix          String       @unique
-  keyHash         String
-  // menus:read, orders:write, ... (src/modules/api/scopes.ts)
-  scopes          String[]
-  createdByUserId String?
-  createdAt       DateTime     @default(now())
-  lastUsedAt      DateTime?
-  revokedAt       DateTime?
-
-  @@index([organizationId])
-  @@map("api_key")
-}
-
-// A kitchen's outbound webhook: where Platterly posts its events, signed with `secretEnc` (encrypted at rest, shown once).
-model WebhookEndpoint {
-  id                  String       @id @default(cuid())
-  organizationId      String
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  url                 String
-  description         String?
-  secretEnc           String
-  events              String[]
-  isActive            Boolean      @default(true)
-  // Switched off by Platterly after repeated permanent failures; the owner sees why and turns it back on.
-  disabledReason      String?
-  consecutiveFailures Int          @default(0)
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
-
-  deliveries WebhookDelivery[]
-
-  @@index([organizationId])
-  @@map("webhook_endpoint")
-}
-
-enum WebhookDeliveryStatus {
-  PENDING
-  DELIVERED
-  FAILED
-}
-
-// One event for one endpoint: its payload as sent, how many tries it took and how it ended. `eventId` is the id the
-// receiver sees (header and body), unique per endpoint so the same event is never queued twice.
-model WebhookDelivery {
-  id             String                @id @default(cuid())
-  organizationId String
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  endpointId     String
-  endpoint       WebhookEndpoint       @relation(fields: [endpointId], references: [id], onDelete: Cascade)
-  eventId        String
-  eventName      String
-  payload        Json
-  status         WebhookDeliveryStatus @default(PENDING)
-  attempts       Int                   @default(0)
-  nextAttemptAt  DateTime?
-  lastStatusCode Int?
-  lastError      String?
-  deliveredAt    DateTime?
-  createdAt      DateTime              @default(now())
-
-  @@unique([endpointId, eventId])
-  @@index([status, nextAttemptAt])
-  @@index([organizationId, createdAt])
-  @@map("webhook_delivery")
-}
-
-// `Idempotency-Key` on the public API: the same key with the same body returns the first response instead of creating a second record.
-model ApiIdempotencyKey {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  apiKeyId       String
-  key            String
-  requestHash    String
-  responseStatus Int?
-  responseBody   Json?
-  createdAt      DateTime     @default(now())
-
-  @@unique([organizationId, key])
-  @@index([createdAt])
-  @@map("api_idempotency_key")
 }
 
 // ---------- Ops link (docs/ops-contract.md). No foreign keys: these hold nothing a kitchen owns. ----------

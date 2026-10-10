@@ -1,4 +1,3 @@
-import { emitEvents } from "@/modules/webhooks/emit";
 import "server-only";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -70,7 +69,6 @@ export async function updateEventOperations(organizationId: string, id: string, 
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
-  await emitEvents(organizationId, "event.updated", [id]);
   return after;
 }
 
@@ -102,7 +100,6 @@ export async function createEvent(organizationId: string, input: EventInput, act
     recordId: event.id,
     after: JSON.parse(JSON.stringify(event)),
   });
-  await emitEvents(organizationId, "event.created", [event.id]);
 
   return event;
 }
@@ -137,7 +134,6 @@ export async function updateEvent(organizationId: string, id: string, input: Eve
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
-  await emitEvents(organizationId, "event.updated", [id]);
 
   return after;
 }

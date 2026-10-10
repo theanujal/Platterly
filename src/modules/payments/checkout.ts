@@ -1,4 +1,3 @@
-import { emitPayment } from "@/modules/webhooks/emit";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -62,15 +61,13 @@ export async function confirmRazorpayPayment(organizationId: string, razorpayOrd
   // The customer paid through the link, so they get the receipt without anyone clicking anything.
   await sendReceiptForPayment(organizationId, payment.id);
   await onPaymentActivity(organizationId, payment.orderId, Number(payment.amount), "received");
-  await emitPayment(organizationId, "payment.updated", payment.id);
   await audit({ organizationId, action: "payment.razorpay_confirmed", recordType: "Payment", recordId: payment.id, after: { amount: Number(payment.amount), razorpayPaymentId } });
   return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
 }
 
 export async function failRazorpayPayment(organizationId: string, razorpayOrderId: string) {
   const pending = await prisma.payment.findMany({ where: { organizationId, razorpayOrderId, source: "RAZORPAY", status: "PENDING" }, select: { id: true } });
-  const failed = await prisma.payment.updateMany({ where: { id: { in: pending.map((p) => p.id) }, status: "PENDING" }, data: { status: "FAILED" } });
-  if (failed.count > 0) for (const { id } of pending) await emitPayment(organizationId, "payment.failed", id);
+  await prisma.payment.updateMany({ where: { id: { in: pending.map((p) => p.id) }, status: "PENDING" }, data: { status: "FAILED" } });
 }
 
 /** "I have paid" on a UPI QR: waits for the kitchen to confirm it reached their account. */

@@ -1,4 +1,3 @@
-import { emitCustomer } from "@/modules/webhooks/emit";
 import { RULES, validateInput } from "@/lib/validation";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import "server-only";
@@ -49,7 +48,6 @@ export async function createCustomer(organizationId: string, input: CustomerInpu
     recordId: customer.id,
     after: JSON.parse(JSON.stringify(customer)),
   });
-  await emitCustomer(organizationId, "customer.created", customer.id);
 
   return customer;
 }
@@ -80,7 +78,6 @@ export async function updateCustomer(organizationId: string, id: string, input: 
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(after)),
   });
-  await emitCustomer(organizationId, "customer.updated", id);
 
   return after;
 }

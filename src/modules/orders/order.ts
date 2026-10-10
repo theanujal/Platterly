@@ -1,4 +1,3 @@
-import { emitEvents, emitOrder } from "@/modules/webhooks/emit";
 import { validateOrderLike } from "@/lib/validation";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -392,7 +391,6 @@ export async function createOrder(organizationId: string, input: OrderInput, act
     after: JSON.parse(JSON.stringify(withTotals)),
   });
   await onOrderCreated(organizationId, order.id);
-  await emitOrder(organizationId, "order.created", order.id);
 
   return withTotals;
 }
@@ -475,8 +473,6 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(withTotals)),
   });
-  await emitOrder(organizationId, "order.updated", id);
-  if (withTotals.status !== before.status) await emitOrder(organizationId, "order.status_changed", id, before.status);
 
   return withTotals;
 }
@@ -683,7 +679,6 @@ export async function syncOrderEvent(organizationId: string, orderId: string, ac
       guestCount: order.totalParticipants,
     },
   });
-  await emitEvents(organizationId, "event.updated", linked.map((e) => e.id));
   return null;
 }
 

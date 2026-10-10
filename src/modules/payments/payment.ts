@@ -1,4 +1,3 @@
-import { emitPayment } from "@/modules/webhooks/emit";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -99,7 +98,6 @@ export async function recordPayment(input: RecordPaymentInput) {
     recordId: payment.id,
     after: { amount, status, source, method: input.method },
   });
-  await emitPayment(input.organizationId, "payment.created", payment.id);
   return payment;
 }
 
@@ -148,7 +146,6 @@ export async function confirmPayment(organizationId: string, paymentId: string, 
   await syncOrderPayments(payment.orderId);
   await issueReceipt(organizationId, paymentId);
   await audit({ organizationId, actorUserId, action: "payment.confirm", recordType: "Payment", recordId: paymentId, after: { amount: Number(payment.amount) } });
-  await emitPayment(organizationId, "payment.updated", paymentId);
   return confirmed;
 }
 
@@ -157,7 +154,6 @@ export async function rejectPayment(organizationId: string, paymentId: string, a
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be rejected.");
   await prisma.payment.update({ where: { id: paymentId }, data: { status: "FAILED" } });
   await audit({ organizationId, actorUserId, action: "payment.reject", recordType: "Payment", recordId: paymentId });
-  await emitPayment(organizationId, "payment.failed", paymentId);
 }
 
 const TYPE_LABEL: Record<PaymentType, string> = { ADVANCE: "Advance", PARTIAL: "Partial payment", FINAL: "Final payment" };

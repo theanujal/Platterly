@@ -1,4 +1,3 @@
-import { emitOrder } from "@/modules/webhooks/emit";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -177,7 +176,6 @@ export async function syncOrderStatus(organizationId: string, menuSelectionId: s
   if (!order || order.status === next) return;
 
   await prisma.order.update({ where: { id: orderId }, data: { status: next } });
-  await emitOrder(organizationId, "order.status_changed", orderId, order.status);
   await audit({
     organizationId,
     actorUserId,

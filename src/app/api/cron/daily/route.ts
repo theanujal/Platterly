@@ -4,8 +4,6 @@ import { prisma } from "@/lib/db";
 import { runDueNotifications } from "@/modules/notifications/triggers";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { scrubOldVisits } from "@/modules/storefront-visits/visits";
-import { runDueWebhookDeliveries, scrubWebhookDeliveries } from "@/modules/webhooks/deliver";
-import { scrubIdempotencyKeys } from "@/lib/api/idempotency";
 import { runOpsLinkJobs } from "@/modules/ops-link/events";
 
 /**
@@ -36,13 +34,9 @@ async function run(request: Request) {
     recurringExpenses += await generateDueRecurringExpenses(org.organizationId, now);
   }
   const visitsScrubbed = await scrubOldVisits(now);
-  // Chunk 25: webhook retries that have come due, and the housekeeping for the API and webhook tables.
-  const webhooksSent = await runDueWebhookDeliveries(now);
-  const webhookLogScrubbed = await scrubWebhookDeliveries(now);
-  const idempotencyKeysScrubbed = await scrubIdempotencyKeys(now);
   // Ops link: pending events, the catch-up sign-ups and the daily usage report (a no-op until OPS_* is configured).
   const opsLink = await runOpsLinkJobs(now);
-  return NextResponse.json({ ranAt: now.toISOString(), opsLink, notifications, recurringExpenses, visitsScrubbed, webhooksSent, webhookLogScrubbed, idempotencyKeysScrubbed });
+  return NextResponse.json({ ranAt: now.toISOString(), opsLink, notifications, recurringExpenses, visitsScrubbed });
 }
 
 export const GET = run;

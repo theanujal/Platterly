@@ -15,11 +15,6 @@
  * this "schema-driven" in practice.
  */
 export const TENANT_SCOPED_DELEGATES = [
-  // Chunk 25 — API keys, webhook endpoints (their deliveries cascade off them) and idempotency keys.
-  "apiKey",
-  "webhookDelivery",
-  "webhookEndpoint",
-  "apiIdempotencyKey",
   "invitation",
   "branch",
   "kitchen",

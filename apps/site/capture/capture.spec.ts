@@ -1,7 +1,7 @@
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
-import { test, expect, request as pwRequest, type Page } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { Pool } from "pg";
 import { signUpCaterer } from "../../../e2e/auth-helpers";
 import { activatePaidPlan, cleanupOnboardingTestUser } from "../../../e2e/db";
@@ -108,14 +108,7 @@ test("capture the catering app for the marketing site", async ({ page, browser }
     for (const key of Object.keys(menuId)) await pool.query(`INSERT INTO event_type_menu (id, "eventTypeId", "menuId") VALUES ($1,$2,$3)`, [id(), eventTypes[name], menuId[key]]);
   }
 
-  // ---------- 3. An API key, then customers and orders through the app's own public API ----------
-  await page.goto("/settings/integration/api-webhooks");
-  await page.getByLabel("Name", { exact: true }).fill("Demo seed");
-  for (const scope of ["customers:read", "customers:write", "orders:read", "orders:write", "menus:read"]) await page.getByRole("checkbox", { name: new RegExp(scope) }).click();
-  await page.getByRole("button", { name: "Create API Key" }).click();
-  const key = (await page.getByTestId("new-api-key").textContent())!.trim();
-  const api = await pwRequest.newContext({ baseURL: BASE, extraHTTPHeaders: { Authorization: `Bearer ${key}` } });
-
+  // ---------- 3. Customers and orders, through the app's own screens (Customers page and Create Order form) ----------
   const people = [
     ["Ananya Kapoor", "9800000111", "ananya.kapoor@example.test"],
     ["Vikram Nair", "9800000112", "vikram.nair@example.test"],
@@ -126,45 +119,109 @@ test("capture the catering app for the marketing site", async ({ page, browser }
     ["Kavya Reddy", "9800000117", "kavya.reddy@example.test"],
     ["Imran Sheikh", "9800000118", "imran.sheikh@example.test"],
   ];
-  const cust: string[] = [];
   for (const [name, phone, email] of people) {
-    const res = await api.post("/api/v1/customers", { data: { name, phone: `+91${phone}`, email }, headers: { "Idempotency-Key": `seed-${phone}` } });
-    expect(res.status(), await res.text()).toBe(201);
-    cust.push((await res.json()).data.id);
+    await page.goto("/customers");
+    await page.getByRole("button", { name: "Add Customer" }).click();
+    await page.getByLabel("Name").fill(name);
+    await page.getByLabel("Phone", { exact: true }).fill(phone);
+    await page.getByLabel("Email").fill(email);
+    await page.getByRole("button", { name: "Create customer" }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
   }
 
-  const pick = (...names: string[]) => names.map((n) => ({ item_type: "MENU_ITEM", catalog_id: itemId[n] }));
-  const order = async (customer: number, body: Record<string, unknown>, key: string) => {
-    const res = await api.post("/api/v1/orders", { data: { customer_id: cust[customer], ...body }, headers: { "Idempotency-Key": `seed-order-${key}` } });
-    expect(res.status(), await res.text()).toBe(201);
-    return (await res.json()).data.id as string;
+  const MENU = { classic: "Classic Veg Thali", royal: "Royal Non-Veg Feast", lunch: "Corporate Lunch Box" };
+  type Meal = { date: number; meal: "Breakfast" | "Lunch" | "Hi-Tea" | "Dinner"; menu: string; items: string[] };
+  type Spec = { event: string; start: number; end?: number; venue: string; address?: string; notes?: string; adults: number; kids5to10?: number; kidsBelow5?: number; meals: Meal[] };
+
+  /** Create Order exactly as a team member does: customer, event type and dates, guests, one menu and its dishes per meal, venue, Save Order. */
+  const order = async (customer: number, spec: Spec) => {
+    await page.goto("/orders/new");
+    const customerName = people[customer][0];
+    const customerInput = page.getByLabel("Customer");
+    await customerInput.click();
+    await customerInput.fill(customerName);
+    await page.getByRole("button", { name: new RegExp(customerName) }).click();
+    await page.getByLabel("Event Type").click();
+    await page.getByRole("option", { name: spec.event }).click();
+
+    const picker = async (offset: number) => {
+      const target = new Date(`${day(offset)}T00:00:00`);
+      const label = target.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+      const popover = page.locator('[data-slot="popover-content"]');
+      for (let i = 0; i < 12 && (await popover.locator("span.font-medium").textContent()) !== label; i++) await popover.getByRole("button", { name: "Next month" }).click();
+      return { popover, dayName: String(target.getDate()) };
+    };
+    await page.getByLabel("Event Date").click();
+    const from = await picker(spec.start);
+    await from.popover.getByRole("button", { name: from.dayName, exact: true }).click();
+    if (spec.end === undefined || spec.end === spec.start) await from.popover.getByRole("button", { name: from.dayName, exact: true }).click();
+    else {
+      const to = await picker(spec.end);
+      await to.popover.getByRole("button", { name: to.dayName, exact: true }).click();
+    }
+    // A date range (or a second meal) switches the order to Multi Order and says so once.
+    const gotIt = page.getByRole("alertdialog").getByRole("button", { name: "Got it" });
+    if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+
+    await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+    await page.getByLabel("Adults").fill(String(spec.adults));
+    if (spec.kidsBelow5) await page.getByLabel("Children (Under 5)").fill(String(spec.kidsBelow5));
+    if (spec.kids5to10) await page.getByLabel("Children (5–10)").fill(String(spec.kids5to10));
+    const sidebar = page.getByRole("navigation", { name: "Event Dates" });
+    for (const m of spec.meals) {
+      if (await sidebar.isVisible().catch(() => false)) await sidebar.getByText(new Date(`${day(m.date)}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })).click();
+      await page.getByRole("button", { name: m.meal, exact: true }).click();
+      if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
+      const slot = page.getByTestId(`meal-slot-${day(m.date)}-${m.meal.toUpperCase().replace("-", "_")}`);
+      await slot.getByLabel("Menu").click();
+      await page.getByRole("option", { name: m.menu }).click();
+      await slot.getByRole("button", { name: "Select Food Items" }).click();
+      const dialog = page.getByRole("dialog", { name: /Select Menu Items/ });
+      await expect(dialog).toBeVisible();
+      // The drawer shows one category at a time: open the dish's category on the rail, then pick the dish.
+      for (const item of m.items) {
+        await dialog.getByRole("navigation", { name: "Categories" }).getByRole("button", { name: new RegExp(`^${items.find((i) => i.name === item)!.cat}`) }).click();
+        await dialog.getByRole("button", { name: new RegExp(item) }).first().click();
+      }
+      await dialog.getByRole("button", { name: "Save Items" }).click();
+      await expect(dialog).not.toBeVisible();
+    }
+
+    await page.getByRole("tab", { name: "Order Details" }).click();
+    await page.getByLabel("Venue / Building Name").fill(spec.venue);
+    if (spec.address) await page.getByLabel("Complete Venue Address").fill(spec.address);
+    if (spec.notes) await page.getByLabel("Additional Notes").fill(spec.notes);
+    await page.getByRole("button", { name: "Save Order", exact: true }).click();
+    await expect(page).toHaveURL(/\/orders$/, { timeout: 30_000 });
+    const found = await pool.query<{ id: string }>(`SELECT o.id FROM "order" o JOIN customer c ON c.id = o."customerId" WHERE o."organizationId" = $1 AND c.name = $2 ORDER BY o."createdAt" DESC LIMIT 1`, [orgId, customerName]);
+    return found.rows[0].id;
   };
   const veg = ["Paneer Tikka", "Dal Makhani", "Paneer Butter Masala", "Veg Biryani", "Butter Naan", "Gulab Jamun"];
   const nonveg = ["Chicken Tikka", "Fish Fry", "Butter Chicken", "Mutton Rogan Josh", "Chicken Biryani", "Butter Naan", "Rasmalai"];
 
   // A: a three-day wedding, the showcase order
   ids.A = await order(0, {
-    event_type_id: eventTypes.Wedding, event_start_date: day(12), event_end_date: day(14), venue: "The Grand Orchid, Whitefield", event_address: "Whitefield Main Road, Bengaluru", menu_preference: "NON_VEGETARIAN",
-    adult_count: 380, child_5_to_10_count: 50, child_below_5_count: 20, notes: "Haldi lunch on day one, reception dinner on day two, farewell lunch on day three.",
-    meal_plans: [
-      { date: day(12), meal_type: "LUNCH", menu_id: menuId.classic, items: pick(...veg) },
-      { date: day(13), meal_type: "DINNER", menu_id: menuId.royal, items: pick(...nonveg) },
-      { date: day(14), meal_type: "LUNCH", menu_id: menuId.classic, items: pick(...veg) },
+    event: "Wedding", start: 12, end: 14, venue: "The Grand Orchid, Whitefield", address: "Whitefield Main Road, Bengaluru", notes: "Haldi lunch on day one, reception dinner on day two, farewell lunch on day three.",
+    adults: 380, kids5to10: 50, kidsBelow5: 20,
+    meals: [
+      { date: 12, meal: "Lunch", menu: MENU.classic, items: veg },
+      { date: 13, meal: "Dinner", menu: MENU.royal, items: nonveg },
+      { date: 14, meal: "Lunch", menu: MENU.classic, items: veg },
     ],
-  }, "A");
-  ids.B = await order(1, { event_type_id: eventTypes["Corporate Lunch"], event_start_date: day(1), venue: "Embassy Tech Village, Bellandur", menu_preference: "VEGETARIAN", adult_count: 120, meal_plans: [{ date: day(1), meal_type: "LUNCH", menu_id: menuId.lunch, items: pick("Dal Makhani", "Paneer Butter Masala", "Veg Biryani", "Butter Naan") }] }, "B");
-  ids.C = await order(2, { event_type_id: eventTypes["Birthday Party"], event_start_date: day(9), venue: "Lakeview Clubhouse, Indiranagar", menu_preference: "VEGETARIAN", adult_count: 40, child_5_to_10_count: 20, meal_plans: [{ date: day(9), meal_type: "DINNER", menu_id: menuId.classic, items: pick(...veg) }] }, "C");
-  ids.D = await order(3, { event_type_id: eventTypes.Wedding, event_start_date: day(21), event_end_date: day(22), venue: "Palm Meadows Resort, Sarjapur", menu_preference: "NON_VEGETARIAN", adult_count: 520, child_5_to_10_count: 80, meal_plans: [{ date: day(21), meal_type: "DINNER", menu_id: menuId.royal, items: pick(...nonveg) }, { date: day(22), meal_type: "LUNCH", menu_id: menuId.royal, items: pick(...nonveg) }] }, "D");
-  ids.E = await order(4, { event_type_id: eventTypes["Corporate Lunch"], event_start_date: day(5), venue: "Manyata Business Park", menu_preference: "VEGETARIAN", adult_count: 200, meal_plans: [{ date: day(5), meal_type: "LUNCH", menu_id: menuId.lunch, items: pick("Dal Makhani", "Veg Biryani", "Butter Naan", "Gulab Jamun") }] }, "E");
-  ids.F = await order(5, { event_type_id: eventTypes["Birthday Party"], event_start_date: day(0), venue: "Sunrise Apartments Hall, Koramangala", menu_preference: "NON_VEGETARIAN", adult_count: 80, meal_plans: [{ date: day(0), meal_type: "LUNCH", menu_id: menuId.royal, items: pick("Chicken Tikka", "Butter Chicken", "Chicken Biryani", "Butter Naan") }] }, "F");
-  ids.G = await order(6, { event_type_id: eventTypes.Wedding, event_start_date: day(2), venue: "Cubbon Park Pavilion", menu_preference: "VEGETARIAN", adult_count: 150, meal_plans: [{ date: day(2), meal_type: "DINNER", menu_id: menuId.classic, items: pick(...veg) }] }, "G");
-  ids.H = await order(7, { event_type_id: eventTypes["Corporate Lunch"], event_start_date: day(1), venue: "Prestige Tech Park", menu_preference: "NON_VEGETARIAN", adult_count: 95, meal_plans: [{ date: day(1), meal_type: "LUNCH", menu_id: menuId.royal, items: pick("Chicken Tikka", "Butter Chicken", "Chicken Biryani", "Rasmalai") }] }, "H");
+  });
+  ids.B = await order(1, { event: "Corporate Lunch", start: 1, venue: "Embassy Tech Village, Bellandur", adults: 120, meals: [{ date: 1, meal: "Lunch", menu: MENU.lunch, items: ["Dal Makhani", "Paneer Butter Masala", "Veg Biryani", "Butter Naan"] }] });
+  ids.C = await order(2, { event: "Birthday Party", start: 9, venue: "Lakeview Clubhouse, Indiranagar", adults: 40, kids5to10: 20, meals: [{ date: 9, meal: "Dinner", menu: MENU.classic, items: veg }] });
+  ids.D = await order(3, { event: "Wedding", start: 21, end: 22, venue: "Palm Meadows Resort, Sarjapur", adults: 520, kids5to10: 80, meals: [{ date: 21, meal: "Dinner", menu: MENU.royal, items: nonveg }, { date: 22, meal: "Lunch", menu: MENU.royal, items: nonveg }] });
+  ids.E = await order(4, { event: "Corporate Lunch", start: 5, venue: "Manyata Business Park", adults: 200, meals: [{ date: 5, meal: "Lunch", menu: MENU.lunch, items: ["Dal Makhani", "Veg Biryani", "Butter Naan", "Gulab Jamun"] }] });
+  ids.F = await order(5, { event: "Birthday Party", start: 0, venue: "Sunrise Apartments Hall, Koramangala", adults: 80, meals: [{ date: 0, meal: "Lunch", menu: MENU.royal, items: ["Chicken Tikka", "Butter Chicken", "Chicken Biryani", "Butter Naan"] }] });
+  ids.G = await order(6, { event: "Wedding", start: 2, venue: "Cubbon Park Pavilion", adults: 150, meals: [{ date: 2, meal: "Dinner", menu: MENU.classic, items: veg }] });
+  ids.H = await order(7, { event: "Corporate Lunch", start: 1, venue: "Prestige Tech Park", adults: 95, meals: [{ date: 1, meal: "Lunch", menu: MENU.royal, items: ["Chicken Tikka", "Butter Chicken", "Chicken Biryani", "Rasmalai"] }] });
 
   // More bookings further out, so the calendar looks like a working month.
-  ids.I = await order(0, { event_type_id: eventTypes["Corporate Lunch"], event_start_date: day(8), venue: "Global Tech Park, Whitefield", menu_preference: "VEGETARIAN", adult_count: 140, meal_plans: [{ date: day(8), meal_type: "LUNCH", menu_id: menuId.lunch, items: pick("Dal Makhani", "Veg Biryani", "Butter Naan") }] }, "I");
-  ids.J = await order(2, { event_type_id: eventTypes["Birthday Party"], event_start_date: day(16), venue: "Orchid Garden, Hebbal", menu_preference: "VEGETARIAN", adult_count: 70, child_5_to_10_count: 25, meal_plans: [{ date: day(16), meal_type: "DINNER", menu_id: menuId.classic, items: pick(...veg) }] }, "J");
-  ids.K = await order(3, { event_type_id: eventTypes.Wedding, event_start_date: day(19), event_end_date: day(20), venue: "Windsor Manor Lawns", menu_preference: "NON_VEGETARIAN", adult_count: 300, meal_plans: [{ date: day(19), meal_type: "DINNER", menu_id: menuId.royal, items: pick(...nonveg) }, { date: day(20), meal_type: "LUNCH", menu_id: menuId.royal, items: pick(...nonveg) }] }, "K");
-  ids.L = await order(4, { event_type_id: eventTypes["Corporate Lunch"], event_start_date: day(23), venue: "RMZ Ecospace, Bellandur", menu_preference: "VEGETARIAN", adult_count: 180, meal_plans: [{ date: day(23), meal_type: "LUNCH", menu_id: menuId.lunch, items: pick("Dal Makhani", "Veg Biryani", "Butter Naan", "Gulab Jamun") }] }, "L");
+  ids.I = await order(0, { event: "Corporate Lunch", start: 8, venue: "Global Tech Park, Whitefield", adults: 140, meals: [{ date: 8, meal: "Lunch", menu: MENU.lunch, items: ["Dal Makhani", "Veg Biryani", "Butter Naan"] }] });
+  ids.J = await order(2, { event: "Birthday Party", start: 16, venue: "Orchid Garden, Hebbal", adults: 70, kids5to10: 25, meals: [{ date: 16, meal: "Dinner", menu: MENU.classic, items: veg }] });
+  ids.K = await order(3, { event: "Wedding", start: 19, end: 20, venue: "Windsor Manor Lawns", adults: 300, meals: [{ date: 19, meal: "Dinner", menu: MENU.royal, items: nonveg }, { date: 20, meal: "Lunch", menu: MENU.royal, items: nonveg }] });
+  ids.L = await order(4, { event: "Corporate Lunch", start: 23, venue: "RMZ Ecospace, Bellandur", adults: 180, meals: [{ date: 23, meal: "Lunch", menu: MENU.lunch, items: ["Dal Makhani", "Veg Biryani", "Butter Naan", "Gulab Jamun"] }] });
 
   // ---------- 4. Where each order stands ----------
   // Real flows where there is a real screen for it: the team sends the menu, the customer approves it on their link.
