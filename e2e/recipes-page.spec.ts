@@ -62,6 +62,10 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   // Add a recipe to the first dish: 2 kg makes 10 servings.
   await page.getByRole("button", { name: `Add recipe for ${dishes[0]}` }).click();
   await page.getByLabel("Ingredient 1").click();
+  // The ingredient list is searchable: a search with no match shows that, then the right text finds it.
+  await page.getByPlaceholder("Search ingredients…").fill("zzz-no-such-item");
+  await expect(page.getByText("No inventory item matches.")).toBeVisible();
+  await page.getByPlaceholder("Search ingredients…").fill(ingredient.slice(0, 8).toLowerCase());
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("2");
   await page.getByRole("button", { name: "Save recipe" }).click();
@@ -70,13 +74,20 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(first.getByText("Complete", { exact: true })).toBeVisible();
   await expect(first).toContainText("₹60.00"); // 2 kg x 300 / 10 servings
 
-  // The second dish starts from the first one's recipe.
-  await page.getByRole("button", { name: `Copy a recipe to ${dishes[1]}` }).click();
-  await page.getByLabel("Copy from").click();
+  // The second dish starts from the first one's recipe, adjusted before saving: 3 kg instead of 2.
+  await page.getByRole("button", { name: `Add recipe for ${dishes[1]}` }).click();
+  await page.getByLabel("Copy from another dish").click();
+  await page.getByPlaceholder("Search dishes with a recipe…").fill(dishes[0].slice(0, 6).toLowerCase());
   await page.getByRole("option", { name: dishes[0] }).click();
-  await page.getByRole("button", { name: "Copy recipe" }).click();
+  await expect(page.getByLabel("Quantity 1")).toHaveValue("2");
+  await expect(page.getByText(`Copied from ${dishes[0]}`)).toBeVisible();
+  await page.getByLabel("Quantity 1").fill("3");
+  await page.getByRole("button", { name: "Save recipe" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
   const second = page.getByTestId("recipe-row").filter({ hasText: dishes[1] });
   await expect(second.getByText("Complete", { exact: true })).toBeVisible();
+  await expect(second).toContainText("₹90.00"); // 3 kg x 300 / 10 servings
+  await expect(first).toContainText("₹60.00"); // the first dish is unchanged
 
   // Filters: nothing is missing any more.
   await page.getByRole("button", { name: "Missing recipe" }).click();

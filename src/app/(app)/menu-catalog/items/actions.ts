@@ -7,7 +7,7 @@ import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, d
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import { importFoodItems } from "@/modules/menus/import/import";
 import { addCatalogItems } from "@/modules/menus/catalog/catalog";
-import { saveRecipe, deleteRecipe, copyRecipe } from "@/modules/recipes/recipe";
+import { saveRecipe, deleteRecipe } from "@/modules/recipes/recipe";
 import type {
   FoodType,
   MenuItemOrigin,
@@ -162,20 +162,6 @@ export async function deleteRecipeAction(menuItemId: string): Promise<ActionResu
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
     await deleteRecipe(organizationId, menuItemId, session.user.id);
-  } catch (error) {
-    return toErrorResult(error);
-  }
-  revalidatePath("/menu-catalog/items");
-  revalidatePath("/recipes");
-  return { ok: true };
-}
-
-/** Starts a dish's recipe from another dish's (the Recipes page: "Copy from another dish"). */
-export async function copyRecipeAction(fromMenuItemId: string, toMenuItemId: string): Promise<ActionResult> {
-  const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ menus: ["edit"] }, organizationId);
-  try {
-    await copyRecipe(organizationId, fromMenuItemId, toMenuItemId, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }

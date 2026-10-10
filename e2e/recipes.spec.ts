@@ -47,6 +47,7 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Ingredient 1").click();
+  await page.getByPlaceholder("Search ingredients…").fill(ingredient.slice(0, 8).toLowerCase());
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("2");
   await expect(page.getByText("20 kg")).toBeVisible();

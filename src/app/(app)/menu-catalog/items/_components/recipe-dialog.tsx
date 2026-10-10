@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { costPerServing, scaleQuantity, type RecipeLine } from "@/modules/recipes/recipe-math";
 import { deleteRecipeAction, saveRecipeAction } from "../actions";
 
@@ -25,6 +25,13 @@ export interface IngredientOption {
   costPerUnit: number | null;
 }
 
+/** Another dish's recipe, offered as a starting point: its quantities are copied into the form, not saved. */
+export interface CopySource {
+  id: string;
+  name: string;
+  recipe: RecipeFormValues;
+}
+
 interface RecipeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -32,17 +39,20 @@ interface RecipeDialogProps {
   name: string;
   initialValues: RecipeFormValues | null;
   options: IngredientOption[];
+  /** Dishes that already have a recipe. When given, "Copy from another dish" fills the form from one of them. */
+  copySources?: CopySource[];
 }
 
 const EMPTY: RecipeFormValues = { yieldServings: "10", notes: "", ingredients: [{ inventoryId: "", quantity: "" }] };
 
 /** The recipe (ingredient list) for one Food Item: quantities for a stated number of servings, with a scale-up preview. */
-export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, options }: RecipeDialogProps) {
+export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, options, copySources = [] }: RecipeDialogProps) {
   const router = useRouter();
   const [values, setValues] = useState<RecipeFormValues>(initialValues ?? EMPTY);
   const [previewServings, setPreviewServings] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
 
   const optionById = new Map(options.map((o) => [o.id, o]));
   const yieldNumber = Number.parseFloat(values.yieldServings);
@@ -57,6 +67,18 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
 
   function setRow(index: number, patch: Partial<RecipeFormValues["ingredients"][number]>) {
     setValues((v) => ({ ...v, ingredients: v.ingredients.map((row, i) => (i === index ? { ...row, ...patch } : row)) }));
+  }
+
+  /** Fills the form from another dish's recipe; nothing is saved until "Save recipe", so the quantities can be adjusted first. */
+  function copyFrom(sourceId: string) {
+    const source = copySources.find((s) => s.id === sourceId);
+    if (!source) return;
+    setValues({
+      yieldServings: source.recipe.yieldServings,
+      notes: source.recipe.notes,
+      ingredients: source.recipe.ingredients.length ? source.recipe.ingredients.map((r) => ({ ...r })) : EMPTY.ingredients,
+    });
+    setCopiedFrom(source.name);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -98,6 +120,23 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
           <p className="text-sm text-muted-foreground">Add items to Inventory first. Ingredients are picked from there.</p>
         ) : (
           <>
+            {copySources.length > 0 && (
+              <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted p-3">
+                <Label>Copy from another dish</Label>
+                <SearchableSelect
+                  aria-label="Copy from another dish"
+                  placeholder="Search a dish that already has a recipe"
+                  searchPlaceholder="Search dishes with a recipe…"
+                  emptyLabel="No dish with a recipe matches."
+                  options={copySources.map((s) => ({ value: s.id, label: s.name }))}
+                  value=""
+                  onValueChange={copyFrom}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {copiedFrom ? `Copied from ${copiedFrom}. Adjust the quantities below, then save.` : "Start from a similar dish, then change the quantities. Nothing is saved until you press Save recipe."}
+                </p>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="recipe-yield">These quantities make (servings)</Label>
               <Input id="recipe-yield" type="number" min="0" step="0.01" required value={values.yieldServings} onChange={(e) => setValues((v) => ({ ...v, yieldServings: e.target.value }))} />
@@ -110,24 +149,17 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
                 return (
                   <div key={index} className="flex items-end gap-2">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <Select
-                        items={Object.fromEntries(options.map((o) => [o.id, o.name]))}
+                      <SearchableSelect
+                        aria-label={`Ingredient ${index + 1}`}
+                        placeholder="Search an inventory item"
+                        searchPlaceholder="Search ingredients…"
+                        emptyLabel="No inventory item matches."
+                        options={options
+                          .filter((o) => o.id === row.inventoryId || !values.ingredients.some((r) => r.inventoryId === o.id))
+                          .map((o) => ({ value: o.id, label: o.name, hint: o.unit }))}
                         value={row.inventoryId}
-                        onValueChange={(v) => setRow(index, { inventoryId: v ?? "" })}
-                      >
-                        <SelectTrigger aria-label={`Ingredient ${index + 1}`} className="w-full">
-                          <SelectValue placeholder="Choose an inventory item" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {options
-                            .filter((o) => o.id === row.inventoryId || !values.ingredients.some((r) => r.inventoryId === o.id))
-                            .map((o) => (
-                              <SelectItem key={o.id} value={o.id}>
-                                {o.name}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                        onValueChange={(v) => setRow(index, { inventoryId: v })}
+                      />
                     </div>
                     <div className="flex w-36 flex-col gap-1.5">
                       <Input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.001" placeholder={unit ? `Qty (${unit})` : "Qty"} value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} />
