@@ -8,40 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { CATEGORY_OPTIONS, UNIT_OPTIONS } from "@/modules/inventory/options";
 import type { ActionResult } from "../actions";
-
-const UNIT_OPTIONS = [
-  { value: "kg", label: "Kilogram (kg)" },
-  { value: "g", label: "Gram (g)" },
-  { value: "ltr", label: "Liter (ltr)" },
-  { value: "ml", label: "Milliliter (ml)" },
-  { value: "pcs", label: "Piece (pcs)" },
-  { value: "dozen", label: "Dozen" },
-  { value: "box", label: "Box" },
-  { value: "packet", label: "Packet" },
-  { value: "bag", label: "Bag" },
-  { value: "bottle", label: "Bottle" },
-] as const;
-
-const CATEGORY_OPTIONS = [
-  "Grains & Cereals",
-  "Pulses & Lentils",
-  "Flours",
-  "Spices & Masalas",
-  "Oils & Ghee",
-  "Dairy",
-  "Vegetables",
-  "Fruits",
-  "Meat & Poultry",
-  "Seafood",
-  "Dry Fruits & Nuts",
-  "Sugar & Sweeteners",
-  "Beverages",
-  "Packaging & Disposables",
-  "Cleaning Supplies",
-  "Fuel & Gas",
-  "Other",
-];
 
 export interface InventoryFormValues {
   name: string;

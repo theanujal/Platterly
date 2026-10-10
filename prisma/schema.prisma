@@ -842,6 +842,24 @@ model SystemFoodItem {
   @@map("system_food_item")
 }
 
+// Platterly's master catalog of common ingredients (not tenant-scoped, maintained via the seed script). A kitchen
+// adds entries to its own Inventory Items; each add creates an independent Inventory row at stock 0 - being in the
+// catalog says nothing about stock. `unit` is only a suggestion, the kitchen confirms it when adding.
+model SystemIngredient {
+  id           String   @id @default(cuid())
+  name         String   @unique
+  description  String?
+  categoryName String
+  unit         String
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([categoryName])
+  @@map("system_ingredient")
+}
+
 // MenuItem <-> MenuCategory tagging (many-to-many) — independent of which
 // Menus the item is assigned to below; a caterer sets both separately.
 model MenuItemCategory {

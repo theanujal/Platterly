@@ -12,6 +12,8 @@ import { CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameC
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
+import { AddInventoryMenu } from "./_components/add-inventory-menu";
+import { listIngredientCatalog } from "@/modules/inventory/catalog/catalog";
 import { InventoryCardActions } from "./_components/inventory-card-actions";
 import type { InventoryFormValues } from "./_components/inventory-form";
 
@@ -41,10 +43,11 @@ export default async function InventoryPage() {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
   const active = await getActiveLocation(organizationId, session.user.id);
-  const [items, supplierOptions, allLocations] = await Promise.all([
+  const [items, supplierOptions, allLocations, catalog] = await Promise.all([
     listInventoryItems(organizationId, active.locationId),
     listSupplierOptions(organizationId),
     active.enabled ? listLocations(organizationId) : Promise.resolve([]),
+    listIngredientCatalog(organizationId, active.locationId),
   ]);
   const locations = active.enabled ? allLocations.map((l) => ({ id: l.id, name: l.name })) : null;
   const locationName = new Map(allLocations.map((l) => [l.id, l.name]));
@@ -155,7 +158,7 @@ export default async function InventoryPage() {
           <h1 className="text-2xl font-semibold">Stock & Supplies</h1>
           <p className="text-sm text-muted-foreground">Track stock on hand, low-stock alerts, and supplier contacts.</p>
         </div>
-        <AddInventoryDialog suppliers={supplierOptions} locations={locations} />
+        <AddInventoryMenu suppliers={supplierOptions} locations={locations} catalog={catalog} />
       </div>
       <SectionTabs group="stock" active="/inventory" organizationId={organizationId} />
 

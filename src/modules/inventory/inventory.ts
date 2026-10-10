@@ -36,6 +36,21 @@ async function assertLocation(organizationId: string, kitchenId?: string | null)
   if (kitchenId) await prisma.kitchen.findFirstOrThrow({ where: { id: kitchenId, organizationId }, select: { id: true } });
 }
 
+export class InventoryNameTakenError extends Error {}
+
+/**
+ * Item names are unique per business and location slot, ignoring case (AJ, 2026-10-10): the same ingredient can be
+ * stocked separately at two locations, but not twice in one place. A shared item (null location) is its own slot.
+ * `exceptId` lets an item keep its own name.
+ */
+async function assertNameFree(organizationId: string, name: string, kitchenId: string | null, exceptId?: string) {
+  const clash = await prisma.inventory.findFirst({
+    where: { organizationId, kitchenId, name: { equals: name.trim(), mode: "insensitive" }, id: exceptId ? { not: exceptId } : undefined },
+    select: { id: true },
+  });
+  if (clash) throw new InventoryNameTakenError(`An inventory item named "${name.trim()}" already exists here.`);
+}
+
 /** Opening stock is created here as a real STOCK_IN ledger entry, not a bare column write — the ledger stays the one source of truth for every stock change. */
 export async function createInventoryItem(
   organizationId: string,
@@ -47,6 +62,7 @@ export async function createInventoryItem(
   await assertSupplier(organizationId, input.supplierId);
   await assertLocation(organizationId, input.kitchenId);
   checkMoney(openingStock, "opening stock", { max: 1_000_000_000 });
+  await assertNameFree(organizationId, input.name, input.kitchenId ?? null);
   const item = await prisma.$transaction(async (tx) => {
     const created = await tx.inventory.create({
       data: {
@@ -104,6 +120,7 @@ export async function updateInventoryItem(
   await assertSupplier(organizationId, input.supplierId);
   await assertLocation(organizationId, input.kitchenId);
   const before = await prisma.inventory.findFirstOrThrow({ where: { id, organizationId } });
+  await assertNameFree(organizationId, input.name, input.kitchenId !== undefined ? input.kitchenId : before.kitchenId, id);
 
   const after = await prisma.inventory.update({
     where: { id },

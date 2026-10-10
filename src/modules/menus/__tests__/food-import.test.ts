@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toXlsx } from "@/lib/export/tabular";
-import { parseCsv, parseXlsx, readTable, UnreadableFileError } from "../import/read-table";
+import { parseCsv, parseXlsx, readTable, UnreadableFileError } from "@/lib/import/read-table";
 import { mapColumns, parseFoodRows, parseFoodType, TEMPLATE_COLUMNS } from "../import/food-rows";
 
 describe("readTable", () => {

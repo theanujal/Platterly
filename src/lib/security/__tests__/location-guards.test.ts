@@ -42,6 +42,9 @@ const NO_LOCATION = new Set([
   "updateStaffMemberAction",
   "deleteStaffMemberAction",
   "createInventoryItemAction",
+  // Bulk adds create new items at the location getActiveLocation gives the person (held members are locked to theirs).
+  "importInventoryItemsAction",
+  "addIngredientsAction",
 ]);
 
 function actionsIn(file: string): { name: string; body: string }[] {
@@ -71,5 +74,7 @@ describe("location checks on Server Actions", () => {
     expect((orders.match(/myHeldLocation\(organizationId, session\.user\.id\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
     const inventory = readFileSync(path.join(process.cwd(), "src/app/(app)/inventory/actions.ts"), "utf8");
     expect(inventory).toMatch(/if \(held\) input\.kitchenId = held/);
+    // the bulk adds (import and ingredient catalog) put items where getActiveLocation says: a held person is locked to theirs
+    expect((inventory.match(/getActiveLocation\(organizationId, session\.user\.id\)/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 });
