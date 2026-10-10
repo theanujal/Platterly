@@ -96,11 +96,13 @@ export function PaymentsSettings({ settings, webhookUrl }: { settings: PaymentSe
         </p>
       </InfoBox>
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-        <AdvancePanel settings={settings} />
+        <div className="flex flex-col gap-4">
+          <AdvancePanel settings={settings} />
+          <RazorpayPanel settings={settings} webhookUrl={webhookUrl} />
+          <UpiPanel settings={settings} />
+        </div>
         <GstPanel settings={settings} />
       </div>
-      <RazorpayPanel settings={settings} webhookUrl={webhookUrl} />
-      <UpiPanel settings={settings} />
     </div>
   );
 }
