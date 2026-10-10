@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createMenuItem, duplicateMenuItem, updateMenuItem, MenuItemNameTakenError } from "@/modules/menus/item";
+import { createMenuItem, duplicateMenuItem, updateMenuItem, deleteMenuItem, listMenuItems, getMenuItem, MenuItemNameTakenError } from "@/modules/menus/item";
+import { listCategories } from "@/modules/menus/category";
 import { bulkAddFoodItems } from "../import/bulk-add";
 import { importFoodItems } from "../import/import";
 import { addCatalogItems, listCatalog } from "../catalog/catalog";
@@ -104,5 +105,42 @@ describe("Platterly catalog", () => {
     catalogIds.push(master.id);
     await addCatalogItems(org.id, [master.id], actor.id);
     expect((await prisma.menuItem.findFirstOrThrow({ where: { organizationId: org.id, name } })).image).toBe("/catalog/categories/desserts.svg");
+  });
+});
+
+describe("kitchens never see each other's food items", () => {
+  it("what kitchen A picks, imports, edits or deletes stays in kitchen A; the catalog stays whole for kitchen B", async () => {
+    const [a, b, actor] = [await makeOrg(), await makeOrg(), await makeActor()];
+    const name = `Shared Dish ${crypto.randomUUID().slice(0, 6)}`;
+    const master = await prisma.systemFoodItem.create({ data: { name, foodType: "VEGETARIAN", categoryName: "IsolationCat", image: "/catalog/photos/jal-jeera.webp" } });
+    catalogIds.push(master.id);
+
+    // A picks a catalog dish and imports another from a file
+    await addCatalogItems(a.id, [master.id], actor.id);
+    const csv = "Item Name,Category,Veg / Non-Veg,Price\nA Only Tikka,A Only Category,Veg,100\n";
+    await importFoodItems(a.id, { name: "a.csv", data: new TextEncoder().encode(csv) }, actor.id);
+
+    // B sees none of it: no items, no categories, and the dish is still available to pick
+    expect(await listMenuItems(b.id)).toHaveLength(0);
+    expect(await listCategories(b.id)).toHaveLength(0);
+    expect((await listCatalog(b.id)).find((c) => c.id === master.id)?.alreadyAdded).toBe(false);
+    expect((await listCatalog(a.id)).find((c) => c.id === master.id)?.alreadyAdded).toBe(true);
+
+    // B adds the same dish: its own separate record, with its own picture file
+    await addCatalogItems(b.id, [master.id], actor.id);
+    const mineA = await prisma.menuItem.findFirstOrThrow({ where: { organizationId: a.id, name } });
+    const mineB = await prisma.menuItem.findFirstOrThrow({ where: { organizationId: b.id, name } });
+    expect(mineA.id).not.toBe(mineB.id);
+    expect(mineA.image).not.toBe(mineB.image);
+
+    // A's edits and deletes never reach B, and A cannot read B's item by id
+    await updateMenuItem(a.id, mineA.id, { ...base, name, price: 999, description: "A's version" }, actor.id);
+    const bAfter = await getMenuItem(b.id, mineB.id);
+    expect(Number(bAfter?.price)).toBe(0);
+    expect(bAfter?.description).toBeNull();
+    expect(await getMenuItem(a.id, mineB.id)).toBeNull();
+    await deleteMenuItem(a.id, mineA.id, actor.id);
+    expect(await listMenuItems(b.id)).toHaveLength(1);
+    expect((await listMenuItems(b.id))[0].name).toBe(name);
   });
 });
