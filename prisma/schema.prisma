@@ -841,6 +841,8 @@ model SystemFoodItem {
   categoryName String
   sortOrder    Int      @default(0)
   isActive     Boolean  @default(true)
+  /// Set when a person changed this entry in Ops; the catalog seed then leaves it alone.
+  editedInOps  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -861,6 +863,8 @@ model SystemIngredient {
   unit         String
   sortOrder    Int      @default(0)
   isActive     Boolean  @default(true)
+  /// Set when a person changed this entry in Ops; the catalog seed then leaves it alone.
+  editedInOps  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

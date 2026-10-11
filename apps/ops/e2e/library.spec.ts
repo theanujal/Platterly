@@ -63,11 +63,37 @@ test("Library review: candidates by kind with their count and hint, fields to co
   const rows = await pool.query("select status from library_candidate where \"productKey\" = $1 and name = $2", [KEY, DISH]);
   expect(rows.rows[0].status).toBe("PENDING");
 
+  // Merge into any library item: a box on every card; with the product unreachable the reason shows and the item stays pending.
+  await expect(card.getByLabel(`Merge ${DISH} into another library item`)).toBeVisible();
+  await card.getByLabel(`Merge ${DISH} into another library item`).fill("Some other dish");
+  await card.getByRole("button", { name: "Merge into this" }).click();
+  await expect(card.getByRole("alert")).toContainText("signing secret could not be read");
+  expect((await pool.query("select status from library_candidate where \"productKey\" = $1 and name = $2", [KEY, DISH])).rows[0].status).toBe("PENDING");
+
   // The ingredient tab has a unit and a fixed list of categories, and no Veg / Non-Veg.
   await page.getByRole("tab", { name: /Ingredients/ }).click();
   const spice = page.getByTestId("library-candidate").filter({ has: page.locator(`input[name="name"][value="${SPICE}"]`) });
   await expect(spice.getByLabel("Unit")).toHaveValue("g");
   await expect(spice.getByLabel("Category")).toHaveValue("Spices & Masalas");
   await expect(spice.getByLabel("Veg / Non-Veg")).toHaveCount(0);
-  await expect(spice.getByRole("button", { name: /Merge into/ })).toHaveCount(0);
+  await expect(spice.getByRole("button", { name: /Merge into “/ })).toHaveCount(0); // no suggestion shortcut
+  await expect(spice.getByRole("button", { name: "Merge into this" })).toBeVisible(); // but any item can be typed
+});
+
+test("Edit library: reachable from Library review, tabs for dishes and ingredients, and a product that cannot be read shows the reason", async ({ page, context }) => {
+  await context.addCookies([{ name: "ops_product", value: KEY, url: "http://ops.localhost:3200" }]);
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  await page.goto("/library");
+  await page.getByRole("link", { name: "Edit library" }).click();
+  await expect(page).toHaveURL(/\/library\/entries/);
+  await expect(page.getByRole("heading", { name: "Edit library" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "signing secret could not be read" })).toBeVisible();
+  await page.getByRole("link", { name: "Ingredients" }).click();
+  await expect(page).toHaveURL(/kind=INGREDIENT/);
+  await expect(page.getByRole("link", { name: "Back to Library review" })).toBeVisible();
 });

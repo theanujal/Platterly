@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Empty, PageHeader } from "@/components/ui";
 import { PickProduct } from "@/components/pick-product";
 import { getSelectedProduct } from "@/lib/selected-product";
-import { countPending, listCandidates } from "@/modules/library/library";
+import { countPending, fetchLibraryEntries, listCandidates } from "@/modules/library/library";
 import { CandidateForm } from "./candidate-form";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +20,9 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const kind = KINDS.some((k) => k.key === kindParam) ? kindParam! : "FOOD_ITEM";
   const status = ["PENDING", "APPROVED", "MERGED", "REJECTED"].includes(statusParam ?? "") ? statusParam! : "PENDING";
   const [counts, rows] = await Promise.all([countPending(selected.key), listCandidates(selected.key, { kind, status })]);
+  // The library's names for the "merge into another item" box (one list for the whole page). Without it the box still works by typing.
+  const libraryNames = status === "PENDING" && rows.length > 0 ? await fetchLibraryEntries(selected.key, kind as "FOOD_ITEM" | "INGREDIENT").catch(() => []) : [];
+  const namesListId = "library-names";
 
   return (
     <>
@@ -32,6 +35,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           </Link>
         ))}
         <span className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+          <Link href="/library/entries" className="mr-2 font-medium text-foreground hover:underline">Edit library</Link>
           Show:
           {["PENDING", "APPROVED", "MERGED", "REJECTED"].map((s) => (
             <Link key={s} href={`/library?kind=${kind}&status=${s}`} className={s === status ? "font-semibold text-foreground" : "hover:underline"}>{s.charAt(0) + s.slice(1).toLowerCase()}</Link>
@@ -41,7 +45,10 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       {rows.length === 0 ? (
         <Empty>{status === "PENDING" ? "Nothing to review. New items appear here once at least two kitchens have added the same name." : `Nothing ${status.toLowerCase()} yet.`}</Empty>
       ) : status === "PENDING" ? (
-        <div className="flex flex-col gap-4">{rows.map((c) => <CandidateForm key={c.id} c={c} />)}</div>
+        <div className="flex flex-col gap-4">
+          <datalist id={namesListId}>{libraryNames.map((e) => <option key={e.id} value={e.name} />)}</datalist>
+          {rows.map((c) => <CandidateForm key={c.id} c={c} namesListId={namesListId} />)}
+        </div>
       ) : (
         <ul className="divide-y divide-border rounded-[14px] bg-card shadow-[0_0_0_1px_rgba(17,24,39,0.1)]">
           {rows.map((c) => (

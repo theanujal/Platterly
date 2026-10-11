@@ -13,4 +13,7 @@ kitchens add, with a person approving every change in Platterly Ops. **Recipes a
 - Routes: `GET /api/ops/library/candidates`, `POST /api/ops/library/decisions` (signed, `docs/ops-contract.md` section 30).
 - Review happens in Ops: `apps/ops/src/modules/library`, page `/library`.
 - Kitchen records behind a candidate: `LibraryCandidateSource` (stays in catering; removed with the kitchen's data).
-- Not built yet: photo candidates (`imageSource` is recorded for it), kitchen categories, a screen to edit existing library entries.
+- `entries.ts`: `listEntries` / `updateEntry` for the Ops editor (route `/api/ops/library/entries`, contract section 31). A rename keeps the old name as an alias; an edited entry gets `editedInOps`, which the catalog seed respects. Hide = `isActive: false`.
+- Editing happens in Ops at `/library/entries` (read live, no copy kept).
+- Not built yet: photo candidates (`imageSource` is recorded for it), kitchen categories as library categories.
+- Merge: a reviewer may merge a candidate into any library item of its kind (hidden ones too), typed by name in Ops; the "looks like" item is only a shortcut. `applyDecision` already takes any `mergeIntoId` and refuses another kind (404).

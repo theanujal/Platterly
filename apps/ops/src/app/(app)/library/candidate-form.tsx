@@ -18,7 +18,7 @@ export interface CandidateView {
 }
 
 /** One candidate: the reviewer may correct the fields, then approve it as a new library entry, merge it into the item it looks like, or reject it. */
-export function CandidateForm({ c }: { c: CandidateView }) {
+export function CandidateForm({ c, namesListId }: { c: CandidateView; namesListId?: string }) {
   const [state, setState] = useState<ReviewState>({});
   const [pending, startTransition] = useTransition();
   const food = c.kind === "FOOD_ITEM";
@@ -80,6 +80,10 @@ export function CandidateForm({ c }: { c: CandidateView }) {
         <Button type="submit" name="intent" value="approve" size="md" disabled={pending}>Approve as new</Button>
         {c.suggestedMatchId ? <Button type="submit" name="intent" value="merge" variant="outline" size="md" disabled={pending}>Merge into “{c.suggestedMatchName}”</Button> : null}
         <Button type="submit" name="intent" value="reject" variant="outline" size="md" disabled={pending}>Reject</Button>
+        <span className="flex items-center gap-2">
+          <input name="mergeIntoName" list={namesListId} aria-label={`Merge ${c.name} into another library item`} placeholder="Or merge into another library item…" className={`${inputClass} w-64`} />
+          <Button type="submit" name="intent" value="mergeOther" variant="outline" size="md" disabled={pending}>Merge into this</Button>
+        </span>
         {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
       </div>
     </form>

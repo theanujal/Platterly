@@ -93,3 +93,37 @@ describe("POST /api/ops/library/decisions", () => {
     expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("PENDING"); // nothing changed
   });
 });
+
+describe("/api/ops/library/entries", () => {
+  const entriesGet = async (kind: string, secret = COMMAND_SECRET) => {
+    const { GET } = await import("@/app/api/ops/library/entries/route");
+    return GET(new Request(`http://127.0.0.1:3000/api/ops/library/entries?kind=${kind}`, { headers: signedHeaders(secret, newId("command"), "") }));
+  };
+  const entriesPost = async (body: unknown, secret = COMMAND_SECRET) => {
+    const { POST } = await import("@/app/api/ops/library/entries/route");
+    const text = JSON.stringify(body);
+    return POST(new Request("http://127.0.0.1:3000/api/ops/library/entries", { method: "POST", headers: signedHeaders(secret, newId("command"), text), body: text }));
+  };
+
+  it("needs a valid signature and a valid kind, and signs its answers", async () => {
+    expect((await entriesGet("FOOD_ITEM", "wrong")).status).toBe(401);
+    expect((await entriesGet("PHOTO")).status).toBe(400);
+    const ok = await entriesGet("INGREDIENT");
+    expect(ok.status).toBe(200);
+    const parsed = JSON.parse(await replyText(ok));
+    expect(Array.isArray(parsed.entries)).toBe(true);
+  });
+
+  it("applies one signed change, answers 409 for a taken name, and 401 without a signature", async () => {
+    const a = await candidate("Route Entry A");
+    await prisma.libraryCandidate.delete({ where: { id: a.id } });
+    const one = await prisma.systemFoodItem.create({ data: { name: "Route Entry One", foodType: "VEGETARIAN", categoryName: "Starters" } });
+    const two = await prisma.systemFoodItem.create({ data: { name: "Route Entry Two", foodType: "VEGETARIAN", categoryName: "Starters" } });
+    names.push(one.name, two.name, "Route Entry Renamed");
+    expect((await entriesPost({ id: one.id, kind: "FOOD_ITEM", isActive: false }, "wrong")).status).toBe(401);
+    expect(JSON.parse(await replyText(await entriesPost({ id: one.id, kind: "FOOD_ITEM", isActive: false }))).result).toBe("applied");
+    expect((await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: one.id } })).isActive).toBe(false);
+    expect((await entriesPost({ id: two.id, kind: "FOOD_ITEM", name: "route entry one" })).status).toBe(409);
+    expect((await entriesPost({ id: two.id, kind: "FOOD_ITEM", foodType: "SOUR" })).status).toBe(400);
+  });
+});

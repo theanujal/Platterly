@@ -19,6 +19,8 @@ import {
   parseEvent,
   parseLibraryCandidates,
   parseLibraryDecision,
+  parseLibraryEntries,
+  parseLibraryEntryUpdate,
   parseManifest,
   parseSnapshot,
   parseVerifyRequest,
@@ -475,5 +477,35 @@ describe("library review", () => {
     expect(parseLibraryDecision({ candidateId: "c1", action: "delete" }).ok).toBe(false);
     expect(parseLibraryDecision({ action: "reject" }).ok).toBe(false);
     expect(parseLibraryDecision({ candidateId: "c1", action: "approve", entry: { name: "X", categoryName: "", foodType: null, unit: null, description: null } }).ok).toBe(false);
+  });
+});
+
+describe("library entry editing", () => {
+  const entry = { id: "e1", kind: "FOOD_ITEM", name: "Dal Tadka", description: null, categoryName: "Main Course", foodType: "VEGETARIAN", unit: null, aliases: ["Tadka Dal"], isActive: true };
+
+  it("reads a list of entries and drops fields it does not know", () => {
+    const parsed = parseLibraryEntries({ entries: [{ ...entry, price: 99, kitchenName: "Secret" }] });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.value.entries[0]).toEqual(entry);
+  });
+
+  it("rejects a malformed entry list", () => {
+    expect(parseLibraryEntries({}).ok).toBe(false);
+    expect(parseLibraryEntries({ entries: [{ ...entry, kind: "PHOTO" }] }).ok).toBe(false);
+    expect(parseLibraryEntries({ entries: [{ ...entry, isActive: "yes" }] }).ok).toBe(false);
+    expect(parseLibraryEntries({ entries: [{ ...entry, categoryName: "" }] }).ok).toBe(false);
+    expect(parseLibraryEntries({ entries: [{ ...entry, foodType: "VEGAN" }] }).ok).toBe(false);
+  });
+
+  it("reads an update with only the fields present, and refuses invalid ones", () => {
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", isActive: false, price: 5 })).toEqual({ ok: true, value: { id: "e1", kind: "FOOD_ITEM", isActive: false } });
+    const full = parseLibraryEntryUpdate({ id: "e1", kind: "INGREDIENT", name: " Jeera ", categoryName: "Spices & Masalas", unit: "kg", description: null, aliases: [" Cumin "] });
+    expect(full).toEqual({ ok: true, value: { id: "e1", kind: "INGREDIENT", name: "Jeera", categoryName: "Spices & Masalas", unit: "kg", description: null, aliases: ["Cumin"] } });
+    expect(parseLibraryEntryUpdate({ kind: "FOOD_ITEM" }).ok).toBe(false);
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "PHOTO" }).ok).toBe(false);
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", name: "" }).ok).toBe(false);
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", foodType: "VEGAN" }).ok).toBe(false);
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", aliases: ["ok", ""] }).ok).toBe(false);
+    expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", isActive: "no" }).ok).toBe(false);
   });
 });

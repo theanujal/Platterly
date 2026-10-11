@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseLibraryCandidates, signedHeaders, verifyRequest, type LibraryDecision } from "@platterly/contract";
+import { newId, parseLibraryCandidates, parseLibraryEntries, signedHeaders, verifyRequest, type LibraryDecision, type LibraryEntryDoc, type LibraryEntryUpdate } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { notifySafely } from "@/modules/notifications/notifications";
@@ -137,4 +137,64 @@ export async function countPending(productKey: string): Promise<{ FOOD_ITEM: num
   const rows = await prisma.libraryCandidate.groupBy({ by: ["kind"], where: { productKey, status: "PENDING" }, _count: true });
   const count = (kind: string) => rows.find((r) => r.kind === kind)?._count ?? 0;
   return { FOOD_ITEM: count("FOOD_ITEM"), INGREDIENT: count("INGREDIENT"), PHOTO: count("PHOTO") };
+}
+
+/** One signed call to a product's library routes; returns the verified, parsed answer or throws a reason a person can read. */
+async function callProduct(productKey: string, path: string, method: "GET" | "POST", body: string, fetchImpl: typeof fetch): Promise<unknown> {
+  const product = await prisma.product.findUnique({ where: { key: productKey } });
+  if (!product || product.status !== "ACTIVE") throw new LibraryReviewError("This product is not active.");
+  let secrets: ReturnType<typeof secretsOf>;
+  try {
+    secrets = secretsOf(product);
+  } catch {
+    throw new LibraryReviewError("The product's signing secret could not be read. Rotate its secrets.");
+  }
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetchImpl(`${product.baseUrl}${path}`, { method, headers: signedHeaders(secrets.sign, newId("command"), body), ...(method === "POST" ? { body } : {}), signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
+    text = await response.text();
+  } catch (error) {
+    throw new LibraryReviewError(error instanceof Error ? `Could not reach the product: ${error.message}` : "Could not reach the product.");
+  }
+  let json: { error?: string } = {};
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // the status code below is enough
+  }
+  if (!response.ok) throw new LibraryReviewError(response.status === 404 ? "This product has no library editor." : (json.error ?? `The product answered ${response.status}.`));
+  const verified = verifyRequest(secrets.accept, response.headers, text);
+  if (!verified.ok) throw new LibraryReviewError(`The product's answer was not signed correctly (${verified.reason}).`);
+  return json;
+}
+
+/** The product's library entries of one kind, read live (Ops keeps no copy: the product's library is the single source). */
+export async function fetchLibraryEntries(productKey: string, kind: "FOOD_ITEM" | "INGREDIENT", fetchImpl: typeof fetch = fetch): Promise<LibraryEntryDoc[]> {
+  const json = await callProduct(productKey, `/api/ops/library/entries?kind=${kind}`, "GET", "", fetchImpl);
+  const parsed = parseLibraryEntries(json);
+  if (!parsed.ok) throw new LibraryReviewError(`The list is invalid: ${parsed.error}.`);
+  return parsed.value.entries;
+}
+
+/** Sends one change to a library entry; the product applies it, and the change is recorded in Ops' audit log only after a signed 2xx. */
+export async function updateLibraryEntry(productKey: string, update: LibraryEntryUpdate, staffId: string, label: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  await callProduct(productKey, "/api/ops/library/entries", "POST", JSON.stringify(update), fetchImpl);
+  await audit({ actorUserId: staffId, action: "library.entry.update", subject: productKey, detail: { kind: update.kind, entry: label, changes: { ...update, id: undefined, kind: undefined } } });
+}
+
+/** The library entry a reviewer typed for a candidate (its name or one of its other names, case ignored), looked up in the candidate's own product and kind; throws when none or more than one matches. */
+export async function findEntryByName(candidateId: string, typed: string, fetchImpl: typeof fetch = fetch): Promise<LibraryEntryDoc> {
+  const candidate = await prisma.libraryCandidate.findUnique({ where: { id: candidateId }, select: { productKey: true, kind: true } });
+  if (!candidate) throw new LibraryReviewError("That item was not found.");
+  if (candidate.kind !== "FOOD_ITEM" && candidate.kind !== "INGREDIENT") throw new LibraryReviewError("This kind of item cannot be merged.");
+  const { productKey, kind } = candidate;
+  const key = typed.trim().toLowerCase();
+  if (!key) throw new LibraryReviewError("Type the name of the library item to merge into.");
+  const entries = await fetchLibraryEntries(productKey, kind, fetchImpl);
+  const exact = entries.filter((e) => e.name.toLowerCase() === key);
+  const found = exact.length > 0 ? exact : entries.filter((e) => e.aliases.some((a) => a.toLowerCase() === key));
+  if (found.length === 0) throw new LibraryReviewError(`"${typed.trim()}" is not in the library. Pick a name from the list.`);
+  if (found.length > 1) throw new LibraryReviewError(`More than one library item is called "${typed.trim()}".`);
+  return found[0];
 }

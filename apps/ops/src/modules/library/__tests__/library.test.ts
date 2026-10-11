@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { newId, signedHeaders, verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
-import { countPending, decideCandidate, listCandidates, pullLibraryCandidates, refreshLibraryCandidates, LibraryReviewError } from "../library";
+import { countPending, decideCandidate, fetchLibraryEntries, findEntryByName, listCandidates, pullLibraryCandidates, refreshLibraryCandidates, updateLibraryEntry, LibraryReviewError } from "../library";
 
 const KEY = "libtest";
 let server: Server;
@@ -97,26 +97,26 @@ describe("deciding", () => {
     seen = [];
     answer = { status: 200, body: JSON.stringify({ result: "applied" }), sign: true };
     const entry = { name: "Dish a (Edited)", categoryName: "Starters", foodType: "VEGETARIAN" as const, unit: null, description: "Nice" };
-    await decideCandidate(c.id, { action: "approve", entry }, "staff-1");
+    await decideCandidate(c.id, { action: "approve", entry }, null as unknown as string);
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({ method: "POST", path: "/api/ops/library/decisions", verified: true });
     expect(JSON.parse(seen[0].body)).toEqual({ candidateId: "a", action: "approve", entry });
     const after = await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } });
-    expect([after.status, after.decidedById]).toEqual(["APPROVED", "staff-1"]);
-    await expect(decideCandidate(c.id, { action: "reject" }, "staff-1")).rejects.toBeInstanceOf(LibraryReviewError); // already decided
+    expect([after.status, after.decidedById]).toEqual(["APPROVED", null as unknown as string]);
+    await expect(decideCandidate(c.id, { action: "reject" }, null as unknown as string)).rejects.toBeInstanceOf(LibraryReviewError); // already decided
   });
 
   it("keeps the item pending and shows the product's reason when it refuses", async () => {
     const c = await pending();
     answer = { status: 409, body: JSON.stringify({ error: '"Dish a" is already in the library. Merge it instead.' }), sign: true };
-    await expect(decideCandidate(c.id, { action: "approve" }, "staff-1")).rejects.toThrow("already in the library");
+    await expect(decideCandidate(c.id, { action: "approve" }, null as unknown as string)).rejects.toThrow("already in the library");
     expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("PENDING");
   });
 
   it("does not record a success the product did not sign", async () => {
     const c = await pending();
     answer = { status: 200, body: JSON.stringify({ result: "applied" }), sign: false };
-    await expect(decideCandidate(c.id, { action: "reject" }, "staff-1")).rejects.toThrow("not signed correctly");
+    await expect(decideCandidate(c.id, { action: "reject" }, null as unknown as string)).rejects.toThrow("not signed correctly");
     expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("PENDING");
   });
 
@@ -139,5 +139,55 @@ describe("deciding", () => {
     answer = { status: 200, body: JSON.stringify({ candidates: [cand("a")] }), sign: true };
     await pullLibraryCandidates(KEY);
     expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("REJECTED");
+  });
+});
+
+describe("editing the library's own entries", () => {
+  const entry = (id: string, over: Record<string, unknown> = {}) => ({ id, kind: "FOOD_ITEM", name: `Entry ${id}`, description: null, categoryName: "Starters", foodType: "VEGETARIAN", unit: null, aliases: [], isActive: true, ...over });
+
+  it("reads the entries with a signed GET for the chosen kind", async () => {
+    answer.body = JSON.stringify({ entries: [entry("e1"), entry("e2", { isActive: false })] });
+    const entries = await fetchLibraryEntries(KEY, "FOOD_ITEM");
+    expect(entries.map((e) => [e.id, e.isActive])).toEqual([["e1", true], ["e2", false]]);
+    expect(seen).toEqual([{ method: "GET", path: "/api/ops/library/entries?kind=FOOD_ITEM", verified: true, body: "" }]);
+  });
+
+  it("refuses an unsigned or invalid list, and says when the product has no editor", async () => {
+    answer.sign = false;
+    await expect(fetchLibraryEntries(KEY, "FOOD_ITEM")).rejects.toThrow(/not signed correctly/);
+    answer = { status: 200, body: JSON.stringify({ entries: [{ id: "x", kind: "RECIPE" }] }), sign: true };
+    await expect(fetchLibraryEntries(KEY, "FOOD_ITEM")).rejects.toThrow(/invalid/);
+    answer = { status: 404, body: "Not found", sign: false };
+    await expect(fetchLibraryEntries(KEY, "FOOD_ITEM")).rejects.toThrow(/no library editor/);
+  });
+
+  it("sends one signed change and audits it only after the product accepted", async () => {
+    answer.body = JSON.stringify({ result: "applied" });
+    await updateLibraryEntry(KEY, { id: "e1", kind: "FOOD_ITEM", isActive: false }, null as unknown as string, "Entry e1");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ method: "POST", path: "/api/ops/library/entries", verified: true });
+    expect(JSON.parse(seen[0].body)).toEqual({ id: "e1", kind: "FOOD_ITEM", isActive: false });
+    const logged = await prisma.auditLog.count({ where: { action: "library.entry.update", subject: KEY } });
+    expect(logged).toBe(1);
+    await prisma.auditLog.deleteMany({ where: { action: "library.entry.update", subject: KEY } });
+
+    answer = { status: 409, body: JSON.stringify({ error: "\"X\" is already in the library." }), sign: true };
+    await expect(updateLibraryEntry(KEY, { id: "e1", kind: "FOOD_ITEM", name: "X" }, null as unknown as string, "Entry e1")).rejects.toThrow(/already in the library/);
+    expect(await prisma.auditLog.count({ where: { action: "library.entry.update", subject: KEY } })).toBe(0);
+  });
+
+  it("finds the library item a reviewer typed (by name or other name) for a candidate, in that candidate's own product and kind", async () => {
+    await pullLibraryCandidates(KEY);
+    const dishCandidate = (await listCandidates(KEY, { kind: "FOOD_ITEM" }))[0];
+    answer.body = JSON.stringify({ entries: [entry("e1", { name: "Paneer Butter Masala", aliases: ["Paneer Makhani"] }), entry("e2", { name: "Dal Tadka" })] });
+    seen = [];
+    expect((await findEntryByName(dishCandidate.id, " paneer butter masala ")).id).toBe("e1");
+    expect((await findEntryByName(dishCandidate.id, "PANEER MAKHANI")).id).toBe("e1");
+    expect(seen[0].path).toBe("/api/ops/library/entries?kind=FOOD_ITEM");
+    await expect(findEntryByName(dishCandidate.id, "Nothing like it")).rejects.toThrow(/not in the library/);
+    await expect(findEntryByName(dishCandidate.id, "  ")).rejects.toThrow(/Type the name/);
+    answer.body = JSON.stringify({ entries: [entry("e1", { name: "Same" }), entry("e2", { name: "same" })] });
+    await expect(findEntryByName(dishCandidate.id, "same")).rejects.toThrow(/More than one/);
+    await expect(findEntryByName("missing", "x")).rejects.toThrow(/not found/);
   });
 });

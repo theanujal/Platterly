@@ -102,3 +102,95 @@ export function parseLibraryDecision(input: unknown): ParseResult<LibraryDecisio
   if (!name || !categoryName || foodType === undefined || unit === undefined || description === undefined) return fail("entry needs a name and category, and valid type, unit and description");
   return ok({ candidateId, action, entry: { name, categoryName, foodType, unit, description }, replacePhoto });
 }
+
+/**
+ * Editing the library itself (docs/ops-contract.md section 31). Ops lists the entries of one kind with a signed GET and changes
+ * one entry with a signed POST. Only library data crosses: never anything a kitchen owns. Kitchens' own copies never change.
+ */
+export interface LibraryEntryDoc {
+  id: string;
+  kind: Exclude<LibraryKind, "PHOTO">;
+  name: string;
+  description: string | null;
+  categoryName: string;
+  foodType: LibraryFoodType | null;
+  unit: string | null;
+  aliases: string[];
+  /** false = hidden from kitchens (still in the library, can be shown again). */
+  isActive: boolean;
+}
+
+export const LIBRARY_ENTRY_LIMITS = { entries: 1500, aliases: 30 } as const;
+
+export function parseLibraryEntries(input: unknown): ParseResult<{ entries: LibraryEntryDoc[] }> {
+  if (!isRecord(input) || !Array.isArray(input.entries)) return fail("entries must be a list");
+  if (input.entries.length > LIBRARY_ENTRY_LIMITS.entries) return fail(`at most ${LIBRARY_ENTRY_LIMITS.entries} entries`);
+  const out: LibraryEntryDoc[] = [];
+  for (const [i, raw] of input.entries.entries()) {
+    if (!isRecord(raw)) return fail(`entry ${i} must be an object`);
+    const id = text(raw.id, LIBRARY_LIMITS.id);
+    const name = text(raw.name, LIBRARY_LIMITS.name);
+    const categoryName = text(raw.categoryName, LIBRARY_LIMITS.name);
+    const description = optText(raw.description, LIBRARY_LIMITS.text);
+    const unit = optText(raw.unit, 40);
+    const foodType = raw.foodType === null || raw.foodType === undefined ? null : FOOD_TYPES.includes(raw.foodType as LibraryFoodType) ? (raw.foodType as LibraryFoodType) : undefined;
+    if (!id || !name || !categoryName || (raw.kind !== "FOOD_ITEM" && raw.kind !== "INGREDIENT") || description === undefined || unit === undefined || foodType === undefined || typeof raw.isActive !== "boolean") return fail(`entry ${i} is invalid`);
+    const aliases = Array.isArray(raw.aliases) ? raw.aliases.filter((a): a is string => typeof a === "string" && a.length <= LIBRARY_LIMITS.name) : [];
+    out.push({ id, kind: raw.kind, name, description, categoryName, foodType, unit, aliases: aliases.slice(0, LIBRARY_ENTRY_LIMITS.aliases), isActive: raw.isActive });
+  }
+  return ok({ entries: out });
+}
+
+/** The reviewer's change to one entry. Every field is optional; only what is present changes. */
+export interface LibraryEntryUpdate {
+  id: string;
+  kind: Exclude<LibraryKind, "PHOTO">;
+  name?: string;
+  description?: string | null;
+  categoryName?: string;
+  foodType?: LibraryFoodType;
+  unit?: string;
+  /** The whole alias list (other names kitchens use for it). */
+  aliases?: string[];
+  isActive?: boolean;
+}
+
+export function parseLibraryEntryUpdate(input: unknown): ParseResult<LibraryEntryUpdate> {
+  if (!isRecord(input)) return fail("update must be an object");
+  const id = text(input.id, LIBRARY_LIMITS.id);
+  if (!id || (input.kind !== "FOOD_ITEM" && input.kind !== "INGREDIENT")) return fail("id and a valid kind are required");
+  const update: LibraryEntryUpdate = { id, kind: input.kind };
+  if (input.name !== undefined) {
+    const v = text(input.name, LIBRARY_LIMITS.name);
+    if (!v) return fail("name is invalid");
+    update.name = v;
+  }
+  if (input.categoryName !== undefined) {
+    const v = text(input.categoryName, LIBRARY_LIMITS.name);
+    if (!v) return fail("categoryName is invalid");
+    update.categoryName = v;
+  }
+  if (input.description !== undefined) {
+    const v = optText(input.description, LIBRARY_LIMITS.text);
+    if (v === undefined) return fail("description is invalid");
+    update.description = v;
+  }
+  if (input.foodType !== undefined) {
+    if (!FOOD_TYPES.includes(input.foodType as LibraryFoodType)) return fail("foodType is invalid");
+    update.foodType = input.foodType as LibraryFoodType;
+  }
+  if (input.unit !== undefined) {
+    const v = text(input.unit, 40);
+    if (!v) return fail("unit is invalid");
+    update.unit = v;
+  }
+  if (input.aliases !== undefined) {
+    if (!Array.isArray(input.aliases) || input.aliases.length > LIBRARY_ENTRY_LIMITS.aliases || input.aliases.some((a) => typeof a !== "string" || a.trim() === "" || a.length > LIBRARY_LIMITS.name)) return fail("aliases are invalid");
+    update.aliases = (input.aliases as string[]).map((a) => a.trim());
+  }
+  if (input.isActive !== undefined) {
+    if (typeof input.isActive !== "boolean") return fail("isActive must be true or false");
+    update.isActive = input.isActive;
+  }
+  return ok(update);
+}

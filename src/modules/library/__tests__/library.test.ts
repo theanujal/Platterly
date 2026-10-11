@@ -131,6 +131,28 @@ describe("applying a decision", () => {
     await expect(applyDecision({ candidateId: bare.id, action: "approve" })).rejects.toBeInstanceOf(LibraryError);
   });
 
+  it("merge works into any library item, not only the suggested one: a hidden one too, and never across kinds", async () => {
+    const word = unique();
+    const suggested = await prisma.systemFoodItem.create({ data: { name: `Suggested ${word} Curry`, foodType: "VEGETARIAN", categoryName: "Main Course" } });
+    const hidden = await prisma.systemFoodItem.create({ data: { name: `Hidden ${word} Special`, foodType: "VEGETARIAN", categoryName: "Main Course", isActive: false } });
+    const spice = await prisma.systemIngredient.create({ data: { name: `Spice ${word}`, categoryName: "Spices & Masalas", unit: "kg" } });
+    systemFoodIds.push(suggested.id, hidden.id);
+    systemIngredientIds.push(spice.id);
+    const name = `Totally Different ${word} Name`;
+    const c = await candidateFor(name, ["x", "y"]);
+    await prisma.libraryCandidate.update({ where: { id: c.id }, data: { suggestedMatchId: suggested.id, suggestedMatchName: suggested.name } });
+
+    // a dish is never merged into an ingredient, and nothing changes when it is refused
+    await expect(applyDecision({ candidateId: c.id, action: "merge", mergeIntoId: spice.id })).rejects.toMatchObject({ status: 404 });
+    expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("PENDING");
+    expect((await prisma.systemIngredient.findUniqueOrThrow({ where: { id: spice.id } })).aliases).toEqual([]);
+
+    await applyDecision({ candidateId: c.id, action: "merge", mergeIntoId: hidden.id });
+    expect((await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: hidden.id } })).aliases).toContain(name);
+    expect((await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: suggested.id } })).aliases).toEqual([]);
+    expect(await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ status: "MERGED", mergedIntoId: hidden.id });
+  });
+
   it("merge adds the name as an alias so the next scan no longer offers it; reject is not offered again", async () => {
     const [a, b] = [await makeOrg(), await makeOrg()];
     const word = unique();
