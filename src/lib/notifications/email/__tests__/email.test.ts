@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { verificationCodeEmail, teamInvitationEmail, emailForEvent, passwordResetEmail } from "../templates";
 import { sendEmail } from "../zeptomail";
 import { escapeHtml } from "../layout";
+import { emailMessageFor } from "@/modules/notifications/channel-settings-config";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -92,7 +93,7 @@ describe("email additions (2026-10-04)", () => {
 
   it("password reset code email", () => {
     const { subject, html } = passwordResetEmail("482915", 10);
-    expect(subject).toBe("Platterly Password Reset");
+    expect(subject).toBe("Reset Your Platterly Password");
     expect(html).toContain("482915");
     expect(html).toContain("Valid for 10 minutes");
   });
@@ -117,5 +118,61 @@ describe("email additions (2026-10-04)", () => {
     const { html } = emailForEvent("system.alert", { title: "Your plan changed", message: "Trial to Professional.", url: "https://x.test/settings/subscription" })!;
     expect(html).toContain("Your plan changed");
     expect(html).toContain("Trial to Professional.");
+  });
+});
+
+describe("kitchen -> customer email list (2026-10-11)", () => {
+  it("uses the agreed subjects", () => {
+    expect(emailForEvent("order.status_changed", { status: "APPROVED" })?.subject).toBe("Your Catering Order is Confirmed");
+    expect(emailForEvent("order.status_changed", { status: "COMPLETED" })?.subject).toBe("Your Catering Order Has Been Completed");
+    expect(emailForEvent("order.status_changed", { status: "CANCELLED" })?.subject).toBe("Update on Your Catering Order Request");
+    expect(emailForEvent("menu_approval.sent", {})?.subject).toBe("Review Your Catering Menu & Order");
+    expect(emailForEvent("order.new_alert", {})?.subject).toBe("New Order Submitted for Review");
+    expect(emailForEvent("lead.new", { customerName: "Asha" })?.subject).toBe("New Lead Added in Your Platterly Account");
+    expect(emailForEvent("lead.incomplete_booking", { customerName: "Asha" })?.subject).toBe("New Incomplete Booking Lead");
+  });
+
+  it("food dispatched mentions the driver and the order, in the shared layout", () => {
+    const mail = emailForEvent("logistics.dispatched_customer", { customerName: "Asha", orderNumber: "ORD-1", driverName: "Ravi", kitchenName: "Spice Kitchen" });
+    expect(mail?.subject).toBe("Your Catering Order is On the Way");
+    expect(mail?.html).toContain("Ravi");
+    expect(mail?.html).toContain("ORD-1");
+    expect(mail?.html).toContain("Spice Kitchen");
+    // Same layout as the OTP email: the orange-to-green card and the footer are shared.
+    const otp = verificationCodeEmail("123456", 10).html;
+    expect(otp).toContain("linear-gradient");
+    expect(mail?.html).toContain("linear-gradient");
+  });
+
+  it("each customer email maps to exactly one switch; team emails and account mails to none", () => {
+    expect(emailMessageFor("order.created")).toBe("orderReceived");
+    expect(emailMessageFor("order.status_changed", { status: "APPROVED" })).toBe("orderConfirmed");
+    expect(emailMessageFor("order.status_changed", { status: "COMPLETED" })).toBe("orderCompleted");
+    expect(emailMessageFor("order.status_changed", { status: "SENT_TO_KITCHEN" })).toBe("orderUpdate");
+    expect(emailMessageFor("logistics.dispatched_customer")).toBe("foodDispatched");
+    expect(emailMessageFor("payment.due")).toBe("paymentReminder");
+    expect(emailMessageFor("payment.overdue")).toBe("paymentReminder");
+    for (const event of ["order.new_alert", "payment.received", "payment.upi_claimed", "system.alert", "lead.new", "lead.incomplete_booking", "team.invitation_sent"]) expect(emailMessageFor(event)).toBeNull();
+  });
+});
+
+describe("email footer and logo (2026-10-11)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("every email says Powered by Platterly in the footer", () => {
+    expect(verificationCodeEmail("123456", 10).html).toContain("Powered by <a");
+    expect(emailForEvent("logistics.dispatched_customer", {})?.html).toContain("Powered by <a");
+  });
+
+  it("the logo travels inside the email in dev, and is the public file on the app's host in production", () => {
+    vi.stubEnv("EMAIL_LOGO_URL", "");
+    vi.stubEnv("NODE_ENV", "development");
+    expect(verificationCodeEmail("123456", 10).html).toContain('src="cid:platterly-logo"');
+    vi.stubEnv("NODE_ENV", "production");
+    const html = verificationCodeEmail("123456", 10).html;
+    expect(html).toContain("/platterly-logo.png");
+    expect(html).not.toContain("cid:platterly-logo");
+    vi.stubEnv("EMAIL_LOGO_URL", "https://cdn.example.test/logo.png");
+    expect(verificationCodeEmail("123456", 10).html).toContain('src="https://cdn.example.test/logo.png"');
   });
 });

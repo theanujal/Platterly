@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { notify } from "@/lib/notifications/notify";
+import { setChannelActive, setChannelMessages } from "@/modules/notifications/channel-settings";
 
 const cleanupOrgIds: string[] = [];
 
@@ -50,7 +51,7 @@ describe("notify() (Chunk 2 Group 2.1)", () => {
 });
 
 describe("notify() email gating (Chunk 16)", () => {
-  it("does not send a templated email while the channel is off, but always sends invitations", async () => {
+  it("does not send a customer email while the channel is off or its switch is off, but always sends invitations and team alerts", async () => {
     const { vi } = await import("vitest");
     vi.stubEnv("ZEPTOMAIL_TOKEN", "abc");
     vi.stubEnv("ZEPTOMAIL_FROM", "noreply@platterly.test");
@@ -58,9 +59,31 @@ describe("notify() email gating (Chunk 16)", () => {
     vi.stubGlobal("fetch", fetchMock);
     try {
       const org = await makeOrg();
+      // On by default: a kitchen -> customer email goes out until the kitchen switches it off.
+      const sentByDefault = await notify({ organizationId: org.id, channel: "EMAIL", event: "invoice.sent", recipient: { email: "c@example.test" }, payload: { number: "INV-1" } });
+      expect(sentByDefault.logs[0].status).toBe("sent");
+      fetchMock.mockClear();
+
+      await setChannelMessages(org.id, "email", { invoice: false });
       const invoice = await notify({ organizationId: org.id, channel: "EMAIL", event: "invoice.sent", recipient: { email: "c@example.test" }, payload: { number: "INV-1" } });
       expect(invoice.logs[0].status).toBe("skipped");
       expect(fetchMock).not.toHaveBeenCalled();
+
+      // Order status emails follow the switch for that status.
+      await setChannelMessages(org.id, "email", { orderCompleted: false });
+      const completed = await notify({ organizationId: org.id, channel: "EMAIL", event: "order.status_changed", recipient: { email: "c@example.test" }, payload: { status: "COMPLETED" } });
+      expect(completed.logs[0].status).toBe("skipped");
+      const confirmed = await notify({ organizationId: org.id, channel: "EMAIL", event: "order.status_changed", recipient: { email: "c@example.test" }, payload: { status: "APPROVED" } });
+      expect(confirmed.logs[0].status).toBe("sent");
+      fetchMock.mockClear();
+
+      // The team's own alerts ignore the kitchen's switches, even with the whole channel off.
+      await setChannelActive(org.id, "email", false);
+      const alert = await notify({ organizationId: org.id, channel: "EMAIL", event: "order.new_alert", recipient: { email: "team@example.test" }, payload: { customerName: "Asha" } });
+      expect(alert.logs[0].status).toBe("sent");
+      const lead = await notify({ organizationId: org.id, channel: "EMAIL", event: "lead.new", recipient: { email: "team@example.test" }, payload: { customerName: "Asha" } });
+      expect(lead.logs[0].status).toBe("sent");
+      fetchMock.mockClear();
 
       const invite = await notify({ organizationId: org.id, channel: "EMAIL", event: "team.invitation_sent", recipient: { email: "t@example.test" }, payload: { organizationName: "X", inviterName: "Y", acceptUrl: "https://x.test/a" } });
       expect(invite.logs[0].status).toBe("sent");

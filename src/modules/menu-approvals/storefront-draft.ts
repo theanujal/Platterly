@@ -7,6 +7,7 @@ import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItem
 import { ownVisitId } from "@/modules/storefront-visits/visits";
 import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
 import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
+import { onNewLead } from "@/modules/notifications/triggers";
 import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
 import { requiredShortfalls, splitPicks } from "./storefront-selection";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "./public-lead-time";
@@ -141,8 +142,10 @@ export async function startDraft(organizationId: string, input: StartDraftInput)
   const details = await validateEventDetails(organizationId, input);
 
   let customer = await findCustomerByPhone(organizationId, phone);
+  let isNewLead = false;
   if (!customer) {
     customer = await createCustomer(organizationId, { name, phone, email, isEnquiry: true, leadSource: "STOREFRONT" });
+    isNewLead = true;
   }
   if (customer.marketingConsent !== input.marketingConsent) {
     customer = await prisma.customer.update({
@@ -155,6 +158,7 @@ export async function startDraft(organizationId: string, input: StartDraftInput)
   const draft = await prisma.storefrontDraft.create({
     data: { organizationId, customerId: customer.id, currentStep: 2, data: details as unknown as Prisma.InputJsonValue, visitId: await ownVisitId(organizationId, input.visitId) },
   });
+  if (isNewLead) await onNewLead(organizationId, customer.id);
   return { draft, customer };
 }
 

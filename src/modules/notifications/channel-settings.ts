@@ -32,13 +32,15 @@ export async function getChannelSettings(organizationId: string, channel: Settin
   const providerConnected = !config.hasService ? true : channel === "email" ? provider?.connected !== false : provider?.connected === true;
 
   const messages: ChannelSettings["messages"] = {};
-  for (const message of config.messages) messages[message.key] = message.available && stored?.messages?.[message.key] === true;
+  // Email (kitchen -> customer) is on until the kitchen switches a message off; the other channels start off.
+  for (const message of config.messages) messages[message.key] = message.available && (channel === "email" ? stored?.messages?.[message.key] !== false : stored?.messages?.[message.key] === true);
 
   const templates: ChannelSettings["templates"] = {};
   for (const template of config.templates) templates[template.key] = stored?.templates?.[template.key]?.trim() ? stored.templates[template.key] : template.defaultBody;
 
   // A caterer can't stay active once the provider is disconnected.
-  return { providerConnected, active: providerConnected && stored?.active === true, messages, templates };
+  const active = channel === "email" ? stored?.active !== false : stored?.active === true;
+  return { providerConnected, active: providerConnected && active, messages, templates };
 }
 
 async function update(organizationId: string, channel: SettingsChannel, change: (stored: StoredSettings) => StoredSettings) {
@@ -51,7 +53,10 @@ export async function setChannelActive(organizationId: string, channel: Settings
   if (active && !providerConnected) {
     throw new ChannelProviderNotConnectedError(`${CHANNEL_CONFIG[channel].label} isn't connected yet. The Platterly team connects it for you.`);
   }
-  await update(organizationId, channel, (stored) => ({ ...stored, active }));
+  // Email is one master switch over every customer email: turning it off turns every message off, turning it on turns
+  // every message on, and the kitchen then decides one by one.
+  const all = channel === "email" ? Object.fromEntries(CHANNEL_CONFIG.email.messages.filter((m) => m.available).map((m) => [m.key, active])) : null;
+  await update(organizationId, channel, (stored) => ({ ...stored, active, ...(all ? { messages: all } : {}) }));
 }
 
 export async function setChannelMessages(organizationId: string, channel: SettingsChannel, messages: Partial<Record<MessageKey, boolean>>) {

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { recordStatusChange } from "@/modules/menu-approvals/status-history";
-import { runDueNotifications } from "@/modules/notifications/triggers";
+import { onNewLead, runDueNotifications } from "@/modules/notifications/triggers";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -11,6 +11,7 @@ const userIds: string[] = [];
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.statusChange.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.storefrontDraft.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.order.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
@@ -39,7 +40,7 @@ async function makeOrder(orgId: string, actorId: string, eventStartDate: Date) {
 const rows = (orgId: string, event: string) => prisma.notification.findMany({ where: { organizationId: orgId, event }, include: { logs: true } });
 
 describe("notification triggers (Chunk 16)", () => {
-  it("a new order alerts every team member in-app and emails the customer (skipped until the kitchen switches email on)", async () => {
+  it("a new order alerts every team member in-app and emails the customer (on by default)", async () => {
     const t = await makeTeam();
     const order = await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));
 
@@ -50,7 +51,7 @@ describe("notification triggers (Chunk 16)", () => {
 
     const customerEmail = (await rows(t.org.id, "order.created")).find((n) => n.channel === "EMAIL");
     expect(customerEmail?.recipientEmail).toBe("asha@example.test");
-    expect(customerEmail?.logs[0].status).toBe("skipped");
+    expect(customerEmail?.logs[0].status).not.toBe("skipped");
     expect(JSON.stringify(customerEmail?.payload)).toContain(order.orderNumber!);
   });
 
@@ -138,6 +139,29 @@ describe("notification triggers (Chunk 16)", () => {
     await makeOrder(t.org.id, t.sales.id, new Date("2026-12-07"));
     expect((await runDueNotifications(new Date("2026-12-04T06:00:00Z"))).paymentDue).toBe(1);
     expect(await rows(t.org.id, "payment.due")).not.toHaveLength(0);
+  });
+});
+
+describe("lead emails to the team (2026-10-11)", () => {
+  it("a new lead is emailed to every team member once, and an unfinished booking is emailed once after 30 idle minutes", async () => {
+    const t = await makeTeam();
+    const customer = await createCustomer(t.org.id, { name: "Lead Person", phone: `98${Math.floor(10000000 + Math.random() * 89999999)}`, email: "lead@example.test", isEnquiry: true, leadSource: "STOREFRONT" });
+    await onNewLead(t.org.id, customer.id);
+    const lead = (await rows(t.org.id, "lead.new")).filter((n) => n.channel === "EMAIL");
+    expect(lead.map((n) => n.recipientEmail).sort()).toEqual([t.owner, t.sales, t.kitchen, t.accounts].map((u) => `${u.name}-${u.email.split("-").slice(1).join("-")}`).sort());
+    expect(lead.every((n) => n.logs[0].status !== "skipped")).toBe(true);
+
+    const draft = await prisma.storefrontDraft.create({ data: { organizationId: t.org.id, customerId: customer.id, data: {}, lastActivityAt: new Date(Date.now() - 40 * 60_000) } });
+    const fresh = await prisma.storefrontDraft.create({ data: { organizationId: t.org.id, customerId: customer.id, data: {}, lastActivityAt: new Date() } });
+    const first = await runDueNotifications();
+    expect(first.incompleteBookings).toBeGreaterThanOrEqual(1);
+    const incomplete = (await rows(t.org.id, "lead.incomplete_booking")).filter((n) => n.channel === "EMAIL");
+    expect(incomplete).toHaveLength(4);
+    expect(JSON.stringify(incomplete[0].payload)).toContain(draft.id);
+    expect(JSON.stringify(incomplete[0].payload)).not.toContain(fresh.id);
+
+    await runDueNotifications();
+    expect((await rows(t.org.id, "lead.incomplete_booking")).filter((n) => n.channel === "EMAIL")).toHaveLength(4);
   });
 });
 

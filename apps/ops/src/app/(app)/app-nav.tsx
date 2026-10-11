@@ -14,6 +14,7 @@ interface Item {
 const PLATFORM: Item[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/businesses", label: "Businesses", icon: Building2 },
+  { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/site", label: "Website", icon: Globe },
   { href: "/notifications", label: "Notifications", icon: Bell },
@@ -21,7 +22,6 @@ const PLATFORM: Item[] = [
 ];
 const PRODUCT: Item[] = [
   { href: "/plans", label: "Plans", icon: Crown },
-  { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/library", label: "Library review", icon: BookOpenCheck },
   { href: "/notices", label: "Sidebar notice", icon: Megaphone },
 ];

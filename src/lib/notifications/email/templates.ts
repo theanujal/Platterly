@@ -92,7 +92,7 @@ export function verificationCodeEmail(code: string, expiresInMinutes: number): R
 /** Password reset code (same code box as sign-up). */
 export function passwordResetEmail(code: string, expiresInMinutes: number): RenderedEmail {
   return {
-    subject: "Platterly Password Reset",
+    subject: "Reset Your Platterly Password",
     html: renderEmail({
       tag: "Password Reset",
       eyebrow: "Reset your password",
@@ -164,7 +164,7 @@ export function orderConfirmationEmail(d: EmailData): RenderedEmail {
 /** To the kitchen owner / Sales when a new order comes in. */
 export function newOrderAlertEmail(d: EmailData): RenderedEmail {
   return {
-    subject: `New order${orderRef(d)}${d.customerName ? ` from ${d.customerName}` : ""}`,
+    subject: "New Order Submitted for Review",
     html: renderEmail({
       tag: "New Order",
       eyebrow: "New order alert",
@@ -187,8 +187,9 @@ const STATUS_COPY: Record<string, { title: string; line: string }> = {
 /** To the customer when the order status changes. */
 export function orderStatusEmail(d: EmailData): RenderedEmail {
   const copy = STATUS_COPY[d.status ?? ""] ?? { title: "Your order was updated", line: "There is an update on your order." };
+  const subject = d.status === "APPROVED" ? "Your Catering Order is Confirmed" : d.status === "COMPLETED" ? "Your Catering Order Has Been Completed" : "Update on Your Catering Order Request";
   return {
-    subject: `${copy.title}${d.orderNumber ? ` (${d.orderNumber})` : ""}`,
+    subject,
     html: renderEmail({
       tag: "Order Update",
       eyebrow: "Order status",
@@ -225,7 +226,7 @@ export function quotationSentEmail(d: EmailData): RenderedEmail {
 export function menuApprovalEmail(d: EmailData): RenderedEmail {
   const revised = (d.versionNumber ?? 1) > 1;
   return {
-    subject: revised ? "Your revised menu is ready for approval" : "Your menu is ready for approval",
+    subject: "Review Your Catering Menu & Order",
     html: renderEmail({
       tag: "Menu Approval",
       eyebrow: revised ? "Revised menu" : "Menu for approval",
@@ -352,6 +353,55 @@ export function paymentDueEmail(d: EmailData & { overdue?: boolean }): RenderedE
   };
 }
 
+/** To the customer when the food leaves the kitchen. */
+export function foodDispatchedEmail(d: EmailData & { driverName?: string }): RenderedEmail {
+  return {
+    subject: "Your Catering Order is On the Way",
+    html: renderEmail({
+      tag: "Order Update",
+      eyebrow: "Food dispatched",
+      title: "Your food is on the way",
+      greeting: customerGreeting(d),
+      bodyHtml: p("Your order has left our kitchen and is on its way to you."),
+      details: rows([["Order", d.orderNumber], ["Event date", d.eventDate], ["Venue", d.eventAddress], ["Driver", d.driverName]]),
+      signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
+    }),
+  };
+}
+
+/** To the kitchen team when a visitor leaves their details on the public link (a new lead). */
+export function newLeadEmail(d: EmailData & { phone?: string; email?: string }): RenderedEmail {
+  return {
+    subject: "New Lead Added in Your Platterly Account",
+    html: renderEmail({
+      tag: "New Lead",
+      eyebrow: "New lead",
+      title: "You have a new lead",
+      greeting: "Hello,",
+      bodyHtml: p("Someone has just started a booking on your public link. Their details are saved in Customers."),
+      details: rows([["Name", d.customerName], ["Phone", d.phone], ["Email", d.email], ["Event date", d.eventDate]]),
+      cta: d.url ? { label: "View lead", url: d.url } : undefined,
+    }),
+  };
+}
+
+/** To the kitchen team when a visitor leaves the booking journey without submitting. */
+export function incompleteBookingLeadEmail(d: EmailData & { phone?: string; email?: string }): RenderedEmail {
+  return {
+    subject: "New Incomplete Booking Lead",
+    html: renderEmail({
+      tag: "Incomplete Booking",
+      eyebrow: "Incomplete booking",
+      title: "A booking was left unfinished",
+      greeting: "Hello,",
+      bodyHtml: p("A visitor started a booking on your public link but did not submit it. You may want to follow up."),
+      details: rows([["Name", d.customerName], ["Phone", d.phone], ["Email", d.email], ["Event date", d.eventDate]]),
+      cta: d.url ? { label: "View abandoned orders", url: d.url } : undefined,
+    }),
+  };
+}
+
 // --- Event key -> email ----------------------------------------------------------------------------------
 
 function pick(data: Record<string, unknown>): EmailData {
@@ -413,6 +463,12 @@ export function emailForEvent(event: string, payload: unknown): RenderedEmail | 
       return paymentDueEmail({ ...d, overdue: true });
     case "event.reminder":
       return eventReminderEmail({ ...d, daysBefore: Number(data.daysBefore ?? 1) });
+    case "logistics.dispatched_customer":
+      return foodDispatchedEmail({ ...d, driverName: typeof data.driverName === "string" ? data.driverName : undefined });
+    case "lead.new":
+      return newLeadEmail({ ...d, phone: typeof data.phone === "string" ? data.phone : undefined, email: typeof data.email === "string" ? data.email : undefined });
+    case "lead.incomplete_booking":
+      return incompleteBookingLeadEmail({ ...d, phone: typeof data.phone === "string" ? data.phone : undefined, email: typeof data.email === "string" ? data.email : undefined });
     case "system.alert":
       return systemAlertEmail({ ...d, title: String(data.title ?? "Notice"), message: String(data.message ?? "") });
     default:

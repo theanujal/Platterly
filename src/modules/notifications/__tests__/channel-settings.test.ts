@@ -72,8 +72,36 @@ describe("channel settings (WhatsApp / Email / Push)", () => {
     await setChannelMessages(org.id, "whatsapp", { orderConfirmation: true, paymentConfirmation: true, orderStatusUpdates: true });
     const saved = await getChannelSettings(org.id, "whatsapp");
     expect(saved.messages).toMatchObject({ orderConfirmation: true, paymentConfirmation: true, orderStatusUpdates: false });
-    expect((await getChannelSettings(org.id, "email")).messages.orderConfirmation).toBe(false);
+    // Email is the other way round: every kitchen -> customer message starts on.
+    expect((await getChannelSettings(org.id, "email")).messages.orderReceived).toBe(true);
     expect((await getChannelSettings(other.id, "whatsapp")).messages.orderConfirmation).toBe(false);
+  });
+
+  it("email starts active with every customer message on, and a switched-off message stays off", async () => {
+    const org = await makeOrg();
+    const fresh = await getChannelSettings(org.id, "email");
+    expect(fresh.active).toBe(true);
+    expect(Object.values(fresh.messages).every((on) => on === true)).toBe(true);
+    expect(Object.keys(fresh.messages)).toEqual(CHANNEL_CONFIG.email.messages.map((m) => m.key));
+    await setChannelMessages(org.id, "email", { foodDispatched: false });
+    const saved = await getChannelSettings(org.id, "email");
+    expect(saved.messages.foodDispatched).toBe(false);
+    expect(saved.messages.orderConfirmed).toBe(true);
+  });
+
+  it("deactivating email turns every customer message off, and activating turns them all back on for the kitchen to choose from", async () => {
+    const org = await makeOrg();
+    await setChannelMessages(org.id, "email", { quotation: false });
+    await setChannelActive(org.id, "email", false);
+    const off = await getChannelSettings(org.id, "email");
+    expect(off.active).toBe(false);
+    expect(Object.values(off.messages).every((on) => on === false)).toBe(true);
+    await setChannelActive(org.id, "email", true);
+    const on = await getChannelSettings(org.id, "email");
+    expect(on.active).toBe(true);
+    expect(Object.values(on.messages).every((v) => v === true)).toBe(true);
+    await setChannelMessages(org.id, "email", { quotation: false });
+    expect((await getChannelSettings(org.id, "email")).messages.quotation).toBe(false);
   });
 
   it("saves an edited template, falls back to the default if blank, and rejects unknown or empty ones", async () => {

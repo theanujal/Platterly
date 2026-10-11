@@ -3,6 +3,7 @@
  * tag on the right, white card with an orange-to-green top bar, eyebrow + title, body, optional code box,
  * optional security note, sign-off and footer. Inline styles and tables only, so mail clients render it.
  */
+import { canonicalUrl } from "@/lib/seo/canonical";
 
 export function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -44,7 +45,9 @@ export function p(html: string): string {
  * Gmail lists as an attachment.
  */
 function logoSrc(): string {
-  return process.env.EMAIL_LOGO_URL || "cid:platterly-logo";
+  // In production the logo is always the public file on this app's own host, so it shows inline without anyone having to
+  // remember the setting. Dev and tests carry it inside the email (a localhost address would not open in a mail app).
+  return process.env.EMAIL_LOGO_URL || (process.env.NODE_ENV === "production" ? canonicalUrl("/platterly-logo.png") : "cid:platterly-logo");
 }
 
 export function renderEmail(params: EmailLayoutParams): string {
@@ -111,7 +114,8 @@ export function renderEmail(params: EmailLayoutParams): string {
       <tr><td style="padding:28px 8px 0;">
         <div style="font-size:14px;color:#374151;">Best regards,</div>
         <div style="font-size:14px;font-weight:800;color:#111827;">${escapeHtml(signOff)}</div>
-        <div style="margin-top:16px;font-size:12px;color:#9CA3AF;">This is an automated email from Platterly. Please do not reply to this email.</div>
+        <div style="margin-top:16px;font-size:13px;color:#6B7280;">Powered by <a href="https://platterly.in" style="color:#D9531E;font-weight:700;text-decoration:none;">Platterly</a></div>
+        <div style="margin-top:8px;font-size:12px;color:#9CA3AF;">This is an automated email from Platterly. Please do not reply to this email.</div>
         ${unsubscribe}
       </td></tr>
     </table>

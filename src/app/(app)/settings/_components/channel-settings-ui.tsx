@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CalendarDays, CheckCircle2, CircleAlert, CreditCard, Info, Mail, MessageCircle, MessageSquare, Pencil, PowerOff } from "lucide-react";
+import { Bell, CalendarDays, CheckCheck, CheckCircle2, CircleAlert, ClipboardCheck, CreditCard, FileText, Info, Link2, Mail, MessageCircle, MessageSquare, Pencil, PowerOff, Receipt, Truck, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,18 @@ const MESSAGE_ICON: Record<MessageKey, LucideIcon> = {
   paymentConfirmation: CreditCard,
   eventReminders: CalendarDays,
   systemAlerts: Bell,
+  orderReceived: MessageSquare,
+  orderConfirmed: CheckCircle2,
+  orderUpdate: Info,
+  orderCompleted: CheckCheck,
+  quotation: FileText,
+  menuReview: UtensilsCrossed,
+  foodDispatched: Truck,
+  invoice: Receipt,
+  receipt: ClipboardCheck,
+  paymentLink: Link2,
+  paymentReminder: CreditCard,
+  eventReminder: CalendarDays,
 };
 
 const CHANNEL_ICON: Record<SettingsChannel, LucideIcon> = { whatsapp: MessageCircle, email: Mail, push: Bell };
@@ -98,12 +110,15 @@ export function ChannelPreferences({
   description,
   messages: initial,
   saveLabel,
+  disabled = false,
 }: {
   channel: SettingsChannel;
   title: string;
   description: string;
   messages: ChannelSettings["messages"];
   saveLabel: string;
+  /** The channel is switched off as a whole, so no message can be switched on until it is activated. */
+  disabled?: boolean;
 }) {
   const router = useRouter();
   const [messages, setMessages] = useState(initial);
@@ -146,7 +161,7 @@ export function ChannelPreferences({
               <Switch
                 id={`${channel}-${message.key}`}
                 checked={messages[message.key] === true}
-                disabled={!message.available}
+                disabled={!message.available || disabled}
                 onCheckedChange={(on) => setMessages((prev) => ({ ...prev, [message.key]: on }))}
               />
             </li>
@@ -154,7 +169,7 @@ export function ChannelPreferences({
         })}
       </ul>
       <FormFooter error={error} success={saved ? "Saved." : null}>
-        <Button onClick={save} disabled={pending}>
+        <Button onClick={save} disabled={pending || disabled}>
           {pending ? "Saving…" : saveLabel}
         </Button>
       </FormFooter>

@@ -58,12 +58,30 @@ test("WhatsApp and Email settings: status, per-message switches, templates, acti
   // --- Email: the same layout ---
   await page.goto("/settings/communication/email-settings");
   await expect(page.getByRole("heading", { name: "Email Settings" })).toBeVisible();
-  // Email is connected for every kitchen by default (2026-10-04): the caterer only switches it on.
-  await expect(page.getByText("Email Service Deactivated")).toBeVisible();
+  // Email is connected and on for every kitchen by default, and only lists the emails sent to customers, each on.
+  await expect(page.getByText("Email Service Active")).toBeVisible();
   await expect(page.getByRole("switch", { name: "Activate Email" })).toBeEnabled();
-  await expect(page.getByRole("switch", { name: "Event Reminders" })).toBeEnabled();
-  await expect(page.getByRole("switch", { name: "System Alerts" })).toBeEnabled();
+  for (const name of ["Order Received", "Order Confirmed", "Order Completed", "Quotation", "Menu & Order Review", "Food Dispatched", "Invoice", "Payment Receipt", "Payment Link", "Payment Reminder", "Event Reminder"]) {
+    await expect(page.getByRole("switch", { name, exact: true })).toBeChecked();
+  }
+  await expect(page.getByRole("switch", { name: "System Alerts" })).toHaveCount(0);
   await expect(page.getByText("Order Confirmation (Customer)")).toBeVisible();
+  // Switch one off, save, and it stays off after a reload while the rest stay on.
+  await page.getByRole("switch", { name: "Food Dispatched", exact: true }).click();
+  await page.getByRole("button", { name: "Save Email Settings" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "Food Dispatched", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Quotation", exact: true })).toBeChecked();
+  // Deactivating the service turns every email off and locks the switches; activating turns them all back on.
+  await page.getByRole("switch", { name: "Activate Email" }).click();
+  await expect(page.getByText("Email Service Deactivated")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Quotation", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Quotation", exact: true })).toBeDisabled();
+  await page.getByRole("switch", { name: "Activate Email" }).click();
+  await expect(page.getByText("Email Service Active")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Quotation", exact: true })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Food Dispatched", exact: true })).toBeChecked();
 
   // --- Push: one master switch for the person, plus this browser's state ---
   await page.goto("/settings/communication/push-notifications");

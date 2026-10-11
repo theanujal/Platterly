@@ -17,7 +17,7 @@ export default async function EmailSettingsPage() {
   return (
     <SettingsCard title="Email Settings" description="Configure email notifications and message templates.">
       <ChannelServiceStatus channel="email" providerConnected={settings.providerConnected} active={settings.active} />
-      <ChannelPreferences channel="email" title="Notification Preferences" description="Choose which email notifications to send to your customers" messages={settings.messages} saveLabel="Save Email Settings" />
+      <ChannelPreferences key={String(settings.active)} disabled={!settings.active} channel="email" title="Notification Preferences" description="Choose which email notifications to send to your customers" messages={settings.messages} saveLabel="Save Email Settings" />
       <ChannelTemplates channel="email" templates={settings.templates} />
     </SettingsCard>
   );

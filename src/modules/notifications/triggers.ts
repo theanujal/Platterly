@@ -9,6 +9,7 @@ import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { canSendPromotions, isPromotionalEvent } from "./opt-out";
 import { opsBillingOn } from "@/modules/ops-link/config";
 import { normalizePhone } from "@/lib/phone";
+import { ABANDONED_AFTER_MS } from "@/modules/menu-approvals/storefront-draft-constants";
 
 /**
  * Chunk 16: who gets told what, and when. Every business event that sends a message calls ONE function here, so the
@@ -359,6 +360,30 @@ export function onDispatchChanged(organizationId: string, eventId: string, statu
       message: status === "DISPATCHED" ? `${label} has left${driverName ? ` with ${driverName}` : ""}.` : `${label} has been delivered.`,
       payload: { href: `/staff/events/${eventId}`, eventId },
     });
+    // The customer is told when the food leaves (not on delivery). Switched by Settings -> Email -> Food Dispatched.
+    if (status === "DISPATCHED") {
+      const event = await prisma.event.findFirst({ where: { id: eventId, organizationId }, select: { orderId: true } });
+      if (event?.orderId) {
+        const c = await loadOrderContext(organizationId, event.orderId);
+        await notifyCustomer({ organizationId, event: "logistics.dispatched_customer", email: c.customerEmail, payload: emailPayload(c, { driverName: driverName ?? undefined }) });
+      }
+    }
+  });
+}
+
+/** A visitor left their details on the public link: the team is told once (email, bell, push). */
+export function onNewLead(organizationId: string, customerId: string, eventDate?: string) {
+  return safely("onNewLead", async () => {
+    const customer = await prisma.customer.findFirst({ where: { id: customerId, organizationId }, select: { name: true, phone: true, email: true } });
+    if (!customer) return;
+    await notifyTeam({
+      organizationId,
+      event: "lead.new",
+      email: true,
+      title: "New lead",
+      message: `${customer.name} started a booking on your public link.`,
+      payload: { href: `/customers/${customerId}`, url: canonicalUrl(`/customers/${customerId}`), customerName: customer.name, phone: customer.phone, email: customer.email ?? undefined, eventDate },
+    });
   });
 }
 
@@ -391,6 +416,7 @@ export interface DueRunResult {
   taskDue: number;
   taskOverdue: number;
   kitchenWhatsApp: number;
+  incompleteBookings: number;
 }
 
 /**
@@ -445,7 +471,7 @@ async function sendKitchenWhatsAppDigests(now: Date, isMonday: boolean): Promise
 }
 
 export async function runDueNotifications(now: Date = new Date()): Promise<DueRunResult> {
-  const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0, kitchenWhatsApp: 0 };
+  const result: DueRunResult = { trialNotices: 0, planNotices: 0, eventReminders: 0, paymentDue: 0, paymentOverdue: 0, taskDue: 0, taskOverdue: 0, kitchenWhatsApp: 0, incompleteBookings: 0 };
 
   // With OPS_BILLING on, ops owns the subscription and sends these emails itself (docs/ops-contract.md 9), so the local
   // trial and paid-plan notices below are skipped: the rows they read are no longer the truth.
@@ -574,6 +600,29 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
         else result.taskOverdue += 1;
       });
     }
+  }
+
+  // A visitor who started a booking on the public link and went quiet for 30 minutes: the team is told once per draft.
+  const idleBefore = new Date(now.getTime() - ABANDONED_AFTER_MS);
+  const drafts = await prisma.storefrontDraft.findMany({
+    where: { status: "IN_PROGRESS", lastActivityAt: { lt: idleBefore, gt: new Date(now.getTime() - 7 * DAY_MS) } },
+    select: { id: true, organizationId: true, customer: { select: { id: true, name: true, phone: true, email: true } } },
+    take: 200,
+  });
+  for (const draft of drafts) {
+    const key = `draft:${draft.id}`;
+    if (await alreadySent(draft.organizationId, "lead.incomplete_booking", key)) continue;
+    await safely("incomplete booking", async () => {
+      await notifyTeam({
+        organizationId: draft.organizationId,
+        event: "lead.incomplete_booking",
+        email: true,
+        title: "Incomplete booking",
+        message: `${draft.customer.name} left a booking unfinished.`,
+        payload: { href: "/abandoned-orders", url: canonicalUrl("/abandoned-orders"), customerName: draft.customer.name, phone: draft.customer.phone, email: draft.customer.email ?? undefined, dedupeKey: key },
+      });
+      result.incompleteBookings += 1;
+    });
   }
 
   return result;

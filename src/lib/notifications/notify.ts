@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import type { NotificationChannel } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
-import { MESSAGE_FOR_EVENT } from "@/modules/notifications/channel-settings-config";
+import { emailMessageFor } from "@/modules/notifications/channel-settings-config";
 import { sendPushToUser } from "@/modules/notifications/push";
 import { emailForEvent } from "./email/templates";
 import { sendEmail } from "./email/zeptomail";
@@ -26,12 +26,12 @@ export interface NotifyParams {
   payload: Prisma.InputJsonValue;
 }
 
-/** Invitations and security codes always go out; every other email or WhatsApp needs the channel active and its switch on. */
-async function channelAllowed(organizationId: string, channel: "email" | "whatsapp", event: string): Promise<boolean> {
+/** Invitations, security codes and the team's own alerts always go out; a kitchen -> customer email needs the channel active and its switch on. */
+async function channelAllowed(organizationId: string, channel: "email" | "whatsapp", event: string, payload?: unknown): Promise<boolean> {
   // WhatsApp goes only to the kitchen's own team, for a fixed short list of events (AJ, 2026-10-09), so it has no
   // per-message switches: it is on unless the Platterly team disconnected this kitchen.
   if (channel === "whatsapp") return (await getSetting<{ connected?: boolean }>(organizationId, "notifications.whatsapp.provider"))?.connected !== false;
-  const message = MESSAGE_FOR_EVENT[event];
+  const message = emailMessageFor(event, payload);
   if (!message) return true;
   const settings = await getChannelSettings(organizationId, channel);
   return settings.active && settings.messages[message] === true;
@@ -71,7 +71,7 @@ export async function notify(params: NotifyParams) {
   let logEntry = { status: "logged", detail: "No provider configured (Chunk 16)." };
   if (params.channel === "EMAIL" && params.recipient.email) {
     const rendered = emailForEvent(params.event, params.payload);
-    if (rendered && !(await channelAllowed(params.organizationId, "email", params.event))) {
+    if (rendered && !(await channelAllowed(params.organizationId, "email", params.event, params.payload))) {
       logEntry = { status: "skipped", detail: "Email is not connected, not active, or this message is switched off in Settings." };
     } else if (rendered) {
       const result = await sendEmail({ to: params.recipient.email, ...rendered });

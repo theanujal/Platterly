@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createTask, updateTask, setTaskDone, deleteTask, listEventTasks, EventTaskError } from "@/modules/logistics/task";
 import { saveLogistics, getLogistics, getDeliveryAddress, LogisticsError } from "@/modules/logistics/logistics";
+import { setChannelMessages } from "@/modules/notifications/channel-settings";
 import { createStaffMember } from "@/modules/employees/staff-member";
 import { assignStaff, removeAssignment } from "@/modules/employees/assignment";
 
@@ -13,6 +14,7 @@ afterEach(async () => {
   await prisma.eventTask.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.staffAssignment.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.order.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.notification.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.event.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.eventType.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
@@ -94,6 +96,32 @@ describe("Event tasks (Chunk 19.3)", () => {
 });
 
 describe("Event logistics (Chunk 19.3)", () => {
+  it("emails the customer once when the food is dispatched, unless the kitchen switched that email off", async () => {
+    const { org, actor, event, customer } = await setup();
+    await prisma.customer.update({ where: { id: customer.id }, data: { email: "cust@example.test" } });
+    const order = await prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, orderNumber: "ORD-DISP", eventStartDate: new Date(), eventEndDate: new Date() } });
+    await prisma.event.update({ where: { id: event.id }, data: { orderId: order.id } });
+    const emails = () => prisma.notification.findMany({ where: { organizationId: org.id, event: "logistics.dispatched_customer", channel: "EMAIL" }, include: { logs: true } });
+
+    await saveLogistics(org.id, event.id, { ...base, driverName: "Ravi", dispatchStatus: "DISPATCHED" }, actor.id);
+    const sent = await emails();
+    expect(sent).toHaveLength(1);
+    expect(sent[0].recipientEmail).toBe("cust@example.test");
+    expect(sent[0].logs[0].status).not.toBe("skipped");
+    expect(JSON.stringify(sent[0].payload)).toContain("Ravi");
+
+    // Delivered does not email the customer again, and a repeat save of the same status adds nothing.
+    await saveLogistics(org.id, event.id, { ...base, driverName: "Ravi", dispatchStatus: "DELIVERED" }, actor.id);
+    expect(await emails()).toHaveLength(1);
+
+    await setChannelMessages(org.id, "email", { foodDispatched: false });
+    await saveLogistics(org.id, event.id, { ...base, dispatchStatus: "LOADING" }, actor.id);
+    await saveLogistics(org.id, event.id, { ...base, dispatchStatus: "DISPATCHED" }, actor.id);
+    const after = await emails();
+    expect(after).toHaveLength(2);
+    expect(after.filter((n) => n.logs[0].status === "skipped")).toHaveLength(1);
+  });
+
   it("saves vehicle, driver and setup, and stamps dispatch times as the status moves", async () => {
     const { org, actor, event } = await setup();
     const first = await saveLogistics(org.id, event.id, { ...base, vehicleType: "Tempo", vehicleNumber: " ka01ab1234 ", driverName: "Suresh", driverPhone: "98765 43210" }, actor.id);
