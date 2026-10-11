@@ -25,7 +25,8 @@ async function makeOrg() {
   orgIds.push(org.id);
   return org;
 }
-const unique = () => crypto.randomUUID().replace(/[^a-z]/g, "").slice(0, 8);
+// No letter repeats in a row: the scan treats "aaaa" as junk, which made tests with an unlucky random word fail now and then.
+const unique = () => crypto.randomUUID().replace(/[^a-z]/g, "").replace(/(.)\1+/g, "$1").slice(0, 8);
 const dish = (organizationId: string, name: string, extra: Record<string, unknown> = {}) =>
   prisma.menuItem.create({ data: { organizationId, name, foodType: "VEGETARIAN", price: 123.45, ...extra } });
 

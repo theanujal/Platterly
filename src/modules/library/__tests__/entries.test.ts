@@ -4,18 +4,20 @@ import { LibraryError } from "../apply";
 import { listEntries, updateEntry } from "../entries";
 
 const names: string[] = [];
-const unique = () => `Zq${crypto.randomUUID().replace(/[^a-z]/g, "").slice(0, 8)}`;
+const unique = () => {
+  const name = `Zq${crypto.randomUUID().replace(/[^a-z]/g, "").slice(0, 8)}`;
+  names.push(name); // every name made here is cleaned up, including ones only used to rename
+  return name;
+};
 afterEach(async () => {
   await prisma.systemFoodItem.deleteMany({ where: { name: { in: names } } });
   await prisma.systemIngredient.deleteMany({ where: { name: { in: names } } });
   names.length = 0;
 });
 const dish = async (name = unique(), extra: Record<string, unknown> = {}) => {
-  names.push(name);
   return prisma.systemFoodItem.create({ data: { name, foodType: "VEGETARIAN", categoryName: "Starters", ...extra } });
 };
 const ingredient = async (name = unique()) => {
-  names.push(name);
   return prisma.systemIngredient.create({ data: { name, categoryName: "Spices & Masalas", unit: "kg" } });
 };
 
@@ -31,7 +33,6 @@ describe("library entries (Ops editor)", () => {
   it("changes a dish, marks it edited, and keeps the old name as an alias after a rename", async () => {
     const d = await dish();
     const renamed = unique();
-    names.push(renamed);
     await updateEntry({ id: d.id, kind: "FOOD_ITEM", name: renamed, categoryName: "Main Course", foodType: "NON_VEGETARIAN", description: "Better text" });
     const after = await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: d.id } });
     expect(after).toMatchObject({ name: renamed, categoryName: "Main Course", foodType: "NON_VEGETARIAN", description: "Better text", editedInOps: true });
