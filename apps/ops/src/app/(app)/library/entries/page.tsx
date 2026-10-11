@@ -11,6 +11,7 @@ export const metadata = { title: "Edit library" };
 const KINDS = [
   { key: "FOOD_ITEM", label: "Dishes" },
   { key: "INGREDIENT", label: "Ingredients" },
+  { key: "CATEGORY", label: "Categories" },
 ] as const;
 const PER_PAGE = 50;
 
@@ -18,7 +19,7 @@ export default async function LibraryEntriesPage({ searchParams }: { searchParam
   const selected = await getSelectedProduct();
   if (!selected) return (<><PageHeader title="Edit library" description="Fix names, categories and descriptions, or hide entries." /><PickProduct what="Edit library" /></>);
   const { kind: kindParam, q = "", show = "all", page: pageParam } = await searchParams;
-  const kind = kindParam === "INGREDIENT" ? "INGREDIENT" : "FOOD_ITEM";
+  const kind = kindParam === "INGREDIENT" || kindParam === "CATEGORY" ? kindParam : "FOOD_ITEM";
 
   let entries: Awaited<ReturnType<typeof fetchLibraryEntries>> = [];
   let error: string | null = null;
@@ -28,6 +29,10 @@ export default async function LibraryEntriesPage({ searchParams }: { searchParam
     if (!(e instanceof LibraryReviewError)) throw e;
     error = e.message;
   }
+
+  // A dish's category is chosen from the library's own list.
+  let categoryNames: string[] | undefined;
+  if (kind === "FOOD_ITEM" && !error) categoryNames = await fetchLibraryEntries(selected.key, "CATEGORY").then((list) => list.map((e) => e.name)).catch(() => undefined);
 
   const needle = q.trim().toLowerCase();
   const filtered = entries.filter((e) => (show === "hidden" ? !e.isActive : true) && (!needle || [e.name, e.categoryName, ...e.aliases].some((t) => t.toLowerCase().includes(needle))));
@@ -62,7 +67,7 @@ export default async function LibraryEntriesPage({ searchParams }: { searchParam
         <>
           <p className="mb-2 text-sm text-muted-foreground">{filtered.length} {filtered.length === 1 ? "entry" : "entries"}</p>
           <ul className="divide-y divide-border rounded-[14px] bg-card shadow-[0_0_0_1px_rgba(17,24,39,0.1)]">
-            {rows.map((e) => <EntryRow key={e.id} productKey={selected.key} e={e} />)}
+            {rows.map((e) => <EntryRow key={e.id} productKey={selected.key} e={e} categoryNames={categoryNames} />)}
           </ul>
           {pages > 1 ? (
             <nav className="mt-4 flex items-center gap-3 text-sm" aria-label="Pages">

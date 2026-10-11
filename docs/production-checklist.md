@@ -21,3 +21,4 @@
 | Migration order | Catering `prisma migrate deploy` first (includes `library_candidates`, food item and inventory unique names, catalogs), then Ops `prisma migrate deploy` in `apps/ops` |
 | Master catalogs | `npm run db:seed-catalog` after the catering migration (529 dishes, 335 ingredients); safe to repeat |
 | Library review cron | `/api/cron/daily` runs the nightly scan (once a day); Ops `/api/cron` pulls candidates every 30 minutes; both need their cron secrets |
+| Library categories and photos | Migrations `library_categories` (seeds the category list from the standard 10 plus any category library dishes use) and `menu_item_image_source_backfill` ship with the catering migrate; `npm run db:seed-catalog` adds catalog categories. `LIBRARY_PHOTO_MIN_KITCHENS` (default 1) sets how many kitchens' own photos make a photo candidate; uploaded files live under `public/uploads/library/` (include in backups; with R2 later, the storage driver needs `read`) |

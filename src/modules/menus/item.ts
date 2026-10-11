@@ -18,6 +18,8 @@ export interface MenuItemInput {
   name: string;
   description?: string;
   image?: string;
+  /** "library" (copied from Platterly's catalog) or "upload" (the kitchen's own file). Left out, a new picture counts as an upload. */
+  imageSource?: "library" | "upload";
   foodType: FoodType;
   price: number;
   isActive?: boolean;
@@ -80,6 +82,7 @@ export async function createMenuItem(organizationId: string, input: MenuItemInpu
       name: input.name,
       description: input.description,
       image: input.image,
+      imageSource: input.image ? (input.imageSource ?? "upload") : null,
       foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? true,
@@ -129,6 +132,8 @@ export async function updateMenuItem(
       name: input.name,
       description: input.description,
       image: input.image,
+      // a different picture is one the kitchen just uploaded; the same one keeps whatever it was
+      ...(input.image && input.image !== before.image ? { imageSource: input.imageSource ?? "upload" } : {}),
       foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? before.isActive,
@@ -224,6 +229,7 @@ export async function duplicateMenuItem(organizationId: string, id: string, acto
       name: copyName,
       description: source.description ?? undefined,
       image: source.image ?? undefined,
+      imageSource: source.imageSource === "library" ? "library" : undefined,
       foodType: source.foodType,
       price: Number(source.price),
       isActive: source.isActive,

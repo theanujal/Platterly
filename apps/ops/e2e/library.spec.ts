@@ -97,3 +97,60 @@ test("Edit library: reachable from Library review, tabs for dishes and ingredien
   await expect(page).toHaveURL(/kind=INGREDIENT/);
   await expect(page.getByRole("link", { name: "Back to Library review" })).toBeVisible();
 });
+
+test("Photos tab: a kitchen's picture with its dish, a count, and approval needs the confirmation tick", async ({ page, context }) => {
+  const PHOTO_DISH = `E2E Photo Dish ${randomBytes(2).toString("hex")}`;
+  await pool.query("insert into library_candidate (id, \"productKey\", \"remoteId\", kind, name, \"categoryName\", \"foodType\", \"kitchenCount\", \"photoUrl\", \"updatedAt\") values ($1, $2, 'ph1', 'PHOTO', $3, 'Main Course', 'VEGETARIAN', 2, 'http://127.0.0.1:1/none.webp', now())", [`lc_${randomBytes(8).toString("hex")}`, KEY, PHOTO_DISH]);
+  await context.addCookies([{ name: "ops_product", value: KEY, url: "http://ops.localhost:3200" }]);
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  await page.goto("/library");
+  await expect(page.getByRole("tab", { name: /Photos/ })).toContainText("1");
+  await page.getByRole("tab", { name: /Photos/ }).click();
+  const card = page.getByTestId("library-photo").filter({ hasText: PHOTO_DISH });
+  await expect(card).toContainText("2 kitchens have a photo");
+  await expect(card.getByRole("img", { name: `A kitchen's photo of ${PHOTO_DISH}` })).toHaveAttribute("src", "http://127.0.0.1:1/none.webp");
+
+  // Without the tick nothing is sent; with it, the unreachable product's reason shows and the item stays pending.
+  await card.getByRole("button", { name: "Use this photo" }).click();
+  await expect(card.getByRole("alert")).toContainText("Tick the box");
+  await card.getByLabel(/I looked at this photo/).check();
+  await card.getByRole("button", { name: "Use this photo" }).click();
+  await expect(card.getByRole("alert")).toContainText("signing secret could not be read");
+  expect((await pool.query("select status from library_candidate where \"productKey\" = $1 and name = $2", [KEY, PHOTO_DISH])).rows[0].status).toBe("PENDING");
+});
+
+test("Categories tab: a kitchen category with its count, only a name to correct, and a refused send keeps it pending", async ({ page, context }) => {
+  const CAT = `E2E Chaat Counter ${randomBytes(2).toString("hex")}`;
+  await pool.query("insert into library_candidate (id, \"productKey\", \"remoteId\", kind, name, \"kitchenCount\", \"suggestedMatchId\", \"suggestedMatchName\", \"updatedAt\") values ($1, $2, 'cat1', 'CATEGORY', $3, 3, 'lib-cat', 'Live Counters', now())", [`lc_${randomBytes(8).toString("hex")}`, KEY, CAT]);
+  await context.addCookies([{ name: "ops_product", value: KEY, url: "http://ops.localhost:3200" }]);
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+
+  await page.goto("/library");
+  await page.getByRole("tab", { name: /Categories/ }).click();
+  await expect(page).toHaveURL(/kind=CATEGORY/);
+  const card = page.getByTestId("library-candidate").filter({ has: page.locator(`input[name="name"][value="${CAT}"]`) });
+  await expect(card).toContainText("3 kitchens");
+  await expect(card).toContainText("Looks like: Live Counters");
+  await expect(card.getByLabel("Name")).toHaveValue(CAT);
+  await expect(card.getByLabel("Category")).toHaveCount(0); // a category has no category, type or unit
+  await expect(card.getByLabel("Veg / Non-Veg")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Approve as new category" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Merge into “Live Counters”" })).toBeVisible();
+
+  await card.getByRole("button", { name: "Approve as new category" }).click();
+  await expect(card.getByRole("alert")).toContainText("signing secret could not be read");
+  expect((await pool.query("select status from library_candidate where \"productKey\" = $1 and name = $2", [KEY, CAT])).rows[0].status).toBe("PENDING");
+
+  await page.goto("/library/entries?kind=CATEGORY");
+  await expect(page.getByRole("link", { name: "Categories" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "signing secret could not be read" })).toBeVisible();
+});

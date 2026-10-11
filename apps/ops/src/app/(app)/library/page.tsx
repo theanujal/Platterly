@@ -4,6 +4,7 @@ import { PickProduct } from "@/components/pick-product";
 import { getSelectedProduct } from "@/lib/selected-product";
 import { countPending, fetchLibraryEntries, listCandidates } from "@/modules/library/library";
 import { CandidateForm } from "./candidate-form";
+import { PhotoForm } from "./photo-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Library review" };
@@ -11,6 +12,8 @@ export const metadata = { title: "Library review" };
 const KINDS = [
   { key: "FOOD_ITEM", label: "Dishes" },
   { key: "INGREDIENT", label: "Ingredients" },
+  { key: "PHOTO", label: "Photos" },
+  { key: "CATEGORY", label: "Categories" },
 ] as const;
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ kind?: string; status?: string }> }) {
@@ -21,12 +24,14 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
   const status = ["PENDING", "APPROVED", "MERGED", "REJECTED"].includes(statusParam ?? "") ? statusParam! : "PENDING";
   const [counts, rows] = await Promise.all([countPending(selected.key), listCandidates(selected.key, { kind, status })]);
   // The library's names for the "merge into another item" box (one list for the whole page). Without it the box still works by typing.
-  const libraryNames = status === "PENDING" && rows.length > 0 ? await fetchLibraryEntries(selected.key, kind as "FOOD_ITEM" | "INGREDIENT").catch(() => []) : [];
+  const libraryNames = status === "PENDING" && rows.length > 0 && kind !== "PHOTO" ? await fetchLibraryEntries(selected.key, kind as "FOOD_ITEM" | "INGREDIENT" | "CATEGORY").catch(() => []) : [];
+  // Dishes are approved into one of the library's categories: offer exactly that list (free text only when it cannot be read).
+  const categoryNames = status === "PENDING" && kind === "FOOD_ITEM" && rows.length > 0 ? await fetchLibraryEntries(selected.key, "CATEGORY").then((list) => list.map((e) => e.name)).catch(() => undefined) : undefined;
   const namesListId = "library-names";
 
   return (
     <>
-      <PageHeader title="Library review" description={`Dishes and ingredients kitchens added that ${selected.name}'s library does not have. Nothing enters the library until you approve it. Only names, categories and counts are shown: never a price, a note or a kitchen.`} />
+      <PageHeader title="Library review" description={`Dishes, ingredients and dish photos kitchens added that ${selected.name}'s library does not have. Nothing enters the library until you approve it. Only names, categories, counts and (for photos) the picture are shown: never a price, a note or a kitchen.`} />
       <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="What to review">
         {KINDS.map((k) => (
           <Link key={k.key} href={`/library?kind=${k.key}`} role="tab" aria-selected={k.key === kind && status === "PENDING"} className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium ${k.key === kind ? "bg-primary text-primary-foreground" : "border border-border bg-white"}`}>
@@ -47,7 +52,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
       ) : status === "PENDING" ? (
         <div className="flex flex-col gap-4">
           <datalist id={namesListId}>{libraryNames.map((e) => <option key={e.id} value={e.name} />)}</datalist>
-          {rows.map((c) => <CandidateForm key={c.id} c={c} namesListId={namesListId} />)}
+          {rows.map((c) => (c.kind === "PHOTO" ? <PhotoForm key={c.id} c={c} /> : <CandidateForm key={c.id} c={c} namesListId={namesListId} categoryNames={categoryNames} />))}
         </div>
       ) : (
         <ul className="divide-y divide-border rounded-[14px] bg-card shadow-[0_0_0_1px_rgba(17,24,39,0.1)]">

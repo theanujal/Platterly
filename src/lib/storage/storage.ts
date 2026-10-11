@@ -6,6 +6,17 @@ export interface StorageDriver {
   upload(key: string, data: Buffer, contentType: string): Promise<{ url: string; key: string }>;
   getUrl(key: string): string;
   delete(key: string): Promise<void>;
+  read(key: string): Promise<Buffer>;
+}
+
+/** The bytes of a file this platform stored, from the URL it gave out; null for any other URL (a file we do not hold). */
+export async function readStoredFile(url: string): Promise<Buffer | null> {
+  if (!url.startsWith("/uploads/")) return null;
+  try {
+    return await getStorageDriver().read(decodeURIComponent(url.slice("/uploads/".length)));
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -18,10 +18,13 @@ export interface CandidateView {
 }
 
 /** One candidate: the reviewer may correct the fields, then approve it as a new library entry, merge it into the item it looks like, or reject it. */
-export function CandidateForm({ c, namesListId }: { c: CandidateView; namesListId?: string }) {
+export function CandidateForm({ c, namesListId, categoryNames }: { c: CandidateView; namesListId?: string; categoryNames?: string[] }) {
   const [state, setState] = useState<ReviewState>({});
   const [pending, startTransition] = useTransition();
   const food = c.kind === "FOOD_ITEM";
+  const category = c.kind === "CATEGORY";
+  // The library's own category list when we have it (a kitchen's "Starter" shows as "Starters"); free text only as a fallback.
+  const knownCategory = categoryNames?.find((n) => n.toLowerCase() === (c.categoryName ?? "").toLowerCase());
 
   // The button that was pressed says what to do (approve, merge or reject): its name and value join the form data.
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -38,15 +41,22 @@ export function CandidateForm({ c, namesListId }: { c: CandidateView; namesListI
       <input type="hidden" name="mergeIntoId" value={c.suggestedMatchId ?? ""} />
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="info">{c.kitchenCount} kitchens</Badge>
-        <Badge tone="neutral">{food ? "Dish" : "Ingredient"}</Badge>
+        <Badge tone="neutral">{food ? "Dish" : category ? "Category" : "Ingredient"}</Badge>
         {c.suggestedMatchName ? <Badge tone="warning">Looks like: {c.suggestedMatchName}</Badge> : null}
       </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Field label="Name" htmlFor={`name-${c.id}`}>
           <input id={`name-${c.id}`} name="name" required defaultValue={c.name} className={inputClass} />
         </Field>
+        {category ? null : (
+          <>
         <Field label="Category" htmlFor={`cat-${c.id}`}>
-          {food ? (
+          {food && categoryNames ? (
+            <select id={`cat-${c.id}`} name="categoryName" required defaultValue={knownCategory ?? ""} className={inputClass}>
+              <option value="">Choose…</option>
+              {categoryNames.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          ) : food ? (
             <>
               <input id={`cat-${c.id}`} name="categoryName" list={`cats-${c.id}`} required defaultValue={c.categoryName ?? ""} className={inputClass} />
               <datalist id={`cats-${c.id}`}>{LIBRARY_FOOD_CATEGORIES.map((x) => <option key={x} value={x} />)}</datalist>
@@ -75,9 +85,11 @@ export function CandidateForm({ c, namesListId }: { c: CandidateView; namesListI
         <Field label="Description (optional)" htmlFor={`desc-${c.id}`}>
           <input id={`desc-${c.id}`} name="description" maxLength={500} className={inputClass} />
         </Field>
+          </>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" name="intent" value="approve" size="md" disabled={pending}>Approve as new</Button>
+        <Button type="submit" name="intent" value="approve" size="md" disabled={pending}>{category ? "Approve as new category" : "Approve as new"}</Button>
         {c.suggestedMatchId ? <Button type="submit" name="intent" value="merge" variant="outline" size="md" disabled={pending}>Merge into “{c.suggestedMatchName}”</Button> : null}
         <Button type="submit" name="intent" value="reject" variant="outline" size="md" disabled={pending}>Reject</Button>
         <span className="flex items-center gap-2">

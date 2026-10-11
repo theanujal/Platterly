@@ -1,5 +1,5 @@
 import "server-only";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { StorageDriver } from "./storage";
 
@@ -29,6 +29,10 @@ export const localDriver: StorageDriver = {
 
   getUrl(key) {
     return `/uploads/${key}`;
+  },
+
+  async read(key) {
+    return readFile(assertSafeKey(key));
   },
 
   async delete(key) {

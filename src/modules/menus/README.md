@@ -36,8 +36,8 @@ Food Items, Event Types and Add-ons), gated by the `menus` permission from
 A dish's recipe is a separate model (`Recipe`, one per `MenuItem`, built in
 Chunk 18): see `src/modules/recipes`. Copying a dish (`duplicateMenuItem`) also
 copies its recipe. `MenuItem.sourceCatalogId` records which Platterly library
-dish it was copied from (only for the "Added" badge), and `imageSource` is
-reserved for the library review's photo step (not used yet).
+dish it was copied from (only for the "Added" badge), and `imageSource` records where the
+picture came from (`"upload"` = the kitchen's own file, `"library"` = copied from the catalog, null = no picture or unknown); only uploads can be offered to the library review's photo step. Pictures a reviewer approved live in `/uploads/library/` and are copied into the kitchen's own folder when it adds the dish.
 
 ## Adding food items in bulk (2026-10-10)
 

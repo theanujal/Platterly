@@ -28,6 +28,15 @@ try {
       [item.name, item.description, image.url, image.credit, item.foodType, item.categoryName, index],
     );
   }
+  // Every category a catalog dish uses is a library category (existing ones, and any a person added in Ops, are left as they are).
+  const categoryNames = [...new Set((CATALOG_SEED as { categoryName: string }[]).map((i) => i.categoryName))];
+  await pool.query(
+    `insert into system_food_category (id, name, "sortOrder", "updatedAt")
+     select gen_random_uuid()::text, n, 1000 + row_number() over (order by n), now() from unnest($1::text[]) as n
+     where not exists (select 1 from system_food_category c where c.name = n or n = any(c.aliases))
+     on conflict (name) do nothing`,
+    [categoryNames],
+  );
   const after = await pool.query("select count(*)::int as n from system_food_item");
   console.log(`Catalog: ${CATALOG_SEED.length} dishes in the file, ${before.rows[0].n} -> ${after.rows[0].n} in the database.`);
 

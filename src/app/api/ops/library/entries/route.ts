@@ -5,12 +5,12 @@ import { listEntries, updateEntry } from "@/modules/library/entries";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/ops/library/entries?kind=FOOD_ITEM|INGREDIENT: the library's own entries, for Ops to edit (docs/ops-contract.md section 31). */
+/** GET /api/ops/library/entries?kind=FOOD_ITEM|INGREDIENT|CATEGORY: the library's own entries, for Ops to edit (docs/ops-contract.md section 31). */
 export async function GET(request: Request) {
   const auth = await authoriseOps(request);
   if ("response" in auth) return auth.response;
   const kind = new URL(request.url).searchParams.get("kind");
-  if (kind !== "FOOD_ITEM" && kind !== "INGREDIENT") return signedJson(auth.config, { error: "kind must be FOOD_ITEM or INGREDIENT" }, 400);
+  if (kind !== "FOOD_ITEM" && kind !== "INGREDIENT" && kind !== "CATEGORY") return signedJson(auth.config, { error: "kind must be FOOD_ITEM, INGREDIENT or CATEGORY" }, 400);
   return signedJson(auth.config, { entries: await listEntries(kind) });
 }
 

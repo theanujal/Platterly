@@ -509,3 +509,36 @@ describe("library entry editing", () => {
     expect(parseLibraryEntryUpdate({ id: "e1", kind: "FOOD_ITEM", isActive: "no" }).ok).toBe(false);
   });
 });
+
+describe("library photo candidates", () => {
+  const photo = { id: "p1", kind: "PHOTO", name: "Dal Tadka", categoryName: "Main Course", foodType: "VEGETARIAN", unit: null, kitchenCount: 1, suggestedMatchId: "lib-1", suggestedMatchName: "Dal Tadka", photoUrl: "https://catering.platterly.in/uploads/library/x.webp", updatedAt: "2026-10-11T00:00:00.000Z" };
+
+  it("reads a photo candidate with its picture URL, and refuses a picture that is not a web address", () => {
+    const parsed = parseLibraryCandidates({ candidates: [photo] });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.value.candidates[0].photoUrl).toBe(photo.photoUrl);
+    expect(parseLibraryCandidates({ candidates: [{ ...photo, photoUrl: "javascript:alert(1)" }] }).ok).toBe(false);
+    expect(parseLibraryCandidates({ candidates: [{ ...photo, photoUrl: "/uploads/x.webp" }] }).ok).toBe(false);
+  });
+
+  it("an approval of a photo needs no entry, and may say to replace a real photo", () => {
+    expect(parseLibraryDecision({ candidateId: "p1", action: "approve" })).toEqual({ ok: true, value: { candidateId: "p1", action: "approve", replacePhoto: false } });
+    expect(parseLibraryDecision({ candidateId: "p1", action: "approve", replacePhoto: true })).toEqual({ ok: true, value: { candidateId: "p1", action: "approve", replacePhoto: true } });
+  });
+});
+
+describe("library categories", () => {
+  const category = { id: "k1", kind: "CATEGORY", name: "Starters", description: null, categoryName: "Starters", foodType: null, unit: null, aliases: ["Appetizers"], isActive: true };
+
+  it("lists categories as entries and reads a category candidate", () => {
+    const parsed = parseLibraryEntries({ entries: [category] });
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.value.entries[0]).toEqual(category);
+    expect(parseLibraryCandidates({ candidates: [{ id: "c1", kind: "CATEGORY", name: "Chaat Counter", categoryName: null, foodType: null, unit: null, kitchenCount: 2, suggestedMatchId: null, suggestedMatchName: null, photoUrl: null, updatedAt: "" }] }).ok).toBe(true);
+  });
+
+  it("an update of a category takes a name and other names", () => {
+    expect(parseLibraryEntryUpdate({ id: "k1", kind: "CATEGORY", name: "Appetisers", aliases: ["Starters"] })).toEqual({ ok: true, value: { id: "k1", kind: "CATEGORY", name: "Appetisers", aliases: ["Starters"] } });
+    expect(parseLibraryEntryUpdate({ id: "k1", kind: "CATEGORY", name: "" }).ok).toBe(false);
+  });
+});

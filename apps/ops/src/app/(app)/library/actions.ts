@@ -27,6 +27,9 @@ export async function reviewAction(_prev: ReviewState, formData: FormData): Prom
       // Any library item, chosen by typing its name (the suggestion is only a shortcut).
       const target = await findEntryByName(id, text(formData, "mergeIntoName"));
       await decideCandidate(id, { action: "merge", mergeIntoId: target.id }, staff.id);
+    } else if (intent === "approvePhoto") {
+      if (text(formData, "checked") !== "yes") return { error: "Tick the box to confirm the photo is good and fine to share with every kitchen." };
+      await decideCandidate(id, { action: "approve" }, staff.id);
     } else if (intent === "approve") {
       const foodType = text(formData, "foodType");
       await decideCandidate(
@@ -35,7 +38,7 @@ export async function reviewAction(_prev: ReviewState, formData: FormData): Prom
           action: "approve",
           entry: {
             name: text(formData, "name"),
-            categoryName: text(formData, "categoryName"),
+            categoryName: text(formData, "categoryName") || text(formData, "name"), // a category's own name is its category
             foodType: foodType === "VEGETARIAN" || foodType === "NON_VEGETARIAN" ? foodType : null,
             unit: text(formData, "unit") || null,
             description: text(formData, "description") || null,
@@ -62,24 +65,27 @@ export async function entryAction(_prev: ReviewState, formData: FormData): Promi
   const id = text(formData, "id");
   const kind = text(formData, "kind");
   const intent = text(formData, "intent");
-  if (kind !== "FOOD_ITEM" && kind !== "INGREDIENT") return { error: "Unknown kind." };
+  if (kind !== "FOOD_ITEM" && kind !== "INGREDIENT" && kind !== "CATEGORY") return { error: "Unknown kind." };
   try {
     if (intent === "hide" || intent === "show") {
       await updateLibraryEntry(productKey, { id, kind, isActive: intent === "show" }, staff.id, text(formData, "label"));
     } else {
       const foodType = text(formData, "foodType");
+      const aliases = text(formData, "aliases").split(",").map((a) => a.trim()).filter(Boolean);
       await updateLibraryEntry(
         productKey,
-        {
-          id,
-          kind,
-          name: text(formData, "name"),
-          categoryName: text(formData, "categoryName"),
-          description: text(formData, "description") || null,
-          aliases: text(formData, "aliases").split(",").map((a) => a.trim()).filter(Boolean),
-          ...(kind === "FOOD_ITEM" && (foodType === "VEGETARIAN" || foodType === "NON_VEGETARIAN") ? { foodType } : {}),
-          ...(kind === "INGREDIENT" && text(formData, "unit") ? { unit: text(formData, "unit") } : {}),
-        },
+        kind === "CATEGORY"
+          ? { id, kind, name: text(formData, "name"), aliases }
+          : {
+              id,
+              kind,
+              name: text(formData, "name"),
+              categoryName: text(formData, "categoryName"),
+              description: text(formData, "description") || null,
+              aliases,
+              ...(kind === "FOOD_ITEM" && (foodType === "VEGETARIAN" || foodType === "NON_VEGETARIAN") ? { foodType } : {}),
+              ...(kind === "INGREDIENT" && text(formData, "unit") ? { unit: text(formData, "unit") } : {}),
+            },
         staff.id,
         text(formData, "label"),
       );

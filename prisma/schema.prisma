@@ -872,6 +872,21 @@ model SystemIngredient {
   @@map("system_ingredient")
 }
 
+// The library's list of dish categories (not tenant-scoped). A library dish's `categoryName` is one of these names; kitchens'
+// own categories that two or more kitchens use are offered to a reviewer in Ops (kind CATEGORY), who approves one as a new
+// entry, merges it into an existing one as another name, or rejects it. A kitchen's own categories never change.
+model SystemFoodCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  /// Other names kitchens use for the same category ("Starter" for Starters). Used only for matching.
+  aliases   String[] @default([])
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_food_category")
+}
+
 // What kitchens add that Platterly's library lacks (or has only as an illustration), found by the nightly scan and
 // reviewed by a person in Ops (AJ, 2026-10-11). Holds names, category, type/unit and a count only: never a price,
 // cost, stock, supplier, note or kitchen name. Recipes are never collected.
@@ -879,6 +894,7 @@ enum LibraryCandidateKind {
   FOOD_ITEM
   INGREDIENT
   PHOTO
+  CATEGORY
 }
 
 enum LibraryCandidateStatus {

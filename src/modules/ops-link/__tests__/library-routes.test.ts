@@ -114,6 +114,14 @@ describe("/api/ops/library/entries", () => {
     expect(Array.isArray(parsed.entries)).toBe(true);
   });
 
+  it("lists the library's categories", async () => {
+    const res = await entriesGet("CATEGORY");
+    expect(res.status).toBe(200);
+    const parsed = JSON.parse(await replyText(res));
+    expect(parsed.entries.map((e: { name: string }) => e.name)).toEqual(expect.arrayContaining(["Starters", "Main Course"]));
+    expect(parsed.entries[0]).toMatchObject({ kind: "CATEGORY", foodType: null, unit: null, isActive: true });
+  });
+
   it("applies one signed change, answers 409 for a taken name, and 401 without a signature", async () => {
     const a = await candidate("Route Entry A");
     await prisma.libraryCandidate.delete({ where: { id: a.id } });

@@ -5,7 +5,7 @@ import { isRecord, fail, ok, type ParseResult } from "./result";
  * answer. The product sends candidates (read by Ops with a signed GET) and applies decisions (a signed POST from Ops).
  * Only names, category, Veg/Non-Veg, unit and a count cross: never a price, cost, stock, supplier, note or kitchen name.
  */
-export const LIBRARY_KINDS = ["FOOD_ITEM", "INGREDIENT", "PHOTO"] as const;
+export const LIBRARY_KINDS = ["FOOD_ITEM", "INGREDIENT", "PHOTO", "CATEGORY"] as const;
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
 export const LIBRARY_ACTIONS = ["approve", "merge", "reject"] as const;
 export type LibraryAction = (typeof LIBRARY_ACTIONS)[number];
@@ -104,7 +104,8 @@ export function parseLibraryDecision(input: unknown): ParseResult<LibraryDecisio
 }
 
 /**
- * Editing the library itself (docs/ops-contract.md section 31). Ops lists the entries of one kind with a signed GET and changes
+ * Editing the library itself (docs/ops-contract.md section 31). A CATEGORY entry is one of the library's dish categories:
+ * `name` and `categoryName` are the same, `aliases` are other names kitchens use for it, and it has no type, unit or description. Ops lists the entries of one kind with a signed GET and changes
  * one entry with a signed POST. Only library data crosses: never anything a kitchen owns. Kitchens' own copies never change.
  */
 export interface LibraryEntryDoc {
@@ -134,7 +135,7 @@ export function parseLibraryEntries(input: unknown): ParseResult<{ entries: Libr
     const description = optText(raw.description, LIBRARY_LIMITS.text);
     const unit = optText(raw.unit, 40);
     const foodType = raw.foodType === null || raw.foodType === undefined ? null : FOOD_TYPES.includes(raw.foodType as LibraryFoodType) ? (raw.foodType as LibraryFoodType) : undefined;
-    if (!id || !name || !categoryName || (raw.kind !== "FOOD_ITEM" && raw.kind !== "INGREDIENT") || description === undefined || unit === undefined || foodType === undefined || typeof raw.isActive !== "boolean") return fail(`entry ${i} is invalid`);
+    if (!id || !name || !categoryName || (raw.kind !== "FOOD_ITEM" && raw.kind !== "INGREDIENT" && raw.kind !== "CATEGORY") || description === undefined || unit === undefined || foodType === undefined || typeof raw.isActive !== "boolean") return fail(`entry ${i} is invalid`);
     const aliases = Array.isArray(raw.aliases) ? raw.aliases.filter((a): a is string => typeof a === "string" && a.length <= LIBRARY_LIMITS.name) : [];
     out.push({ id, kind: raw.kind, name, description, categoryName, foodType, unit, aliases: aliases.slice(0, LIBRARY_ENTRY_LIMITS.aliases), isActive: raw.isActive });
   }
@@ -158,7 +159,7 @@ export interface LibraryEntryUpdate {
 export function parseLibraryEntryUpdate(input: unknown): ParseResult<LibraryEntryUpdate> {
   if (!isRecord(input)) return fail("update must be an object");
   const id = text(input.id, LIBRARY_LIMITS.id);
-  if (!id || (input.kind !== "FOOD_ITEM" && input.kind !== "INGREDIENT")) return fail("id and a valid kind are required");
+  if (!id || (input.kind !== "FOOD_ITEM" && input.kind !== "INGREDIENT" && input.kind !== "CATEGORY")) return fail("id and a valid kind are required");
   const update: LibraryEntryUpdate = { id, kind: input.kind };
   if (input.name !== undefined) {
     const v = text(input.name, LIBRARY_LIMITS.name);

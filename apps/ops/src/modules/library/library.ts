@@ -133,10 +133,10 @@ export async function listCandidates(productKey: string, filter: { kind?: string
   });
 }
 
-export async function countPending(productKey: string): Promise<{ FOOD_ITEM: number; INGREDIENT: number; PHOTO: number }> {
+export async function countPending(productKey: string): Promise<{ FOOD_ITEM: number; INGREDIENT: number; PHOTO: number; CATEGORY: number }> {
   const rows = await prisma.libraryCandidate.groupBy({ by: ["kind"], where: { productKey, status: "PENDING" }, _count: true });
   const count = (kind: string) => rows.find((r) => r.kind === kind)?._count ?? 0;
-  return { FOOD_ITEM: count("FOOD_ITEM"), INGREDIENT: count("INGREDIENT"), PHOTO: count("PHOTO") };
+  return { FOOD_ITEM: count("FOOD_ITEM"), INGREDIENT: count("INGREDIENT"), PHOTO: count("PHOTO"), CATEGORY: count("CATEGORY") };
 }
 
 /** One signed call to a product's library routes; returns the verified, parsed answer or throws a reason a person can read. */
@@ -170,7 +170,7 @@ async function callProduct(productKey: string, path: string, method: "GET" | "PO
 }
 
 /** The product's library entries of one kind, read live (Ops keeps no copy: the product's library is the single source). */
-export async function fetchLibraryEntries(productKey: string, kind: "FOOD_ITEM" | "INGREDIENT", fetchImpl: typeof fetch = fetch): Promise<LibraryEntryDoc[]> {
+export async function fetchLibraryEntries(productKey: string, kind: "FOOD_ITEM" | "INGREDIENT" | "CATEGORY", fetchImpl: typeof fetch = fetch): Promise<LibraryEntryDoc[]> {
   const json = await callProduct(productKey, `/api/ops/library/entries?kind=${kind}`, "GET", "", fetchImpl);
   const parsed = parseLibraryEntries(json);
   if (!parsed.ok) throw new LibraryReviewError(`The list is invalid: ${parsed.error}.`);
@@ -187,7 +187,7 @@ export async function updateLibraryEntry(productKey: string, update: LibraryEntr
 export async function findEntryByName(candidateId: string, typed: string, fetchImpl: typeof fetch = fetch): Promise<LibraryEntryDoc> {
   const candidate = await prisma.libraryCandidate.findUnique({ where: { id: candidateId }, select: { productKey: true, kind: true } });
   if (!candidate) throw new LibraryReviewError("That item was not found.");
-  if (candidate.kind !== "FOOD_ITEM" && candidate.kind !== "INGREDIENT") throw new LibraryReviewError("This kind of item cannot be merged.");
+  if (candidate.kind !== "FOOD_ITEM" && candidate.kind !== "INGREDIENT" && candidate.kind !== "CATEGORY") throw new LibraryReviewError("This kind of item cannot be merged.");
   const { productKey, kind } = candidate;
   const key = typed.trim().toLowerCase();
   if (!key) throw new LibraryReviewError("Type the name of the library item to merge into.");

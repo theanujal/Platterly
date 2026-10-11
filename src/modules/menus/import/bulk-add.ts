@@ -1,7 +1,7 @@
 import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { getStorageDriver } from "@/lib/storage/storage";
+import { getStorageDriver, readStoredFile } from "@/lib/storage/storage";
 import { prisma } from "@/lib/db";
 import { createCategory } from "@/modules/menus/category";
 import { createMenuItem, MenuItemNameTakenError } from "@/modules/menus/item";
@@ -26,9 +26,18 @@ export interface BulkResult {
 }
 
 const PHOTO_PREFIX = "/catalog/photos/";
+/** Pictures a person approved from a kitchen's upload live in the library's own storage folder (src/modules/library/apply.ts). */
+export const LIBRARY_UPLOAD_PREFIX = "/uploads/library/";
 
 /** Photos are copied so the business owns its picture and a later catalog change never touches it. */
 async function ownImage(organizationId: string, imageUrl: string | undefined): Promise<string | undefined> {
+  if (imageUrl?.startsWith(LIBRARY_UPLOAD_PREFIX)) {
+    const data = await readStoredFile(imageUrl);
+    if (!data) return undefined; // the library's file is gone: add the dish without a picture rather than point at a missing one
+    const extension = path.extname(imageUrl).slice(1) || "webp";
+    const key = `organizations/${organizationId}/catalog/items/${crypto.randomUUID()}.${extension}`;
+    return (await getStorageDriver().upload(key, data, extension === "jpg" ? "image/jpeg" : `image/${extension}`)).url;
+  }
   if (!imageUrl?.startsWith(PHOTO_PREFIX)) return imageUrl;
   const file = path.basename(imageUrl);
   const data = await readFile(path.join(process.cwd(), "public", "catalog", "photos", file));
@@ -65,7 +74,7 @@ export async function bulkAddFoodItems(organizationId: string, entries: BulkEntr
       }
       const item = await createMenuItem(
         organizationId,
-        { name, foodType: entry.foodType, price: entry.price, description: entry.description, image: await ownImage(organizationId, entry.imageUrl), categoryIds },
+        { name, foodType: entry.foodType, price: entry.price, description: entry.description, image: await ownImage(organizationId, entry.imageUrl), imageSource: entry.imageUrl ? "library" : undefined, categoryIds },
         actorUserId,
       );
       if (entry.sourceCatalogId) await prisma.menuItem.update({ where: { id: item.id }, data: { sourceCatalogId: entry.sourceCatalogId } });

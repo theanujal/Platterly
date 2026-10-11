@@ -52,7 +52,7 @@ describe("pulling candidates", () => {
   it("asks with a signed GET, stores what comes back, and says how many are new", async () => {
     expect(await pullLibraryCandidates(KEY)).toEqual({ ok: true, created: 2, updated: 0, withdrawn: 0 });
     expect(seen).toEqual([{ method: "GET", path: "/api/ops/library/candidates", verified: true, body: "" }]);
-    expect(await countPending(KEY)).toEqual({ FOOD_ITEM: 1, INGREDIENT: 1, PHOTO: 0 });
+    expect(await countPending(KEY)).toEqual({ FOOD_ITEM: 1, INGREDIENT: 1, PHOTO: 0, CATEGORY: 0 });
     expect((await prisma.notification.count({ where: { productKey: KEY, kind: "library.review" } }))).toBe(1);
     // a second pull changes nothing and does not announce again
     expect(await pullLibraryCandidates(KEY)).toEqual({ ok: true, created: 0, updated: 2, withdrawn: 0 });
@@ -189,5 +189,38 @@ describe("editing the library's own entries", () => {
     answer.body = JSON.stringify({ entries: [entry("e1", { name: "Same" }), entry("e2", { name: "same" })] });
     await expect(findEntryByName(dishCandidate.id, "same")).rejects.toThrow(/More than one/);
     await expect(findEntryByName("missing", "x")).rejects.toThrow(/not found/);
+  });
+
+  it("stores a photo candidate with its picture, and sends an approval without any entry fields", async () => {
+    answer.body = JSON.stringify({ candidates: [cand("p1", { kind: "PHOTO", name: "Dal Tadka", categoryName: "Main Course", suggestedMatchId: "lib-9", suggestedMatchName: "Dal Tadka", photoUrl: "http://catering.localhost:3000/uploads/organizations/o/catalog/items/x.webp", kitchenCount: 1 })] });
+    expect(await pullLibraryCandidates(KEY)).toMatchObject({ ok: true, created: 1 });
+    const [photo] = await listCandidates(KEY, { kind: "PHOTO" });
+    expect(photo).toMatchObject({ kind: "PHOTO", name: "Dal Tadka", photoUrl: "http://catering.localhost:3000/uploads/organizations/o/catalog/items/x.webp" });
+    expect(await countPending(KEY)).toMatchObject({ PHOTO: 1 });
+
+    answer.body = JSON.stringify({ result: "applied" });
+    seen = [];
+    await decideCandidate(photo.id, { action: "approve" }, null as unknown as string);
+    expect(JSON.parse(seen[0].body)).toEqual({ candidateId: "p1", action: "approve" });
+    expect((await listCandidates(KEY, { kind: "PHOTO", status: "APPROVED" })).map((c) => c.remoteId)).toEqual(["p1"]);
+  });
+
+  it("stores a category candidate (name and count only), counts it, and sends the merge target", async () => {
+    answer.body = JSON.stringify({ candidates: [cand("c1", { kind: "CATEGORY", name: "Chaat Counter", categoryName: null, foodType: null, unit: null, kitchenCount: 3, suggestedMatchId: "cat-2", suggestedMatchName: "Live Counters" })] });
+    expect(await pullLibraryCandidates(KEY)).toMatchObject({ ok: true, created: 1 });
+    expect(await countPending(KEY)).toMatchObject({ CATEGORY: 1 });
+    const [category] = await listCandidates(KEY, { kind: "CATEGORY" });
+    expect(category).toMatchObject({ kind: "CATEGORY", name: "Chaat Counter", kitchenCount: 3 });
+
+    answer.body = JSON.stringify({ result: "applied" });
+    seen = [];
+    await decideCandidate(category.id, { action: "merge", mergeIntoId: "cat-2" }, null as unknown as string);
+    expect(JSON.parse(seen[0].body)).toEqual({ candidateId: "c1", action: "merge", mergeIntoId: "cat-2" });
+  });
+
+  it("reads the category list live", async () => {
+    answer.body = JSON.stringify({ entries: [entry("k1", { kind: "CATEGORY", name: "Starters", categoryName: "Starters", aliases: ["Appetizers"] }), entry("k2", { kind: "CATEGORY", name: "Soups", categoryName: "Soups" })] });
+    expect((await fetchLibraryEntries(KEY, "CATEGORY")).map((e) => e.name)).toEqual(["Starters", "Soups"]);
+    expect(seen[0].path).toBe("/api/ops/library/entries?kind=CATEGORY");
   });
 });
