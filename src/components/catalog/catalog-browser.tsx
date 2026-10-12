@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Search, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { ViewToggle } from "@/components/catalog/view-toggle";
@@ -9,6 +9,29 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableHeader, TableRow, TableHead } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
+const DEFAULT_PAGE_SIZE: PageSizeOption = 10;
+const PAGE_SIZE_STORAGE_KEY = "platterly:rows-per-page";
+function subscribePageSize(onChange: () => void) {
+  window.addEventListener(PAGE_SIZE_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(PAGE_SIZE_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+function readSavedPageSize(): PageSizeOption | null {
+  try {
+    const saved = Number(window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY));
+    return isPageSizeOption(saved) ? saved : null;
+  } catch {
+    return null;
+  }
+}
+const PAGE_SIZE_EVENT = "platterly:rows-per-page-changed";
+const isPageSizeOption = (n: number): n is PageSizeOption => (PAGE_SIZE_OPTIONS as readonly number[]).includes(n);
 import { Separator } from "@/components/ui/separator";
 
 /**
@@ -129,8 +152,8 @@ interface CatalogBrowserProps {
   filters?: React.ReactNode;
   /** Client-side sort of the (already search/filter-narrowed) entries. Omit to hide the Sort control entirely. */
   sortOptions?: CatalogSortOption[];
-  /** Rows per page. Omit to disable pagination. */
-  pageSize?: number;
+  /** Rows per page to start with: 10, 25 or 50 (default 10). Paging only appears once there are more entries than this. */
+  pageSize?: PageSizeOption;
   /** Which view renders first — Grid suits visual catalogs, List suits tabular data (e.g. Inventory). Defaults to "grid". */
   defaultView?: "grid" | "list";
   /** Grid column classes, for cards too wide for the default 1-2-3-4 columns (e.g. Orders). */
@@ -173,7 +196,7 @@ export function CatalogBrowser({
   filterOptions,
   filters,
   sortOptions,
-  pageSize,
+  pageSize: initialPageSize = DEFAULT_PAGE_SIZE,
   defaultView = "grid",
   gridColumnsClassName = "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4",
   richList = false,
@@ -183,6 +206,9 @@ export function CatalogBrowser({
   const [activeFilters, setActiveFilters] = useState<Record<string, string>>({});
   const [sort, setSort] = useState(sortOptions?.[0]?.value);
   const [page, setPage] = useState(1);
+  // The viewer's choice follows them from list to list (a per-viewer convenience only: any storage failure is ignored).
+  const savedPageSize = useSyncExternalStore(subscribePageSize, readSavedPageSize, () => null);
+  const pageSize = savedPageSize ?? initialPageSize;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -208,9 +234,17 @@ export function CatalogBrowser({
     });
   }, [filtered, sortOptions, sort]);
 
-  const totalPages = pageSize ? Math.max(1, Math.ceil(sorted.length / pageSize)) : 1;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const paged = pageSize ? sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize) : sorted;
+  const paged = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  function changePageSize(size: PageSizeOption) {
+    setPage(1);
+    try {
+      window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(size));
+    } catch {}
+    window.dispatchEvent(new Event(PAGE_SIZE_EVENT));
+  }
 
   function resetPage() {
     setPage(1);
@@ -359,45 +393,45 @@ export function CatalogBrowser({
         </>
       )}
 
-      {pageSize && sorted.length > pageSize && (
-        <div className="flex items-center justify-between gap-2 pt-2">
-          <p className="text-sm text-muted-foreground">
-            Showing {paged.length} of {sorted.length} items
-          </p>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Previous page"
-              disabled={currentPage === 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
-              <Button
-                key={pageNumber}
-                type="button"
-                variant={pageNumber === currentPage ? "default" : "outline"}
-                size="icon-sm"
-                aria-label={`Page ${pageNumber}`}
-                aria-current={pageNumber === currentPage ? "page" : undefined}
-                onClick={() => setPage(pageNumber)}
+      {/* Paging (design system: Paging and empty): "Showing 1–10 of 42" left; rows per page, Previous / Next (outline md) and "Page 2 of 5" right. Shown once there are more than 10 entries. */}
+      {sorted.length > PAGE_SIZE_OPTIONS[0] && (
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-sm text-muted-foreground" data-testid="catalog-paging">
+          <span>
+            Showing {(currentPage - 1) * pageSize + 1}–{(currentPage - 1) * pageSize + paged.length} of {sorted.length.toLocaleString("en-IN")}
+          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span>Rows per page</span>
+              <Select
+                items={Object.fromEntries(PAGE_SIZE_OPTIONS.map((n) => [String(n), String(n)]))}
+                value={String(pageSize)}
+                onValueChange={(v) => changePageSize(Number(v) as PageSizeOption)}
               >
-                {pageNumber}
-              </Button>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              size="icon-sm"
-              aria-label="Next page"
-              disabled={currentPage === totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
+                <SelectTrigger size="md" aria-label="Rows per page" className="w-20">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="md" aria-label="Previous page" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>
+                  <ChevronLeft className="size-4" aria-hidden /> Previous
+                </Button>
+                <span>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button type="button" variant="outline" size="md" aria-label="Next page" disabled={currentPage === totalPages} onClick={() => setPage(currentPage + 1)}>
+                  Next <ChevronRight className="size-4" aria-hidden />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -107,7 +107,6 @@ export default async function EventTypesPage() {
             ],
           },
         ]}
-        pageSize={16}
       />
     </div>
   );

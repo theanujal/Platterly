@@ -162,7 +162,6 @@ export default async function MenusPage() {
         emptyLabel="No menu types yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
       />
     </div>
   );

@@ -365,7 +365,6 @@ export default async function AbandonedOrdersPage() {
         // gives it — same reasoning as Orders' own override
         // (CatalogBrowser's gridColumnsClassName doc).
         gridColumnsClassName="grid-cols-[repeat(auto-fill,minmax(min(26.5rem,100%),1fr))]"
-        pageSize={16}
       />
     </div>
   );

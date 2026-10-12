@@ -200,7 +200,6 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
         // The card now carries a divided stat row plus a footer amount block (matching the Order
         // Card's own layout) and needs more room than the default grid gives it.
         gridColumnsClassName="grid-cols-[repeat(auto-fill,minmax(min(22rem,100%),1fr))]"
-        pageSize={16}
       />
     </div>
   );

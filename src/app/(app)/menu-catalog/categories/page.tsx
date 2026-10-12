@@ -110,7 +110,6 @@ export default async function CategoriesPage() {
         emptyLabel="No menu categories yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
       />
     </div>
   );

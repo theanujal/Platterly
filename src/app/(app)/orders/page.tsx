@@ -106,7 +106,6 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         emptyLabel="No orders yet."
         filters={<OrdersFilterBar eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}
         sortOptions={sortOptions}
-        pageSize={16}
         // The design system's Order card (§09) switches from its stacked layout to
         // the wide one (status beside the order number, three stat cells, amount
         // beside payment) once its own inner width reaches 24rem — so every card

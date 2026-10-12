@@ -106,7 +106,6 @@ export default async function SuppliersPage() {
         emptyLabel="No suppliers yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
         defaultView="list"
       />
     </div>

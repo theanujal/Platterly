@@ -108,7 +108,6 @@ export default async function CustomersPage() {
         emptyLabel="No customers yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
       />
     </div>
   );

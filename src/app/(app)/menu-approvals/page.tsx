@@ -163,7 +163,6 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
         emptyLabel="No menu selections yet."
         filters={<MenuApprovalsFilterBar />}
         sortOptions={sortOptions}
-        pageSize={16}
         defaultView="list"
       />
     </div>

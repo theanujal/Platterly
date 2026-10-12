@@ -330,6 +330,16 @@ export async function seedOrderForBilling(email: string, total: number): Promise
   return { orderId, organizationId, orderNumber };
 }
 
+/** Adds `count` plain customers to the user's business, for the list paging spec. */
+export async function seedCustomers(email: string, count: number, from = 1): Promise<void> {
+  const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
+  const organizationId = rows[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  for (let i = from; i < from + count; i++) {
+    await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [`cust_pg_${Date.now()}_${i}`, organizationId, `Paging Customer ${String(i).padStart(2, "0")}`, `+9197000${String(i).padStart(5, "0")}`]);
+  }
+}
+
 /** Moves an order's event `daysAgo` days into the past (and optionally cancels it), for the Overdue payment specs. */
 export async function setOrderEventPast(orderId: string, daysAgo: number, status?: "CANCELLED" | "COMPLETED"): Promise<void> {
   await pool.query(

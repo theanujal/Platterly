@@ -174,7 +174,6 @@ export default async function ItemsPage() {
         emptyLabel="No food items yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
       />
     </div>
   );

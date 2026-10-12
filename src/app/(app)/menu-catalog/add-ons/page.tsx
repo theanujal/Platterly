@@ -139,7 +139,6 @@ export default async function AddOnsPage() {
         emptyLabel="No add-ons yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
       />
     </div>
   );

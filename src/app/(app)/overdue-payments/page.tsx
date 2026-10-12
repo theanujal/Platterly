@@ -156,7 +156,6 @@ export default async function OverduePaymentsPage() {
         richList
         defaultView="list"
         gridColumnsClassName="grid-cols-[repeat(auto-fill,minmax(min(20rem,100%),1fr))]"
-        pageSize={16}
       />
     </div>
   );

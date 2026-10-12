@@ -172,7 +172,6 @@ export default async function InventoryPage() {
         emptyLabel="No inventory items yet."
         filterOptions={filterOptions}
         sortOptions={sortOptions}
-        pageSize={16}
         defaultView="list"
       />
     </div>
