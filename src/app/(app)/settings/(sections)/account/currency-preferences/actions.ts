@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getSetting, setSetting } from "@/lib/settings/settings";
+import { TIME_ZONE_SETTING_KEY, isValidTimeZone } from "@/lib/time/timezone";
 import { CURRENCY_PREFERENCES_KEY, DEFAULT_CURRENCY_PREFERENCES, type CurrencyPreferences } from "./types";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -45,6 +46,18 @@ export async function updateCurrencyPreferencesAction(formData: FormData): Promi
     roundingMode,
   } satisfies CurrencyPreferences);
 
+  revalidatePath("/settings/account/currency-preferences");
+  return { ok: true };
+}
+
+export async function updateTimeZoneAction(formData: FormData): Promise<ActionResult> {
+  const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["edit"] }, organizationId);
+
+  const timeZone = String(formData.get("timeZone") ?? "");
+  if (!isValidTimeZone(timeZone)) return { ok: false, error: "Pick a valid time zone." };
+
+  await setSetting(organizationId, TIME_ZONE_SETTING_KEY, timeZone);
   revalidatePath("/settings/account/currency-preferences");
   return { ok: true };
 }

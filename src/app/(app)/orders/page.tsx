@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listOrders } from "@/modules/orders/order";
 import { listEventTypes } from "@/modules/events/event-type";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   ]);
   // One timestamp for every card, so their "Starts in" countdowns agree.
   const now = new Date();
+  const timeZone = await getTenantTimeZone(organizationId);
 
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
@@ -72,8 +74,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         newest: order.eventStartDate.getTime(),
         eventDate: order.eventStartDate.getTime(),
       },
-      card: <OrderCard order={order} now={now} canEdit={canEdit} canDelete={canDelete} />,
-      listRow: <OrderListCells order={order} now={now} />,
+      card: <OrderCard order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} />,
+      listRow: <OrderListCells order={order} now={now} timeZone={timeZone} />,
     };
   });
 

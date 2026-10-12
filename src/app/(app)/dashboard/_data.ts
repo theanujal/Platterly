@@ -1,5 +1,7 @@
 import { eventAt, orderAt, sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
+import { todayStartInZone } from "@/lib/time/timezone";
 import { getInventoryOverviewStats, listLowStockItems } from "@/modules/inventory/inventory";
 import { getGuestCount } from "@/modules/orders/order-card";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
@@ -98,7 +100,7 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
   const now = new Date();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const todayUtc = todayStartInZone(now, await getTenantTimeZone(organizationId));
   const tomorrowUtc = new Date(todayUtc.getTime() + DAY_MS);
   const in7DaysUtc = new Date(todayUtc.getTime() + 7 * DAY_MS);
   // 1 year back covers the activity chart's longest range (1Y); the 7D/30D/3M buttons slice the tail client-side.

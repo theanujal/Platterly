@@ -247,6 +247,29 @@ export async function returnOrderItem(organizationId: string, orderId: string, i
 }
 
 /**
+ * A cancelled order puts back everything that was sent to it (AJ, 2026-10-12). One stock-in row per item, tagged with the
+ * order, for whatever is still out; safe to run again because it only returns the net amount still out.
+ */
+export async function returnAllOrderItems(organizationId: string, orderId: string, actorUserId?: string) {
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true } });
+  if (!order) return [];
+  const returned: { inventoryId: string; quantity: number }[] = [];
+  await prisma.$transaction(async (tx) => {
+    await lockOrder(tx, orderId);
+    const ids = await tx.inventoryTransaction.findMany({ where: { orderId }, distinct: ["inventoryId"], select: { inventoryId: true } });
+    for (const { inventoryId } of ids) {
+      const out = await netSent(tx, orderId, inventoryId);
+      if (out <= 0) continue;
+      await tx.inventory.update({ where: { id: inventoryId }, data: { stockCount: { increment: out } } });
+      await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: out, orderId, actorUserId: actorUserId ?? null, note: `Returned, ${order.orderNumber ?? "order"} cancelled` } });
+      returned.push({ inventoryId, quantity: out });
+    }
+  });
+  if (returned.length > 0) await audit({ organizationId, actorUserId, action: "order.items_returned_on_cancel", recordType: "Order", recordId: orderId, after: { items: returned.length } });
+  return returned;
+}
+
+/**
  * Production planning across the board's own window (today through the Kitchen Rules' days): every order Sent to the
  * kitchen with an event in that window, its needs, and the combined shortfall for orders whose stock is not taken yet.
  */

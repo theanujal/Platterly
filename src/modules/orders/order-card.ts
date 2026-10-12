@@ -1,5 +1,6 @@
 import type { MenuSelectionStatus, OrderPaymentStatus, OrderStatus } from "@/generated/prisma/enums";
 import { isPaymentOverdue } from "@/modules/payments/payment-math";
+import { todayStartInZone } from "@/lib/time/timezone";
 import type { Tone } from "./order-status";
 
 /**
@@ -32,6 +33,11 @@ function utcDay(d: Date): number {
   return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / DAY_MS);
 }
 
+/** Today's day number in the business's time zone, comparable with `utcDay` of a stored event date. */
+function todayDay(now: Date, timeZone?: string): number {
+  return utcDay(todayStartInZone(now, timeZone));
+}
+
 export interface EventCountdown {
   /** Small label above the value — "Starts in" only while the event is still ahead. */
   caption: string;
@@ -42,9 +48,9 @@ export interface EventCountdown {
 /** Within this many days an upcoming event turns from success to warning. */
 const IMMINENT_DAYS = 2;
 
-export function getEventCountdown(start: Date, end: Date, orderStatus: OrderStatus, now: Date = new Date()): EventCountdown | null {
+export function getEventCountdown(start: Date, end: Date, orderStatus: OrderStatus, now: Date = new Date(), timeZone?: string): EventCountdown | null {
   if (orderStatus === "CANCELLED") return null;
-  const today = utcDay(now);
+  const today = todayDay(now, timeZone);
   const daysUntil = utcDay(start) - today;
 
   if (daysUntil > 0) {
@@ -65,8 +71,8 @@ export function getEventCountdown(start: Date, end: Date, orderStatus: OrderStat
  * is never missing even when the date cell already reads Today / Tomorrow. Only
  * "Ended" (and a cancelled order) drops out — AJ asked for that to disappear.
  */
-export function getCardCountdown(start: Date, end: Date, orderStatus: OrderStatus, now: Date = new Date()): EventCountdown | null {
-  const countdown = getEventCountdown(start, end, orderStatus, now);
+export function getCardCountdown(start: Date, end: Date, orderStatus: OrderStatus, now: Date = new Date(), timeZone?: string): EventCountdown | null {
+  const countdown = getEventCountdown(start, end, orderStatus, now, timeZone);
   return countdown?.label === "Ended" ? null : countdown;
 }
 
@@ -129,12 +135,13 @@ export interface PaymentBreakdown {
 export function getPaymentBreakdown(
   order: { total: number; advance: number; paymentStatus: OrderPaymentStatus; status: OrderStatus; eventEndDate: Date },
   now: Date,
+  timeZone?: string,
 ): PaymentBreakdown {
   if (order.paymentStatus === "PAID") return { label: "Paid", tone: "success", summary: "Paid in full" };
   const paid = order.paymentStatus === "UNPAID" ? 0 : Math.min(order.advance, order.total);
   const pending = Math.max(order.total - paid, 0);
   // Overdue is calculated, not stored (AJ, 2026-10-12): see isPaymentOverdue.
-  if (isPaymentOverdue(order, now)) return { label: "Overdue", tone: "danger", summary: `${formatAmount(pending)} overdue` };
+  if (isPaymentOverdue(order, now, timeZone)) return { label: "Overdue", tone: "danger", summary: `${formatAmount(pending)} overdue` };
   if (order.paymentStatus === "UNPAID") return { label: "Unpaid", tone: "danger", summary: `${formatAmount(order.total)} pending` };
   return { label: "Partially Paid", tone: "info", summary: `${formatAmount(paid)} paid · ${formatAmount(pending)} pending` };
 }
@@ -170,8 +177,8 @@ export function formatEventDates(start: Date, end: Date): string {
  * one value, never both (AJ, 2026-09-26). A multi-day event already under way
  * keeps its range, since "Today" would hide that it started earlier.
  */
-export function formatEventWhen(start: Date, end: Date, now: Date = new Date()): string {
-  const daysUntil = utcDay(start) - utcDay(now);
+export function formatEventWhen(start: Date, end: Date, now: Date = new Date(), timeZone?: string): string {
+  const daysUntil = utcDay(start) - todayDay(now, timeZone);
   if (daysUntil === 0) return "Today";
   if (daysUntil === 1) return "Tomorrow";
   return formatEventDates(start, end);

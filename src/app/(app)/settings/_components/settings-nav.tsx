@@ -23,7 +23,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "User Profile", href: "/settings/account/user-profile", icon: User },
       { label: "Business Profile", href: "/settings/account/business-profile", icon: Building2 },
       { label: "Change Password", href: "/settings/account/change-password", icon: Lock },
-      { label: "Currency Preferences", href: "/settings/account/currency-preferences", icon: Coins },
+      { label: "Currency & Time Zone", href: "/settings/account/currency-preferences", icon: Coins },
     ],
   },
   { label: "Kitchen", items: [{ label: "Kitchen Rules", href: "/settings/kitchen/kitchen-rules", icon: ChefHat }] },

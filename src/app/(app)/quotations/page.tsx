@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus, User, MapPin, CalendarDays, Clock, type LucideProps } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listQuotations } from "@/modules/quotations/quotation";
 import { getEventTypeIcon } from "@/lib/event-type-icons";
 import { formatEventWhen } from "@/modules/orders/order-card";
@@ -50,6 +51,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
 
   const quotations = await listQuotations(organizationId, { status: validStatus, when: "upcoming", excludeConverted: true });
   const now = new Date();
+  const timeZone = await getTenantTimeZone(organizationId);
 
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
@@ -64,7 +66,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
   const entries: CatalogEntry[] = quotations.map((quotation) => {
     const StatusIcon = STATUS_ICON[quotation.status];
     const EventTypeIcon = quotation.eventType ? getEventTypeIcon(quotation.eventType.icon) : null;
-    const eventDateLabel = quotation.eventStartDate ? formatEventWhen(quotation.eventStartDate, quotation.eventEndDate ?? quotation.eventStartDate, now) : "—";
+    const eventDateLabel = quotation.eventStartDate ? formatEventWhen(quotation.eventStartDate, quotation.eventEndDate ?? quotation.eventStartDate, now, timeZone) : "—";
     const validUntilLabel = quotation.validUntil ? formatDate(quotation.validUntil) : "—";
     const statusBadge = (
       <Badge variant={STATUS_VARIANT[quotation.status]}>

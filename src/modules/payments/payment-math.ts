@@ -1,4 +1,5 @@
 // Client-safe: the rules for what an order owes and what each payment kind means.
+import { todayStartInZone } from "@/lib/time/timezone";
 export type OrderPaymentState = "UNPAID" | "PARTIALLY_PAID" | "PAID";
 
 export function derivePaymentState(total: number, confirmedPaid: number): OrderPaymentState {
@@ -6,21 +7,16 @@ export function derivePaymentState(total: number, confirmedPaid: number): OrderP
   return confirmedPaid > 0 ? "PARTIALLY_PAID" : "UNPAID";
 }
 
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-/** Midnight (UTC) of today's India calendar day: event dates are stored as UTC midnight of their India day, so this compares like with like. */
-export function istTodayStart(now: Date): Date {
-  const shifted = new Date(now.getTime() + IST_OFFSET_MS);
-  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
-}
+/** Midnight (UTC) of today's calendar day in the business's time zone (India unless it chose another): event dates are stored as UTC midnight of their day, so this compares like with like. */
+export const tenantTodayStart = todayStartInZone;
 
 /**
  * Overdue (AJ, 2026-10-12): calculated, never stored. An order is overdue when money is still owed (Unpaid or
  * Partially Paid), its event has ended (the last day, `eventEndDate`, is before today in India) and it is not cancelled.
  */
-export function isPaymentOverdue(order: { status: string; paymentStatus: OrderPaymentState; eventEndDate: Date }, now: Date): boolean {
+export function isPaymentOverdue(order: { status: string; paymentStatus: OrderPaymentState; eventEndDate: Date }, now: Date, timeZone?: string): boolean {
   if (order.status === "CANCELLED" || order.paymentStatus === "PAID") return false;
-  return order.eventEndDate.getTime() < istTodayStart(now).getTime();
+  return order.eventEndDate.getTime() < tenantTodayStart(now, timeZone).getTime();
 }
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;

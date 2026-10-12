@@ -20,11 +20,11 @@ const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
  * so the two views can't disagree. The row click itself is CatalogBrowser's;
  * the customer name is also a real link so the row is keyboard-reachable.
  */
-export function OrderListCells({ order, now }: { order: OrderListItem; now: Date }) {
+export function OrderListCells({ order, now, timeZone }: { order: OrderListItem; now: Date; timeZone?: string }) {
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
   const total = Number(order.total);
-  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now);
+  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now, timeZone);
   const guests = getGuestCount(order);
   const location = getOrderLocation(order);
 
@@ -64,7 +64,7 @@ export function OrderListCells({ order, now }: { order: OrderListItem; now: Date
         <div className="flex items-center gap-3">
           <CalendarDays className="size-5 shrink-0 text-muted-foreground" />
           <div className="flex flex-col gap-0.5">
-            <span className="text-sm font-medium whitespace-nowrap">{formatEventWhen(order.eventStartDate, order.eventEndDate, now)}</span>
+            <span className="text-sm font-medium whitespace-nowrap">{formatEventWhen(order.eventStartDate, order.eventEndDate, now, timeZone)}</span>
             {/* An Event Type has no status color of its own, so it reads as plain muted text. */}
             {order.eventType && <span className="max-w-40 truncate text-xs text-muted-foreground">{order.eventType.name}</span>}
           </div>

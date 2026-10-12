@@ -1,12 +1,12 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createCustomer } from "@/modules/customers/customer";
-import { createOrder, createEventForOrder } from "@/modules/orders/order";
+import { createOrder, createEventForOrder, updateOrder, deleteOrder } from "@/modules/orders/order";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem, recordStockTransaction } from "@/modules/inventory/inventory";
 import { saveRecipe } from "@/modules/recipes/recipe";
-import { getOrderInventory, sendOrderItems, returnOrderItem, getProductionPlan, StockTakeError } from "@/modules/production/production";
+import { getOrderInventory, sendOrderItems, returnOrderItem, returnAllOrderItems, getProductionPlan, StockTakeError } from "@/modules/production/production";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -162,6 +162,34 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     await prisma.order.update({ where: { id: order.id }, data: { status: "COMPLETED" } });
     expect((await getOrderInventory(org.id, order.id))?.canReturn).toBe(false);
     await expect(returnOrderItem(org.id, order.id, paneer.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
+  });
+
+  it("cancelling an order puts every sent item back on the shelf, once", async () => {
+    const { org, actor, order, paneer } = await setup(100);
+    await approve(order.id);
+    await sendOrderItems(org.id, order.id, actor.id);
+    expect(await stockOf(paneer.id)).toBe(78);
+
+    const customerId = order.customerId;
+    await updateOrder(org.id, order.id, { customerId, eventStartDate: order.eventStartDate, eventEndDate: order.eventEndDate, status: "CANCELLED" }, actor.id);
+    expect(await stockOf(paneer.id)).toBe(100);
+    const ledger = await prisma.inventoryTransaction.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" } });
+    expect(ledger.map((r) => [r.type, Number(r.quantity)])).toEqual([["STOCK_OUT", 22], ["STOCK_IN", 22]]);
+
+    // Running it again (or cancelling again) returns nothing more.
+    expect(await returnAllOrderItems(org.id, order.id, actor.id)).toEqual([]);
+    expect(await stockOf(paneer.id)).toBe(100);
+  });
+
+  it("cancelling an order that sent nothing changes no stock, and deleting one returns what it held", async () => {
+    const { org, actor, order, paneer } = await setup(100);
+    expect(await returnAllOrderItems(org.id, order.id, actor.id)).toEqual([]);
+    expect(await stockOf(paneer.id)).toBe(100);
+
+    await approve(order.id);
+    await sendOrderItems(org.id, order.id, actor.id);
+    await deleteOrder(org.id, order.id, actor.id);
+    expect(await stockOf(paneer.id)).toBe(100);
   });
 
   it("another kitchen cannot read or send this order's items", async () => {

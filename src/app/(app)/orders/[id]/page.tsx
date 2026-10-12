@@ -37,6 +37,7 @@ import { OrderStatusCard } from "./_components/order-status-card";
 import { MenuStatusBanner, menuPlanPhase } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { derivePaymentState, isPaymentOverdue } from "@/modules/payments/payment-math";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
@@ -313,7 +314,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 payments={paymentRows}
                 canRecord={canRecordPayment}
                 canManage={canManagePayment}
-                overdue={isPaymentOverdue({ status: order.status, paymentStatus: derivePaymentState(orderTotal, confirmedPaid), eventEndDate: order.eventEndDate }, new Date())}
+                overdue={isPaymentOverdue({ status: order.status, paymentStatus: derivePaymentState(orderTotal, confirmedPaid), eventEndDate: order.eventEndDate }, new Date(), await getTenantTimeZone(organizationId))}
               />
             </div>
         }

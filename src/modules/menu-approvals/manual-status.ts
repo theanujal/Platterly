@@ -6,6 +6,7 @@ import { syncOrderStatus } from "./menu-approval";
 import { ensureOrderMenuSelection, revokeOutstandingApprovalLinks } from "./approval-link";
 import { addMenuApprovalNote } from "./menu-approval";
 import { recordStatusChange } from "./status-history";
+import { returnAllOrderItems } from "@/modules/production/production";
 import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
 import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "@/generated/prisma/enums";
 
@@ -62,6 +63,7 @@ export async function changeStatusManually(
     if (input.target.kind !== "ORDER") throw new ManualStatusChangeError("This order has no menu approval yet.");
     if (order.status === input.target.status) return { unchanged: true as const };
     await prisma.order.update({ where: { id: orderId }, data: { status: input.target.status } });
+    if (input.target.status === "CANCELLED") await returnAllOrderItems(organizationId, orderId, input.actorUserId);
     await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId });
     await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } });
     if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId);

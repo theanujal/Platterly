@@ -31,6 +31,7 @@ interface OrderCardProps {
   order: OrderListItem;
   /** One timestamp for the whole page so every card's countdown agrees. */
   now: Date;
+  timeZone?: string;
   canEdit: boolean;
   canDelete: boolean;
 }
@@ -41,14 +42,14 @@ interface OrderCardProps {
  * card in a `<Link>`, because the 3-dot menu is an interactive control and
  * can't be nested inside an anchor.
  */
-export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
+export function OrderCard({ order, now, timeZone, canEdit, canDelete }: OrderCardProps) {
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
 
   const total = Number(order.total);
-  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now);
+  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now, timeZone);
   // Null only once the event has ended (AJ, 2026-09-26); Today / Tomorrow still show their countdown.
-  const countdown = getCardCountdown(order.eventStartDate, order.eventEndDate, order.status, now);
+  const countdown = getCardCountdown(order.eventStartDate, order.eventEndDate, order.status, now, timeZone);
   const menuApproval = summarizeMenuApproval(
     order.events.flatMap((event) => (event.menuSelection ? [event.menuSelection] : [])),
     order.status,
@@ -115,7 +116,7 @@ export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
         )}
       >
         <StatCell icon={CalendarDays} caption="Event Date" className="col-span-2 @sm:col-span-1">
-          <span className="text-sm font-semibold">{formatEventWhen(order.eventStartDate, order.eventEndDate, now)}</span>
+          <span className="text-sm font-semibold">{formatEventWhen(order.eventStartDate, order.eventEndDate, now, timeZone)}</span>
         </StatCell>
         <StatCell icon={Users} caption="Guests">
           <span className="text-sm font-semibold">

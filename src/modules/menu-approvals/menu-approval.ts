@@ -18,6 +18,7 @@ import { listKitchens } from "@/modules/events/event";
 import { deriveOrderStatus } from "@/modules/orders/order-status";
 import { recordStatusChange } from "./status-history";
 import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
+import { returnAllOrderItems } from "@/modules/production/production";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export class InvalidMenuSelectionTransitionError extends Error {}
@@ -176,6 +177,7 @@ export async function syncOrderStatus(organizationId: string, menuSelectionId: s
   if (!order || order.status === next) return;
 
   await prisma.order.update({ where: { id: orderId }, data: { status: next } });
+  if (next === "CANCELLED") await returnAllOrderItems(organizationId, orderId, actorUserId);
   await audit({
     organizationId,
     actorUserId,

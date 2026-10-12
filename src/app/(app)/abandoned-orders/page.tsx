@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { cn } from "cn";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
+import { todayStartInZone } from "@/lib/time/timezone";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { formatPhoneDisplay, whatsappDigits } from "@/lib/phone";
@@ -114,9 +116,10 @@ export default async function AbandonedOrdersPage() {
     listAbandonedOrders(organizationId, "ALL"),
   ]);
   const now = new Date();
+  const timeZone = await getTenantTimeZone(organizationId);
   // Only live follow-ups (AJ, 2026-09-30): a draft whose link expired, or whose event date has
   // passed, drops off this page and stays in the customer's history (profile > Abandoned Orders).
-  const todayIso = now.toISOString().slice(0, 10);
+  const todayIso = todayStartInZone(now, timeZone).toISOString().slice(0, 10);
   const liveDrafts = drafts.filter((draft) => !draft.isExpired && draft.eventDate.slice(0, 10) >= todayIso);
 
   const entries: CatalogEntry[] = liveDrafts.map((draft) => {
@@ -140,7 +143,7 @@ export default async function AbandonedOrdersPage() {
     );
     const isVeg = draft.menuPreference === "VEGETARIAN";
     const menuPreferenceLabel = isVeg ? "Vegetarian" : "Non-Vegetarian";
-    const eventWhen = formatEventWhen(new Date(draft.eventDate), new Date(draft.eventDate), now);
+    const eventWhen = formatEventWhen(new Date(draft.eventDate), new Date(draft.eventDate), now, timeZone);
     const eventDateLabel = formatEventDates(new Date(draft.eventDate), new Date(draft.eventDate));
     // Same action styling as the Customers card/list (AJ, 2026-09-30): a tinted WhatsApp button
     // plus an icon-only Copy link on the card, ghost icon buttons in the list. Once expired

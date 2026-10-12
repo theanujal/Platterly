@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isPaymentOverdue, istTodayStart } from "@/modules/payments/payment-math";
+import { isPaymentOverdue, tenantTodayStart } from "@/modules/payments/payment-math";
 
 const day = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
@@ -28,7 +28,7 @@ describe("isPaymentOverdue (AJ, 2026-10-12)", () => {
   it("switches day at midnight India time, not UTC", () => {
     // 11 Oct 19:00 UTC is already 12 Oct 00:30 in India, so an event that ended on the 11th is overdue.
     const justPastIstMidnight = new Date("2026-10-11T19:00:00Z");
-    expect(istTodayStart(justPastIstMidnight).toISOString()).toBe("2026-10-12T00:00:00.000Z");
+    expect(tenantTodayStart(justPastIstMidnight).toISOString()).toBe("2026-10-12T00:00:00.000Z");
     expect(isPaymentOverdue({ status: "APPROVED", paymentStatus: "UNPAID", eventEndDate: day("2026-10-11") }, justPastIstMidnight)).toBe(true);
     // 11 Oct 17:00 UTC is 22:30 on the 11th in India: the 11th is still today.
     expect(isPaymentOverdue({ status: "APPROVED", paymentStatus: "UNPAID", eventEndDate: day("2026-10-11") }, new Date("2026-10-11T17:00:00Z"))).toBe(false);

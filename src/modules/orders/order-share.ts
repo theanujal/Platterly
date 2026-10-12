@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { buildApprovalView, type ApprovalMealView } from "@/modules/menu-approvals/approval-view";
-import { istTodayStart } from "@/modules/payments/payment-math";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
+import { tenantTodayStart } from "@/modules/payments/payment-math";
 import type { ApprovalSnapshot } from "@/modules/menu-approvals/approval-snapshot";
 import type { KitchenProductionStatus, MenuSelectionStatus } from "@/generated/prisma/enums";
 
@@ -112,7 +113,7 @@ export async function resolveShare(token: string, now = new Date()): Promise<Res
   const { order, selection } = shareable;
 
   const kitchen = { name: order.organization.name, logo: order.organization.logo, phone: order.organization.contactPhone, email: order.organization.contactEmail };
-  if (order.eventEndDate.getTime() < istTodayStart(now).getTime()) return { ok: true, ended: true, kitchen };
+  if (order.eventEndDate.getTime() < tenantTodayStart(now, await getTenantTimeZone(resolved.organizationId)).getTime()) return { ok: true, ended: true, kitchen };
 
   const version = await prisma.menuVersion.findUnique({ where: { menuSelectionId_versionNumber: { menuSelectionId: selection.id, versionNumber: selection.currentVersion } }, select: { snapshot: true } });
   if (!version?.snapshot) return { ok: false };

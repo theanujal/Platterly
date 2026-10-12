@@ -1,3 +1,4 @@
+import { todayStartInZone } from "@/lib/time/timezone";
 import type { VariantProps } from "class-variance-authority";
 import type { badgeVariants } from "@/components/ui/badge";
 import type { OrderStatus } from "@/generated/prisma/enums";
@@ -16,10 +17,9 @@ export function addMonths(monthKey: string, n: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Today's calendar day on the server's clock, as "YYYY-MM-DD" (local getters, not toISOString — see dashboard/_data.ts's dateKey). */
-export function todayIso(): string {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+/** Today's calendar day in the business's time zone, as "YYYY-MM-DD". */
+export function todayIso(timeZone?: string): string {
+  return todayStartInZone(new Date(), timeZone).toISOString().slice(0, 10);
 }
 
 export function parseMonthParam(raw: string | undefined, today: string): string {

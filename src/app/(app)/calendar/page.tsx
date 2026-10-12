@@ -12,6 +12,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { DensityLegend } from "@/components/calendar/order-density";
 import { MonthGrid } from "./_components/month-grid";
 import { DayList } from "./_components/day-list";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { addDays, addMonths, formatDay, monthGrid, monthLabel, parseMonthParam, todayIso } from "./_lib";
 
 export const metadata: Metadata = {
@@ -47,7 +48,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
 
   const params = await searchParams;
-  const today = todayIso();
+  const today = todayIso(await getTenantTimeZone(organizationId));
   const monthKey = parseMonthParam(params.month, today);
   const view = params.view === "list" ? "list" : "month";
 

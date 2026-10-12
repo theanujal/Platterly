@@ -2,7 +2,7 @@ import { validateOrderLike } from "@/lib/validation";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
-import { derivePaymentState, istTodayStart } from "@/modules/payments/payment-math";
+import { derivePaymentState, tenantTodayStart } from "@/modules/payments/payment-math";
 import "server-only";
 import { parseCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
 import { prisma } from "@/lib/db";
@@ -12,6 +12,8 @@ import { onOrderCreated } from "@/modules/notifications/triggers";
 import { orderAt } from "@/modules/locations/scope";
 import { createEvent, listKitchens } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
+import { returnAllOrderItems } from "@/modules/production/production";
 import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
@@ -454,6 +456,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       ...(input.kitchenNotes !== undefined && (input.kitchenNotes.trim() || null) !== (before.kitchenNotes?.trim() || null) ? { kitchenNotesUpdatedAt: input.kitchenNotes.trim() ? new Date() : null } : {}),
     },
   });
+  if (input.status === "CANCELLED" && before.status !== "CANCELLED") await returnAllOrderItems(organizationId, id, actorUserId);
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries);
   if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && input.totalParticipants !== before.totalParticipants) {
     // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity.
@@ -482,6 +485,7 @@ export async function deleteOrder(organizationId: string, id: string, actorUserI
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
   // The DB removes the order's expenses and their attachment rows; their stored files need removing by hand.
   const expenseFiles = await prisma.expenseAttachment.findMany({ where: { expense: { orderId: id } }, select: { key: true } });
+  await returnAllOrderItems(organizationId, id, actorUserId);
   await prisma.order.delete({ where: { id } });
   await deleteStoredFiles(expenseFiles.map((f) => f.key));
 
@@ -559,13 +563,14 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
  * event over by India's calendar, not cancelled), oldest event first so the longest-waiting money is on top.
  */
 export async function listOverdueOrders(organizationId: string, locationId?: string | null, now = new Date()) {
+  const timeZone = await getTenantTimeZone(organizationId);
   const orders = await prisma.order.findMany({
     where: {
       organizationId,
       ...orderAt(locationId),
       status: { not: "CANCELLED" },
       paymentStatus: { in: ["UNPAID", "PARTIALLY_PAID"] },
-      eventEndDate: { lt: istTodayStart(now) },
+      eventEndDate: { lt: tenantTodayStart(now, timeZone) },
     },
     orderBy: { eventEndDate: "asc" },
     select: {
@@ -580,7 +585,7 @@ export async function listOverdueOrders(organizationId: string, locationId?: str
       eventType: { select: { name: true } },
     },
   });
-  const today = istTodayStart(now).getTime();
+  const today = tenantTodayStart(now, timeZone).getTime();
   return orders.map((o) => {
     const total = Number(o.total);
     const paid = Math.min(Number(o.advance), total);

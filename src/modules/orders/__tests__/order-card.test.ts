@@ -29,7 +29,7 @@ describe("getEventCountdown", () => {
 
   it("says Today on the event day regardless of the time of day", () => {
     expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)).toMatchObject({ label: "Today", tone: "orange" });
-    expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", new Date("2026-09-26T23:59:59.000Z"))?.label).toBe("Today");
+    expect(getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", new Date("2026-09-26T18:29:59.000Z"))?.label).toBe("Today"); // 23:59:59 on the 26th in India
   });
 
   it("says Ongoing mid-way through a multi-day event and Ended after it", () => {
