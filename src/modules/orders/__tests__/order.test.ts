@@ -5,6 +5,7 @@ import {
   updateOrder,
   deleteOrder,
   listOrders,
+  listOverdueOrders,
   getOrder,
   recalculateOrderTotals,
   sendOrderWhatsApp,
@@ -179,7 +180,7 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     expect(await ids()).toHaveLength(6);
   });
 
-  it("listOrders `paymentOverdue` finds only finished events that still owe money, never cancelled or paid (AJ, 2026-10-12)", async () => {
+  it("listOverdueOrders finds only finished events that still owe money, never cancelled or paid, oldest first (AJ, 2026-10-12)", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
@@ -196,8 +197,10 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     await make(day(0), "UNPAID"); // event is today: not over yet
     await make(day(4), "UNPAID");
 
-    const ids = (await listOrders(org.id, { paymentOverdue: true })).map((o) => o.id).sort();
-    expect(ids).toEqual([unpaid.id, partial.id].sort());
+    const rows = await listOverdueOrders(org.id);
+    expect(rows.map((o) => o.id)).toEqual([unpaid.id, partial.id]); // the 3-day-old one first
+    expect(rows.map((o) => o.daysOverdue)).toEqual([3, 1]);
+    expect(await listOverdueOrders(crypto.randomUUID())).toEqual([]); // tenant-isolated
   });
 
   it("listOrders filters by event type", async () => {

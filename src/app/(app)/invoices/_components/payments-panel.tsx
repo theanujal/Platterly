@@ -195,7 +195,7 @@ export function PaymentsPanel({
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
-function RecordPaymentDialog({
+export function RecordPaymentDialog({
   open,
   onOpenChange,
   orderId,

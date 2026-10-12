@@ -20,6 +20,7 @@ export const NAV_GROUPS = {
     tabs: [
       { label: "Expenses", href: "/expenses", needs: { expenses: ["view"] } as Needs },
       { label: "Profitability", href: "/profitability", needs: { expenses: ["view"] } as Needs },
+      { label: "Overdue Payments", href: "/overdue-payments", needs: { payments: ["view"] } as Needs },
     ],
   },
   stock: {

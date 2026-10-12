@@ -589,6 +589,8 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
       if (!teamDone) {
         await notifyTeam({
           organizationId,
+          // The people who collect the money (AJ, 2026-10-12).
+          roles: ["owner", "manager", "accounts"],
           event: "payment.overdue_team",
           title: "Payment overdue",
           message: `${orderLabel(c)} for ${c.customerName} has ${formatInr(c.balance)} unpaid and the event is over.`,

@@ -29,7 +29,7 @@ async function makeTeam() {
     await prisma.member.create({ data: { id: crypto.randomUUID(), organizationId: org.id, userId: user.id, role, createdAt: new Date() } });
     return user;
   };
-  return { org, sales: await member("salesEvents"), kitchen: await member("kitchen"), accounts: await member("accounts"), owner: await member("owner") };
+  return { org, sales: await member("salesEvents"), kitchen: await member("kitchen"), accounts: await member("accounts"), owner: await member("owner"), addMember: member };
 }
 
 async function makeOrder(orgId: string, actorId: string, eventStartDate: Date) {
@@ -96,8 +96,9 @@ describe("notification triggers (Chunk 16)", () => {
     expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "payment.overdue_digest" } })).toBe(1); // none added on a Tuesday
   });
 
-  it("overdue payment: the team gets one in-app alert the day after the event, cancelled orders none (AJ, 2026-10-12)", async () => {
+  it("overdue payment: Owner, Manager and Accounts get one in-app alert the day after the event, cancelled orders none (AJ, 2026-10-12)", async () => {
     const t = await makeTeam();
+    const manager = await t.addMember("manager");
     const event = new Date("2026-12-01T00:00:00Z");
     const order = await makeOrder(t.org.id, t.sales.id, event);
     const cancelled = await makeOrder(t.org.id, t.sales.id, event);
@@ -108,7 +109,8 @@ describe("notification triggers (Chunk 16)", () => {
     await runDueNotifications(now);
     await runDueNotifications(now);
     const alerts = (await rows(t.org.id, "payment.overdue_team")).filter((n) => n.channel === "IN_APP");
-    expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, t.sales.id, t.kitchen.id, t.accounts.id].sort());
+    // Only the people who collect the money: Owner, Manager and Accounts (AJ, 2026-10-12).
+    expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, manager.id, t.accounts.id].sort());
     expect(JSON.stringify(alerts[0].payload)).toContain(order.id);
     expect(alerts.some((n) => JSON.stringify(n.payload).includes(cancelled.id))).toBe(false);
   });

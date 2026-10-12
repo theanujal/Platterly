@@ -40,6 +40,7 @@ export const RESERVED_PATH_SEGMENTS = [
   "invoice",
   "invoices",
   "profitability",
+  "overdue-payments",
   "expenses",
   "pay",
   "orders",
