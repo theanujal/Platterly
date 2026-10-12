@@ -8,6 +8,7 @@ import {
   submitDraft,
   saveDraftDetails,
   buildDraftQuote,
+  allMealsComplete,
   getDraft,
   listAbandonedOrders,
   StorefrontDraftError,
@@ -180,13 +181,13 @@ describe("menu + items steps (server-side rules)", () => {
     await expect(saveDraftAddOns(t.org.id, draft.id, ["not-an-add-on"])).rejects.toThrow(/isn't available/);
     const saved = await saveDraftAddOns(t.org.id, draft.id, [t.perPlateAddOn.id, t.perPlateAddOn.id]);
     expect(saved.currentStep).toBe(3);
-    expect((await getDraft(t.org.id, draft.id))!.data.addOnIds).toEqual([t.perPlateAddOn.id]); // repeats collapse
+    expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.addOnIds).toEqual([t.perPlateAddOn.id]); // repeats collapse
 
     // None at all is fine, and saving the dishes again keeps the chosen add-ons.
     await saveDraftAddOns(t.org.id, draft.id, []);
     await saveDraftAddOns(t.org.id, draft.id, [t.fixedAddOn.id]);
     await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
-    expect((await getDraft(t.org.id, draft.id))!.data.addOnIds).toEqual([t.fixedAddOn.id]);
+    expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.addOnIds).toEqual([t.fixedAddOn.id]);
   });
 
   it("another tenant's draft id is simply not found", async () => {
@@ -295,15 +296,22 @@ describe("quote + final submit (Order created only here)", () => {
     expect(done?.orderId).toBe(order.id);
   });
 
-  it("several meals repeat the menu, extras and add-ons for each, as a Multi Order with one entry per meal", async () => {
+  it("a meal added later starts empty and needs its own menu; once built it is a second entry of a Multi Order", async () => {
     const t = await setup();
     const { draft } = await completeDraft(t);
     const before = (await getDraft(t.org.id, draft.id))!.data;
     await saveDraftDetails(t.org.id, draft.id, { ...before, eventMealTypes: ["LUNCH", "DINNER", "LUNCH"] });
     const data = (await getDraft(t.org.id, draft.id))!.data;
     expect(data.eventMealTypes).toEqual(["LUNCH", "DINNER"]);
+    expect(data.meals.LUNCH).toBeUndefined(); // new meal: nothing picked yet
+    expect(allMealsComplete(data)).toBe(false);
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow(/complete every step/);
 
-    const quote = await buildDraftQuote(t.org.id, data);
+    // Build lunch the same way as dinner: the totals add up and it is a Multi Order with one entry per meal.
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "LUNCH");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.dal.id], addOnIds: [t.perPlateAddOn.id, t.fixedAddOn.id], mealType: "LUNCH" });
+    const full = (await getDraft(t.org.id, draft.id))!.data;
+    const quote = await buildDraftQuote(t.org.id, full);
     expect(quote.meals).toBe(2);
     expect(quote.menuAmount).toBe(500 * 60 * 2);
     expect(quote.total).toBe(2 * (30000 + 7200 + 600 + 1000) + 500); // the kids' charge is not repeated
@@ -355,6 +363,162 @@ describe("quote + final submit (Order created only here)", () => {
     const after = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } });
     expect(Number(after.total)).toBe(400 * 60);
     expect(Number((await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } })).customPricePerPlate)).toBe(400);
+  });
+});
+
+describe("several meals, each with its own menu (AJ, 2026-10-12)", () => {
+  /** A second veg menu on the same Event Type, cheaper, with its own dishes. */
+  async function secondMenu(t: Awaited<ReturnType<typeof setup>>) {
+    const menu = await createMenu(t.org.id, { name: "Light Veg", menuType: "VEGETARIAN", pricePerPlate: 300 }, t.actor.id);
+    const snacks = await createCategory(t.org.id, { name: "Snacks", menuAssignments: [{ menuId: menu.id, maxSelection: 1 }] }, t.actor.id);
+    const samosa = await createMenuItem(t.org.id, { name: "Samosa", foodType: "VEGETARIAN", price: 40, menuIds: [menu.id], categoryIds: [snacks.id] }, t.actor.id);
+    const pakora = await createMenuItem(t.org.id, { name: "Onion Pakora", foodType: "VEGETARIAN", price: 60, menuIds: [menu.id], categoryIds: [snacks.id] }, t.actor.id);
+    await prisma.eventTypeMenu.create({ data: { eventTypeId: t.eventType.id, menuId: menu.id } });
+    return { menu, samosa, pakora };
+  }
+
+  it("each meal saves its own menu, dishes and add-ons without touching the others", async () => {
+    const t = await setup();
+    const m2 = await secondMenu(t);
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["DINNER", "LUNCH"] }));
+
+    // Canonical serving order, whatever order they were ticked in.
+    expect((await getDraft(t.org.id, draft.id))!.data.eventMealTypes).toEqual(["LUNCH", "DINNER"]);
+
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: m2.menu.id }, "LUNCH");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [m2.samosa.id], mealType: "LUNCH" });
+    await saveDraftAddOns(t.org.id, draft.id, [t.fixedAddOn.id], "LUNCH");
+    // Dinner is not done yet: the review stays locked.
+    expect((await getDraft(t.org.id, draft.id))!.currentStep).toBe(2);
+
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "DINNER");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id], mealType: "DINNER" });
+    const saved = await saveDraftAddOns(t.org.id, draft.id, [t.perPlateAddOn.id], "DINNER");
+    expect(saved.currentStep).toBe(3);
+
+    const data = (await getDraft(t.org.id, draft.id))!.data;
+    expect(data.meals.LUNCH).toMatchObject({ menuChoice: { kind: "MENU", menuId: m2.menu.id }, itemIds: [m2.samosa.id], addOnIds: [t.fixedAddOn.id] });
+    expect(data.meals.DINNER).toMatchObject({ menuChoice: { kind: "MENU", menuId: t.menu.id }, itemIds: [t.tikka.id, t.dal.id], addOnIds: [t.perPlateAddOn.id] });
+  });
+
+  it("a dish from another meal's menu is refused for this meal, and a meal that was not asked for is refused", async () => {
+    const t = await setup();
+    const m2 = await secondMenu(t);
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"] }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "DINNER");
+    await expect(saveDraftItems(t.org.id, draft.id, { itemIds: [m2.samosa.id], mealType: "DINNER" })).rejects.toThrow(/isn't on the chosen menu/);
+    await expect(saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "BREAKFAST")).rejects.toThrow(/isn't part of your request/);
+  });
+
+  it("prices every meal on its own menu with one guest number; kids are charged once, on the first meal's menu", async () => {
+    const t = await setup();
+    const m2 = await secondMenu(t);
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"] }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: m2.menu.id }, "LUNCH");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [m2.samosa.id, m2.pakora.id], mealType: "LUNCH" }); // one extra (cap 1): Onion Pakora
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "DINNER");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id, t.dal.id], addOnIds: [t.perPlateAddOn.id, t.fixedAddOn.id], mealType: "DINNER" });
+
+    const quote = await buildDraftQuote(t.org.id, (await getDraft(t.org.id, draft.id))!.data);
+    expect(quote.perMeal.map((m) => [m.mealType, m.menuName, m.menuAmount])).toEqual([["LUNCH", "Light Veg", 300 * 60], ["DINNER", "Classic Veg", 500 * 60]]);
+    expect(quote.menuAmount).toBe(300 * 60 + 500 * 60);
+    expect(quote.perMeal[0].extras).toEqual([expect.objectContaining({ name: "Onion Pakora", amount: 60 * 60 })]);
+    expect(quote.perMeal[1].extras).toEqual([expect.objectContaining({ name: "Veg Kebab", amount: 120 * 60 })]);
+    // The first meal's menu (Light Veg, no kids' rate) prices the kids: 0.
+    expect(quote.childrenCharge).toBe(0);
+    expect(quote.total).toBe(18000 + 3600 + 30000 + 7200 + 600 + 1000);
+  });
+
+  it("a meal still without a menu is left out of the running estimate, and submit refuses until every meal is done", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"] }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "DINNER");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id], mealType: "DINNER" });
+    const quote = await buildDraftQuote(t.org.id, (await getDraft(t.org.id, draft.id))!.data);
+    expect(quote.meals).toBe(1);
+    expect(quote.perMeal.map((m) => m.mealType)).toEqual(["DINNER"]);
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow(/complete every step/);
+  });
+
+  it("submits a Multi Order with one meal-plan entry per meal, each on its own menu and price, at the quoted total", async () => {
+    const t = await setup();
+    const m2 = await secondMenu(t);
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"], child5To10Count: 0 }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "LUNCH");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id], mealType: "LUNCH" });
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: m2.menu.id }, "DINNER");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [m2.samosa.id], addOnIds: [t.fixedAddOn.id], mealType: "DINNER" });
+
+    const quote = await buildDraftQuote(t.org.id, (await getDraft(t.org.id, draft.id))!.data);
+    const result = await submitDraft(t.org.id, draft.id);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId }, include: { mealPlanEntries: { orderBy: { mealType: "asc" } } } });
+    expect(order.orderKind).toBe("MULTI");
+    expect(order.mealPlanEntries.map((m) => [m.mealType, m.menuId, Number(m.price)])).toEqual([
+      ["LUNCH", t.menu.id, 500],
+      ["DINNER", m2.menu.id, 300],
+    ]);
+    expect(Number(order.total)).toBe(quote.total);
+    expect(quote.total).toBe(500 * 60 + 300 * 60 + 1000);
+
+    // The flat selection rows mirror every meal's dishes (a menu per meal, the first one is "the chosen menu").
+    const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId }, include: { items: true } });
+    expect(selection.chosenMenuId).toBe(t.menu.id);
+    expect(selection.items.map((i) => i.name).sort()).toEqual(["Dal Makhani", "Paneer Tikka", "Premium Crockery", "Samosa"]);
+  });
+
+  it("a Custom Menu meal next to a fixed-menu meal: the kitchen's quote prices only the custom one", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"], child5To10Count: 0 }));
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "CUSTOM" }, "LUNCH");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.kebab.id], mealType: "LUNCH" });
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, "DINNER");
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id], mealType: "DINNER" });
+
+    const result = await submitDraft(t.org.id, draft.id);
+    expect(result.isCustomMenu).toBe(true);
+    const selection = await prisma.menuSelection.findUniqueOrThrow({ where: { id: result.menuSelectionId } });
+    expect(selection.chosenMenuId).toBe(t.menu.id);
+    expect(Number((await prisma.order.findUniqueOrThrow({ where: { id: result.orderId } })).total)).toBe(500 * 60); // the custom lunch is not priced yet
+
+    await setCustomMenuPricePerPlate(t.org.id, selection.id, 400, t.actor.id);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: result.orderId }, include: { mealPlanEntries: true } });
+    expect(Number(after.total)).toBe(400 * 60 + 500 * 60);
+    expect(after.mealPlanEntries.map((m) => [m.mealType, Number(m.price)]).sort()).toEqual([["DINNER", 500], ["LUNCH", 400]]);
+  });
+
+  it("changing the event type clears every meal's menu and dishes; changing the meals keeps the ones that stay", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"] }));
+    for (const mealType of ["LUNCH", "DINNER"] as const) {
+      await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id }, mealType);
+      await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id], mealType });
+    }
+    const before = (await getDraft(t.org.id, draft.id))!.data;
+    await saveDraftDetails(t.org.id, draft.id, { ...before, eventMealTypes: ["DINNER", "BREAKFAST"] });
+    const kept = (await getDraft(t.org.id, draft.id))!.data;
+    expect(Object.keys(kept.meals)).toEqual(["DINNER"]);
+    expect(kept.meals.DINNER?.itemIds).toEqual([t.tikka.id, t.dal.id]);
+
+    const other = await createEventType(t.org.id, { name: "Birthday", menuIds: [t.menu.id] }, t.actor.id);
+    await saveDraftDetails(t.org.id, draft.id, { ...kept, eventTypeId: other.id });
+    expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.menuChoice).toBeUndefined();
+  });
+
+  it("a draft saved before per-meal menus keeps working: its one set of picks stands for every meal", async () => {
+    const t = await setup();
+    const { draft } = await startDraft(t.org.id, t.details({ eventMealTypes: ["LUNCH", "DINNER"] }));
+    const data = (await getDraft(t.org.id, draft.id))!.data as unknown as Record<string, unknown>;
+    delete data.meals;
+    await prisma.storefrontDraft.update({
+      where: { id: draft.id },
+      data: { data: { ...data, menuChoice: { kind: "MENU", menuId: t.menu.id }, itemIds: [t.tikka.id, t.dal.id], addOnIds: [t.fixedAddOn.id] } as never },
+    });
+    const migrated = (await getDraft(t.org.id, draft.id))!.data;
+    expect(migrated.meals.LUNCH).toEqual(migrated.meals.DINNER);
+    expect(migrated.meals.LUNCH).toMatchObject({ menuChoice: { kind: "MENU", menuId: t.menu.id }, itemIds: [t.tikka.id, t.dal.id], addOnIds: [t.fixedAddOn.id] });
+    const quote = await buildDraftQuote(t.org.id, migrated);
+    expect(quote.meals).toBe(2);
+    expect(quote.menuAmount).toBe(500 * 60 * 2);
   });
 });
 

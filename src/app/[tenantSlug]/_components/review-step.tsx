@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { formatInr } from "@/lib/format-currency";
 import type { DraftQuote } from "@/modules/menu-approvals/storefront-draft";
+import type { MealType } from "@/generated/prisma/enums";
 import { saveAddOnsAction, saveItemsAction, submitDraftAction } from "../actions";
 
 export interface ReviewSummary {
@@ -22,15 +23,23 @@ export interface ReviewSummary {
   guests: number;
   childBelow5Count: number;
   child5To10Count: number;
+  /** Each meal's own menu and dishes (AJ, 2026-10-12), in serving order. */
+  meals: ReviewMeal[];
+  venueLine: string;
+  /** When the summary was produced, already formatted (server-side, so it never mismatches on hydration). */
+  placedAt: string;
+}
+
+export interface ReviewMeal {
+  mealType: MealType;
+  label: string;
+  menuName: string | null;
   /** The dishes inside the menu, by category. Extras are listed separately. */
   selectedSections: { categoryName: string; items: string[] }[];
   /** Extra dishes with the category each sits in. */
   extraCategories: Record<string, string>;
   itemIds: string[];
   addOnIds: string[];
-  venueLine: string;
-  /** When the summary was produced, already formatted (server-side, so it never mismatches on hydration). */
-  placedAt: string;
 }
 
 interface ReviewStepProps {
@@ -65,29 +74,29 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
     router.refresh();
   }
 
-  async function removeExtra(id: string) {
+  async function removeExtra(mealType: MealType, id: string) {
     setError(null);
     setPending(true);
-    const result = await saveItemsAction(tenantSlug, draftId, summary.itemIds.filter((x) => x !== id));
+    const meal = summary.meals.find((m) => m.mealType === mealType)!;
+    const result = await saveItemsAction(tenantSlug, draftId, mealType, meal.itemIds.filter((x) => x !== id));
     setPending(false);
     if (!result.ok) return setError(result.error);
     router.refresh();
   }
 
-  async function removeAddOn(id: string) {
+  async function removeAddOn(mealType: MealType, id: string) {
     setError(null);
     setPending(true);
-    const result = await saveAddOnsAction(tenantSlug, draftId, summary.addOnIds.filter((x) => x !== id));
+    const meal = summary.meals.find((m) => m.mealType === mealType)!;
+    const result = await saveAddOnsAction(tenantSlug, draftId, mealType, meal.addOnIds.filter((x) => x !== id));
     setPending(false);
     if (!result.ok) return setError(result.error);
     router.refresh();
   }
 
-  const mealsSuffix = quote.meals > 1 ? ` × ${quote.meals} meals` : "";
-  const extrasTotal = quote.extras.reduce((sum, e) => sum + e.amount, 0);
-  const addOnsTotal = quote.addOns.reduce((sum, a) => sum + a.amount, 0);
-  const liveCounters = quote.addOns.filter((a) => a.type === "LIVE_COUNTER");
-  const specialAddOns = quote.addOns.filter((a) => a.type !== "LIVE_COUNTER");
+  // Several meals (AJ, 2026-10-12): each has its own menu, dishes, extras and add-ons, so they are listed meal by meal.
+  const several = quote.perMeal.length > 1;
+  const labelOf = (mealType: MealType) => summary.meals.find((m) => m.mealType === mealType)?.label ?? mealType;
   const nothingExtra = quote.extras.length === 0 && quote.addOns.length === 0;
 
   return (
@@ -101,12 +110,22 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
         <div className="flex flex-col gap-6">
           <FormCard className="gap-5">
             <h3 className="text-xl font-semibold">Selected Menu Items</h3>
-            <div className="flex flex-col gap-4" data-testid="review-items">
-              {summary.selectedSections.length === 0 && <p className="text-sm text-muted-foreground">No dishes selected.</p>}
-              {summary.selectedSections.map((section) => (
-                <div key={section.categoryName} className="flex flex-col gap-1">
-                  <h4 className="text-base font-semibold text-primary">{section.categoryName}</h4>
-                  <p className="text-sm">{section.items.join(", ")}</p>
+            <div className="flex flex-col gap-5" data-testid="review-items">
+              {summary.meals.map((meal) => (
+                <div key={meal.mealType} className="flex flex-col gap-4" data-testid="review-meal">
+                  {several && (
+                    <h4 className="border-b border-border pb-2 text-base font-semibold">
+                      {meal.label}
+                      {meal.menuName ? <span className="font-normal text-muted-foreground"> · {meal.menuName}</span> : null}
+                    </h4>
+                  )}
+                  {meal.selectedSections.length === 0 && <p className="text-sm text-muted-foreground">No dishes selected.</p>}
+                  {meal.selectedSections.map((section) => (
+                    <div key={section.categoryName} className="flex flex-col gap-1">
+                      <h4 className="text-base font-semibold text-primary">{section.categoryName}</h4>
+                      <p className="text-sm">{section.items.join(", ")}</p>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>
@@ -121,39 +140,47 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
                 <h4 className="flex items-center gap-2 text-base font-semibold text-info">
                   <Sparkles className="size-4" /> Extra Menu Items
                 </h4>
-                {quote.extras.map((extra) => (
-                  <div key={extra.id} data-testid="review-extra" className="flex items-center gap-3 rounded-xl bg-info/10 px-4 py-3">
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="font-semibold">{extra.name}</span>
-                      {summary.extraCategories[extra.id] && <span className="text-sm text-muted-foreground">{summary.extraCategories[extra.id]}</span>}
-                      <span className="text-xs text-muted-foreground">
-                        {formatInr(extra.price)} × {quote.guests} guests{mealsSuffix}
-                      </span>
+                {quote.perMeal.flatMap((mealQuote) =>
+                  mealQuote.extras.map((extra) => (
+                    <div key={`${mealQuote.mealType}-${extra.id}`} data-testid="review-extra" className="flex items-center gap-3 rounded-xl bg-info/10 px-4 py-3">
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="font-semibold">{extra.name}</span>
+                        {several && <span className="text-sm text-muted-foreground">{labelOf(mealQuote.mealType)}</span>}
+                        {summary.meals.find((m) => m.mealType === mealQuote.mealType)?.extraCategories[extra.id] && (
+                          <span className="text-sm text-muted-foreground">{summary.meals.find((m) => m.mealType === mealQuote.mealType)!.extraCategories[extra.id]}</span>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {formatInr(extra.price)} × {quote.guests} guests
+                        </span>
+                      </div>
+                      <span className="font-semibold text-primary">{formatInr(extra.amount)}</span>
+                      <RemoveButton label={several ? `Remove ${extra.name} from ${labelOf(mealQuote.mealType)}` : `Remove ${extra.name}`} disabled={pending} onClick={() => removeExtra(mealQuote.mealType, extra.id)} />
                     </div>
-                    <span className="font-semibold text-primary">{formatInr(extra.amount)}</span>
-                    <RemoveButton label={`Remove ${extra.name}`} disabled={pending} onClick={() => removeExtra(extra.id)} />
-                  </div>
-                ))}
+                  )),
+                )}
               </div>
             )}
 
             {quote.addOns.length > 0 && (
               <div className="flex flex-col gap-3 border-t border-border pt-4">
                 <h4 className="text-base font-semibold">Live Counters &amp; Services</h4>
-                {[...liveCounters, ...specialAddOns].map((addOn) => (
-                  <div key={addOn.id} data-testid="review-addon" className="flex items-center gap-3 rounded-xl bg-muted/60 px-4 py-3">
-                    <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="font-semibold">{addOn.name}</span>
-                      {!addOn.included && addOn.priceType === "PER_PLATE" && (
-                        <span className="text-xs text-muted-foreground">
-                          {formatInr(addOn.price)} × {quote.guests} guests{mealsSuffix}
-                        </span>
-                      )}
+                {quote.perMeal.flatMap((mealQuote) =>
+                  [...mealQuote.addOns.filter((a) => a.type === "LIVE_COUNTER"), ...mealQuote.addOns.filter((a) => a.type !== "LIVE_COUNTER")].map((addOn) => (
+                    <div key={`${mealQuote.mealType}-${addOn.id}`} data-testid="review-addon" className="flex items-center gap-3 rounded-xl bg-muted/60 px-4 py-3">
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="font-semibold">{addOn.name}</span>
+                        {several && <span className="text-sm text-muted-foreground">{labelOf(mealQuote.mealType)}</span>}
+                        {!addOn.included && addOn.priceType === "PER_PLATE" && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatInr(addOn.price)} × {quote.guests} guests
+                          </span>
+                        )}
+                      </div>
+                      <span className="font-semibold text-primary">{addOn.included ? "Included" : formatInr(addOn.amount)}</span>
+                      <RemoveButton label={several ? `Remove ${addOn.name} from ${labelOf(mealQuote.mealType)}` : `Remove ${addOn.name}`} disabled={pending} onClick={() => removeAddOn(mealQuote.mealType, addOn.id)} />
                     </div>
-                    <span className="font-semibold text-primary">{addOn.included ? "Included" : formatInr(addOn.amount)}</span>
-                    <RemoveButton label={`Remove ${addOn.name}`} disabled={pending} onClick={() => removeAddOn(addOn.id)} />
-                  </div>
-                ))}
+                  )),
+                )}
               </div>
             )}
           </FormCard>
@@ -185,36 +212,48 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote }: ReviewStepPr
             <div role="separator" className="border-t border-border" />
             <SummaryRow label="Total Guests" value={String(summary.guests + summary.childBelow5Count + summary.child5To10Count)} testId="review-total-guests" />
             <div role="separator" className="border-t border-border" />
-            <SummaryRow label="Menu" value={quote.isCustomMenu ? "Custom Menu" : (quote.menuName ?? "—")} />
+            <SummaryRow label={several ? "Menus" : "Menu"} value={several ? (summary.meals.map((m) => `${m.label}: ${m.menuName ?? "—"}`).join(" · ")) : quote.isCustomMenu ? "Custom Menu" : (quote.menuName ?? "—")} />
             <SummaryRow label="Event Location" value={summary.venueLine} />
           </dl>
 
           <div className="flex flex-col gap-4 text-sm" data-testid="review-pricing">
-            {quote.isCustomMenu ? (
-              <p className="rounded-lg bg-muted p-3 text-muted-foreground">
-                Since this is a personalised menu, our team will confirm the price per plate after reviewing your selection.
-              </p>
-            ) : (
-              <PriceBlock title={quote.menuName ?? "Menu"} amount={quote.menuAmount} detail={`${formatInr(quote.pricePerPlate ?? 0)} × ${quote.guests} guests${mealsSuffix}`} />
+            {quote.perMeal.map((mealQuote) =>
+              mealQuote.isCustomMenu ? (
+                <p key={mealQuote.mealType} className="rounded-lg bg-muted p-3 text-muted-foreground">
+                  {several ? `${labelOf(mealQuote.mealType)}: ` : ""}Since this is a personalised menu, our team will confirm the price per plate after reviewing your selection.
+                </p>
+              ) : (
+                <PriceBlock
+                  key={mealQuote.mealType}
+                  title={several ? `${labelOf(mealQuote.mealType)} · ${mealQuote.menuName ?? "Menu"}` : (mealQuote.menuName ?? "Menu")}
+                  amount={mealQuote.menuAmount}
+                  detail={`${formatInr(mealQuote.pricePerPlate ?? 0)} × ${quote.guests} guests`}
+                />
+              ),
             )}
             {quote.childrenCharge > 0 && <PriceBlock title="Kids charges" amount={quote.childrenCharge} />}
             {quote.extras.length > 0 && (
-              <PriceBlock title="Extra Items" amount={extrasTotal} accent>
-                {quote.extras.map((e) => (
-                  <li key={e.id}>
-                    {e.name}: {formatInr(e.price)} × {quote.guests}
-                    {mealsSuffix}
-                  </li>
-                ))}
+              <PriceBlock title="Extra Items" amount={quote.extras.reduce((sum, e) => sum + e.amount, 0)} accent>
+                {quote.perMeal.flatMap((m) =>
+                  m.extras.map((e) => (
+                    <li key={`${m.mealType}-${e.id}`}>
+                      {several ? `${labelOf(m.mealType)} · ` : ""}
+                      {e.name}: {formatInr(e.price)} × {quote.guests}
+                    </li>
+                  )),
+                )}
               </PriceBlock>
             )}
             {quote.addOns.length > 0 && (
-              <PriceBlock title="Add-ons" amount={addOnsTotal}>
-                {quote.addOns.map((a) => (
-                  <li key={a.id}>
-                    {a.name}: {a.included ? "Included in package" : a.priceType === "PER_PLATE" ? `${formatInr(a.price)} × ${quote.guests}${mealsSuffix}` : `${formatInr(a.price)}${mealsSuffix}`}
-                  </li>
-                ))}
+              <PriceBlock title="Add-ons" amount={quote.addOns.reduce((sum, a) => sum + a.amount, 0)}>
+                {quote.perMeal.flatMap((m) =>
+                  m.addOns.map((a) => (
+                    <li key={`${m.mealType}-${a.id}`}>
+                      {several ? `${labelOf(m.mealType)} · ` : ""}
+                      {a.name}: {a.included ? "Included in package" : a.priceType === "PER_PLATE" ? `${formatInr(a.price)} × ${quote.guests}` : formatInr(a.price)}
+                    </li>
+                  )),
+                )}
               </PriceBlock>
             )}
           </div>

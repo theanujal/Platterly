@@ -403,7 +403,8 @@ export async function setCustomMenuPricePerPlate(organizationId: string, menuSel
 
   await prisma.menuSelection.update({ where: { id: menuSelectionId }, data: { customPricePerPlate: pricePerPlate } });
   const guests = order.adultCount ?? order.totalParticipants ?? 0;
-  for (const entry of order.mealPlanEntries) {
+  // Only the Custom Menu meals take the kitchen's quote: a meal on a fixed Menu keeps that Menu's own price (AJ, 2026-10-12).
+  for (const entry of order.mealPlanEntries.filter((meal) => meal.menuId === null)) {
     await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate } });
   }
   await recalculateOrderTotals(order.id);

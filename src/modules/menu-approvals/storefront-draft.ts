@@ -6,7 +6,7 @@ import { findCustomerByPhone, createCustomer } from "@/modules/customers/custome
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { ownVisitId } from "@/modules/storefront-visits/visits";
 import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
-import { createMenuSelection, setMenuSelectionItems, type MenuSelectionItemInput } from "./menu-approval";
+import { createMenuSelection, mirrorSelectionItemsFromMealPlan } from "./menu-approval";
 import { onNewLead } from "@/modules/notifications/triggers";
 import { ABANDONED_AFTER_MS, isDraftExpired, DRAFT_PURGE_DAYS } from "./storefront-draft-constants";
 import { requiredShortfalls, splitPicks } from "./storefront-selection";
@@ -54,12 +54,26 @@ interface LegacyDraftVenue {
 
 export type MenuChoice = { kind: "MENU"; menuId: string } | { kind: "CUSTOM" };
 
-export interface DraftData extends EventDetailsInput {
+/** One meal's own picks (AJ, 2026-10-12): each meal chooses its own menu, dishes and add-ons. */
+export interface MealSelection {
   menuChoice?: MenuChoice;
   /** In the order the visitor picked them — extras are derived from this order. */
   itemIds?: string[];
   addOnIds?: string[];
+}
+
+/** The meals in the order they are shown, priced and booked. */
+export const MEAL_ORDER: MealType[] = ["BREAKFAST", "LUNCH", "HITEA", "DINNER", "OTHER"];
+
+export interface DraftData extends EventDetailsInput {
+  /** Per meal; a meal with nothing picked yet has no entry. Drafts saved before 2026-10-12 held one set of picks for every meal. */
+  meals: Partial<Record<MealType, MealSelection>>;
   venue?: LegacyDraftVenue;
+}
+
+/** Whether a meal has a menu and every required dish: the same rule the server re-checks when it is saved. */
+export function isMealComplete(selection: MealSelection | undefined): boolean {
+  return !!selection?.menuChoice && (selection.itemIds?.length ?? 0) > 0;
 }
 
 // --- validation helpers -------------------------------------------------
@@ -92,7 +106,8 @@ async function validateEventDetails(organizationId: string, details: EventDetail
   if (eventType.minGuests && details.guestCount < eventType.minGuests) {
     throw new StorefrontDraftError(`${eventType.name} needs at least ${eventType.minGuests} guests.`);
   }
-  const meals = [...new Set(details.eventMealTypes ?? [])];
+  const requested = new Set(details.eventMealTypes ?? []);
+  const meals = MEAL_ORDER.filter((meal) => requested.has(meal));
   if (meals.length === 0) throw new StorefrontDraftError("Please choose at least one meal.");
 
   if (!isCount(details.childBelow5Count) || !isCount(details.child5To10Count)) throw new StorefrontDraftError("Kids counts must be zero or more.");
@@ -103,12 +118,23 @@ async function validateEventDetails(organizationId: string, details: EventDetail
 }
 
 function readData(draft: { data: Prisma.JsonValue }): DraftData {
-  const data = draft.data as unknown as DraftData & { eventMealType?: MealType };
+  const data = draft.data as unknown as Omit<DraftData, "meals"> & {
+    meals?: DraftData["meals"];
+    eventMealType?: MealType;
+    menuChoice?: MenuChoice;
+    itemIds?: string[];
+    addOnIds?: string[];
+  };
   // Drafts saved before "Meals Required" held a single meal.
   if (!data.eventMealTypes) data.eventMealTypes = data.eventMealType ? [data.eventMealType] : [];
   // Drafts saved before the 3-step flow have no Venue Location; their old venue address stands in for it.
   if (!data.venueLocation) data.venueLocation = data.venue?.completeVenueAddress ?? "";
-  return data;
+  // Drafts saved before 2026-10-12 had one menu, one dish list and one add-on list that every meal repeated.
+  if (!data.meals) {
+    const shared: MealSelection = { menuChoice: data.menuChoice, itemIds: data.itemIds, addOnIds: data.addOnIds };
+    data.meals = shared.menuChoice || shared.itemIds?.length || shared.addOnIds?.length ? Object.fromEntries(data.eventMealTypes.map((meal) => [meal, { ...shared }])) : {};
+  }
+  return data as DraftData;
 }
 
 async function loadEditableDraft(organizationId: string, draftId: string) {
@@ -168,19 +194,34 @@ export async function saveDraftDetails(organizationId: string, draftId: string, 
   const before = readData(draft);
   const details = await validateEventDetails(organizationId, input);
 
-  const next: DraftData = { ...before, ...details };
-  // A different event type or veg/non-veg preference changes which menus are
-  // valid, so the earlier menu + item picks can't be trusted any more.
-  if (before.eventTypeId !== details.eventTypeId || before.menuPreference !== details.menuPreference) {
-    delete next.menuChoice;
-    delete next.itemIds;
+  // A different event type or veg/non-veg preference changes which menus are valid, so every meal's earlier menu and
+  // dish picks can't be trusted any more. Otherwise a meal that stays keeps its picks, and one that is dropped goes.
+  const resetPicks = before.eventTypeId !== details.eventTypeId || before.menuPreference !== details.menuPreference;
+  const meals: DraftData["meals"] = {};
+  for (const meal of details.eventMealTypes) {
+    const kept = before.meals[meal];
+    if (!kept) continue;
+    meals[meal] = resetPicks ? { addOnIds: kept.addOnIds } : kept;
   }
+  const next: DraftData = { ...before, ...details, meals };
   return saveDraft(draftId, next, 2, draft.currentStep);
 }
 
-// --- step 2: Build Your Menu (menu choice, dishes, add-ons) ----------- -------------------------------------------------------
+/** Which meals a save applies to: the one named, or (no meal named) every meal the visitor asked for, as before 2026-10-12. */
+function targetMeals(data: DraftData, mealType?: MealType): MealType[] {
+  if (!mealType) return data.eventMealTypes;
+  if (!data.eventMealTypes.includes(mealType)) throw new StorefrontDraftError("That meal isn't part of your request.");
+  return [mealType];
+}
 
-export async function saveDraftMenuChoice(organizationId: string, draftId: string, choice: MenuChoice) {
+/** Every meal chosen has its menu and dishes. */
+export function allMealsComplete(data: DraftData): boolean {
+  return data.eventMealTypes.length > 0 && data.eventMealTypes.every((meal) => isMealComplete(data.meals[meal]));
+}
+
+// --- step 2: Build Your Menu (menu choice, dishes, add-ons), one meal at a time ----------
+
+export async function saveDraftMenuChoice(organizationId: string, draftId: string, choice: MenuChoice, mealType?: MealType) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const before = readData(draft);
 
@@ -197,10 +238,13 @@ export async function saveDraftMenuChoice(organizationId: string, draftId: strin
     if (!menu) throw new StorefrontDraftError("That menu isn't available for your event. Please choose another.");
   }
 
-  const changed = JSON.stringify(before.menuChoice) !== JSON.stringify(choice);
-  const next: DraftData = { ...before, menuChoice: choice };
-  if (changed) delete next.itemIds;
-  return saveDraft(draftId, next, 2, draft.currentStep);
+  const meals = { ...before.meals };
+  for (const meal of targetMeals(before, mealType)) {
+    const current = meals[meal] ?? {};
+    const changed = JSON.stringify(current.menuChoice) !== JSON.stringify(choice);
+    meals[meal] = changed ? { menuChoice: choice, addOnIds: current.addOnIds } : { ...current, menuChoice: choice };
+  }
+  return saveDraft(draftId, { ...before, meals }, 2, draft.currentStep);
 }
 
 // --- dishes and add-ons --------------------------------------------
@@ -212,19 +256,19 @@ interface PickableItem {
 }
 
 /**
- * Splits the visitor's ordered picks into regular items and extras, entirely
+ * Splits one meal's ordered picks into regular items and extras, entirely
  * server-side: within each category the first `maxSelection` picks are
  * included in the plate price, and any beyond that are extras (priced price x
  * guests). Throws if a pick isn't actually offered on the chosen menu.
  */
-async function classifyItems(organizationId: string, data: DraftData, itemIds: string[]) {
+async function classifyItems(organizationId: string, menuPreference: FoodType, selection: MealSelection, itemIds: string[]) {
   const items = new Map<string, PickableItem>();
   const regularIds: string[] = [];
   const extraIds: string[] = [];
   let menuSections: OrderPickerSection[] | null = null;
 
-  if (data.menuChoice?.kind === "MENU") {
-    const menu = await getMenuForOrderPicker(organizationId, data.menuChoice.menuId);
+  if (selection.menuChoice?.kind === "MENU") {
+    const menu = await getMenuForOrderPicker(organizationId, selection.menuChoice.menuId);
     if (!menu) throw new StorefrontDraftError("That menu is no longer available.");
 
     menuSections = menu.sections;
@@ -234,13 +278,13 @@ async function classifyItems(organizationId: string, data: DraftData, itemIds: s
     if (split.unknownIds.length > 0) throw new StorefrontDraftError("One of your picks isn't on the chosen menu.");
     regularIds.push(...split.regularIds);
     extraIds.push(...split.extraIds);
-  } else if (data.menuChoice?.kind === "CUSTOM") {
+  } else if (selection.menuChoice?.kind === "CUSTOM") {
     const found = await prisma.menuItem.findMany({
       where: {
         id: { in: itemIds },
         organizationId,
         isActive: true,
-        ...(data.menuPreference === "VEGETARIAN" ? { foodType: "VEGETARIAN" } : {}),
+        ...(menuPreference === "VEGETARIAN" ? { foodType: "VEGETARIAN" } : {}),
       },
     });
     if (found.length !== itemIds.length) throw new StorefrontDraftError("One of your picks isn't available.");
@@ -254,31 +298,37 @@ async function classifyItems(organizationId: string, data: DraftData, itemIds: s
 }
 
 /**
- * The dishes. Every category with a limit needs its full count of included dishes picked (or every dish it
+ * The dishes of one meal. Every category with a limit needs its full count of included dishes picked (or every dish it
  * has, when it has fewer) before this saves, the same "compulsory" rule the admin picker uses (`requiredShortfalls`),
  * so the customer and the team cannot end up with different ideas of a complete menu. Extras do not count.
- * `addOnIds` stays as it was unless it is passed (kept for callers that still send both).
+ * `addOnIds` stays as it was unless it is passed (kept for callers that still send both). With no `mealType` the same
+ * dishes are saved for every meal (the single-menu behaviour from before 2026-10-12).
  */
-export async function saveDraftItems(organizationId: string, draftId: string, input: { itemIds: string[]; addOnIds?: string[] }) {
+export async function saveDraftItems(organizationId: string, draftId: string, input: { itemIds: string[]; addOnIds?: string[]; mealType?: MealType }) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const before = readData(draft);
 
   const itemIds = [...new Set(input.itemIds)];
   if (itemIds.length === 0) throw new StorefrontDraftError("Please select at least one menu item.");
+  if (input.addOnIds && input.addOnIds.length > 0) await assertAddOnsAvailable(organizationId, [...new Set(input.addOnIds)]);
 
-  const { menuSections } = await classifyItems(organizationId, before, itemIds);
-  if (menuSections) {
-    const short = requiredShortfalls(menuSections, itemIds);
-    if (short.length > 0) {
-      const first = short[0];
-      throw new StorefrontDraftError(`Please choose at least ${first.missing} more item${first.missing === 1 ? "" : "s"} from ${first.name}.`);
+  const meals = { ...before.meals };
+  for (const meal of targetMeals(before, input.mealType)) {
+    const current = meals[meal] ?? {};
+    const { menuSections } = await classifyItems(organizationId, before.menuPreference, current, itemIds);
+    if (menuSections) {
+      const short = requiredShortfalls(menuSections, itemIds);
+      if (short.length > 0) {
+        const first = short[0];
+        throw new StorefrontDraftError(`Please choose at least ${first.missing} more item${first.missing === 1 ? "" : "s"} from ${first.name}.`);
+      }
     }
+    const addOnIds = input.addOnIds ? [...new Set(input.addOnIds)] : current.addOnIds;
+    meals[meal] = { ...current, itemIds, addOnIds };
   }
-
-  const addOnIds = input.addOnIds ? [...new Set(input.addOnIds)] : before.addOnIds;
-  if (addOnIds && addOnIds.length > 0) await assertAddOnsAvailable(organizationId, addOnIds);
-
-  return saveDraft(draftId, { ...before, itemIds, addOnIds }, 2, draft.currentStep);
+  const next: DraftData = { ...before, meals };
+  // The dishes alone do not unlock Review; saving the add-ons choice (which may be empty) does.
+  return saveDraft(draftId, next, 2, draft.currentStep);
 }
 
 async function assertAddOnsAvailable(organizationId: string, addOnIds: string[]) {
@@ -288,70 +338,149 @@ async function assertAddOnsAvailable(organizationId: string, addOnIds: string[])
 
 // --- add-ons and live counters ------------------------------------
 
-/** Optional add-ons and live counters. May be empty; saving them is what unlocks the Review step. */
-export async function saveDraftAddOns(organizationId: string, draftId: string, addOnIds: string[]) {
+/** Optional add-ons and live counters of one meal. May be empty; once every meal has its dishes this is what unlocks the Review step. */
+export async function saveDraftAddOns(organizationId: string, draftId: string, addOnIds: string[], mealType?: MealType) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const before = readData(draft);
-  if (!before.itemIds?.length) throw new StorefrontDraftError("Please choose your menu items first.");
+  const targets = targetMeals(before, mealType);
+  if (targets.some((meal) => !before.meals[meal]?.itemIds?.length)) throw new StorefrontDraftError("Please choose your menu items first.");
 
   const unique = [...new Set(addOnIds)];
   if (unique.length > 0) await assertAddOnsAvailable(organizationId, unique);
 
-  return saveDraft(draftId, { ...before, addOnIds: unique }, 3, draft.currentStep);
+  const meals = { ...before.meals };
+  for (const meal of targets) meals[meal] = { ...meals[meal], addOnIds: unique };
+  const next: DraftData = { ...before, meals };
+  return saveDraft(draftId, next, allMealsComplete(next) ? 3 : 2, draft.currentStep);
 }
 
 // --- step 3: quote + submit ---------------------------------------------
 
-export interface DraftQuote {
+export interface QuoteExtra {
+  id: string;
+  name: string;
+  price: number;
+  amount: number;
+}
+export interface QuoteAddOn {
+  id: string;
+  name: string;
+  type: "LIVE_COUNTER" | "SPECIAL_ADD_ON";
+  priceType: "PER_PLATE" | "FIXED";
+  price: number;
+  included: boolean;
+  amount: number;
+}
+
+/** One meal's part of the quote: its own menu, extras and add-ons. */
+export interface DraftMealQuote {
+  mealType: MealType;
   isCustomMenu: boolean;
   menuName: string | null;
   pricePerPlate: number | null;
-  /** Adults (the "Number of Adults" on the form); the menu price applies to them. */
-  guests: number;
-  /** How many meals were asked for; every amount below already covers all of them. */
-  meals: number;
-  /** Menu price x guests x meals (0 for a Custom Menu — the kitchen quotes it). */
+  /** Menu price x guests (0 for a Custom Menu: the kitchen quotes it). */
   menuAmount: number;
-  extras: { id: string; name: string; price: number; amount: number }[];
-  addOns: { id: string; name: string; type: "LIVE_COUNTER" | "SPECIAL_ADD_ON"; priceType: "PER_PLATE" | "FIXED"; price: number; included: boolean; amount: number }[];
-  childrenCharge: number;
+  extras: QuoteExtra[];
+  addOns: QuoteAddOn[];
+  /** The meal's menu, extras and add-ons (the kids' charge is for the whole order, not per meal). */
   total: number;
 }
 
-/** The one pricing calculation — the Review step displays it and `submitDraft` books it, so they can't disagree. */
+export interface DraftQuote {
+  /** True when any meal is a Custom Menu: the kitchen quotes that meal's price. */
+  isCustomMenu: boolean;
+  /** The first meal's menu (a single-meal request has just this one). */
+  menuName: string | null;
+  pricePerPlate: number | null;
+  /** Adults (the "Number of Adults" on the form); the menu price applies to them. One number for the whole order. */
+  guests: number;
+  /** How many meals are priced; every amount below already covers all of them. */
+  meals: number;
+  /** Menu price x guests, summed over the meals (0 for a Custom Menu). */
+  menuAmount: number;
+  /** The same dish or add-on on several meals is one line with the amounts added up. */
+  extras: QuoteExtra[];
+  addOns: QuoteAddOn[];
+  childrenCharge: number;
+  total: number;
+  /** Each meal's own part, in the order the meals are served. */
+  perMeal: DraftMealQuote[];
+}
+
+function mergeById<T extends { id: string; amount: number }>(lines: T[]): T[] {
+  const merged = new Map<string, T>();
+  for (const line of lines) {
+    const found = merged.get(line.id);
+    if (found) found.amount += line.amount;
+    else merged.set(line.id, { ...line });
+  }
+  return [...merged.values()];
+}
+
+/**
+ * The one pricing calculation — the Review step displays it and `submitDraft` books it, so they can't disagree. Each meal
+ * is priced on its own menu; one guest number covers the whole order. A meal that has no menu yet is left out (the running
+ * estimate on Build Your Menu counts the meals done so far). Kids are charged once, on the first meal's menu, exactly as the
+ * Order's own pricing does.
+ */
 export async function buildDraftQuote(organizationId: string, data: DraftData): Promise<DraftQuote> {
   const guests = data.guestCount;
-  const meals = data.eventMealTypes.length || 1;
-  const isCustomMenu = data.menuChoice?.kind === "CUSTOM";
-  const menu =
-    data.menuChoice?.kind === "MENU" ? await prisma.menu.findFirst({ where: { id: data.menuChoice.menuId, organizationId } }) : null;
-  if (data.menuChoice?.kind === "MENU" && !menu) throw new StorefrontDraftError("That menu is no longer available.");
+  const perMeal: DraftMealQuote[] = [];
+  let childMenu: Awaited<ReturnType<typeof prisma.menu.findFirst>> = null;
 
-  const { items, extraIds } = await classifyItems(organizationId, data, data.itemIds ?? []);
-  const extras = extraIds.map((id) => {
-    const item = items.get(id)!;
-    return { id, name: item.name, price: item.price, amount: item.price * guests * meals };
-  });
+  for (const mealType of data.eventMealTypes) {
+    const selection = data.meals[mealType];
+    if (!selection?.menuChoice) continue;
+    const isCustomMenu = selection.menuChoice.kind === "CUSTOM";
+    const menu = selection.menuChoice.kind === "MENU" ? await prisma.menu.findFirst({ where: { id: selection.menuChoice.menuId, organizationId } }) : null;
+    if (selection.menuChoice.kind === "MENU" && !menu) throw new StorefrontDraftError("That menu is no longer available.");
+    if (menu && !childMenu) childMenu = menu;
 
-  const addOnRecords = data.addOnIds?.length
-    ? await prisma.addOn.findMany({ where: { id: { in: data.addOnIds }, organizationId, isActive: true } })
-    : [];
-  const addOns = addOnRecords.map((addOn) => ({
-    id: addOn.id,
-    name: addOn.name,
-    type: addOn.type,
-    priceType: addOn.priceType,
-    price: Number(addOn.price),
-    included: addOn.includedInPackage,
-    amount: (addOn.includedInPackage ? 0 : addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price)) * meals,
-  }));
+    const { items, extraIds } = await classifyItems(organizationId, data.menuPreference, selection, selection.itemIds ?? []);
+    const extras = extraIds.map((id) => {
+      const item = items.get(id)!;
+      return { id, name: item.name, price: item.price, amount: item.price * guests };
+    });
+    const addOnRecords = selection.addOnIds?.length ? await prisma.addOn.findMany({ where: { id: { in: selection.addOnIds }, organizationId, isActive: true } }) : [];
+    const addOns = addOnRecords.map((addOn) => ({
+      id: addOn.id,
+      name: addOn.name,
+      type: addOn.type,
+      priceType: addOn.priceType,
+      price: Number(addOn.price),
+      included: addOn.includedInPackage,
+      amount: addOn.includedInPackage ? 0 : addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price),
+    }));
+    const pricePerPlate = menu ? Number(menu.pricePerPlate) : null;
+    const menuAmount = pricePerPlate !== null ? pricePerPlate * guests : 0;
+    perMeal.push({
+      mealType,
+      isCustomMenu,
+      menuName: menu?.name ?? null,
+      pricePerPlate,
+      menuAmount,
+      extras,
+      addOns,
+      total: menuAmount + extras.reduce((sum, e) => sum + e.amount, 0) + addOns.reduce((sum, a) => sum + a.amount, 0),
+    });
+  }
 
-  const pricePerPlate = menu ? Number(menu.pricePerPlate) : null;
-  const menuAmount = pricePerPlate !== null ? pricePerPlate * guests * meals : 0;
-  const childrenCharge = computeChildrenCharge(menu, data.childBelow5Count, data.child5To10Count);
-  const total = menuAmount + extras.reduce((s, e) => s + e.amount, 0) + addOns.reduce((s, a) => s + a.amount, 0) + childrenCharge;
-
-  return { isCustomMenu, menuName: menu?.name ?? null, pricePerPlate, guests, meals, menuAmount, extras, addOns, childrenCharge, total };
+  const childrenCharge = computeChildrenCharge(childMenu, data.childBelow5Count, data.child5To10Count);
+  const first = perMeal[0];
+  const menuAmount = perMeal.reduce((sum, m) => sum + m.menuAmount, 0);
+  return {
+    isCustomMenu: perMeal.some((m) => m.isCustomMenu),
+    menuName: perMeal.find((m) => m.menuName)?.menuName ?? null,
+    pricePerPlate: first?.pricePerPlate ?? null,
+    guests,
+    meals: perMeal.length,
+    menuAmount,
+    extras: mergeById(perMeal.flatMap((m) => m.extras)),
+    addOns: mergeById(perMeal.flatMap((m) => m.addOns)),
+    childrenCharge,
+    total: perMeal.reduce((sum, m) => sum + m.total, 0) + childrenCharge,
+    perMeal,
+  };
 }
 
 /**
@@ -359,16 +488,16 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
  * two Orders), then builds Customer-linked Order -> Event -> MenuSelection. The
  * order lands as Pending Review (AJ, 2026-09-26): the team checks it and sends
  * the menu to the customer for approval — the visitor doesn't approve their own
- * submission any more. The chosen Menu's plate
- * price rides on the Order's one meal-plan entry (Individual Pricing), extras
- * and per-plate add-ons as guest-count-quantity items, so the Order's own
+ * submission any more. Each meal is its own meal-plan entry with its own Menu
+ * (AJ, 2026-10-12), its plate price riding on the entry (Individual Pricing),
+ * extras and per-plate add-ons as guest-count-quantity items, so the Order's own
  * totals engine produces the same figure the Review step showed. Anonymous —
  * no actor, same as the rest of the public flow.
  */
 export async function submitDraft(organizationId: string, draftId: string, notes?: string) {
   const draft = await loadEditableDraft(organizationId, draftId);
   const data = readData(draft);
-  if (!data.menuChoice || !data.itemIds?.length || !data.venueLocation) throw new StorefrontDraftError("Please complete every step before submitting.");
+  if (!allMealsComplete(data) || !data.venueLocation) throw new StorefrontDraftError("Please complete every step before submitting.");
 
   const claimed = await prisma.storefrontDraft.updateMany({
     where: { id: draftId, organizationId, status: "IN_PROGRESS" },
@@ -378,20 +507,32 @@ export async function submitDraft(organizationId: string, draftId: string, notes
 
   try {
     const quote = await buildDraftQuote(organizationId, data);
-    const { regularIds, extraIds } = await classifyItems(organizationId, data, data.itemIds);
     const eventDate = new Date(data.eventDate);
     const guests = data.guestCount;
-
-    // The whole menu goes on the meal so Menu Approvals shows it in the same planner as any order (AJ, 2026-09-30):
-    // dishes inside the menu are included (they add nothing), Extras are charged per guest, add-ons as priced.
-    const mealItems: OrderItemCatalogInput[] = [
-      ...regularIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: 1 })),
-      ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: guests, isExtra: true })),
-      ...quote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id, quantity: a.priceType === "PER_PLATE" ? guests : 1 })),
-    ];
-
-    // Each meal is its own entry on the event day, carrying the same menu, dishes and add-ons (AJ, 2026-10-01).
     const mealTypes = data.eventMealTypes;
+
+    // The whole menu goes on each meal so Menu Approvals shows it in the same planner as any order (AJ, 2026-09-30):
+    // dishes inside the menu are included (they add nothing), Extras are charged per guest, add-ons as priced.
+    const entries = [];
+    for (const mealType of mealTypes) {
+      const selection = data.meals[mealType]!;
+      const { regularIds, extraIds } = await classifyItems(organizationId, data.menuPreference, selection, selection.itemIds ?? []);
+      const mealQuote = quote.perMeal.find((m) => m.mealType === mealType)!;
+      const mealItems: OrderItemCatalogInput[] = [
+        ...regularIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: 1 })),
+        ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: guests, isExtra: true })),
+        ...mealQuote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id, quantity: a.priceType === "PER_PLATE" ? guests : 1 })),
+      ];
+      entries.push({
+        date: eventDate,
+        mealType,
+        menuId: selection.menuChoice!.kind === "MENU" ? selection.menuChoice!.menuId : null,
+        // Individual Pricing is a per-plate price: the meal's own menu price (nothing for a Custom Menu until the kitchen quotes it).
+        price: mealQuote.pricePerPlate ?? 0,
+        items: mealItems,
+      });
+    }
+
     const order = await createOrder(organizationId, {
       customerId: draft.customerId,
       eventTypeId: data.eventTypeId,
@@ -407,14 +548,7 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       child5To10Count: data.child5To10Count,
       individualPricingEnabled: true,
       notes: notes?.trim() || undefined,
-      mealPlanEntries: mealTypes.map((mealType) => ({
-        date: eventDate,
-        mealType,
-        menuId: data.menuChoice!.kind === "MENU" ? data.menuChoice!.menuId : null,
-        // Individual Pricing is a per-plate price: the menu's own (nothing for a Custom Menu until the kitchen quotes it).
-        price: quote.pricePerPlate ?? 0,
-        items: mealItems,
-      })),
+      mealPlanEntries: entries,
     });
 
     await prisma.order.update({
@@ -427,17 +561,14 @@ export async function submitDraft(organizationId: string, draftId: string, notes
 
     const event = await createEventForOrder(organizationId, order.id);
 
+    // One selection for the event: any Custom Menu meal makes it a quote the kitchen prices; the chosen menu is the first fixed one.
+    const firstMenu = mealTypes.map((m) => data.meals[m]!.menuChoice!).find((c) => c.kind === "MENU");
     const menuSelection = await createMenuSelection(organizationId, event.id, {
-      chosenMenuId: data.menuChoice.kind === "MENU" ? data.menuChoice.menuId : null,
-      isCustomMenu: data.menuChoice.kind === "CUSTOM",
+      chosenMenuId: firstMenu?.kind === "MENU" ? firstMenu.menuId : null,
+      isCustomMenu: quote.isCustomMenu,
     });
-
-    const selectionItems: MenuSelectionItemInput[] = [
-      ...regularIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id })),
-      ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, isExtra: true })),
-      ...quote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id })),
-    ];
-    await setMenuSelectionItems(organizationId, menuSelection.id, selectionItems);
+    // The flat selection rows mirror the meal plan (a dish on several meals is listed once, as an Extra if any copy is).
+    await mirrorSelectionItemsFromMealPlan(organizationId, menuSelection.id);
 
     await prisma.storefrontDraft.update({ where: { id: draftId }, data: { orderId: order.id } });
     await audit({
@@ -445,7 +576,7 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       action: "storefront.order_submitted",
       recordType: "MenuSelection",
       recordId: menuSelection.id,
-      after: { customerId: draft.customerId, orderId: order.id, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total },
+      after: { customerId: draft.customerId, orderId: order.id, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total, meals: mealTypes },
     });
 
     return { orderId: order.id, menuSelectionId: menuSelection.id, isCustomMenu: quote.isCustomMenu };

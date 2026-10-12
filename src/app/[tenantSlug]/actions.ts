@@ -97,30 +97,30 @@ export async function saveDetailsAction(tenantSlug: string, draftId: string, for
   }
 }
 
-export async function saveMenuChoiceAction(tenantSlug: string, draftId: string, choice: MenuChoice): Promise<StepResult> {
+export async function saveMenuChoiceAction(tenantSlug: string, draftId: string, mealType: MealType, choice: MenuChoice): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    await saveDraftMenuChoice(organization.id, draftId, choice);
+    await saveDraftMenuChoice(organization.id, draftId, choice, mealType);
     return { ok: true };
   } catch (error) {
     return fail(error);
   }
 }
 
-export async function saveItemsAction(tenantSlug: string, draftId: string, itemIds: string[]): Promise<StepResult> {
+export async function saveItemsAction(tenantSlug: string, draftId: string, mealType: MealType, itemIds: string[]): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    await saveDraftItems(organization.id, draftId, { itemIds });
+    await saveDraftItems(organization.id, draftId, { itemIds, mealType });
     return { ok: true };
   } catch (error) {
     return fail(error);
   }
 }
 
-export async function saveAddOnsAction(tenantSlug: string, draftId: string, addOnIds: string[]): Promise<StepResult> {
+export async function saveAddOnsAction(tenantSlug: string, draftId: string, mealType: MealType, addOnIds: string[]): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    await saveDraftAddOns(organization.id, draftId, addOnIds);
+    await saveDraftAddOns(organization.id, draftId, addOnIds, mealType);
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -128,19 +128,21 @@ export async function saveAddOnsAction(tenantSlug: string, draftId: string, addO
 }
 
 /**
- * Build Your Menu's one Continue: saves the menu choice, the dishes and the add-ons together, in that order, through
- * the same three functions the separate steps used (so every rule, including the category minimums, still applies).
+ * Build Your Menu's one Continue, for one meal (AJ, 2026-10-12: every meal has its own menu): saves the menu choice, the
+ * dishes and the add-ons together, in that order, through the same three functions the separate steps used (so every rule,
+ * including the category minimums, still applies).
  */
 export async function saveBuildMenuAction(
   tenantSlug: string,
   draftId: string,
+  mealType: MealType,
   input: { choice: MenuChoice; itemIds: string[]; addOnIds: string[] },
 ): Promise<StepResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
-    await saveDraftMenuChoice(organization.id, draftId, input.choice);
-    await saveDraftItems(organization.id, draftId, { itemIds: input.itemIds });
-    await saveDraftAddOns(organization.id, draftId, input.addOnIds);
+    await saveDraftMenuChoice(organization.id, draftId, input.choice, mealType);
+    await saveDraftItems(organization.id, draftId, { itemIds: input.itemIds, mealType });
+    await saveDraftAddOns(organization.id, draftId, input.addOnIds, mealType);
     return { ok: true };
   } catch (error) {
     return fail(error);
@@ -151,18 +153,20 @@ export type EstimateResult = { ok: true; quote: DraftQuote } | { ok: false };
 
 /**
  * The running "Estimated Total" on Build Your Menu: the exact same calculation the Review step and the submit use
- * (`buildDraftQuote`), run on the picks as they stand right now without saving them.
+ * (`buildDraftQuote`), run on the picks as they stand right now without saving them. The meals already done count too.
  */
 export async function estimateQuoteAction(
   tenantSlug: string,
   draftId: string,
+  mealType: MealType,
   input: { choice: MenuChoice; itemIds: string[]; addOnIds: string[] },
 ): Promise<EstimateResult> {
   try {
     const organization = await resolveOrganization(tenantSlug);
     const draft = await getDraft(organization.id, draftId);
     if (!draft || draft.status === "COMPLETED") return { ok: false };
-    const quote = await buildDraftQuote(organization.id, { ...draft.data, menuChoice: input.choice, itemIds: input.itemIds, addOnIds: input.addOnIds });
+    if (!draft.data.eventMealTypes.includes(mealType)) return { ok: false };
+    const quote = await buildDraftQuote(organization.id, { ...draft.data, meals: { ...draft.data.meals, [mealType]: { menuChoice: input.choice, itemIds: input.itemIds, addOnIds: input.addOnIds } } });
     return { ok: true, quote };
   } catch {
     return { ok: false };

@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { formatInr } from "@/lib/format-currency";
 import type { StorefrontMenu, StorefrontMenuSection } from "@/modules/menus/menu";
 import type { DraftQuote, MenuChoice } from "@/modules/menu-approvals/storefront-draft";
+import type { MealType } from "@/generated/prisma/enums";
 import { requiredShortfalls, splitPicks } from "@/modules/menu-approvals/storefront-selection";
 import { estimateQuoteAction, saveBuildMenuAction } from "../actions";
 import { MenuSection } from "./menu-section";
@@ -27,6 +28,10 @@ export interface BuildMenuEventSummary {
 interface BuildMenuStepProps {
   tenantSlug: string;
   draftId: string;
+  /** The meal being built (AJ, 2026-10-12: every meal has its own menu, dishes and add-ons). */
+  meal: MealType;
+  /** Every meal asked for, in serving order, with whether its menu and dishes are saved. */
+  mealTabs: { meal: MealType; label: string; done: boolean }[];
   menus: StorefrontMenu[];
   /** Every active dish, by category, for the Custom Menu. */
   customSections: StorefrontMenuSection[];
@@ -64,7 +69,7 @@ function scrollToRef(element: HTMLElement | null) {
  * Once the dishes are complete they fold into a one-line accordion (tap to reopen and change them) and the Add-ons card
  * is brought into view.
  */
-export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addOns, guests, event, initial }: BuildMenuStepProps) {
+export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, event, initial }: BuildMenuStepProps) {
   const router = useRouter();
   const [choice, setChoice] = useState<MenuChoice | null>(initial.choice);
   const [listOpen, setListOpen] = useState(initial.choice === null);
@@ -122,26 +127,27 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
     if (!hasMenu || !choice) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const result = await estimateQuoteAction(tenantSlug, draftId, { choice, itemIds, addOnIds });
+      const result = await estimateQuoteAction(tenantSlug, draftId, meal, { choice, itemIds, addOnIds });
       if (!cancelled && result.ok) setQuote(result.quote);
     }, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [tenantSlug, draftId, choice, itemIds, addOnIds, hasMenu]);
+  }, [tenantSlug, draftId, meal, choice, itemIds, addOnIds, hasMenu]);
 
   async function handleContinue() {
     if (!choice || !complete) return;
     setError(null);
     setPending(true);
-    const result = await saveBuildMenuAction(tenantSlug, draftId, { choice, itemIds, addOnIds });
+    const result = await saveBuildMenuAction(tenantSlug, draftId, meal, { choice, itemIds, addOnIds });
     if (!result.ok) {
       setPending(false);
       setError(result.error);
       return;
     }
-    router.push(`/${tenantSlug}/plan/${draftId}?step=review`);
+    // The next meal that still needs its menu, else the review.
+    router.push(nextMeal ? `/${tenantSlug}/plan/${draftId}?step=menu&meal=${nextMeal.meal}` : `/${tenantSlug}/plan/${draftId}?step=review`);
   }
 
   const total = hasMenu && quote ? formatInr(quote.total) : "—";
@@ -149,14 +155,48 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
   const dishesLine = `${itemIds.length} dish${itemIds.length === 1 ? "" : "es"} selected${split.extraIds.length > 0 ? ` (${split.extraIds.length} extra)` : ""}`;
   const addOnsLine = `${addOnIds.length} add-on${addOnIds.length === 1 ? "" : "s"} selected`;
   const whyDisabled = !hasMenu ? "Choose a menu to continue." : itemIds.length === 0 || short.length > 0 ? "Select your dishes to continue." : null;
-  const backToDetails = () => router.push(`/${tenantSlug}/plan/${draftId}?step=details`);
+  const mealIndex = mealTabs.findIndex((tab) => tab.meal === meal);
+  const several = mealTabs.length > 1;
+  const mealLabel = mealTabs[mealIndex]?.label ?? "";
+  const nextMeal = mealTabs.find((tab) => tab.meal !== meal && !tab.done);
+  const previousMeal = mealIndex > 0 ? mealTabs[mealIndex - 1] : null;
+  // Back goes to the meal before this one, or to the event details from the first meal.
+  const goBack = () => router.push(previousMeal ? `/${tenantSlug}/plan/${draftId}?step=menu&meal=${previousMeal.meal}` : `/${tenantSlug}/plan/${draftId}?step=details`);
 
   return (
     <div className="flex flex-col gap-6 pb-28">
       <div className="flex flex-col gap-1">
-        <h2 className="text-2xl font-semibold">Build Your Menu</h2>
-        <p className="text-sm text-muted-foreground">Choose a menu, select dishes from each category and add any extras you need.</p>
+        <h2 className="text-2xl font-semibold">{several ? `Build Your Menu: ${mealLabel}` : "Build Your Menu"}</h2>
+        <p className="text-sm text-muted-foreground">
+          {several ? `Choose the menu for ${mealLabel}, select its dishes and add any extras. Each meal has its own menu.` : "Choose a menu, select dishes from each category and add any extras you need."}
+        </p>
       </div>
+
+      {several && (
+        <nav aria-label="Meals" className="flex flex-wrap gap-2" data-testid="meal-tabs">
+          {mealTabs.map((tab) => {
+            const current = tab.meal === meal;
+            // A meal that is saved can be reopened; one not started yet is reached with Continue.
+            const reachable = current || tab.done;
+            const className = `inline-flex h-10 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${current ? "border-primary bg-accent text-accent-foreground" : "border-border bg-card"} ${reachable ? "" : "cursor-not-allowed opacity-50"}`;
+            const content = (
+              <>
+                {tab.done ? <Check className="size-4 text-success" aria-label="done" /> : null}
+                {tab.label}
+              </>
+            );
+            return reachable ? (
+              <Link key={tab.meal} href={`/${tenantSlug}/plan/${draftId}?step=menu&meal=${tab.meal}`} aria-current={current ? "step" : undefined} className={className}>
+                {content}
+              </Link>
+            ) : (
+              <span key={tab.meal} aria-disabled="true" className={className}>
+                {content}
+              </span>
+            );
+          })}
+        </nav>
+      )}
 
       <p role="status" aria-live="polite" className="sr-only">
         {announcement}
@@ -223,7 +263,7 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
           </div>
 
           <div className="flex flex-col gap-1.5 border-t border-border pt-4 text-sm">
-            <h4 className="text-sm font-semibold">Selected Menu</h4>
+            <h4 className="text-sm font-semibold">{several ? `Selected Menu: ${mealLabel}` : "Selected Menu"}</h4>
             {hasMenu ? (
               <p>
                 {isCustomMenu ? "Custom Menu" : pickedMenu?.name}
@@ -262,7 +302,7 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
       </div>
 
       <StepFooter
-        onBack={backToDetails}
+        onBack={goBack}
         summary={
           <span className="flex flex-col items-center leading-tight lg:flex-row lg:gap-4">
             <span>{hasMenu && !isCustomMenu ? `${categoriesDone} of ${cappedSections.length} categories` : dishesLine}</span>
@@ -278,7 +318,7 @@ export function BuildMenuStep({ tenantSlug, draftId, menus, customSections, addO
         }
       >
         <Button type="button" size="lg" disabled={!complete || pending} onClick={handleContinue} aria-describedby={whyDisabled ? "continue-why" : undefined}>
-          {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Review</span></span>}
+          {pending ? "Saving…" : nextMeal ? <span>Continue<span className="max-sm:sr-only"> to {nextMeal.label}</span></span> : <span>Continue<span className="max-sm:sr-only"> to Review</span></span>}
           <ArrowRight />
         </Button>
       </StepFooter>

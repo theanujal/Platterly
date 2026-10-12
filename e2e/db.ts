@@ -389,6 +389,17 @@ export async function seedApprovedOrderForShare(email: string): Promise<{ approv
   return { approvalToken, orderId };
 }
 
+/** Public multi-meal spec: each meal-plan entry of the kitchen's (only) order, with the menu it is on and its per-plate price. */
+export async function getOrderMealMenus(slug: string): Promise<{ mealType: string; menuName: string | null; price: number; orderKind: string }[]> {
+  const { rows } = await pool.query(
+    `SELECT e."mealType", m.name AS "menuName", e.price, o."orderKind"
+     FROM meal_plan_entry e JOIN "order" o ON o.id = e."orderId" JOIN organization org ON org.id = o."organizationId" LEFT JOIN menu m ON m.id = e."menuId"
+     WHERE org.slug = $1 ORDER BY e."mealType"`,
+    [slug],
+  );
+  return rows.map((r) => ({ mealType: r.mealType, menuName: r.menuName, price: Number(r.price), orderKind: r.orderKind }));
+}
+
 /** Adds `count` plain customers to the user's business, for the list paging spec. */
 export async function seedCustomers(email: string, count: number, from = 1): Promise<void> {
   const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);

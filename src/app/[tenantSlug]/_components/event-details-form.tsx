@@ -228,7 +228,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
           </div>
         </FormSection>
 
-        <FormSection icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need. You can pick more than one.">
+        <FormSection icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need on this day. You can pick more than one, and you will build a menu for each.">
           <div role="group" aria-label="Meals Required" className="flex flex-wrap gap-3">
             {MEAL_TYPE_OPTIONS.map((o) => {
               const selected = values.eventMealTypes.includes(o.value);

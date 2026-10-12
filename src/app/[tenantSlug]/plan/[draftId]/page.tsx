@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Clock } from "lucide-react";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listAddOns } from "@/modules/addons/addon";
 import { listStorefrontMenus, listCustomMenuSections } from "@/modules/menus/menu";
-import { getDraft, buildDraftQuote, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
+import { getDraft, buildDraftQuote, allMealsComplete, isMealComplete, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
 import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { PublicShell } from "@/components/public/public-shell";
@@ -17,7 +17,7 @@ import { ScrollToTop } from "../../_components/scroll-to-top";
 
 interface PlanPageProps {
   params: Promise<{ tenantSlug: string; draftId: string }>;
-  searchParams: Promise<{ step?: string }>;
+  searchParams: Promise<{ step?: string; meal?: string }>;
 }
 
 // `cover` lets the bottom bar sit clear of a phone's home indicator (it pads by the safe-area inset).
@@ -38,7 +38,7 @@ const MEAL_LABEL: Record<string, string> = { BREAKFAST: "Breakfast", LUNCH: "Lun
 // land exactly where they left off.
 export default async function PlanPage({ params, searchParams }: PlanPageProps) {
   const { tenantSlug, draftId } = await params;
-  const { step: stepParam } = await searchParams;
+  const { step: stepParam, meal: mealParam } = await searchParams;
   const organization = await getPublishedTenantBySlug(tenantSlug);
   if (!organization) notFound();
 
@@ -47,7 +47,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
   const data = draft.data;
 
   if (draft.status === "COMPLETED") {
-    const isCustom = data.menuChoice?.kind === "CUSTOM";
+    const isCustom = Object.values(data.meals).some((meal) => meal?.menuChoice?.kind === "CUSTOM");
     return (
       <Shell organization={organization}>
         <div className="flex flex-col items-center gap-4 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-12" data-testid="confirmation">
@@ -132,13 +132,20 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
     const addOns = addOnRecords
       .filter((a) => a.isActive)
       .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, type: a.type, priceType: a.priceType, price: Number(a.price), included: a.includedInPackage }));
+    // Each meal builds its own menu (AJ, 2026-10-12). The requested meal, else the first one not finished, else the first.
+    const mealTypes = data.eventMealTypes;
+    const meal = mealTypes.find((m) => m === mealParam) ?? mealTypes.find((m) => !isMealComplete(data.meals[m])) ?? mealTypes[0];
+    const selection = data.meals[meal] ?? {};
     // A saved choice that no longer exists (menu switched off) starts the customer at the menu list again.
-    const savedChoice = data.menuChoice && (data.menuChoice.kind === "CUSTOM" || menus.some((m) => m.id === (data.menuChoice as { menuId: string }).menuId)) ? data.menuChoice : null;
+    const savedChoice = selection.menuChoice && (selection.menuChoice.kind === "CUSTOM" || menus.some((m) => m.id === (selection.menuChoice as { menuId: string }).menuId)) ? selection.menuChoice : null;
     const kids = data.childBelow5Count + data.child5To10Count;
     content = (
       <BuildMenuStep
+        key={meal}
         tenantSlug={tenantSlug}
         draftId={draft.id}
+        meal={meal}
+        mealTabs={mealTypes.map((m) => ({ meal: m, label: MEAL_LABEL[m] ?? m, done: isMealComplete(data.meals[m]) }))}
         menus={menus}
         customSections={customSections}
         addOns={addOns}
@@ -147,15 +154,19 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           date: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
           eventType: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
           guests: kids > 0 ? `${data.guestCount} (${kids} kid${kids === 1 ? "" : "s"})` : String(data.guestCount),
-          meals: data.eventMealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
+          meals: mealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
           preference: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
           location: data.venueLocation,
         }}
-        initial={{ choice: savedChoice, itemIds: savedChoice ? (data.itemIds ?? []) : [], addOnIds: data.addOnIds ?? [] }}
+        initial={{ choice: savedChoice, itemIds: savedChoice ? (selection.itemIds ?? []) : [], addOnIds: selection.addOnIds ?? [] }}
       />
     );
   } else {
-    if (!data.menuChoice || !data.itemIds?.length) notFound();
+    // Every meal needs its menu and dishes before the review: send the visitor to the first one that is not done.
+    if (!allMealsComplete(data)) {
+      const next = data.eventMealTypes.find((m) => !isMealComplete(data.meals[m])) ?? data.eventMealTypes[0];
+      redirect(`/${tenantSlug}/plan/${draftId}?step=menu&meal=${next}`);
+    }
     let quote;
     try {
       quote = await buildDraftQuote(organization.id, data);
@@ -163,22 +174,27 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
       if (error instanceof StorefrontDraftError) notFound();
       throw error;
     }
-    const eventTypes = await listEventTypes(organization.id);
-    // The same sections the Choose Items step shows, so dishes are listed under their own category.
-    const reviewSections =
-      data.menuChoice?.kind === "MENU"
-        ? (await listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference })).find((m) => m.id === (data.menuChoice as { menuId: string }).menuId)?.sections ?? []
-        : await listCustomMenuSections(organization.id, data.menuPreference);
-    const extraIds = new Set(quote.extras.map((e) => e.id));
-    const picked = new Set(data.itemIds ?? []);
-    const extraCategories: Record<string, string> = {};
-    const selectedSections = reviewSections
-      .map((section) => {
-        const inSection = section.items.filter((i) => picked.has(i.id));
-        for (const item of inSection) if (extraIds.has(item.id) && !extraCategories[item.id]) extraCategories[item.id] = section.categoryName;
-        return { categoryName: section.categoryName, items: inSection.filter((i) => !extraIds.has(i.id)).map((i) => i.name) };
-      })
-      .filter((section) => section.items.length > 0);
+    const [eventTypes, menusForEvent, customSections] = await Promise.all([
+      listEventTypes(organization.id),
+      listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference }),
+      listCustomMenuSections(organization.id, data.menuPreference),
+    ]);
+    // The same sections the Build Your Menu step shows, so each meal's dishes are listed under their own category.
+    const meals = quote.perMeal.map((mealQuote) => {
+      const selection = data.meals[mealQuote.mealType]!;
+      const sections = selection.menuChoice?.kind === "MENU" ? (menusForEvent.find((m) => m.id === (selection.menuChoice as { menuId: string }).menuId)?.sections ?? []) : customSections;
+      const extraIds = new Set(mealQuote.extras.map((e) => e.id));
+      const picked = new Set(selection.itemIds ?? []);
+      const extraCategories: Record<string, string> = {};
+      const selectedSections = sections
+        .map((section) => {
+          const inSection = section.items.filter((i) => picked.has(i.id));
+          for (const item of inSection) if (extraIds.has(item.id) && !extraCategories[item.id]) extraCategories[item.id] = section.categoryName;
+          return { categoryName: section.categoryName, items: inSection.filter((i) => !extraIds.has(i.id)).map((i) => i.name) };
+        })
+        .filter((section) => section.items.length > 0);
+      return { mealType: mealQuote.mealType, label: MEAL_LABEL[mealQuote.mealType] ?? mealQuote.mealType, menuName: mealQuote.isCustomMenu ? "Custom Menu" : mealQuote.menuName, selectedSections, extraCategories, itemIds: selection.itemIds ?? [], addOnIds: selection.addOnIds ?? [] };
+    });
     content = (
       <ReviewStep
         tenantSlug={tenantSlug}
@@ -194,10 +210,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           guests: data.guestCount,
           childBelow5Count: data.childBelow5Count,
           child5To10Count: data.child5To10Count,
-          selectedSections,
-          extraCategories,
-          itemIds: data.itemIds ?? [],
-          addOnIds: data.addOnIds ?? [],
+          meals,
           placedAt: new Date().toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).replace(/, (?=\d{1,2}:)/, " | "),
           venueLine: data.venueLocation,
         }}

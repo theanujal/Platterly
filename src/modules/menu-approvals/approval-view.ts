@@ -122,7 +122,8 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
   const priceRows: ApprovalPriceRow[] = [];
   const breakdown = snapshot.breakdown;
   if (breakdown) {
-    if (!snapshot.isCustomMenu) {
+    // A Custom Menu has no menu price, unless another meal of the same order is on a fixed menu.
+    if (!snapshot.isCustomMenu || breakdown.menuAmount > 0) {
       const adults = Math.max((snapshot.guests ?? 0) - (snapshot.childBelow5Count ?? 0) - (snapshot.child5To10Count ?? 0), 0);
       const mealCount = Math.max(snapshot.meals.length, 1);
       const rate = menu?.pricePerPlate ?? null;
