@@ -330,6 +330,65 @@ export async function seedOrderForBilling(email: string, total: number): Promise
   return { orderId, organizationId, orderNumber };
 }
 
+/**
+ * Share order spec: an order whose menu the customer has already approved and whose venue form is in, so the customer's
+ * link opens straight on the Confirmation page. Returns the approval link's token and the order id. The kitchen gets a
+ * phone number so the shared page has something to show. Event 3 days away.
+ */
+export async function seedApprovedOrderForShare(email: string): Promise<{ approvalToken: string; orderId: string }> {
+  const { rows: members } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
+  const organizationId = members[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const orderId = `ord_${suffix}`;
+  const eventId = `ev_${suffix}`;
+  const selectionId = `ms_${suffix}`;
+  const versionId = `mv_${suffix}`;
+  const approvalToken = `tok_${suffix}_${Math.random().toString(36).slice(2, 12)}`;
+  await pool.query('UPDATE organization SET "contactPhone" = $2 WHERE id = $1', [organizationId, "+919800011122"]);
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [`cust_${suffix}`, organizationId, "Share Customer", "+919811122233", "share-customer@example.test"]);
+  await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`et_${suffix}`, organizationId, "Wedding"]);
+  await pool.query(
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, venue, "eventAddress", "venueDetailsSubmittedAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, 'APPROVED', date_trunc('day', now() at time zone 'UTC') + interval '3 days', date_trunc('day', now() at time zone 'UTC') + interval '3 days', 100, 100, 1000, 1000, 1000, 'Grand Hall', '12 MG Road', now(), now())`,
+    [orderId, organizationId, `cust_${suffix}`, `et_${suffix}`, `ORD-${Math.floor(1000 + Math.random() * 8999)}`],
+  );
+  await pool.query(
+    `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", "orderId", name, "startDate", "endDate", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, 'Share Customer Wedding', now() + interval '3 days', now() + interval '3 days', now())`,
+    [eventId, organizationId, `cust_${suffix}`, `et_${suffix}`, orderId],
+  );
+  await pool.query(`INSERT INTO menu_selection (id, "organizationId", "eventId", status, "currentVersion", "updatedAt") VALUES ($1, $2, $3, 'CUSTOMER_APPROVED', 1, now())`, [selectionId, organizationId, eventId]);
+  const day = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  const snapshot = {
+    customerName: "Share Customer",
+    eventTypeName: "Wedding",
+    eventStartDate: day,
+    eventEndDate: day,
+    venue: "Grand Hall",
+    guests: 100,
+    total: 1000,
+    meals: [
+      {
+        date: day,
+        mealType: "DINNER",
+        menuName: "Royal Dinner",
+        pricePerPlate: 400,
+        items: [
+          { name: "Paneer Tikka", quantity: 1, itemType: "MENU_ITEM", unitPrice: 150, category: "Starters" },
+          { name: "Dal Makhani", quantity: 1, itemType: "MENU_ITEM", unitPrice: 120, category: "Mains" },
+          { name: "Chaat Counter", quantity: 1, itemType: "ADD_ON", unitPrice: 2000, addOnType: "LIVE_COUNTER", priceType: "FIXED" },
+        ],
+      },
+    ],
+    selectedItems: [],
+    isCustomMenu: false,
+  };
+  await pool.query(`INSERT INTO menu_version (id, "menuSelectionId", "versionNumber", status, snapshot, "sentAt") VALUES ($1, $2, 1, 'CUSTOMER_APPROVED', $3, now())`, [versionId, selectionId, JSON.stringify(snapshot)]);
+  await pool.query(`INSERT INTO secure_access_token (id, "organizationId", "resourceType", "resourceId", token) VALUES ($1, $2, 'MENU_APPROVAL', $3, $4)`, [`sat_${suffix}`, organizationId, versionId, approvalToken]);
+  return { approvalToken, orderId };
+}
+
 /** Adds `count` plain customers to the user's business, for the list paging spec. */
 export async function seedCustomers(email: string, count: number, from = 1): Promise<void> {
   const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);

@@ -9,6 +9,9 @@ import { ReviewFlow } from "./_components/review-flow";
 import { VenueScreen, ChangesCard } from "./_components/venue-screen";
 import { VENUE_TYPE_OPTIONS } from "@/modules/menu-approvals/venue-options";
 import { ApprovedMenuCard } from "./_components/approved-menu-card";
+import { ShareOrderCard } from "./_components/share-order-card";
+import { getShareState } from "@/modules/orders/order-share";
+import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { PriceSummary } from "./_components/price-summary";
 import { PaymentBox } from "./_components/payment-box";
 import { orderBalance } from "@/modules/payments/payment";
@@ -69,6 +72,10 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
     link.orderId ? orderBalance(link.organizationId, link.orderId) : Promise.resolve(null),
   ]);
   const canPay = money !== null && money.balance > 0 && paymentSettings.customersCanPay;
+  // Nothing to pay with yet (the kitchen has not set up Razorpay or UPI) but money is still owed: say what happens next.
+  const paymentComesLater = money !== null && money.balance > 0 && !paymentSettings.customersCanPay;
+  const shareState = link.orderId ? await getShareState(link.organizationId, link.orderId) : { allowed: false, url: null };
+  const shareQr = shareState.url ? await generateQrCodeDataUrl(shareState.url) : null;
 
   return (
     <PublicShell brand={brand} title="Thank You!" subtitle="Your menu is final and on its way to our kitchen." width="max-w-6xl">
@@ -85,6 +92,7 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="flex flex-col gap-4">
           <ApprovedMenuCard view={view} />
+          {shareState.allowed && <ShareOrderCard token={token} initial={{ url: shareState.url, qr: shareQr }} />}
           <PriceSummary rows={view.priceRows} total={view.total} isCustomMenu={view.isCustomMenu} />
           <ChangesCard token={token} />
         </div>
@@ -97,6 +105,13 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
               advancePercent={paymentSettings.advancePercent}
               paid={money.paid}
             />
+          )}
+          {paymentComesLater && (
+            <FormCard className="gap-2 md:p-5">
+              <p className="text-sm text-muted-foreground" data-testid="payment-later">
+                Your caterer will share payment details with you.
+              </p>
+            </FormCard>
           )}
           <VenueSummary venue={link.venue} />
         </div>

@@ -461,6 +461,8 @@ enum SecureAccessResourceType {
   PAYMENT_LINK
   // resourceId = a MenuVersion id, so a link is tied to one specific version.
   MENU_APPROVAL
+  // resourceId = an Order id: the read-only page the customer shares with their family and team (never expires by date; the page itself checks the event's last day).
+  ORDER_SHARE
 }
 
 model SecureAccessToken {

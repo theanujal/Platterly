@@ -3,6 +3,8 @@
 import { headers } from "next/headers";
 import { isRateLimited } from "@/lib/rate-limit";
 import { resolveApprovalLink } from "@/modules/menu-approvals/approval-link";
+import { disableShare, enableShare } from "@/modules/orders/order-share";
+import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { createPaymentLink } from "@/modules/payments/payment-links";
 import { PaymentError } from "@/modules/payments/payment";
 import {
@@ -85,6 +87,28 @@ export async function createApprovalPaymentLinkAction(token: string, kind: "ADVA
     return { ok: true, path: new URL(created.url).pathname };
   } catch (error) {
     if (error instanceof PaymentError) return { ok: false, error: error.message };
+    console.error("[menu-approval]", error);
+    return { ok: false, error: INACTIVE };
+  }
+}
+
+/**
+ * "Share with family & team" on the Confirmation page: switches the read-only share link on (returning the link and its
+ * QR) or off (the link stops working for everyone). Reached only with the customer's own approval link.
+ */
+export async function setOrderSharingAction(token: string, on: boolean): Promise<{ ok: true; url: string | null; qr: string | null } | { ok: false; error: string }> {
+  if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
+  const link = await resolveApprovalLink(token);
+  if (!link.ok || link.stage === "REVIEW" || !link.orderId) return { ok: false, error: INACTIVE };
+  try {
+    if (!on) {
+      await disableShare(link.organizationId, link.orderId);
+      return { ok: true, url: null, qr: null };
+    }
+    const url = await enableShare(link.organizationId, link.orderId);
+    if (!url) return { ok: false, error: INACTIVE };
+    return { ok: true, url, qr: await generateQrCodeDataUrl(url) };
+  } catch (error) {
     console.error("[menu-approval]", error);
     return { ok: false, error: INACTIVE };
   }

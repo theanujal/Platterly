@@ -478,6 +478,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByTestId("venue-summary")).toContainText("12 Green Villa Road");
   await expect(customerPage.getByText("We're starting the preparation")).toBeVisible();
   await expect(customerPage.getByTestId("payment-box")).toHaveCount(0); // the kitchen has not set up UPI or Razorpay yet
+  await expect(customerPage.getByTestId("payment-later")).toHaveText("Your caterer will share payment details with you.");
   await customerPage.close();
 
   // The kitchen sets its own UPI id and advance (Settings -> Payments); the confirmation then offers payment (Chunk 14).
@@ -495,6 +496,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await payerPage.goto(linkV2);
   const paymentBox = payerPage.getByTestId("payment-box");
   await expect(paymentBox).toContainText("Pay now to secure your date");
+  await expect(payerPage.getByTestId("payment-later")).toHaveCount(0); // a method is set up now: the card replaces the line
   await expect(paymentBox.getByRole("radio", { name: /Advance/ })).toHaveAttribute("aria-checked", "true");
   await expect(paymentBox).toContainText("40% to confirm your date");
   await expect(paymentBox).toContainText("We are also sending you a payment link");
