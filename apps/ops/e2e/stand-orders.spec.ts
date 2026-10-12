@@ -55,10 +55,14 @@ test("Stand orders: set the price, find the paid order, download the A6 print fi
   // The price of one stand (before GST) is set here.
   await page.getByLabel("Price per stand (₹, before GST)").fill("450");
   await page.getByLabel("GST (%)").fill("18");
+  await page.getByLabel("HSN / SAC code (optional)").fill("392690");
   await page.getByRole("button", { name: "Save price" }).click();
   await expect(page.getByRole("status")).toHaveText("Saved.");
-  const price = await pool.query("select \"standPrice\", \"standGstPercent\" from product where key = $1", [KEY]);
+  const price = await pool.query("select \"standPrice\", \"standGstPercent\", \"standHsnCode\" from product where key = $1", [KEY]);
   expect(Number(price.rows[0].standPrice)).toBe(450);
+  expect(price.rows[0].standHsnCode).toBe("392690");
+  await page.reload();
+  await expect(page.getByLabel("HSN / SAC code (optional)")).toHaveValue("392690"); // it is remembered
 
   await expect(page.getByRole("row", { name: /E2E Stand Kitchen/ })).toContainText("₹1,180.00");
   await page.getByRole("link", { name: /E2E-/ }).click();

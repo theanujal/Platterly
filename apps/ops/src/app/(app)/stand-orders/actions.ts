@@ -19,7 +19,7 @@ export async function saveStandPricingAction(_prev: StandFormState, formData: Fo
   const gstPercent = Number(String(formData.get("gstPercent") ?? "").trim() || "18");
   if (price !== null && Number.isNaN(price)) return { error: "Enter the price as a number." };
   try {
-    await setStandPricing(productKey, { price, gstPercent }, staff.id);
+    await setStandPricing(productKey, { price, gstPercent, hsnCode: String(formData.get("hsnCode") ?? "") }, staff.id);
     revalidatePath("/stand-orders");
     return { saved: true };
   } catch (error) {

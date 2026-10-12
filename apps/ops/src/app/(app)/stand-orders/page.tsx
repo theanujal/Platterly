@@ -19,7 +19,7 @@ export default async function StandOrdersPage({ searchParams }: { searchParams: 
   const { status } = await searchParams;
   const filter = (STAND_FULFILMENT as readonly string[]).includes(status ?? "") ? (status as StandFulfilment) : "ALL";
   const [product, orders, open] = await Promise.all([
-    prisma.product.findUniqueOrThrow({ where: { key: selected.key }, select: { standPrice: true, standGstPercent: true } }),
+    prisma.product.findUniqueOrThrow({ where: { key: selected.key }, select: { standPrice: true, standGstPercent: true, standHsnCode: true } }),
     listStandOrdersForStaff({ productKey: selected.key, fulfilment: filter }),
     prisma.standOrder.count({ where: { productKey: selected.key, paymentStatus: "PAID", fulfilment: { not: "DELIVERED" } } }),
   ]);
@@ -27,7 +27,7 @@ export default async function StandOrdersPage({ searchParams }: { searchParams: 
   return (
     <>
       <PageHeader title="Stand orders" description="Order QR stands kitchens paid for. Each has a print-ready A6 file; move it Placed, Printing, Shipped, Delivered." actions={<Badge tone={open > 0 ? "warning" : "success"}>{open} to do</Badge>} />
-      <PricingForm productKey={selected.key} productName={selected.name} price={product.standPrice === null ? "" : String(product.standPrice)} gstPercent={String(product.standGstPercent)} />
+      <PricingForm productKey={selected.key} productName={selected.name} price={product.standPrice === null ? "" : String(product.standPrice)} gstPercent={String(product.standGstPercent)} hsnCode={product.standHsnCode ?? ""} />
       <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Fulfilment">
         {(["ALL", ...STAND_FULFILMENT] as const).map((s) => (
           <Link key={s} href={s === "ALL" ? "/stand-orders" : `/stand-orders?status=${s}`} role="tab" aria-selected={s === filter} className={`inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium ${s === filter ? "bg-primary text-primary-foreground" : "border border-border bg-white"}`}>

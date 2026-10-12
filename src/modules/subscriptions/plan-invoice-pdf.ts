@@ -54,6 +54,8 @@ export interface InvoiceLabels {
   termLabel: string;
   featuresTitle: string;
   amountLabel: string;
+  /** The seller's tax code: "SAC" for plans, "HSN/SAC" for the Order QR stand. */
+  codeLabel: string;
 }
 
 const PLAN_LABELS: InvoiceLabels = {
@@ -64,6 +66,7 @@ const PLAN_LABELS: InvoiceLabels = {
   termLabel: "Plan Term",
   featuresTitle: "Features Included in",
   amountLabel: "Subscription Amount",
+  codeLabel: "SAC",
 };
 
 const PAGE_BOTTOM = 800;
@@ -97,7 +100,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
       wrap(s.name, 262, "bold", 8.5),
       ...[
         [...s.lines].join(", "),
-        [s.gstin ? `GSTIN: ${s.gstin}` : "", s.pan ? `PAN: ${s.pan}` : "", s.sac ? `SAC: ${s.sac}` : ""].filter(Boolean).join("  |  "),
+        [s.gstin ? `GSTIN: ${s.gstin}` : "", s.pan ? `PAN: ${s.pan}` : "", s.sac ? `${labels.codeLabel}: ${s.sac}` : ""].filter(Boolean).join("  |  "),
         [s.email, s.phone].filter(Boolean).join("  |  "),
       ]
         .filter(Boolean)

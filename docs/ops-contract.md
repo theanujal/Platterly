@@ -544,5 +544,5 @@ A kitchen can order 1 to 3 printed **A6 (4 x 6 in) acrylic stands** with its log
 
 **Catering:** needs the ops link (`OPS_*`), not the `OPS_BILLING` flag; with no link the section says it cannot be ordered right now. Test keys in Ops until the billing cutover (`docs/ops-cutover.md`). Package: `packages/contract/src/stand.ts`.
 
-**Not built:** reordering from an old order in one click, a stand price per quantity (volume discount), tracking links, the invoice shown inside Ops, and an HSN code for the goods (the invoice uses the seller profile's SAC code, so set that with the CA).
+**Not built:** reordering from an old order in one click, a stand price per quantity (volume discount), tracking links, the invoice shown inside Ops, and a default HSN code (staff can set the stand's HSN / SAC code in Ops, Stand orders; until they do, the invoice prints the SAC code from Billing).
 

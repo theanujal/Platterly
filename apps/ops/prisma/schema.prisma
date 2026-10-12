@@ -107,6 +107,8 @@ model Product {
   // The Order QR stand (docs/ops-contract.md section 33): price of ONE stand in rupees before GST, set by staff. Null = not on sale.
   standPrice      Decimal? @db.Decimal(10, 2)
   standGstPercent Decimal  @default(18) @db.Decimal(5, 2)
+  // HSN / SAC code printed on stand invoices (4 to 8 digits). Null = use the SAC code in Billing's seller details.
+  standHsnCode    String?
 
   // The last manifest read from the product (see packages/contract manifest).
   manifest          Json?

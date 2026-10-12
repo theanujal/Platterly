@@ -47,7 +47,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     totalLabel: "Total Paid",
     paymentNote: "Payment received through Razorpay. Your stands will be printed and shipped to the address on your order.",
     footerNote: seller.note,
-    labels: { cardTitle: "ORDER QR STAND", refLabel: "Order ID", detailsTitle: "Order Details", periodLabel: "Shipping", termLabel: "Quantity", featuresTitle: "What is included in", amountLabel: "Order Amount" },
+    labels: { cardTitle: "ORDER QR STAND", refLabel: "Order ID", detailsTitle: "Order Details", periodLabel: "Shipping", termLabel: "Quantity", featuresTitle: "What is included in", amountLabel: "Order Amount", codeLabel: "HSN/SAC" },
   });
 
   return new Response(bytes, {

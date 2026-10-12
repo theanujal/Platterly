@@ -113,6 +113,24 @@ describe("price and offer", () => {
     expect((await getStandOffer(KEY)).available).toBe(false);
   });
 
+  it("prints the stand's own HSN / SAC code on the invoice when staff set one, else the seller's SAC code", async () => {
+    const biz = await setup();
+    const first = await paidOrder(biz, 1);
+    expect((await getStandInvoice(biz, KEY, first.order.id)).seller.sacCode).toBe("998314"); // the Billing default
+    await setStandPricing(KEY, { price: 500, gstPercent: 18, hsnCode: " 392690 " }, null);
+    const second = await paidOrder(biz, 1);
+    expect((await getStandInvoice(biz, KEY, second.order.id)).seller.sacCode).toBe("392690");
+    expect((await getStandInvoice(biz, KEY, first.order.id)).seller.sacCode).toBe("998314"); // frozen: an old invoice never changes
+    await setStandPricing(KEY, { price: 500, gstPercent: 18, hsnCode: "" }, null); // empty goes back to Billing's code
+    expect((await prisma.product.findUniqueOrThrow({ where: { key: KEY } })).standHsnCode).toBeNull();
+  });
+
+  it("refuses an HSN / SAC code that is not 4 to 8 digits", async () => {
+    await setup();
+    await expect(setStandPricing(KEY, { price: 500, gstPercent: 18, hsnCode: "12" }, null)).rejects.toThrow(/4 to 8 digits/);
+    await expect(setStandPricing(KEY, { price: 500, gstPercent: 18, hsnCode: "ABCD12" }, null)).rejects.toThrow(/4 to 8 digits/);
+  });
+
   it("refuses a bad price or GST", async () => {
     await setup();
     await expect(setStandPricing(KEY, { price: 0, gstPercent: 18 }, null)).rejects.toThrow(BillingError);

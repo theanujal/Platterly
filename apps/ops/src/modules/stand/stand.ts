@@ -39,12 +39,14 @@ export async function getStandOffer(productKey: string): Promise<StandOffer> {
   return { available: price !== null && price > 0 && onlineBillingAvailable(), unitAmount: unit.amount, gstPercent: unit.gstPercent, unitGst: unit.gstAmount, unitTotal: unit.total, maxPerOrder: STAND_MAX_PER_ORDER };
 }
 
-/** Staff set the price of ONE stand (before GST) and the GST rate. Empty price takes the stand off sale. */
-export async function setStandPricing(productKey: string, input: { price: number | null; gstPercent: number }, actorUserId: string | null) {
+/** Staff set the price of ONE stand (before GST), the GST rate and optionally the HSN / SAC code for its invoices. Empty price takes the stand off sale. */
+export async function setStandPricing(productKey: string, input: { price: number | null; gstPercent: number; hsnCode?: string | null }, actorUserId: string | null) {
   if (input.price !== null && (!Number.isFinite(input.price) || input.price <= 0 || input.price > 100_000)) throw new StandError("Enter a price above 0.");
   if (!Number.isFinite(input.gstPercent) || input.gstPercent < 0 || input.gstPercent > 40) throw new StandError("GST must be between 0 and 40%.");
-  await prisma.product.update({ where: { key: productKey }, data: { standPrice: input.price, standGstPercent: input.gstPercent } });
-  await audit({ actorUserId, action: "stand.pricing_set", subject: productKey, detail: { price: input.price, gstPercent: input.gstPercent } });
+  const hsn = input.hsnCode?.trim() || null;
+  if (hsn && !/^\d{4,8}$/.test(hsn)) throw new StandError("HSN / SAC code is 4 to 8 digits.");
+  await prisma.product.update({ where: { key: productKey }, data: { standPrice: input.price, standGstPercent: input.gstPercent, standHsnCode: hsn } });
+  await audit({ actorUserId, action: "stand.pricing_set", subject: productKey, detail: { price: input.price, gstPercent: input.gstPercent, hsnCode: hsn } });
 }
 
 /* ---------- checkout and payment ---------- */
@@ -121,7 +123,7 @@ export async function confirmStandPayment(razorpayOrderId: string, razorpayPayme
     country: stored.country ?? null,
     gstin: stored.gstin ?? null,
   };
-  const product = await prisma.product.findUniqueOrThrow({ where: { key: order.productKey }, select: { invoicePrefix: true } });
+  const product = await prisma.product.findUniqueOrThrow({ where: { key: order.productKey }, select: { invoicePrefix: true, standHsnCode: true } });
   const prefix = product.invoicePrefix ?? seller.invoicePrefix;
   const kind = gstKind(seller, buyer);
   const snapshot: InvoiceSnapshot = {
@@ -136,7 +138,8 @@ export async function confirmStandPayment(razorpayOrderId: string, razorpayPayme
       country: seller.country,
       gstin: seller.gstin,
       pan: seller.pan,
-      sacCode: seller.sacCode,
+      // The stand's own HSN / SAC code when staff set one (frozen here), else the seller's SAC code from Billing.
+      sacCode: product.standHsnCode || seller.sacCode,
       email: seller.email,
       phone: seller.phone,
       website: seller.website,
