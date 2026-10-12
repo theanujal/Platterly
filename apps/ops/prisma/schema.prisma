@@ -104,6 +104,10 @@ model Product {
   // two products never print the same number. Numbers run per product (see InvoiceCounter).
   invoicePrefix String? @unique
 
+  // The Order QR stand (docs/ops-contract.md section 33): price of ONE stand in rupees before GST, set by staff. Null = not on sale.
+  standPrice      Decimal? @db.Decimal(10, 2)
+  standGstPercent Decimal  @default(18) @db.Decimal(5, 2)
+
   // The last manifest read from the product (see packages/contract manifest).
   manifest          Json?
   manifestVersion   String?
@@ -156,6 +160,7 @@ model Business {
   notifications Notification[]
   subscriptions Subscription[]
   payments      SubscriptionPayment[]
+  standOrders   StandOrder[]
 
   @@index([createdAt])
   @@map("business")
@@ -625,4 +630,48 @@ model LibraryCandidate {
   @@unique([productKey, remoteId])
   @@index([productKey, status])
   @@map("library_candidate")
+}
+
+enum StandFulfilment {
+  PLACED
+  PRINTING
+  SHIPPED
+  DELIVERED
+}
+
+// A kitchen's order for 1 to 3 printed QR stands (docs/ops-contract.md section 33). One Razorpay order, one GST invoice.
+// Everything the print needs is frozen here at checkout; the kitchen changing its link later never alters a printed stand.
+model StandOrder {
+  id                String          @id
+  businessId        String
+  business          Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  productKey        String
+  quantity          Int
+  // Rupees. amount + gstAmount = total; amount is quantity x the unit price on the day of the order.
+  unitAmount        Decimal         @db.Decimal(10, 2)
+  amount            Decimal         @db.Decimal(10, 2)
+  gstPercent        Decimal         @db.Decimal(5, 2)
+  gstAmount         Decimal         @db.Decimal(10, 2)
+  total             Decimal         @db.Decimal(10, 2)
+  paymentStatus     PaymentStatus   @default(PENDING)
+  razorpayOrderId   String?         @unique
+  razorpayPaymentId String?
+  invoiceNumber     String?         @unique
+  invoiceSnapshot   Json?
+  paidAt            DateTime?
+  fulfilment        StandFulfilment @default(PLACED)
+  printingAt        DateTime?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  trackingNote      String?
+  shipTo            Json
+  buyer             Json
+  kitchenName       String
+  kitchenLogoUrl    String?
+  linkUrl           String
+  createdAt         DateTime        @default(now())
+
+  @@index([businessId, createdAt])
+  @@index([paymentStatus, fulfilment])
+  @@map("stand_order")
 }

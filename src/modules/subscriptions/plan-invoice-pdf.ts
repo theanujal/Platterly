@@ -42,7 +42,29 @@ export interface PlanInvoiceData {
   totalLabel: string;
   paymentNote: string;
   footerNote: string | null;
+  /** Wording for other things Platterly invoices (the Order QR stand): each defaults to the plan wording below. */
+  labels?: Partial<InvoiceLabels>;
 }
+
+export interface InvoiceLabels {
+  cardTitle: string;
+  refLabel: string;
+  detailsTitle: string;
+  periodLabel: string;
+  termLabel: string;
+  featuresTitle: string;
+  amountLabel: string;
+}
+
+const PLAN_LABELS: InvoiceLabels = {
+  cardTitle: "SUBSCRIPTION PLAN",
+  refLabel: "Subscription ID",
+  detailsTitle: "Subscription Details",
+  periodLabel: "Billing Period",
+  termLabel: "Plan Term",
+  featuresTitle: "Features Included in",
+  amountLabel: "Subscription Amount",
+};
 
 const PAGE_BOTTOM = 800;
 
@@ -50,6 +72,7 @@ const PAGE_BOTTOM = 800;
 export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   const doc = new jsPDF({ unit: "pt", format: "a4", compress: true });
   doc.setProperties({ title: `Invoice ${data.invoiceNumber}`, author: "Platterly" });
+  const labels = { ...PLAN_LABELS, ...data.labels };
   const left = 40;
   const right = 555;
   const width = right - left;
@@ -154,7 +177,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   doc.roundedRect(planX, cardTop, cardWidth, cardHeight, 6, 6, "FD");
   font("bold", 8);
   ink(MUTED);
-  doc.text("SUBSCRIPTION PLAN", planX + 12, cardTop + 18);
+  doc.text(labels.cardTitle, planX + 12, cardTop + 18);
   fill([255, 237, 213]);
   doc.circle(planX + 30, cardTop + 52, 17, "F");
   fill(ORANGE);
@@ -172,7 +195,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   doc.text(data.planStatus, planX + 61, planY + 16);
   font("normal", 7.5);
   ink(MUTED);
-  doc.text(`Subscription ID: #${data.subscriptionRef}`, planX + 54, planY + 34);
+  doc.text(`${labels.refLabel}: #${data.subscriptionRef}`, planX + 54, planY + 34);
 
   let y = cardTop + cardHeight + 14;
 
@@ -225,11 +248,11 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
 
   // ---------- Subscription Details ----------
   ensure(110);
-  panel("Subscription Details", 84);
+  panel(labels.detailsTitle, 84);
   fill([255, 255, 255]);
   const cells: ["calendar" | "clock" | "card" | "hash", string, string][] = [
-    ["calendar", "Billing Period", data.period],
-    ["clock", "Plan Term", data.term],
+    ["calendar", labels.periodLabel, data.period],
+    ["clock", labels.termLabel, data.term],
     ["card", "Payment Method", data.paymentMethod],
     ["hash", "Transaction ID", data.transactionId],
   ];
@@ -256,7 +279,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
     const rowHeight = 38;
     const rows = Math.ceil(data.features.length / columns);
     ensure(30 + rows * rowHeight + 16);
-    panel(`Features Included in ${data.planName}`, 30 + rows * rowHeight + 14);
+    panel(`${labels.featuresTitle} ${data.planName}`, 30 + rows * rowHeight + 14);
     const colWidth = width / columns;
     data.features.forEach((feature, i) => {
       const x = left + (i % columns) * colWidth + 14;
@@ -289,7 +312,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
     doc.line(left + 16, rowY + 8, right - 16, rowY + 8);
     rowY += 24;
   };
-  line("Subscription Amount", data.amount);
+  line(labels.amountLabel, data.amount);
   for (const tax of data.taxLines) line(tax.label, tax.amount);
   fill(ORANGE_TINT);
   doc.roundedRect(left + 8, rowY - 6, width - 16, 36, 6, 6, "F");

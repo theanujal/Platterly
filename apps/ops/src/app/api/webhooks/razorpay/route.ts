@@ -1,4 +1,5 @@
 import { confirmPayment, failPayment } from "@/modules/billing/billing";
+import { confirmStandPayment, failStandPayment } from "@/modules/stand/stand";
 import { platformRazorpay, verifyWebhookSignature } from "@/modules/billing/razorpay";
 
 /**
@@ -23,8 +24,13 @@ export async function POST(request: Request) {
   }
   const entity = event.payload?.payment?.entity;
   if (entity?.id && entity.order_id) {
-    if (event.event === "payment.captured") await confirmPayment(entity.order_id, entity.id, new Date(), typeof entity.amount === "number" ? entity.amount : undefined);
-    else if (event.event === "payment.failed") await failPayment(entity.order_id);
+    const captured = typeof entity.amount === "number" ? entity.amount : undefined;
+    // An Order QR stand has its own orders; a plan payment has its own. The Razorpay order id says which.
+    if (event.event === "payment.captured") {
+      if (!(await confirmStandPayment(entity.order_id, entity.id, new Date(), captured))) await confirmPayment(entity.order_id, entity.id, new Date(), captured);
+    } else if (event.event === "payment.failed") {
+      if (!(await failStandPayment(entity.order_id))) await failPayment(entity.order_id);
+    }
   }
   return new Response("OK");
 }

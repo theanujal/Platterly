@@ -521,3 +521,28 @@ Ops can fix and hide what is already in a product's library (the catering `Syste
 ## 32. Kitchen categories as library categories (2026-10-11)
 
 The library keeps its own list of dish categories (`SystemFoodCategory`, edited through section 31 with `kind=CATEGORY`). The candidate kinds of section 30 gain **`CATEGORY`**: the nightly scan collects category names that at least `LIBRARY_MIN_KITCHENS` (2) different kitchens use for their own dishes, that the list lacks by name or another name (case, plural and spelling-tolerant: "Starter" is "Starters"). A candidate carries `name`, `kitchenCount` and, when a near-identical library category exists, `suggestedMatchId` / `suggestedMatchName`; nothing else (no dish, price or kitchen name). Decisions use the same POST: `approve` adds the category (`entry.name` may be corrected; 409 when the list already has it: merge instead), `merge` adds the name as another name of the category `mergeIntoId` (404 when unknown), `reject` is never offered again. A kitchen's own categories never change. The migration seeds the list from the standard categories and every category a library dish already uses; `npm run db:seed-catalog` adds any category a catalog dish uses.
+
+## 33. The Order QR stand (2026-10-12)
+
+A kitchen can order 1 to 3 printed **A6 (4 x 6 in) acrylic stands** with its logo, name, a QR code to its **direct public link** and "Powered by Platterly" always at the bottom. Settings -> Platterly Link -> Order QR stand shows a live preview of the design, the price, a ship-to form (the business address by default, editable or a new address) and pays through Platterly's Razorpay. Ops holds the price, the money, the GST invoice and the printing and shipping. Owner only.
+
+**Decisions (AJ, 2026-10-11 and 12):** a fixed template (the kitchen only chooses the quantity); price set in Ops, one price per stand before GST, shipping included, GST charged; no redirect (the QR is the link exactly as it is today, so changing the link later breaks printed stands and the Settings page warns first, with an "I understand" box); emails to the owner when the order is placed and when it ships; Ops fulfilment Placed -> Printing -> Shipped -> Delivered, forward only; Ops produces a print-ready PDF; the invoice is a downloadable GST invoice PDF in catering, from the copy frozen at payment.
+
+**Routes** (same signed billing API as section 19, under `/api/products/{productKey}/`):
+
+| Route | Does |
+|---|---|
+| `GET stand/offer` | Price of one stand with GST and whether it is on sale (a price is set and Razorpay is on) |
+| `GET businesses/{id}/stand/orders` | The business's **paid** orders (unpaid and failed attempts are not shown) |
+| `POST businesses/{id}/stand/orders` | `{quantity 1..3, shipTo, buyer, kitchenName, kitchenLogoUrl, linkUrl}`: creates the Razorpay order and a PENDING stand order; everything printed is frozen here |
+| `POST businesses/{id}/stand/orders/verify` | Razorpay Checkout's signature, then the same confirmation the webhook does |
+| `GET businesses/{id}/stand/orders/{orderId}/invoice` | The frozen invoice (seller, buyer, GST split) |
+
+**Payment:** the Razorpay webhook (`/api/webhooks/razorpay`) tries a stand order first, then a plan payment, by Razorpay order id. Confirming (checkout verify or webhook, whichever is first) happens once: it takes the next invoice number from the product's running number (same sequence as plan invoices, so numbers never repeat), freezes the invoice, notifies staff ("New Order QR stand order") and emails the owner (`stand_placed`). Moving to Shipped emails the owner once (`stand_shipped`, with the delivery note).
+
+**Ops screens:** Stand orders (Product group): the price and GST form, the paid orders by status, and per order: what to print, ship-to, payment and invoice number, progress with one forward button (a delivery note when shipping) and **Download print file (PDF)** (A6, the kitchen's logo converted to PNG, the QR, the link, Powered by Platterly).
+
+**Catering:** needs the ops link (`OPS_*`), not the `OPS_BILLING` flag; with no link the section says it cannot be ordered right now. Test keys in Ops until the billing cutover (`docs/ops-cutover.md`). Package: `packages/contract/src/stand.ts`.
+
+**Not built:** reordering from an old order in one click, a stand price per quantity (volume discount), tracking links, the invoice shown inside Ops, and an HSN code for the goods (the invoice uses the seller profile's SAC code, so set that with the CA).
+

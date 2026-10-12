@@ -15,6 +15,7 @@ Written 2026-10-05, after steps 1 to 8 of `docs/ops-contract.md` were built. The
 | 7 | Seller's tax details | Ops Billing: legal name, GSTIN, PAN, state code, address, SAC (998314 unless your CA says otherwise), note | Saved; the example invoice number looks right |
 | 8 | Plans exist in ops | Ops Plans: the plans you sell, with prices, GST and limits, and one active trial plan for catering | Each plan lists under the product |
 | 9 | Invoice prefix | Ops Products, Catering, Invoice numbering | Catering shows its prefix (the migration kept the one in use, `FP`) |
+| 9a | Order QR stand (optional, any time after 6 to 9) | Ops, Stand orders: set the price of one stand (before GST) and the GST rate; the stand is on sale only while a price is set and Razorpay is on. Migration `stand_orders` applied in `apps/ops`; catering needs the ops link (not the `OPS_BILLING` flag) | The stand shows a price on a kitchen's Settings, Platterly Link; a test order appears under Stand orders (see `docs/ops-contract.md` section 33) |
 
 ## The switch
 

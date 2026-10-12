@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "cn";
 
 interface CopyButtonProps {
   value: string;
@@ -30,9 +31,9 @@ export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = fals
     <Button
       type="button"
       variant="outline"
-      size={iconOnly ? "icon-sm" : size}
+      size={iconOnly ? (size === "md" ? "md" : "icon-sm") : size}
       onClick={handleCopy}
-      className={className}
+      className={cn(iconOnly && size === "md" && "w-[38px] px-0", className)}
       aria-label={iconOnly ? (copied ? "Copied" : label) : undefined}
       title={iconOnly ? (copied ? "Copied!" : label) : undefined}
     >

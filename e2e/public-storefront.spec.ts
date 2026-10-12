@@ -38,7 +38,8 @@ test("claim a custom link, then view the real public storefront page (unauthenti
 
   // --- Settings: real link shown, Copy button, and a downloadable QR ---
   await page.goto("/settings/integration/public-menu-link");
-  await expect(page.getByText(`${new URL(page.url()).host}/${slug}`)).toBeVisible();
+  // The Order QR stand preview repeats the link, so the Business URL box is the one asked for.
+  await expect(page.getByText(`${new URL(page.url()).host}/${slug}`).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Download QR code" })).toBeVisible();
 

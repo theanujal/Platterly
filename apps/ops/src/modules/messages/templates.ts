@@ -89,6 +89,35 @@ export const TEMPLATES: Record<string, Template> = {
       }),
     }),
   },
+  stand_placed: {
+    requires: ["quantity", "amount"],
+    render: (v, c) => ({
+      subject: `We received your Order QR stand order`,
+      html: renderEmail({
+        tag: "Order QR stand",
+        eyebrow: "Order placed",
+        title: "Thank you, your stands are on their way to print",
+        greeting: greet(c),
+        bodyHtml: p(`We received your order for <strong>${plural(Number(v.quantity), "Order QR stand")}</strong> for <strong>${escapeHtml(c.businessName)}</strong>. We will print them and email you again when they ship.`),
+        details: [["Stands", String(v.quantity)], ["Amount (with GST)", inr(text(v, "amount"))], ...(v.invoiceNumber ? ([["Invoice", text(v, "invoiceNumber")]] as Array<[string, string]>) : [])],
+        cta: { label: "View your order", url: `${c.productUrl}/settings/integration/public-menu-link` },
+      }),
+    }),
+  },
+  stand_shipped: {
+    requires: ["quantity"],
+    render: (v, c) => ({
+      subject: "Your Order QR stand has shipped",
+      html: renderEmail({
+        tag: "Order QR stand",
+        eyebrow: "Shipped",
+        title: "Your Order QR stand is on its way",
+        greeting: greet(c),
+        bodyHtml: p(`Your order of <strong>${plural(Number(v.quantity), "Order QR stand")}</strong> for <strong>${escapeHtml(c.businessName)}</strong> has shipped to your address.`) + (v.trackingNote ? p(`Delivery note: ${escapeHtml(text(v, "trackingNote"))}`) : "") + p("Keep your public link the same: the QR printed on the stand points to it."),
+        cta: { label: "View your order", url: `${c.productUrl}/settings/integration/public-menu-link` },
+      }),
+    }),
+  },
   plan_changed: {
     requires: ["planName"],
     render: (v, c) => ({
