@@ -677,3 +677,34 @@ model StandOrder {
   @@index([paymentStatus, fulfilment])
   @@map("stand_order")
 }
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  CLOSED
+}
+
+// A person who filled in a form on platterly.in (Book a demo / Talk to us, or Contact us). The site posts it to Ops
+// (`POST /api/public/enquiries`); staff follow up from Leads. Nothing here is a business or a customer yet.
+model Enquiry {
+  id           String        @id @default(cuid())
+  // "talk" (Book a demo / Request a call) or "contact" (Contact us).
+  kind         String
+  name         String
+  email        String
+  phone        String?
+  businessType String?
+  subject      String?
+  message      String?
+  // The page it was sent from and the site it came from.
+  page         String?
+  source       String?
+  status       EnquiryStatus @default(NEW)
+  // Staff notes (who spoke to them, what was agreed).
+  note         String?
+  contactedAt  DateTime?
+  createdAt    DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@map("enquiry")
+}

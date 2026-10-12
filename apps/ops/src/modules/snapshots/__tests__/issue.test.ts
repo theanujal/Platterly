@@ -5,7 +5,7 @@ import { newId, parseSnapshot, signedHeaders, verifyRequest } from "@platterly/c
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan, PlanError, setPlanActive, updatePlan, type PlanInput } from "@/modules/plans/plans";
-import { assignPlan, startTrial, SubscriptionError, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { assignPlan, startTrial, SubscriptionError, sendGraceNotices, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
 import { receiveEvent } from "@/modules/directory/events";
 import { GET as pullGET } from "@/app/api/products/[productKey]/snapshots/[businessId]/route";
 import { GET as cronGET } from "@/app/api/cron/route";
@@ -180,7 +180,7 @@ describe("subscriptions", () => {
     const subB = await assignPlan({ businessId: b, productKey: KEY, planId: pro.id, actorUserId: null });
     await assignPlan({ businessId: c, productKey: KEY, planId: pro.id, actorUserId: null });
     await prisma.subscription.update({ where: { id: subA.id }, data: { trialEndsAt: new Date(Date.now() - DAY) } });
-    await prisma.subscription.update({ where: { id: subB.id }, data: { currentPeriodEnd: new Date(Date.now() - DAY) } });
+    await prisma.subscription.update({ where: { id: subB.id }, data: { currentPeriodEnd: new Date(Date.now() - 8 * DAY) } }); // past the 7-day payment grace
     commands = [];
     expect(await sweepExpired(new Date(), KEY)).toBe(2);
     expect((await prisma.subscription.findUniqueOrThrow({ where: { id: subA.id } })).status).toBe("LOCKED");
@@ -188,9 +188,37 @@ describe("subscriptions", () => {
     const sent = commands.map((x) => (x.body.payload as { snapshot: { status: string } }).snapshot.status);
     expect(sent.sort()).toEqual(["LOCKED", "LOCKED"]);
     expect(await sweepExpired(new Date(), KEY)).toBe(0);
-    // Only the trial gets an "ended" email, once; a paid period that lapsed does not. (Hand-assigned paid plans send "plan changed".)
+    // The trial gets an "ended" email and the lapsed paid plan a "paused" email, once each. (Hand-assigned paid plans send "plan changed".)
     expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "trial_ended" }, select: { businessId: true } })).toEqual([{ businessId: a }]);
+    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "plan_paused" }, select: { businessId: true } })).toEqual([{ businessId: b }]);
     expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "plan_changed" } })).toBe(2);
+  });
+
+  it("a paid period that ended gets 7 days of grace: it stays ACTIVE, the owner is emailed once at the start and once on the last day, then it locks", async () => {
+    const pro = await createPlan(planInput(), null);
+    const biz = await makeBusiness();
+    const sub = await assignPlan({ businessId: biz, productKey: KEY, planId: pro.id, actorUserId: null });
+    const end = new Date("2026-11-01T12:00:00Z");
+    await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: end } });
+    const at = (days: number) => new Date(end.getTime() + days * DAY);
+    const mails = (template: string) => prisma.messageLog.count({ where: { productKey: KEY, template } });
+
+    expect(await sendGraceNotices(at(-1), KEY)).toBe(0); // not ended yet
+    expect(await sendGraceNotices(at(0.1), KEY)).toBe(1); // ended: the 7 days start
+    expect(await sendGraceNotices(at(1), KEY)).toBe(1); // the same message, not sent again (same key)
+    expect(await mails("plan_grace")).toBe(1);
+    expect(await sweepExpired(at(6), KEY)).toBe(0); // still inside the grace: not locked
+    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("ACTIVE");
+
+    expect(await sendGraceNotices(at(6.2), KEY)).toBe(1); // the last day
+    expect(await sendGraceNotices(at(6.8), KEY)).toBe(1);
+    expect(await mails("plan_grace")).toBe(2); // started + last, once each
+    expect(await sendGraceNotices(at(7.1), KEY)).toBe(0); // the grace is over
+
+    expect(await sweepExpired(at(7.1), KEY)).toBe(1);
+    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("LOCKED");
+    expect(await mails("plan_paused")).toBe(1);
+    expect(await prisma.notification.count({ where: { productKey: KEY, kind: "plan.overdue" } })).toBe(1);
   });
 
   it("trial notices go out at 3 days and at 1 day, once each, and never for an ended, paid or far-off trial", async () => {

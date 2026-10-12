@@ -1,0 +1,28 @@
+# One unit per app and slot: platterly-app@catering-blue, platterly-app@catering-green, platterly-app@ops-blue, platterly-app@ops-green.
+# Install: cp deploy/systemd/platterly-app@.service /etc/systemd/system/ && systemctl daemon-reload
+# Enable the two live ones the first time: systemctl enable --now platterly-app@catering-blue platterly-app@ops-blue
+[Unit]
+Description=Platterly %i
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=platterly
+Group=platterly
+# The scripts live in the blue clone's deploy folder; deploy.sh copies them to /srv/platterly/bin on every deploy (see README).
+ExecStart=/srv/platterly/bin/run-slot.sh %i
+Restart=always
+RestartSec=3
+# A graceful stop lets requests in flight finish.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=65536
+# Hardening: the app writes only to its own uploads folder.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/srv/platterly/uploads /srv/platterly/site-media
+
+[Install]
+WantedBy=multi-user.target

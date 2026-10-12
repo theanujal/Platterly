@@ -14,6 +14,12 @@ export type BillingInterval = (typeof BILLING_INTERVALS)[number];
 /** AJ, 2026-10-05: a product keeps working on its last snapshot this long after `validUntil` when ops is silent. */
 export const GRACE_DAYS = 5;
 
+/**
+ * AJ, 2026-10-12: after a paid plan's period runs out (a missed payment) the business keeps full access for this many days,
+ * with a warning, and is locked after that. A trial that ends has no grace. Matches the Refund policy page.
+ */
+export const PAID_GRACE_DAYS = 7;
+
 /** AJ, 2026-10-05: a deleted business is suspended and restorable for this long before the product really deletes it. */
 export const DELETE_RETENTION_DAYS = 30;
 

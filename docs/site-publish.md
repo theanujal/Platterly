@@ -41,3 +41,7 @@ Not covered: the site's code (home and Catering page copy, design) still deploys
 | Where pictures live | On the Ops server, in `SITE_MEDIA_DIR`. Back that folder up with the database: a lost folder means the library shows broken pictures and the next site build fails with "used by the content but Ops answered 404". |
 | How they reach the site | The build copies every picture the content uses into the site, so platterly.in does not call Ops when a visitor loads a page. |
 | Scheduled posts | A post with a future go-live time is left out until it is due. Ops's daily job starts a publish when one comes due. |
+
+## Lead form
+
+Build the site with `NEXT_PUBLIC_ENQUIRY_ENDPOINT=https://ops.platterly.in/api/public/enquiries`, and list the site's origin(s) in `SITE_ORIGINS` in Ops's env. Submissions appear under Leads in Ops.

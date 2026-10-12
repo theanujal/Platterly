@@ -300,7 +300,7 @@ describe("entitlements with OPS_BILLING on and no snapshot yet", () => {
 
   it("answers for many kitchens at once: snapshot, own rows, new and old", async () => {
     const withSnap = await makeKitchen({ sub: "none" });
-    const own = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - DAY) });
+    const own = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - 8 * DAY) });
     const fresh = await makeKitchen({ sub: "none" });
     const stale = await makeKitchen({ sub: "none", createdAt: new Date(Date.now() - 3 * DAY) });
     on();

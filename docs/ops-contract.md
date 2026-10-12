@@ -204,6 +204,8 @@ Platterly's Razorpay keys and webhook (`/api/webhooks/razorpay-platform` today) 
 
 A snapshot carries `trialEndsAt` and `currentPeriodEnd`. A product treats `TRIALING` with a passed `trialEndsAt`, or `ACTIVE` with a passed `currentPeriodEnd`, as locked on its own. This is today's `billingLockReason`, so a trial or paid period ends at the right minute even if ops is down. Ops's scheduled job still refreshes snapshots and writes the new status.
 
+**Paid grace (AJ, 2026-10-12).** An `ACTIVE` subscription whose `currentPeriodEnd` has passed is *not* locked at once: the product keeps full access for `PAID_GRACE_DAYS` (7) days and shows a Grace card; `evaluateAccess` returns `paymentGraceEndsAt`. After the grace the lock applies. Ops's `sweepExpired` uses the same rule and sends the `plan_grace` and `plan_paused` notices. Trials have no grace.
+
 ### 8.3 Cutover flag
 
 Step 6 ships behind a flag (`OPS_BILLING`, off by default). Off means catering behaves exactly as before (plan rows). On means ops is the source of truth: a business with no snapshot yet gets the manifest's trial defaults for a short time, then is treated as missing. Step 8 removes the flag and the old code.
@@ -546,3 +548,8 @@ A kitchen can order 1 to 3 printed **A6 (4 x 6 in) acrylic stands** with its log
 
 **Not built:** reordering from an old order in one click, a stand price per quantity (volume discount), tracking links, the invoice shown inside Ops, and a default HSN code (staff can set the stand's HSN / SAC code in Ops, Stand orders; until they do, the invoice prints the SAC code from Billing).
 
+
+
+## Public lead endpoint and monitoring (2026-10-12)
+
+Ops exposes `POST /api/public/enquiries` (no signature; CORS limited to `SITE_ORIGINS`, honeypot field `website`, 10 requests per hour per address) for the marketing site's Book a demo form. It is not part of the signed product contract. Both apps report errors to Sentry when `SENTRY_DSN` is set. Deployment, backups and blue/green slots are in `deploy/README.md`.

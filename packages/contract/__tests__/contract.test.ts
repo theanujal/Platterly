@@ -3,6 +3,7 @@ import {
   CONTRACT_VERSION,
   DELETE_RETENTION_DAYS,
   GRACE_DAYS,
+  PAID_GRACE_DAYS,
   REPORT_LIMITS,
   parseReportDoc,
   evaluateAccess,
@@ -209,7 +210,11 @@ describe("access rules", () => {
     expect(evaluateAccess(trial, at(0))).toEqual({ allowed: false, reason: "trial_ended" });
     const paid = snapshot({ status: "ACTIVE", currentPeriodEnd: new Date(t).toISOString(), validUntil: new Date(t + 30 * DAY).toISOString() });
     expect(evaluateAccess(paid, at(-1))).toEqual({ allowed: true, stale: false });
-    expect(evaluateAccess(paid, at(0))).toEqual({ allowed: false, reason: "period_ended" });
+    // A paid plan whose period ended keeps working for 7 days (a warning, not a lock), then locks.
+    expect(PAID_GRACE_DAYS).toBe(7);
+    expect(evaluateAccess(paid, at(0))).toEqual({ allowed: true, stale: false, paymentGraceEndsAt: new Date(t + 7 * DAY).toISOString() });
+    expect(evaluateAccess(paid, at(7 * DAY - 1))).toMatchObject({ allowed: true, paymentGraceEndsAt: new Date(t + 7 * DAY).toISOString() });
+    expect(evaluateAccess(paid, at(7 * DAY))).toEqual({ allowed: false, reason: "period_ended" });
     // An active kitchen whose plan has no period end (assigned by hand) never locks by date; a trial date does not lock a paid plan.
     expect(evaluateAccess(snapshot({ status: "ACTIVE", currentPeriodEnd: null, validUntil: new Date(t + 30 * DAY).toISOString() }), at(5 * DAY))).toEqual({ allowed: true, stale: false });
     expect(evaluateAccess(snapshot({ status: "ACTIVE", trialEndsAt: new Date(t - DAY).toISOString(), currentPeriodEnd: null, validUntil: new Date(t + 30 * DAY).toISOString() }), at(0)).allowed).toBe(true);

@@ -44,7 +44,7 @@ afterEach(clean);
 
 describe("templates", () => {
   it("render every template with a subject and escaped, branded html", () => {
-    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123" };
+    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123", endsOn: "8 Nov 2026" };
     for (const key of Object.keys(TEMPLATES)) {
       const out = renderTemplate(key, vars, ctx);
       expect(out.ok, key).toBe(true);

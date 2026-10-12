@@ -1,7 +1,7 @@
 import "server-only";
 import { evaluateAccess, parseSnapshot, type EntitlementSnapshot, type EntitlementValue, type EntitlementValues, type SubscriptionStatus } from "@platterly/contract";
 import { prisma } from "@/lib/db";
-import { billingLockReason, type BillingLockReason } from "@/modules/subscriptions/billing-math";
+import { billingGraceEndsAt, billingLockReason, type BillingLockReason } from "@/modules/subscriptions/billing-math";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 import { opsBillingOn, opsLink } from "./config";
 import { buildManifest, CATERING_ENTITLEMENTS } from "./manifest";
@@ -34,6 +34,8 @@ export interface EntitlementView {
   lockReason: BillingLockReason | null;
   trialEndsAt: Date | null;
   currentPeriodEnd: Date | null;
+  /** A paid plan's period has ended and the 7-day payment grace is running: when it ends (the kitchen is warned, not locked). Null otherwise. */
+  graceEndsAt?: Date | null;
 }
 
 /** How long a brand-new kitchen runs on the trial defaults while it waits for its first snapshot from ops. */
@@ -67,7 +69,7 @@ export function viewFromPlan(subscription: (PlanLockInput & { subscriptionPlan: 
 
   const reason = billingLockReason(subscription, now);
   const status: SubscriptionStatus = reason === "ended" ? "CANCELLED" : reason ? "LOCKED" : subscription.status === "TRIALING" ? "TRIALING" : "ACTIVE";
-  return { source: "plan", status, locked: reason !== null, stale: false, planName: subscription.subscriptionPlan.name, values, lockReason: reason, trialEndsAt: subscription.trialEndsAt, currentPeriodEnd: subscription.currentPeriodEnd };
+  return { source: "plan", status, locked: reason !== null, stale: false, planName: subscription.subscriptionPlan.name, values, lockReason: reason, trialEndsAt: subscription.trialEndsAt, currentPeriodEnd: subscription.currentPeriodEnd, graceEndsAt: billingGraceEndsAt(subscription, now) };
 }
 
 export function viewFromSnapshot(snapshot: EntitlementSnapshot, now: Date = new Date()): EntitlementView {
@@ -83,6 +85,7 @@ export function viewFromSnapshot(snapshot: EntitlementSnapshot, now: Date = new 
     lockReason,
     trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
     currentPeriodEnd: snapshot.currentPeriodEnd ? new Date(snapshot.currentPeriodEnd) : null,
+    graceEndsAt: access.allowed && access.paymentGraceEndsAt ? new Date(access.paymentGraceEndsAt) : null,
   };
 }
 

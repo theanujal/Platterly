@@ -1,0 +1,14 @@
+# Copy to /etc/platterly/deploy.conf. Every line is optional; the values shown are the defaults.
+PLATTERLY_ROOT=/srv/platterly
+REPO_URL=git@github.com:theanujal/Platterly.git
+UPLOAD_ROOT=/srv/platterly/uploads
+BACKUP_DIR=/srv/platterly/backups
+HEALTH_TIMEOUT=90
+DRAIN_MINUTES=10
+KEEP_DAILY_DAYS=14
+KEEP_WEEKLY_DAYS=56
+KEEP_MONTHLY_DAYS=365
+# Encrypts the env-file copy inside each backup. Keep this file OFF the server too (password manager).
+BACKUP_PASSPHRASE_FILE=/etc/platterly/backup.pass
+# Optional offsite copy. Files are passed as arguments, for example: BACKUP_OFFSITE_CMD='rclone copy' needs a destination, so wrap it:
+# BACKUP_OFFSITE_CMD='/etc/platterly/offsite.sh'

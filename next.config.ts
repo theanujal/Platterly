@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 import { RESERVED_PATH_SEGMENTS } from "./src/lib/routing/reserved-words";
 
 // Chunk 12 — the public storefront is meant to be embedded on a caterer's own
@@ -54,4 +55,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Source maps for readable error stacks are uploaded to Sentry only when a build has SENTRY_AUTH_TOKEN (the production build);
+// every other build (dev, CI, local) is the plain config, so error monitoring can never get in the way.
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, { org: process.env.SENTRY_ORG, project: process.env.SENTRY_PROJECT, silent: true, telemetry: false, sourcemaps: { deleteSourcemapsAfterUpload: true } })
+  : nextConfig;

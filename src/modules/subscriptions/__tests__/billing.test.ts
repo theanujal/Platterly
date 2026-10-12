@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { createPlan } from "@/modules/subscriptions/plan";
 import { assignPlan, getCurrentSubscription } from "@/modules/subscriptions/subscription";
 import { confirmSubscriptionPayment, getBillingState, listSellablePlans, scheduleDowngrade, startSubscriptionCheckout } from "@/modules/subscriptions/billing";
-import { annualSaving, billingLockReason, periodEndFrom, priceBreakdown } from "@/modules/subscriptions/billing-math";
+import { annualSaving, billingGraceEndsAt, billingLockReason, paymentGraceEndsAt, periodEndFrom, priceBreakdown } from "@/modules/subscriptions/billing-math";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { createCustomer } from "@/modules/customers/customer";
 
@@ -57,6 +57,17 @@ describe("billing maths (Chunk 20)", () => {
     expect(annualSaving(3000, 33000)).toBe(3000);
     expect(annualSaving(3000, 40000)).toBe(0);
   });
+  it("the payment grace: a warning with the day it ends while a paid period has ended, nothing before or after", () => {
+    const now = new Date("2026-06-01T00:00:00Z");
+    const ended = new Date(now.getTime() - 2 * DAY);
+    const sub = (currentPeriodEnd: Date | null, status: "ACTIVE" | "TRIALING" = "ACTIVE") => ({ status, trialEndsAt: null, currentPeriodEnd });
+    expect(billingGraceEndsAt(sub(ended), now)).toEqual(new Date(ended.getTime() + 7 * DAY));
+    expect(billingGraceEndsAt(sub(new Date(now.getTime() + DAY)), now)).toBeNull(); // not ended yet
+    expect(billingGraceEndsAt(sub(new Date(now.getTime() - 8 * DAY)), now)).toBeNull(); // locked, not in grace
+    expect(billingGraceEndsAt(sub(null), now)).toBeNull(); // a plan assigned by hand
+    expect(billingGraceEndsAt(sub(ended, "TRIALING"), now)).toBeNull(); // a trial has no grace
+    expect(paymentGraceEndsAt(ended).getTime() - ended.getTime()).toBe(7 * DAY);
+  });
   it("locks only an ended trial, an ended paid period, or a dead subscription", () => {
     const now = new Date("2026-06-01T00:00:00Z");
     const before = new Date(now.getTime() - DAY);
@@ -64,7 +75,11 @@ describe("billing maths (Chunk 20)", () => {
     expect(billingLockReason(null, now)).toBeNull();
     expect(billingLockReason({ status: "TRIALING", trialEndsAt: after, currentPeriodEnd: null }, now)).toBeNull();
     expect(billingLockReason({ status: "TRIALING", trialEndsAt: before, currentPeriodEnd: null }, now)).toBe("trial_ended");
-    expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: before }, now)).toBe("period_ended");
+    // A paid period that ran out keeps full access for 7 more days (the payment grace), then locks.
+    const longAgo = new Date(now.getTime() - 8 * DAY);
+    expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: before }, now)).toBeNull();
+    expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: longAgo }, now)).toBe("period_ended");
+    expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: new Date(now.getTime() - 7 * DAY) }, now)).toBe("period_ended"); // exactly 7 days: the grace is over
     expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: after }, now)).toBeNull();
     // A plan the Super Admin assigned by hand has no period and never locks.
     expect(billingLockReason({ status: "ACTIVE", trialEndsAt: null, currentPeriodEnd: null }, now)).toBeNull();

@@ -16,7 +16,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { NoticeBox, UpgradeCard, type SidebarNotice } from "@/components/app-shell/upgrade-card";
+import { GraceCard, NoticeBox, UpgradeCard, type SidebarNotice } from "@/components/app-shell/upgrade-card";
 import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
 import { NAV_GROUPS, type NavGroupId } from "@/components/app-shell/nav-groups";
 
@@ -98,9 +98,11 @@ interface AppSidebarProps {
   notice: SidebarNotice | null;
   /** Set only while the kitchen is on a free trial; null otherwise (nothing shows for a paid plan). */
   trial: { trialDaysLeft: number | null; trialTotalDays: number | null } | null;
+  /** A paid plan's period has ended and the 7-day payment grace is running (AJ, 2026-10-12): it replaces every other box. */
+  grace: { daysLeft: number; endsOn: string } | null;
 }
 
-export function AppSidebar({ organizationName, trial, notice, allowedHrefs }: AppSidebarProps) {
+export function AppSidebar({ organizationName, trial, notice, grace, allowedHrefs }: AppSidebarProps) {
   const pathname = usePathname();
   const visible = <T extends NavItem>(items: readonly T[]) => items.filter((item) => !(item.href in NAV_PERMISSIONS) || allowedHrefs.includes(item.href));
   const finance = groupItem(FINANCE_ITEM, allowedHrefs);
@@ -141,9 +143,9 @@ export function AppSidebar({ organizationName, trial, notice, allowedHrefs }: Ap
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="gap-3">
-        {(notice || trial) && (
+        {(grace || notice || trial) && (
           <div className="group-data-[collapsible=icon]:hidden">
-            {notice ? <NoticeBox notice={notice} /> : trial && <UpgradeCard trialDaysLeft={trial.trialDaysLeft} trialTotalDays={trial.trialTotalDays} />}
+            {grace ? <GraceCard daysLeft={grace.daysLeft} endsOn={grace.endsOn} /> : notice ? <NoticeBox notice={notice} /> : trial && <UpgradeCard trialDaysLeft={trial.trialDaysLeft} trialTotalDays={trial.trialTotalDays} />}
           </div>
         )}
       </SidebarFooter>

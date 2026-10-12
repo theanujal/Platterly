@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BookOpenCheck, Building2, Crown, Globe, LayoutDashboard, LogOut, Megaphone, Package, Receipt, BarChart3, Settings, type LucideIcon } from "lucide-react";
+import { Bell, BookOpenCheck, Building2, Crown, Globe, Inbox, LayoutDashboard, LogOut, Megaphone, Package, Receipt, BarChart3, Settings, type LucideIcon } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 interface Item {
@@ -14,6 +14,7 @@ interface Item {
 const PLATFORM: Item[] = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/businesses", label: "Businesses", icon: Building2 },
+  { href: "/enquiries", label: "Leads", icon: Inbox },
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/site", label: "Website", icon: Globe },
@@ -27,7 +28,7 @@ const PRODUCT: Item[] = [
   { href: "/stand-orders", label: "Stand orders", icon: Package },
 ];
 
-export function AppNav({ unread, productName, staffName, staffEmail, compact = false }: { unread: number; productName: string | null; staffName: string; staffEmail: string; compact?: boolean }) {
+export function AppNav({ unread, newLeads = 0, productName, staffName, staffEmail, compact = false }: { unread: number; newLeads?: number; productName: string | null; staffName: string; staffEmail: string; compact?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -44,6 +45,7 @@ export function AppNav({ unread, productName, staffName, staffEmail, compact = f
         <Icon className="size-4" aria-hidden />
         <span>{label}</span>
         {href === "/notifications" && unread > 0 ? <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${active ? "bg-white/25" : "bg-primary/15 text-accent-foreground"}`}>{unread}</span> : null}
+        {href === "/enquiries" && newLeads > 0 ? <span className={`ml-auto rounded-full px-2 py-0.5 text-xs ${active ? "bg-white/25" : "bg-primary/15 text-accent-foreground"}`}>{newLeads}</span> : null}
       </Link>
     );
   };

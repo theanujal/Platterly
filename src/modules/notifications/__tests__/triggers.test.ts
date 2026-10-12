@@ -115,6 +115,25 @@ describe("notification triggers (Chunk 16)", () => {
     expect(alerts.some((n) => JSON.stringify(n.payload).includes(cancelled.id))).toBe(false);
   });
 
+  it("a paid plan that ended: told it has ended with the days left to renew, warned on the last day, told it is paused after 7 days (AJ, 2026-10-12)", async () => {
+    const t = await makeTeam();
+    const plan = await prisma.subscriptionPlan.create({ data: { code: `grace-${crypto.randomUUID().slice(0, 8)}`, name: "Grace Plan", maxCustomers: 5, maxUsers: 3, maxEvents: 9, maxOrders: 11, priceMonthly: 700, priceAnnual: 7000 } });
+    const ends = new Date("2026-12-01T06:00:00Z");
+    await prisma.subscription.create({ data: { organizationId: t.org.id, subscriptionPlanId: plan.id, status: "ACTIVE", currentPeriodEnd: ends } });
+    const at = (days: number) => new Date(ends.getTime() + days * 86_400_000);
+    const alerts = async () => (await rows(t.org.id, "system.alert")).filter((n) => n.channel === "IN_APP" && n.recipientUserId === t.owner.id).map((n) => String((n.payload as { title?: string }).title));
+
+    await runDueNotifications(at(2));
+    await runDueNotifications(at(2));
+    expect(await alerts()).toEqual(["Payment overdue: your plan has ended"]); // once
+    expect(JSON.stringify((await rows(t.org.id, "system.alert"))[0].payload)).toContain("5 days left");
+    await runDueNotifications(at(6));
+    await runDueNotifications(at(8));
+    expect((await alerts()).sort()).toEqual(["Last day to renew", "Payment overdue: your plan has ended", "Your account is paused"].sort());
+    await prisma.subscription.deleteMany({ where: { organizationId: t.org.id } });
+    await prisma.subscriptionPlan.delete({ where: { id: plan.id } });
+  });
+
   it("'sent to kitchen' tells the Kitchen team and the customer", async () => {
     const t = await makeTeam();
     const order = await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));

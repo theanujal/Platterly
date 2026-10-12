@@ -51,4 +51,4 @@ The flag, the old catering plan and payment tables, the seller-profile row and `
 - The import's check treats "ops locked an ended trial or paid period, catering's old row still says trialing or active" as the same fact. Ops's scheduled sweep locks rows; catering locks by the date itself.
 - Catering's own trial-ending and plan-ending emails stop when the flag is on; ops sends them.
 - A kitchen created from ops has no owner login until the owner signs up normally.
-- A deleted business is only suspended for 30 days; nothing removes its data afterwards (undecided).
+- A deleted business is only suspended for 30 days; nothing removes its data afterwards. That is decided: removal is manual only, never automatic (AJ, 2026-10-12).

@@ -400,6 +400,15 @@ export async function getOrderMealMenus(slug: string): Promise<{ mealType: strin
   return rows.map((r) => ({ mealType: r.mealType, menuName: r.menuName, price: Number(r.price), orderKind: r.orderKind }));
 }
 
+/** Payment grace spec: puts the user's kitchen on a paid (ACTIVE) plan whose period ended `daysAgo` days ago. */
+export async function setPaidPeriodEnded(email: string, daysAgo: number): Promise<void> {
+  await pool.query(
+    `UPDATE subscription SET status = 'ACTIVE', "trialEndsAt" = NULL, "currentPeriodEnd" = (now() at time zone 'UTC') - make_interval(days => $2)
+     WHERE "organizationId" = (SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1) AND "endDate" IS NULL`,
+    [email, daysAgo],
+  );
+}
+
 /** Adds `count` plain customers to the user's business, for the list paging spec. */
 export async function seedCustomers(email: string, count: number, from = 1): Promise<void> {
   const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);

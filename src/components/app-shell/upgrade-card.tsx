@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface UpgradeCardProps {
@@ -61,6 +61,27 @@ export function UpgradeCard({ trialDaysLeft, trialTotalDays }: UpgradeCardProps)
         nativeButton={false}
       >
         Upgrade Now
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * Payment grace (AJ, 2026-10-12): a paid plan's period has ended and the 7-day grace is running. The same box shape as the
+ * trial card in the warning tone (success green means "all is well"), replacing it. The owner gets Renew; everyone sees the day.
+ */
+export function GraceCard({ daysLeft, endsOn }: { daysLeft: number; endsOn: string }) {
+  return (
+    <div data-testid="grace-card" className="flex flex-col gap-2.5 rounded-xl bg-gradient-to-br from-warning to-warning/85 p-3 text-white">
+      <div className="flex items-center gap-1.5">
+        <TriangleAlert className="size-3.5 shrink-0" />
+        <span className="text-xs font-semibold">Payment overdue</span>
+      </div>
+      <p className="text-xs leading-snug text-white/90">
+        Your plan has ended. Renew within {daysLeft} day{daysLeft === 1 ? "" : "s"} (by {endsOn}) or your account will be paused. Nothing is deleted.
+      </p>
+      <Button size="md" className="w-full bg-white text-warning hover:bg-white/90" render={<Link href="/subscribe" />} nativeButton={false}>
+        Renew now
       </Button>
     </div>
   );

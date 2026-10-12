@@ -74,6 +74,37 @@ export const TEMPLATES: Record<string, Template> = {
       }),
     }),
   },
+  plan_grace: {
+    requires: ["daysLeft", "endsOn"],
+    render: (v, c) => {
+      const days = Number(v.daysLeft);
+      return {
+        subject: days <= 1 ? "Last day to renew your Platterly plan" : `Your Platterly plan has ended: ${plural(days, "day")} to renew`,
+        html: renderEmail({
+          tag: "Plan",
+          eyebrow: "Payment overdue",
+          title: days <= 1 ? "Today is the last day to renew" : `You have ${plural(days, "day")} to renew`,
+          greeting: greet(c),
+          bodyHtml: p(`The paid plan for <strong>${escapeHtml(c.businessName)}</strong> has ended. Everything still works, but if it is not renewed by <strong>${escapeHtml(text(v, "endsOn"))}</strong> your account will be paused.`) + p("Nothing is deleted when an account is paused: renew and you carry on exactly where you left off."),
+          cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
+        }),
+      };
+    },
+  },
+  plan_paused: {
+    requires: [],
+    render: (_v, c) => ({
+      subject: "Your Platterly account is paused",
+      html: renderEmail({
+        tag: "Plan",
+        eyebrow: "Account paused",
+        title: "Your account is paused",
+        greeting: greet(c),
+        bodyHtml: p(`The 7 days to renew the plan for <strong>${escapeHtml(c.businessName)}</strong> have passed, so the account is paused. Nothing has been deleted: renew and you can carry on where you left off.`),
+        cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
+      }),
+    }),
+  },
   payment_received: {
     requires: ["planName", "amount"],
     render: (v, c) => ({

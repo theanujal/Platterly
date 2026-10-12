@@ -500,7 +500,8 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   }
 
   // Paid plan ending (Chunk 20): 3 days and 1 day before the paid period runs out, and once it has. Renewing moves the
-  // period end, which starts a fresh set of keys.
+  // period end, which starts a fresh set of keys. After the period ends there are 7 days of grace (AJ, 2026-10-12): "ended"
+  // says so, "last" warns on the last day, "paused" says the account is now paused.
   const paid = opsSendsPlanNotices ? [] : await prisma.subscription.findMany({
     where: { status: "ACTIVE", endDate: null, currentPeriodEnd: { not: null } },
     select: { id: true, organizationId: true, currentPeriodEnd: true },
@@ -508,15 +509,19 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   for (const plan of paid) {
     const ends = plan.currentPeriodEnd!;
     const daysLeft = Math.round((istDay(ends, 0).getTime() - istDay(now, 0).getTime()) / DAY_MS);
-    const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -7 ? "ended" : null;
+    const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -5 ? "ended" : daysLeft === -6 ? "last" : daysLeft <= -7 && daysLeft >= -14 ? "paused" : null;
     if (!stage) continue;
     const key = `${plan.id}:${ends.getTime()}:plan:${stage}`;
     if (await alreadySent(plan.organizationId, "system.alert", key)) continue;
     await safely("plan notice", async () => {
       const text =
         stage === "ended"
-          ? { title: "Your plan has ended", message: "Your plan has ended and your account is locked. Renew to get back in; nothing has been deleted." }
-          : { title: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}`, message: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}. Renew to keep your account open.` };
+          ? { title: "Payment overdue: your plan has ended", message: `Your plan has ended. You have ${Math.max(7 + daysLeft, 1)} day${7 + daysLeft === 1 ? "" : "s"} left to renew before your account is paused. Nothing will be deleted.` }
+          : stage === "last"
+            ? { title: "Last day to renew", message: "Your account will be paused tomorrow if the plan is not renewed. Nothing will be deleted." }
+            : stage === "paused"
+              ? { title: "Your account is paused", message: "The 7 days to renew have passed, so your account is paused. Renew to get back in; nothing has been deleted." }
+              : { title: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}`, message: `Your plan ends in ${stage} day${stage === "1" ? "" : "s"}. Renew to keep your account open.` };
       await notifyTeam({ organizationId: plan.organizationId, event: "system.alert", email: true, title: text.title, message: text.message, payload: { href: "/subscribe", url: canonicalUrl("/subscribe"), dedupeKey: key } });
       result.planNotices += 1;
     });

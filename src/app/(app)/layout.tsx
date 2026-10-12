@@ -69,6 +69,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       ? { trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null, trialTotalDays: subscription.subscriptionPlan.trialDurationDays }
       : null;
   const notice = await getActiveNotice(organizationId);
+  // A paid plan's period ended and the 7-day payment grace is running: warn with the day it ends (AJ, 2026-10-12).
+  const graceEndsAt = (await getEntitlements(organizationId)).graceEndsAt ?? null;
+  const grace = graceEndsAt ? { daysLeft: daysUntil(graceEndsAt), endsOn: graceEndsAt.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }) } : null;
 
   const fullName = `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || session.user.name;
   const initials =
@@ -76,7 +79,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar organizationName={organization.name} trial={trial} notice={notice} allowedHrefs={allowedHrefs} />
+      <AppSidebar organizationName={organization.name} trial={trial} notice={notice} grace={grace} allowedHrefs={allowedHrefs} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />

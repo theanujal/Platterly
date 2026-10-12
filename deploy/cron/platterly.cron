@@ -1,0 +1,9 @@
+# Install: cp deploy/cron/platterly.cron /etc/cron.d/platterly   (runs as the platterly user; mail goes to MAILTO on failure)
+MAILTO=you@example.com
+PATH=/usr/local/bin:/usr/bin:/bin
+# The cron calls go to the live slot through Nginx's loopback; CRON_SECRET is read from the env files.
+* * * * *   platterly  . /srv/platterly/env/catering.env && curl -fsS -m 50 -H "Authorization: Bearer $CRON_SECRET" -H "Host: catering.platterly.in" https://127.0.0.1/api/cron/daily -k >/dev/null
+* * * * *   platterly  . /srv/platterly/env/ops.env && curl -fsS -m 50 -H "Authorization: Bearer $CRON_SECRET" -H "Host: ops.platterly.in" https://127.0.0.1/api/cron -k >/dev/null
+# Nightly backup at 02:15, restore drill on Sundays at 03:30 (proves the backup can actually be restored).
+15 2 * * *  platterly  /srv/platterly/bin/backup.sh >> /var/log/platterly/backup.log 2>&1
+30 3 * * 0  platterly  /srv/platterly/bin/restore-drill.sh >> /var/log/platterly/restore-drill.log 2>&1

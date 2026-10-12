@@ -89,7 +89,12 @@ describe("entitlements from the plan rows (unchanged behaviour)", () => {
     expect(await getEntitlements(trial.id)).toMatchObject({ status: "TRIALING", locked: false });
     const trialEnded = await makeKitchen({ sub: "TRIALING", trialEndsAt: new Date(Date.now() - DAY) });
     expect(await getEntitlements(trialEnded.id)).toMatchObject({ status: "LOCKED", locked: true });
-    const periodEnded = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - DAY) });
+    // A paid period that ran out keeps working through the 7-day payment grace (with the day it ends), then locks.
+    const inGrace = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - DAY) });
+    const grace = await getEntitlements(inGrace.id);
+    expect(grace).toMatchObject({ status: "ACTIVE", locked: false });
+    expect(grace.graceEndsAt?.getTime()).toBeGreaterThan(Date.now() + 5 * DAY);
+    const periodEnded = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - 8 * DAY) });
     expect(await getEntitlements(periodEnded.id)).toMatchObject({ status: "LOCKED", locked: true });
     const cancelled = await makeKitchen({ sub: "EXPIRED" });
     expect(await getEntitlements(cancelled.id)).toMatchObject({ status: "CANCELLED", locked: true });
@@ -189,10 +194,24 @@ describe("entitlements from an ops snapshot", () => {
   });
 });
 
+describe("the 7-day payment grace from an ops snapshot (AJ, 2026-10-12)", () => {
+  it("a paid period that ended keeps the kitchen open with the day the grace ends, then locks it; a trial gets no grace", () => {
+    const now = new Date("2026-10-12T09:00:00Z");
+    const ended = (days: number) => snapshot("biz_g", { currentPeriodEnd: new Date(now.getTime() - days * DAY).toISOString(), validUntil: new Date(now.getTime() + DAY).toISOString() });
+    const inGrace = viewFromSnapshot(ended(2), now);
+    expect(inGrace).toMatchObject({ locked: false, status: "ACTIVE" });
+    expect(inGrace.graceEndsAt?.toISOString()).toBe(new Date(now.getTime() + 5 * DAY).toISOString());
+    expect(viewFromSnapshot(ended(8), now)).toMatchObject({ locked: true, lockReason: "period_ended", graceEndsAt: null });
+    expect(viewFromSnapshot(snapshot("biz_g", { currentPeriodEnd: new Date(now.getTime() + DAY).toISOString(), validUntil: new Date(now.getTime() + DAY).toISOString() }), now).graceEndsAt).toBeNull();
+    const trial = snapshot("biz_g", { status: "TRIALING", trialEndsAt: new Date(now.getTime() - DAY).toISOString(), validUntil: new Date(now.getTime() + DAY).toISOString() });
+    expect(viewFromSnapshot(trial, now)).toMatchObject({ locked: true, lockReason: "trial_ended" });
+  });
+});
+
 describe("the lock in the public storefront", () => {
   it("hides a locked kitchen's storefront and sitemap entry, from the plan rows or from a snapshot", async () => {
     const open = await makeKitchen({ sub: "ACTIVE", published: true });
-    const lockedByPlan = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - DAY), published: true });
+    const lockedByPlan = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() - 8 * DAY), published: true });
     expect(await getPublishedTenantBySlug(open.slug)).not.toBeNull();
     expect(await getPublishedTenantBySlug(lockedByPlan.slug)).toBeNull();
     const slugs = (await listPublishedTenantSlugs()).map((s) => s.slug);

@@ -1,3 +1,4 @@
+import { PAID_GRACE_DAYS } from "@platterly/contract";
 import type { BillingInterval } from "@/generated/prisma/enums";
 
 /**
@@ -41,13 +42,27 @@ export interface BillingStateInput {
   currentPeriodEnd: Date | null;
 }
 
+/** When a paid plan whose period ended at `periodEnd` locks: the end plus the 7-day payment grace (AJ, 2026-10-12). */
+export function paymentGraceEndsAt(periodEnd: Date): Date {
+  return new Date(periodEnd.getTime() + PAID_GRACE_DAYS * DAY_MS);
+}
+
 /**
- * Is this kitchen locked out until it pays? A trial or a paid period that has run out locks it. A plan a Super Admin
- * assigned by hand has no period end and never locks by itself.
+ * Is this kitchen locked out until it pays? A trial that has run out locks it at once. A paid period that has run out
+ * (a missed payment) keeps full access for 7 more days, with a warning (`billingGraceEndsAt`), then locks. A plan a Super
+ * Admin assigned by hand has no period end and never locks by itself.
  */
 export function billingLockReason(sub: BillingStateInput | null, now: Date = new Date()): BillingLockReason | null {
   if (!sub) return null;
   if (sub.status === "TRIALING") return sub.trialEndsAt && sub.trialEndsAt.getTime() <= now.getTime() ? "trial_ended" : null;
-  if (sub.status === "ACTIVE") return sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() <= now.getTime() ? "period_ended" : null;
+  if (sub.status === "ACTIVE") return sub.currentPeriodEnd && paymentGraceEndsAt(sub.currentPeriodEnd).getTime() <= now.getTime() ? "period_ended" : null;
   return "ended";
+}
+
+/** While a paid plan's period has ended but the grace has not: when the grace ends (the kitchen is warned, not locked). Null otherwise. */
+export function billingGraceEndsAt(sub: BillingStateInput | null, now: Date = new Date()): Date | null {
+  if (!sub || sub.status !== "ACTIVE" || !sub.currentPeriodEnd) return null;
+  if (sub.currentPeriodEnd.getTime() > now.getTime()) return null;
+  const ends = paymentGraceEndsAt(sub.currentPeriodEnd);
+  return ends.getTime() > now.getTime() ? ends : null;
 }

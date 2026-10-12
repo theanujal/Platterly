@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 // Ops sits inside the catering repository and imports the shared contract from ../../packages/contract, so the
 // bundler root is the repository root (not this folder). Nothing from the catering app itself is imported.
@@ -31,4 +32,8 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Source maps for readable error stacks are uploaded to Sentry only when a build has SENTRY_AUTH_TOKEN (the production build);
+// every other build (dev, CI, local) is the plain config, so error monitoring can never get in the way.
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, { org: process.env.SENTRY_ORG, project: process.env.SENTRY_PROJECT, silent: true, telemetry: false, sourcemaps: { deleteSourcemapsAfterUpload: true } })
+  : nextConfig;

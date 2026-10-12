@@ -3,10 +3,11 @@ import { mkdir, readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { StorageDriver } from "./storage";
 
-// Files land under public/uploads so Next.js serves them directly at
-// /uploads/... — fine for local dev where nothing here is sensitive; a real
-// S3/R2 driver would return signed URLs instead of relying on static serving.
-const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads");
+// Files land under public/uploads in dev, so Next.js serves them directly at /uploads/....
+// On the VPS (AJ, 2026-10-12: files stay on the server, no cloud bucket) UPLOAD_ROOT points at one persistent, backed-up
+// folder outside the release (for example /srv/platterly/uploads) that every blue and green copy shares, and Nginx serves
+// /uploads/ from it (a running Next.js does not serve files added to public/ after it started). See deploy/README.md.
+const UPLOAD_ROOT = path.resolve(process.env.UPLOAD_ROOT?.trim() || path.join(process.cwd(), "public", "uploads"));
 
 function assertSafeKey(key: string) {
   const resolved = path.resolve(UPLOAD_ROOT, key);

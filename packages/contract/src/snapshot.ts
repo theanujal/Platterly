@@ -1,7 +1,7 @@
 import { isId, isProductKey } from "./ids";
 import { validateEntitlements, type EntitlementDef, type EntitlementValue, type EntitlementValues } from "./manifest";
 import { fail, isIsoDate, isRecord, ok, type ParseResult } from "./result";
-import { BILLING_INTERVALS, GRACE_DAYS, SUBSCRIPTION_STATUSES, type BillingInterval, type SubscriptionStatus } from "./version";
+import { BILLING_INTERVALS, GRACE_DAYS, PAID_GRACE_DAYS, SUBSCRIPTION_STATUSES, type BillingInterval, type SubscriptionStatus } from "./version";
 
 /**
  * The small record a product stores locally and checks on every request, so no call to ops sits on the hot path.
@@ -77,16 +77,23 @@ export function isNewerSnapshot(incoming: Pick<EntitlementSnapshot, "version">, 
   return current === null || incoming.version > current.version;
 }
 
+/** When a paid plan whose period ended at `periodEnd` is locked: the end plus the 7-day payment grace. */
+export function paymentGraceEnd(periodEnd: string | Date): Date {
+  return new Date((typeof periodEnd === "string" ? Date.parse(periodEnd) : periodEnd.getTime()) + PAID_GRACE_DAYS * 86_400_000);
+}
+
 export type AccessDecision =
-  | { allowed: true; stale: boolean }
+  /** `paymentGraceEndsAt` is set while a paid plan's period has ended but the 7-day grace (PAID_GRACE_DAYS) has not. */
+  | { allowed: true; stale: boolean; paymentGraceEndsAt?: string }
   | { allowed: false; reason: "missing" | "locked" | "cancelled" | "trial_ended" | "period_ended" | "expired" };
 
 /**
  * Can the business use the product right now? Rules (docs/ops-contract.md section 5):
  * - no snapshot: locked
  * - LOCKED / CANCELLED: locked at once, grace never applies to an explicit lock
- * - TRIALING with a passed `trialEndsAt`, ACTIVE with a passed `currentPeriodEnd`: locked at once, by the snapshot's own dates
- *   (section 8.2), so a trial or paid period ends at the right minute even if ops is down. A missing date never locks.
+ * - TRIALING with a passed `trialEndsAt`: locked at once, by the snapshot's own date (section 8.2), so a trial ends at the right
+ *   minute even if ops is down. ACTIVE with a passed `currentPeriodEnd`: still allowed for PAID_GRACE_DAYS (7) more, carrying
+ *   `paymentGraceEndsAt` so the product can warn, then locked. A missing date never locks.
  * - TRIALING, ACTIVE, PAST_DUE: allowed until `validUntil`, then allowed for `graceDays` more (stale) when ops is silent, then locked
  */
 export function evaluateAccess(snapshot: EntitlementSnapshot | null, now: Date = new Date(), graceDays: number = GRACE_DAYS): AccessDecision {
@@ -94,10 +101,16 @@ export function evaluateAccess(snapshot: EntitlementSnapshot | null, now: Date =
   if (snapshot.status === "LOCKED") return { allowed: false, reason: "locked" };
   if (snapshot.status === "CANCELLED") return { allowed: false, reason: "cancelled" };
   if (snapshot.status === "TRIALING" && snapshot.trialEndsAt && Date.parse(snapshot.trialEndsAt) <= now.getTime()) return { allowed: false, reason: "trial_ended" };
-  if (snapshot.status === "ACTIVE" && snapshot.currentPeriodEnd && Date.parse(snapshot.currentPeriodEnd) <= now.getTime()) return { allowed: false, reason: "period_ended" };
+  let paymentGraceEndsAt: string | undefined;
+  if (snapshot.status === "ACTIVE" && snapshot.currentPeriodEnd && Date.parse(snapshot.currentPeriodEnd) <= now.getTime()) {
+    const graceEnds = paymentGraceEnd(snapshot.currentPeriodEnd).getTime();
+    if (now.getTime() >= graceEnds) return { allowed: false, reason: "period_ended" };
+    paymentGraceEndsAt = new Date(graceEnds).toISOString();
+  }
+  const grace = paymentGraceEndsAt ? { paymentGraceEndsAt } : {};
   const validUntil = Date.parse(snapshot.validUntil);
-  if (now.getTime() <= validUntil) return { allowed: true, stale: false };
-  if (now.getTime() <= validUntil + graceDays * 86_400_000) return { allowed: true, stale: true };
+  if (now.getTime() <= validUntil) return { allowed: true, stale: false, ...grace };
+  if (now.getTime() <= validUntil + graceDays * 86_400_000) return { allowed: true, stale: true, ...grace };
   return { allowed: false, reason: "expired" };
 }
 

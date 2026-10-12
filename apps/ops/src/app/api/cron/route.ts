@@ -6,7 +6,7 @@ import { refreshLibraryCandidates } from "@/modules/library/library";
 import { refreshDueManifests } from "@/modules/registry/products";
 import { publishDueScheduled } from "@/modules/site-content/publish";
 import { refreshDueSnapshots } from "@/modules/snapshots/issue";
-import { sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { sendGraceNotices, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
 
 /**
  * Ops's one scheduled job. A server cron calls it every minute or two:
@@ -35,11 +35,12 @@ async function run(request: Request) {
   const sitePublished = await publishDueScheduled(now);
   const snapshotsRefreshed = await refreshDueSnapshots(now, 200, product);
   const trialNotices = await sendTrialNotices(now, product);
+  const graceNotices = await sendGraceNotices(now, product);
   const noticesQueued = await syncNotices(product);
   const commandsSent = await runDueCommands(now, 50, product);
   const messagesSent = await runDueMessages(now);
   const libraryNew = await refreshLibraryCandidates(now, product).catch(() => 0);
-  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, noticesQueued, commandsSent, messagesSent, libraryNew });
+  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, graceNotices, noticesQueued, commandsSent, messagesSent, libraryNew });
 }
 
 export const GET = run;

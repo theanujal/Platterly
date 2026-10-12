@@ -4,15 +4,16 @@ import { getSelectedProduct, listSwitcherProducts } from "@/lib/selected-product
 import { requireStaff } from "@/lib/session";
 import { countUnread, listNotifications } from "@/modules/notifications/notifications";
 import { AppNav } from "./app-nav";
+import { countNewEnquiries } from "@/modules/enquiries/enquiries";
 import { NotificationBell } from "./notification-bell";
 import { ProductSwitcher } from "./product-switcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const staff = await requireStaff();
   const [selected, products] = await Promise.all([getSelectedProduct(), listSwitcherProducts()]);
-  const [unread, latest] = await Promise.all([countUnread(selected?.key), listNotifications({ productKey: selected?.key, take: 6 })]);
+  const [unread, latest, newLeads] = await Promise.all([countUnread(selected?.key), listNotifications({ productKey: selected?.key, take: 6 }), countNewEnquiries()]);
   const initials = staff.name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
-  const nav = { unread, productName: selected?.name ?? null, staffName: staff.name, staffEmail: staff.email };
+  const nav = { unread, newLeads, productName: selected?.name ?? null, staffName: staff.name, staffEmail: staff.email };
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 lg:flex">

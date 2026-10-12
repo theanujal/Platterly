@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
+import { PAID_GRACE_DAYS } from "@platterly/contract";
 
 const DAY = 86_400_000;
 
@@ -55,13 +56,14 @@ export async function startTrial(businessId: string, productKey: string, now: Da
 }
 
 /**
- * The scheduled sweep: a trial past its end and a paid period past its end are marked LOCKED (so lists and reports show it),
- * and a fresh snapshot goes out. The product already locks by the dates in its own snapshot; this keeps ops's record true.
+ * The scheduled sweep: a trial past its end, and a paid period past its end PLUS the 7-day payment grace (AJ, 2026-10-12), are
+ * marked LOCKED (so lists and reports show it), and a fresh snapshot goes out. The product already locks by the dates in its
+ * own snapshot; this keeps ops's record true. During the grace the subscription stays ACTIVE and `sendGraceNotices` warns.
  * `productKey` limits the sweep to one product (the cron accepts it, and tests use it so they never touch real data).
  */
 export async function sweepExpired(now: Date = new Date(), productKey?: string): Promise<number> {
   const due = await prisma.subscription.findMany({
-    where: { endDate: null, ...(productKey ? { productKey } : {}), OR: [{ status: "TRIALING", trialEndsAt: { lte: now } }, { status: "ACTIVE", currentPeriodEnd: { lte: now } }] },
+    where: { endDate: null, ...(productKey ? { productKey } : {}), OR: [{ status: "TRIALING", trialEndsAt: { lte: now } }, { status: "ACTIVE", currentPeriodEnd: { lte: new Date(now.getTime() - PAID_GRACE_DAYS * DAY) } }] },
     select: { id: true, businessId: true, productKey: true, status: true },
   });
   for (const sub of due) {
@@ -74,8 +76,39 @@ export async function sweepExpired(now: Date = new Date(), productKey?: string):
     }
     if (sub.status === "TRIALING") await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "trial.ended", title: "A trial ended", body: "The trial ended without a paid plan, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `trial_ended:${sub.id}` });
     if (sub.status === "TRIALING") await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "trial_ended", dedupeKey: `trial:${sub.id}:ended` });
+    if (sub.status === "ACTIVE") {
+      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.paused", severity: "WARNING", title: "A business was paused", body: "The plan was not renewed within the 7-day grace, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `plan_paused:${sub.id}` });
+      await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_paused", dedupeKey: `plan:${sub.id}:paused` });
+    }
   }
   return due.length;
+}
+
+/**
+ * Payment grace notices (AJ, 2026-10-12): a paid period has ended and the 7 days to renew are running. The owner is emailed
+ * once when the period ends and once on the last day; the team is told once. Renewing moves the period end, which starts a
+ * fresh set of keys. Returns how many were sent.
+ */
+export async function sendGraceNotices(now: Date = new Date(), productKey?: string): Promise<number> {
+  const graceStart = new Date(now.getTime() - PAID_GRACE_DAYS * DAY);
+  const subs = await prisma.subscription.findMany({
+    where: { endDate: null, status: "ACTIVE", currentPeriodEnd: { lte: now, gt: graceStart }, ...(productKey ? { productKey } : {}) },
+    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true },
+  });
+  let sent = 0;
+  for (const sub of subs) {
+    const endsAt = new Date(sub.currentPeriodEnd!.getTime() + PAID_GRACE_DAYS * DAY);
+    const daysLeft = Math.max(Math.ceil((endsAt.getTime() - now.getTime()) / DAY), 1);
+    const stage = daysLeft <= 1 ? "last" : "started";
+    const key = `${sub.id}:${sub.currentPeriodEnd!.getTime()}:${stage}`;
+    const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(endsAt);
+    if (stage === "started") {
+      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.overdue", severity: "WARNING", title: "A plan payment is overdue", body: `The paid period ended. The business has ${daysLeft} day${daysLeft === 1 ? "" : "s"} to renew before it is paused.`, link: `/businesses/${sub.businessId}`, dedupeKey: `plan_overdue:${key}` });
+    }
+    await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_grace", variables: { daysLeft, endsOn }, dedupeKey: `plan_grace:${key}` });
+    sent += 1;
+  }
+  return sent;
 }
 
 /**

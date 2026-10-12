@@ -34,4 +34,30 @@ describe("local storage driver (Chunk 2 Group 2.3)", () => {
       /Unsafe storage key/,
     );
   });
+
+  it("keeps files in UPLOAD_ROOT when it is set (the VPS's one shared, backed-up folder), and still refuses a path outside it", async () => {
+    const { mkdtemp, rm, readFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const root = await mkdtemp(path.join(tmpdir(), "platterly-uploads-"));
+    const saved = process.env.UPLOAD_ROOT;
+    process.env.UPLOAD_ROOT = root;
+    try {
+      const vi = await import("vitest").then((m) => m.vi);
+      vi.resetModules();
+      const { localDriver } = await import("@/lib/storage/local-driver");
+      const key = `org-1/${crypto.randomUUID()}.txt`;
+      expect((await localDriver.upload(key, Buffer.from("on the vps"), "text/plain")).url).toBe(`/uploads/${key}`);
+      expect((await readFile(path.join(root, key))).toString()).toBe("on the vps");
+      expect((await localDriver.read(key)).toString()).toBe("on the vps");
+      await expect(localDriver.upload("../escape.txt", Buffer.from("x"), "text/plain")).rejects.toThrow(/Unsafe storage key/);
+      await localDriver.delete(key);
+      await expect(access(path.join(root, key))).rejects.toThrow();
+    } finally {
+      if (saved === undefined) delete process.env.UPLOAD_ROOT;
+      else process.env.UPLOAD_ROOT = saved;
+      const vi = await import("vitest").then((m) => m.vi);
+      vi.resetModules();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
