@@ -8,7 +8,7 @@ import { LocationsCard } from "./_components/locations-card";
 import { KitchenRulesForm } from "./_components/kitchen-rules-form";
 
 export const metadata: Metadata = {
-  title: "Kitchen Rules — Platterly",
+  title: "Kitchen Rules — Caterly",
   robots: { index: false, follow: false },
 };
 

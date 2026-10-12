@@ -17,7 +17,7 @@ const MEAL_TYPE_LABEL: Record<MealType, string> = {
 };
 
 export const metadata: Metadata = {
-  title: "Quotation — Platterly",
+  title: "Quotation — Caterly",
   robots: { index: false, follow: false },
 };
 

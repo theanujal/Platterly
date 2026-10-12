@@ -17,7 +17,7 @@ import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Menu Approvals — Platterly",
+  title: "Menu Approvals — Caterly",
   robots: { index: false, follow: false },
 };
 

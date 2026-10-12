@@ -9,7 +9,7 @@ import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { AcceptButton } from "./_components/accept-button";
 
 export const metadata: Metadata = {
-  title: "Join your team — Platterly",
+  title: "Join your team — Caterly",
   robots: { index: false, follow: false },
 };
 

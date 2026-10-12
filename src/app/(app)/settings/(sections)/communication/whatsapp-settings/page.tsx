@@ -5,7 +5,7 @@ import { ChannelPreferences, ChannelServiceStatus, ChannelTemplates } from "../.
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
-  title: "WhatsApp Settings — Platterly",
+  title: "WhatsApp Settings — Caterly",
   robots: { index: false, follow: false },
 };
 

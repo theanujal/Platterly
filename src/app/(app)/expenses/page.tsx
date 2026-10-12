@@ -9,7 +9,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { ExpensesBrowser } from "./_components/expenses-browser";
 
 export const metadata: Metadata = {
-  title: "Expenses — Platterly",
+  title: "Expenses — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -21,7 +21,7 @@ import { TeamTabs, type TeamTab } from "./_components/team-tabs";
 import { RoleIcon } from "./_components/role-icons";
 
 export const metadata: Metadata = {
-  title: "Team Management — Platterly",
+  title: "Team Management — Caterly",
   robots: { index: false, follow: false },
 };
 

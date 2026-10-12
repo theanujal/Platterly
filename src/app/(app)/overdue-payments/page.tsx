@@ -13,7 +13,7 @@ import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/com
 import { RecordPaymentButton } from "./_components/record-payment-button";
 
 export const metadata: Metadata = {
-  title: "Overdue Payments — Platterly",
+  title: "Overdue Payments — Caterly",
   robots: { index: false, follow: false },
 };
 

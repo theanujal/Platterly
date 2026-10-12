@@ -8,7 +8,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { RecipesBrowser, type RecipeRow } from "./_components/recipes-browser";
 
 export const metadata: Metadata = {
-  title: "Recipes — Platterly",
+  title: "Recipes — Caterly",
   robots: { index: false, follow: false },
 };
 

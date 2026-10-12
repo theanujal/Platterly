@@ -18,7 +18,7 @@ import { InventoryCardActions } from "./_components/inventory-card-actions";
 import type { InventoryFormValues } from "./_components/inventory-form";
 
 export const metadata: Metadata = {
-  title: "Inventory — Platterly",
+  title: "Inventory — Caterly",
   robots: { index: false, follow: false },
 };
 

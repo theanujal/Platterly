@@ -39,4 +39,4 @@ The kitchen needs to know three things for each meal: what to prepare, for how m
 - The customer has approved the version that goes to the kitchen.
 - The kitchen can see what to prepare and by when.
 
-Catering by Platterly is built around exactly this flow, from the first enquiry to the final delivery. You can try it free for seven days.
+Caterly by Platterly is built around exactly this flow, from the first enquiry to the final delivery. You can try it free for seven days.

@@ -17,7 +17,7 @@ import { AddCategoryDialog } from "./_components/add-category-dialog";
 import { CategoryCardActions } from "./_components/category-card-actions";
 
 export const metadata: Metadata = {
-  title: "Menu Categories — Platterly",
+  title: "Menu Categories — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -12,7 +12,7 @@ import { CustomerCard, CustomerListCells, buildMenuMessageHref, type CustomerDis
 import type { CustomerFormValues } from "./_components/customer-form";
 
 export const metadata: Metadata = {
-  title: "Customers — Platterly",
+  title: "Customers — Caterly",
   robots: { index: false, follow: false },
 };
 

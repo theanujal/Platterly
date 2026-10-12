@@ -1,6 +1,6 @@
 ---
 title: Security
-summary: How we protect your business's information in Catering by Platterly, and how to tell us if you find a problem.
+summary: How we protect your business's information in Caterly by Platterly, and how to tell us if you find a problem.
 updated: 2026-10-08
 ---
 

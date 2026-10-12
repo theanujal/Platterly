@@ -7,10 +7,10 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "Platterly", body: event.data ? event.data.text() : "" };
+    data = { title: "Caterly", body: event.data ? event.data.text() : "" };
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || "Platterly", {
+    self.registration.showNotification(data.title || "Caterly", {
       body: data.body || "",
       icon: "/platterly-push-icon.png",
       badge: "/platterly-push-icon.png",

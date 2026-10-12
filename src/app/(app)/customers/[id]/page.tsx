@@ -27,7 +27,7 @@ import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "Customer — Platterly",
+  title: "Customer — Caterly",
   robots: { index: false, follow: false },
 };
 

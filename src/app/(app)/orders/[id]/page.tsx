@@ -43,7 +43,7 @@ import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Order — Platterly",
+  title: "Order — Caterly",
   robots: { index: false, follow: false },
 };
 

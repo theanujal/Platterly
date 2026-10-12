@@ -14,7 +14,7 @@ import { InvoicePaper } from "../_components/invoice-paper";
 import { PaymentsPanel, type PaymentRowData } from "../_components/payments-panel";
 
 export const metadata: Metadata = {
-  title: "Invoice — Platterly",
+  title: "Invoice — Caterly",
   robots: { index: false, follow: false },
 };
 

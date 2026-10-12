@@ -54,7 +54,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           <Markdown>{post.body}</Markdown>
         </Reveal>
       </article>
-      <section aria-label="Try Catering by Platterly" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
+      <section aria-label="Try Caterly by Platterly" className="mx-auto w-full max-w-3xl px-5 sm:px-8">
         <div className="flex flex-col items-start justify-between gap-6 rounded-[28px] bg-pebble p-8 sm:flex-row sm:items-center sm:p-10">
           <div>
             <p className="h-sub">Run your next event in one place</p>

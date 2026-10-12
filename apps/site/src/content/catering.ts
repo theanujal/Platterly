@@ -3,7 +3,7 @@ import type { ShowcaseItem } from "@/components/feature-showcase";
 export const CATERING = {
   hero: {
     title: "Run your catering business without the chaos.",
-    copy: "From enquiries and customers to menus, events and orders, Catering by Platterly brings your entire catering workflow into one place.",
+    copy: "From enquiries and customers to menus, events and orders, Caterly by Platterly brings your entire catering workflow into one place.",
   },
   howSteps: [
     { card: "order", colourway: "sunrise", title: "Add the customer and the event", text: "to keep every enquiry, date and guest count together. Adults and children are counted separately, so pricing and quantities are right." },
@@ -41,7 +41,7 @@ export const CATERING = {
   faq: {
     title: "Frequently asked questions.",
     items: [
-      { q: "What is Catering by Platterly?", a: "It is web software for catering businesses. It keeps your customers, events, menus, orders, kitchen work, delivery and payments in one place instead of across spreadsheets and chats." },
+      { q: "What is Caterly by Platterly?", a: "It is web software for catering businesses. It keeps your customers, events, menus, orders, kitchen work, delivery and payments in one place instead of across spreadsheets and chats." },
       { q: "Is it suitable for wedding caterers?", a: "Yes. Wedding events often run over several days with several meals and large guest counts, and Platterly is built to plan exactly that: each day, each meal, each menu." },
       { q: "Can I manage multi-day events?", a: "Yes. An order can span several days and carry a different meal plan for each day. Platterly groups the work by day so nothing is missed." },
       { q: "Can I create multiple menus?", a: "Yes. You can build as many menus as you offer, with your own food items, categories and prices, and assign them to meals on an order." },
@@ -50,7 +50,7 @@ export const CATERING = {
       { q: "Can my kitchen team use Platterly?", a: "Yes. Your kitchen team gets its own view of what to prepare, and you decide what each team member can see and change." },
       { q: "Is there a free trial?", a: "Yes. Every new account starts with a free 7-day trial with full access. You do not need to add a card to begin." },
       { q: "Can I upgrade later?", a: "Yes. You can move to the paid plan at any time from your account, and your data stays exactly as it is." },
-      { q: "Do I need to install anything?", a: "No. Catering by Platterly runs in your web browser on a computer, tablet or phone." },
+      { q: "Do I need to install anything?", a: "No. Caterly by Platterly runs in your web browser on a computer, tablet or phone." },
     ],
   },
   cta: { title: "Your next event shouldn't start with another spreadsheet.", copy: "Bring your catering workflow into one place." },

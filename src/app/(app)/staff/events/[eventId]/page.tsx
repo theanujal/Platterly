@@ -8,7 +8,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { EventOps } from "../../_components/event-ops";
 
 export const metadata: Metadata = {
-  title: "Event Staffing — Platterly",
+  title: "Event Staffing — Caterly",
   robots: { index: false, follow: false },
 };
 

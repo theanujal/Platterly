@@ -9,7 +9,7 @@ export const SITE = {
   appUrl: "https://catering.platterly.in/",
   contactEmail: "hello@platterly.in",
   tagline: "Software built for the food business.",
-  description: "Platterly builds focused software for food businesses, starting with Catering by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
+  description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
 } as const;
 
 /** The company behind Platterly, as named in the policies. */

@@ -14,7 +14,7 @@ import { formatRupees } from "@/components/catalog/catalog-display";
 import { PurchaseOrderActions } from "../_components/purchase-order-actions";
 
 export const metadata: Metadata = {
-  title: "Purchase Order — Platterly",
+  title: "Purchase Order — Caterly",
   robots: { index: false, follow: false },
 };
 

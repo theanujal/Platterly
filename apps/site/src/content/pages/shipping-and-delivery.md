@@ -4,11 +4,11 @@ summary: Platterly is software, delivered online. Here is how you get access, wh
 updated: 2026-10-08
 ---
 
-Catering by Platterly is web software. **We do not ship any physical goods**, so there is nothing to be packed, couriered or collected. This page explains how the service is delivered to you.
+Caterly by Platterly is web software. **We do not ship any physical goods**, so there is nothing to be packed, couriered or collected. This page explains how the service is delivered to you.
 
 ## 1. What we deliver
 
-Access to your Catering by Platterly workspace at catering.platterly.in, in your web browser on a computer, tablet or phone. There is nothing to install. We also send the emails that go with the service: verification codes, invoices, receipts and reminders.
+Access to your Caterly by Platterly workspace at catering.platterly.in, in your web browser on a computer, tablet or phone. There is nothing to install. We also send the emails that go with the service: verification codes, invoices, receipts and reminders.
 
 ## 2. How you get access
 

@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { PurgeConfirmationDialog } from "./_components/purge-confirmation-dialog";
 
 export const metadata: Metadata = {
-  title: "Danger Zone — Platterly",
+  title: "Danger Zone — Caterly",
   robots: { index: false, follow: false },
 };
 

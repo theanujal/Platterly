@@ -14,7 +14,7 @@ import type { EventTypeFormValues } from "./_components/event-type-form";
 import { EventTypeReorderButtons } from "./_components/event-type-reorder-buttons";
 
 export const metadata: Metadata = {
-  title: "Event Types — Platterly",
+  title: "Event Types — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -14,7 +14,7 @@ import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Kitchen Dashboard — Platterly",
+  title: "Kitchen Dashboard — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -12,7 +12,7 @@ import { AuditFilters } from "./_components/audit-filters";
 import { AuditTable } from "./_components/audit-table";
 
 export const metadata: Metadata = {
-  title: "Audit Log — Platterly",
+  title: "Audit Log — Caterly",
   robots: { index: false, follow: false },
 };
 

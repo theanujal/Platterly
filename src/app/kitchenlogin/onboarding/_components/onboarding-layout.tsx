@@ -19,9 +19,10 @@ export function OnboardingLayout({ steps, children }: OnboardingLayoutProps) {
         <div className="flex items-center gap-2 text-lg font-bold">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/platterly-mark.svg" alt="" className="size-full" />
+            <img src="/caterly-mark.svg" alt="" className="size-full" />
           </span>
-          Platterly
+          Caterly
+          <span className="text-xs font-medium text-primary-foreground/80">by Platterly</span>
         </div>
         <OnboardingStageList steps={steps} />
       </div>

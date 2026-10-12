@@ -21,7 +21,7 @@ test("home: the headline, the Products menu, and the calls to action", async ({ 
   await expect(header.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
   // Products opens a menu with Catering, which goes to the Catering page
   await header.getByRole("button", { name: "Product" }).click();
-  await header.getByRole("link", { name: /Catering by Platterly/ }).click();
+  await header.getByRole("link", { name: /Caterly by Platterly/ }).click();
   await expect(page).toHaveURL(/\/catering\/$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run your catering business without the chaos.");
 });
@@ -139,14 +139,14 @@ test.describe("on a phone", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Open menu" }).click();
     const mobile = page.locator("#mobile-menu");
-    await expect(mobile.getByRole("link", { name: "Catering by Platterly" })).toBeVisible();
+    await expect(mobile.getByRole("link", { name: "Caterly by Platterly" })).toBeVisible();
     await expect(mobile.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
     await mobile.getByRole("link", { name: "About Platterly" }).click();
     await expect(page).toHaveURL(/\/about\/$/);
     await expect(page.locator("#mobile-menu")).toHaveCount(0); // closes on navigation
     // The main buttons in the hero are full width
     await page.goto("/");
-    const box = await page.getByRole("main").getByRole("link", { name: "Explore Catering" }).first().boundingBox();
+    const box = await page.getByRole("main").getByRole("link", { name: "Explore Caterly" }).first().boundingBox();
     expect(box!.width).toBeGreaterThan(280);
   });
 });
@@ -238,7 +238,7 @@ test("What's new lists what has shipped by month, and Upcoming shows the roadmap
 
 test("the announcement bar shows the notice, closes, and stays closed on every page", async ({ page }) => {
   await page.goto("/");
-  const bar = page.getByText("Introducing Catering by Platterly, built to run your catering business from enquiry to event.");
+  const bar = page.getByText("Introducing Caterly by Platterly, built to run your catering business from enquiry to event.");
   await expect(bar).toBeVisible();
   await page.getByRole("button", { name: "Close announcement" }).click();
   await expect(bar).toHaveCount(0);
@@ -255,7 +255,7 @@ test("choosing Catering from the Product menu loads the page at the top, from th
     await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), scroll);
     const bar = scroll ? page.locator(".floating-nav") : page.getByRole("banner");
     await bar.getByRole("button", { name: "Product" }).hover();
-    await bar.getByRole("link", { name: /Catering by Platterly/ }).click();
+    await bar.getByRole("link", { name: /Caterly by Platterly/ }).click();
     await expect(page).toHaveURL(/\/catering\/$/);
     await expect.poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 5000 }).toBeLessThanOrEqual(1);
     await page.waitForTimeout(700); // and it stays there
@@ -289,7 +289,7 @@ test("Calendly's look: midnight buttons, one palette on every page, and the prod
   expect(await (await request.get("/platterly-mark.svg")).text()).toContain("#f26a21"); // the Platterly mark is its own orange
   // the Product menu shows Catering on a tile in the app's own orange
   await header.getByRole("button", { name: "Product" }).click();
-  await expect(header.getByRole("link", { name: /Catering by Platterly/ }).locator("span").first()).toHaveCSS("background-color", ORANGE);
+  await expect(header.getByRole("link", { name: /Caterly by Platterly/ }).locator("span").first()).toHaveCSS("background-color", ORANGE);
   // the product page keeps the main palette: midnight buttons and the same orange family; the tile is the app's #ff6900
   await page.goto("/catering/");
   expect(await token(page.locator("main"), "--color-accent")).toBe("#ffb067");
@@ -404,8 +404,8 @@ test("home: a chapter dedicated to Catering, with arrows to the product page and
   await page.goto("/");
   const chapter = page.locator("section", { has: page.locator("#catering-chapter") });
   await chapter.scrollIntoViewIfNeeded();
-  await expect(chapter.getByRole("heading", { name: "Meet Catering by Platterly." })).toBeVisible();
-  await expect(chapter.getByText("Catering by Platterly").first()).toBeVisible();
+  await expect(chapter.getByRole("heading", { name: "Meet Caterly by Platterly." })).toBeVisible();
+  await expect(chapter.getByText("Caterly by Platterly").first()).toBeVisible();
   await expect(chapter.getByRole("link", { name: /Learn more about/ }).first()).toHaveAttribute("href", /\/catering\//);
   await expect(chapter.locator("span[style*='--product']").first()).toHaveCSS("background-color", "rgb(255, 105, 0)");
   // one item is open at a time
@@ -472,11 +472,11 @@ test("home: the platform band shows what is live and what is next, and only Cate
   await page.goto("/");
   const band = page.locator("section[aria-labelledby=platform]");
   await band.scrollIntoViewIfNeeded();
-  await expect(band.getByRole("heading", { name: /Catering is where we start/ })).toBeVisible();
+  await expect(band.getByRole("heading", { name: /Caterly is where we start/ })).toBeVisible();
   const cards = band.locator("article");
   await expect(cards).toHaveCount(3);
   await expect(cards.first()).toContainText("Live now");
-  await expect(cards.first().getByRole("link", { name: /Explore Catering/ })).toHaveAttribute("href", /\/catering\//);
+  await expect(cards.first().getByRole("link", { name: /Explore Caterly/ })).toHaveAttribute("href", /\/catering\//);
   await expect(cards.nth(1)).toContainText("Rivo");
   await expect(cards.nth(1)).toContainText("Coming soon");
   await expect(band.locator("article a")).toHaveCount(1);

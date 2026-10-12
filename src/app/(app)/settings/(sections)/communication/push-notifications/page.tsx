@@ -5,7 +5,7 @@ import { PushSettings } from "../../../_components/push-settings";
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
-  title: "Push Notifications — Platterly",
+  title: "Push Notifications — Caterly",
   robots: { index: false, follow: false },
 };
 

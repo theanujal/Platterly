@@ -14,7 +14,7 @@ import { StageActions } from "../_components/stage-actions";
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
-  title: "Preparation Sheet — Kitchen Dashboard — Platterly",
+  title: "Preparation Sheet — Kitchen Dashboard — Caterly",
   robots: { index: false, follow: false },
 };
 

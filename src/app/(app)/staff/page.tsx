@@ -15,7 +15,7 @@ import { ActiveBadge } from "@/components/catalog/catalog-display";
 import { AddStaffMemberDialog, StaffMemberRowActions } from "./_components/staff-member-dialogs";
 
 export const metadata: Metadata = {
-  title: "Staff — Platterly",
+  title: "Staff — Caterly",
   robots: { index: false, follow: false },
 };
 

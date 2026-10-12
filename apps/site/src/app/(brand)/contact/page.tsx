@@ -8,13 +8,13 @@ import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Contact us",
-  description: "Questions, help with your account or an idea for Catering by Platterly? Write to us and a person will reply.",
+  description: "Questions, help with your account or an idea for Caterly by Platterly? Write to us and a person will reply.",
   alternates: { canonical: "/contact/" },
 };
 
 const faqFor = (reply: string) => [
   { q: "How quickly will you reply?", a: `${reply} If your message is about something that is stopping you from running an event, say so in the subject and we will look at it first.` },
-  { q: "I would like to see Catering by Platterly. What should I do?", a: "Use the Talk to us page. A person will call you back, show you around and answer your questions. You can also create a free account and look around on your own for seven days." },
+  { q: "I would like to see Caterly by Platterly. What should I do?", a: "Use the Talk to us page. A person will call you back, show you around and answer your questions. You can also create a free account and look around on your own for seven days." },
   { q: "I cannot sign in. Can you help?", a: "Use Forgot password on the sign-in page to get a one-time code by email. If that does not work, write to us from the email address on your account and tell us your kitchen name." },
   { q: "Where do I send a question about an invoice?", a: "Write to us from the email address on your account with the invoice number and your kitchen name, choosing Billing or an invoice as the subject." },
 ];
@@ -31,7 +31,7 @@ export default async function ContactPage() {
   return (
     <>
       <PageHero eyebrow="Contact us" title="We are here to help">
-        <p>Questions, help with your account, or an idea for Catering by Platterly? Write to us and a person will reply.</p>
+        <p>Questions, help with your account, or an idea for Caterly by Platterly? Write to us and a person will reply.</p>
       </PageHero>
       <section aria-label="Ways to reach us" className="mx-auto w-full max-w-[1200px] px-5 pt-20 sm:px-8 md:pt-28">
         <Reveal as="ul" className="flex flex-wrap justify-center gap-4">

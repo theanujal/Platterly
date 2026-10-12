@@ -3,7 +3,7 @@ import { AuthLayout } from "../_components/auth-layout";
 import { ForgotPasswordForm } from "../_components/forgot-password-form";
 
 export const metadata: Metadata = {
-  title: "Reset your password — Platterly",
+  title: "Reset your password — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -5,7 +5,7 @@ import { ChannelPreferences, ChannelServiceStatus, ChannelTemplates } from "../.
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
-  title: "Email Settings — Platterly",
+  title: "Email Settings — Caterly",
   robots: { index: false, follow: false },
 };
 

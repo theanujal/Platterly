@@ -4,7 +4,7 @@ summary: How plans, cancellation, pausing and refunds work.
 updated: 2026-10-05
 ---
 
-This page explains how cancelling, non-payment and refunds work for Catering by Platterly plans. It should be read with our Terms and Conditions.
+This page explains how cancelling, non-payment and refunds work for Caterly by Platterly plans. It should be read with our Terms and Conditions.
 
 ## 1. No refunds
 

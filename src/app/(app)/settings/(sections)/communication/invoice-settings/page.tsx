@@ -6,7 +6,7 @@ import { getInvoiceTermsAction } from "../actions";
 import { InvoiceTermsForm } from "./_components/invoice-terms-form";
 
 export const metadata: Metadata = {
-  title: "Invoice Settings — Platterly",
+  title: "Invoice Settings — Caterly",
   robots: { index: false, follow: false },
 };
 

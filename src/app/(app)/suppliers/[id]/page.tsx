@@ -16,7 +16,7 @@ import { SupplierPayments } from "../_components/supplier-payments";
 import { EXPENSE_CATEGORY_LABEL } from "@/modules/expenses/profitability";
 
 export const metadata: Metadata = {
-  title: "Supplier — Platterly",
+  title: "Supplier — Caterly",
   robots: { index: false, follow: false },
 };
 

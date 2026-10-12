@@ -76,7 +76,7 @@ export function PushSettings({ enabled, devices, vapidPublicKey }: { enabled: bo
   return (
     <>
       <SettingsPanel>
-        <PanelHeader icon={Bell} title="Push Notifications" description="Alerts on your phone or computer for new orders, event reminders and payments, even when Platterly is closed." />
+        <PanelHeader icon={Bell} title="Push Notifications" description="Alerts on your phone or computer for new orders, event reminders and payments, even when Caterly is closed." />
         <div className="flex items-center gap-3 py-1">
           <div className="min-w-0 flex-1">
             <Label htmlFor="push-master" className="text-sm font-medium">

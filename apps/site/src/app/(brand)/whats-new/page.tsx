@@ -6,7 +6,7 @@ import { formatDate, getReleases } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "What's new",
-  description: "What has shipped in Catering by Platterly, newest first.",
+  description: "What has shipped in Caterly by Platterly, newest first.",
   alternates: { canonical: "/whats-new/" },
 };
 
@@ -18,7 +18,7 @@ export default async function WhatsNewPage() {
   return (
     <>
       <PageHero eyebrow="What's new" title="What we have shipped">
-        <p>Every improvement to Catering by Platterly, newest first. Only things that are live today.</p>
+        <p>Every improvement to Caterly by Platterly, newest first. Only things that are live today.</p>
       </PageHero>
       <div className="mx-auto w-full max-w-[900px] px-5 py-20 sm:px-8 md:py-28">
         {months.map((m) => (

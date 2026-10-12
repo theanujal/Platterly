@@ -13,7 +13,7 @@ export const EMPTY_ENQUIRY: EnquiryValues = { name: "", email: "", phone: "", bu
 export type EnquiryErrors = Partial<Record<keyof EnquiryValues, string>>;
 
 export const BUSINESS_TYPES = ["Wedding caterer", "Corporate caterer", "Party and event caterer", "Outdoor caterer", "Other food business"] as const;
-export const SUBJECTS = ["I have a question about Catering by Platterly", "Help with my account", "Billing or an invoice", "A feature I would like", "Partnerships", "Something else"] as const;
+export const SUBJECTS = ["I have a question about Caterly by Platterly", "Help with my account", "Billing or an invoice", "A feature I would like", "Partnerships", "Something else"] as const;
 
 /** What the forms check before anything is sent: strict enough to catch typos, not to turn people away. */
 export function validateEnquiry(kind: EnquiryKind, input: EnquiryValues): EnquiryErrors {
@@ -41,7 +41,7 @@ export function validateEnquiry(kind: EnquiryKind, input: EnquiryValues): Enquir
 export const ENQUIRY_ENDPOINT = process.env.NEXT_PUBLIC_ENQUIRY_ENDPOINT ?? "";
 
 export function enquiryMailto(kind: EnquiryKind, input: EnquiryValues, toEmail: string): string {
-  const subject = kind === "talk" ? "Talk to us: Catering by Platterly" : `Contact: ${input.subject}`;
+  const subject = kind === "talk" ? "Talk to us: Caterly by Platterly" : `Contact: ${input.subject}`;
   const lines = [`Name: ${input.name.trim()}`, `Email: ${input.email.trim()}`];
   if (input.phone.trim()) lines.push(`Phone: ${input.phone.trim()}`);
   if (input.businessType) lines.push(`Business: ${input.businessType}`);

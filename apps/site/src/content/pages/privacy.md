@@ -4,7 +4,7 @@ summary: How Platterly collects, uses, stores and protects personal information.
 updated: 2026-10-05
 ---
 
-This policy explains what personal information Fragen Network Private Limited ("Platterly", "we", "us") collects when you visit platterly.in or use Catering by Platterly at catering.platterly.in, how we use it, and the choices you have.
+This policy explains what personal information Fragen Network Private Limited ("Platterly", "we", "us") collects when you visit platterly.in or use Caterly by Platterly at catering.platterly.in, how we use it, and the choices you have.
 
 ## 1. Who this policy covers
 
@@ -38,7 +38,7 @@ For the information a business customer gives us to run their account, Platterly
 
 ## 3. How we use it
 
-- To provide, secure and support Catering by Platterly, including sign-in, email verification and password reset.
+- To provide, secure and support Caterly by Platterly, including sign-in, email verification and password reset.
 - To take payment for your plan, issue GST invoices and keep the financial records the law requires.
 - To send messages about your account and service, such as verification codes, receipts, trial and plan reminders, and notices of changes.
 - To send messages on a caterer's behalf, when the caterer asks us to (for example a link to approve a menu).
@@ -68,7 +68,7 @@ To use a right, or to raise a complaint, write to our grievance contact below. W
 
 ## 7. Cookies
 
-Catering by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. This marketing website does not use advertising or tracking cookies. If that changes, we will update this page and ask for your consent first.
+Caterly by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. This marketing website does not use advertising or tracking cookies. If that changes, we will update this page and ask for your consent first.
 
 ## 8. Security
 

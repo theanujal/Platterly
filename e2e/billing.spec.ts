@@ -56,7 +56,7 @@ test("an ended trial lands on the payment page only; paying opens the account ag
   await expect(page.getByText("Premium").first()).toBeVisible();
 
   // A paid period that has run out locks it again.
-  await activatePaidPlan(email, "premium", -1);
+  await activatePaidPlan(email, "premium", -8); // past the 7-day grace
   await page.goto("/orders");
   await expect(page).toHaveURL(/\/subscribe$/);
   await expect(page.getByTestId("subscribe-title")).toHaveText("Your plan has ended");

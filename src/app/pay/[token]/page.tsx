@@ -6,7 +6,7 @@ import { buildUpiUri } from "@/modules/payments/payment-settings";
 import { PayClient } from "./_components/pay-client";
 
 export const metadata: Metadata = {
-  title: "Pay — Platterly",
+  title: "Pay — Caterly",
   robots: { index: false, follow: false },
 };
 

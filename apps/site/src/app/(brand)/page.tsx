@@ -36,11 +36,11 @@ export default function HomePage() {
           <div style={d(240)} className="enter mt-9 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
             <ButtonLink href={SITE.appUrl}>Get started for free</ButtonLink>
             <ButtonLink href="/catering" variant="outline">
-              Explore Catering <ArrowRight className="size-5" aria-hidden />
+              Explore Caterly <ArrowRight className="size-5" aria-hidden />
             </ButtonLink>
           </div>
           <p style={d(320)} className="enter mt-4 text-sm text-slate-gray">
-            Starting with Catering, more products on the way.
+            Starting with Caterly, more products on the way.
           </p>
         </div>
         <div style={d(440)} className="enter-pop mt-12 md:mt-16">

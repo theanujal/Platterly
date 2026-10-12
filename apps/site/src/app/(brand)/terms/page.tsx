@@ -4,7 +4,7 @@ import { getPage } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Terms and Conditions",
-  description: "The rules for using Platterly and Catering by Platterly.",
+  description: "The rules for using Platterly and Caterly by Platterly.",
   alternates: { canonical: "/terms/" },
 };
 

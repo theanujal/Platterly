@@ -24,7 +24,7 @@ import { STATUS_VARIANT, STATUS_ICON, STATUS_LABEL } from "./_components/quotati
 import type { QuotationStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
-  title: "Quotations — Platterly",
+  title: "Quotations — Caterly",
   robots: { index: false, follow: false },
 };
 

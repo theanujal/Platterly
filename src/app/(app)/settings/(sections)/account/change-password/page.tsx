@@ -3,7 +3,7 @@ import { InfoBox, InfoList, SettingsCard, SettingsPanel } from "../../../_compon
 import { ChangePasswordForm } from "./_components/change-password-form";
 
 export const metadata: Metadata = {
-  title: "Change Password — Platterly",
+  title: "Change Password — Caterly",
   robots: { index: false, follow: false },
 };
 

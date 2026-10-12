@@ -91,7 +91,7 @@ export function PlatformBand({ children }: { children: ReactNode }) {
                   <p className="max-w-[15rem] text-base sm:max-w-[18rem] leading-relaxed text-slate-gray">{card.text}</p>
                   {live && card.href ? (
                     <Link href={card.href} tabIndex={on ? 0 : -1} className="mt-auto inline-flex items-center gap-2 text-base font-medium text-brand">
-                      Explore Catering <ArrowRight className="size-5" aria-hidden />
+                      Explore Caterly <ArrowRight className="size-5" aria-hidden />
                     </Link>
                   ) : (
                     <span className="mt-auto inline-flex rounded-full bg-ink-navy/5 px-3.5 py-1.5 text-sm font-medium text-ink-navy">Coming soon</span>

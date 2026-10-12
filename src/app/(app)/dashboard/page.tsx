@@ -18,7 +18,7 @@ import { InventoryOverviewCard } from "./_components/inventory-overview-card";
 import { PublicMenuShortcutCard } from "./_components/public-menu-shortcut-card";
 
 export const metadata: Metadata = {
-  title: "Dashboard — Platterly",
+  title: "Dashboard — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -120,9 +120,9 @@ export function AppSidebar({ organizationName, trial, notice, grace, allowedHref
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />} className="cursor-pointer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/platterly-mark.svg" alt="Platterly" className="size-6 shrink-0" />
+              <img src="/caterly-mark.svg" alt="Caterly by Platterly" className="size-6 shrink-0" />
               <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-sm font-semibold">Platterly</span>
+                <span className="truncate text-sm font-semibold">Caterly</span>
                 <span className="truncate text-xs text-muted-foreground">{organizationName}</span>
               </div>
             </SidebarMenuButton>

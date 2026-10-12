@@ -14,7 +14,7 @@ import { formatRupees } from "@/components/catalog/catalog-display";
 import type { PurchaseOrderStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
-  title: "Purchasing — Platterly",
+  title: "Purchasing — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -14,7 +14,7 @@ import type { QuotationFormValues } from "../_components/quotation-form";
 import type { QuotationStatus } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
-  title: "Quotation — Platterly",
+  title: "Quotation — Caterly",
   robots: { index: false, follow: false },
 };
 

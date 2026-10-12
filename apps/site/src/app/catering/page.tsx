@@ -14,7 +14,7 @@ import { CATERING_PRODUCT, productVars } from "@/content/products";
 import { SITE, TESTIMONIALS } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "Catering by Platterly | Software for catering businesses",
+  title: "Caterly by Platterly | Software for catering businesses",
   description: "Run your catering business without the chaos. Customers, events, menus, orders, kitchen, delivery and payments in one workflow. Start free for 7 days.",
   alternates: { canonical: "/catering/" },
 };
@@ -28,7 +28,7 @@ export default function CateringPage() {
   const appLd = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "Catering by Platterly",
+    name: "Caterly by Platterly",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
     url: `${SITE.url}/catering/`,
@@ -51,7 +51,7 @@ export default function CateringPage() {
         <div className="relative isolate flex min-h-[calc(100vh-108px)] flex-col items-center justify-center overflow-hidden rounded-[28px] px-5 py-24 text-center sm:rounded-[40px]" style={{ background: "var(--aurora)", ...productVars(CATERING_PRODUCT) }}>
           <p style={d(0)} className="enter inline-flex items-center gap-3 text-xl font-medium">
             <ProductTile product={CATERING_PRODUCT} className="size-9" iconClass="size-5" />
-            Catering by Platterly
+            Caterly by Platterly
           </p>
           <h1 id="hero" style={d(80)} className="h-display enter mx-auto mt-6 max-w-4xl">
             {CATERING.hero.title}
@@ -71,7 +71,7 @@ export default function CateringPage() {
 
       {/* 02 Features: a long list beside a gradient panel with the real screen */}
       <div id="features" className="py-8 md:py-16">
-        <FeatureShowcase id="features-title" label="Catering" product={CATERING_PRODUCT} title={CATERING.features.title} items={CATERING.features.groups} />
+        <FeatureShowcase id="features-title" label="Caterly" product={CATERING_PRODUCT} title={CATERING.features.title} items={CATERING.features.groups} />
       </div>
 
       {/* 03 How it works: a sideways row of coloured cards, each a small designed version of one screen */}

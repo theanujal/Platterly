@@ -16,7 +16,7 @@ import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { addDays, addMonths, formatDay, monthGrid, monthLabel, parseMonthParam, todayIso } from "./_lib";
 
 export const metadata: Metadata = {
-  title: "Calendar — Platterly",
+  title: "Calendar — Caterly",
   robots: { index: false, follow: false },
 };
 

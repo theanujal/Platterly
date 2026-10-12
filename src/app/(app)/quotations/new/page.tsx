@@ -7,7 +7,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { NewQuotationClient } from "./_components/new-quotation-client";
 
 export const metadata: Metadata = {
-  title: "New Quotation — Platterly",
+  title: "New Quotation — Caterly",
   robots: { index: false, follow: false },
 };
 

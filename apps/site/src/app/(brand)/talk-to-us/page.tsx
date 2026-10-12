@@ -8,7 +8,7 @@ import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Talk to us",
-  description: "Tell us about your catering business and we will show you how Catering by Platterly fits. A short call, no pressure.",
+  description: "Tell us about your catering business and we will show you how Caterly by Platterly fits. A short call, no pressure.",
   alternates: { canonical: "/talk-to-us/" },
 };
 

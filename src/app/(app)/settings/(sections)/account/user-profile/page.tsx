@@ -8,7 +8,7 @@ import { Detail, DetailGrid, SettingsCard, SettingsSection } from "../../../_com
 import { UserProfileForm } from "./_components/user-profile-form";
 
 export const metadata: Metadata = {
-  title: "User Profile — Platterly",
+  title: "User Profile — Caterly",
   robots: { index: false, follow: false },
 };
 

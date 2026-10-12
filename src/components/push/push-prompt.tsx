@@ -10,7 +10,7 @@ import { answerPushPromptAction } from "@/app/push-actions";
 import { enablePush, pushSupported, thisDeviceHasPush } from "./push-client";
 
 /**
- * The "Stay updated with Platterly" popup (AJ's reference, in Platterly's branding). Shown right after sign-up and
+ * The "Stay updated with Caterly" popup (AJ's reference, in Platterly's branding). Shown right after sign-up and
  * again every 3 days after "Maybe Later" (the schedule lives on the server, see modules/notifications/push-prompt.ts).
  * It waits for any other dialog (e.g. "Claim your custom link") to close first, and never shows where the browser
  * can't do push or has already blocked it.
@@ -68,8 +68,8 @@ export function PushPrompt({ show, vapidPublicKey, benefits, settingsHref }: { s
             <Bell className="size-6" aria-hidden />
           </span>
           <div>
-            <DialogTitle className="text-lg font-semibold">Stay updated with Platterly</DialogTitle>
-            <DialogDescription className="mt-1 text-sm text-muted-foreground">Get alerts on this device, even when Platterly is closed.</DialogDescription>
+            <DialogTitle className="text-lg font-semibold">Stay updated with Caterly</DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">Get alerts on this device, even when Caterly is closed.</DialogDescription>
           </div>
         </div>
 

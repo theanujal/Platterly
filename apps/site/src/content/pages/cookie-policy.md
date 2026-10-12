@@ -4,12 +4,12 @@ summary: What cookies and similar storage Platterly uses, why, and how you can c
 updated: 2026-10-08
 ---
 
-This policy explains how Fragen Network Private Limited ("Platterly", "we", "us") uses cookies and similar technologies on platterly.in and in Catering by Platterly at catering.platterly.in. It should be read with our [Privacy Policy](/privacy/).
+This policy explains how Fragen Network Private Limited ("Platterly", "we", "us") uses cookies and similar technologies on platterly.in and in Caterly by Platterly at catering.platterly.in. It should be read with our [Privacy Policy](/privacy/).
 
 ## 1. In short
 
 - This marketing website (platterly.in) **does not use advertising, analytics or tracking cookies**.
-- The Catering by Platterly app uses **only the cookies it needs to work**: to keep you signed in, to keep your account secure and to remember simple choices.
+- The Caterly by Platterly app uses **only the cookies it needs to work**: to keep you signed in, to keep your account secure and to remember simple choices.
 - You can block or delete cookies in your browser at any time. If you block the essential ones, you will not be able to sign in.
 
 ## 2. What cookies are
@@ -24,7 +24,7 @@ A cookie is a small text file that a website stores in your browser. Similar tec
 
 Fonts and images are served from our own domain, so this website does not send your visit to a font or image provider. We do not run analytics on this website today. If we add privacy-respecting analytics later, we will update this page first and ask for your consent where the law requires it.
 
-## 4. What we use in Catering by Platterly
+## 4. What we use in Caterly by Platterly
 
 | Cookie type | Purpose | Can you turn it off? |
 |---|---|---|

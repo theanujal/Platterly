@@ -14,14 +14,14 @@ const BORDER: Rgb = [229, 231, 235];
 const GRAY: Rgb = [243, 244, 246];
 
 /** The one document Platterly sends a kitchen for its plan: a paid tax invoice, or the invoice for a free trial. */
-export const PRODUCT_NAME = "Platterly Catering";
+export const PRODUCT_NAME = "Caterly by Platterly";
 
 export interface PlanInvoiceData {
   /** public/platterly-logo.png, read by the caller (jsPDF cannot draw the SVG). */
   logo: Uint8Array;
   invoiceNumber: string;
   date: string;
-  /** The product the plan is for ("Platterly Catering"), printed in the header. */
+  /** The product the plan is for ("Caterly by Platterly"), printed in the header. */
   productName: string;
   /** "PAID" or "TRIAL": the pill under INVOICE. */
   statusLabel: string;

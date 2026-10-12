@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 import { InvoicePaper } from "../../(app)/invoices/_components/invoice-paper";
 
 export const metadata: Metadata = {
-  title: "Invoice — Platterly",
+  title: "Invoice — Caterly",
   robots: { index: false, follow: false },
 };
 

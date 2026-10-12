@@ -13,7 +13,7 @@ import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/com
 import { cn } from "cn";
 
 export const metadata: Metadata = {
-  title: "Profitability — Platterly",
+  title: "Profitability — Caterly",
   robots: { index: false, follow: false },
 };
 

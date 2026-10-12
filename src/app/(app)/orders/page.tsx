@@ -23,7 +23,7 @@ import { ORDER_KIND_LABEL, STATUS_LABEL } from "./_components/order-display";
 import type { OrderStatus, OrderKind } from "@/generated/prisma/enums";
 
 export const metadata: Metadata = {
-  title: "Orders — Platterly",
+  title: "Orders — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { PurchaseOrderForm } from "../../_components/purchase-order-form";
 
 export const metadata: Metadata = {
-  title: "Edit Purchase Order — Platterly",
+  title: "Edit Purchase Order — Caterly",
   robots: { index: false, follow: false },
 };
 

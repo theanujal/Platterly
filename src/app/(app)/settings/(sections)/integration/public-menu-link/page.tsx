@@ -13,7 +13,7 @@ import { OrderStandSection } from "./_components/order-stand-section";
 import { getStandPageData } from "@/modules/stand/stand-orders";
 
 export const metadata: Metadata = {
-  title: "Platterly Link — Platterly",
+  title: "Platterly Link — Caterly",
   robots: { index: false, follow: false },
 };
 

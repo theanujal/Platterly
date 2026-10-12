@@ -5,7 +5,7 @@ A static site, separate from the catering app: its own `package.json`, lockfile,
 | Page | Address |
 |---|---|
 | Home | `/` |
-| Catering by Platterly (product page: pricing, FAQ, features) | `/catering` |
+| Caterly by Platterly (product page: pricing, FAQ, features) | `/catering` |
 | Talk to us, Contact us | `/talk-to-us`, `/contact` |
 | About | `/about` |
 | Blog and articles, RSS | `/blog`, `/blog/<slug>`, `/blog/rss.xml` |

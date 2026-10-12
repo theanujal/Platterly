@@ -11,7 +11,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const metadata: Metadata = {
-  title: "Production Planning — Platterly",
+  title: "Production Planning — Caterly",
   robots: { index: false, follow: false },
 };
 

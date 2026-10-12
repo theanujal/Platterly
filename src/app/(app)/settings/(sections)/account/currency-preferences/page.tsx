@@ -10,7 +10,7 @@ import { CurrencyPreferencesForm } from "./_components/currency-preferences-form
 import { ROUNDING_OPTIONS } from "./types";
 
 export const metadata: Metadata = {
-  title: "Currency & Time Zone — Platterly",
+  title: "Currency & Time Zone — Caterly",
   robots: { index: false, follow: false },
 };
 

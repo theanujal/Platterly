@@ -7,7 +7,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { NewOrderClient } from "./_components/new-order-client";
 
 export const metadata: Metadata = {
-  title: "New Order — Platterly",
+  title: "New Order — Caterly",
   robots: { index: false, follow: false },
 };
 

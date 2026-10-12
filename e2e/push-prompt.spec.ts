@@ -3,7 +3,7 @@ import { cleanupOnboardingTestUser, getPushPrompt, setPushPromptState } from "./
 import { signUpCaterer } from "./auth-helpers";
 
 /**
- * Chunk 16.3: the "Stay updated with Platterly" popup. Asked the moment the account exists; "Maybe Later" brings it
+ * Chunk 16.3: the "Stay updated with Caterly" popup. Asked the moment the account exists; "Maybe Later" brings it
  * back after 3 days, "Don't Ask Again" ends it. (Turning push on for real needs a browser push service, so that
  * part is covered by unit tests with a fake sender.)
  */
@@ -34,7 +34,7 @@ test("a new account is asked about push, 'Maybe Later' returns in 3 days, 'Don't
   await closeClaimDialog(page);
   const prompt = page.getByTestId("push-prompt");
   await expect(prompt).toBeVisible({ timeout: 15_000 });
-  await expect(prompt.getByText("Stay updated with Platterly")).toBeVisible();
+  await expect(prompt.getByText("Stay updated with Caterly")).toBeVisible();
   await expect(prompt.getByText("Event reminders before your catering events")).toBeVisible();
   await expect(prompt.getByRole("button", { name: "Enable Notifications" })).toBeVisible();
   await expect(prompt.getByRole("link", { name: "notification settings" })).toHaveAttribute("href", "/settings/communication/push-notifications");

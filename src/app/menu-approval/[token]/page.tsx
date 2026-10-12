@@ -19,7 +19,7 @@ import { advanceAmount } from "@/modules/payments/payment-math";
 import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 
 export const metadata: Metadata = {
-  title: "Review & Approve Menu — Platterly",
+  title: "Review & Approve Menu — Caterly",
   robots: { index: false, follow: false },
 };
 

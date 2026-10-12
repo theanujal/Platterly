@@ -20,7 +20,7 @@ import { ItemCardActions } from "./_components/item-card-actions";
 import type { ItemFormValues } from "./_components/item-form";
 
 export const metadata: Metadata = {
-  title: "Food Items — Platterly",
+  title: "Food Items — Caterly",
   robots: { index: false, follow: false },
 };
 

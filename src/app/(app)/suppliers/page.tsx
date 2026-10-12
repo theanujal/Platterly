@@ -13,7 +13,7 @@ import { AddSupplierDialog, SupplierCardActions } from "./_components/supplier-d
 import type { SupplierFormValues } from "./_components/supplier-form";
 
 export const metadata: Metadata = {
-  title: "Suppliers — Platterly",
+  title: "Suppliers — Caterly",
   robots: { index: false, follow: false },
 };
 

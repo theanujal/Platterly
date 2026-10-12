@@ -14,7 +14,7 @@ import { InvoiceStatusBadge, InvoiceTypeBadge } from "./_components/invoice-badg
 import { cn } from "cn";
 
 export const metadata: Metadata = {
-  title: "Invoices — Platterly",
+  title: "Invoices — Caterly",
   robots: { index: false, follow: false },
 };
 

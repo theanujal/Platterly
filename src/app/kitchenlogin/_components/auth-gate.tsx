@@ -24,7 +24,7 @@ export function AuthGate({ initialMode = "signin", callbackURL, lockedEmail }: A
     <div className="flex w-full max-w-lg flex-col items-center gap-6">
       <div className="flex w-full flex-col items-center gap-3 text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/platterly-mark.svg" alt="Platterly" className="size-14" />
+        <img src="/caterly-mark.svg" alt="Caterly by Platterly" className="size-14" />
         <h2 className="text-2xl font-bold">{mode === "signin" ? "Welcome back" : "Create your account"}</h2>
         <p className="text-sm text-muted-foreground">
           {mode === "signin" ? "Sign in to manage your catering business" : "Start your free 7-day trial"}

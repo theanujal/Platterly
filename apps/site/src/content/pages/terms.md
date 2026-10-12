@@ -1,14 +1,14 @@
 ---
 title: Terms and Conditions
-summary: The rules for using Platterly and Catering by Platterly.
+summary: The rules for using Platterly and Caterly by Platterly.
 updated: 2026-10-05
 ---
 
-These terms are an agreement between you and Fragen Network Private Limited ("Platterly", "we", "us"). They apply when you visit platterly.in or create or use an account on Catering by Platterly. By creating an account or using the service you agree to them.
+These terms are an agreement between you and Fragen Network Private Limited ("Platterly", "we", "us"). They apply when you visit platterly.in or create or use an account on Caterly by Platterly. By creating an account or using the service you agree to them.
 
 ## 1. The service
 
-Catering by Platterly is web software that helps catering businesses manage customers, events, menus, orders, kitchen work, delivery and payments. We may add, change or retire features over time. We will tell you in advance if a change would take away something you rely on.
+Caterly by Platterly is web software that helps catering businesses manage customers, events, menus, orders, kitchen work, delivery and payments. We may add, change or retire features over time. We will tell you in advance if a change would take away something you rely on.
 
 ## 2. Your account
 

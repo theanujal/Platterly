@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 
 export const metadata: Metadata = {
-  title: "Subscription — Platterly",
+  title: "Subscription — Caterly",
   robots: { index: false, follow: false },
 };
 

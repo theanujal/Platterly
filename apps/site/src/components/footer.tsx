@@ -29,7 +29,7 @@ export function Footer() {
             <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3">
               <Group title="Products">
                 <Link href="/catering/" className={LINK}>
-                  Catering by Platterly
+                  Caterly by Platterly
                 </Link>
               </Group>
               <Group title="Discover">

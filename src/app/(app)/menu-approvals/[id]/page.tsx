@@ -15,7 +15,7 @@ import { MenuApprovalReview } from "./_components/menu-approval-review";
 import { MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
 
 export const metadata: Metadata = {
-  title: "Menu Approval — Platterly",
+  title: "Menu Approval — Caterly",
   robots: { index: false, follow: false },
 };
 

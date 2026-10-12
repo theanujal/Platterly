@@ -8,7 +8,7 @@ import { AuthLayout } from "./_components/auth-layout";
 // Chunk 4 — Caterer/Kitchen Admin sign-in and sign-up, served at the
 // reserved `/kitchenlogin` path from Chunk 1 Group 1.4.
 export const metadata: Metadata = {
-  title: "Sign in — Platterly",
+  title: "Sign in — Caterly",
   robots: { index: false, follow: false },
 };
 

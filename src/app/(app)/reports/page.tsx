@@ -14,7 +14,7 @@ import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 
 export const metadata: Metadata = {
-  title: "Reports — Platterly",
+  title: "Reports — Caterly",
   robots: { index: false, follow: false },
 };
 

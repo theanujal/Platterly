@@ -9,28 +9,28 @@ export const HOME = {
     copy: "Food businesses manage customers, orders, menus, events, teams and countless moving parts. Platterly is building focused software around those workflows, starting with catering.",
   },
   featured: {
-    title: "Meet Catering by Platterly",
+    title: "Meet Caterly by Platterly",
     copy: "Run your catering business from enquiry to event completion. Manage customers, events, menus, guest requirements and orders from one connected workspace.",
-    cta: "Explore Catering",
+    cta: "Explore Caterly",
   },
   preview: { title: "See Platterly in action." },
   direction: {
     title: "Starting with catering. Built to grow with your business.",
-    copy: "Catering is where Platterly starts. As the platform grows, new products can help more food businesses manage the work behind the scenes.",
+    copy: "Caterly is where Platterly starts. As the platform grows, new products can help more food businesses manage the work behind the scenes.",
   },
-  cta: { title: "Ready to simplify your catering business?", copy: "Start with Catering by Platterly." },
+  cta: { title: "Ready to simplify your catering business?", copy: "Start with Caterly by Platterly." },
 } as const;
 
-/** The single card in the pinned scene: what Catering by Platterly is. */
+/** The single card in the pinned scene: what Caterly by Platterly is. */
 export const HOME_SCENE = {
   title: "Run your catering business from one place.",
-  text: "Catering by Platterly keeps your customers, events, menus, orders, kitchen and payments together, from the first enquiry to the final delivery.",
+  text: "Caterly by Platterly keeps your customers, events, menus, orders, kitchen and payments together, from the first enquiry to the final delivery.",
 };
 
 /** The chapter dedicated to Catering, below the steps: a list on one side, the real screen on the other. */
 export const HOME_CHAPTER = {
-  label: "Our first product, Catering by Platterly",
-  title: "Meet Catering by Platterly.",
+  label: "Our first product, Caterly by Platterly",
+  title: "Meet Caterly by Platterly.",
   subtitle: "A better way to run your catering business",
   items: [
     { id: "events", icon: "calendar", title: "Events and calendar", text: "See how busy each day is, with every booked event and order where it belongs, including multi-day events.", card: "calendar", href: "/catering/#features" },

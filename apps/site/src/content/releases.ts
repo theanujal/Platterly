@@ -1,7 +1,7 @@
 import type { Release } from "@/content/types";
 
 /**
- * What has shipped in Catering by Platterly, newest first. Written from the product's own build history: only things that
+ * What has shipped in Caterly by Platterly, newest first. Written from the product's own build history: only things that
  * exist. (Platterly Ops will manage this list later.)
  */
 export const RELEASES: Release[] = [

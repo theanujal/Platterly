@@ -86,7 +86,7 @@ function StatCell({
 }
 
 export const metadata: Metadata = {
-  title: "Abandoned Orders — Platterly",
+  title: "Abandoned Orders — Caterly",
   robots: { index: false, follow: false },
 };
 

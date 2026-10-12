@@ -14,7 +14,7 @@ import { AddOnCardActions } from "./_components/addon-card-actions";
 import type { AddOnFormValues } from "./_components/addon-form";
 
 export const metadata: Metadata = {
-  title: "Add-ons — Platterly",
+  title: "Add-ons — Caterly",
   robots: { index: false, follow: false },
 };
 

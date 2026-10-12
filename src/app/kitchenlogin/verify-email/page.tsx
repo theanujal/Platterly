@@ -6,7 +6,7 @@ import { AuthLayout } from "../_components/auth-layout";
 import { VerifyEmailForm } from "../_components/verify-email-form";
 
 export const metadata: Metadata = {
-  title: "Verify your email — Platterly",
+  title: "Verify your email — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
-  title: "You're all set — Platterly",
+  title: "You're all set — Caterly",
   robots: { index: false, follow: false },
 };
 

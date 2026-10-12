@@ -6,7 +6,7 @@ import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { OnboardingWizard } from "./_components/onboarding-wizard";
 
 export const metadata: Metadata = {
-  title: "Set up your business — Platterly",
+  title: "Set up your business — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -26,7 +26,7 @@ export function buildManifest(productKey: string): ProductManifest {
   return {
     contract: CONTRACT_VERSION,
     productKey,
-    name: "Catering",
+    name: "Caterly",
     version: CATERING_MANIFEST_VERSION,
     baseUrl: originFor("catering"),
     entitlements: CATERING_ENTITLEMENTS,

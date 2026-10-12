@@ -5,7 +5,7 @@ import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { SubscribeClient } from "./_components/subscribe-client";
 
 export const metadata: Metadata = {
-  title: "Choose a plan — Platterly",
+  title: "Choose a plan — Caterly",
   robots: { index: false, follow: false },
 };
 

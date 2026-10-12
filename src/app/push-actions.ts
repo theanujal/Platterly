@@ -39,7 +39,7 @@ export async function setPushEnabledAction(enabled: boolean): Promise<void> {
 
 export async function sendTestPushAction(): Promise<{ ok: boolean; message: string }> {
   const session = await requireSession();
-  const result = await sendPushToUser(session.user.id, { title: "Platterly test", body: "Push notifications are working on this device.", url: "/dashboard" });
+  const result = await sendPushToUser(session.user.id, { title: "Caterly test", body: "Push notifications are working on this device.", url: "/dashboard" });
   if (result.status === "sent") return { ok: true, message: `Sent to ${result.devices} device(s).` };
   return { ok: false, message: result.reason };
 }

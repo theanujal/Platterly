@@ -16,7 +16,7 @@ export interface Product {
 }
 
 export const PRODUCTS: Product[] = [
-  { id: "catering", name: "Catering by Platterly", short: "Catering", tagline: "Run a catering business from enquiry to event.", href: "/catering/", icon: "chef", color: "#ff6900", tint: "#fff3e6" },
+  { id: "catering", name: "Caterly by Platterly", short: "Caterly", tagline: "Run a catering business from enquiry to event.", href: "/catering/", icon: "chef", color: "#ff6900", tint: "#fff3e6" },
 ];
 
 export const CATERING_PRODUCT = PRODUCTS[0];

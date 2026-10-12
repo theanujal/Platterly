@@ -6,7 +6,7 @@ import { SettingsCard } from "../../../_components/settings-ui";
 import { PaymentsSettings } from "./_components/payments-settings";
 
 export const metadata: Metadata = {
-  title: "Payments — Platterly",
+  title: "Payments — Caterly",
   robots: { index: false, follow: false },
 };
 

@@ -8,7 +8,7 @@ import { canonicalUrl } from "@/lib/seo/canonical";
 import { IframeGenerator } from "./_components/iframe-generator";
 
 export const metadata: Metadata = {
-  title: "Iframe — Platterly",
+  title: "Iframe — Caterly",
   robots: { index: false, follow: false },
 };
 

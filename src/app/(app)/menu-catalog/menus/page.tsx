@@ -19,7 +19,7 @@ import { MenuReorderButtons } from "./_components/menu-reorder-buttons";
 import type { MenuFormValues, AssignedCategory } from "./_components/menu-form";
 
 export const metadata: Metadata = {
-  title: "Menu Types — Platterly",
+  title: "Menu Types — Caterly",
   robots: { index: false, follow: false },
 };
 
