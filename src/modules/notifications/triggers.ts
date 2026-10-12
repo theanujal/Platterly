@@ -567,14 +567,34 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
     });
   }
 
-  for (const { id, organizationId } of await eventsOn(-1, BILLABLE_STATUSES)) {
+  // Overdue = the event's last day was yesterday (AJ, 2026-10-12), the same rule as the Overdue badge (isPaymentOverdue).
+  const endedYesterday = await prisma.order.findMany({
+    where: { status: { in: [...BILLABLE_STATUSES] }, eventEndDate: { gte: istDay(now, -1), lt: istDay(now, 0) } },
+    select: { id: true, organizationId: true },
+  });
+  for (const { id, organizationId } of endedYesterday) {
     const key = `${id}:overdue`;
-    if (await alreadySent(organizationId, "payment.overdue", key)) continue;
+    const teamKey = `${id}:overdue-team`;
+    const customerDone = await alreadySent(organizationId, "payment.overdue", key);
+    const teamDone = await alreadySent(organizationId, "payment.overdue_team", teamKey);
+    if (customerDone && teamDone) continue;
     await safely("payment overdue", async () => {
       const c = await loadOrderContext(organizationId, id);
       if (c.balance <= 0) return;
-      await notifyCustomer({ organizationId, event: "payment.overdue", email: c.customerEmail, payload: emailPayload(c, { dedupeKey: key }) });
-      result.paymentOverdue += 1;
+      if (!customerDone) {
+        await notifyCustomer({ organizationId, event: "payment.overdue", email: c.customerEmail, payload: emailPayload(c, { dedupeKey: key }) });
+        result.paymentOverdue += 1;
+      }
+      // One in-app alert for the team, even when the customer has no email.
+      if (!teamDone) {
+        await notifyTeam({
+          organizationId,
+          event: "payment.overdue_team",
+          title: "Payment overdue",
+          message: `${orderLabel(c)} for ${c.customerName} has ${formatInr(c.balance)} unpaid and the event is over.`,
+          payload: emailPayload(c, { dedupeKey: teamKey }),
+        });
+      }
     });
   }
 

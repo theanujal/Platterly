@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { cn } from "cn";
 import { confirmPaymentAction, createPaymentLinkAction, recordPaymentAction, rejectPaymentAction, sendReceiptAction, type ActionResult } from "../actions";
+import { Badge } from "@/components/ui/badge";
 import { PaymentStatusBadge } from "./invoice-badges";
 
 export interface PaymentRowData {
@@ -58,6 +59,7 @@ export function PaymentsPanel({
   payments,
   canRecord,
   canManage,
+  overdue = false,
 }: {
   orderId: string;
   invoiceId?: string;
@@ -67,6 +69,8 @@ export function PaymentsPanel({
   payments: PaymentRowData[];
   canRecord: boolean;
   canManage: boolean;
+  /** The order's event is over and money is still owed (isPaymentOverdue). */
+  overdue?: boolean;
 }) {
   const router = useRouter();
   const [recordOpen, setRecordOpen] = useState(false);
@@ -91,6 +95,7 @@ export function PaymentsPanel({
             <CreditCard className="size-4" />
           </span>
           Payment summary
+          {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
         </h2>
         <dl className="flex flex-col gap-2 text-sm tabular-nums">
           <div className="flex justify-between gap-3">

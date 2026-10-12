@@ -96,6 +96,23 @@ describe("notification triggers (Chunk 16)", () => {
     expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "payment.overdue_digest" } })).toBe(1); // none added on a Tuesday
   });
 
+  it("overdue payment: the team gets one in-app alert the day after the event, cancelled orders none (AJ, 2026-10-12)", async () => {
+    const t = await makeTeam();
+    const event = new Date("2026-12-01T00:00:00Z");
+    const order = await makeOrder(t.org.id, t.sales.id, event);
+    const cancelled = await makeOrder(t.org.id, t.sales.id, event);
+    await prisma.order.update({ where: { id: cancelled.id }, data: { status: "CANCELLED" } });
+    await prisma.notification.deleteMany({ where: { organizationId: t.org.id } });
+    const now = new Date("2026-12-02T06:00:00Z"); // 11:30 am in India, the day after
+
+    await runDueNotifications(now);
+    await runDueNotifications(now);
+    const alerts = (await rows(t.org.id, "payment.overdue_team")).filter((n) => n.channel === "IN_APP");
+    expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, t.sales.id, t.kitchen.id, t.accounts.id].sort());
+    expect(JSON.stringify(alerts[0].payload)).toContain(order.id);
+    expect(alerts.some((n) => JSON.stringify(n.payload).includes(cancelled.id))).toBe(false);
+  });
+
   it("'sent to kitchen' tells the Kitchen team and the customer", async () => {
     const t = await makeTeam();
     const order = await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));

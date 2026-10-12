@@ -15,6 +15,11 @@ const ORDER_KIND_OPTIONS = [
   { value: "MULTI", label: "Multi Order" },
 ] as const;
 
+const PAYMENT_OPTIONS = [
+  { value: "ALL", label: "All Payments" },
+  { value: "overdue", label: "Overdue Payments" },
+] as const;
+
 export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name: string }[] }) {
   const eventTypeOptions = [{ value: "ALL", label: "All Event Types" }, ...eventTypes.map((t) => ({ value: t.id, label: t.name }))];
 
@@ -75,6 +80,23 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         </SelectTrigger>
         <SelectContent>
           {ORDER_KIND_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        items={Object.fromEntries(PAYMENT_OPTIONS.map((o) => [o.value, o.label]))}
+        value={searchParams.get("payment") ?? "ALL"}
+        onValueChange={(v) => updateParam("payment", v ?? "ALL")}
+      >
+        <SelectTrigger aria-label="Payment filter" className="w-48">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PAYMENT_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

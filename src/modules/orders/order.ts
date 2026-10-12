@@ -2,7 +2,7 @@ import { validateOrderLike } from "@/lib/validation";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
-import { derivePaymentState } from "@/modules/payments/payment-math";
+import { derivePaymentState, istTodayStart } from "@/modules/payments/payment-math";
 import "server-only";
 import { parseCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
 import { prisma } from "@/lib/db";
@@ -505,6 +505,11 @@ export interface OrderListFilter {
   eventTypeId?: string;
   search?: string;
   /**
+   * Only orders whose payment is overdue (AJ, 2026-10-12): Unpaid or Partially Paid, event over (India day), not cancelled.
+   * Their events are over, so this replaces `when`; the rule is `isPaymentOverdue`.
+   */
+  paymentOverdue?: boolean;
+  /**
    * "upcoming" = the event is not over yet, whatever the status (cancelled ones included); "past" =
    * the event is over. "Over" means the last day of the event (`eventEndDate`, so a multi-day order
    * counts by its last day) is before today (UTC, like the calendar and countdowns). AJ, 2026-09-30:
@@ -528,7 +533,11 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
   return prisma.order.findMany({
     where: {
       organizationId,
-      AND: [whenWhere(filter?.when)],
+      AND: [
+        filter?.paymentOverdue
+          ? { status: { not: "CANCELLED" }, paymentStatus: { in: ["UNPAID", "PARTIALLY_PAID"] }, eventEndDate: { lt: istTodayStart(new Date()) } }
+          : whenWhere(filter?.when),
+      ],
       ...(filter?.locationId ? { events: { some: { assignedKitchenId: filter.locationId } } } : {}),
       status: filter?.status,
       orderKind: filter?.orderKind,

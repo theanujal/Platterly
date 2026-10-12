@@ -179,6 +179,27 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
     expect(await ids()).toHaveLength(6);
   });
 
+  it("listOrders `paymentOverdue` finds only finished events that still owe money, never cancelled or paid (AJ, 2026-10-12)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const day = (offset: number) => {
+      const n = new Date(Date.now() + 5.5 * 3600_000); // India's calendar day
+      return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + offset));
+    };
+    const make = (end: Date, paymentStatus: "UNPAID" | "PARTIALLY_PAID" | "PAID", status: "COMPLETED" | "CANCELLED" = "COMPLETED") =>
+      prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, eventStartDate: end, eventEndDate: end, paymentStatus, status } });
+    const unpaid = await make(day(-3), "UNPAID");
+    const partial = await make(day(-1), "PARTIALLY_PAID");
+    await make(day(-3), "PAID");
+    await make(day(-3), "UNPAID", "CANCELLED");
+    await make(day(0), "UNPAID"); // event is today: not over yet
+    await make(day(4), "UNPAID");
+
+    const ids = (await listOrders(org.id, { paymentOverdue: true })).map((o) => o.id).sort();
+    expect(ids).toEqual([unpaid.id, partial.id].sort());
+  });
+
   it("listOrders filters by event type", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

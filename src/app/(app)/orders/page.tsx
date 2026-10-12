@@ -27,14 +27,15 @@ export const metadata: Metadata = {
 };
 
 interface OrdersPageProps {
-  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string }>;
+  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string; payment?: string }>;
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
   const activeLocation = await getActiveLocation(organizationId, session.user.id);
-  const { status, orderKind, eventType } = await searchParams;
+  const { status, orderKind, eventType, payment } = await searchParams;
+  const overdueOnly = payment === "overdue";
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
   const validOrderKind = orderKind && orderKind in ORDER_KIND_LABEL ? (orderKind as OrderKind) : undefined;
 
@@ -44,7 +45,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
   const [orders, canEdit, canDelete] = await Promise.all([
     // Orders whose event is over never show here, under any status (AJ, 2026-09-30); they appear in the customer's order history.
-    listOrders(organizationId, { locationId: activeLocation.locationId, when: "upcoming", status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
+    // The one exception is the Overdue payments filter (AJ, 2026-10-12): those events are over by definition.
+    listOrders(organizationId, { locationId: activeLocation.locationId, ...(overdueOnly ? { paymentOverdue: true } : { when: "upcoming" as const }), status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);

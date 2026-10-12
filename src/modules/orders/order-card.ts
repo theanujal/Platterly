@@ -1,4 +1,5 @@
 import type { MenuSelectionStatus, OrderPaymentStatus, OrderStatus } from "@/generated/prisma/enums";
+import { isPaymentOverdue } from "@/modules/payments/payment-math";
 import type { Tone } from "./order-status";
 
 /**
@@ -125,11 +126,16 @@ export interface PaymentBreakdown {
  * Partially Paid), so PAID is treated as fully collected rather than trusting
  * `total - advance`.
  */
-export function getPaymentBreakdown(order: { total: number; advance: number; paymentStatus: OrderPaymentStatus }): PaymentBreakdown {
+export function getPaymentBreakdown(
+  order: { total: number; advance: number; paymentStatus: OrderPaymentStatus; status: OrderStatus; eventEndDate: Date },
+  now: Date,
+): PaymentBreakdown {
   if (order.paymentStatus === "PAID") return { label: "Paid", tone: "success", summary: "Paid in full" };
-  if (order.paymentStatus === "UNPAID") return { label: "Unpaid", tone: "danger", summary: `${formatAmount(order.total)} pending` };
-  const paid = Math.min(order.advance, order.total);
+  const paid = order.paymentStatus === "UNPAID" ? 0 : Math.min(order.advance, order.total);
   const pending = Math.max(order.total - paid, 0);
+  // Overdue is calculated, not stored (AJ, 2026-10-12): see isPaymentOverdue.
+  if (isPaymentOverdue(order, now)) return { label: "Overdue", tone: "danger", summary: `${formatAmount(pending)} overdue` };
+  if (order.paymentStatus === "UNPAID") return { label: "Unpaid", tone: "danger", summary: `${formatAmount(order.total)} pending` };
   return { label: "Partially Paid", tone: "info", summary: `${formatAmount(paid)} paid · ${formatAmount(pending)} pending` };
 }
 

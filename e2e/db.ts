@@ -330,6 +330,14 @@ export async function seedOrderForBilling(email: string, total: number): Promise
   return { orderId, organizationId, orderNumber };
 }
 
+/** Moves an order's event `daysAgo` days into the past (and optionally cancels it), for the Overdue payment specs. */
+export async function setOrderEventPast(orderId: string, daysAgo: number, status?: "CANCELLED" | "COMPLETED"): Promise<void> {
+  await pool.query(
+    `UPDATE "order" SET "eventStartDate" = date_trunc('day', now() at time zone 'UTC') - make_interval(days => $2), "eventEndDate" = date_trunc('day', now() at time zone 'UTC') - make_interval(days => $2)${status ? `, status = '${status}'` : ""} WHERE id = $1`,
+    [orderId, daysAgo],
+  );
+}
+
 /**
  * Chunk 18.4 — an order that is already with the kitchen (Sent to Kitchen), 100 guests today, with one meal that has
  * the named Food Item on it. Inserted directly: the order form and the approval flow have their own specs.

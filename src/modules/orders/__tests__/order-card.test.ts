@@ -81,9 +81,24 @@ describe("summarizeMenuApproval", () => {
   });
 });
 
+const FUTURE = new Date("2026-12-31T00:00:00Z");
+
 describe("getPaymentBreakdown", () => {
+  it("shows Overdue (calculated) once the event is over and money is still owed", () => {
+    const past = new Date("2026-09-25T00:00:00Z"); // NOW is 26 Sep 2026
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID", status: "COMPLETED", eventEndDate: past }, NOW)).toEqual({ label: "Overdue", tone: "danger", summary: "₹5,000 overdue" });
+    expect(getPaymentBreakdown({ total: 5000, advance: 2000, paymentStatus: "PARTIALLY_PAID", status: "APPROVED", eventEndDate: past }, NOW).summary).toBe("₹3,000 overdue");
+  });
+
+  it("never shows Overdue for a paid, cancelled or still-running order", () => {
+    const past = new Date("2026-09-25T00:00:00Z");
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "PAID", status: "COMPLETED", eventEndDate: past }, NOW).label).toBe("Paid");
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID", status: "CANCELLED", eventEndDate: past }, NOW).label).toBe("Unpaid");
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID", status: "APPROVED", eventEndDate: new Date("2026-09-26T00:00:00Z") }, NOW).label).toBe("Unpaid");
+  });
+
   it("shows the paid/pending split for a partially paid order, with Indian digit grouping", () => {
-    expect(getPaymentBreakdown({ total: 121558.14, advance: 60000, paymentStatus: "PARTIALLY_PAID" })).toEqual({
+    expect(getPaymentBreakdown({ total: 121558.14, advance: 60000, paymentStatus: "PARTIALLY_PAID", status: "APPROVED", eventEndDate: FUTURE }, NOW)).toEqual({
       label: "Partially Paid",
       tone: "info",
       summary: "₹60,000 paid · ₹61,558.14 pending",
@@ -91,15 +106,15 @@ describe("getPaymentBreakdown", () => {
   });
 
   it("treats PAID as fully collected even when advance was never entered", () => {
-    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "PAID" })).toEqual({ label: "Paid", tone: "success", summary: "Paid in full" });
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "PAID", status: "APPROVED", eventEndDate: FUTURE }, NOW)).toEqual({ label: "Paid", tone: "success", summary: "Paid in full" });
   });
 
   it("shows the whole total as pending when unpaid", () => {
-    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID" })).toEqual({ label: "Unpaid", tone: "danger", summary: "₹5,000 pending" });
+    expect(getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID", status: "APPROVED", eventEndDate: FUTURE }, NOW)).toEqual({ label: "Unpaid", tone: "danger", summary: "₹5,000 pending" });
   });
 
   it("never reports a negative pending amount if the advance exceeds the total", () => {
-    expect(getPaymentBreakdown({ total: 1000, advance: 1500, paymentStatus: "PARTIALLY_PAID" }).summary).toBe("₹1,000 paid · ₹0 pending");
+    expect(getPaymentBreakdown({ total: 1000, advance: 1500, paymentStatus: "PARTIALLY_PAID", status: "APPROVED", eventEndDate: FUTURE }, NOW).summary).toBe("₹1,000 paid · ₹0 pending");
   });
 });
 
@@ -171,7 +186,7 @@ describe("distinct 'needs attention' tones (AJ, 2026-09-27)", () => {
       inPreparation: KITCHEN_STATUS_TONE.IN_PREPARATION,
       oneDay: getEventCountdown(day("2026-09-27"), day("2026-09-27"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,
       today: getEventCountdown(day("2026-09-26"), day("2026-09-26"), "AWAITING_CUSTOMER_APPROVAL", NOW)!.tone,
-      unpaid: getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID" }).tone,
+      unpaid: getPaymentBreakdown({ total: 5000, advance: 0, paymentStatus: "UNPAID", status: "APPROVED", eventEndDate: FUTURE }, NOW).tone,
     };
     expect(new Set(Object.values(tones)).size).toBe(Object.keys(tones).length);
     expect(Object.values(tones)).not.toContain("warning");

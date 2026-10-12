@@ -46,7 +46,7 @@ export function OrderCard({ order, now, canEdit, canDelete }: OrderCardProps) {
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
 
   const total = Number(order.total);
-  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus });
+  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now);
   // Null only once the event has ended (AJ, 2026-09-26); Today / Tomorrow still show their countdown.
   const countdown = getCardCountdown(order.eventStartDate, order.eventEndDate, order.status, now);
   const menuApproval = summarizeMenuApproval(

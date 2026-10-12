@@ -24,7 +24,7 @@ export function OrderListCells({ order, now }: { order: OrderListItem; now: Date
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
   const total = Number(order.total);
-  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus });
+  const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now);
   const guests = getGuestCount(order);
   const location = getOrderLocation(order);
 
