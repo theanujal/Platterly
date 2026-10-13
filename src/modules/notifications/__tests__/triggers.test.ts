@@ -4,6 +4,8 @@ import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { recordStatusChange } from "@/modules/menu-approvals/status-history";
 import { onNewLead, runDueNotifications } from "@/modules/notifications/triggers";
+import { setSetting } from "@/lib/settings/settings";
+import { setChannelActive, setChannelMessages } from "@/modules/notifications/channel-settings";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -63,6 +65,26 @@ describe("notification triggers (Chunk 16)", () => {
     const all = await prisma.notification.findMany({ where: { organizationId: t.org.id, channel: "WHATSAPP" } });
     expect(all.map((n) => [n.event, n.recipientPhone])).toEqual([["order.new_alert", "+918860756024"]]);
     expect(JSON.stringify(all[0].payload)).toContain("whatsappParams");
+  });
+
+  it("WhatsApp is on by default and stops while the kitchen has it set to Inactive (AJ, 2026-10-13)", async () => {
+    const t = await makeTeam();
+    await prisma.user.update({ where: { id: t.owner.id }, data: { phone: "08860756024" } });
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-05"));
+    expect(await prisma.whatsAppMessage.count({ where: { organizationId: t.org.id } })).toBe(1);
+
+    await setChannelActive(t.org.id, "whatsapp", false);
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-06"));
+    expect(await prisma.whatsAppMessage.count({ where: { organizationId: t.org.id } })).toBe(1);
+
+    await setChannelActive(t.org.id, "whatsapp", true);
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-07"));
+    expect(await prisma.whatsAppMessage.count({ where: { organizationId: t.org.id } })).toBe(2);
+
+    // One message switched off (New Order) sends nothing for new orders while the rest stay on.
+    await setChannelMessages(t.org.id, "whatsapp", { waNewOrder: false });
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-08"));
+    expect(await prisma.whatsAppMessage.count({ where: { organizationId: t.org.id } })).toBe(2);
   });
 
   it("sends no WhatsApp when the owner has no phone", async () => {
@@ -275,5 +297,33 @@ describe("system alerts, trial notices and opt-out (2026-10-04)", () => {
 
     await notifyCustomer({ organizationId: t.org.id, customerId: order.customerId, event: "event.reminder", email: "asha@example.test", payload: { daysBefore: 1 } });
     expect(await rows(t.org.id, "event.reminder")).not.toHaveLength(0);
+  });
+});
+
+describe("scheduled reminders follow the business's time zone (2026-10-13)", () => {
+  it("a New York kitchen gets its 1-day reminder by New York's calendar, an India kitchen by India's", async () => {
+    const ny = await makeTeam();
+    const india = await makeTeam();
+    await setSetting(ny.org.id, "timezone", "America/New_York");
+    await makeOrder(ny.org.id, ny.sales.id, new Date("2026-12-05"));
+    await makeOrder(india.org.id, india.sales.id, new Date("2026-12-05"));
+
+    // 22:00 UTC on the 4th: still the 4th in New York (5 pm), already the 5th in India (3:30 am).
+    await runDueNotifications(new Date("2026-12-04T22:00:00Z"));
+    expect(await rows(ny.org.id, "event.reminder")).not.toHaveLength(0);
+    expect(await rows(india.org.id, "event.reminder")).toHaveLength(0);
+  });
+
+  it("the owner's WhatsApp summary waits for 8 am in the kitchen's own zone", async () => {
+    const t = await makeTeam();
+    await setSetting(t.org.id, "timezone", "America/New_York");
+    await prisma.user.update({ where: { id: t.owner.id }, data: { phone: "8860756024" } });
+    await makeOrder(t.org.id, t.sales.id, new Date("2026-12-08"));
+    await prisma.notification.deleteMany({ where: { organizationId: t.org.id } });
+
+    await runDueNotifications(new Date("2026-12-07T10:00:00Z")); // 5 am in New York, 3:30 pm in India
+    expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "event.tomorrow_summary" } })).toBe(0);
+    await runDueNotifications(new Date("2026-12-07T14:00:00Z")); // 9 am in New York
+    expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "event.tomorrow_summary" } })).toBe(1);
   });
 });

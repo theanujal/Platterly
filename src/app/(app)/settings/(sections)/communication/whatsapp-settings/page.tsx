@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
-import { ChannelPreferences, ChannelServiceStatus, ChannelTemplates } from "../../../_components/channel-settings-ui";
+import { ChannelPreferences, ChannelServiceStatus } from "../../../_components/channel-settings-ui";
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
@@ -15,10 +15,9 @@ export default async function WhatsappSettingsPage() {
   const settings = await getChannelSettings(organizationId, "whatsapp");
 
   return (
-    <SettingsCard title="WhatsApp Settings" description="Configure WhatsApp notifications and message templates.">
+    <SettingsCard title="WhatsApp Settings" description="WhatsApp messages go to your kitchen's own team, never to your customers.">
       <ChannelServiceStatus channel="whatsapp" providerConnected={settings.providerConnected} active={settings.active} />
-      <ChannelPreferences channel="whatsapp" title="Notification Preferences" description="Choose which WhatsApp messages to send to your customers" messages={settings.messages} saveLabel="Save WhatsApp Settings" />
-      <ChannelTemplates channel="whatsapp" templates={settings.templates} />
+      <ChannelPreferences key={String(settings.active)} disabled={!settings.active} channel="whatsapp" title="Notification Preferences" description="Choose which WhatsApp messages to send to your kitchen" messages={settings.messages} saveLabel="Save WhatsApp Settings" />
     </SettingsCard>
   );
 }

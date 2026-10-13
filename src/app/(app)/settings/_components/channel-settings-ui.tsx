@@ -2,27 +2,24 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CalendarDays, CheckCheck, CheckCircle2, CircleAlert, ClipboardCheck, CreditCard, FileText, Info, Link2, Mail, MessageCircle, MessageSquare, Pencil, PowerOff, Receipt, Truck, UtensilsCrossed } from "lucide-react";
+import { Bell, CalendarDays, CheckCheck, CheckCircle2, CircleAlert, ChefHat, ClipboardCheck, CreditCard, FileText, Info, Link2, Mail, MessageCircle, MessageSquare, PowerOff, Receipt, ShoppingCart, Truck, UtensilsCrossed } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import {
   CHANNEL_CONFIG,
-  TEMPLATE_VARIABLES,
   type ChannelSettings,
   type MessageKey,
   type SettingsChannel,
 } from "@/modules/notifications/channel-settings-config";
-import { saveChannelMessagesAction, saveChannelTemplateAction, setChannelActiveAction } from "../(sections)/communication/actions";
+import { saveChannelMessagesAction, setChannelActiveAction } from "../(sections)/communication/actions";
 import { FormFooter, PanelHeader, SettingsPanel } from "./settings-ui";
 import { cn } from "cn";
 
 const MESSAGE_ICON: Record<MessageKey, LucideIcon> = {
   orderConfirmation: MessageSquare,
   orderStatusUpdates: Info,
-  paymentConfirmation: CreditCard,
   eventReminders: CalendarDays,
   systemAlerts: Bell,
   orderReceived: MessageSquare,
@@ -37,6 +34,13 @@ const MESSAGE_ICON: Record<MessageKey, LucideIcon> = {
   paymentLink: Link2,
   paymentReminder: CreditCard,
   eventReminder: CalendarDays,
+  waNewOrder: ShoppingCart,
+  waSentToKitchen: ChefHat,
+  waMenuSent: UtensilsCrossed,
+  waMenuApproved: CheckCircle2,
+  waPaymentReceived: CreditCard,
+  waEventsTomorrow: CalendarDays,
+  waOverdueDigest: Receipt,
 };
 
 const CHANNEL_ICON: Record<SettingsChannel, LucideIcon> = { whatsapp: MessageCircle, email: Mail, push: Bell };
@@ -77,23 +81,21 @@ export function ChannelServiceStatus({ channel, providerConnected, active }: { c
   return (
     <SettingsPanel>
       <PanelHeader icon={Icon} title={`${label} Service Status`} description={`Current status of your ${label} service configuration`} />
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <p className={cn("flex items-center gap-2 text-sm font-semibold", status.tone)}>
-            <status.icon className="size-4.5" />
-            {status.text}
-          </p>
-          {!providerConnected && (
-            <p className="text-sm text-muted-foreground">
-              Your {label} provider is connected by the Platterly team. Once it is, you can activate it here.
-            </p>
-          )}
-        </div>
+      <div className="flex items-center justify-between gap-4">
+        <p className={cn("flex items-center gap-2 text-sm font-semibold", status.tone)}>
+          <status.icon className="size-4.5" />
+          {status.text}
+        </p>
         <div className="flex items-center gap-3">
           <span className="text-sm">{checked ? "Active" : "Inactive"}</span>
           <Switch id={`${channel}-active`} checked={checked} disabled={!providerConnected || pending} onCheckedChange={toggle} aria-label={`Activate ${label}`} />
         </div>
       </div>
+      {!providerConnected && (
+        <p className="text-sm text-muted-foreground">
+          {label} has been switched off for your account by the Platterly team. Contact us to turn it back on.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -174,81 +176,5 @@ export function ChannelPreferences({
         </Button>
       </FormFooter>
     </SettingsPanel>
-  );
-}
-
-const TEMPLATE_TONE = { success: "border-success/25 bg-success/10", info: "border-info/25 bg-info/10" } as const;
-const TEMPLATE_TITLE_TONE = { success: "text-success", info: "text-info" } as const;
-
-/** The message templates, each with an inline Edit. Variables are filled in when a message is sent. */
-export function ChannelTemplates({ channel, templates }: { channel: SettingsChannel; templates: ChannelSettings["templates"] }) {
-  const label = CHANNEL_CONFIG[channel].label;
-  return (
-    <SettingsPanel>
-      <PanelHeader icon={MessageSquare} title="Message Templates" description={`Customize the ${label} messages sent to your customers and team.`} />
-      <div className="flex flex-col gap-3">
-        {CHANNEL_CONFIG[channel].templates.map((template) => (
-          <TemplateCard key={template.key} channel={channel} templateKey={template.key} title={template.title} tone={template.tone} body={templates[template.key]} />
-        ))}
-      </div>
-      <p className="text-xs text-muted-foreground">Variables you can use: {TEMPLATE_VARIABLES.join(", ")}</p>
-    </SettingsPanel>
-  );
-}
-
-function TemplateCard({ channel, templateKey, title, tone, body }: { channel: SettingsChannel; templateKey: string; title: string; tone: "success" | "info"; body: string }) {
-  const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(body);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-
-  function save() {
-    setError(null);
-    startTransition(async () => {
-      const result = await saveChannelTemplateAction(channel, templateKey, draft);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setEditing(false);
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className={cn("flex flex-col gap-3 rounded-lg border p-4", TEMPLATE_TONE[tone])}>
-      <div className="flex items-center justify-between gap-3">
-        <h3 className={cn("text-sm font-semibold", TEMPLATE_TITLE_TONE[tone])}>{title}</h3>
-        {!editing && (
-          <Button
-            variant="outline"
-            size="md"
-            onClick={() => {
-              setDraft(body);
-              setEditing(true);
-            }}
-          >
-            <Pencil data-icon="inline-start" />
-            Edit
-          </Button>
-        )}
-      </div>
-      {editing ? (
-        <>
-          <Textarea aria-label={`${title} text`} className="min-h-32 bg-background" value={draft} onChange={(e) => setDraft(e.target.value)} />
-          <FormFooter error={error}>
-            <Button onClick={save} disabled={pending}>
-              {pending ? "Saving…" : "Save Template"}
-            </Button>
-            <Button variant="outline" onClick={() => setEditing(false)}>
-              Cancel
-            </Button>
-          </FormFooter>
-        </>
-      ) : (
-        <p className="text-sm whitespace-pre-line">{body}</p>
-      )}
-    </div>
   );
 }

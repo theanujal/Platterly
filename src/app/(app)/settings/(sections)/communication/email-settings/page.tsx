@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
-import { ChannelPreferences, ChannelServiceStatus, ChannelTemplates } from "../../../_components/channel-settings-ui";
+import { ChannelPreferences, ChannelServiceStatus } from "../../../_components/channel-settings-ui";
 import { SettingsCard } from "../../../_components/settings-ui";
 
 export const metadata: Metadata = {
@@ -15,10 +15,9 @@ export default async function EmailSettingsPage() {
   const settings = await getChannelSettings(organizationId, "email");
 
   return (
-    <SettingsCard title="Email Settings" description="Configure email notifications and message templates.">
+    <SettingsCard title="Email Settings" description="Choose which emails go out to your customers.">
       <ChannelServiceStatus channel="email" providerConnected={settings.providerConnected} active={settings.active} />
       <ChannelPreferences key={String(settings.active)} disabled={!settings.active} channel="email" title="Notification Preferences" description="Choose which email notifications to send to your customers" messages={settings.messages} saveLabel="Save Email Settings" />
-      <ChannelTemplates channel="email" templates={settings.templates} />
     </SettingsCard>
   );
 }

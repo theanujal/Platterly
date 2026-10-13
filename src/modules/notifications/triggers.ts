@@ -9,6 +9,8 @@ import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { canSendPromotions, isPromotionalEvent } from "./opt-out";
 import { opsBillingOn } from "@/modules/ops-link/config";
 import { normalizePhone } from "@/lib/phone";
+import { getTenantTimeZone } from "@/lib/settings/timezone";
+import { todayStartInZone } from "@/lib/time/timezone";
 import { ABANDONED_AFTER_MS } from "@/modules/menu-approvals/storefront-draft-constants";
 
 /**
@@ -24,7 +26,8 @@ import { ABANDONED_AFTER_MS } from "@/modules/menu-approvals/storefront-draft-co
  * filter on `notifyTeam` / `teamMembers` in case a message ever needs to be narrowed again.
  */
 
-const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+// Event and task dates are stored as UTC midnight of their calendar day, so they are read back in UTC for every business.
+const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const formatDate = (d: Date | null | undefined) => (d ? DATE_FORMAT.format(d) : undefined);
 
 async function safely(label: string, run: () => Promise<void>) {
@@ -390,12 +393,32 @@ export function onNewLead(organizationId: string, customerId: string, eventDate?
 // --- scheduled: reminders and payment dues ---------------------------------------------------------------
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+/** Per-run cache of each business's time zone, so a run reads each setting once. */
+function zoneLookup() {
+  const zones = new Map<string, string>();
+  return async (organizationId: string) => {
+    let zone = zones.get(organizationId);
+    if (!zone) {
+      zone = await getTenantTimeZone(organizationId);
+      zones.set(organizationId, zone);
+    }
+    return zone;
+  };
+}
 
-/** Midnight (UTC) of the India calendar day `offsetDays` from `now`, matching how event dates are stored. */
-function istDay(now: Date, offsetDays: number): Date {
-  const shifted = new Date(now.getTime() + IST_OFFSET_MS);
-  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) + offsetDays * DAY_MS);
+/** Midnight (UTC) of the calendar day `offsetDays` from `now` in `zone`, matching how event dates are stored. */
+function dayIn(zone: string, now: Date, offsetDays: number): Date {
+  return new Date(todayStartInZone(now, zone).getTime() + offsetDays * DAY_MS);
+}
+
+/** Dates stored as UTC midnight that can be "day N" in some zone: every zone is within UTC-12..+14, so a day either side covers them all. */
+const zoneWindow = (now: Date, offset: number) => ({ gte: new Date(todayStartInZone(now, "UTC").getTime() + (offset - 1) * DAY_MS), lt: new Date(todayStartInZone(now, "UTC").getTime() + (offset + 2) * DAY_MS) });
+
+/** True when `date` is day `offset` from today in the business's own zone. */
+async function isDay(zoneOf: (id: string) => Promise<string>, organizationId: string, date: Date | null, now: Date, offset: number): Promise<boolean> {
+  if (!date) return false;
+  const start = dayIn(await zoneOf(organizationId), now, offset).getTime();
+  return date.getTime() >= start && date.getTime() < start + DAY_MS;
 }
 
 async function alreadySent(organizationId: string, event: string, dedupeKey: string): Promise<boolean> {
@@ -426,19 +449,32 @@ export interface DueRunResult {
  *   payment due:    3 days before the event while a balance is open
  *   payment overdue: the day after the event while a balance is open
  */
-/** "3 events to cater tomorrow" every day, and one overdue-payments digest on Mondays, per kitchen (owner's phone). */
-async function sendKitchenWhatsAppDigests(now: Date, isMonday: boolean): Promise<number> {
+/**
+ * "3 events to cater tomorrow" every day, and one overdue-payments digest on Mondays, per kitchen (owner's phone). Each
+ * kitchen's day, 8 am and Monday follow its own time zone.
+ */
+async function sendKitchenWhatsAppDigests(now: Date, zoneOf: (id: string) => Promise<string>): Promise<number> {
   let sent = 0;
-  const today = istDay(now, 0);
-  const dayKey = today.toISOString().slice(0, 10);
+  const localHour = async (organizationId: string) =>
+    Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: await zoneOf(organizationId) }).format(now));
+  const isLocalMonday = async (organizationId: string) => dayIn(await zoneOf(organizationId), now, 0).getUTCDay() === 1;
+  const ready = new Map<string, boolean>();
+  const isReady = async (organizationId: string) => {
+    if (!ready.has(organizationId)) ready.set(organizationId, (await localHour(organizationId)) >= 8);
+    return ready.get(organizationId)!;
+  };
 
   const tomorrow = await prisma.order.findMany({
-    where: { status: { in: [...OPEN_STATUSES] }, eventStartDate: { gte: istDay(now, 1), lt: istDay(now, 2) } },
-    select: { organizationId: true, customer: { select: { name: true } }, eventType: { select: { name: true } } },
+    where: { status: { in: [...OPEN_STATUSES] }, eventStartDate: zoneWindow(now, 1) },
+    select: { organizationId: true, eventStartDate: true, customer: { select: { name: true } }, eventType: { select: { name: true } } },
   });
   const byKitchen = new Map<string, string[]>();
-  for (const o of tomorrow) byKitchen.set(o.organizationId, [...(byKitchen.get(o.organizationId) ?? []), `${o.customer.name}${o.eventType ? ` (${o.eventType.name})` : ""}`]);
+  for (const o of tomorrow) {
+    if (!(await isReady(o.organizationId)) || !(await isDay(zoneOf, o.organizationId, o.eventStartDate, now, 1))) continue;
+    byKitchen.set(o.organizationId, [...(byKitchen.get(o.organizationId) ?? []), `${o.customer.name}${o.eventType ? ` (${o.eventType.name})` : ""}`]);
+  }
   for (const [organizationId, events] of byKitchen) {
+    const dayKey = dayIn(await zoneOf(organizationId), now, 0).toISOString().slice(0, 10);
     const key = `${organizationId}:tomorrow:${dayKey}`;
     if (await alreadySent(organizationId, "event.tomorrow_summary", key)) continue;
     await safely("tomorrow summary", async () => {
@@ -448,24 +484,26 @@ async function sendKitchenWhatsAppDigests(now: Date, isMonday: boolean): Promise
     });
   }
 
-  if (isMonday) {
-    const past = await prisma.order.findMany({
-      where: { status: { in: [...BILLABLE_STATUSES] }, eventStartDate: { gte: istDay(now, -365), lt: today } },
-      select: { id: true, organizationId: true },
+  // Past events up to a year back; each kitchen's own "today" decides which ones are over.
+  const past = await prisma.order.findMany({
+    where: { status: { in: [...BILLABLE_STATUSES] }, eventStartDate: { gte: zoneWindow(now, -365).gte, lt: zoneWindow(now, 0).lt } },
+    select: { id: true, organizationId: true, eventStartDate: true },
+  });
+  const totals = new Map<string, { count: number; balance: number }>();
+  for (const { id, organizationId, eventStartDate } of past) {
+    if (!(await isReady(organizationId)) || !(await isLocalMonday(organizationId))) continue;
+    if (!eventStartDate || eventStartDate >= dayIn(await zoneOf(organizationId), now, 0)) continue;
+    const { balance } = await orderBalance(organizationId, id);
+    if (balance > 0) totals.set(organizationId, { count: (totals.get(organizationId)?.count ?? 0) + 1, balance: (totals.get(organizationId)?.balance ?? 0) + balance });
+  }
+  for (const [organizationId, { count, balance }] of totals) {
+    const dayKey = dayIn(await zoneOf(organizationId), now, 0).toISOString().slice(0, 10);
+    const key = `${organizationId}:overdue:${dayKey}`;
+    if (await alreadySent(organizationId, "payment.overdue_digest", key)) continue;
+    await safely("overdue digest", async () => {
+      await notifyKitchenWhatsApp(organizationId, "payment.overdue_digest", [count, formatInr(balance)], key);
+      sent += 1;
     });
-    const totals = new Map<string, { count: number; balance: number }>();
-    for (const { id, organizationId } of past) {
-      const { balance } = await orderBalance(organizationId, id);
-      if (balance > 0) totals.set(organizationId, { count: (totals.get(organizationId)?.count ?? 0) + 1, balance: (totals.get(organizationId)?.balance ?? 0) + balance });
-    }
-    for (const [organizationId, { count, balance }] of totals) {
-      const key = `${organizationId}:overdue:${dayKey}`;
-      if (await alreadySent(organizationId, "payment.overdue_digest", key)) continue;
-      await safely("overdue digest", async () => {
-        await notifyKitchenWhatsApp(organizationId, "payment.overdue_digest", [count, formatInr(balance)], key);
-        sent += 1;
-      });
-    }
   }
   return sent;
 }
@@ -476,6 +514,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   // With OPS_BILLING on, ops owns the subscription and sends these emails itself (docs/ops-contract.md 9), so the local
   // trial and paid-plan notices below are skipped: the rows they read are no longer the truth.
   const opsSendsPlanNotices = opsBillingOn();
+  const zoneOf = zoneLookup();
 
   // Trial ending: 3 days and 1 day before, and once it has ended.
   const trials = opsSendsPlanNotices ? [] : await prisma.subscription.findMany({
@@ -484,7 +523,8 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   });
   for (const trial of trials) {
     const ends = trial.trialEndsAt!;
-    const daysLeft = Math.round((istDay(ends, 0).getTime() - istDay(now, 0).getTime()) / DAY_MS);
+    const zone = await zoneOf(trial.organizationId);
+    const daysLeft = Math.round((dayIn(zone, ends, 0).getTime() - dayIn(zone, now, 0).getTime()) / DAY_MS);
     const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -7 ? "ended" : null;
     if (!stage) continue;
     const key = `${trial.id}:trial:${stage}`;
@@ -508,7 +548,8 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   });
   for (const plan of paid) {
     const ends = plan.currentPeriodEnd!;
-    const daysLeft = Math.round((istDay(ends, 0).getTime() - istDay(now, 0).getTime()) / DAY_MS);
+    const zone = await zoneOf(plan.organizationId);
+    const daysLeft = Math.round((dayIn(zone, ends, 0).getTime() - dayIn(zone, now, 0).getTime()) / DAY_MS);
     const stage = daysLeft === 3 ? "3" : daysLeft === 1 ? "1" : daysLeft < 0 && daysLeft >= -5 ? "ended" : daysLeft === -6 ? "last" : daysLeft <= -7 && daysLeft >= -14 ? "paused" : null;
     if (!stage) continue;
     const key = `${plan.id}:${ends.getTime()}:plan:${stage}`;
@@ -527,11 +568,16 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
     });
   }
 
-  const eventsOn = (offset: number, statuses: readonly OrderStatus[] = OPEN_STATUSES) =>
-    prisma.order.findMany({
-      where: { status: { in: [...statuses] }, eventStartDate: { gte: istDay(now, offset), lt: istDay(now, offset + 1) } },
-      select: { id: true, organizationId: true },
+  // Events that start on day `offset` by their own business's calendar (the query is wide enough for every zone).
+  const eventsOn = async (offset: number, statuses: readonly OrderStatus[] = OPEN_STATUSES) => {
+    const rows = await prisma.order.findMany({
+      where: { status: { in: [...statuses] }, eventStartDate: zoneWindow(now, offset) },
+      select: { id: true, organizationId: true, eventStartDate: true },
     });
+    const kept = [];
+    for (const row of rows) if (await isDay(zoneOf, row.organizationId, row.eventStartDate, now, offset)) kept.push(row);
+    return kept;
+  };
 
   for (const daysBefore of [2, 1]) {
     for (const { id, organizationId } of await eventsOn(daysBefore)) {
@@ -555,11 +601,8 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
     }
   }
 
-  // WhatsApp to each kitchen's owner, from 8 am India time: tomorrow's events (daily) and overdue payments (Mondays).
-  const istNow = new Date(now.getTime() + IST_OFFSET_MS);
-  if (istNow.getUTCHours() >= 8) {
-    result.kitchenWhatsApp += await sendKitchenWhatsAppDigests(now, istNow.getUTCDay() === 1);
-  }
+  // WhatsApp to each kitchen's owner, from 8 am in that kitchen's time zone: tomorrow's events (daily) and overdue payments (Mondays).
+  result.kitchenWhatsApp += await sendKitchenWhatsAppDigests(now, zoneOf);
 
   for (const { id, organizationId } of await eventsOn(3, BILLABLE_STATUSES)) {
     const key = `${id}:due`;
@@ -573,10 +616,12 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
   }
 
   // Overdue = the event's last day was yesterday (AJ, 2026-10-12), the same rule as the Overdue badge (isPaymentOverdue).
-  const endedYesterday = await prisma.order.findMany({
-    where: { status: { in: [...BILLABLE_STATUSES] }, eventEndDate: { gte: istDay(now, -1), lt: istDay(now, 0) } },
-    select: { id: true, organizationId: true },
+  const endedYesterdayRows = await prisma.order.findMany({
+    where: { status: { in: [...BILLABLE_STATUSES] }, eventEndDate: zoneWindow(now, -1) },
+    select: { id: true, organizationId: true, eventEndDate: true },
   });
+  const endedYesterday = [];
+  for (const row of endedYesterdayRows) if (await isDay(zoneOf, row.organizationId, row.eventEndDate, now, -1)) endedYesterday.push(row);
   for (const { id, organizationId } of endedYesterday) {
     const key = `${id}:overdue`;
     const teamKey = `${id}:overdue-team`;
@@ -607,11 +652,15 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
 
   // Event tasks: once on the day they are due and once the day after, while still open. The person it was given to
   // is told; a task with nobody, or given to floor staff (no login), goes to the whole team.
-  const tasksOn = (offset: number) =>
-    prisma.eventTask.findMany({
-      where: { done: false, dueDate: { gte: istDay(now, offset), lt: istDay(now, offset + 1) }, event: { OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] } },
-      select: { id: true, organizationId: true, eventId: true, title: true, assignment: { select: { memberId: true } } },
+  const tasksOn = async (offset: number) => {
+    const rows = await prisma.eventTask.findMany({
+      where: { done: false, dueDate: zoneWindow(now, offset), event: { OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] } },
+      select: { id: true, organizationId: true, eventId: true, title: true, dueDate: true, assignment: { select: { memberId: true } } },
     });
+    const kept = [];
+    for (const row of rows) if (await isDay(zoneOf, row.organizationId, row.dueDate, now, offset)) kept.push(row);
+    return kept;
+  };
   for (const [offset, kind] of [[0, "due"], [-1, "overdue"]] as const) {
     for (const task of await tasksOn(offset)) {
       const key = `${task.id}:${kind}`;

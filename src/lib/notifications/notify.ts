@@ -3,11 +3,10 @@ import { prisma } from "@/lib/db";
 import type { NotificationChannel } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
 import { getChannelSettings } from "@/modules/notifications/channel-settings";
-import { emailMessageFor } from "@/modules/notifications/channel-settings-config";
+import { emailMessageFor, whatsappMessageFor } from "@/modules/notifications/channel-settings-config";
 import { sendPushToUser } from "@/modules/notifications/push";
 import { emailForEvent } from "./email/templates";
 import { sendEmail } from "./email/zeptomail";
-import { getSetting } from "@/lib/settings/settings";
 import { sendWacrmMessage, wacrmConfig } from "./whatsapp/wacrm";
 import { WHATSAPP_TEMPLATES, cleanParams, renderTemplate } from "./whatsapp/templates";
 
@@ -28,9 +27,13 @@ export interface NotifyParams {
 
 /** Invitations, security codes and the team's own alerts always go out; a kitchen -> customer email needs the channel active and its switch on. */
 async function channelAllowed(organizationId: string, channel: "email" | "whatsapp", event: string, payload?: unknown): Promise<boolean> {
-  // WhatsApp goes only to the kitchen's own team, for a fixed short list of events (AJ, 2026-10-09), so it has no
-  // per-message switches: it is on unless the Platterly team disconnected this kitchen.
-  if (channel === "whatsapp") return (await getSetting<{ connected?: boolean }>(organizationId, "notifications.whatsapp.provider"))?.connected !== false;
+  // WhatsApp goes only to the kitchen's own team, for a fixed short list of events (AJ, 2026-10-09). It is on by default and
+  // stops when the kitchen sets it Inactive, switches that message off, or the Platterly team disconnects it.
+  if (channel === "whatsapp") {
+    const message = whatsappMessageFor(event);
+    const settings = await getChannelSettings(organizationId, "whatsapp");
+    return settings.providerConnected && settings.active && (!message || settings.messages[message] === true);
+  }
   const message = emailMessageFor(event, payload);
   if (!message) return true;
   const settings = await getChannelSettings(organizationId, channel);

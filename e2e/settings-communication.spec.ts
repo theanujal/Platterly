@@ -3,9 +3,10 @@ import { cleanupOnboardingTestUser, connectNotificationProvider } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
- * Settings -> Communication (AJ's reference layouts, 2026-09-30): WhatsApp and
- * Email each get a service status card, per-message switches and editable
- * templates; Push gets the switches. The provider is connected by the Platterly
+ * Settings -> Communication (AJ's reference layouts, 2026-09-30): WhatsApp gets
+ * a service status card (WhatsApp goes only to the kitchen's own team, so no
+ * per-message switches), Email a status card and per-message switches, Push
+ * the switches. Message templates were removed (AJ, 2026-10-13). The provider is connected by the Platterly
  * team, so a caterer can only activate/deactivate it once that has happened.
  * Also the Platterly Link page and the Subscription invoice download.
  */
@@ -17,43 +18,46 @@ test.afterEach(async () => {
   if (email) await cleanupOnboardingTestUser(email);
 });
 
-test("WhatsApp and Email settings: status, per-message switches, templates, activate once connected", async ({ page }) => {
+test("WhatsApp and Email settings: status, email switches, activate once connected", async ({ page }) => {
   test.setTimeout(180_000);
   const email = `e2e-comm-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   await signUpCaterer(page, email, { firstName: "Comm", lastName: "Tester", phone: "9800000077" });
 
-  // --- WhatsApp: not connected yet, so the caterer can't activate it ---
+  // --- WhatsApp: on for every kitchen by default, Active / Inactive like Email ---
   await page.goto("/settings/communication/whatsapp-settings");
   await expect(page.getByRole("heading", { name: "WhatsApp Settings" })).toBeVisible();
-  await expect(page.getByText("WhatsApp Service Not Connected")).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Activate WhatsApp" })).toBeDisabled();
+  await expect(page.getByText("WhatsApp Service Active")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Activate WhatsApp" })).toBeEnabled();
+  await expect(page.getByRole("switch", { name: "Activate WhatsApp" })).toBeChecked();
   // The nav's active item has the same fill and ring as Menu Catalog's.
   await expect(page.getByRole("link", { name: "WhatsApp Settings" })).toHaveClass(/bg-accent.*ring-primary\/40/);
 
-  // Per-message switches save; Coming Soon ones are disabled
-  await expect(page.getByRole("switch", { name: "Order Status Updates" })).toBeDisabled();
-  await page.getByRole("switch", { name: "Payment Confirmation" }).click();
+  // Notification Preferences list the messages sent to the KITCHEN (never customers), all on by default, no templates
+  await expect(page.getByText("Choose which WhatsApp messages to send to your kitchen")).toBeVisible();
+  await expect(page.getByText("Choose which WhatsApp messages to send to your customers")).toHaveCount(0);
+  for (const name of ["New Order", "Order Sent to Kitchen", "Menu Sent for Approval", "Menu Approved", "Payment Received", "Events Tomorrow", "Overdue Payments"]) {
+    await expect(page.getByRole("switch", { name, exact: true })).toBeChecked();
+  }
+  await expect(page.getByText("Message Templates")).toHaveCount(0);
+  await page.getByRole("switch", { name: "Payment Received", exact: true }).click();
   await page.getByRole("button", { name: "Save WhatsApp Settings" }).click();
   await expect(page.getByText("Saved.")).toBeVisible({ timeout: 20_000 });
   await page.reload();
-  await expect(page.getByRole("switch", { name: "Payment Confirmation" })).toBeChecked();
-  await expect(page.getByRole("switch", { name: "Order Confirmation" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Payment Received", exact: true })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "New Order", exact: true })).toBeChecked();
 
-  // Templates: edit and save
-  await page.getByRole("button", { name: "Edit" }).first().click();
-  await page.getByLabel("Order Confirmation (Customer) text").fill("Hi {{customer_name}}, order {{order_number}} is confirmed.");
-  await page.getByRole("button", { name: "Save Template" }).click();
-  await expect(page.getByText("Hi {{customer_name}}, order {{order_number}} is confirmed.")).toBeVisible();
-
-  // The platform connects the provider; then the caterer can activate and deactivate it
-  await connectNotificationProvider(email, "whatsapp");
-  await page.reload();
+  // The kitchen can switch it off and on
+  await page.getByRole("switch", { name: "Activate WhatsApp" }).click();
   await expect(page.getByText("WhatsApp Service Deactivated")).toBeVisible();
   await page.getByRole("switch", { name: "Activate WhatsApp" }).click();
   await expect(page.getByText("WhatsApp Service Active")).toBeVisible();
-  await page.getByRole("switch", { name: "Activate WhatsApp" }).click();
-  await expect(page.getByText("WhatsApp Service Deactivated")).toBeVisible();
+
+  // If the Platterly team disconnects it, the kitchen can't turn it on
+  await connectNotificationProvider(email, "whatsapp", false);
+  await page.reload();
+  await expect(page.getByText("WhatsApp Service Not Connected")).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Activate WhatsApp" })).toBeDisabled();
 
   // --- Email: the same layout ---
   await page.goto("/settings/communication/email-settings");
@@ -65,7 +69,7 @@ test("WhatsApp and Email settings: status, per-message switches, templates, acti
     await expect(page.getByRole("switch", { name, exact: true })).toBeChecked();
   }
   await expect(page.getByRole("switch", { name: "System Alerts" })).toHaveCount(0);
-  await expect(page.getByText("Order Confirmation (Customer)")).toBeVisible();
+  await expect(page.getByText("Message Templates")).toHaveCount(0);
   // Switch one off, save, and it stays off after a reload while the rest stay on.
   await page.getByRole("switch", { name: "Food Dispatched", exact: true }).click();
   await page.getByRole("button", { name: "Save Email Settings" }).click();

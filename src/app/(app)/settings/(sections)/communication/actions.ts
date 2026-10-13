@@ -5,10 +5,8 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import {
   ChannelProviderNotConnectedError,
-  InvalidChannelTemplateError,
   setChannelActive,
   setChannelMessages,
-  setChannelTemplate,
 } from "@/modules/notifications/channel-settings";
 import type { MessageKey, SettingsChannel } from "@/modules/notifications/channel-settings-config";
 
@@ -28,7 +26,7 @@ async function guarded(channel: SettingsChannel, run: (organizationId: string) =
   try {
     await run(organizationId);
   } catch (error) {
-    if (error instanceof ChannelProviderNotConnectedError || error instanceof InvalidChannelTemplateError) return { ok: false, error: error.message };
+    if (error instanceof ChannelProviderNotConnectedError) return { ok: false, error: error.message };
     throw error;
   }
   revalidatePath(PAGE[channel]);
@@ -42,10 +40,6 @@ export async function setChannelActiveAction(channel: SettingsChannel, active: b
 
 export async function saveChannelMessagesAction(channel: SettingsChannel, messages: Partial<Record<MessageKey, boolean>>): Promise<ActionResult> {
   return guarded(channel, (organizationId) => setChannelMessages(organizationId, channel, messages));
-}
-
-export async function saveChannelTemplateAction(channel: SettingsChannel, templateKey: string, body: string): Promise<ActionResult> {
-  return guarded(channel, (organizationId) => setChannelTemplate(organizationId, channel, templateKey, body));
 }
 
 export async function getInvoiceTermsAction(): Promise<string> {

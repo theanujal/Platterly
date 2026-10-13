@@ -2,12 +2,10 @@ import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   ChannelProviderNotConnectedError,
-  InvalidChannelTemplateError,
   getChannelSettings,
   setChannelActive,
   setChannelMessages,
   setChannelProviderConnected,
-  setChannelTemplate,
 } from "@/modules/notifications/channel-settings";
 import { CHANNEL_CONFIG } from "@/modules/notifications/channel-settings-config";
 
@@ -27,25 +25,27 @@ async function makeOrg() {
 }
 
 describe("channel settings (WhatsApp / Email / Push)", () => {
-  it("starts not connected, inactive, with every message off and the default templates", async () => {
+  it("starts connected and active, with every kitchen WhatsApp message on", async () => {
     const org = await makeOrg();
     const settings = await getChannelSettings(org.id, "whatsapp");
-    expect(settings.providerConnected).toBe(false);
-    expect(settings.active).toBe(false);
-    expect(Object.values(settings.messages).every((on) => on === false)).toBe(true);
-    expect(settings.templates.orderConfirmationCustomer).toBe(CHANNEL_CONFIG.whatsapp.templates[0].defaultBody);
+    expect(settings.providerConnected).toBe(true);
+    expect(settings.active).toBe(true);
+    expect(Object.keys(settings.messages)).toEqual(CHANNEL_CONFIG.whatsapp.messages.map((m) => m.key));
+    expect(Object.values(settings.messages).every((on) => on === true)).toBe(true);
   });
 
-  it("WhatsApp can't be activated until the platform connects it, and disconnecting deactivates it", async () => {
+  it("WhatsApp is on for every kitchen by default; the kitchen can switch it off and on, and the platform can disconnect it", async () => {
     const org = await makeOrg();
-    await expect(setChannelActive(org.id, "whatsapp", true)).rejects.toThrow(ChannelProviderNotConnectedError);
-
-    await setChannelProviderConnected(org.id, "whatsapp", true);
+    await setChannelActive(org.id, "whatsapp", false);
+    expect((await getChannelSettings(org.id, "whatsapp")).active).toBe(false);
     await setChannelActive(org.id, "whatsapp", true);
     expect((await getChannelSettings(org.id, "whatsapp")).active).toBe(true);
 
     await setChannelProviderConnected(org.id, "whatsapp", false);
-    expect((await getChannelSettings(org.id, "whatsapp")).active).toBe(false);
+    const off = await getChannelSettings(org.id, "whatsapp");
+    expect(off.providerConnected).toBe(false);
+    expect(off.active).toBe(false);
+    await expect(setChannelActive(org.id, "whatsapp", true)).rejects.toThrow(ChannelProviderNotConnectedError);
   });
 
   it("Email is connected for every kitchen by default; the platform can still switch it off", async () => {
@@ -61,6 +61,18 @@ describe("channel settings (WhatsApp / Email / Push)", () => {
     await expect(setChannelActive(org.id, "email", true)).rejects.toThrow(ChannelProviderNotConnectedError);
   });
 
+  it("a WhatsApp message switched off stays off, and the master switch turns all of them off or on", async () => {
+    const org = await makeOrg();
+    await setChannelMessages(org.id, "whatsapp", { waPaymentReceived: false });
+    const saved = await getChannelSettings(org.id, "whatsapp");
+    expect(saved.messages.waPaymentReceived).toBe(false);
+    expect(saved.messages.waNewOrder).toBe(true);
+    await setChannelActive(org.id, "whatsapp", false);
+    expect(Object.values((await getChannelSettings(org.id, "whatsapp")).messages).every((on) => on === false)).toBe(true);
+    await setChannelActive(org.id, "whatsapp", true);
+    expect(Object.values((await getChannelSettings(org.id, "whatsapp")).messages).every((on) => on === true)).toBe(true);
+  });
+
   it("push has no provider to connect, so it is always available", async () => {
     const org = await makeOrg();
     expect((await getChannelSettings(org.id, "push")).providerConnected).toBe(true);
@@ -69,12 +81,12 @@ describe("channel settings (WhatsApp / Email / Push)", () => {
   it("saves message preferences, ignoring coming-soon messages, per channel and per tenant", async () => {
     const org = await makeOrg();
     const other = await makeOrg();
-    await setChannelMessages(org.id, "whatsapp", { orderConfirmation: true, paymentConfirmation: true, orderStatusUpdates: true });
-    const saved = await getChannelSettings(org.id, "whatsapp");
-    expect(saved.messages).toMatchObject({ orderConfirmation: true, paymentConfirmation: true, orderStatusUpdates: false });
+    await setChannelMessages(org.id, "push", { orderConfirmation: true, eventReminders: true, orderStatusUpdates: true });
+    const saved = await getChannelSettings(org.id, "push");
+    expect(saved.messages).toMatchObject({ orderConfirmation: true, eventReminders: true, orderStatusUpdates: false });
     // Email is the other way round: every kitchen -> customer message starts on.
     expect((await getChannelSettings(org.id, "email")).messages.orderReceived).toBe(true);
-    expect((await getChannelSettings(other.id, "whatsapp")).messages.orderConfirmation).toBe(false);
+    expect((await getChannelSettings(other.id, "push")).messages.orderConfirmation).toBe(false);
   });
 
   it("email starts active with every customer message on, and a switched-off message stays off", async () => {
@@ -104,11 +116,4 @@ describe("channel settings (WhatsApp / Email / Push)", () => {
     expect((await getChannelSettings(org.id, "email")).messages.quotation).toBe(false);
   });
 
-  it("saves an edited template, falls back to the default if blank, and rejects unknown or empty ones", async () => {
-    const org = await makeOrg();
-    await setChannelTemplate(org.id, "whatsapp", "orderConfirmationCustomer", "Hi {{customer_name}}, thanks!");
-    expect((await getChannelSettings(org.id, "whatsapp")).templates.orderConfirmationCustomer).toBe("Hi {{customer_name}}, thanks!");
-    await expect(setChannelTemplate(org.id, "whatsapp", "nope", "x")).rejects.toThrow(InvalidChannelTemplateError);
-    await expect(setChannelTemplate(org.id, "whatsapp", "orderConfirmationCustomer", "   ")).rejects.toThrow(InvalidChannelTemplateError);
-  });
 });

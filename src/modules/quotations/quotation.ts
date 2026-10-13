@@ -387,7 +387,7 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
       unsubscribeUrl: unsubscribeUrl(quotation.customerId),
       kitchenName: org.name,
       customerName: quotation.customer.name,
-      eventDate: quotation.eventStartDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" }),
+      eventDate: quotation.eventStartDate?.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
       amount: Number(after.total),
       url,
     },
