@@ -86,9 +86,9 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
 
   // Every Contact & Address field is now mandatory (AJ, 2026-09-16) —
-  // Continue stays disabled until all five are filled. Mobile number was
-  // removed from this step (AJ, 2026-09-19) — it duplicated the phone
-  // already collected on the signup form.
+  // Continue stays disabled until all five are filled. The Mobile number
+  // is back on this step (AJ, 2026-10-13), pre-filled with the sign-up phone.
+  await expect(page.getByLabel("Mobile number")).toHaveValue("+91 98000 00099");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await page.getByLabel("Street address").fill("221B Baker Street");
   await page.getByLabel("City").fill("Mumbai");
@@ -99,6 +99,17 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 3 of 5")).toBeVisible();
+
+  // The GST rate and type only appear once a GST number is typed; order numbering is always there.
+  await expect(page.getByLabel("GST rate (%)")).toHaveCount(0);
+  await page.getByLabel("GST number (optional)").fill("29ABCDE1234F1Z5");
+  await expect(page.getByLabel("GST rate (%)")).toHaveValue("5");
+  await page.getByLabel("GST rate (%)").fill("12");
+  await page.getByLabel("GST type").click();
+  await page.getByRole("option", { name: "IGST" }).click();
+  await page.getByLabel("Prefix").fill("kit");
+  await page.getByLabel("Starting number").fill("101");
+  await expect(page.getByText("KIT-0101")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 4 of 5")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -166,6 +177,13 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
   await expect(page.getByText(claimedSlug)).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).toBeVisible();
+
+  // What the wizard collected landed in the same places Settings reads from.
+  await page.goto("/settings/account/business-profile");
+  await expect(page.getByText("+919800000099").first()).toBeVisible();
+  await expect(page.getByText("KIT-0101").first()).toBeVisible();
+  await page.goto("/settings/integration/payments");
+  await expect(page.getByLabel("GST rate (%)")).toHaveValue("12");
 });
 
 test("sign-in with the wrong password shows an inline error, not a crash", async ({ page }) => {

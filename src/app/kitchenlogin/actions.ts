@@ -5,6 +5,9 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { updateTenant, markOnboardingComplete } from "@/modules/tenants/tenant";
 import { getStorageDriver } from "@/lib/storage/storage";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { userMessage } from "@/lib/errors";
+import { saveGstSettings, DEFAULT_GST_RATE } from "@/modules/payments/payment-settings";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -46,6 +49,21 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     }
   }
 
+  // The business always has a phone (the wizard pre-fills the sign-up number).
+  const mobileNumber = stringField(formData, "mobileNumber");
+  if (!mobileNumber || !isValidPhone(normalizePhone(mobileNumber))) {
+    return { ok: false, error: "Enter a valid mobile number." };
+  }
+
+  const orderNumberNextValue = Number.parseInt(stringField(formData, "orderNumberNextValue") ?? "1", 10);
+  if (!Number.isInteger(orderNumberNextValue) || orderNumberNextValue < 1) {
+    return { ok: false, error: "Starting number must be at least 1." };
+  }
+  const orderNumberPadding = Number.parseInt(stringField(formData, "orderNumberPadding") ?? "4", 10);
+  if (!Number.isInteger(orderNumberPadding) || orderNumberPadding < 1 || orderNumberPadding > 10) {
+    return { ok: false, error: "Digits must be between 1 and 10." };
+  }
+
   let logoUrl: string | undefined;
   const logo = formData.get("logo");
   if (logo instanceof File && logo.size > 0) {
@@ -78,6 +96,10 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
       state: stringField(formData, "state"),
       postalCode: stringField(formData, "postalCode"),
       country: stringField(formData, "country"),
+      contactPhone: normalizePhone(mobileNumber),
+      orderNumberPrefix: stringField(formData, "orderNumberPrefix")?.toUpperCase(),
+      orderNumberNextValue,
+      orderNumberPadding,
       gstNumber: stringField(formData, "gstNumber"),
       gstShowOnInvoices: formData.get("gstShowOnInvoices") === "true",
       websiteUrl: stringField(formData, "websiteUrl"),
@@ -87,6 +109,22 @@ export async function completeOnboardingAction(formData: FormData): Promise<Acti
     },
     session.user.id,
   );
+
+  // The GST rate and type are a per-kitchen setting (payments.gst), saved the same way as Settings -> Payments. Only
+  // when a GST number was given; without one the defaults (5%, CGST + SGST) apply.
+  const gstNumber = stringField(formData, "gstNumber");
+  if (gstNumber) {
+    try {
+      await saveGstSettings(organizationId, {
+        number: gstNumber,
+        showOnInvoices: formData.get("gstShowOnInvoices") === "true",
+        rate: Number(stringField(formData, "gstRate") ?? DEFAULT_GST_RATE),
+        type: stringField(formData, "gstType") ?? "CGST_SGST",
+      });
+    } catch (error) {
+      return { ok: false, error: userMessage(error, "Could not save your GST details.") };
+    }
+  }
 
   await markOnboardingComplete(organizationId, session.user.id);
 

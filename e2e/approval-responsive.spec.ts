@@ -17,9 +17,9 @@ test.afterEach(async () => { const e = cleanupOwnerEmails.pop(); if (e) await cl
 test("the approval link fits desktop, tablet and phone at every stage: review, venue & delivery and confirmation", async ({ page, browser }) => {
   test.setTimeout(240_000);
   const suffix = Date.now().toString().slice(-6);
-  const ownerEmail = `e2e-journey-owner-${Date.now()}@example.test`;
+  const ownerEmail = `e2e-approval-owner-${Date.now()}@example.test`;
   cleanupOwnerEmails.push(ownerEmail);
-  const slug = `journey-${suffix}`;
+  const slug = `approval-${suffix}`;
   const customerName = `Journey Customer ${suffix}`;
 
   // ===== Owner: sign up, claim the link, and build the smallest catalog the storefront needs =====
@@ -73,7 +73,7 @@ test("the approval link fits desktop, tablet and phone at every stage: review, v
 
   await customerPage.goto(`/${slug}`);
   await customerPage.getByLabel("Your Name").fill(customerName);
-  await customerPage.getByLabel("Email Address").fill(`journey-customer-${suffix}@example.test`);
+  await customerPage.getByLabel("Email Address").fill(`approval-customer-${suffix}@example.test`);
   await customerPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500123");
   // Two days out: the 2-day notice rule, and still inside the Kitchen Dashboard's today-through-+2-days board.
   await pickCalendarDate(customerPage, customerPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 2 * 86_400_000)));

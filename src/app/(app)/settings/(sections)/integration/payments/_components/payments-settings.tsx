@@ -6,13 +6,13 @@ import type { LucideIcon } from "lucide-react";
 import { CheckCircle2, ChevronDown, Copy, CreditCard, FileText, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
+import { GstRateTypeFields } from "@/components/payments/gst-rate-type-fields";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/settings-ui";
 import { cn } from "cn";
 import type { PaymentSettingsView } from "@/modules/payments/payment-settings";
 import { disconnectRazorpayAction, saveAdvanceAction, saveGstAction, saveRazorpayAction, saveUpiAction, setAutoInvoiceAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 /** A save button + status line shared by the three panels. */
 function useSave(onFail?: () => void) {
@@ -303,26 +303,7 @@ function GstPanel({ settings }: { settings: PaymentSettingsView }) {
           </div>
           <Switch id="gst-show" checked={show} onCheckedChange={setShow} />
         </div>
-        <div className="grid max-w-xl grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="gst-rate">GST rate (%)</Label>
-            <IconInput icon={Percent} id="gst-rate" type="number" min={0} max={28} step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
-            <p className="text-xs text-muted-foreground">Default for every new invoice. Default 5.</p>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="gst-type">GST type</Label>
-            <Select items={{ CGST_SGST: "CGST + SGST", IGST: "IGST" }} value={type} onValueChange={(v) => setType(v ?? type)}>
-              <SelectTrigger id="gst-type" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="CGST_SGST">CGST + SGST</SelectItem>
-                <SelectItem value="IGST">IGST</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">CGST + SGST within your state, IGST across states.</p>
-          </div>
-        </div>
+        <GstRateTypeFields rate={rate} onRateChange={setRate} type={type} onTypeChange={setType} />
         <div>
           <Button type="submit" size="md" disabled={pending}>
             {pending ? "Saving…" : "Save GST"}

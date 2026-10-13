@@ -6,8 +6,16 @@ export interface WizardState {
   state: string;
   postalCode: string;
   country: string;
+  /** The business's mobile number (E.164), saved as the organization's contactPhone. */
+  contactPhone: string;
   gstNumber: string;
   gstShowOnInvoices: boolean;
+  /** Kept per kitchen (the `payments.gst` setting), not on the organization. */
+  gstRate: string;
+  gstType: string;
+  orderNumberPrefix: string;
+  orderNumberNextValue: string;
+  orderNumberPadding: string;
   websiteUrl: string;
   instagramUrl: string;
   facebookUrl: string;
@@ -21,8 +29,14 @@ export const EMPTY_WIZARD_STATE: WizardState = {
   state: "",
   postalCode: "",
   country: "",
+  contactPhone: "",
   gstNumber: "",
   gstShowOnInvoices: false,
+  gstRate: "5",
+  gstType: "CGST_SGST",
+  orderNumberPrefix: "ORD",
+  orderNumberNextValue: "1",
+  orderNumberPadding: "4",
   websiteUrl: "",
   instagramUrl: "",
   facebookUrl: "",

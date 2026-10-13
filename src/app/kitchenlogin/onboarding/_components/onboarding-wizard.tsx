@@ -11,6 +11,7 @@ import { ContactAddressStep } from "./steps/contact-address-step";
 import { BusinessSetupStep } from "./steps/business-setup-step";
 import { OnlinePresenceStep } from "./steps/online-presence-step";
 import { BrandIdentityStep } from "./steps/brand-identity-step";
+import { isValidPhone } from "@/lib/phone";
 import { EMPTY_WIZARD_STATE, STEP_LABELS, type WizardState, type StageStatus } from "./types";
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
@@ -18,7 +19,7 @@ const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 const STEP_CONTENT = [
   { heading: "Tell us about your business", supportingText: "This appears across Platterly and, eventually, your public storefront." },
   { heading: "Where can customers reach you?", supportingText: "Used for invoices and customer communication." },
-  { heading: "GST details", supportingText: "Optional — add this now, or later in Settings." },
+  { heading: "GST and order numbers", supportingText: "GST is optional — add it now, or later in Settings. Order numbers can be changed later too." },
   { heading: "Your online presence", supportingText: "Optional links customers can find you on." },
   { heading: "Add your logo", supportingText: "Shown on invoices and your public menu." },
 ] as const;
@@ -26,6 +27,8 @@ const STEP_CONTENT = [
 interface OnboardingWizardProps {
   accountHolderFirstName: string;
   accountHolderLastName: string;
+  /** The phone given at sign-up; pre-fills the business mobile number on step 2. */
+  signUpPhone: string;
 }
 
 // Chunk 4 Group 4.3 — five-step wizard, PRD Updated-doc §3. Redesigned
@@ -36,10 +39,10 @@ interface OnboardingWizardProps {
 // src/app/kitchenlogin/page.tsx). The Organization already exists by the
 // time this renders (provisioned at signup), so "Skip for now" needs no
 // server call, and the final submit is an update, not a create.
-export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName }: OnboardingWizardProps) {
+export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName, signUpPhone }: OnboardingWizardProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [values, setValues] = useState<WizardState>(EMPTY_WIZARD_STATE);
+  const [values, setValues] = useState<WizardState>({ ...EMPTY_WIZARD_STATE, contactPhone: signUpPhone });
   const [logo, setLogo] = useState<File | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +78,16 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
       values.city.trim().length > 0 &&
       values.state.trim().length > 0 &&
       values.postalCode.trim().length > 0 &&
-      values.country.trim().length > 0
+      values.country.trim().length > 0 &&
+      isValidPhone(values.contactPhone)
     );
+  }
+
+  // The order number preview and the server both need these to make sense.
+  function canAdvanceFromStep3() {
+    const next = Number(values.orderNumberNextValue);
+    const digits = Number(values.orderNumberPadding);
+    return Number.isInteger(next) && next >= 1 && Number.isInteger(digits) && digits >= 1 && digits <= 10;
   }
 
   async function handleFinish() {
@@ -91,8 +102,14 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     formData.set("state", values.state);
     formData.set("postalCode", values.postalCode);
     formData.set("country", values.country);
+    formData.set("mobileNumber", values.contactPhone);
     formData.set("gstNumber", values.gstNumber);
     formData.set("gstShowOnInvoices", String(values.gstShowOnInvoices));
+    formData.set("gstRate", values.gstRate);
+    formData.set("gstType", values.gstType);
+    formData.set("orderNumberPrefix", values.orderNumberPrefix);
+    formData.set("orderNumberNextValue", values.orderNumberNextValue);
+    formData.set("orderNumberPadding", values.orderNumberPadding);
     formData.set("websiteUrl", values.websiteUrl);
     formData.set("instagramUrl", values.instagramUrl);
     formData.set("facebookUrl", values.facebookUrl);
@@ -155,7 +172,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
         onSkip={() => router.push("/dashboard")}
         onContinue={handleContinue}
         continueLabel={step < STEP_LABELS.length ? "Continue" : "Complete Setup"}
-        continueDisabled={(step === 1 && !canAdvanceFromStep1()) || (step === 2 && !canAdvanceFromStep2())}
+        continueDisabled={(step === 1 && !canAdvanceFromStep1()) || (step === 2 && !canAdvanceFromStep2()) || (step === 3 && !canAdvanceFromStep3())}
         pending={pending}
       />
     </OnboardingLayout>

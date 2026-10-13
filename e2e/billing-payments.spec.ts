@@ -28,7 +28,7 @@ test.afterEach(async () => {
 
 test("settings, invoice, recording payments, payment link with UPI QR, pending confirmation and customer invoice", async ({ page, browser }) => {
   test.setTimeout(240_000);
-  const email = `e2e-billing-${Date.now()}@example.test`;
+  const email = `e2e-billpay-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   await signUpCaterer(page, email, { firstName: "Billing", lastName: "Tester", phone: "9800000066" });
   const { orderId, organizationId } = await seedOrderForBilling(email, 20000);

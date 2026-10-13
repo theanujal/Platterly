@@ -38,6 +38,7 @@ export default async function OnboardingPage() {
     <OnboardingWizard
       accountHolderFirstName={session.user.firstName ?? ""}
       accountHolderLastName={session.user.lastName ?? ""}
+      signUpPhone={(session.user as { phone?: string | null }).phone ?? ""}
     />
   );
 }
