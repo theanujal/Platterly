@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { prisma } from "@/lib/db";
 import { OnboardingWizard } from "./_components/onboarding-wizard";
 
 export const metadata: Metadata = {
@@ -32,7 +33,14 @@ export default async function OnboardingPage() {
     redirect("/kitchenlogin/verify-email?next=/kitchenlogin/onboarding");
   }
 
-  await requireActiveOrganization();
+  const { organizationId } = await requireActiveOrganization();
+
+  // Once the wizard has been finished or skipped it is never shown again, so Back from the Dashboard (or an old link)
+  // lands on the Dashboard instead. The finished screen is a separate route, so this redirect cannot cut it short.
+  const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { onboardingCompletedAt: true, onboardingDismissedAt: true } });
+  if (organization.onboardingCompletedAt || organization.onboardingDismissedAt) {
+    redirect("/dashboard");
+  }
 
   return (
     <OnboardingWizard

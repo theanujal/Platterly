@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, getTrialSubscriptionStatus, getLatestEmailOtp } from "./db";
 import { maskEmail } from "../src/lib/auth/mask-email";
-import { signOutFromMenu } from "./auth-helpers";
+import { signOutFromMenu, verifyEmailViaOtp } from "./auth-helpers";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
@@ -54,7 +54,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByRole("button", { name: "Hide password" }).first().click();
   await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "password");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
+  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
 
   // Email OTP verification (AJ's explicit ask, 2026-09-16) — sits between
@@ -74,6 +74,8 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // server-side "no org yet" check.
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   await expect(page.getByText("Step 1 of 5")).toBeVisible();
+  // Nothing to go back to on the first step (AJ, 2026-10-13).
+  await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("First name")).toHaveValue("Priya");
   await expect(page.getByLabel("First name")).toBeDisabled();
   await expect(page.getByLabel("Last name")).toHaveValue("Sharma");
@@ -178,6 +180,11 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByText(claimedSlug)).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).toBeVisible();
 
+  // Back from the Dashboard never returns to the wizard once it is finished.
+  await page.goBack();
+  await page.goBack();
+  await expect(page).not.toHaveURL(/\/kitchenlogin\/(onboarding|verify-email)/);
+
   // What the wizard collected landed in the same places Settings reads from.
   await page.goto("/settings/account/business-profile");
   await expect(page.getByText("+919800000099").first()).toBeVisible();
@@ -196,4 +203,78 @@ test("sign-in with the wrong password shows an inline error, not a crash", async
   // role="alert", so a bare role query is ambiguous — scope to our own
   // error <p> by its actual text.
   await expect(page.getByText("Invalid email or password")).toBeVisible();
+});
+
+test("Skip for now keeps what was typed, shows it in Settings, and Back from the Dashboard never returns to the wizard", async ({ page }) => {
+  test.setTimeout(60_000);
+  const email = `e2e-onboard-skip-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  const businessName = `Skip Kitchen ${Date.now().toString().slice(-6)}`;
+
+  await page.goto("/kitchenlogin");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("First name").fill("Skip");
+  await page.getByLabel("Last name").fill("Tester");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000055");
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
+  await page.getByLabel("Confirm password").fill("correct-horse-battery");
+  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
+  await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(page, email);
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
+
+  await page.getByLabel("Company / business name").fill(businessName);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByLabel("Street address").fill("12 Skip Road");
+  await page.getByLabel("City").fill("Pune");
+  // Skip from a half-filled step 2: Continue is still disabled, but Skip keeps what is there.
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+
+  // What was typed before skipping is saved, including the pre-filled phone.
+  await page.goto("/settings/account/business-profile");
+  await expect(page.getByText(businessName).first()).toBeVisible();
+  await expect(page.getByText("12 Skip Road").first()).toBeVisible();
+  await expect(page.getByText("Pune").first()).toBeVisible();
+  await expect(page.getByText("+919800000055").first()).toBeVisible();
+
+  // Back from there never lands on the wizard or the verify-email page.
+  for (let i = 0; i < 4; i++) {
+    await page.goBack().catch(() => undefined);
+    await expect(page).not.toHaveURL(/\/kitchenlogin\/(onboarding|verify-email)/);
+  }
+  await page.goto("/kitchenlogin/onboarding");
+  await expect(page).toHaveURL(/\/dashboard$/);
+});
+
+test("creating an account without ticking the Terms stops with the browser's own message beside the checkbox and sends nothing", async ({ page }) => {
+  let signUpRequests = 0;
+  page.on("request", (request) => request.url().includes("/api/auth/sign-up") && signUpRequests++);
+
+  await page.goto("/kitchenlogin");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("First name").fill("No");
+  await page.getByLabel("Email").fill(`e2e-noterms-${Date.now()}@example.test`);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000077");
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
+  await page.getByLabel("Confirm password").fill("correct-horse-battery");
+
+  // The hidden input sits over the checkbox (not at the top-left of the screen), so the browser's message appears beside it.
+  const box = page.getByRole("checkbox", { name: /I accept the Terms and Conditions and Privacy Policy/ });
+  const input = page.locator("input#signup-terms");
+  const boxRect = (await box.boundingBox())!;
+  const inputRect = (await input.boundingBox())!;
+  expect(Math.abs(inputRect.x - boxRect.x)).toBeLessThan(4);
+  expect(Math.abs(inputRect.y - boxRect.y)).toBeLessThan(4);
+
+  await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  expect(await input.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true);
+  expect(signUpRequests).toBe(0);
+  await expect(page.getByRole("link", { name: "Terms and Conditions" })).toHaveAttribute("href", /\/terms\/$/);
+  await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", /\/privacy\/$/);
+
+  await box.check();
+  expect(await input.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
 });

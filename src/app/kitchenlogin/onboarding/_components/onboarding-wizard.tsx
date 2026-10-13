@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { completeOnboardingAction } from "../../actions";
+import { completeOnboardingAction, skipOnboardingAction } from "../../actions";
 import { OnboardingLayout } from "./onboarding-layout";
 import { OnboardingStepHeader } from "./onboarding-step-header";
 import { OnboardingBottomNav } from "./onboarding-bottom-nav";
@@ -90,10 +90,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     return Number.isInteger(next) && next >= 1 && Number.isInteger(digits) && digits >= 1 && digits <= 10;
   }
 
-  async function handleFinish() {
-    setError(null);
-    setPending(true);
-
+  function buildFormData() {
     const formData = new FormData();
     formData.set("businessName", values.businessName);
     formData.set("businessDescription", values.businessDescription);
@@ -116,14 +113,34 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     if (logo) {
       formData.set("logo", logo);
     }
+    return formData;
+  }
 
+  async function handleSkip() {
+    setError(null);
+    setPending(true);
+    const result = await skipOnboardingAction(buildFormData());
+    if (!result.ok) {
+      setPending(false);
+      setError(result.error);
+      return;
+    }
+    // replace, not push: Back from the Dashboard must not return to the wizard.
+    router.replace("/dashboard");
+  }
+
+  async function handleFinish() {
+    setError(null);
+    setPending(true);
+
+    const formData = buildFormData();
     const result = await completeOnboardingAction(formData);
     setPending(false);
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    router.push("/kitchenlogin/onboarding/complete");
+    router.replace("/kitchenlogin/onboarding/complete");
   }
 
   function handleContinue() {
@@ -169,7 +186,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
       <OnboardingBottomNav
         showBack={step > 1}
         onBack={() => setStep(step - 1)}
-        onSkip={() => router.push("/dashboard")}
+        onSkip={() => void handleSkip()}
         onContinue={handleContinue}
         continueLabel={step < STEP_LABELS.length ? "Continue" : "Complete Setup"}
         continueDisabled={(step === 1 && !canAdvanceFromStep1()) || (step === 2 && !canAdvanceFromStep2()) || (step === 3 && !canAdvanceFromStep3())}

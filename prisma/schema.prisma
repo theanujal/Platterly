@@ -185,6 +185,8 @@ model Organization {
   // succeeds — never by Skip, and never by a later Settings save. Drives
   // the Dashboard's "finish your profile" nudge banner.
   onboardingCompletedAt DateTime?
+  // Set when the person leaves the onboarding wizard with "Skip for now"; the wizard is never shown again after that (the Dashboard nudge stays until onboardingCompletedAt).
+  onboardingDismissedAt DateTime?
 
   // --- Order Numbering — Kitchen Admin-configurable prefix/counter for
   // human-readable Order Numbers (e.g. "AJ-0001"). Assigned once per Order

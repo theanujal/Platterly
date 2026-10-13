@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
+import { prisma } from "@/lib/db";
 import { AuthLayout } from "../_components/auth-layout";
 import { VerifyEmailForm } from "../_components/verify-email-form";
 
@@ -29,6 +30,11 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
     redirect("/");
   }
   if (session.user.emailVerified) {
+    // Back from the Dashboard lands here; if the wizard is already finished or skipped, go to the Dashboard.
+    if (destination === DEFAULT_NEXT) {
+      const member = await prisma.member.findFirst({ where: { userId: session.user.id }, select: { organization: { select: { onboardingCompletedAt: true, onboardingDismissedAt: true } } } });
+      if (member?.organization.onboardingCompletedAt || member?.organization.onboardingDismissedAt) redirect("/dashboard");
+    }
     redirect(destination);
   }
 

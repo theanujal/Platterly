@@ -3,7 +3,8 @@
 import { matchesDeclaredType } from "@/lib/storage/file-signature";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization } from "@/lib/auth/require-session";
-import { updateTenant, markOnboardingComplete } from "@/modules/tenants/tenant";
+import { updateTenant, markOnboardingComplete, markOnboardingDismissed } from "@/modules/tenants/tenant";
+import { prisma } from "@/lib/db";
 import { getStorageDriver } from "@/lib/storage/storage";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { userMessage } from "@/lib/errors";
@@ -25,6 +26,70 @@ function stringField(formData: FormData, name: string): string | undefined {
  * `auto-provision.ts`), so this is purely an update: fill in the business
  * profile fields, upload the logo if given, and mark onboarding complete.
  */
+/**
+ * "Skip for now" (AJ, 2026-10-13): keeps whatever the person typed so far instead of throwing it away, so it shows in
+ * Settings, then marks the wizard as left so it is never shown again. Nothing here blocks the skip: a field that is
+ * missing or not valid yet (phone, GST number, numbering) is simply not saved. Onboarding stays "not complete", so the
+ * Dashboard nudge remains.
+ */
+export async function skipOnboardingAction(formData: FormData): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+
+  const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
+  const mobileNumber = stringField(formData, "mobileNumber");
+  const phone = mobileNumber && isValidPhone(normalizePhone(mobileNumber)) ? normalizePhone(mobileNumber) : undefined;
+  const nextValue = Number.parseInt(stringField(formData, "orderNumberNextValue") ?? "", 10);
+  const padding = Number.parseInt(stringField(formData, "orderNumberPadding") ?? "", 10);
+  const numberingOk = Number.isInteger(nextValue) && nextValue >= 1 && Number.isInteger(padding) && padding >= 1 && padding <= 10;
+
+  let logoUrl: string | undefined;
+  const logo = formData.get("logo");
+  if (logo instanceof File && logo.size > 0 && logo.size <= MAX_LOGO_BYTES && ALLOWED_LOGO_TYPES[logo.type]) {
+    const buffer = Buffer.from(await logo.arrayBuffer());
+    if (matchesDeclaredType(buffer, logo.type)) {
+      logoUrl = (await getStorageDriver().upload(`organizations/${organizationId}/logo.${ALLOWED_LOGO_TYPES[logo.type]}`, buffer, logo.type)).url;
+    }
+  }
+
+  await updateTenant(
+    organizationId,
+    {
+      name: stringField(formData, "businessName") ?? organization.name,
+      businessDescription: stringField(formData, "businessDescription"),
+      addressLine1: stringField(formData, "addressLine1"),
+      city: stringField(formData, "city"),
+      state: stringField(formData, "state"),
+      postalCode: stringField(formData, "postalCode"),
+      country: stringField(formData, "country"),
+      contactPhone: phone,
+      websiteUrl: stringField(formData, "websiteUrl"),
+      instagramUrl: stringField(formData, "instagramUrl"),
+      facebookUrl: stringField(formData, "facebookUrl"),
+      logo: logoUrl,
+      ...(numberingOk ? { orderNumberPrefix: stringField(formData, "orderNumberPrefix")?.toUpperCase(), orderNumberNextValue: nextValue, orderNumberPadding: padding } : {}),
+    },
+    session.user.id,
+  );
+
+  // The GST number, rate and type are saved together, and only when they are valid; otherwise none of them is.
+  const gstNumber = stringField(formData, "gstNumber");
+  if (gstNumber) {
+    try {
+      await saveGstSettings(organizationId, {
+        number: gstNumber,
+        showOnInvoices: formData.get("gstShowOnInvoices") === "true",
+        rate: Number(stringField(formData, "gstRate") ?? DEFAULT_GST_RATE),
+        type: stringField(formData, "gstType") ?? "CGST_SGST",
+      });
+    } catch {
+      // Not valid yet; they can finish it in Settings.
+    }
+  }
+
+  await markOnboardingDismissed(organizationId, session.user.id);
+  return { ok: true };
+}
+
 export async function completeOnboardingAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
 

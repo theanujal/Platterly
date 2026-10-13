@@ -189,7 +189,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await kitchenPage.getByLabel("Phone", { exact: true }).fill("9800000055");
   await kitchenPage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await kitchenPage.getByLabel("Confirm password").fill("correct-horse-battery");
-  await kitchenPage.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
+  await kitchenPage.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
   await kitchenPage.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(kitchenPage, kitchenEmail);
   await expect(kitchenPage).toHaveURL(/\/dashboard$/);

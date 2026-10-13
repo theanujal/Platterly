@@ -166,7 +166,7 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
   await accounts.getByLabel("Phone", { exact: true }).fill("9800000079");
   await accounts.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await accounts.getByLabel("Confirm password").fill("correct-horse-battery");
-  await accounts.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
+  await accounts.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
   await accounts.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(accounts, accountsEmail);
   await expect(accounts).toHaveURL(/\/dashboard$/);

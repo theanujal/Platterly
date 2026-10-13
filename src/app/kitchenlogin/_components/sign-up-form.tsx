@@ -7,6 +7,7 @@ import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { marketingSiteUrl } from "@/lib/routing/site-url";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { IconInput, PasswordInput } from "./icon-input";
 
@@ -29,6 +30,16 @@ interface SignUpFormProps {
 // (the Organization itself is already provisioned by this point, via
 // `databaseHooks.user.create.after` — see `auto-provision.ts`). Business
 // details are collected there, not on this form.
+/**
+ * Base UI pins its hidden checkbox input to the top-left of the screen (position: fixed), so the browser's own
+ * "Please tick this box" bubble appeared there, far from the checkbox, and nothing seemed to happen. Pinning the input
+ * over the checkbox instead makes the browser show the same bubble the other required fields show, beside the box.
+ */
+function placeHiddenInputOverCheckbox(input: HTMLInputElement | null) {
+  if (!input) return;
+  Object.assign(input.style, { position: "absolute", top: "0", left: "0", width: "100%", height: "100%", margin: "0", overflow: "visible", clip: "auto", clipPath: "none", opacity: "0", pointerEvents: "none" });
+}
+
 export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
@@ -130,15 +141,24 @@ export function SignUpForm({ callbackURL, lockedEmail }: SignUpFormProps = {}) {
         />
       </div>
       <div className="flex items-start gap-2">
-        <Checkbox
-          id="signup-terms"
-          required
-          className="mt-0.5"
-          checked={acceptedTerms}
-          onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
-        />
+        <span className="relative mt-0.5 flex">
+          <Checkbox
+            id="signup-terms"
+            required
+            inputRef={placeHiddenInputOverCheckbox}
+            checked={acceptedTerms}
+            onCheckedChange={(checked) => setAcceptedTerms(checked === true)}
+          />
+        </span>
         <Label htmlFor="signup-terms" className="text-sm font-normal text-muted-foreground">
-          I accept the Terms of Service and Privacy Policy
+          I accept the{" "}
+          <a href={marketingSiteUrl("/terms/")} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline-offset-2 hover:underline">
+            Terms and Conditions
+          </a>{" "}
+          and{" "}
+          <a href={marketingSiteUrl("/privacy/")} target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline-offset-2 hover:underline">
+            Privacy Policy
+          </a>
         </Label>
       </div>
       {error && (

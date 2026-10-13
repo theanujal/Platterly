@@ -24,9 +24,14 @@ export function OnboardingBottomNav({
 }: OnboardingBottomNavProps) {
   return (
     <div className="flex items-center justify-between border-t border-border pt-6">
-      <Button type="button" variant="outline" disabled={!showBack || pending} onClick={onBack}>
-        Back
-      </Button>
+      {/* No Back on the first step; the empty span keeps Skip and Continue on the right. */}
+      {showBack ? (
+        <Button type="button" variant="outline" disabled={pending} onClick={onBack}>
+          Back
+        </Button>
+      ) : (
+        <span />
+      )}
       <div className="flex items-center gap-4">
         <button
           type="button"

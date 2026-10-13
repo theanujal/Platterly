@@ -33,7 +33,7 @@ export default async function OnboardingCompletePage() {
       </p>
       <Button
         className="px-8 text-base font-semibold"
-        render={<Link href="/dashboard" />}
+        render={<Link href="/dashboard" replace />}
         nativeButton={false}
       >
         Take me to my Dashboard

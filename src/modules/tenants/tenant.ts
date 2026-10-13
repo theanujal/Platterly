@@ -197,6 +197,20 @@ export async function markOnboardingComplete(id: string, actorUserId: string) {
   return after;
 }
 
+/** The person left the onboarding wizard with "Skip for now": it is not shown again. Does not touch `onboardingCompletedAt`. */
+export async function markOnboardingDismissed(id: string, actorUserId: string) {
+  const after = await prisma.organization.update({ where: { id }, data: { onboardingDismissedAt: new Date() } });
+  await audit({
+    organizationId: id,
+    actorUserId,
+    action: "tenant.onboarding_skipped",
+    recordType: "Organization",
+    recordId: id,
+    after: { onboardingDismissedAt: after.onboardingDismissedAt },
+  });
+  return after;
+}
+
 const SELF_SERVICE_SLUG_CHANGE_LIMIT = 2;
 
 /**

@@ -46,7 +46,7 @@ export async function signUpCaterer(page: Page, email: string, options: SignUpOp
   await page.getByLabel("Phone", { exact: true }).fill(phone);
   await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
   await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms of Service and Privacy Policy" }).check();
+  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, email);
   // The "Stay updated" push popup would sit over the page under test; push-prompt.spec.ts covers it itself.
