@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { assertOrderAtMyLocation, getActiveLocation } from "@/modules/locations/active-location";
@@ -201,7 +202,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         paymentsRecorded={orderPayments.some((p) => p.status === "CONFIRMED")}
         initialValues={initialValues}
         header={
-          <div className="flex flex-col gap-4">
+          <div key="header" className="flex flex-col gap-4">
             <PageBreadcrumb items={[{ label: "Orders", href: "/orders" }, { label: order.orderNumber ?? "Order" }]} />
             <div className="flex flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-3">
@@ -235,9 +236,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </div>
           </div>
         }
-        headerActions={<DeleteOrderButton orderId={order.id} name={order.customer.name} />}
+        headerActions={<DeleteOrderButton key="header-actions" orderId={order.id} name={order.customer.name} />}
         menuPlanBanner={
           <MenuStatusBanner
+            key="menu-status-banner"
             status={menuApproval?.status ?? null}
             version={menuApproval?.currentVersion ?? null}
             editHref={canManageApproval && menuApproval ? `/menu-approvals/${menuApproval.menuSelectionId}` : null}
@@ -246,7 +248,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           />
         }
         sidebarTop={
-          <>
+          <Fragment key="sidebar-top">
             <OrderStatusCard
               orderId={order.id}
               status={order.status}
@@ -290,11 +292,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
               />
             )}
-          </>
+          </Fragment>
         }
         sidebarInvoiceAction={
           activeInvoice || (canCreateInvoice && orderTotal > 0) ? (
-            <div className="flex flex-col [&>a]:w-full [&>button]:w-full" data-testid="sidebar-invoice-action">
+            <div key="sidebar-invoice-action" className="flex flex-col [&>a]:w-full [&>button]:w-full" data-testid="sidebar-invoice-action">
               {activeInvoice ? (
                 <OpenInvoiceLink invoiceId={activeInvoice.id} number={activeInvoice.number} />
               ) : (
@@ -304,7 +306,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           ) : undefined
         }
         billingPanel={
-          <div className="flex flex-col gap-3" data-testid="order-billing">
+          <div key="order-billing" className="flex flex-col gap-3" data-testid="order-billing">
               <PaymentsPanel
                 orderId={order.id}
                 invoiceId={activeInvoice?.id}
@@ -319,7 +321,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </div>
         }
         pricingExtra={
-          <>
+          <Fragment key="pricing-extra">
             {/* Whole-order items only exist on an Order converted from an accepted Quotation (convertQuotationToOrder copies the Quotation's frozen item snapshots); the order form has no picker for them, so this read-only recap is where they show. */}
             {order.items.length > 0 && (
               <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
@@ -337,7 +339,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 </div>
               </section>
             )}
-          </>
+          </Fragment>
         }
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email }))}
         eventTypes={eventTypes.filter((t) => t.isActive || t.id === order.eventTypeId).map((t) => ({ id: t.id, name: t.name }))}
@@ -357,6 +359,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         expensesTab={
           canViewExpenses ? (
             <ExpensesCard
+              key="expenses"
               orderId={order.id}
               profitability={computeProfitability(
                 orderTotal,
@@ -381,10 +384,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             />
           ) : undefined
         }
-        staffingTab={canViewStaffing && event ? <EventOps organizationId={organizationId} eventId={event.id} orderId={order.id} /> : canViewStaffing ? <p className="text-sm text-muted-foreground">Choose an event type on the order to create its event. Staff, tasks and logistics belong to the event.</p> : undefined}
+        staffingTab={canViewStaffing && event ? <EventOps key="staffing" organizationId={organizationId} eventId={event.id} orderId={order.id} /> : canViewStaffing ? <p key="staffing" className="text-sm text-muted-foreground">Choose an event type on the order to create its event. Staff, tasks and logistics belong to the event.</p> : undefined}
         inventoryTab={
           orderInventory ? (
             <OrderInventoryPanel
+              key="inventory"
               orderId={order.id}
               canEdit={canTakeStock}
               data={orderInventory}
