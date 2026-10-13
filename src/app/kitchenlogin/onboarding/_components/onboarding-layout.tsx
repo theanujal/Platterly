@@ -1,3 +1,4 @@
+import { ChefHat } from "lucide-react";
 import { OnboardingStageList } from "./onboarding-stage-list";
 import type { StageStatus } from "./types";
 
@@ -17,10 +18,7 @@ export function OnboardingLayout({ steps, children }: OnboardingLayoutProps) {
     <div className="flex min-h-svh w-full flex-col md:flex-row">
       <div className="hidden flex-col justify-between gap-10 bg-gradient-to-br from-primary to-[#9a3412] px-10 py-12 text-primary-foreground md:flex md:w-1/2">
         <div className="flex items-center gap-2 text-lg font-bold">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white p-1">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/caterly-mark.svg" alt="" className="size-full" />
-          </span>
+          <ChefHat className="size-8 shrink-0 text-white" strokeWidth={1.75} aria-hidden />
           Caterly
           <span className="text-xs font-medium text-primary-foreground/80">by Platterly</span>
         </div>
