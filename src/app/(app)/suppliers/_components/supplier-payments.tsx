@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
+import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { formatRupees } from "@/components/catalog/catalog-display";
 import { deleteSupplierPaymentAction, recordSupplierPaymentAction } from "../../purchasing/actions";
 
@@ -28,28 +29,16 @@ export interface PaymentRow {
 export function SupplierPayments({ supplierId, payments, canRecord, canDelete }: { supplierId: string; payments: PaymentRow[]; canRecord: boolean; canDelete: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [paidAt, setPaidAt] = useState(todayIso());
-  const [method, setMethod] = useState("NONE");
-  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setPending(true);
-    const result = await recordSupplierPaymentAction(supplierId, { amount: Number.parseFloat(amount), paidAt, method, note });
-    setPending(false);
-    if (!result.ok) return setError(result.error);
-    setOpen(false);
-    setAmount("");
-    setNote("");
-    router.refresh();
-  }
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   async function remove(id: string) {
+    setRemoving(true);
+    setError(null);
     const result = await deleteSupplierPaymentAction(supplierId, id);
+    setRemoving(false);
+    setDeletingId(null);
     if (!result.ok) setError(result.error);
     router.refresh();
   }
@@ -83,7 +72,7 @@ export function SupplierPayments({ supplierId, payments, canRecord, canDelete }:
                 <TableCell className="text-right font-medium">{formatRupees(p.amount)}</TableCell>
                 {canDelete && (
                   <TableCell>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label="Delete payment" onClick={() => void remove(p.id)}>
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label="Delete payment" onClick={() => setDeletingId(p.id)}>
                       <Trash2 className="size-4" />
                     </Button>
                   </TableCell>
@@ -93,8 +82,50 @@ export function SupplierPayments({ supplierId, payments, canRecord, canDelete }:
           </TableBody>
         </Table>
       )}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+      <ConfirmDialog
+        open={deletingId !== null}
+        onOpenChange={(next) => !next && setDeletingId(null)}
+        title="Delete this payment?"
+        description="It is removed from this supplier's history and the amount you owe them goes back up."
+        pending={removing}
+        onConfirm={() => (deletingId ? remove(deletingId) : undefined)}
+      />
       <FormDrawer open={open} onOpenChange={setOpen} title="Record payment" description="Money paid to this supplier. It reduces what you owe them.">
-        <DrawerForm onSubmit={submit} error={error} pending={pending} submitLabel="Save payment" onCancel={() => setOpen(false)}>
+        <RecordPaymentForm supplierId={supplierId} onClose={() => setOpen(false)} />
+      </FormDrawer>
+    </div>
+  );
+}
+
+// The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
+function RecordPaymentForm({ supplierId, onClose }: { supplierId: string; onClose: () => void }) {
+  const router = useRouter();
+  const [amount, setAmount] = useState("");
+  const [paidAt, setPaidAt] = useState(todayIso());
+  const [method, setMethod] = useState("NONE");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const dirty = useIsDirty({ amount, paidAt, method, note });
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setPending(true);
+    const result = await recordSupplierPaymentAction(supplierId, { amount: Number.parseFloat(amount), paidAt, method, note });
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    onClose();
+    router.refresh();
+  }
+
+  return (
+    <DrawerForm dirty={dirty} onSubmit={submit} error={error} pending={pending} submitLabel="Save payment" onCancel={onClose}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="sp-amount">Amount (₹)</Label>
             <Input id="sp-amount" type="number" min="0" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
@@ -122,8 +153,6 @@ export function SupplierPayments({ supplierId, payments, canRecord, canDelete }:
             <Label htmlFor="sp-note">Note</Label>
             <Textarea id="sp-note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
-        </DrawerForm>
-      </FormDrawer>
-    </div>
+    </DrawerForm>
   );
 }

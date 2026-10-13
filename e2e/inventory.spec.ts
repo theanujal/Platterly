@@ -85,6 +85,8 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   await page.getByRole("button", { name: "Record movement" }).click();
   await expect(page.getByText("This would take stock below zero.")).toBeVisible();
   await page.keyboard.press("Escape");
+  // Closing with the 1000 still typed asks first (the unsaved-edit guard).
+  await page.getByRole("alertdialog", { name: "Discard your changes?" }).getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText("15 kg")).toBeVisible();
 

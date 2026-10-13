@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Boxes, IndianRupee, PackagePlus, BellRing, CalendarDays, MapPin } from "lucide-react";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +60,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty({ values, openingStock, image: image?.name ?? null });
 
   function setField<K extends keyof InventoryFormValues>(key: K, value: InventoryFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -94,7 +95,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
   }
 
   return (
-    <DrawerForm onSubmit={handleSubmit} error={error} pending={pending} submitLabel={submitLabel} onCancel={onCancel}>
+    <DrawerForm dirty={dirty} onSubmit={handleSubmit} error={error} pending={pending} submitLabel={submitLabel} onCancel={onCancel}>
       {/* Field order per AJ's spec, 2026-09-19: Image; Name | Category;
           Description; Unit | Opening Stock; Low Stock Alert | Expiry Date;
           Cost Per Unit | Storage Location; Supplier Name | Supplier

@@ -44,6 +44,7 @@ test("the owner changes a role's permissions, they persist, and reset restores t
   await expect(page.getByRole("checkbox", { name: "Staff: Edit Customers" })).toBeChecked();
 
   await page.getByRole("button", { name: "Reset to defaults" }).click();
+  await page.getByRole("alertdialog", { name: "Reset Staff to the defaults?" }).getByRole("button", { name: "Reset to defaults" }).click();
   await expect(page.getByText("Staff is back to the default permissions.")).toBeVisible();
   await page.reload();
   await page.getByRole("combobox", { name: "Role", exact: true }).click();

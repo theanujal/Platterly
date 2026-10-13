@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
+import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,12 +25,22 @@ interface StockTransactionDialogProps {
 }
 
 export function StockTransactionDialog({ open, onOpenChange, itemId, name, unit, currentStock }: StockTransactionDialogProps) {
+  return (
+    <FormDrawer open={open} onOpenChange={onOpenChange} title={`Stock Movement — ${name}`}>
+      <StockTransactionForm onOpenChange={onOpenChange} itemId={itemId} unit={unit} currentStock={currentStock} />
+    </FormDrawer>
+  );
+}
+
+// The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
+function StockTransactionForm({ onOpenChange, itemId, unit, currentStock }: Pick<StockTransactionDialogProps, "onOpenChange" | "itemId" | "unit" | "currentStock">) {
   const router = useRouter();
   const [type, setType] = useState<(typeof TYPE_OPTIONS)[number]["value"]>("STOCK_IN");
   const [quantity, setQuantity] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty({ type, quantity, note });
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -55,8 +65,7 @@ export function StockTransactionDialog({ open, onOpenChange, itemId, name, unit,
   }
 
   return (
-    <FormDrawer open={open} onOpenChange={onOpenChange} title={`Stock Movement — ${name}`}>
-      <DrawerForm onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Record movement" onCancel={() => onOpenChange(false)}>
+      <DrawerForm dirty={dirty} onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Record movement" onCancel={() => onOpenChange(false)}>
         <p className="text-sm text-muted-foreground">
           Current stock: <span className="font-medium text-foreground">{currentStock}</span> {unit}
         </p>
@@ -90,6 +99,5 @@ export function StockTransactionDialog({ open, onOpenChange, itemId, name, unit,
           <Textarea id="stock-note" value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
       </DrawerForm>
-    </FormDrawer>
   );
 }

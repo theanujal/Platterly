@@ -63,6 +63,7 @@ test("add, edit and delete expenses on an order; the Profitability page follows"
   await page.getByRole("dialog").getByRole("button", { name: "Add Expense" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "greater than zero" })).toBeVisible();
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("alertdialog", { name: "Discard your changes?" }).getByRole("button", { name: "Discard changes" }).click();
 
   // Edit the Food expense to 7,000: cost 10,000, profit 10,000, food cost 35%
   await card.getByRole("button", { name: "Edit Food expense" }).click();
@@ -264,6 +265,7 @@ test("receipts attach to an expense, show in the table, and can be removed", asy
   // Remove one from the edit popup
   await card.getByRole("button", { name: "Edit Food expense" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Remove till-slip.png" }).click();
+  await page.getByRole("alertdialog", { name: "Remove this file?" }).getByRole("button", { name: "Remove file" }).click();
   await expect(page.getByRole("dialog").getByTestId("expense-file-list")).not.toContainText("till-slip.png");
   await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
   await expect(card.getByTestId("expense-file")).toHaveCount(1);

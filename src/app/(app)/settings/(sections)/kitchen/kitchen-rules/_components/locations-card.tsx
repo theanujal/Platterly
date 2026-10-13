@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useRouter } from "next/navigation";
 import { MapPin, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
   const [newName, setNewName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
 
   function run(action: () => Promise<ActionResult>, onDone?: () => void) {
     setError(null);
@@ -84,7 +86,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
                           <Pencil />
                         </Button>
                         {!location.isDefault && (
-                          <Button size="md" variant="outline" aria-label={`Delete ${location.name}`} disabled={pending} onClick={() => { if (window.confirm(`Delete ${location.name}? Its events, inventory items and team members become unassigned.`)) run(() => deleteLocationAction(location.id)); }}>
+                          <Button size="md" variant="outline" aria-label={`Delete ${location.name}`} disabled={pending} onClick={() => setDeleting({ id: location.id, name: location.name })}>
                             <Trash2 />
                           </Button>
                         )}
@@ -116,6 +118,18 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
           {error}
         </p>
       )}
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Delete ${deleting?.name ?? "this location"}?`}
+        description="Its events, inventory items and team members become unassigned."
+        pending={pending}
+        onConfirm={() => {
+          const id = deleting?.id;
+          setDeleting(null);
+          if (id) run(() => deleteLocationAction(id));
+        }}
+      />
     </SettingsPanel>
   );
 }

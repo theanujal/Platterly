@@ -77,7 +77,7 @@ export function IngredientPickerDrawer({ open, onClose, catalog }: { open: boole
       description="Common ingredients. Each one you add becomes your own Inventory Item at zero stock, in the unit you choose."
       size="lg"
     >
-      <DrawerForm
+      <DrawerForm dirty={selected.size > 0 && !result}
         onSubmit={submit}
         error={error}
         pending={pending}

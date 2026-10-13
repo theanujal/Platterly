@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Building2, Mail, MapPin, Phone, User } from "lucide-react";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,6 +37,7 @@ export function SupplierForm({
   const [values, setValues] = useState<SupplierFormValues>(initialValues ?? EMPTY_SUPPLIER_VALUES);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty(values);
   const set = <K extends keyof SupplierFormValues>(key: K, value: SupplierFormValues[K]) => setValues((v) => ({ ...v, [key]: value }));
 
   async function handleSubmit(event: React.FormEvent) {
@@ -52,7 +53,7 @@ export function SupplierForm({
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={handleSubmit}
       error={error}
       pending={pending}

@@ -201,6 +201,12 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(page.getByTestId("side-notes-list")).toContainText("live dosa and chaat counter");
   await expect(page.getByTestId("side-notes-list")).toContainText("edited");
   await page.getByTestId("side-notes-list").getByTestId("customer-note").first().getByRole("button", { name: "Delete note" }).click();
+  // Deleting asks first; Cancel keeps the note, Delete removes it.
+  await expect(page.getByRole("alertdialog", { name: "Delete this note?" })).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("side-notes-list").getByTestId("customer-note")).toHaveCount(2);
+  await page.getByTestId("side-notes-list").getByTestId("customer-note").first().getByRole("button", { name: "Delete note" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByTestId("side-notes-list").getByTestId("customer-note")).toHaveCount(1);
   // Each note also shows in the Activity tab
   await page.getByRole("tab", { name: "Activity" }).click();

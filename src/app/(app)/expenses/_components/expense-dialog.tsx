@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, FileText, IndianRupee, Pause, Play, Receipt, Repeat, Store, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog, useDiscardGuard } from "@/components/ui/confirm-dialog";
+import { useIsDirty } from "@/components/catalog/form-drawer";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { IconInput } from "@/components/ui/icon-input";
@@ -132,6 +134,9 @@ export function ExpenseDialog({
   const [endDate, setEndDate] = useState("");
   const [applyToFuture, setApplyToFuture] = useState(false);
   const [confirmStop, setConfirmStop] = useState(false);
+  const [removingAttachment, setRemovingAttachment] = useState<ExpenseAttachmentData | null>(null);
+  const dirty = useIsDirty({ target, category, amount, spentAt, method, supplierId, supplier, notes, files: files.map((f) => f.name), repeats, frequency, endDate });
+  const guard = useDiscardGuard(dirty, onClose);
   const repeating = !row && !forOrder && repeats;
   const schedule = row?.recurring && row.recurringExpenseId ? row.recurring : null;
 
@@ -253,7 +258,7 @@ export function ExpenseDialog({
   const submitLabel = pending ? "Saving…" : row ? "Save Expense" : repeating ? "Add Repeating Expense" : "Add Expense";
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && guard.requestClose()}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{title}</DialogTitle>
@@ -375,7 +380,7 @@ export function ExpenseDialog({
                     <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-primary hover:underline">
                       {a.fileName}
                     </a>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${a.fileName}`} onClick={() => void removeExisting(a.id)}>
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove ${a.fileName}`} onClick={() => setRemovingAttachment(a)}>
                       <X />
                     </Button>
                   </li>
@@ -402,7 +407,7 @@ export function ExpenseDialog({
           )}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={pending} onClick={onClose}>
+          <Button type="button" variant="outline" disabled={pending} onClick={guard.requestClose}>
             Cancel
           </Button>
           <Button type="button" disabled={pending} onClick={() => void submit()}>
@@ -411,6 +416,19 @@ export function ExpenseDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      {guard.dialog}
+      <ConfirmDialog
+        open={removingAttachment !== null}
+        onOpenChange={(next) => !next && setRemovingAttachment(null)}
+        title="Remove this file?"
+        description={`${removingAttachment?.fileName ?? "The file"} is deleted from this expense for good.`}
+        confirmLabel="Remove file"
+        onConfirm={async () => {
+          const target = removingAttachment;
+          setRemovingAttachment(null);
+          if (target) await removeExisting(target.id);
+        }}
+      />
     </Dialog>
   );
 }

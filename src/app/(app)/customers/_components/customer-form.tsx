@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import type { ActionResult } from "../actions";
 
 const LEAD_SOURCE_OPTIONS = [
@@ -59,6 +59,7 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
   const [values, setValues] = useState<CustomerFormValues>({ ...EMPTY_CUSTOMER_VALUES, ...initialValues });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty(values);
 
   function setField<K extends keyof CustomerFormValues>(key: K, value: CustomerFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -90,7 +91,7 @@ export function CustomerForm({ initialValues, onSubmit, onSuccess, submitLabel, 
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={handleSubmit}
       error={error}
       pending={pending}

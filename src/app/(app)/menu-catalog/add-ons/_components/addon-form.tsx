@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -63,6 +63,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty({ values, image: image?.name ?? null });
 
   function setField<K extends keyof AddOnFormValues>(key: K, value: AddOnFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -99,7 +100,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={handleSubmit}
       error={error}
       pending={pending}

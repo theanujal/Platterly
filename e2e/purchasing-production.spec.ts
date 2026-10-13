@@ -95,6 +95,12 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByRole("button", { name: "Save payment" }).click();
   await expect(page.getByTestId("supplier-outstanding")).toHaveText("₹7,000.00");
 
+  // Deleting a payment asks first (Cancel keeps it).
+  await page.getByRole("button", { name: "Delete payment" }).click();
+  await expect(page.getByRole("alertdialog", { name: "Delete this payment?" })).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("supplier-outstanding")).toHaveText("₹7,000.00");
+
   // --- 18.4: an order with the kitchen needs 22 kg (100 guests + 10% extra = 110 servings x 2 kg / 10) ---
   const { orderId } = await seedKitchenOrderWithDish(email, dish);
   await page.goto(`/orders/${orderId}`);

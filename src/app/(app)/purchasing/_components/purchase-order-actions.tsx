@@ -8,7 +8,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
+import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { cancelPurchaseOrderAction, deletePurchaseOrderAction, markOrderedAction, receiveStockAction, type ActionResult } from "../actions";
 
 export interface ReceiveLine {
@@ -116,6 +116,7 @@ function ReceiveDrawer({ id, number, lines, onClose }: { id: string; number: str
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty(quantities);
   const open = lines.filter((l) => l.remaining > 0);
 
   async function submit(event: React.FormEvent) {
@@ -131,7 +132,7 @@ function ReceiveDrawer({ id, number, lines, onClose }: { id: string; number: str
 
   return (
     <FormDrawer open onOpenChange={(o) => !o && onClose()} title={`Receive stock — ${number}`} description="Enter what arrived. It is added to your stock straight away; leave the rest for the next delivery.">
-      <DrawerForm onSubmit={submit} error={error} pending={pending} submitLabel="Add to stock" onCancel={onClose}>
+      <DrawerForm dirty={dirty} onSubmit={submit} error={error} pending={pending} submitLabel="Add to stock" onCancel={onClose}>
         <Button type="button" variant="outline" className="self-start" onClick={() => setQuantities(Object.fromEntries(open.map((l) => [l.itemId, String(l.remaining)])))}>
           Everything has arrived
         </Button>

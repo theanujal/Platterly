@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { Pool } from "pg";
+import { DEFAULT_TIME_ZONE } from "../src/lib/time/timezone";
 
 /**
  * Chunk 4 — Playwright's default TS loader compiles everything as CommonJS
@@ -422,8 +423,10 @@ export async function seedCustomers(email: string, count: number, from = 1): Pro
 /** Moves an order's event `daysAgo` days into the past (and optionally cancels it), for the Overdue payment specs. */
 export async function setOrderEventPast(orderId: string, daysAgo: number, status?: "CANCELLED" | "COMPLETED"): Promise<void> {
   await pool.query(
-    `UPDATE "order" SET "eventStartDate" = date_trunc('day', now() at time zone 'UTC') - make_interval(days => $2), "eventEndDate" = date_trunc('day', now() at time zone 'UTC') - make_interval(days => $2)${status ? `, status = '${status}'` : ""} WHERE id = $1`,
-    [orderId, daysAgo],
+    // "Today" is the business's day (India time), not UTC: the app counts overdue days from the business's own midnight, and
+    // between 00:00 and 05:30 IST the two dates differ, which made "3 days ago" read as 4 days overdue.
+    `UPDATE "order" SET "eventStartDate" = date_trunc('day', now() at time zone $3) - make_interval(days => $2), "eventEndDate" = date_trunc('day', now() at time zone $3) - make_interval(days => $2)${status ? `, status = '${status}'` : ""} WHERE id = $1`,
+    [orderId, daysAgo, DEFAULT_TIME_ZONE],
   );
 }
 

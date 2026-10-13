@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +35,7 @@ export function CustomerNotes({ customerId, notes, canEdit, idPrefix, limit }: {
   const [draft, setDraft] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const shown = limit ? notes.slice(0, limit) : notes;
@@ -83,7 +85,7 @@ export function CustomerNotes({ customerId, notes, canEdit, idPrefix, limit }: {
                   <Button type="button" variant="ghost" size="icon-sm" aria-label="Edit note" onClick={() => { setEditingId(note.id); setEditDraft(note.body); }}>
                     <Pencil />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Delete note" disabled={pending !== null} onClick={() => run(`del-${note.id}`, () => deleteCustomerNoteAction(customerId, note.id))}>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Delete note" disabled={pending !== null} onClick={() => setDeletingId(note.id)}>
                     <Trash2 />
                   </Button>
                 </span>
@@ -108,6 +110,18 @@ export function CustomerNotes({ customerId, notes, canEdit, idPrefix, limit }: {
         ))}
       </ul>
       {limit && notes.length > limit && <p className="text-xs text-muted-foreground">Showing the latest {limit} of {notes.length}. All of them are in the Notes tab.</p>}
+      <ConfirmDialog
+        open={deletingId !== null}
+        onOpenChange={(open) => !open && setDeletingId(null)}
+        title="Delete this note?"
+        description="The note is removed from the customer's profile for good."
+        pending={pending !== null}
+        onConfirm={async () => {
+          const id = deletingId;
+          if (id) await run(`del-${id}`, () => deleteCustomerNoteAction(customerId, id));
+          setDeletingId(null);
+        }}
+      />
     </div>
   );
 }

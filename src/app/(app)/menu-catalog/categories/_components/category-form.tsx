@@ -7,7 +7,7 @@ import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import type { CategoryInput } from "@/modules/menus/category";
 import type { ActionResult } from "../actions";
 
@@ -65,6 +65,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty(values);
 
   function setField<K extends keyof CategoryFormValues>(key: K, value: CategoryFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -91,7 +92,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={handleSubmit}
       error={error}
       pending={pending}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { KeyRound, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,7 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
   const [roleId, setRoleId] = useState(roles[0].id);
   const [edits, setEdits] = useState<Record<string, Grants>>({});
   const [pending, setPending] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const role = roles.find((r) => r.id === roleId) ?? roles[0];
@@ -173,7 +175,7 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
           size="md"
           variant="outline"
           disabled={(!customised && !dirty) || pending}
-          onClick={() => run(() => resetRolePermissionsAction(role.id), `${role.label} is back to the default permissions.`)}
+          onClick={() => setConfirmReset(true)}
         >
           <RotateCcw className="size-4" /> Reset to defaults
         </Button>
@@ -185,6 +187,19 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
           {message.text}
         </p>
       )}
+
+      <ConfirmDialog
+        open={confirmReset}
+        onOpenChange={setConfirmReset}
+        title={`Reset ${role.label} to the defaults?`}
+        description="Every change you made to this role's permissions is removed, and everyone with the role gets the default access."
+        confirmLabel="Reset to defaults"
+        pending={pending}
+        onConfirm={async () => {
+          await run(() => resetRolePermissionsAction(role.id), `${role.label} is back to the default permissions.`);
+          setConfirmReset(false);
+        }}
+      />
 
       <TeamNote>
         Changes apply to everyone with that role, the next time they open a page. Owners always have full access. Team management,

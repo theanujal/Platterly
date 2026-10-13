@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
+import { NoWheelNumberInputs } from "@/components/no-wheel-number-inputs";
 
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans", display: "swap" });
 
@@ -12,7 +13,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={dmSans.variable}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <NoWheelNumberInputs />
+      </body>
     </html>
   );
 }

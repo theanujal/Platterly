@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Phone, User } from "lucide-react";
-import { AddDrawer, DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
+import { AddDrawer, DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { CatalogCardMenu } from "@/components/catalog/catalog-card-menu";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,7 @@ function StaffMemberForm({ initialValues, submitLabel, onSubmit, onSuccess, onCa
   const [values, setValues] = useState(initialValues);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty(values);
   const set = <K extends keyof StaffMemberPayload>(key: K, value: StaffMemberPayload[K]) => setValues((v) => ({ ...v, [key]: value }));
 
   async function submit(event: React.FormEvent) {
@@ -31,7 +32,7 @@ function StaffMemberForm({ initialValues, submitLabel, onSubmit, onSuccess, onCa
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={submit}
       error={error}
       pending={pending}

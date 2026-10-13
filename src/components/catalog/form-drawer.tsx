@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { CATALOG_ADD_TILE_CLASSNAME, CatalogAddTileContent } from "@/components/catalog/catalog-browser";
@@ -21,6 +22,25 @@ const SIZE_CLASSNAME = {
 
 export type DrawerSize = keyof typeof SIZE_CLASSNAME;
 
+// Unsaved-edit guard (AJ, 2026-10-14): Esc, a click on the dimmed area, the X and Cancel used to close a drawer and throw
+// away everything typed. A form inside the drawer reports whether it differs from how it started (`dirty` on DrawerForm);
+// while it does, every way of closing asks "Discard your changes?" first. Saving closes the drawer directly, with no question.
+interface DrawerGuard {
+  setDirty: (dirty: boolean) => void;
+  /** Runs `action` at once when nothing was edited, otherwise only after the person confirms the discard. */
+  confirmDiscard: (action: () => void) => void;
+}
+const DrawerGuardContext = createContext<DrawerGuard | null>(null);
+
+/**
+ * True once `state` no longer matches what it was on the first render, so a form passes its values (and anything else the
+ * person can change, such as a chosen file's name) and gets the `dirty` flag for DrawerForm.
+ */
+export function useIsDirty(state: unknown): boolean {
+  const [first] = useState(() => JSON.stringify(state));
+  return JSON.stringify(state) !== first;
+}
+
 export function FormDrawer({
   open,
   onOpenChange,
@@ -36,8 +56,30 @@ export function FormDrawer({
   size?: DrawerSize;
   children: React.ReactNode;
 }) {
+  // A ref, set in a layout effect, so the answer is already there when Esc is pressed right after typing (a state set in a
+  // passive effect can lag behind a key press that Base UI handles outside React).
+  const dirty = useRef(false);
+  const [asking, setAsking] = useState(false);
+  const pendingAction = useRef<(() => void) | null>(null);
+
+  // Stable for the drawer's whole life, so DrawerForm's layout effect only runs when its own `dirty` changes.
+  const [guard] = useState<DrawerGuard>(() => ({
+    setDirty: (next) => {
+      dirty.current = next;
+    },
+    confirmDiscard: (action) => {
+      if (!dirty.current) {
+        action();
+        return;
+      }
+      pendingAction.current = action;
+      setAsking(true);
+    },
+  }));
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <DrawerGuardContext.Provider value={guard}>
+    <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(next) : guard.confirmDiscard(() => onOpenChange(false)))}>
       <SheetContent className={cn("w-full gap-0 p-0 data-[side=right]:w-full", SIZE_CLASSNAME[size])}>
         <SheetHeader className="border-b border-border p-5 pr-14">
           <SheetTitle className="text-lg">{title}</SheetTitle>
@@ -46,6 +88,29 @@ export function FormDrawer({
         {children}
       </SheetContent>
     </Sheet>
+    <AlertDialog open={asking} onOpenChange={setAsking}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Discard your changes?</AlertDialogTitle>
+          <AlertDialogDescription>What you typed has not been saved and will be lost.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep editing</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => {
+              const action = pendingAction.current;
+              pendingAction.current = null;
+              setAsking(false);
+              action?.();
+            }}
+          >
+            Discard changes
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </DrawerGuardContext.Provider>
   );
 }
 
@@ -62,6 +127,7 @@ export function DrawerForm({
   onCancel,
   active,
   className,
+  dirty = false,
   children,
 }: {
   onSubmit: (event: React.FormEvent) => void;
@@ -72,8 +138,17 @@ export function DrawerForm({
   active?: { id: string; checked: boolean; onChange: (checked: boolean) => void; onLabel?: string; offLabel?: string };
   /** Layout classes for the scrolling body (the default stacks fields with a gap). */
   className?: string;
+  /** The form differs from how it started (see `useIsDirty`); closing the drawer then asks before discarding. */
+  dirty?: boolean;
   children: React.ReactNode;
 }) {
+  const guard = useContext(DrawerGuardContext);
+  const setGuardDirty = guard?.setDirty;
+  useLayoutEffect(() => {
+    setGuardDirty?.(dirty);
+    return () => setGuardDirty?.(false);
+  }, [dirty, setGuardDirty]);
+
   return (
     <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
       <div className={cn("flex flex-1 flex-col gap-5 overflow-y-auto p-5", className)}>{children}</div>
@@ -94,7 +169,7 @@ export function DrawerForm({
           <span />
         )}
         <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={() => (guard ? guard.confirmDiscard(onCancel) : onCancel())}>
             Cancel
           </Button>
           <Button type="submit" disabled={pending}>

@@ -53,7 +53,7 @@ export function ImportInventoryDrawer({ open, onClose }: { open: boolean; onClos
 
   return (
     <FormDrawer open={open} onOpenChange={(o) => !o && handleClose()} title="Import Inventory Items" description="Add your existing ingredient list from an Excel or CSV file." size="md">
-      <DrawerForm onSubmit={submit} error={error} pending={pending} submitLabel={result ? "Done" : "Import"} onCancel={handleClose}>
+      <DrawerForm dirty={file !== null && !result} onSubmit={submit} error={error} pending={pending} submitLabel={result ? "Done" : "Import"} onCancel={handleClose}>
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
             Columns: <strong>Item Name</strong>, Category, <strong>Unit</strong>, Purchase Price, Opening Stock, Low Stock Alert, Storage Location. Opening Stock is optional: items without it start at zero stock. Names already in your Inventory Items are skipped.

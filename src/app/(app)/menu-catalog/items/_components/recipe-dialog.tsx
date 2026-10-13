@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import { DrawerForm, FormDrawer } from "@/components/catalog/form-drawer";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,12 +48,23 @@ const EMPTY: RecipeFormValues = { yieldServings: "10", notes: "", ingredients: [
 
 /** The recipe (ingredient list) for one Food Item: quantities for a stated number of servings, with a scale-up preview. */
 export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, options, copySources = [] }: RecipeDialogProps) {
+  return (
+    <FormDrawer open={open} onOpenChange={onOpenChange} title={`Recipe — ${name}`} description="What goes into this dish. Quantities are for the number of servings below." size="lg">
+      <RecipeForm onOpenChange={onOpenChange} itemId={itemId} initialValues={initialValues} options={options} copySources={copySources} />
+    </FormDrawer>
+  );
+}
+
+// The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
+function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources }: Pick<RecipeDialogProps, "onOpenChange" | "itemId" | "initialValues" | "options"> & { copySources: CopySource[] }) {
   const router = useRouter();
   const [values, setValues] = useState<RecipeFormValues>(initialValues ?? EMPTY);
   const [previewServings, setPreviewServings] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const dirty = useIsDirty({ values, previewServings });
 
   const optionById = new Map(options.map((o) => [o.id, o]));
   const yieldNumber = Number.parseFloat(values.yieldServings);
@@ -100,6 +112,7 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
   }
 
   async function handleRemove() {
+    setConfirmRemove(false);
     setError(null);
     setPending(true);
     const result = await deleteRecipeAction(itemId);
@@ -114,8 +127,8 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
   }
 
   return (
-    <FormDrawer open={open} onOpenChange={onOpenChange} title={`Recipe — ${name}`} description="What goes into this dish. Quantities are for the number of servings below." size="lg">
-      <DrawerForm onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Save recipe" onCancel={() => onOpenChange(false)}>
+    <>
+      <DrawerForm dirty={dirty} onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Save recipe" onCancel={() => onOpenChange(false)}>
         {options.length === 0 ? (
           <p className="text-sm text-muted-foreground">Add items to Inventory first. Ingredients are picked from there.</p>
         ) : (
@@ -206,13 +219,21 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
             </div>
 
             {initialValues && (
-              <Button type="button" variant="outline" className="self-start text-destructive" disabled={pending} onClick={handleRemove}>
+              <Button type="button" variant="outline" className="self-start text-destructive" disabled={pending} onClick={() => setConfirmRemove(true)}>
                 <Trash2 /> Remove recipe
               </Button>
             )}
           </>
         )}
       </DrawerForm>
-    </FormDrawer>
+      <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title="Remove this recipe?"
+        description="The ingredient list for this dish is deleted. The dish itself stays."
+        confirmLabel="Remove recipe"
+        onConfirm={handleRemove}
+      />
+    </>
   );
 }

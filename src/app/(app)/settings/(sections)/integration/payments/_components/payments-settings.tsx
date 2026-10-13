@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import { CheckCircle2, ChevronDown, Copy, CreditCard, FileText, KeyRound, Link2, Percent, Phone, ShieldCheck, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { IconInput } from "@/components/ui/icon-input";
 import { GstRateTypeFields } from "@/components/payments/gst-rate-type-fields";
 import { Label } from "@/components/ui/label";
@@ -111,6 +112,7 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
   const [open, setOpen] = useState(false);
   const { pending, message, run } = useSave(() => setOpen(true));
   const [copied, setCopied] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const connected = settings.razorpay.connected;
 
   async function copy() {
@@ -176,7 +178,7 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
               <Button type="button" variant="outline" size="md" disabled={pending} onClick={() => run(testRazorpayAction, "Razorpay accepted your keys.")}>
                 Test Connection
               </Button>
-              <Button type="button" variant="outline" size="md" className="text-destructive" disabled={pending} onClick={() => run(disconnectRazorpayAction, "Razorpay disconnected.")}>
+              <Button type="button" variant="outline" size="md" className="text-destructive" disabled={pending} onClick={() => setConfirmDisconnect(true)}>
                 Disconnect
               </Button>
             </>
@@ -184,6 +186,18 @@ function RazorpayPanel({ settings, webhookUrl }: { settings: PaymentSettingsView
         </div>
         <Status message={message} />
       </form>
+      <ConfirmDialog
+        open={confirmDisconnect}
+        onOpenChange={setConfirmDisconnect}
+        title="Disconnect Razorpay?"
+        description="Your saved keys are removed and customers can no longer pay online until you connect again."
+        confirmLabel="Disconnect"
+        pending={pending}
+        onConfirm={async () => {
+          await run(disconnectRazorpayAction, "Razorpay disconnected.");
+          setConfirmDisconnect(false);
+        }}
+      />
     </MethodAccordion>
   );
 }

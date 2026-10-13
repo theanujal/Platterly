@@ -7,7 +7,7 @@ import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DrawerForm } from "@/components/catalog/form-drawer";
+import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
@@ -160,6 +160,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const dirty = useIsDirty({ values, image: image?.name ?? null });
 
   function setField<K extends keyof ItemFormValues>(key: K, value: ItemFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -207,7 +208,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
   }
 
   return (
-    <DrawerForm
+    <DrawerForm dirty={dirty}
       onSubmit={handleSubmit}
       error={error}
       pending={pending}

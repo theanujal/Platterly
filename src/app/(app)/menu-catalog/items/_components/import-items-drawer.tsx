@@ -44,7 +44,7 @@ export function ImportItemsDrawer({ open, onClose }: { open: boolean; onClose: (
 
   return (
     <FormDrawer open={open} onOpenChange={(o) => !o && handleClose()} title="Import Food Items" description="Add many dishes at once from an Excel or CSV file." size="md">
-      <DrawerForm onSubmit={submit} error={error} pending={pending} submitLabel={result ? "Done" : "Import"} onCancel={handleClose}>
+      <DrawerForm dirty={file !== null && !result} onSubmit={submit} error={error} pending={pending} submitLabel={result ? "Done" : "Import"} onCancel={handleClose}>
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted-foreground">
             Columns: <strong>Item Name</strong>, Category, <strong>Veg / Non-Veg</strong>, Price, Description. Names already in your Food Items are skipped, and prices left blank become ₹0.

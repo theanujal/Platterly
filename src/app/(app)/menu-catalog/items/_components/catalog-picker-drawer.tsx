@@ -75,7 +75,7 @@ export function CatalogPickerDrawer({ open, onClose, catalog }: { open: boolean;
 
   return (
     <FormDrawer open={open} onOpenChange={(o) => !o && handleClose()} title="Platterly Catalog" description="Common catering dishes. Each one you add becomes your own Food Item, with its own price." size="lg">
-      <DrawerForm
+      <DrawerForm dirty={selected.size > 0 && !result}
         onSubmit={submit}
         error={error}
         pending={pending}
