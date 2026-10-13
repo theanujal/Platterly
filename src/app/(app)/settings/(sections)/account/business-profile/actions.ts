@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { updateTenant, type TenantProfileUpdateInput } from "@/modules/tenants/tenant";
 import { getStorageDriver } from "@/lib/storage/storage";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -36,6 +37,12 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
   const businessName = stringField(formData, "businessName");
   if (!businessName) {
     return { ok: false, error: "Business name is required." };
+  }
+
+  // The business always has a mobile number: it cannot be cleared or saved invalid here.
+  const mobileNumber = stringField(formData, "mobileNumber");
+  if (!mobileNumber || !isValidPhone(normalizePhone(mobileNumber))) {
+    return { ok: false, error: "Enter a valid mobile number." };
   }
 
   let logoUrl: string | undefined;
@@ -72,7 +79,7 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
   const input: TenantProfileUpdateInput = {
     name: businessName,
     businessDescription: stringField(formData, "businessDescription"),
-    contactPhone: stringField(formData, "mobileNumber"),
+    contactPhone: normalizePhone(mobileNumber),
     addressLine1: stringField(formData, "addressLine1"),
     city: stringField(formData, "city"),
     state: stringField(formData, "state"),

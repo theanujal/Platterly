@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { normalizePhone } from "@/lib/phone";
 import { generatePlaceholderSlug } from "./slug";
 import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
@@ -60,6 +61,9 @@ export async function provisionTenantForNewUser(
         // showing blank for every self-serve caterer (AJ, 2026-09-14).
         ownerFirstName: user.firstName,
         ownerLastName: user.lastName,
+        // The phone given at sign-up (required there) is the business's mobile from the start, so a person who skips or
+        // leaves onboarding at any step still has it in Settings. Onboarding step 2 pre-fills it and lets them change it.
+        contactPhone: user.phone ? normalizePhone(user.phone) : undefined,
       },
     });
 

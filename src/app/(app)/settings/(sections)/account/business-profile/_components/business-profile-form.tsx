@@ -134,9 +134,10 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="mobileNumber">Mobile number</Label>
+          <Label htmlFor="mobileNumber" required>Mobile number</Label>
           <PhoneInput
             id="mobileNumber"
+            required
             value={values.mobileNumber}
             onChange={(value) => setField("mobileNumber", value)}
           />

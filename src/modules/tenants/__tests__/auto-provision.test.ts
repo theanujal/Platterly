@@ -15,6 +15,25 @@ afterEach(async () => {
   cleanupUserIds.length = 0;
 });
 
+describe("provisionTenantForNewUser business mobile (2026-10-13)", () => {
+  it("starts the business's contactPhone from the phone given at sign-up, and leaves it empty when there is none", async () => {
+    const withPhone = await prisma.user.create({
+      data: { id: crypto.randomUUID(), name: "Asha Rao", email: `owner-${crypto.randomUUID()}@example.test`, emailVerified: true, phone: "9800000012" },
+    });
+    const withoutPhone = await prisma.user.create({
+      data: { id: crypto.randomUUID(), name: "No Phone", email: `owner-${crypto.randomUUID()}@example.test`, emailVerified: true },
+    });
+    cleanupUserIds.push(withPhone.id, withoutPhone.id);
+
+    const a = await provisionTenantForNewUser(withPhone.id);
+    const b = await provisionTenantForNewUser(withoutPhone.id);
+    cleanupOrgIds.push(a.organizationId!, b.organizationId!);
+
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: a.organizationId! } })).contactPhone).toBe("+919800000012");
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: b.organizationId! } })).contactPhone).toBeNull();
+  });
+});
+
 describe("provisionTenantForNewUser owner name population (Chunk 6 correction)", () => {
   it("copies the new user's firstName/lastName onto the Organization's ownerFirstName/ownerLastName", async () => {
     const user = await prisma.user.create({

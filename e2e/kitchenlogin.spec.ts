@@ -278,3 +278,35 @@ test("creating an account without ticking the Terms stops with the browser's own
   await box.check();
   expect(await input.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
 });
+
+test("the sign-up phone is already the business mobile, even if onboarding is abandoned", async ({ page }) => {
+  const email = `e2e-onboard-leave-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+
+  await page.goto("/kitchenlogin");
+  await page.getByRole("button", { name: "Create an account" }).click();
+  await page.getByLabel("First name").fill("Leave");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Phone", { exact: true }).fill("9800000088");
+  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
+  await page.getByLabel("Confirm password").fill("correct-horse-battery");
+  await page.getByRole("checkbox", { name: /I accept/ }).check();
+  await page.getByRole("button", { name: "Create Platterly Account" }).click();
+  await verifyEmailViaOtp(page, email);
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
+
+  // Leave the wizard without Skip or Finish (open the app directly), then look at Settings.
+  await page.goto("/settings/account/business-profile");
+  await expect(page.getByText("+919800000088").first()).toBeVisible();
+
+  // The mobile number cannot be cleared in Settings: it must stay a valid number there too.
+  await page.getByRole("button", { name: "Edit Profile" }).click();
+  await page.getByLabel("Company / business name").fill("Leave Kitchen");
+  const mobile = page.locator("input#mobileNumber");
+  await expect(mobile).toHaveValue("+91 98000 00088");
+  await mobile.fill("");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  // The field keeps the "+91" calling code, so the browser's own check passes; the server refuses it and says so.
+  await expect(page.getByText("Enter a valid mobile number.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Profile" })).toHaveCount(0); // still editing, nothing was saved
+});
