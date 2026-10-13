@@ -48,3 +48,6 @@ Thumbs.db
 
 # Ops: website pictures uploaded through the media library (SITE_MEDIA_DIR default)
 /apps/ops/.data/
+
+# One-off client data moves (contain customers' personal data, never commit)
+/migration-data/
