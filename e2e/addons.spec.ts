@@ -117,3 +117,86 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await page.getByRole("alertdialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByText(`${updatedName} (Copy)`, { exact: true })).toHaveCount(0);
 });
+
+test("an add-on applies to all menus by default, needs a menu once All menus is off, and hides the price when included", async ({ page }) => {
+  test.setTimeout(60_000);
+  const email = `e2e-addon-menus-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  const name = `Welcome Drink ${Date.now().toString().slice(-6)}`;
+
+  await signUpCaterer(page, email, { firstName: "Addon", lastName: "Menus", closeClaimDialog: false });
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.goto("/menu-catalog/add-ons");
+
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("checkbox", { name: "All menus" })).toBeChecked();
+
+  // Turning All menus off with no menu chosen is refused.
+  await dialog.getByLabel("Name").fill(name);
+  await dialog.getByLabel("Price", { exact: true }).fill("80");
+  await dialog.getByRole("checkbox", { name: "All menus" }).uncheck();
+  await dialog.getByRole("button", { name: "Create add-on" }).click();
+  await expect(dialog.getByText("Choose at least one menu, or tick All menus.")).toBeVisible();
+  await dialog.getByRole("checkbox", { name: "All menus" }).check();
+
+  // In the package: no price to enter, and the card says Included with the menus it applies to.
+  await dialog.getByRole("checkbox", { name: "Included in the package" }).check();
+  await expect(dialog.getByLabel("Price", { exact: true })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Create add-on" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText(name)).toBeVisible();
+  await expect(page.getByText("Included", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("All menus").first()).toBeVisible();
+});
+
+test("pick the menus an add-on applies to in the multi-select: chips, count, search, clear all, and it shows on the card", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-addon-multi-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  const suffix = Date.now().toString().slice(-6);
+  const menus = [`Gold Menu ${suffix}`, `Silver Menu ${suffix}`, `Bronze Menu ${suffix}`];
+
+  await signUpCaterer(page, email, { firstName: "Addon", lastName: "Multi", closeClaimDialog: false });
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.goto("/menu-catalog/menus");
+  for (const n of menus) {
+    await page.getByRole("button", { name: "Add Menu Type" }).click();
+    await page.getByLabel("Menu Name").fill(n);
+    await page.getByLabel("Price Per Plate").fill("400");
+    await page.getByRole("button", { name: "Create menu" }).click();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+  }
+
+  await page.goto("/menu-catalog/add-ons");
+  await page.getByRole("button", { name: "Add Add-on" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Name").fill(`Chaat ${suffix}`);
+  await dialog.getByLabel("Price", { exact: true }).fill("90");
+  await dialog.getByRole("checkbox", { name: "All menus" }).uncheck();
+
+  await dialog.getByRole("combobox", { name: "Menus" }).click();
+  await page.getByRole("option", { name: menus[0] }).click();
+  await page.getByRole("option", { name: menus[1] }).click();
+  await page.getByLabel("Search menus").fill("bronze");
+  await expect(page.getByRole("option", { name: menus[0] })).toHaveCount(0);
+  await expect(page.getByRole("option", { name: menus[2] })).toBeVisible();
+  await dialog.getByText("Applies to menus").click(); // outside press closes the list
+  await expect(dialog.getByTestId("multi-select-count")).toHaveText("2");
+  await expect(page.getByRole("option")).toHaveCount(0); // the list closed
+  await expect(dialog.getByRole("combobox", { name: "Menus" }).getByText(menus[0])).toBeVisible();
+
+  // A chip's x removes one; Clear all empties the field.
+  await dialog.getByRole("button", { name: `Remove ${menus[1]}` }).click();
+  await expect(dialog.getByTestId("multi-select-count")).toHaveText("1");
+  await dialog.getByRole("button", { name: "Clear all" }).click();
+  await expect(dialog.getByTestId("multi-select-count")).toHaveCount(0);
+
+  await dialog.getByRole("combobox", { name: "Menus" }).click();
+  await page.getByRole("option", { name: menus[1] }).click();
+  await dialog.getByText("Applies to menus").click(); // outside press closes the list
+  await dialog.getByRole("button", { name: "Create add-on" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.getByText(menus[1])).toBeVisible();
+  await expect(page.getByText(menus[0])).toHaveCount(0);
+});

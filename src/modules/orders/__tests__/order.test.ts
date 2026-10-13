@@ -234,6 +234,34 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
   });
 });
 
+describe("Add-ons are checked against the meal's menu when an order is saved (2026-10-13)", () => {
+  it("refuses an add-on the meal's menu doesn't offer, keeps the meal's existing items, and accepts all-menus and listed add-ons", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const gold = await createMenu(org.id, { name: "Gold", menuType: "VEGETARIAN", pricePerPlate: 500 }, actor.id);
+    const silver = await createMenu(org.id, { name: "Silver", menuType: "VEGETARIAN", pricePerPlate: 300 }, actor.id);
+    const forSilver = await createAddOn(org.id, { name: "Silver Only", type: "SPECIAL_ADD_ON", priceType: "FIXED", price: 100, appliesToAllMenus: false, menuIds: [silver.id] }, actor.id);
+    const forAll = await createAddOn(org.id, { name: "Everywhere", type: "SPECIAL_ADD_ON", priceType: "FIXED", price: 50 }, actor.id);
+    const base = { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") };
+    const meal = (menuId: string, ids: string[]) => ({
+      date: new Date("2026-12-01"),
+      mealType: "LUNCH" as const,
+      menuId,
+      items: ids.map((catalogId) => ({ itemType: "ADD_ON" as const, catalogId, quantity: 1 })),
+    });
+
+    await expect(createOrder(org.id, { ...base, mealPlanEntries: [meal(gold.id, [forSilver.id])] }, actor.id)).rejects.toThrow(/Silver Only isn't offered with the Gold menu/);
+
+    const order = await createOrder(org.id, { ...base, mealPlanEntries: [meal(silver.id, [forSilver.id, forAll.id])] }, actor.id);
+    expect(await prisma.orderItem.count({ where: { orderId: order.id } })).toBe(2);
+
+    // Switching that meal to Gold with the Silver-only add-on is refused and nothing is lost.
+    await expect(updateOrder(org.id, order.id, { ...base, mealPlanEntries: [meal(gold.id, [forSilver.id, forAll.id])] }, actor.id)).rejects.toThrow(/isn't offered/);
+    expect(await prisma.orderItem.count({ where: { orderId: order.id } })).toBe(2);
+  });
+});
+
 describe("Order pricing/totals (Group 10.4/10.5) — recalculateOrderTotals", () => {
   it("subtotal sums each meal's Extra dishes and add-ons; total/balance derive from discount/transportationCost/otherCharges/advance", async () => {
     const org = await makeOrg();

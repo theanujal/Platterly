@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { createAddOn, updateAddOn, deleteAddOn, listAddOns, getAddOn } from "@/modules/addons/addon";
+import { createAddOn, updateAddOn, deleteAddOn, listAddOns, getAddOn, duplicateAddOn, addOnOfferedOnMenu } from "@/modules/addons/addon";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -8,6 +8,7 @@ const cleanupUserIds: string[] = [];
 afterEach(async () => {
   await prisma.auditLog.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.addOn.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
+  await prisma.menu.deleteMany({ where: { organizationId: { in: cleanupOrgIds } } });
   await prisma.organization.deleteMany({ where: { id: { in: cleanupOrgIds } } });
   await prisma.user.deleteMany({ where: { id: { in: cleanupUserIds } } });
   cleanupOrgIds.length = 0;
@@ -109,5 +110,85 @@ describe("AddOn CRUD (Add-ons Management, 2026-09-14)", () => {
 
     expect(await getAddOn(orgA.id, first.id)).not.toBeNull();
     expect(await getAddOn(orgB.id, first.id)).toBeNull();
+  });
+});
+
+describe("AddOn <-> Menu scope (2026-10-13)", () => {
+  async function makeMenu(organizationId: string, name: string) {
+    return prisma.menu.create({ data: { organizationId, name, menuType: "VEGETARIAN", pricePerPlate: 500 } });
+  }
+  const base = { name: "Live Dosa", type: "LIVE_COUNTER", priceType: "PER_PLATE", price: 100 } as const;
+
+  it("defaults to every menu and stores no menu rows", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const addOn = await createAddOn(org.id, base, actor.id);
+    expect(addOn.appliesToAllMenus).toBe(true);
+    const listed = await getAddOn(org.id, addOn.id);
+    expect(listed?.menus).toEqual([]);
+    expect(addOnOfferedOnMenu(listed!, "any-menu")).toBe(true);
+    expect(addOnOfferedOnMenu(listed!, null)).toBe(true);
+  });
+
+  it("with specific menus, only those menus (never a Custom Menu) offer it", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const gold = await makeMenu(org.id, "Gold");
+    const silver = await makeMenu(org.id, "Silver");
+    const addOn = await createAddOn(org.id, { ...base, appliesToAllMenus: false, menuIds: [gold.id] }, actor.id);
+    const listed = (await getAddOn(org.id, addOn.id))!;
+    expect(addOnOfferedOnMenu(listed, gold.id)).toBe(true);
+    expect(addOnOfferedOnMenu(listed, silver.id)).toBe(false);
+    expect(addOnOfferedOnMenu(listed, null)).toBe(false);
+  });
+
+  it("refuses an add-on with no menus and All menus off", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    await expect(createAddOn(org.id, { ...base, appliesToAllMenus: false, menuIds: [] }, actor.id)).rejects.toThrow(/at least one menu/);
+  });
+
+  it("ignores menus from another business", async () => {
+    const org = await makeOrg();
+    const other = await makeOrg();
+    const actor = await makeActor();
+    const theirs = await makeMenu(other.id, "Theirs");
+    const mine = await makeMenu(org.id, "Mine");
+    const addOn = await createAddOn(org.id, { ...base, appliesToAllMenus: false, menuIds: [mine.id, theirs.id] }, actor.id);
+    expect((await getAddOn(org.id, addOn.id))!.menus.map((m) => m.menuId)).toEqual([mine.id]);
+  });
+
+  it("update replaces the menus, switching to All menus clears them, and an update without menu fields keeps them", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const gold = await makeMenu(org.id, "Gold");
+    const silver = await makeMenu(org.id, "Silver");
+    const addOn = await createAddOn(org.id, { ...base, appliesToAllMenus: false, menuIds: [gold.id] }, actor.id);
+
+    await updateAddOn(org.id, addOn.id, { ...base, appliesToAllMenus: false, menuIds: [silver.id] }, actor.id);
+    expect((await getAddOn(org.id, addOn.id))!.menus.map((m) => m.menuId)).toEqual([silver.id]);
+
+    await updateAddOn(org.id, addOn.id, { ...base, price: 120 }, actor.id);
+    const kept = (await getAddOn(org.id, addOn.id))!;
+    expect(kept.appliesToAllMenus).toBe(false);
+    expect(kept.menus.map((m) => m.menuId)).toEqual([silver.id]);
+
+    await updateAddOn(org.id, addOn.id, { ...base, appliesToAllMenus: true }, actor.id);
+    const all = (await getAddOn(org.id, addOn.id))!;
+    expect(all.appliesToAllMenus).toBe(true);
+    expect(all.menus).toEqual([]);
+  });
+
+  it("duplicate copies the menus, and deleting a menu drops it from the add-on", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const gold = await makeMenu(org.id, "Gold");
+    const silver = await makeMenu(org.id, "Silver");
+    const addOn = await createAddOn(org.id, { ...base, appliesToAllMenus: false, menuIds: [gold.id, silver.id] }, actor.id);
+    const copy = await duplicateAddOn(org.id, addOn.id, actor.id);
+    expect((await getAddOn(org.id, copy.id))!.menus.map((m) => m.menuId).sort()).toEqual([gold.id, silver.id].sort());
+
+    await prisma.menu.delete({ where: { id: gold.id } });
+    expect((await getAddOn(org.id, addOn.id))!.menus.map((m) => m.menuId)).toEqual([silver.id]);
   });
 });

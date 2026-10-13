@@ -5,13 +5,14 @@ import { AddDrawer } from "@/components/catalog/form-drawer";
 import { AddOnForm } from "./addon-form";
 import { createAddOnAction } from "../actions";
 
-export function AddAddOnDialog({ variant = "button" }: { variant?: "button" | "tile" }) {
+export function AddAddOnDialog({ variant = "button", availableMenus }: { variant?: "button" | "tile"; availableMenus: { id: string; name: string }[] }) {
   const router = useRouter();
 
   return (
     <AddDrawer variant={variant} buttonLabel="Add Add-on" tileLabel="Add New Add-on" tileDescription="Live counters and special extras" title="New Add-on">
       {(close) => (
         <AddOnForm
+          availableMenus={availableMenus}
           submitLabel="Create add-on"
           onSubmit={createAddOnAction}
           onCancel={close}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Sparkles, IndianRupee } from "lucide-react";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { DrawerForm } from "@/components/catalog/form-drawer";
@@ -28,6 +29,9 @@ export interface AddOnFormValues {
   priceType: string;
   price: string;
   includedInPackage: boolean;
+  /** true = every menu offers it. */
+  appliesToAllMenus: boolean;
+  menuIds: string[];
   imageUrl: string | null;
   isActive: boolean;
 }
@@ -39,19 +43,22 @@ export const EMPTY_ADDON_VALUES: AddOnFormValues = {
   priceType: "PER_PLATE",
   price: "",
   includedInPackage: false,
+  appliesToAllMenus: true,
+  menuIds: [],
   imageUrl: null,
   isActive: true,
 };
 
 interface AddOnFormProps {
   initialValues?: Partial<AddOnFormValues>;
+  availableMenus: { id: string; name: string }[];
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
   onCancel: () => void;
 }
 
-export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onCancel }: AddOnFormProps) {
+export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, submitLabel, onCancel }: AddOnFormProps) {
   const [values, setValues] = useState<AddOnFormValues>({ ...EMPTY_ADDON_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +71,10 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onC
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!values.appliesToAllMenus && values.menuIds.length === 0) {
+      setError("Choose at least one menu, or tick All menus.");
+      return;
+    }
     setPending(true);
 
     const formData = new FormData();
@@ -73,6 +84,8 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onC
     formData.set("priceType", values.priceType);
     formData.set("price", values.price);
     formData.set("includedInPackage", String(values.includedInPackage));
+    formData.set("appliesToAllMenus", String(values.appliesToAllMenus));
+    if (!values.appliesToAllMenus) for (const id of values.menuIds) formData.append("menuIds", id);
     formData.set("isActive", String(values.isActive));
     if (image) formData.set("image", image);
 
@@ -152,26 +165,46 @@ export function AddOnForm({ initialValues, onSubmit, onSuccess, submitLabel, onC
             </Select>
           </div>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="addon-price">Price</Label>
-          <IconInput
-            icon={IndianRupee}
-            id="addon-price"
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            className="max-w-40"
-            value={values.price}
-            onChange={(e) => setField("price", e.target.value)}
-          />
-        </div>
+        {!values.includedInPackage && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="addon-price">Price</Label>
+            <IconInput
+              icon={IndianRupee}
+              id="addon-price"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              className="max-w-40"
+              value={values.price}
+              onChange={(e) => setField("price", e.target.value)}
+            />
+          </div>
+        )}
         <div className="flex items-start gap-3 rounded-lg border border-border p-3">
           <Checkbox id="addon-included" checked={values.includedInPackage} onCheckedChange={(checked) => setField("includedInPackage", checked === true)} className="mt-0.5" />
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="addon-included">Included in the package</Label>
-            <p className="text-xs text-muted-foreground">Customers still choose it, but it adds nothing to their bill. Leave off to charge the price above.</p>
+            <p className="text-xs text-muted-foreground">Customers still choose it, but it adds nothing to their bill, so no price is needed. Leave off to charge a price.</p>
           </div>
+        </div>
+        <div className="flex flex-col gap-2 border-t border-border pt-4">
+          <Label>Applies to menus</Label>
+          <p className="text-xs text-muted-foreground">Each menu only offers the add-ons ticked for it. Choose All menus to offer it everywhere, including menus you add later.</p>
+          <label htmlFor="addon-menu-all" className="flex cursor-pointer items-center gap-2">
+            <Checkbox id="addon-menu-all" checked={values.appliesToAllMenus} onCheckedChange={(checked) => setField("appliesToAllMenus", checked === true)} />
+            <span className="text-sm font-medium">All menus</span>
+          </label>
+          <MultiSelect
+            aria-label="Menus"
+            options={availableMenus.map((m) => ({ value: m.id, label: m.name }))}
+            value={values.appliesToAllMenus ? [] : values.menuIds}
+            onValueChange={(ids) => setField("menuIds", ids)}
+            disabled={values.appliesToAllMenus}
+            placeholder={values.appliesToAllMenus ? "Every menu, including ones you add later" : "Choose menus"}
+            searchPlaceholder="Search menus"
+            emptyLabel={availableMenus.length === 0 ? "No menus yet — add some first." : "No menus match."}
+          />
         </div>
       </div>
 

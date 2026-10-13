@@ -20,6 +20,11 @@ export interface StorefrontAddOn {
   price: number;
   /** Part of the package: the customer can still pick it, but it costs nothing. */
   included: boolean;
+  /** Offered with every menu; otherwise only with the menus in `menuIds`. */
+  allMenus: boolean;
+  menuIds: string[];
+  /** The names of `menuIds`, for showing which menus an included add-on comes with. */
+  menuNames: string[];
 }
 
 interface AddOnsSectionProps {
@@ -124,7 +129,9 @@ export function AddOnsSection({ addOns, guests, addOnIds, onAddOnIdsChange }: Ad
                       <Badge variant="success">
                         <Check /> Included in Package
                       </Badge>
-                      <span className="text-xs text-muted-foreground">No extra charge</span>
+                      <span className="text-xs text-muted-foreground" data-testid="addon-menus">
+                        No extra charge · {addOn.allMenus || addOn.menuNames.length === 0 ? "With all menus" : `With ${addOn.menuNames.join(", ")}`}
+                      </span>
                     </div>
                   ) : (
                     <div className="flex flex-col">

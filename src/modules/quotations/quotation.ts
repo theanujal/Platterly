@@ -68,9 +68,8 @@ export interface QuotationInput {
  * narrow, slot-scoped delete-then-recreate, never touching another meal's
  * items. Mirrors order.ts's `replaceMealPlanEntryItems` exactly.
  */
-async function replaceQuotationMealPlanEntryItems(organizationId: string, quotationId: string, mealPlanEntryId: string, items: OrderItemCatalogInput[]) {
-  await prisma.quotationItem.deleteMany({ where: { mealPlanEntryId } });
-  if (items.length === 0) return;
+async function replaceQuotationMealPlanEntryItems(organizationId: string, quotationId: string, mealPlanEntryId: string, menuId: string | null, items: OrderItemCatalogInput[]) {
+  // Resolved first, so an add-on the meal's menu doesn't offer fails before anything is deleted.
   const resolved = await Promise.all(
     items.map(async (item) => ({
       quotationId,
@@ -78,9 +77,11 @@ async function replaceQuotationMealPlanEntryItems(organizationId: string, quotat
       itemType: item.itemType,
       quantity: item.quantity,
       isExtra: item.isExtra === true,
-      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
+      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId, { menuId })),
     })),
   );
+  await prisma.quotationItem.deleteMany({ where: { mealPlanEntryId } });
+  if (items.length === 0) return;
   await prisma.quotationItem.createMany({ data: resolved });
 }
 
@@ -109,7 +110,7 @@ async function replaceQuotationMealPlanEntries(organizationId: string, quotation
       : (await prisma.quotationMealPlanEntry.create({ data: { quotationId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
     keepIds.add(entryId);
 
-    await replaceQuotationMealPlanEntryItems(organizationId, quotationId, entryId, entry.items ?? []);
+    await replaceQuotationMealPlanEntryItems(organizationId, quotationId, entryId, menuId, entry.items ?? []);
   }
 
   const toDelete = existing.filter((e) => !keepIds.has(e.id));

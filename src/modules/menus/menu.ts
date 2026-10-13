@@ -2,7 +2,7 @@ import { RULES, validateInput, checkMoney } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
-import { listAddOns } from "@/modules/addons/addon";
+import { listAddOns, addOnOfferedOnMenu } from "@/modules/addons/addon";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 
 export interface MenuInput {
@@ -464,6 +464,8 @@ export interface MenuPickerAddOn {
   image: string | null;
   price: number;
   priceType: "PER_PLATE" | "FIXED";
+  /** Part of the package: no price is shown and it adds nothing to the bill. */
+  included: boolean;
 }
 
 /** The food-item-selection drawer's data: the Menu's category-grouped items plus the active Add-ons. */
@@ -483,8 +485,8 @@ export async function getMenuPickerData(organizationId: string, menuId: string):
   return {
     ...menu,
     addOns: addOns
-      .filter((a) => a.isActive)
-      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, price: Number(a.price), priceType: a.priceType })),
+      .filter((a) => a.isActive && addOnOfferedOnMenu(a, menuId))
+      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, price: Number(a.price), priceType: a.priceType, included: a.includedInPackage })),
   };
 }
 

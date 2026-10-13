@@ -28,9 +28,15 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const priceType = stringField(formData, "priceType") as AddOnPriceType | undefined;
   if (priceType !== "PER_PLATE" && priceType !== "FIXED") throw new Error("Price Type is required.");
 
+  // An add-on in the package has no price to enter (the form hides the field); it is stored as 0.
+  const includedInPackage = formData.get("includedInPackage") === "true";
   const priceRaw = formData.get("price");
-  const price = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
+  const price = includedInPackage ? 0 : typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
   if (Number.isNaN(price) || price < 0) throw new Error("A valid, non-negative price is required.");
+
+  const appliesToAllMenus = formData.get("appliesToAllMenus") !== "false";
+  const menuIds = formData.getAll("menuIds").filter((v): v is string => typeof v === "string" && v !== "");
+  if (!appliesToAllMenus && menuIds.length === 0) throw new Error("Choose at least one menu, or tick All menus.");
 
   let image = existingImage;
   const file = formData.get("image");
@@ -45,7 +51,9 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     type,
     priceType,
     price,
-    includedInPackage: formData.get("includedInPackage") === "true",
+    includedInPackage,
+    appliesToAllMenus,
+    menuIds,
     isActive: formData.get("isActive") === "true",
   };
 }

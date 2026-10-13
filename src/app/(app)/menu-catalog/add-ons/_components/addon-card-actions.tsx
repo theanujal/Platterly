@@ -10,11 +10,12 @@ interface AddOnCardActionsProps {
   addOnId: string;
   name: string;
   initialValues: AddOnFormValues;
+  availableMenus: { id: string; name: string }[];
   variant?: "overlay" | "plain";
 }
 
 /** 3-dot menu for a Add-on card or row: Edit (popup), Duplicate, Activate / Deactivate, Delete. */
-export function AddOnCardActions({ addOnId, name, initialValues, variant }: AddOnCardActionsProps) {
+export function AddOnCardActions({ addOnId, name, initialValues, availableMenus, variant }: AddOnCardActionsProps) {
   const [editOpen, setEditOpen] = useState(false);
 
   return (
@@ -30,7 +31,7 @@ export function AddOnCardActions({ addOnId, name, initialValues, variant }: AddO
         onDelete={() => deleteAddOnAction(addOnId)}
         deleteDescription="This add-on will be removed from your catalog."
       />
-      <EditAddOnDialog open={editOpen} onOpenChange={setEditOpen} addOnId={addOnId} initialValues={initialValues} />
+      <EditAddOnDialog open={editOpen} onOpenChange={setEditOpen} addOnId={addOnId} initialValues={initialValues} availableMenus={availableMenus} />
     </>
   );
 }

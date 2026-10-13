@@ -1002,6 +1002,7 @@ model Menu {
   items                    MenuMenuItem[]
   categoryAssignments      MenuCategoryAssignment[]
   eventTypes               EventTypeMenu[]
+  addOns                   AddOnMenu[]
   orderItems               OrderItem[]
   quotationItems           QuotationItem[]
   mealPlanEntries          MealPlanEntry[]
@@ -1146,8 +1147,11 @@ model AddOn {
   price             Decimal        @db.Decimal(10, 2)
   // Part of the package: the customer can still pick it, but it adds nothing to the bill (resolveCatalogItem prices it at 0).
   includedInPackage Boolean        @default(false)
+  // Which Menus (Menu Types) offer this add-on. true = every Menu, including ones added later; false = only the Menus in `menus`.
+  appliesToAllMenus Boolean        @default(true)
   isActive          Boolean        @default(true)
 
+  menus              AddOnMenu[]
   orderItems         OrderItem[]
   quotationItems     QuotationItem[]
   menuSelectionItems MenuSelectionItem[]
@@ -1158,6 +1162,21 @@ model AddOn {
 
   @@index([organizationId])
   @@map("add_on")
+}
+
+// AddOn <-> Menu (many-to-many). No `organizationId` of its own: it cascades off its AddOn or Menu, same pattern as EventTypeMenu.
+// Only read when AddOn.appliesToAllMenus is false.
+model AddOnMenu {
+  id        String   @id @default(cuid())
+  addOnId   String
+  addOn     AddOn    @relation(fields: [addOnId], references: [id], onDelete: Cascade)
+  menuId    String
+  menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([addOnId, menuId])
+  @@index([menuId])
+  @@map("add_on_menu")
 }
 
 // Chunk 7 (Inventory, Basic) — PRD §35 (subset), Updated doc §13's exact Add

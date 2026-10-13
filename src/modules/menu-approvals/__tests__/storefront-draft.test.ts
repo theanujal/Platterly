@@ -190,6 +190,23 @@ describe("menu + items steps (server-side rules)", () => {
     expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.addOnIds).toEqual([t.fixedAddOn.id]);
   });
 
+  it("an add-on tied to other menus is refused for this menu, and a Custom Menu only gets all-menus add-ons (2026-10-13)", async () => {
+    const t = await setup();
+    const otherMenu = await createMenu(t.org.id, { name: "Gold Veg", menuType: "VEGETARIAN", pricePerPlate: 900 }, t.actor.id);
+    const forOther = await createAddOn(t.org.id, { name: "Gold Only", type: "SPECIAL_ADD_ON", priceType: "FIXED", price: 500, appliesToAllMenus: false, menuIds: [otherMenu.id] }, t.actor.id);
+    const forThis = await createAddOn(t.org.id, { name: "Classic Only", type: "SPECIAL_ADD_ON", priceType: "FIXED", price: 500, appliesToAllMenus: false, menuIds: [t.menu.id] }, t.actor.id);
+
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+    await expect(saveDraftAddOns(t.org.id, draft.id, [forOther.id])).rejects.toThrow(/isn't offered with your menu/);
+    await saveDraftAddOns(t.org.id, draft.id, [forThis.id, t.perPlateAddOn.id]);
+
+    // Switching to a Custom Menu keeps only the add-ons offered with every menu.
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "CUSTOM" });
+    expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.addOnIds).toEqual([t.perPlateAddOn.id]);
+  });
+
   it("another tenant's draft id is simply not found", async () => {
     const a = await setup();
     const b = await setup();

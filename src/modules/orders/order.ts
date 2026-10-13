@@ -6,6 +6,8 @@ import { derivePaymentState, tenantTodayStart } from "@/modules/payments/payment
 import "server-only";
 import { parseCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
 import { prisma } from "@/lib/db";
+import { ValidationError } from "@/lib/errors";
+import { addOnOfferedOnMenu } from "@/modules/addons/addon";
 import { audit } from "@/lib/audit/audit";
 import { notify } from "@/lib/notifications/notify";
 import { onOrderCreated } from "@/modules/notifications/triggers";
@@ -112,7 +114,7 @@ export interface OrderInput {
  * for `quotations/quotation.ts`'s own `QuotationItem` add-flow, which needs
  * the identical snapshot behavior.
  */
-export async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string) {
+export async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string, scope?: { menuId: string | null }) {
   if (itemType === "MENU") {
     const menu = await prisma.menu.findFirstOrThrow({ where: { id: catalogId, organizationId } });
     return { name: menu.name, unitPrice: menu.pricePerPlate, menuId: catalogId, menuItemId: null, addOnId: null };
@@ -121,7 +123,12 @@ export async function resolveCatalogItem(organizationId: string, itemType: Order
     const item = await prisma.menuItem.findFirstOrThrow({ where: { id: catalogId, organizationId } });
     return { name: item.name, unitPrice: item.price, menuId: null, menuItemId: catalogId, addOnId: null };
   }
-  const addOn = await prisma.addOn.findFirstOrThrow({ where: { id: catalogId, organizationId } });
+  const addOn = await prisma.addOn.findFirstOrThrow({ where: { id: catalogId, organizationId }, include: { menus: { select: { menuId: true } } } });
+  // The meal's Menu has to offer it (pass `scope` where the add-on is picked for a meal; a meal with no Menu only gets all-menus add-ons).
+  if (scope && !addOnOfferedOnMenu(addOn, scope.menuId)) {
+    const menu = scope.menuId ? await prisma.menu.findFirst({ where: { id: scope.menuId, organizationId }, select: { name: true } }) : null;
+    throw new ValidationError(`${addOn.name} isn't offered with ${menu ? `the ${menu.name} menu` : "this meal's menu"}. Remove it or choose a menu that offers it.`);
+  }
   // An add-on that is part of the package is on the order but costs nothing.
   return { name: addOn.name, unitPrice: addOn.includedInPackage ? 0 : addOn.price, menuId: null, menuItemId: null, addOnId: catalogId };
 }
@@ -131,9 +138,8 @@ export async function resolveCatalogItem(organizationId: string, itemType: Order
  * narrow, slot-scoped delete-then-recreate, never touching another meal's
  * items.
  */
-async function replaceMealPlanEntryItems(organizationId: string, orderId: string, mealPlanEntryId: string, items: OrderItemCatalogInput[]) {
-  await prisma.orderItem.deleteMany({ where: { mealPlanEntryId } });
-  if (items.length === 0) return;
+async function replaceMealPlanEntryItems(organizationId: string, orderId: string, mealPlanEntryId: string, menuId: string | null, items: OrderItemCatalogInput[]) {
+  // Resolved first, so an item the meal's menu doesn't offer fails before anything is deleted.
   const resolved = await Promise.all(
     items.map(async (item) => ({
       orderId,
@@ -141,9 +147,11 @@ async function replaceMealPlanEntryItems(organizationId: string, orderId: string
       itemType: item.itemType,
       quantity: item.quantity,
       isExtra: item.isExtra === true,
-      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
+      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId, { menuId })),
     })),
   );
+  await prisma.orderItem.deleteMany({ where: { mealPlanEntryId } });
+  if (items.length === 0) return;
   await prisma.orderItem.createMany({ data: resolved });
 }
 
@@ -174,7 +182,7 @@ export async function replaceMealPlanEntries(organizationId: string, orderId: st
       : (await prisma.mealPlanEntry.create({ data: { orderId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
     keepIds.add(entryId);
 
-    await replaceMealPlanEntryItems(organizationId, orderId, entryId, entry.items ?? []);
+    await replaceMealPlanEntryItems(organizationId, orderId, entryId, menuId, entry.items ?? []);
   }
 
   const toDelete = existing.filter((e) => !keepIds.has(e.id));

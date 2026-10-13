@@ -4,7 +4,7 @@ import { CheckCircle2, Clock } from "lucide-react";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listAddOns } from "@/modules/addons/addon";
-import { listStorefrontMenus, listCustomMenuSections } from "@/modules/menus/menu";
+import { listStorefrontMenus, listCustomMenuSections, listMenus } from "@/modules/menus/menu";
 import { getDraft, buildDraftQuote, allMealsComplete, isMealComplete, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
 import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
@@ -123,15 +123,29 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
       />
     );
   } else if (step === "menu") {
-    const [menus, customSections, eventTypes, addOnRecords] = await Promise.all([
+    const [menus, customSections, eventTypes, addOnRecords, allMenus] = await Promise.all([
       listStorefrontMenus(organization.id, { eventTypeId: data.eventTypeId, menuType: data.menuPreference }),
       listCustomMenuSections(organization.id, data.menuPreference),
       listEventTypes(organization.id),
       listAddOns(organization.id),
+      listMenus(organization.id),
     ]);
+    const menuNameById = new Map(allMenus.map((m) => [m.id, m.name]));
     const addOns = addOnRecords
       .filter((a) => a.isActive)
-      .map((a) => ({ id: a.id, name: a.name, description: a.description, image: a.image, type: a.type, priceType: a.priceType, price: Number(a.price), included: a.includedInPackage }));
+      .map((a) => ({
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        image: a.image,
+        type: a.type,
+        priceType: a.priceType,
+        price: Number(a.price),
+        included: a.includedInPackage,
+        allMenus: a.appliesToAllMenus,
+        menuIds: a.menus.map((m) => m.menuId),
+        menuNames: a.menus.map((m) => menuNameById.get(m.menuId)).filter((n): n is string => !!n),
+      }));
     // Each meal builds its own menu (AJ, 2026-10-12). The requested meal, else the first one not finished, else the first.
     const mealTypes = data.eventMealTypes;
     const meal = mealTypes.find((m) => m === mealParam) ?? mealTypes.find((m) => !isMealComplete(data.meals[m])) ?? mealTypes[0];

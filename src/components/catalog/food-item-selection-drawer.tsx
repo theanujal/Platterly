@@ -212,7 +212,7 @@ export function FoodItemSelectionDrawer({
     }
     for (const id of addOnIds) {
       const addOn = data.addOns.find((a) => a.id === id);
-      if (addOn) items.push({ key: crypto.randomUUID(), itemType: "ADD_ON", catalogId: id, name: addOn.name, unitPrice: addOn.price, perGuest: addOn.priceType === "PER_PLATE" });
+      if (addOn) items.push({ key: crypto.randomUUID(), itemType: "ADD_ON", catalogId: id, name: addOn.name, unitPrice: addOn.included ? 0 : addOn.price, perGuest: !addOn.included && addOn.priceType === "PER_PLATE" });
       else {
         const previous = initialItems.find((i) => i.itemType === "ADD_ON" && i.catalogId === id);
         if (previous) items.push(previous);
@@ -412,7 +412,7 @@ export function FoodItemSelectionDrawer({
                               <span className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium">{addOn.name}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
+                                  {addOn.included ? "Included in package" : addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
                                 </span>
                               </span>
                             </TableCell>

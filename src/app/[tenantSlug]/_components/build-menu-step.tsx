@@ -88,6 +88,8 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const isCustomMenu = choice?.kind === "CUSTOM";
   const sections = useMemo(() => (isCustomMenu ? customSections : (pickedMenu?.sections ?? [])), [isCustomMenu, customSections, pickedMenu]);
   const hasMenu = isCustomMenu || pickedMenu !== undefined;
+  // Each menu offers its own add-ons; a Custom Menu only gets the ones offered with every menu.
+  const menuAddOns = useMemo(() => addOns.filter((a) => a.allMenus || (choice?.kind === "MENU" && a.menuIds.includes(choice.menuId))), [addOns, choice]);
 
   // The same rules the server re-checks on save: every limited category full, and at least one dish.
   const short = isCustomMenu ? [] : requiredShortfalls(sections, itemIds);
@@ -98,7 +100,11 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const dishesFolded = complete && !dishesOpen;
 
   function choose(next: MenuChoice) {
-    if (!sameChoice(choice, next)) setItemIds([]); // a different menu has different dishes (the server clears them too)
+    if (!sameChoice(choice, next)) {
+      setItemIds([]); // a different menu has different dishes (the server clears them too)
+      // ...and may not offer every add-on picked so far (the server drops those too)
+      setAddOnIds((prev) => prev.filter((id) => addOns.some((a) => a.id === id && (a.allMenus || (next.kind === "MENU" && a.menuIds.includes(next.menuId))))));
+    }
     setChoice(next);
     setListOpen(false);
     setError(null);
@@ -113,7 +119,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
     const nowComplete = hasMenu && next.length > 0 && (isCustomMenu || requiredShortfalls(sections, next).length === 0);
     if (nowComplete && !complete) {
       setDishesOpen(false);
-      if (addOns.length > 0) {
+      if (menuAddOns.length > 0) {
         setAnnouncement("Your dishes are complete and folded away. Add-ons and live counters are optional below.");
         // After the dishes fold, so the add-ons land at the top of the screen.
         setTimeout(() => requestAnimationFrame(() => scrollToRef(addOnsRef.current)), 50);
@@ -223,14 +229,14 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
             </div>
           )}
 
-          {complete && addOns.length > 0 && (
+          {complete && menuAddOns.length > 0 && (
             <div ref={addOnsRef} className="flex scroll-mt-4 flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
               {dishesFolded && (
                 <p className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
                   <Sparkles className="size-4" /> Dishes done. Want to make it special? Add live counters or extras, or skip to continue.
                 </p>
               )}
-              <AddOnsSection addOns={addOns} guests={guests} addOnIds={addOnIds} onAddOnIdsChange={(update) => setAddOnIds(update)} />
+              <AddOnsSection addOns={menuAddOns} guests={guests} addOnIds={addOnIds} onAddOnIdsChange={(update) => setAddOnIds(update)} />
             </div>
           )}
 

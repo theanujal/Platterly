@@ -5,6 +5,7 @@ import { normalizePhone, isValidPhone } from "@/lib/phone";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import { createOrder, createEventForOrder, computeChildrenCharge, type OrderItemCatalogInput } from "@/modules/orders/order";
 import { ownVisitId } from "@/modules/storefront-visits/visits";
+import { addOnOfferedOnMenu } from "@/modules/addons/addon";
 import { getMenuForOrderPicker, type OrderPickerSection } from "@/modules/menus/menu";
 import { createMenuSelection, mirrorSelectionItemsFromMealPlan } from "./menu-approval";
 import { onNewLead } from "@/modules/notifications/triggers";
@@ -242,7 +243,9 @@ export async function saveDraftMenuChoice(organizationId: string, draftId: strin
   for (const meal of targetMeals(before, mealType)) {
     const current = meals[meal] ?? {};
     const changed = JSON.stringify(current.menuChoice) !== JSON.stringify(choice);
-    meals[meal] = changed ? { menuChoice: choice, addOnIds: current.addOnIds } : { ...current, menuChoice: choice };
+    // A different menu may not offer every add-on picked so far; those drop out.
+    const keptAddOnIds = changed && current.addOnIds?.length ? await addOnIdsOfferedOn(organizationId, current.addOnIds, choice) : current.addOnIds;
+    meals[meal] = changed ? { menuChoice: choice, addOnIds: keptAddOnIds } : { ...current, menuChoice: choice };
   }
   return saveDraft(draftId, { ...before, meals }, 2, draft.currentStep);
 }
@@ -310,7 +313,9 @@ export async function saveDraftItems(organizationId: string, draftId: string, in
 
   const itemIds = [...new Set(input.itemIds)];
   if (itemIds.length === 0) throw new StorefrontDraftError("Please select at least one menu item.");
-  if (input.addOnIds && input.addOnIds.length > 0) await assertAddOnsAvailable(organizationId, [...new Set(input.addOnIds)]);
+  if (input.addOnIds && input.addOnIds.length > 0) {
+    await assertAddOnsAvailable(organizationId, [...new Set(input.addOnIds)], targetMeals(before, input.mealType).map((meal) => before.meals[meal]?.menuChoice));
+  }
 
   const meals = { ...before.meals };
   for (const meal of targetMeals(before, input.mealType)) {
@@ -331,9 +336,25 @@ export async function saveDraftItems(organizationId: string, draftId: string, in
   return saveDraft(draftId, next, 2, draft.currentStep);
 }
 
-async function assertAddOnsAvailable(organizationId: string, addOnIds: string[]) {
-  const count = await prisma.addOn.count({ where: { id: { in: addOnIds }, organizationId, isActive: true } });
-  if (count !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
+function choiceMenuId(choice: MenuChoice | undefined): string | null {
+  return choice?.kind === "MENU" ? choice.menuId : null;
+}
+
+/** Which of these add-ons the chosen menu offers (a Custom Menu has no Menu, so it only gets add-ons for all menus). */
+async function addOnIdsOfferedOn(organizationId: string, addOnIds: string[], choice: MenuChoice | undefined) {
+  const addOns = await prisma.addOn.findMany({ where: { id: { in: addOnIds }, organizationId, isActive: true }, include: { menus: { select: { menuId: true } } } });
+  return addOnIds.filter((id) => {
+    const addOn = addOns.find((a) => a.id === id);
+    return !!addOn && addOnOfferedOnMenu(addOn, choiceMenuId(choice));
+  });
+}
+
+async function assertAddOnsAvailable(organizationId: string, addOnIds: string[], choices: (MenuChoice | undefined)[]) {
+  const addOns = await prisma.addOn.findMany({ where: { id: { in: addOnIds }, organizationId, isActive: true }, include: { menus: { select: { menuId: true } } } });
+  if (addOns.length !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
+  for (const choice of choices) {
+    if (addOns.some((a) => !addOnOfferedOnMenu(a, choiceMenuId(choice)))) throw new StorefrontDraftError("One of your add-ons isn't offered with your menu.");
+  }
 }
 
 // --- add-ons and live counters ------------------------------------
@@ -346,7 +367,7 @@ export async function saveDraftAddOns(organizationId: string, draftId: string, a
   if (targets.some((meal) => !before.meals[meal]?.itemIds?.length)) throw new StorefrontDraftError("Please choose your menu items first.");
 
   const unique = [...new Set(addOnIds)];
-  if (unique.length > 0) await assertAddOnsAvailable(organizationId, unique);
+  if (unique.length > 0) await assertAddOnsAvailable(organizationId, unique, targets.map((meal) => before.meals[meal]?.menuChoice));
 
   const meals = { ...before.meals };
   for (const meal of targets) meals[meal] = { ...meals[meal], addOnIds: unique };

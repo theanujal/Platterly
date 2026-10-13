@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listAddOns } from "@/modules/addons/addon";
+import { listMenus } from "@/modules/menus/menu";
 import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
@@ -28,6 +29,13 @@ function AddOnTypeBadge({ type, onImage = false }: { type: "LIVE_COUNTER" | "SPE
   );
 }
 
+/** "All menus", or the names of the menus that offer it. Shown instead of a price once an add-on is in the package. */
+function menusLabel(addOn: { appliesToAllMenus: boolean; menus: { menuId: string }[] }, menuNames: Map<string, string>) {
+  if (addOn.appliesToAllMenus) return "All menus";
+  const names = addOn.menus.map((m) => menuNames.get(m.menuId)).filter((n): n is string => !!n);
+  return names.length > 0 ? names.join(", ") : "No menus";
+}
+
 function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED", included = false) {
   if (included) return "Included";
   const amount = formatRupees(price);
@@ -37,7 +45,9 @@ function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED", included =
 export default async function AddOnsPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["view"] }, organizationId);
-  const addOns = await listAddOns(organizationId);
+  const [addOns, menus] = await Promise.all([listAddOns(organizationId), listMenus(organizationId)]);
+  const availableMenus = menus.map((m) => ({ id: m.id, name: m.name }));
+  const menuNames = new Map(availableMenus.map((m) => [m.id, m.name]));
 
   const entries: CatalogEntry[] = addOns.map((addOn) => {
     const initialValues: AddOnFormValues = {
@@ -47,6 +57,8 @@ export default async function AddOnsPage() {
       priceType: addOn.priceType,
       price: addOn.price.toString(),
       includedInPackage: addOn.includedInPackage,
+      appliesToAllMenus: addOn.appliesToAllMenus,
+      menuIds: addOn.menus.map((m) => m.menuId),
       imageUrl: addOn.image,
       isActive: addOn.isActive,
     };
@@ -64,14 +76,30 @@ export default async function AddOnsPage() {
             overlay={
               <>
                 <AddOnTypeBadge type={addOn.type} onImage />
-                <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} />
+                <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} availableMenus={availableMenus} />
               </>
             }
           />
           <CatalogCardBody
             title={addOn.name}
             description={addOn.description}
-            footer={<span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</span>}
+            footer={
+              addOn.includedInPackage ? (
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-base font-semibold">Included</span>
+                  <span className="truncate text-xs text-muted-foreground" title={menusLabel(addOn, menuNames)}>
+                    {menusLabel(addOn, menuNames)}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-base font-semibold">{formatPrice(Number(addOn.price), addOn.priceType)}</span>
+                  <span className="truncate text-xs text-muted-foreground" title={menusLabel(addOn, menuNames)}>
+                    {menusLabel(addOn, menuNames)}
+                  </span>
+                </div>
+              )
+            }
             active={addOn.isActive}
           />
         </>
@@ -85,12 +113,13 @@ export default async function AddOnsPage() {
             <AddOnTypeBadge type={addOn.type} />
           </TableCell>
           <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</TableCell>
+          <TableCell className="max-w-64 px-3 py-3 text-sm text-muted-foreground">{menusLabel(addOn, menuNames)}</TableCell>
           <TableCell className="px-3 py-3">
             <ActiveBadge active={addOn.isActive} />
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} variant="plain" />
+              <AddOnCardActions addOnId={addOn.id} name={addOn.name} initialValues={initialValues} availableMenus={availableMenus} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -124,15 +153,15 @@ export default async function AddOnsPage() {
           <h1 className="text-2xl font-semibold">Add-ons</h1>
           <p className="text-sm text-muted-foreground">Live counters and special add-ons your customers can add on.</p>
         </div>
-        <AddAddOnDialog />
+        <AddAddOnDialog availableMenus={availableMenus} />
       </div>
       <Separator />
 
       <CatalogBrowser
         entries={entries}
         defaultView="list"
-        addTile={<AddAddOnDialog variant="tile" />}
-        columns={["Add-on", "Type", "Price", "Status", ""]}
+        addTile={<AddAddOnDialog variant="tile" availableMenus={availableMenus} />}
+        columns={["Add-on", "Type", "Price", "Menus", "Status", ""]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search add-ons…"

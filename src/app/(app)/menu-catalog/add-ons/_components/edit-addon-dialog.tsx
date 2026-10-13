@@ -10,15 +10,17 @@ interface EditAddOnDialogProps {
   onOpenChange: (open: boolean) => void;
   addOnId: string;
   initialValues: AddOnFormValues;
+  availableMenus: { id: string; name: string }[];
 }
 
-export function EditAddOnDialog({ open, onOpenChange, addOnId, initialValues }: EditAddOnDialogProps) {
+export function EditAddOnDialog({ open, onOpenChange, addOnId, initialValues, availableMenus }: EditAddOnDialogProps) {
   const router = useRouter();
 
   return (
     <FormDrawer open={open} onOpenChange={onOpenChange} title="Edit Add-on">
       <AddOnForm
         initialValues={initialValues}
+        availableMenus={availableMenus}
         submitLabel="Save changes"
         onSubmit={(formData) => updateAddOnAction(addOnId, initialValues.imageUrl ?? undefined, formData)}
         onCancel={() => onOpenChange(false)}
