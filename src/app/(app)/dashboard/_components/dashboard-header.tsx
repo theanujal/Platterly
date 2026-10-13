@@ -8,7 +8,7 @@ function greeting(): string {
   return "Good evening";
 }
 
-/** Greeting on the left; the New Order split button and today's date on the right. */
+/** Greeting on the left; today's date and the New Order split button on the right. */
 export function DashboardHeader({
   name,
   businessName,
@@ -27,11 +27,11 @@ export function DashboardHeader({
         <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with {businessName} today.</p>
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <NewOrderMenu allowed={allowed} />
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           <CalendarDays className="size-4" />
         </p>
+        <NewOrderMenu allowed={allowed} />
       </div>
     </div>
   );
