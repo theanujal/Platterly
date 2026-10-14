@@ -2,6 +2,7 @@ import { eventAt, orderAt, sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { todayStartInZone } from "@/lib/time/timezone";
+import { addDaysIso, dayKeyInZone, daysInRange, DEFAULT_PRESET, presetRange, zonedStartOfDay, type DateRange } from "@/lib/time/date-range";
 import { getInventoryOverviewStats, listLowStockItems } from "@/modules/inventory/inventory";
 import { getGuestCount } from "@/modules/orders/order-card";
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
@@ -93,19 +94,32 @@ function toRow(order: OrderRowSource): DashboardOrderRow {
  * instead of each card running its own query. Order and event dates are
  * stored as UTC midnight of the local calendar day (see orders/calendar.ts),
  * so "today" below is that same UTC-midnight value.
+ *
+ * `range` (AJ, 2026-10-14) is the date range picked on the Dashboard, both days included, in the kitchen's time zone:
+ * Total Guests and Event Insights follow it by event date; Order Activity, Pending Revenue and Quotations by the day
+ * the order or quotation was created. Active Orders, Upcoming Events (next 7 days), the calendar, today's lists, the
+ * kitchen workload and inventory are current-state and do not follow it.
  */
-export async function getDashboardSnapshot(organizationId: string, locationId?: string | null) {
+export async function getDashboardSnapshot(organizationId: string, locationId?: string | null, requestedRange?: DateRange) {
   // Chunk 23: with a location chosen (or held), every figure below is that location's. Quotations have no location, so they drop out.
   const atOrder = orderAt(locationId);
   const now = new Date();
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
-  const todayUtc = todayStartInZone(now, await getTenantTimeZone(organizationId));
+  const timeZone = await getTenantTimeZone(organizationId);
+  const todayUtc = todayStartInZone(now, timeZone);
+  const todayIso = dayKeyInZone(now, timeZone);
+  const range = requestedRange ?? presetRange(DEFAULT_PRESET, todayIso);
   const tomorrowUtc = new Date(todayUtc.getTime() + DAY_MS);
   const in7DaysUtc = new Date(todayUtc.getTime() + 7 * DAY_MS);
-  // 1 year back covers the activity chart's longest range (1Y); the 7D/30D/3M buttons slice the tail client-side.
-  const TREND_DAYS = 365;
-  const trendStart = new Date(startOfToday.getTime() - (TREND_DAYS - 1) * DAY_MS);
+  // The picked range as the two kinds of boundary the data needs: UTC-midnight event dates, and real instants (the kitchen's
+  // local midnight) for `createdAt`. The end day is included, so the upper bounds are the start of the day after it.
+  const eventFrom = new Date(`${range.from}T00:00:00.000Z`);
+  const eventToExcl = new Date(`${addDaysIso(range.to, 1)}T00:00:00.000Z`);
+  const createdFrom = zonedStartOfDay(range.from, timeZone);
+  const createdToExcl = zonedStartOfDay(addDaysIso(range.to, 1), timeZone);
+  const createdInRange = { gte: createdFrom, lt: createdToExcl };
+  const eventInRange = { gte: eventFrom, lt: eventToExcl };
   // Calendar window: 1 month back to 3 months forward (+/- a week for the faded adjacent-month days), so the Orders
   // Calendar's month navigation stays in the browser with no extra request.
   const calendarStart = new Date(startOfToday.getFullYear(), startOfToday.getMonth() - 1, -6);
@@ -118,7 +132,7 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     pendingReviewOrders,
     awaitingApprovalOrders,
     upcomingEventsCount,
-    nextWeekOrders,
+    rangeGuestOrders,
     openQuotations,
     quotationsAwaitingResponse,
     dueAgg,
@@ -143,12 +157,12 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     prisma.order.count({ where: { organizationId, ...atOrder, status: "AWAITING_CUSTOMER_APPROVAL" } }),
     prisma.event.count({ where: { organizationId, ...eventAt(locationId), status: { not: "CANCELLED" }, startDate: { gte: todayUtc, lt: in7DaysUtc } } }),
     prisma.order.findMany({
-      where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: in7DaysUtc } },
+      where: { ...notCancelled, eventStartDate: eventInRange },
       select: { totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true },
     }),
-    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["DRAFT", "SENT", "VIEWED", "CHANGES_REQUESTED"] } } }),
-    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, status: { in: ["SENT", "VIEWED"] } } }),
-    prisma.order.aggregate({ where: { ...notCancelled, balance: { gt: 0 } }, _sum: { balance: true }, _count: { _all: true } }),
+    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, createdAt: createdInRange, status: { in: ["DRAFT", "SENT", "VIEWED", "CHANGES_REQUESTED"] } } }),
+    locationId ? Promise.resolve(0) : prisma.quotation.count({ where: { organizationId, createdAt: createdInRange, status: { in: ["SENT", "VIEWED"] } } }),
+    prisma.order.aggregate({ where: { ...notCancelled, balance: { gt: 0 }, createdAt: createdInRange }, _sum: { balance: true }, _count: { _all: true } }),
     prisma.order.aggregate({ where: { ...notCancelled, balance: { gt: 0 }, eventStartDate: { lt: todayUtc } }, _sum: { balance: true }, _count: { _all: true } }),
     prisma.order.findFirst({
       where: { ...notCancelled, balance: { gt: 0 }, eventStartDate: { lt: todayUtc } },
@@ -156,10 +170,10 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
       select: { balance: true, orderNumber: true, customer: { select: { name: true } } },
     }),
     prisma.order.findMany({
-      where: { ...notCancelled, createdAt: { gte: trendStart } },
+      where: { ...notCancelled, createdAt: createdInRange },
       select: { createdAt: true, total: true, totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true },
     }),
-    prisma.event.groupBy({ by: ["eventTypeId"], where: { organizationId, ...eventAt(locationId), status: { not: "CANCELLED" } }, _count: { _all: true } }),
+    prisma.event.groupBy({ by: ["eventTypeId"], where: { organizationId, ...eventAt(locationId), status: { not: "CANCELLED" }, startDate: eventInRange }, _count: { _all: true } }),
     prisma.order.findMany({ where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: tomorrowUtc } }, orderBy: { createdAt: "desc" }, take: 5, select: ORDER_ROW_SELECT }),
     prisma.order.count({ where: { ...notCancelled, eventStartDate: { gte: todayUtc, lt: tomorrowUtc } } }),
     prisma.order.findMany({ where: { ...notCancelled, eventStartDate: { gte: tomorrowUtc } }, orderBy: { eventStartDate: "asc" }, take: 5, select: ORDER_ROW_SELECT }),
@@ -176,19 +190,22 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd), locationId),
   ]);
 
-  // Order activity: one row per day (oldest first) of orders created, their value and their guests.
+  // Order activity: one row per day (oldest first) of orders created in the range, their value and their guests. The chart
+  // stops at today: orders cannot be created in the future, so the rest of an upcoming month would only be a flat line.
   const byDay = new Map<string, { orders: number; revenue: number; guests: number }>();
   for (const order of trendOrdersRaw) {
-    const key = dateKey(order.createdAt);
+    const key = dayKeyInZone(order.createdAt, timeZone);
     const row = byDay.get(key) ?? { orders: 0, revenue: 0, guests: 0 };
     row.orders += 1;
     row.revenue += Number(order.total);
     row.guests += getGuestCount(order) ?? 0;
     byDay.set(key, row);
   }
+  const chartEnd = range.to < todayIso ? range.to : todayIso;
+  const chartDays = chartEnd < range.from ? 0 : daysInRange({ from: range.from, to: chartEnd });
   const activity: { date: string; orders: number; revenue: number; guests: number }[] = [];
-  for (let i = 0; i < TREND_DAYS; i++) {
-    const key = dateKey(new Date(trendStart.getTime() + i * DAY_MS));
+  for (let i = 0; i < chartDays; i++) {
+    const key = addDaysIso(range.from, i);
     activity.push({ date: key, ...(byDay.get(key) ?? { orders: 0, revenue: 0, guests: 0 }) });
   }
 
@@ -211,7 +228,7 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     pendingReviewOrders,
     awaitingApprovalOrders,
     upcomingEventsCount,
-    nextWeekGuests: nextWeekOrders.reduce((sum, o) => sum + (getGuestCount(o) ?? 0), 0),
+    rangeGuests: rangeGuestOrders.reduce((sum, o) => sum + (getGuestCount(o) ?? 0), 0),
     openQuotations,
     quotationsAwaitingResponse,
     outstandingBalance: Number(dueAgg._sum.balance ?? 0),

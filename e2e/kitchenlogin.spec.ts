@@ -167,8 +167,8 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // Sharma, filled in above), not the business name — AJ's explicit ask,
   // 2026-09-16, to match a richer dashboard reference design.
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Priya Sharma/ })).toBeVisible();
-  // The date beside New Order is regular text, not the faint muted grey (AJ, 2026-10-14).
-  await expect(page.getByTestId("dashboard-date")).toHaveClass(/text-foreground/);
+  // The date range picker (This Month by default) sits beside New Order, in place of the plain date (AJ, 2026-10-14).
+  await expect(page.getByTestId("dashboard-range")).toContainText("This Month");
   await expect(page.getByText("You haven't set your public menu link yet.")).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).not.toBeVisible();
 

@@ -1,5 +1,6 @@
-import { CalendarDays } from "lucide-react";
 import { NewOrderMenu } from "./new-order-menu";
+import { DashboardRangePicker } from "./dashboard-range-picker";
+import type { DateRange } from "@/lib/time/date-range";
 
 function greeting(): string {
   const hour = Number(new Date().toLocaleString("en-IN", { hour: "numeric", hour12: false, timeZone: "Asia/Kolkata" }));
@@ -8,14 +9,18 @@ function greeting(): string {
   return "Good evening";
 }
 
-/** Greeting on the left; today's date and the New Order split button on the right. */
+/** Greeting on the left; the date range picker and the New Order split button on the right. */
 export function DashboardHeader({
   name,
   businessName,
   allowed,
+  range,
+  todayIso,
 }: {
   name: string;
   businessName: string;
+  range: DateRange;
+  todayIso: string;
   allowed: { order: boolean; quotation: boolean; lead: boolean; catalog: boolean };
 }) {
   return (
@@ -27,10 +32,7 @@ export function DashboardHeader({
         <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with {businessName} today.</p>
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <p className="flex items-center gap-2 text-sm font-medium text-foreground" data-testid="dashboard-date">
-          {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          <CalendarDays className="size-4" />
-        </p>
+        <DashboardRangePicker range={range} todayIso={todayIso} />
         <NewOrderMenu allowed={allowed} />
       </div>
     </div>

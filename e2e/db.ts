@@ -362,8 +362,8 @@ export async function seedApprovedOrderForShare(
   await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [`cust_${suffix}`, organizationId, "Share Customer", "+919811122233", "share-customer@example.test"]);
   await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`et_${suffix}`, organizationId, "Wedding"]);
   await pool.query(
-    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", "childBelow5Count", "child5To10Count", subtotal, total, balance, venue, "eventAddress", "venueDetailsSubmittedAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, $5, '${orderStatus}', date_trunc('day', now() at time zone 'UTC') + interval '3 days', date_trunc('day', now() at time zone 'UTC') + interval '3 days', $6, 100, $7, $8, 1000, 1000, 1000, 'Grand Hall', '12 MG Road', ${venueSubmitted ? "now()" : "NULL"}, now())`,
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", "childBelow5Count", "child5To10Count", subtotal, total, balance, venue, "eventAddress", "venueDetailsSubmittedAt", "createdAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, '${orderStatus}', date_trunc('day', now() at time zone 'UTC') + interval '3 days', date_trunc('day', now() at time zone 'UTC') + interval '3 days', $6, 100, $7, $8, 1000, 1000, 1000, 'Grand Hall', '12 MG Road', ${venueSubmitted ? "now()" : "NULL"}, (now() at time zone 'UTC'), now())`,
     [orderId, organizationId, `cust_${suffix}`, `et_${suffix}`, `ORD-${Math.floor(1000 + Math.random() * 8999)}`, 100 + kidsBelow5 + kids5To10, kidsBelow5, kids5To10],
   );
   await pool.query(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Activity } from "lucide-react";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,15 +16,7 @@ export interface ActivityPoint {
 const METRICS = [
   { key: "orders", label: "Orders" },
   { key: "revenue", label: "Revenue" },
-  { key: "guests", label: "Guests" },
-] as const;
-const RANGES = [
-  { key: "7D", days: 7 },
-  { key: "30D", days: 30 },
-  { key: "3M", days: 90 },
-  { key: "1Y", days: 365 },
-] as const;
-
+] as const; // Guests was dropped from the chart (AJ, 2026-10-14); the Total Guests tile and the guest data stay.
 const compactRupees = new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 });
 
 function dayLabel(dateKey: string) {
@@ -53,13 +45,12 @@ function Segmented<T extends string>({ items, value, onChange, label }: { items:
   );
 }
 
-/** Order Activity: orders, revenue or guests per day (by the day the order was placed), over 7 days to a year. */
-export function OrdersActivityCard({ activity, showMoney }: { activity: ActivityPoint[]; showMoney: boolean }) {
+/** Order Activity: orders or revenue per day (by the day the order was placed), over 7 days to a year. */
+export function OrdersActivityCard({ activity, showMoney, rangeLabel }: { activity: ActivityPoint[]; showMoney: boolean; rangeLabel: string }) {
   const metrics = showMoney ? METRICS : METRICS.filter((m) => m.key !== "revenue");
   const [metric, setMetric] = useState<(typeof METRICS)[number]["key"]>("orders");
-  const [range, setRange] = useState<(typeof RANGES)[number]["key"]>("7D");
-  const days = RANGES.find((r) => r.key === range)!.days;
-  const visible = useMemo(() => activity.slice(-days), [activity, days]);
+  // The range comes from the Dashboard's date picker (the old 7D / 30D / 3M / 1Y buttons are gone): `activity` is already that period.
+  const visible = activity;
   const hasData = visible.some((p) => p[metric] > 0);
   const format = (value: number) => (metric === "revenue" ? `₹${compactRupees.format(value)}` : String(value));
 
@@ -70,20 +61,22 @@ export function OrdersActivityCard({ activity, showMoney }: { activity: Activity
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <Activity className="size-4" />
           </div>
-          <CardTitle className="text-lg">Order Activity</CardTitle>
+          <div className="min-w-0">
+            <CardTitle className="text-lg">Order Activity</CardTitle>
+            <p className="text-xs text-muted-foreground" data-testid="activity-range">By order date · {rangeLabel}</p>
+          </div>
         </div>
         <CardAction className="flex flex-wrap items-center justify-end gap-2 max-sm:col-start-1 max-sm:row-start-2 max-sm:row-span-1 max-sm:mt-2 max-sm:justify-self-start">
           <Segmented items={metrics as unknown as { key: (typeof METRICS)[number]["key"]; label: string }[]} value={metric} onChange={setMetric} label="Metric" />
-          <Segmented items={RANGES.map((r) => ({ key: r.key, label: r.key }))} value={range} onChange={setRange} label="Range" />
         </CardAction>
       </CardHeader>
       <CardContent className="flex-1">
         {!hasData ? (
-          <div className="flex h-60 items-center justify-center rounded-lg border border-dashed xl:h-full border-border text-sm text-muted-foreground">
-            No {metric} in this period yet.
+          <div className="flex h-48 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground xl:h-full">
+            No {metric} in this date range.
           </div>
         ) : (
-          <div className="h-60 w-full xl:h-full xl:min-h-60" data-testid="activity-chart">
+          <div className="h-48 w-full xl:h-full xl:min-h-48" data-testid="activity-chart">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={visible} margin={{ top: 8, right: 24, left: 0, bottom: 0 }}>
                 <defs>
