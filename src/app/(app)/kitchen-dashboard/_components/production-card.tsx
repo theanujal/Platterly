@@ -8,14 +8,14 @@ import { StageSelect } from "./stage-select";
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 import type { VariantProps } from "class-variance-authority";
 
-function formatDate(date: Date) {
+export function formatDate(date: Date) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
 // Shared neutral/info/warning/success/danger legend (AJ, 2026-09-19) — Today
 // and Overdue used to both render "destructive" (same red for two different
 // urgency levels); Overdue is the one that's actually gone wrong.
-function priority(eventDate: Date): { label: string; variant: NonNullable<VariantProps<typeof badgeVariants>["variant"]> } {
+export function priority(eventDate: Date): { label: string; variant: NonNullable<VariantProps<typeof badgeVariants>["variant"]> } {
   const days = Math.ceil((eventDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   if (days < 0) return { label: "Overdue", variant: "danger" };
   // Same orange as "Today" on the Orders card (AJ, 2026-09-27).
@@ -25,7 +25,7 @@ function priority(eventDate: Date): { label: string; variant: NonNullable<Varian
 }
 
 /** The Menu(s) this Event Type is configured to offer — see menu-approval.ts's KITCHEN_PRODUCTION_INCLUDE comment for why this comes from the Event Type, not the individual selected items. */
-function menuName(menus: { menu: { name: string } }[]): string {
+export function menuName(menus: { menu: { name: string } }[]): string {
   const names = [...new Set(menus.map((m) => m.menu.name))];
   if (names.length === 0) return "No menu assigned";
   return names.length === 1 ? names[0] : "Multiple menus";

@@ -47,7 +47,9 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   await expect(page.getByTestId("tasks-card")).toHaveCount(0);
   await expect(card.getByLabel("Delivery")).toHaveCount(0);
   await expect(card.getByLabel("Store")).toHaveCount(0);
-  await card.getByLabel("Event Manager").fill("Asha Rao");
+  await card.getByRole("button", { name: "Event Manager" }).click();
+  await page.getByPlaceholder("Search or type a name…").fill("Asha Rao");
+  await page.getByRole("option", { name: /Use .Asha Rao./ }).click();
   await card.getByLabel("Serving").fill("10");
   await card.getByRole("button", { name: "Save staffing" }).click();
   await expect(card.getByText("Saved.")).toBeVisible();

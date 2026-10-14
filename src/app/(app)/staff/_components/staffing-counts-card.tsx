@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { STAFF_DUTIES, STAFF_DUTY_LABEL } from "@/modules/employees/duty";
 import { MAX_STAFF_COUNT } from "@/modules/employees/staff-count-limits";
 import type { StaffDuty } from "@/generated/prisma/enums";
@@ -46,25 +47,20 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="staff-event-manager">Event Manager</Label>
-          <Input
-            id="staff-event-manager"
-            list="staff-event-manager-suggestions"
-            autoComplete="off"
-            maxLength={100}
-            placeholder="Type or pick a name"
+          <Label>Event Manager</Label>
+          <SearchableSelect
+            aria-label="Event Manager"
+            allowCustom
             disabled={!canEdit}
+            placeholder="Type or pick a name"
+            searchPlaceholder="Search or type a name…"
+            options={suggestions.map((name) => ({ value: name, label: name }))}
             value={manager}
-            onChange={(e) => {
-              setManager(e.target.value);
+            onValueChange={(v) => {
+              setManager(v.slice(0, 100));
               setState("idle");
             }}
           />
-          <datalist id="staff-event-manager-suggestions">
-            {suggestions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
         </div>
         <div className="grid grid-cols-2 gap-4">
           {STAFF_DUTIES.map((duty) => (

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { ArrowLeft } from "lucide-react";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -28,9 +29,14 @@ export default async function ProductionPlanningPage() {
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Kitchen Dashboard", href: "/kitchen-dashboard" }, { label: "Production Planning" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Production Planning</h1>
-        <p className="text-sm text-muted-foreground">What the orders with the kitchen for {windowText} need from the store, worked out from each dish&apos;s recipe (guests plus {plan.extraPercent}% extra).</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Production Planning</h1>
+          <p className="text-sm text-muted-foreground">What the orders with the kitchen for {windowText} need from the store, worked out from each dish&apos;s recipe (guests plus {plan.extraPercent}% extra).</p>
+        </div>
+        <Button variant="outline" render={<Link href="/kitchen-dashboard" />} nativeButton={false}>
+          <ArrowLeft /> Back to Kitchen Dashboard
+        </Button>
       </div>
       <Separator />
 

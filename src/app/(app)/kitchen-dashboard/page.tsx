@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { ProductionCard, DeliveredCard } from "./_components/production-card";
+import { BoardView } from "./_components/board-view";
+import { ProductionList } from "./_components/production-list";
 import type { KitchenProductionStatus } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
@@ -53,7 +55,10 @@ export default async function KitchenDashboardPage() {
           Nothing in production for {windowText} — confirmed menus show up here once the kitchen team approves them in Menu Approvals.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <BoardView
+          list={<ProductionList key="list" menuSelections={menuSelections} />}
+          grid={
+        <div key="grid" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           {COLUMNS.map((column) => {
             const staged = menuSelections.filter((menuSelection) => menuSelection.kitchenProductionStatus === column.key);
             const Icon = column.icon;
@@ -83,6 +88,8 @@ export default async function KitchenDashboardPage() {
             );
           })}
         </div>
+          }
+        />
       )}
     </div>
   );
