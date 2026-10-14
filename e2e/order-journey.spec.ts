@@ -50,9 +50,9 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   // ===== Owner: sign up, claim the link, and build the smallest catalog the storefront needs =====
   await signUpCaterer(page, ownerEmail, { firstName: "Journey", lastName: "Owner", closeClaimDialog: false });
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).toBeVisible();
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menuName = `Journey Menu ${suffix}`;

@@ -79,16 +79,17 @@ export async function getCategoryMenuAssignmentsAction(categoryId: string): Prom
   }));
 }
 
-export async function duplicateCategoryAction(id: string): Promise<ActionResult> {
+export async function duplicateCategoryAction(id: string): Promise<ActionResult | { ok: true; name: string }> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["create"] }, organizationId);
+  let copy;
   try {
-    await duplicateCategory(organizationId, id, session.user.id);
+    copy = await duplicateCategory(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/categories");
-  return { ok: true };
+  return { ok: true, name: copy.name };
 }
 
 export async function setCategoryActiveAction(id: string, isActive: boolean): Promise<ActionResult> {

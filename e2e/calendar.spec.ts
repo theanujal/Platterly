@@ -75,7 +75,7 @@ test("calendar page + order-count date picker agree with the Orders/Events table
   for (const o of orders.filter((o) => CONFIRMED.includes(o.status!))) for (const d of daysBetween(o.start, o.end)) expected[d] = (expected[d] ?? 0) + 1;
 
   // --- Sidebar entry ---
-  // Already on /dashboard from sign-up — a fresh goto would re-open the "Claim your custom link" dialog.
+  // Already on /dashboard from sign-up — a fresh goto would re-open the "Create Your Custom Link" dialog.
   await page.getByRole("link", { name: "Calendar", exact: true }).click();
   await expect(page).toHaveURL(/\/calendar$/);
   await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();

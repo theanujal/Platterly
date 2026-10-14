@@ -32,7 +32,7 @@ test("create an event type with an icon assigning a menu, then edit it", async (
   const suffix = Date.now().toString().slice(-6);
 
   await signUpCaterer(page, email, { firstName: "Events", lastName: "Tester", closeClaimDialog: false });
-  // A fresh account's Dashboard auto-opens the "Claim your custom link" dialog.
+  // A fresh account's Dashboard auto-opens the "Create Your Custom Link" dialog.
   await page.getByRole("button", { name: "Close" }).click();
 
   // --- A bare Menu for the event type to reference, via the "Add Menu Type" popup ---

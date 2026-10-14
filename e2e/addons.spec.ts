@@ -29,7 +29,7 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
 
   await signUpCaterer(page, email, { firstName: "Addon", lastName: "Tester", closeClaimDialog: false });
 
-  // A fresh account's Dashboard auto-opens the "Claim your custom link"
+  // A fresh account's Dashboard auto-opens the "Create Your Custom Link"
   // dialog, which overlays the whole page (including the sidebar) until
   // dismissed — close it before interacting with anything else.
   await page.getByRole("button", { name: "Close" }).click();
@@ -106,6 +106,16 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   const updatedName = `${liveCounterName} Updated`;
   await page.getByRole("button", { name: `Actions for ${updatedName}`, exact: true }).click();
   await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  // Duplicate asks first (Cancel makes nothing), then says what it created.
+  const duplicateAsk = page.getByRole("alertdialog");
+  await expect(duplicateAsk.getByText(`Duplicate "${updatedName}"?`)).toBeVisible();
+  await duplicateAsk.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByText(`${updatedName} (Copy)`, { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: `Actions for ${updatedName}`, exact: true }).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Duplicate", exact: true }).click();
+  await expect(page.getByRole("alertdialog").getByText(`Created "${updatedName} (Copy)".`)).toBeVisible();
+  await page.getByRole("alertdialog").getByRole("button", { name: "OK" }).click();
   await expect(page.getByText(`${updatedName} (Copy)`, { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: `Actions for ${updatedName} (Copy)` }).click();

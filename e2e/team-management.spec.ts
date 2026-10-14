@@ -124,7 +124,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   // Staff doesn't hold that permission, so it must NOT auto-open here even
   // though the org has never claimed a link. This `if` is just defensive;
   // it should never actually trigger for this role.
-  const inviteeDialog = inviteePage.getByRole("dialog", { name: "Claim your custom link" });
+  const inviteeDialog = inviteePage.getByRole("dialog", { name: "Create Your Custom Link" });
   if (await inviteeDialog.isVisible().catch(() => false)) {
     await inviteePage.keyboard.press("Escape");
   }

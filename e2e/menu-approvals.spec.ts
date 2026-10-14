@@ -55,9 +55,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await signUpCaterer(page, email, { firstName: "Approvals", lastName: "Tester", closeClaimDialog: false });
 
   // --- Claim the custom link so the storefront (and its intake form) is published ---
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).toBeVisible();
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- A small real catalog: Menu Type -> Category (capped at 1) -> two Food Items, plus an Add-on ---

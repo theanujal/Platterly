@@ -1,15 +1,14 @@
 import "server-only";
 import { isReservedPathSegment } from "@/lib/routing/reserved-words";
 import { prisma } from "@/lib/db";
+import { MAX_SLUG_LENGTH, SLUG_PATTERN } from "./slug-rules";
 
 /**
  * Chunk 3 Group 3.2 — the updated product doc's public-link business rule
- * (§14/§26): letters, numbers, hyphens and underscores only, max 20
+ * (§14/§26): letters, numbers, hyphens and underscores only, max 60
  * characters. Chunk 8 (self-service storefront slug) will reuse this same
  * validator.
  */
-const SLUG_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const MAX_SLUG_LENGTH = 20;
 
 export interface SlugValidationResult {
   valid: boolean;

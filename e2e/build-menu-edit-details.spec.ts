@@ -17,7 +17,7 @@ test("Edit event details in a side panel: unsaved dish picks stay, the summary u
   const slug = `editdet-${suffix}`;
   await signUpCaterer(page, email, { closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menu = `Thali ${suffix}`;
@@ -99,7 +99,7 @@ test("kids are shown on top of the adults: live total on the form, breakdown in 
   const slug = `guests-${suffix}`;
   await signUpCaterer(page, email, { closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   const menu = `Thali ${suffix}`;
   await page.goto("/menu-catalog/menus");

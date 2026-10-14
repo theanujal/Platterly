@@ -114,16 +114,17 @@ export async function deleteMenuItemAction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function duplicateMenuItemAction(id: string): Promise<ActionResult> {
+export async function duplicateMenuItemAction(id: string): Promise<ActionResult | { ok: true; name: string }> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["create"] }, organizationId);
+  let copy;
   try {
-    await duplicateMenuItem(organizationId, id, session.user.id);
+    copy = await duplicateMenuItem(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/items");
-  return { ok: true };
+  return { ok: true, name: copy.name };
 }
 
 export async function setMenuItemActiveAction(id: string, isActive: boolean): Promise<ActionResult> {

@@ -97,16 +97,17 @@ export async function reorderEventTypesAction(orderedIds: string[]): Promise<Act
   return { ok: true };
 }
 
-export async function duplicateEventTypeAction(id: string): Promise<ActionResult> {
+export async function duplicateEventTypeAction(id: string): Promise<ActionResult | { ok: true; name: string }> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ eventTypes: ["create"] }, organizationId);
+  let copy;
   try {
-    await duplicateEventType(organizationId, id, session.user.id);
+    copy = await duplicateEventType(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/event-types");
-  return { ok: true };
+  return { ok: true, name: copy.name };
 }
 
 export async function setEventTypeActiveAction(id: string, isActive: boolean): Promise<ActionResult> {

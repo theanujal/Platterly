@@ -70,9 +70,11 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await expect(page.getByText("GST settings saved.")).toBeVisible();
   await expect(page.getByRole("switch", { name: "Create the invoice automatically" })).toHaveAttribute("aria-checked", "true");
 
-  // Business Profile no longer edits GST: it shows the number read-only and points to Payments.
+  // GST lives only under Payments: Business Profile neither shows the number nor edits it (AJ, 2026-10-14).
   await page.goto("/settings/account/business-profile");
-  await expect(page.getByText("29ABCDE1234F1Z5")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Business Profile" })).toBeVisible();
+  await expect(page.getByText("29ABCDE1234F1Z5")).toHaveCount(0);
+  await expect(page.getByText("GST Number")).toHaveCount(0);
   await page.getByRole("button", { name: "Edit Profile" }).click();
   await expect(page.getByLabel("GST number (optional)")).toHaveCount(0);
   await page.goto("/settings/integration/payments");

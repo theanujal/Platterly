@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FoodItemSelectionDrawer, type PickedItem } from "@/components/catalog/food-item-selection-drawer";
 import type { MenuPickerData } from "@/modules/menus/menu";
 import { cn } from "cn";
@@ -137,6 +138,8 @@ export function MenuPlanningSection({
   const [focusedDate, setFocusedDate] = useState<string | null>(days[0] ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState<string[]>([]);
+  // A meal with anything in it is only removed after "Are you sure?"; an empty one goes at once.
+  const [pendingRemove, setPendingRemove] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
 
   // The focused date drops out of range (e.g. the event date range shrank) — fall back to the first day rather than showing nothing.
   const activeDate = focusedDate && days.includes(focusedDate) ? focusedDate : (days[0] ?? null);
@@ -154,6 +157,12 @@ export function MenuPlanningSection({
     }
     onChange([...mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }]);
     setFocusedDate(date);
+  }
+
+  function requestRemoveMeal(date: string, mealType: MealTypeValue) {
+    const entry = mealMap.get(`${date}|${mealType}`);
+    if (entry && (entry.menuId || entry.price.trim() || entry.items.length > 0)) setPendingRemove({ date, mealType });
+    else removeMeal(date, mealType);
   }
 
   function removeMeal(date: string, mealType: MealTypeValue) {
@@ -211,7 +220,7 @@ export function MenuPlanningSection({
             {meal.label}
           </span>
           {!readOnly && (
-            <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => removeMeal(date, mealType)}>
+            <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => requestRemoveMeal(date, mealType)}>
               <Trash2 className="size-3.5" />
               Remove {meal.label}
             </Button>
@@ -385,8 +394,23 @@ export function MenuPlanningSection({
   const foodDialogEntry = foodDialogTarget ? mealMap.get(`${foodDialogTarget.date}|${foodDialogTarget.mealType}`) : undefined;
   const foodDialogMenu = foodDialogEntry ? menus.find((m) => m.id === foodDialogEntry.menuId) : undefined;
 
+  const removeEntry = pendingRemove ? mealMap.get(`${pendingRemove.date}|${pendingRemove.mealType}`) : undefined;
+  const removeLabel = pendingRemove ? (MEAL_TYPES.find((m) => m.value === pendingRemove.mealType)?.label ?? "") : "";
+  const removeCount = removeEntry?.items.length ?? 0;
+
   return (
     <div className="flex flex-col gap-4">
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        onOpenChange={(open) => !open && setPendingRemove(null)}
+        title={pendingRemove ? `Remove ${removeLabel} on ${formatDay(pendingRemove.date, { day: "numeric", month: "short" })}?` : ""}
+        description={`This removes its menu, price${removeCount > 0 ? ` and the ${removeCount} dish${removeCount === 1 ? "" : "es"} picked` : ""}. You can't undo this. It is only saved when you save the order or quotation, so leaving without saving keeps the old meal.`}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (pendingRemove) removeMeal(pendingRemove.date, pendingRemove.mealType);
+          setPendingRemove(null);
+        }}
+      />
       {!readOnly && (
         <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
           <Label>Menu Preference</Label>

@@ -33,7 +33,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   const email = `e2e-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const businessName = "Playwright Test Catering";
-  // "pw-test-" (8 chars) + a 10-digit suffix keeps this at 18/20 chars —
+  // "pw-test-" (8 chars) + a 10-digit suffix keeps this at 18/60 chars —
   // the slug field's maxLength truncated a full Date.now() and broke this
   // assertion on the first pass.
   const claimedSlug = `pw-test-${Date.now().toString().slice(-10)}`;
@@ -144,12 +144,12 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // open, the modal correctly marks the rest of the page aria-hidden
   // (confirmed accessible-dialog behavior), so role-based queries against
   // the page behind it won't resolve until it's closed.
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).toBeVisible();
   // Seeded with a slugified suggestion from the real business name — never
   // the ugly auto-generated `biz-xxxx` placeholder slug.
-  await expect(page.getByLabel("platterly.com/")).not.toHaveValue(/^biz-/);
+  await expect(page.getByLabel("Your kitchen link")).not.toHaveValue(/^biz-/);
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).not.toBeVisible();
   // Dashboard welcome heading greets the signed-in person by name (Priya
   // Sharma, filled in above), not the business name — AJ's explicit ask,
   // 2026-09-16, to match a richer dashboard reference design.
@@ -173,10 +173,10 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // The custom-link popup still hasn't been satisfied, so it reopens here
   // too — this time, actually claim a link and confirm the Dashboard card
   // flips to the claimed state (real link + a real QR code image).
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
-  await page.getByLabel("platterly.com/").fill(claimedSlug);
-  await page.getByRole("button", { name: "Save my link" }).click();
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).toBeVisible();
+  await page.getByLabel("Your kitchen link").fill(claimedSlug);
+  await page.getByRole("button", { name: "Create Link" }).click();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).not.toBeVisible();
   await expect(page.getByText(claimedSlug)).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).toBeVisible();
 

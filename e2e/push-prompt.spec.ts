@@ -16,7 +16,7 @@ test.afterEach(async () => {
 });
 
 async function closeClaimDialog(page: Page) {
-  const claim = page.getByRole("dialog").filter({ hasText: "Claim your custom link" });
+  const claim = page.getByRole("dialog").filter({ hasText: "Create Your Custom Link" });
   await claim.waitFor({ state: "visible", timeout: 8000 }).catch(() => {});
   if (await claim.count()) await claim.getByRole("button", { name: "Close" }).first().click();
   await expect(claim).toHaveCount(0);
@@ -30,7 +30,7 @@ test("a new account is asked about push, 'Maybe Later' returns in 3 days, 'Don't
   await page.addInitScript(() => Object.defineProperty(Notification, "permission", { get: () => "default" }));
   await signUpCaterer(page, email, { firstName: "Push", lastName: "Tester", phone: "9800000044", closeClaimDialog: false, pushPrompt: true });
 
-  // It waits for the "Claim your custom link" dialog, then asks.
+  // It waits for the "Create Your Custom Link" dialog, then asks.
   await closeClaimDialog(page);
   const prompt = page.getByTestId("push-prompt");
   await expect(prompt).toBeVisible({ timeout: 15_000 });

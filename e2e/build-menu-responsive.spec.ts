@@ -18,7 +18,7 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
   const slug = `shots-${suffix}`;
   await signUpCaterer(page, email, { closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const menuA = `North Indian Menu ${suffix}`; const menuB = `Veg Menu ${suffix}`;

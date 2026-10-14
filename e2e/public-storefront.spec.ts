@@ -5,7 +5,7 @@ import { signUpCaterer } from "./auth-helpers";
 /**
  * Chunk 8 — Public Storefront: Menu Link, Custom Slug & QR (view-only).
  * Signs up a fresh throwaway account, claims a custom slug via the
- * Dashboard's "Claim your custom link" dialog, then verifies the actual
+ * Dashboard's "Create Your Custom Link" dialog, then verifies the actual
  * public `/{slug}` page — no login, no cookies — renders the business info
  * and, per Chunk 11's 2026-09-18 redesign, the event-details intake form
  * directly (the storefront root no longer shows a browsable menu/item
@@ -31,9 +31,9 @@ test("claim a custom link, then view the real public storefront page (unauthenti
   await signUpCaterer(page, email, { firstName: "Storefront", lastName: "Tester", closeClaimDialog: false });
 
   // --- Claim the custom link via the auto-opened Dashboard dialog ---
-  await expect(page.getByRole("dialog", { name: "Claim your custom link" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Your Custom Link" })).toBeVisible();
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // --- Settings: real link shown, Copy button, and a downloadable QR ---

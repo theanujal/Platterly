@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Link as LinkIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { SLUG_PATTERN } from "@/modules/tenants/slug-rules";
+import { SlugField } from "@/components/slug-field";
 import { setCustomSlugAction } from "../actions";
 
 interface PublicMenuLinkFormProps {
@@ -49,16 +49,7 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
 
   return (
     <form onSubmit={handleSubmit} className="flex max-w-md flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="public-menu-slug">platterly.com/</Label>
-        <IconInput
-          icon={LinkIcon}
-          id="public-menu-slug"
-          maxLength={20}
-          value={slug}
-          onChange={(e) => setSlug(e.target.value.trim())}
-        />
-      </div>
+      <SlugField id="public-menu-slug" value={slug} onChange={setSlug} />
       <p className="text-xs text-muted-foreground">
         {remainingChanges > 0
           ? `${remainingChanges} free change${remainingChanges === 1 ? "" : "s"} remaining.`
@@ -80,7 +71,7 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
         </p>
       )}
       {success && <p className="text-sm text-emerald-600">Saved.</p>}
-      <Button type="submit" disabled={pending || slug.length === 0 || (changing && !understood)} className="self-start">
+      <Button type="submit" disabled={pending || slug.length === 0 || !SLUG_PATTERN.test(slug) || (changing && !understood)} className="self-start">
         {pending ? "Saving…" : "Save link"}
       </Button>
     </form>

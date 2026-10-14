@@ -408,7 +408,14 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH")).toBeVisible();
   await expect(page.getByTestId("meal-slot-2026-12-05-DINNER").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   // Remove it again so the rest of this test's totals/assertions match the original Lunch-only/Dinner-only plan.
+  // A meal with a menu and dishes asks first (AJ, 2026-10-14): Cancel keeps it, Remove deletes it.
   await page.getByTestId("meal-slot-2026-12-05-DINNER").getByRole("button", { name: "Remove Dinner", exact: true }).click();
+  const confirmRemove = page.getByRole("alertdialog");
+  await expect(confirmRemove.getByText("Remove Dinner on 5 Dec?")).toBeVisible();
+  await confirmRemove.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByTestId("meal-slot-2026-12-05-DINNER")).toHaveCount(1);
+  await page.getByTestId("meal-slot-2026-12-05-DINNER").getByRole("button", { name: "Remove Dinner", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.getByTestId("meal-slot-2026-12-05-DINNER")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
@@ -535,6 +542,8 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   // Removing the second meal brings it back to Single on its own (AJ, 2026-09-30).
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByRole("button", { name: "Remove Dinner", exact: true }).click();
+  const dinnerConfirm = page.getByRole("alertdialog");
+  await dinnerConfirm.getByRole("button", { name: "Remove", exact: true }).click({ timeout: 2000 }).catch(() => {}); // only asks when the meal has a menu, price or dishes
   await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();

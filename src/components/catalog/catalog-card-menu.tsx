@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-type Result = { ok: true } | { ok: false; error: string };
+type Result = { ok: true; name?: string } | { ok: false; error: string };
 
 interface CatalogCardMenuProps {
   /** The record's own name, for aria-labels and the delete prompt. */
@@ -64,6 +64,9 @@ export function CatalogCardMenu({
   const [pending, setPending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Duplicate asks first, then says what it made (AJ, 2026-10-14).
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [created, setCreated] = useState<string | null>(null);
 
   async function run(action: () => Promise<Result>) {
     const result = await action();
@@ -71,6 +74,20 @@ export function CatalogCardMenu({
       setNotice(result.error);
       return;
     }
+    router.refresh();
+  }
+
+  async function handleDuplicate() {
+    if (!onDuplicate) return;
+    setPending(true);
+    const result = await onDuplicate();
+    setPending(false);
+    setDuplicateOpen(false);
+    if (!result.ok) {
+      setNotice(result.error);
+      return;
+    }
+    setCreated(result.name ?? `${name} (Copy)`);
     router.refresh();
   }
 
@@ -105,7 +122,7 @@ export function CatalogCardMenu({
           </Button>
         )}
         {onDuplicate && (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Duplicate ${name}`} onClick={() => void run(onDuplicate)}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Duplicate ${name}`} onClick={() => setDuplicateOpen(true)}>
             <Copy className="size-4" />
           </Button>
         )}
@@ -155,7 +172,7 @@ export function CatalogCardMenu({
             </DropdownMenuItem>
           ))}
           {onDuplicate && (
-            <DropdownMenuItem onClick={() => void run(onDuplicate)}>
+            <DropdownMenuItem onClick={() => setDuplicateOpen(true)}>
               <Copy />
               Duplicate
             </DropdownMenuItem>
@@ -201,6 +218,39 @@ export function CatalogCardMenu({
             <AlertDialogAction variant="destructive" disabled={pending} onClick={handleDelete}>
               {pending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={duplicateOpen} onOpenChange={(open) => !pending && setDuplicateOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate &quot;{name}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription>A copy called &quot;{name} (Copy)&quot; will be created.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={pending}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDuplicate();
+              }}
+            >
+              {pending ? "Duplicating…" : "Duplicate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={created !== null} onOpenChange={(open) => !open && setCreated(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicated</AlertDialogTitle>
+            <AlertDialogDescription>Created &quot;{created}&quot;. It is in the list now.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setCreated(null)}>OK</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

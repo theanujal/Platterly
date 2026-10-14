@@ -30,7 +30,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
 
   await signUpCaterer(page, email, { firstName: "Inventory", lastName: "Tester", closeClaimDialog: false });
 
-  // A fresh account's Dashboard auto-opens the "Claim your custom link"
+  // A fresh account's Dashboard auto-opens the "Create Your Custom Link"
   // dialog, which overlays the whole page (including the sidebar) until
   // dismissed.
   await page.getByRole("button", { name: "Close" }).click();
@@ -104,7 +104,7 @@ test("create an inventory item with opening stock, record stock in/out, edit met
   // trail, which now also has one ("Dashboard > Inventory").
   await page.getByRole("link", { name: "Dashboard" }).first().click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  // A full navigation to /dashboard re-opens the "Claim your custom link"
+  // A full navigation to /dashboard re-opens the "Create Your Custom Link"
   // dialog every time (defaultOpen while slugChangeCount stays 0) — close
   // it again before interacting with anything else.
   await page.getByRole("button", { name: "Close" }).click();

@@ -21,7 +21,7 @@ test("visits are recorded with their source, shown in the report and on the lead
   const slug = `visits-${Date.now().toString().slice(-6)}`;
   await signUpCaterer(page, email, { firstName: "Visit", lastName: "Tester", closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // The link page explains the tags.

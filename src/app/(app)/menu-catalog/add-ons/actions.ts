@@ -100,16 +100,17 @@ export async function deleteAddOnAction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function duplicateAddOnAction(id: string): Promise<ActionResult> {
+export async function duplicateAddOnAction(id: string): Promise<ActionResult | { ok: true; name: string }> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["create"] }, organizationId);
+  let copy;
   try {
-    await duplicateAddOn(organizationId, id, session.user.id);
+    copy = await duplicateAddOn(organizationId, id, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath("/menu-catalog/add-ons");
-  return { ok: true };
+  return { ok: true, name: copy.name };
 }
 
 export async function setAddOnActiveAction(id: string, isActive: boolean): Promise<ActionResult> {

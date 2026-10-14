@@ -25,7 +25,7 @@ export interface SignUpOptions {
   firstName?: string;
   lastName?: string;
   phone?: string;
-  /** Dismiss the "Claim your custom link" dialog a fresh Dashboard opens. Default true; the storefront spec needs it open. */
+  /** Dismiss the "Create Your Custom Link" dialog a fresh Dashboard opens. Default true; the storefront spec needs it open. */
   closeClaimDialog?: boolean;
   /** Leave the "Stay updated" push popup schedule alone, so it shows. Default false (marked "Don't ask again"). */
   pushPrompt?: boolean;

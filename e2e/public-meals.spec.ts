@@ -22,7 +22,7 @@ test("tick Lunch and Dinner, build each meal on its own menu, review both, submi
   const slug = `meals-${suffix}`;
   await signUpCaterer(page, email, { closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 
   // Two menus, each with one category (pick 1) and two dishes, both offered for the event type.
@@ -141,7 +141,7 @@ test("a visitor sent straight to the review before every meal is built is taken 
   const slug = `mealsb-${suffix}`;
   await signUpCaterer(page, email, { closeClaimDialog: false });
   await page.locator("#custom-slug").fill(slug);
-  await page.getByRole("button", { name: "Save my link" }).click();
+  await page.getByRole("button", { name: "Create Link" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   const menu = `Only Menu ${suffix}`;
   await page.goto("/menu-catalog/menus");

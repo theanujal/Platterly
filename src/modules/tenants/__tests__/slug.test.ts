@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { slugify, generateUniqueSlug } from "@/modules/tenants/slug";
+import { MAX_SLUG_LENGTH } from "@/modules/tenants/slug-rules";
 
 const cleanupOrgIds: string[] = [];
 
@@ -18,9 +19,10 @@ describe("slugify (Chunk 4 Group 4.2)", () => {
     expect(slugify("-- Spicy Kitchen --")).toBe("spicy-kitchen");
   });
 
-  it("caps at 20 characters", () => {
-    const result = slugify("A Very Long Catering Business Name Indeed");
-    expect(result.length).toBeLessThanOrEqual(20);
+  it("caps at the longest allowed link", () => {
+    const result = slugify("A Very Long Catering Business Name That Just Keeps Going And Going For Many Many Words Indeed");
+    expect(result.length).toBeLessThanOrEqual(MAX_SLUG_LENGTH);
+    expect(result.length).toBeGreaterThan(20);
   });
 
   it("falls back to 'caterer' when nothing alphanumeric survives", () => {
