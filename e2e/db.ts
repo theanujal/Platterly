@@ -336,7 +336,19 @@ export async function seedOrderForBilling(email: string, total: number): Promise
  * link opens straight on the Confirmation page. Returns the approval link's token and the order id. The kitchen gets a
  * phone number so the shared page has something to show. Event 3 days away.
  */
-export async function seedApprovedOrderForShare(email: string): Promise<{ approvalToken: string; orderId: string }> {
+export async function seedApprovedOrderForShare(
+  email: string,
+  options: { stage?: "CONFIRMATION" | "VENUE" | "REVIEW"; kidsBelow5?: number; kids5To10?: number } = {},
+): Promise<{ approvalToken: string; orderId: string }> {
+  const kidsBelow5 = options.kidsBelow5 ?? 0;
+  const kids5To10 = options.kids5To10 ?? 0;
+  // "VENUE": approved but the venue details are not in yet, so the link opens on the Venue & Delivery form.
+  // "REVIEW": the menu is out with the customer again (a new version after changes) and the order still carries the venue
+  // details timestamp of the earlier round, which is what once made the second round fail.
+  const stage = options.stage ?? "CONFIRMATION";
+  const venueSubmitted = stage === "CONFIRMATION" || stage === "REVIEW";
+  const selectionStatus = stage === "REVIEW" ? "SENT_TO_CUSTOMER" : "CUSTOMER_APPROVED";
+  const orderStatus = stage === "REVIEW" ? "AWAITING_CUSTOMER_APPROVAL" : "APPROVED";
   const { rows: members } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
   const organizationId = members[0]?.organizationId;
   if (!organizationId) throw new Error(`No organization for ${email}`);
@@ -350,16 +362,16 @@ export async function seedApprovedOrderForShare(email: string): Promise<{ approv
   await pool.query('INSERT INTO customer (id, "organizationId", name, phone, email, "updatedAt") VALUES ($1, $2, $3, $4, $5, now())', [`cust_${suffix}`, organizationId, "Share Customer", "+919811122233", "share-customer@example.test"]);
   await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`et_${suffix}`, organizationId, "Wedding"]);
   await pool.query(
-    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, venue, "eventAddress", "venueDetailsSubmittedAt", "updatedAt")
-     VALUES ($1, $2, $3, $4, $5, 'APPROVED', date_trunc('day', now() at time zone 'UTC') + interval '3 days', date_trunc('day', now() at time zone 'UTC') + interval '3 days', 100, 100, 1000, 1000, 1000, 'Grand Hall', '12 MG Road', now(), now())`,
-    [orderId, organizationId, `cust_${suffix}`, `et_${suffix}`, `ORD-${Math.floor(1000 + Math.random() * 8999)}`],
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", "childBelow5Count", "child5To10Count", subtotal, total, balance, venue, "eventAddress", "venueDetailsSubmittedAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, '${orderStatus}', date_trunc('day', now() at time zone 'UTC') + interval '3 days', date_trunc('day', now() at time zone 'UTC') + interval '3 days', $6, 100, $7, $8, 1000, 1000, 1000, 'Grand Hall', '12 MG Road', ${venueSubmitted ? "now()" : "NULL"}, now())`,
+    [orderId, organizationId, `cust_${suffix}`, `et_${suffix}`, `ORD-${Math.floor(1000 + Math.random() * 8999)}`, 100 + kidsBelow5 + kids5To10, kidsBelow5, kids5To10],
   );
   await pool.query(
     `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", "orderId", name, "startDate", "endDate", "updatedAt")
      VALUES ($1, $2, $3, $4, $5, 'Share Customer Wedding', now() + interval '3 days', now() + interval '3 days', now())`,
     [eventId, organizationId, `cust_${suffix}`, `et_${suffix}`, orderId],
   );
-  await pool.query(`INSERT INTO menu_selection (id, "organizationId", "eventId", status, "currentVersion", "updatedAt") VALUES ($1, $2, $3, 'CUSTOMER_APPROVED', 1, now())`, [selectionId, organizationId, eventId]);
+  await pool.query(`INSERT INTO menu_selection (id, "organizationId", "eventId", status, "currentVersion", "updatedAt") VALUES ($1, $2, $3, '${selectionStatus}', 1, now())`, [selectionId, organizationId, eventId]);
   const day = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
   const snapshot = {
     customerName: "Share Customer",
@@ -367,7 +379,9 @@ export async function seedApprovedOrderForShare(email: string): Promise<{ approv
     eventStartDate: day,
     eventEndDate: day,
     venue: "Grand Hall",
-    guests: 100,
+    guests: 100 + kidsBelow5 + kids5To10,
+    childBelow5Count: kidsBelow5,
+    child5To10Count: kids5To10,
     total: 1000,
     meals: [
       {
@@ -385,7 +399,7 @@ export async function seedApprovedOrderForShare(email: string): Promise<{ approv
     selectedItems: [],
     isCustomMenu: false,
   };
-  await pool.query(`INSERT INTO menu_version (id, "menuSelectionId", "versionNumber", status, snapshot, "sentAt") VALUES ($1, $2, 1, 'CUSTOMER_APPROVED', $3, now())`, [versionId, selectionId, JSON.stringify(snapshot)]);
+  await pool.query(`INSERT INTO menu_version (id, "menuSelectionId", "versionNumber", status, snapshot, "sentAt") VALUES ($1, $2, 1, '${selectionStatus}', $3, now())`, [versionId, selectionId, JSON.stringify(snapshot)]);
   await pool.query(`INSERT INTO secure_access_token (id, "organizationId", "resourceType", "resourceId", token) VALUES ($1, $2, 'MENU_APPROVAL', $3, $4)`, [`sat_${suffix}`, organizationId, versionId, approvalToken]);
   return { approvalToken, orderId };
 }
@@ -640,4 +654,19 @@ export async function setPlatformNotice(notice: { title: string; message: string
 /** Switches the platform sidebar notice off (what Ops's "show the notice" switch does), keeping its text. */
 export async function switchOffPlatformNotice(): Promise<void> {
   await pool.query(`UPDATE platform_notice SET enabled = false WHERE id = 'platform'`);
+}
+
+/** Approval payment spec: the references (UPI transaction numbers) of an order's payments. */
+export async function getPaymentReferences(orderId: string): Promise<{ reference: string | null; status: string; amount: number }[]> {
+  const { rows } = await pool.query('SELECT reference, status, amount FROM payment WHERE "orderId" = $1 ORDER BY "createdAt"', [orderId]);
+  return rows.map((r) => ({ reference: r.reference, status: r.status, amount: Number(r.amount) }));
+}
+
+/** Approval payment spec: where the menu approval and the order stand (the customer must reach the confirmation before either changes). */
+export async function getApprovalState(orderId: string): Promise<{ selection: string; order: string }> {
+  const { rows } = await pool.query(
+    `SELECT ms.status AS selection, o.status AS "order" FROM "order" o JOIN event e ON e."orderId" = o.id JOIN menu_selection ms ON ms."eventId" = e.id WHERE o.id = $1`,
+    [orderId],
+  );
+  return { selection: rows[0].selection, order: rows[0].order };
 }

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
 import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { formatInr } from "@/lib/format-currency";
@@ -14,8 +14,8 @@ import { requiredShortfalls, splitPicks } from "@/modules/menu-approvals/storefr
 import { estimateQuoteAction, saveBuildMenuAction } from "../actions";
 import { MenuSection } from "./menu-section";
 import { DishesSection } from "./dishes-section";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
-import { EventDetailsForm, type EventDetailsFormValues } from "./event-details-form";
+import { SummaryRow, SummarySeparator } from "@/components/public/summary-row";
+import { EditDetailsSheet, type EditDetails } from "./edit-details-sheet";
 import { AddOnsSection, type StorefrontAddOn } from "./addons-section";
 
 export interface BuildMenuEventSummary {
@@ -43,7 +43,7 @@ interface BuildMenuStepProps {
   guests: number;
   event: BuildMenuEventSummary;
   /** What the Edit panel needs to change the event details without leaving this page. */
-  editDetails: { businessName: string; eventTypes: { id: string; name: string; minGuests: number | null }[]; values: EventDetailsFormValues };
+  editDetails: EditDetails;
   initial: { choice: MenuChoice | null; itemIds: string[]; addOnIds: string[] };
 }
 
@@ -177,7 +177,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const goBack = () => router.push(previousMeal ? `/${tenantSlug}/plan/${draftId}?step=menu&meal=${previousMeal.meal}` : `/${tenantSlug}/plan/${draftId}?step=details`);
 
   return (
-    <div className="flex flex-col gap-6 pb-28">
+    <div className="flex flex-col gap-6 pb-28 lg:pb-0">
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold">{several ? `Build Your Menu: ${mealLabel}` : "Build Your Menu"}</h2>
         <p className="text-sm text-muted-foreground">
@@ -255,88 +255,99 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
         </div>
 
         {/* A big screen: the running summary beside the page. A phone gets the same facts in the bottom bar. */}
-        <aside aria-label="Your selection" className="hidden flex-col gap-5 rounded-xl bg-card p-5 ring-1 ring-foreground/10 lg:sticky lg:top-6 lg:flex">
-          <h3 className="text-lg font-semibold">Your Selection</h3>
+        <aside aria-label="Your selection" className="hidden flex-col gap-5 rounded-xl bg-card p-5 ring-1 ring-foreground/10 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)]">
+          {/* The details scroll inside the panel on a short window, so Continue and Back below always stay in reach. */}
+          <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
+            <h3 className="text-lg font-semibold">Your Selection</h3>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">Event Summary</h4>
-              <button type="button" onClick={() => setEditOpen(true)} className="text-sm font-medium text-primary hover:underline">
-                Edit
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">Event Summary</h4>
+                <button type="button" onClick={() => setEditOpen(true)} className="text-sm font-medium text-primary hover:underline">
+                  Edit
+                </button>
+              </div>
+              <dl className="flex flex-col gap-1.5 text-sm">
+                <SummaryRow label="Date" value={event.date} />
+                <SummaryRow label="Event Type" value={event.eventType} />
+                <SummaryRow label="Adults" value={String(event.adults)} />
+                <SummaryRow label="Kids (0–5)" value={String(event.kidsBelow5)} />
+                <SummaryRow label="Kids (5–10)" value={String(event.kids5To10)} />
+                <SummarySeparator />
+                <SummaryRow label="Total Guests" value={String(event.adults + event.kidsBelow5 + event.kids5To10)} testId="summary-total-guests" />
+                <SummarySeparator />
+                <SummaryRow label="Meals" value={event.meals} />
+                <SummaryRow label="Preference" value={event.preference} />
+                <SummaryRow label="Location" value={event.location} />
+              </dl>
             </div>
-            <dl className="flex flex-col gap-1.5 text-sm">
-              <SummaryRow label="Date" value={event.date} />
-              <SummaryRow label="Event Type" value={event.eventType} />
-              <SummaryRow label="Adult Guests" value={String(event.adults)} />
-              <SummaryRow label="Kids (0–5)" value={String(event.kidsBelow5)} />
-              <SummaryRow label="Kids (5–10)" value={String(event.kids5To10)} />
-              <SummaryRow label="Total Guests" value={String(event.adults + event.kidsBelow5 + event.kids5To10)} bold testId="summary-total-guests" />
-              <SummaryRow label="Meals" value={event.meals} />
-              <SummaryRow label="Preference" value={event.preference} />
-              <SummaryRow label="Location" value={event.location} />
-            </dl>
+
+            <div className="flex flex-col gap-1.5 border-t border-border pt-4 text-sm">
+              <h4 className="text-sm font-semibold">{several ? `Selected Menu: ${mealLabel}` : "Selected Menu"}</h4>
+              {hasMenu ? (
+                <p>
+                  {isCustomMenu ? "Custom Menu" : pickedMenu?.name}
+                  {!isCustomMenu && pickedMenu && <span className="text-muted-foreground"> · {formatInr(pickedMenu.pricePerPlate)} / plate</span>}
+                </p>
+              ) : (
+                <p className="text-muted-foreground">Not chosen yet</p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1 border-t border-border pt-4 text-sm" aria-live="polite">
+              <h4 className="text-sm font-semibold">Dishes</h4>
+              <p data-testid="selection-summary">{dishesLine}</p>
+              {!isCustomMenu && cappedSections.length > 0 && (
+                <p className="text-muted-foreground" data-testid="categories-summary">
+                  {categoriesDone} of {cappedSections.length} categories complete
+                </p>
+              )}
+              {split.extraIds.length > 0 && quote && quote.extras.length > 0 && (
+                <p className="font-medium" data-testid="extras-summary">
+                  Extras: {formatInr(quote.extras.reduce((sum, extra) => sum + extra.amount, 0))}
+                </p>
+              )}
+              <h4 className="mt-3 text-sm font-semibold">Add-ons &amp; Live Counters</h4>
+              <p data-testid="addon-summary">{addOnsLine}</p>
+            </div>
+
+            <div className="flex flex-col gap-1 rounded-xl bg-accent/60 p-4">
+              <span className="text-sm font-semibold">{totalLabel}</span>
+              <span className="text-3xl font-bold text-primary" data-testid="estimated-total" aria-live="polite">
+                {total}
+              </span>
+              <span className="text-xs text-muted-foreground">Final pricing is confirmed by the kitchen after reviewing your menu and event requirements.</span>
+            </div>
           </div>
 
-          <div className="flex flex-col gap-1.5 border-t border-border pt-4 text-sm">
-            <h4 className="text-sm font-semibold">{several ? `Selected Menu: ${mealLabel}` : "Selected Menu"}</h4>
-            {hasMenu ? (
-              <p>
-                {isCustomMenu ? "Custom Menu" : pickedMenu?.name}
-                {!isCustomMenu && pickedMenu && <span className="text-muted-foreground"> · {formatInr(pickedMenu.pricePerPlate)} / plate</span>}
-              </p>
-            ) : (
-              <p className="text-muted-foreground">Not chosen yet</p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-1 border-t border-border pt-4 text-sm" aria-live="polite">
-            <h4 className="text-sm font-semibold">Dishes</h4>
-            <p data-testid="selection-summary">{dishesLine}</p>
-            {!isCustomMenu && cappedSections.length > 0 && (
-              <p className="text-muted-foreground" data-testid="categories-summary">
-                {categoriesDone} of {cappedSections.length} categories complete
-              </p>
-            )}
-            {split.extraIds.length > 0 && quote && quote.extras.length > 0 && (
-              <p className="font-medium" data-testid="extras-summary">
-                Extras: {formatInr(quote.extras.reduce((sum, extra) => sum + extra.amount, 0))}
-              </p>
-            )}
-            <h4 className="mt-3 text-sm font-semibold">Add-ons &amp; Live Counters</h4>
-            <p data-testid="addon-summary">{addOnsLine}</p>
-          </div>
-
-          <div className="flex flex-col gap-1 rounded-xl bg-accent/60 p-4">
-            <span className="text-sm font-semibold">{totalLabel}</span>
-            <span className="text-3xl font-bold text-primary" data-testid="estimated-total" aria-live="polite">
-              {total}
-            </span>
-            <span className="text-xs text-muted-foreground">Final pricing is confirmed by the kitchen after reviewing your menu and event requirements.</span>
+          {/* A big screen has no bottom bar (AJ, 2026-10-14): Continue and Back end the panel, under the total. */}
+          <div className="flex shrink-0 flex-col gap-2">
+            <Button type="button" size="lg" className="w-full" disabled={!complete || pending} onClick={handleContinue} aria-describedby={whyDisabled ? "continue-why" : undefined}>
+              {pending ? "Saving…" : nextMeal ? `Continue to ${nextMeal.label}` : "Continue to Review"}
+              <ArrowRight />
+            </Button>
+            {whyDisabled && <p className="text-center text-xs text-muted-foreground">{whyDisabled}</p>}
+            <Button type="button" size="lg" variant="outline" className="w-full" onClick={goBack}>
+              <ArrowLeft /> Back
+            </Button>
           </div>
         </aside>
       </div>
 
-      <Sheet open={editOpen} onOpenChange={setEditOpen}>
-        <SheetContent className="w-full overflow-y-auto data-[side=right]:sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle>Edit Event Details</SheetTitle>
-            <SheetDescription>Your menu and dish choices stay on this page.</SheetDescription>
-          </SheetHeader>
-          <EventDetailsForm
-            tenantSlug={tenantSlug}
-            businessName={editDetails.businessName}
-            eventTypes={editDetails.eventTypes}
-            draft={{ id: draftId, values: editDetails.values }}
-            onSaved={() => {
-              setEditOpen(false);
-              router.refresh(); // new summary, guest count and prices; the picks on screen are untouched
-            }}
-          />
-        </SheetContent>
-      </Sheet>
+      <EditDetailsSheet
+        tenantSlug={tenantSlug}
+        draftId={draftId}
+        details={editDetails}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSaved={() => {
+          setEditOpen(false);
+          router.refresh(); // new summary, guest count and prices; the picks on screen are untouched
+        }}
+      />
 
       <StepFooter
+        className="lg:hidden"
         onBack={goBack}
         summary={
           <span className="flex flex-col items-center leading-tight lg:flex-row lg:gap-4">
@@ -357,15 +368,6 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
           <ArrowRight />
         </Button>
       </StepFooter>
-    </div>
-  );
-}
-
-function SummaryRow({ label, value, bold, testId }: { label: string; value: string; bold?: boolean; testId?: string }) {
-  return (
-    <div className={bold ? "flex items-start justify-between gap-4 border-t border-border pt-1.5 font-semibold" : "flex items-start justify-between gap-4"}>
-      <dt className={bold ? undefined : "text-muted-foreground"}>{label}</dt>
-      <dd className="text-right font-medium" data-testid={testId}>{value}</dd>
     </div>
   );
 }

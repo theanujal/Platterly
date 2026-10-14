@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Mail, Leaf, Drumstick, ArrowRight, CalendarDays, Users, UtensilsCrossed, PartyPopper, Check, MapPin } from "lucide-react";
-import { StepFooter } from "@/components/public/step-footer";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
@@ -145,7 +144,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
   const eventTypeItems = Object.fromEntries(eventTypes.map((et) => [et.id, et.name]));
 
   return (
-    <form onSubmit={handleSubmit} className={cn("flex flex-col gap-6", inPanel ? "p-4 pt-0" : "pb-28")}>
+    <form onSubmit={handleSubmit} className={cn("flex flex-col gap-6", inPanel && "p-4 pt-0")}>
       <FormCard className={inPanel ? "p-0 ring-0 md:p-0" : undefined}>
         <FormSection stacked={inPanel} icon={User} title="About You" description="Let us know how to reach you.">
           <div className="flex flex-col gap-1.5">
@@ -302,7 +301,6 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
             </Label>
           </div>
         )}
-      </FormCard>
 
       {resetsPicks && (
         <p role="status" className="rounded-lg bg-warning/10 p-3 text-sm" data-testid="picks-reset-warning">
@@ -314,18 +312,15 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
           {error}
         </p>
       )}
-      {inPanel ? (
-        <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Saving…" : "Save Changes"}
+      {/* The button ends the form, right under the last field (AJ, 2026-10-14): full width on a phone, at the right edge on a desktop. */}
+      <div className={cn("flex", !inPanel && "border-t border-border pt-5 sm:justify-end")}>
+        <Button type="submit" size="lg" disabled={pending} className={cn(inPanel || "w-full sm:w-auto")}>
+          {inPanel ? (pending ? "Saving…" : "Save Changes") : pending ? "Saving…" : <span>Continue to Build Your Menu</span>}
+          {!inPanel && <ArrowRight />}
         </Button>
-      ) : (
-        <StepFooter>
-          <Button type="submit" size="lg" disabled={pending}>
-            {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Build Your Menu</span></span>}
-            <ArrowRight />
-          </Button>
-        </StepFooter>
-      )}
+      </div>
+      </FormCard>
+
     </form>
   );
 }

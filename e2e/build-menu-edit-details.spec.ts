@@ -70,6 +70,13 @@ test("Edit event details in a side panel: unsaved dish picks stay, the summary u
   await expect(p.getByRole("heading", { name: "Build Your Menu" })).toBeVisible();
   const url = p.url();
 
+  // The menu's details pop-up says how many dishes each category gives, before the menu is chosen (AJ, 2026-10-14).
+  await p.getByTestId("menu-card").filter({ hasText: menu }).getByRole("button", { name: "View details" }).first().click();
+  const detailsList = p.getByTestId("menu-details-categories");
+  await expect(detailsList).toContainText(cat);
+  await expect(detailsList).toContainText("Choose 2");
+  await p.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
+
   // Pick a menu and one dish, none of it saved yet.
   await p.getByTestId("menu-card").filter({ hasText: menu }).getByRole("button", { name: "Select", exact: true }).click();
   await p.getByTestId("item-card").filter({ hasText: "Dal Fry" }).getByRole("button", { name: "Select", exact: true }).click();
@@ -86,7 +93,7 @@ test("Edit event details in a side panel: unsaved dish picks stay, the summary u
 
   // Same page, summary updated, picks still there.
   await expect(p).toHaveURL(url);
-  await expect(p.getByTestId("summary-total-guests")).toHaveText("55");
+  await expect(p.getByTestId("summary-total-guests")).toContainText("55");
   await expect(p.getByTestId("selection-summary")).toHaveText(/1 dish selected/);
   await expect(p.getByText(menu).first()).toBeVisible();
 });
@@ -133,11 +140,15 @@ test("kids are shown on top of the adults: live total on the form, breakdown in 
   await p.getByRole("checkbox", { name: "Dinner" }).click();
   await p.getByRole("radio", { name: /^Vegetarian/ }).click();
   await p.getByLabel("Venue Location").fill("Whitefield, Bangalore");
+  // The button ends the form (AJ, 2026-10-14): in the page flow, not pinned to the bottom of the window.
+  const continueButton = p.getByRole("button", { name: "Continue to Build Your Menu" });
+  expect(await continueButton.evaluate((el) => getComputedStyle(el.closest("div")!).position)).not.toBe("fixed");
+  expect(await p.locator("div.fixed").filter({ has: continueButton }).count()).toBe(0);
   await p.getByRole("button", { name: "Continue to Build Your Menu" }).click();
   await expect(p.getByRole("heading", { name: "Build Your Menu" })).toBeVisible();
   const panel = p.getByRole("complementary", { name: "Your selection" });
-  await expect(panel.getByText("Adult Guests")).toBeVisible();
-  await expect(panel.getByText("Kids (0–5)")).toBeVisible();
-  await expect(panel.getByText("Kids (5–10)")).toBeVisible();
-  await expect(panel.getByTestId("summary-total-guests")).toHaveText("80");
+  await expect(panel.getByText("Adults:")).toBeVisible();
+  await expect(panel.getByText("Kids (0–5):")).toBeVisible();
+  await expect(panel.getByText("Kids (5–10):")).toBeVisible();
+  await expect(panel.getByTestId("summary-total-guests")).toContainText("80");
 });

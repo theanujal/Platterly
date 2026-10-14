@@ -212,6 +212,8 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
 
   // "I have paid" waits for the kitchen: nothing changes on the order yet
   await customerPage.getByRole("button", { name: "I have paid" }).click();
+  await customerPage.getByLabel("Transaction number (UTR)").fill("UTR987654321012"); // the customer confirms with the transaction number
+  await customerPage.getByRole("button", { name: "Confirm payment" }).click();
   await expect(customerPage.getByTestId("pay-done")).toContainText("we have noted your payment");
   expect(Number((await getOrderMoney(orderId)).advance)).toBe(7500);
 

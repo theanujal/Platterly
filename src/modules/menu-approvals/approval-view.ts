@@ -35,6 +35,9 @@ export interface ApprovalView {
   eventType: string | null;
   dateText: string;
   guests: number | null;
+  /** Kids are counted on top of the adults: "50 adults + 32 kids (82 guests)". */
+  adults: number | null;
+  kids: number;
   location: string | null;
   menu: { name: string; description: string | null; image: string | null; pricePerPlate: number | null; extraMenus: string[] } | null;
   isCustomMenu: boolean;
@@ -119,6 +122,7 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
       }
     : null;
 
+  const kids = (snapshot.childBelow5Count ?? 0) + (snapshot.child5To10Count ?? 0);
   const priceRows: ApprovalPriceRow[] = [];
   const breakdown = snapshot.breakdown;
   if (breakdown) {
@@ -128,7 +132,7 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
       const mealCount = Math.max(snapshot.meals.length, 1);
       const rate = menu?.pricePerPlate ?? null;
       // Only spell the multiplication out when it adds up, e.g. not under Individual Pricing.
-      const detail = rate !== null && adults > 0 && Math.abs(rate * adults * mealCount - breakdown.menuAmount) < 0.01 ? `${formatInr(rate)} × ${adults} guests${mealCount > 1 ? ` × ${mealCount} meals` : ""}` : undefined;
+      const detail = rate !== null && adults > 0 && Math.abs(rate * adults * mealCount - breakdown.menuAmount) < 0.01 ? `${formatInr(rate)} × ${adults} adults${mealCount > 1 ? ` × ${mealCount} meals` : ""}` : undefined;
       priceRows.push({ label: menu ? menu.name : "Menu", detail, amount: breakdown.menuAmount });
     }
     if (breakdown.extrasAmount > 0) priceRows.push({ label: "Extra Items", amount: breakdown.extrasAmount });
@@ -142,6 +146,8 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
     eventType: snapshot.eventTypeName,
     dateText,
     guests: snapshot.guests,
+    adults: snapshot.guests === null ? null : Math.max(snapshot.guests - kids, 0),
+    kids,
     location: snapshot.venue,
     menu,
     isCustomMenu: snapshot.isCustomMenu,

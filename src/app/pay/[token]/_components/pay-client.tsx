@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { CheckCircle2, CreditCard, Smartphone } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { inr } from "@/modules/invoices/invoice-format";
 import { claimUpiAction, startCheckoutAction, verifyCheckoutAction } from "../actions";
 
@@ -35,6 +37,8 @@ export function PayClient({
   type,
   razorpay,
   upi,
+  backHref,
+  embedded,
 }: {
   token: string;
   amount: number;
@@ -45,9 +49,15 @@ export function PayClient({
   type: keyof typeof TYPE_LABEL;
   razorpay: boolean;
   upi: { uri: string; qr: string; id: string } | null;
+  /** Where "Back to your order" goes once paid: the customer's approval page they came from. */
+  backHref?: string | null;
+  /** Inside the approval page's payment pop-up: no card of its own, a way back to the amount, and a Continue once paid or claimed. */
+  embedded?: { onChangeAmount: () => void; onFinished: () => void; onNotNow: () => void; onCheckoutChange: (open: boolean) => void };
 }) {
   const [state, setState] = useState<"idle" | "busy" | "paid" | "claimed">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [transactionNumber, setTransactionNumber] = useState("");
 
   async function payOnline() {
     setError(null);
@@ -71,6 +81,7 @@ export function PayClient({
       prefill: { name: customerName },
       theme: { color: "#FF6900" },
       handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+        embedded?.onCheckoutChange(false);
         const verified = await verifyCheckoutAction(token, response);
         if (verified.ok) setState("paid");
         else {
@@ -78,15 +89,21 @@ export function PayClient({
           setError(verified.error ?? "We could not verify this payment.");
         }
       },
-      modal: { ondismiss: () => setState((s) => (s === "busy" ? "idle" : s)) },
+      modal: {
+        ondismiss: () => {
+          embedded?.onCheckoutChange(false);
+          setState((s) => (s === "busy" ? "idle" : s));
+        },
+      },
     });
+    embedded?.onCheckoutChange(true);
     checkout.open();
   }
 
   async function claim() {
     setError(null);
     setState("busy");
-    const result = await claimUpiAction(token);
+    const result = await claimUpiAction(token, transactionNumber);
     if (!result.ok) {
       setState("idle");
       return setError(result.error ?? "Something went wrong.");
@@ -96,20 +113,30 @@ export function PayClient({
 
   if (state === "paid" || state === "claimed") {
     return (
-      <div role="status" className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10" data-testid="pay-done">
+      <div role="status" className={embedded ? "flex flex-col items-center gap-3 p-2 text-center" : "flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10"} data-testid="pay-done">
         <span className="flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
           <CheckCircle2 className="size-8" />
         </span>
         <h1 className="text-xl font-semibold">{state === "paid" ? "Payment received, thank you!" : "Thanks, we have noted your payment"}</h1>
         <p className="text-sm text-muted-foreground">
-          {state === "paid" ? "We are sending your receipt. See you at the event!" : "The kitchen will confirm it once it reaches their account, and send you a receipt."}
+          {state === "paid" ? "We are sending your receipt. See you at the event!" : "The kitchen will match your transaction number with their account, confirm it, and send you a receipt."}
         </p>
+        {embedded && (
+          <Button type="button" onClick={embedded.onFinished}>
+            Continue
+          </Button>
+        )}
+        {!embedded && backHref && (
+          <a href={backHref} className={buttonVariants({ variant: "outline" })}>
+            Back to your order
+          </a>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10 md:p-6">
+    <div className={embedded ? "flex flex-col gap-4" : "flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10 md:p-6"}>
       <div className="text-center">
         <h1 className="text-xl font-semibold" data-testid="pay-amount">
           Pay {inr(amount)}
@@ -149,9 +176,20 @@ export function PayClient({
             <Smartphone />
             Open in UPI app
           </Button>
-          <Button type="button" variant="outline" className="w-full" disabled={state === "busy"} onClick={claim}>
-            I have paid
-          </Button>
+          {asking ? (
+            <div className="flex w-full flex-col gap-2" data-testid="upi-confirm">
+              <Label htmlFor="upi-txn">Transaction number (UTR)</Label>
+              <Input id="upi-txn" value={transactionNumber} onChange={(e) => setTransactionNumber(e.target.value)} placeholder="e.g. 412345678901" autoComplete="off" maxLength={40} />
+              <p className="text-xs text-muted-foreground">Find it in your UPI app under this payment (it may be called UTR, UPI Ref or Transaction ID). The kitchen uses it to confirm your payment.</p>
+              <Button type="button" className="w-full" disabled={state === "busy" || transactionNumber.trim() === ""} onClick={claim}>
+                {state === "busy" ? "Sending…" : "Confirm payment"}
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" variant="outline" className="w-full" onClick={() => setAsking(true)}>
+              I have paid
+            </Button>
+          )}
         </div>
       )}
 
@@ -159,6 +197,17 @@ export function PayClient({
         <p role="alert" className="text-center text-sm text-destructive">
           {error}
         </p>
+      )}
+
+      {embedded && (
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+          <Button type="button" variant="ghost" size="md" onClick={embedded.onChangeAmount}>
+            Change amount
+          </Button>
+          <Button type="button" variant="ghost" size="md" onClick={embedded.onNotNow}>
+            Not now
+          </Button>
+        </div>
       )}
     </div>
   );

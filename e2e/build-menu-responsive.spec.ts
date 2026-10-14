@@ -115,6 +115,14 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
     await expect(p.getByText("Add-ons & Live Counters").first()).toBeVisible();
     await expect(p.getByRole("button", { name: "Back" })).toBeInViewport();
     await expect(p.getByRole("button", { name: "Continue to Review" })).toBeInViewport();
+    // A big screen has no bottom bar: Back and Continue end the Your Selection panel (AJ, 2026-10-14). Smaller screens keep the bar.
+    const bottomBar = p.locator("div.fixed.inset-x-0.bottom-0");
+    if (sz.n === "desktop") {
+      await expect(bottomBar).toBeHidden();
+      await expect(p.getByRole("complementary", { name: "Your selection" }).getByRole("button", { name: "Continue to Review" })).toBeVisible();
+    } else {
+      await expect(bottomBar).toBeVisible();
+    }
     await shot("4-addons", true);
     // Reopen the dishes to add an extra.
     await p.getByRole("button", { name: /Select Dishes/ }).click();

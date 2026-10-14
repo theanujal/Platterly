@@ -71,7 +71,7 @@ describe("buildApprovalView", () => {
   it("builds the price rows, spelling out menu x guests only when it adds up", () => {
     const view = buildApprovalView(rich);
     expect(view.priceRows.map((r) => r.label)).toEqual(["North Indian Menu", "Extra Items", "Live Counters", "Discount & other charges"]);
-    expect(view.priceRows[0]).toMatchObject({ detail: "₹400.00 × 99 guests", amount: 39600 });
+    expect(view.priceRows[0]).toMatchObject({ detail: "₹400.00 × 99 adults", amount: 39600 });
     expect(view.total).toBe(44000);
 
     // Individual pricing: the typed meal price doesn't equal rate x guests, so no multiplication is shown.
@@ -83,7 +83,7 @@ describe("buildApprovalView", () => {
     const meal = rich.meals[0];
     const view = buildApprovalView({ ...rich, meals: [meal, { ...meal, mealType: "LUNCH" }], breakdown: { ...rich.breakdown!, menuAmount: 400 * 99 * 2 } });
     expect(view.meals.map((m) => m.label)).toEqual(["Dinner", "Lunch"]);
-    expect(view.priceRows[0].detail).toBe("₹400.00 × 99 guests × 2 meals");
+    expect(view.priceRows[0].detail).toBe("₹400.00 × 99 adults × 2 meals");
     expect(view.addOns).toHaveLength(3); // each add-on and extra is listed once
   });
 

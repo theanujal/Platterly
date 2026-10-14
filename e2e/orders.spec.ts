@@ -245,6 +245,23 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // A freshly opened order has no unsaved changes: Back to orders, no warning note (AJ, 2026-10-14).
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back to orders" })).toBeVisible();
+
+  // On a booked order, changing the Order Type asks first (AJ, 2026-10-14); going back to the saved type does not.
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^Multi Order/ }).click();
+  const kindAsk = page.getByRole("alertdialog", { name: "Change this order to Multi Order?" });
+  await expect(kindAsk).toBeVisible();
+  await kindAsk.getByRole("button", { name: "Keep Single Order" }).click();
+  await expect(kindAsk).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^Multi Order/ }).click();
+  await kindAsk.getByRole("button", { name: "Change type" }).click();
+  await expect(kindAsk).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^Single Order/ }).click(); // back to the saved type: no question
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByLabel("Charge 1 label")).toHaveValue("Generator");
   await expect(page.getByLabel("Charge 1 amount")).toHaveValue("40");

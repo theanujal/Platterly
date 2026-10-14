@@ -39,6 +39,9 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const status = approval?.status ?? null;
+  // A version's own status is frozen at the moment it was sent. The current version shows the menu's live status
+  // (customer approved, sent to the kitchen...), the same as the Menu Approvals page and the banner above.
+  const statusOf = (v: { versionNumber: number; status: MenuSelectionStatus }) => (status && v.versionNumber === approval?.currentVersion ? status : v.status);
   // Latest two versions; before the first send, one placeholder step so the card looks the same from the start.
   const sentVersions = approval?.versions ?? [];
   const steps =
@@ -50,7 +53,7 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
           badge:
             i === 0 && v.supersededAt
               ? { variant: "neutral" as const, label: "Replaced" }
-              : { variant: MENU_SELECTION_STATUS_TONE[v.status], label: MENU_SELECTION_STATUS_LABEL[v.status] },
+              : { variant: MENU_SELECTION_STATUS_TONE[statusOf(v)], label: MENU_SELECTION_STATUS_LABEL[statusOf(v)] },
         }))
       : [
           {
@@ -137,7 +140,7 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
                     {version.supersededAt ? (
                       <Badge variant="neutral">Replaced</Badge>
                     ) : (
-                      <Badge variant={MENU_SELECTION_STATUS_TONE[version.status]}>{MENU_SELECTION_STATUS_LABEL[version.status]}</Badge>
+                      <Badge variant={MENU_SELECTION_STATUS_TONE[statusOf(version)]}>{MENU_SELECTION_STATUS_LABEL[statusOf(version)]}</Badge>
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">

@@ -121,9 +121,36 @@ test("tick Lunch and Dinner, build each meal on its own menu, review both, submi
   await expect(p.getByTestId("review-total-guests")).toContainText("40");
   await expect(p.getByTestId("review-total")).toContainText("26,000");
 
+  // Desktop: no bottom bar, like Build Your Menu; Submit and Back to menu end the Order Summary (AJ, 2026-10-14).
+  await expect(p.locator("div.fixed.inset-x-0.bottom-0")).toBeHidden();
+  const summaryCard = p.getByRole("heading", { name: "Order Summary" }).locator("xpath=ancestor::div[contains(@class,'ring-1')][1]");
+  await expect(summaryCard.getByRole("button", { name: "Submit for Menu Approval" })).toBeVisible();
+  await expect(summaryCard.getByRole("button", { name: "Back to menu" })).toBeVisible();
+
+  // Edit details opens the event details in a panel on the same page.
+  await p.getByRole("button", { name: "Edit details" }).click();
+  await expect(p.getByRole("dialog").getByRole("heading", { name: "Edit Event Details" })).toBeVisible();
+  await p.keyboard.press("Escape");
+  await expect(p.getByRole("dialog")).toHaveCount(0);
+  await expect(p).toHaveURL(/step=review/);
+
+  // Each meal has its own Edit, straight to that meal; its picks are still there, and Continue returns to the review.
+  await p.getByRole("link", { name: "Edit Dinner" }).click();
+  await expect(p).toHaveURL(/step=menu&meal=DINNER/);
+  await expect(p.getByRole("heading", { name: "Build Your Menu: Dinner" })).toBeVisible();
+  await expect(p.getByTestId("selection-summary")).toHaveText(/1 dish selected/);
+  await p.getByRole("button", { name: "Continue to Review" }).click();
+  await expect(p).toHaveURL(/step=review/);
+
   // Back from the review reopens the meals; a finished meal keeps its picks.
   await p.getByRole("button", { name: "Submit for Menu Approval" }).or(p.getByRole("button", { name: "Submit" })).first().click();
   await expect(p.getByTestId("confirmation")).toBeVisible();
+  // The confirmation gives a request number to quote and tappable ways to reach the kitchen (AJ, 2026-10-14).
+  await expect(p.getByTestId("request-number")).toContainText(/[A-Z]+-\d+/);
+  const contact = p.getByTestId("kitchen-contact");
+  await expect(contact.getByRole("link", { name: /^Call / })).toHaveAttribute("href", /^tel:\+\d+$/);
+  await expect(contact.getByRole("link", { name: "WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/\d+$/);
+  await expect(contact.getByRole("link", { name: new RegExp(`^Back to .* home$`) })).toHaveAttribute("href", `/${slug}`);
 
   const entries = (await getOrderMealMenus(slug)).sort((a, b) => a.mealType.localeCompare(b.mealType));
   expect(entries).toEqual([

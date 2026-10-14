@@ -5,7 +5,7 @@ import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listAddOns } from "@/modules/addons/addon";
 import { listStorefrontMenus, listCustomMenuSections, listMenus } from "@/modules/menus/menu";
-import { getDraft, buildDraftQuote, allMealsComplete, isMealComplete, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
+import { getDraft, getDraftOrderNumber, buildDraftQuote, allMealsComplete, isMealComplete, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
 import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { PublicShell } from "@/components/public/public-shell";
@@ -14,6 +14,8 @@ import { EventDetailsForm } from "../../_components/event-details-form";
 import { BuildMenuStep } from "../../_components/build-menu-step";
 import { ReviewStep } from "../../_components/review-step";
 import { ScrollToTop } from "../../_components/scroll-to-top";
+import { KitchenContactLinks } from "../../_components/kitchen-contact-links";
+import { CopyButton } from "@/components/ui/copy-button";
 
 interface PlanPageProps {
   params: Promise<{ tenantSlug: string; draftId: string }>;
@@ -47,6 +49,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
   const data = draft.data;
 
   if (draft.status === "COMPLETED") {
+    const orderNumber = await getDraftOrderNumber(organization.id, draft.orderId);
     const isCustom = Object.values(data.meals).some((meal) => meal?.menuChoice?.kind === "CUSTOM");
     return (
       <Shell organization={organization}>
@@ -56,6 +59,16 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           </span>
           <h2 className="text-2xl font-semibold">Request Submitted Successfully!</h2>
           <p className="text-muted-foreground">Thank you for choosing {organization.name} for your special event.</p>
+          {orderNumber && (
+            <div className="flex flex-col items-center gap-1 rounded-xl bg-accent px-6 py-4" data-testid="request-number">
+              <span className="text-sm text-muted-foreground">Your request number</span>
+              <span className="flex items-center gap-2 text-3xl font-bold text-primary">
+                {orderNumber}
+                <CopyButton value={orderNumber} label="Copy request number" iconOnly />
+              </span>
+              <span className="text-sm text-muted-foreground">Please mention it when you contact us.</span>
+            </div>
+          )}
           {isCustom ? (
             <div className="max-w-md rounded-xl bg-accent p-4 text-left text-sm">
               <p className="font-semibold">Thank you for submitting your custom menu selection.</p>
@@ -66,6 +79,8 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           ) : (
             <p className="max-w-md text-sm text-muted-foreground">Our team will review your menu and follow up with you shortly over WhatsApp or email to finalise everything.</p>
           )}
+          <p className="text-sm font-medium">Need to change something or have a question? Get in touch:</p>
+          <KitchenContactLinks tenantSlug={tenantSlug} organization={organization} />
         </div>
       </Shell>
     );
@@ -82,8 +97,9 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           </span>
           <h2 className="text-2xl font-semibold">This link has expired</h2>
           <p className="max-w-md text-sm text-muted-foreground">
-            This booking request is no longer available online. Please contact {organization.name} directly to start a new one.
+            This booking request is no longer available online. Please contact {organization.name} directly to start a new one:
           </p>
+          <KitchenContactLinks tenantSlug={tenantSlug} organization={organization} />
         </div>
       </Shell>
     );
@@ -94,6 +110,25 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
   let step: WizardStepKey = WIZARD_STEPS[Math.max(index, 0)].key;
   // A draft saved before the 3-step flow may have no Venue Location yet; Event Details asks for it.
   if (!data.venueLocation) step = "details";
+
+  // What the Edit details panel on Build Your Menu and Review needs (AJ, 2026-10-14).
+  const buildEditDetails = (types: { id: string; name: string; minGuests: number | null; isActive: boolean }[]) => ({
+    businessName: organization.name,
+    eventTypes: types.filter((et) => et.isActive).map((et) => ({ id: et.id, name: et.name, minGuests: et.minGuests })),
+    values: {
+      name: draft.customer.name,
+      email: draft.customer.email ?? "",
+      phone: formatPhoneDisplay(draft.customer.phone),
+      eventTypeId: data.eventTypeId,
+      eventDate: data.eventDate,
+      guestCount: String(data.guestCount),
+      childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
+      child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
+      eventMealTypes: data.eventMealTypes,
+      menuPreference: data.menuPreference,
+      venueLocation: data.venueLocation,
+    },
+  });
 
   let content: React.ReactNode;
 
@@ -174,23 +209,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           preference: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
           location: data.venueLocation,
         }}
-        editDetails={{
-          businessName: organization.name,
-          eventTypes: eventTypes.filter((et) => et.isActive).map((et) => ({ id: et.id, name: et.name, minGuests: et.minGuests })),
-          values: {
-            name: draft.customer.name,
-            email: draft.customer.email ?? "",
-            phone: formatPhoneDisplay(draft.customer.phone),
-            eventTypeId: data.eventTypeId,
-            eventDate: data.eventDate,
-            guestCount: String(data.guestCount),
-            childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
-            child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
-            eventMealTypes: data.eventMealTypes,
-            menuPreference: data.menuPreference,
-            venueLocation: data.venueLocation,
-          },
-        }}
+        editDetails={buildEditDetails(eventTypes)}
         initial={{ choice: savedChoice, itemIds: savedChoice ? (selection.itemIds ?? []) : [], addOnIds: selection.addOnIds ?? [] }}
       />
     );
@@ -233,6 +252,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
         tenantSlug={tenantSlug}
         draftId={draft.id}
         quote={quote}
+        editDetails={buildEditDetails(eventTypes)}
         summary={{
           customerName: draft.customer.name,
           phone: formatPhoneDisplay(draft.customer.phone),

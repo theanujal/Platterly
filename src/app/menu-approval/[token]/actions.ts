@@ -1,7 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
-import { isRateLimited } from "@/lib/rate-limit";
+import { buildPayView, type PayView } from "@/app/pay/[token]/pay-view";
+import { publicActionLimited } from "@/lib/public-rate-limit";
 import { resolveApprovalLink } from "@/modules/menu-approvals/approval-link";
 import { disableShare, enableShare } from "@/modules/orders/order-share";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
@@ -9,6 +9,8 @@ import { createPaymentLink } from "@/modules/payments/payment-links";
 import { PaymentError } from "@/modules/payments/payment";
 import {
   requestChangesViaLink,
+  saveVenueViaLink,
+  confirmApprovalViaLink,
   submitVenueViaLink,
   askAboutApprovedMenuViaLink,
   VenueDetailsError,
@@ -20,11 +22,9 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 const INACTIVE = "This link is no longer active. If you've already responded, there's nothing more to do — otherwise please contact your caterer.";
 const MAX_NOTE_LENGTH = 2000;
 
-/** Anonymous, unauthenticated endpoint — cap attempts per IP (in-memory, best-effort; see rate-limit.ts). */
+/** Anonymous, unauthenticated endpoint: capped per IP (best-effort, in-memory; see public-rate-limit.ts). */
 async function tooManyRequests(): Promise<boolean> {
-  const forwarded = (await headers()).get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  return isRateLimited(`menu-approval:${ip}`, 30, 60 * 60 * 1000);
+  return publicActionLimited("menu-approval", 60);
 }
 
 export async function requestMenuChangesAction(token: string, note: string): Promise<ActionResult> {
@@ -42,13 +42,26 @@ export async function requestMenuChangesAction(token: string, note: string): Pro
 }
 
 /** The Venue & Delivery form, sent after approving. Only a plain validation message (VenueDetailsError) reaches the customer. */
-export async function submitVenueAction(token: string, input: VenueDetailsInput): Promise<ActionResult> {
+export async function submitVenueAction(token: string, input: VenueDetailsInput, confirm = true): Promise<ActionResult> {
   if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
   try {
-    const result = await submitVenueViaLink(token, input);
+    // `confirm: false` only saves the details: the screen confirms later, once the customer is past the payment pop-up.
+    const result = confirm ? await submitVenueViaLink(token, input) : await saveVenueViaLink(token, input);
     return result.ok ? { ok: true } : { ok: false, error: INACTIVE };
   } catch (error) {
     if (error instanceof VenueDetailsError) return { ok: false, error: error.message };
+    console.error("[menu-approval]", error);
+    return { ok: false, error: INACTIVE };
+  }
+}
+
+/** The customer got past the payment pop-up: now the menu is approved and the venue details count as sent. */
+export async function confirmApprovalAction(token: string): Promise<ActionResult> {
+  if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
+  try {
+    const result = await confirmApprovalViaLink(token);
+    return result.ok ? { ok: true } : { ok: false, error: INACTIVE };
+  } catch (error) {
     console.error("[menu-approval]", error);
     return { ok: false, error: INACTIVE };
   }
@@ -73,10 +86,10 @@ export async function askAboutApprovedMenuAction(token: string, note: string): P
  * The Payment box on the Confirmation stage: the customer picks Advance, Full amount or a custom amount and is
  * sent to the kitchen's payment page for it (Razorpay or UPI QR). Only available once the menu is final.
  */
-export async function createApprovalPaymentLinkAction(token: string, kind: "ADVANCE" | "FULL" | "CUSTOM", amount?: number): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+export async function createApprovalPaymentLinkAction(token: string, kind: "ADVANCE" | "FULL" | "CUSTOM", amount?: number): Promise<{ ok: true; path: string; pay: PayView } | { ok: false; error: string }> {
   if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
   const link = await resolveApprovalLink(token);
-  if (!link.ok || link.stage !== "CONFIRMATION" || !link.orderId) return { ok: false, error: INACTIVE };
+  if (!link.ok || !link.orderId) return { ok: false, error: INACTIVE };
   try {
     const created = await createPaymentLink({
       organizationId: link.organizationId,
@@ -84,7 +97,12 @@ export async function createApprovalPaymentLinkAction(token: string, kind: "ADVA
       kind: kind === "FULL" ? "BALANCE" : kind,
       amount,
     });
-    return { ok: true, path: new URL(created.url).pathname };
+    // "back" lets the payment page send the customer back to this approval page when they are done.
+    const pathname = new URL(created.url).pathname;
+    // `pay` is what the payment screen shows, so the pop-up can embed it; `path` is the same screen as a page.
+    const pay = await buildPayView(pathname.split("/").pop() ?? "");
+    if (!pay) return { ok: false, error: INACTIVE };
+    return { ok: true, path: `${pathname}?back=${encodeURIComponent(`/menu-approval/${token}`)}`, pay };
   } catch (error) {
     if (error instanceof PaymentError) return { ok: false, error: error.message };
     console.error("[menu-approval]", error);

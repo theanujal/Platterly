@@ -230,6 +230,12 @@ test("an order form with unsaved edits: Back to orders becomes Discard changes a
   // Edited: the note shows in the Save card, the button now reads Discard changes and asks first.
   await expect(page.getByTestId("unsaved-note")).toBeVisible();
   await expect(page.getByTestId("order-save-card").getByRole("button", { name: "Save Order" })).toBeVisible();
+  // The Save card is the last thing in the summary column and stays in view.
+  const saveCard = page.getByTestId("order-save-card");
+  await expect(saveCard).toBeInViewport();
+  const summaryBox = await page.getByRole("heading", { name: "Order Summary" }).boundingBox();
+  const saveBox = await saveCard.boundingBox();
+  expect(saveBox!.y).toBeGreaterThan(summaryBox!.y);
   await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(asking).toBeVisible();
   await asking.getByRole("button", { name: "Keep editing" }).click();

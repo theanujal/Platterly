@@ -1,7 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
-import { isRateLimited } from "@/lib/rate-limit";
+import { publicActionLimited } from "@/lib/public-rate-limit";
 import { prisma } from "@/lib/db";
 import { claimUpiPayment, confirmRazorpayPayment, startRazorpayCheckout } from "@/modules/payments/checkout";
 import { PaymentError } from "@/modules/payments/payment";
@@ -12,9 +11,7 @@ import { verifyCheckoutSignature } from "@/modules/payments/razorpay";
 const INACTIVE = "This link is no longer active. If you have already paid, there is nothing more to do.";
 
 async function tooManyRequests(): Promise<boolean> {
-  const forwarded = (await headers()).get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  return isRateLimited(`pay-link:${ip}`, 40, 60 * 60 * 1000);
+  return publicActionLimited("pay-link", 40);
 }
 
 export type StartResult =
@@ -50,12 +47,17 @@ export async function verifyCheckoutAction(token: string, response: { razorpay_o
   return { ok: true };
 }
 
-export async function claimUpiAction(token: string): Promise<{ ok: boolean; error?: string }> {
+/** The UPI transaction number (UTR): 6 to 30 letters and digits, as a UPI app shows it. */
+const TRANSACTION_NUMBER = /^[A-Za-z0-9]{6,30}$/;
+
+export async function claimUpiAction(token: string, transactionNumber: string): Promise<{ ok: boolean; error?: string }> {
+  const reference = transactionNumber.replace(/\s+/g, "");
+  if (!TRANSACTION_NUMBER.test(reference)) return { ok: false, error: "Enter the transaction number from your UPI app (6 to 30 letters and numbers)." };
   if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
   const link = await resolvePaymentLink(token);
   if (!link || !link.upi) return { ok: false, error: INACTIVE };
   try {
-    await claimUpiPayment(link);
+    await claimUpiPayment(link, reference);
     return { ok: true };
   } catch (error) {
     if (error instanceof PaymentError) return { ok: false, error: error.message };

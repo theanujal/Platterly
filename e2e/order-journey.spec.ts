@@ -124,6 +124,8 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await customerPage.getByRole("button", { name: "Continue to Review" }).click(); // add-ons are optional
 
   await expect(customerPage.getByTestId("review-total")).toHaveText("₹40,000.00"); // 400 x 100 guests
+  // One meal: a single Edit by the heading goes to that meal's menu and dishes (AJ, 2026-10-14).
+  await expect(customerPage.getByRole("link", { name: "Edit menu and dishes" })).toHaveAttribute("href", /step=menu&meal=/);
   await customerPage.getByRole("button", { name: "Submit for Menu Approval" }).click();
   await expect(customerPage.getByTestId("confirmation")).toContainText("Request Submitted Successfully!");
 

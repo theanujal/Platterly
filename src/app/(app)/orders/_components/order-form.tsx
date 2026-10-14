@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -368,6 +369,15 @@ export function OrderForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
+  // On an order that is already booked, moving away from its saved Order Type asks first (AJ, 2026-10-14): the type decides
+  // how the order is grouped and filtered. Going back to the saved type, or any click on a new order, needs no question.
+  const [pendingKind, setPendingKind] = useState<string | null>(null);
+  function requestOrderKind(kind: string) {
+    if (kind === values.orderKind) return;
+    if (initialValues && kind !== initialValues.orderKind) setPendingKind(kind);
+    else setOrderKind(kind);
+  }
+
   function setOrderKind(kind: string) {
     setAutoSwitchedToMulti(false);
     setField("orderKind", kind);
@@ -658,7 +668,7 @@ export function OrderForm({
             key={option.value}
             type="button"
             aria-pressed={selected}
-            onClick={() => setOrderKind(option.value)}
+            onClick={() => requestOrderKind(option.value)}
             disabled={option.value === "SINGLE" && multiRequired}
             className={cn(
               "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
@@ -1161,6 +1171,31 @@ export function OrderForm({
   );
 
   const multiDialog = (
+  <>
+  <AlertDialog open={pendingKind !== null} onOpenChange={(open) => !open && setPendingKind(null)}>
+    <AlertDialogContent>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Change this order to {pendingKind === "MULTI" ? "Multi Order" : "Single Order"}?</AlertDialogTitle>
+        <AlertDialogDescription>
+          {pendingKind === "MULTI"
+            ? "Multi Order is for several meals or dates in the same event. You can change it back before saving."
+            : "Single Order is for one date and one meal type. You can change it back before saving."}
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <AlertDialogFooter>
+        <AlertDialogCancel>Keep {values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}</AlertDialogCancel>
+        <AlertDialogAction
+          onClick={() => {
+            if (pendingKind) setOrderKind(pendingKind);
+            setPendingKind(null);
+          }}
+        >
+          Change type
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
   <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
     <AlertDialogContent>
       <AlertDialogHeader>
@@ -1177,6 +1212,7 @@ export function OrderForm({
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
+  </>
   );
 
   const pricingSummaryCard = (
@@ -1324,8 +1360,11 @@ export function OrderForm({
 
           {/* ---------------- Summary column ---------------- */}
           <aside className="flex min-w-0 flex-col gap-4 lg:self-stretch">
-            {/* Save stays in view while a long order scrolls (AJ, 2026-10-14). */}
-            <div className="hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:top-4 lg:z-10 lg:flex" data-testid="order-save-card">
+            {activeTab === "pricing" && sidebarInvoiceAction}
+            {sidebarTop ?? orderSummaryCard}
+            {!sidebarTop && pricingSummaryCard}
+            {/* Save stays at the bottom of the summary column and in view while a long order scrolls (AJ, 2026-10-14). */}
+            <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card">
               {dirty && (
                 <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
                   Unsaved changes
@@ -1335,9 +1374,6 @@ export function OrderForm({
                 {pending === "save" ? "Saving…" : submitLabel}
               </Button>
             </div>
-            {activeTab === "pricing" && sidebarInvoiceAction}
-            {sidebarTop ?? orderSummaryCard}
-            {!sidebarTop && pricingSummaryCard}
           </aside>
         </div>
       </form>

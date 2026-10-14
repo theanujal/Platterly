@@ -5,7 +5,7 @@ import { ProgressSteps } from "@/components/public/progress-steps";
 import type { VenueDetails } from "@/modules/menu-approvals/approval-link";
 import type { ApprovalView } from "@/modules/menu-approvals/approval-view";
 import { ReviewScreen } from "./review-screen";
-import { VenueScreen } from "./venue-screen";
+import { VenueScreen, type VenuePayment } from "./venue-screen";
 
 const STEPS = ["Review & Approve", "Venue & Delivery", "Confirmation"];
 
@@ -14,7 +14,7 @@ const STEPS = ["Review & Approve", "Venue & Delivery", "Confirmation"];
  * form here (nothing is saved); the approval is recorded when the venue details are sent, so the order's status changes
  * at confirmation, not at the first click.
  */
-export function ReviewFlow({ token, view, versionNumber, venue }: { token: string; view: ApprovalView; versionNumber: number; venue: VenueDetails }) {
+export function ReviewFlow({ token, view, versionNumber, venue, payment }: { token: string; view: ApprovalView; versionNumber: number; venue: VenueDetails; payment: VenuePayment | null }) {
   const [step, setStep] = useState<"review" | "venue">("review");
   return (
     <>
@@ -30,7 +30,7 @@ export function ReviewFlow({ token, view, versionNumber, venue }: { token: strin
       {step === "review" ? (
         <ReviewScreen token={token} view={view} onApprove={() => { setStep("venue"); window.scrollTo({ top: 0 }); }} />
       ) : (
-        <VenueScreen token={token} view={view} initial={venue} onBack={() => setStep("review")} />
+        <VenueScreen token={token} view={view} initial={venue} onBack={() => setStep("review")} payment={payment} />
       )}
     </>
   );

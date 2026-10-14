@@ -1,8 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
+import { publicActionLimited } from "@/lib/public-rate-limit";
 import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
-import { isRateLimited } from "@/lib/rate-limit";
 import {
   startDraft,
   saveDraftDetails,
@@ -41,9 +40,7 @@ async function resolveOrganization(tenantSlug: string) {
 }
 
 async function tooManyRequests(bucket: string, limit: number): Promise<boolean> {
-  const forwarded = (await headers()).get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  return isRateLimited(`${bucket}:${ip}`, limit, 60 * 60 * 1000);
+  return publicActionLimited(bucket, limit);
 }
 
 function text(formData: FormData, name: string): string {

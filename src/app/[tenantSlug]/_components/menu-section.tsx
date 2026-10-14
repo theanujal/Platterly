@@ -204,13 +204,15 @@ export function MenuSection({ menus, choice, listOpen, onChoose, onChange, onCan
                   {details.sections.length > 0 && (
                     <div className="flex flex-col gap-2">
                       <h4 className="text-sm font-semibold">Categories</h4>
-                      <div className="flex flex-wrap gap-1.5">
+                      {/* How many dishes each category gives, so menus can be compared before one is chosen (AJ, 2026-10-14). */}
+                      <ul className="flex flex-col divide-y divide-border rounded-lg border border-border text-sm" data-testid="menu-details-categories">
                         {details.sections.map((section) => (
-                          <Badge key={section.categoryId ?? "other"} variant="outline">
-                            {section.categoryName}
-                          </Badge>
+                          <li key={section.categoryId ?? "other"} className="flex items-center justify-between gap-3 px-3 py-2">
+                            <span className="min-w-0">{section.categoryName}</span>
+                            <span className="shrink-0 font-medium text-muted-foreground">{section.maxSelection === null ? "Choose any" : `Choose ${section.maxSelection}`}</span>
+                          </li>
                         ))}
-                      </div>
+                      </ul>
                     </div>
                   )}
                 </div>

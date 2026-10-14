@@ -70,8 +70,8 @@ export async function failRazorpayPayment(organizationId: string, razorpayOrderI
   await prisma.payment.updateMany({ where: { id: { in: pending.map((p) => p.id) }, status: "PENDING" }, data: { status: "FAILED" } });
 }
 
-/** "I have paid" on a UPI QR: waits for the kitchen to confirm it reached their account. */
-export async function claimUpiPayment(link: ResolvedPaymentLink) {
+/** "I have paid" on a UPI QR, with the transaction number the customer read from their UPI app: waits for the kitchen to match it and confirm. */
+export async function claimUpiPayment(link: ResolvedPaymentLink, reference: string) {
   const payment = await recordPayment({
     organizationId: link.organizationId,
     orderId: link.orderId,
@@ -81,6 +81,7 @@ export async function claimUpiPayment(link: ResolvedPaymentLink) {
     method: "UPI",
     source: "UPI_QR",
     status: "PENDING",
+    reference,
   });
   await onPaymentActivity(link.organizationId, link.orderId, link.amount, "upi_claimed");
   return payment;

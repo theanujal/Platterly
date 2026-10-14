@@ -23,12 +23,16 @@ test("customer shares the order: QR, link and WhatsApp; the page has no prices o
   const { approvalToken, orderId } = await seedApprovedOrderForShare(email);
 
   // The customer, no login, on the Confirmation page of their approval link.
-  const customer = await (await browser.newContext()).newPage();
+  const customer = await (await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` } })).newPage();
   await customer.goto(`/menu-approval/${approvalToken}`);
   await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
   await expect(customer.getByRole("heading", { name: "Share with family & team" })).toBeVisible();
   // This kitchen has no payment method set up, so instead of the payment card the customer is told what happens next.
-  await expect(customer.getByTestId("payment-later")).toHaveText("Your caterer will share payment details with you.");
+  await expect(customer.getByTestId("payment-later")).toContainText("Your caterer will share payment details with you.");
+  // ...and it is not a dead end: what is owed, the order number to quote, and a way to call or message the kitchen (AJ, 2026-10-14).
+  await expect(customer.getByTestId("payment-due")).toHaveText("₹1,000.00");
+  await expect(customer.getByTestId("payment-order-number")).toContainText(/^ORD-\d+$/);
+  await expect(customer.getByTestId("contact-links").first().getByRole("link", { name: /^Call / })).toHaveAttribute("href", "tel:+919800011122");
   await expect(customer.getByTestId("share-on")).toHaveCount(0);
 
   await customer.getByRole("button", { name: "Create share link" }).click();

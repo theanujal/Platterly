@@ -330,6 +330,8 @@ export type ResolvedApprovalLink =
       organizationId: string;
       organizationName: string;
       organizationLogo: string | null;
+      /** How the customer reaches the kitchen (call, WhatsApp, email) on the confirmation page. */
+      organizationContact: { phone: string | null; email: string | null };
       menuSelectionId: string;
       orderId: string | null;
       versionId: string;
@@ -378,7 +380,7 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
           organizationId: true,
           status: true,
           currentVersion: true,
-          organization: { select: { name: true, logo: true } },
+          organization: { select: { name: true, logo: true, contactPhone: true, contactEmail: true } },
           event: { select: { orderId: true } },
         },
       },
@@ -426,6 +428,7 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
     organizationId: selection.organizationId,
     organizationName: selection.organization.name,
     organizationLogo: selection.organization.logo,
+    organizationContact: { phone: selection.organization.contactPhone, email: selection.organization.contactEmail },
     menuSelectionId: selection.id,
     orderId,
     versionId: version.id,
@@ -515,11 +518,18 @@ function cleanText(value: string | undefined, label: string, required = false): 
 }
 
 /**
- * The customer's Venue & Delivery form, sent on the approval link after the customer clicks Approve (a still-unapproved menu is approved by this send). Writes only the venue columns of the
- * order behind this menu, once (a second send is refused), then tells the team. The detailed fields are the ones the
- * customer used to fill in before submitting the request; Vehicle Access is not asked of the customer.
+ * The customer's Venue & Delivery form on the approval link. Two steps, so an order is never confirmed before the
+ * customer has actually reached the confirmation screen (AJ, 2026-10-14):
+ *
+ *  1. `saveVenueViaLink` validates and saves the venue columns on the order. Nothing is approved or announced yet, so a
+ *     customer who leaves here (or closes the tab on the payment pop-up) leaves the menu unapproved and can come back.
+ *  2. `confirmApprovalViaLink` records the approval (a still-unapproved menu is approved here), marks the details as
+ *     sent, tells the team and sends the advance payment link. The screen calls it when the customer moves on from the
+ *     payment pop-up, or straight away when there is no pop-up.
+ *
+ * `submitVenueViaLink` does both for callers with nothing in between.
  */
-export async function submitVenueViaLink(token: string, input: VenueDetailsInput) {
+export async function saveVenueViaLink(token: string, input: VenueDetailsInput) {
   const link = await resolveApprovalLink(token);
   if (!link.ok || link.stage === "CONFIRMATION" || !link.orderId) return { ok: false as const };
 
@@ -542,16 +552,36 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
     gasElectricAvailable: input.gasElectricAvailable === true,
     liveCounterAvailable: input.liveCounterAvailable === true,
   };
+  await prisma.order.updateMany({ where: { id: link.orderId, organizationId: link.organizationId }, data });
+  return { ok: true as const };
+}
 
-  // The customer's "Approve Menu" only opens this form; the approval itself is recorded here, once the details are valid.
+/** Step 2: the customer reached the confirmation. Records the approval and the venue details as sent. Once only. */
+export async function confirmApprovalViaLink(token: string) {
+  const link = await resolveApprovalLink(token);
+  if (!link.ok || link.stage === "CONFIRMATION" || !link.orderId) return { ok: false as const };
+
+  const order = await prisma.order.findFirst({
+    where: { id: link.orderId, organizationId: link.organizationId },
+    select: { venue: true, venueType: true, eventAddress: true },
+  });
+  // The details must have been saved first (step 1); nothing is confirmed without them.
+  if (!order || !order.venueType || !order.venue || !order.eventAddress) return { ok: false as const };
+
+  // The approval is recorded here, once the customer has got this far.
   if (link.stage === "REVIEW") await approveResolvedLink(link);
 
-  // Claimed in one statement so a double submit can't write twice.
-  const claimed = await prisma.order.updateMany({
-    where: { id: link.orderId, organizationId: link.organizationId, venueDetailsSubmittedAt: null },
-    data: { ...data, venueDetailsSubmittedAt: new Date() },
-  });
-  if (claimed.count === 0) return { ok: false as const };
+  // Claimed in one statement so a double confirm can't run twice. A menu sent again after changes already carries the
+  // earlier round's timestamp, so that case (REVIEW) is claimed by the approval above instead.
+  if (link.stage === "VENUE") {
+    const claimed = await prisma.order.updateMany({
+      where: { id: link.orderId, organizationId: link.organizationId, venueDetailsSubmittedAt: null },
+      data: { venueDetailsSubmittedAt: new Date() },
+    });
+    if (claimed.count === 0) return { ok: false as const };
+  } else {
+    await prisma.order.updateMany({ where: { id: link.orderId, organizationId: link.organizationId }, data: { venueDetailsSubmittedAt: new Date() } });
+  }
 
   await addMenuApprovalNote(link.organizationId, link.menuSelectionId, {
     authorType: "CUSTOMER",
@@ -565,10 +595,16 @@ export async function submitVenueViaLink(token: string, input: VenueDetailsInput
     action: "order.venue_details_submitted_via_link",
     recordType: "Order",
     recordId: link.orderId,
-    after: { venue: data.venue, venueType: data.venueType, eventAddress: data.eventAddress },
+    after: { venue: order.venue, venueType: order.venueType, eventAddress: order.eventAddress },
   });
   await sendAdvancePaymentLink(link.organizationId, link.orderId);
   return { ok: true as const };
+}
+
+export async function submitVenueViaLink(token: string, input: VenueDetailsInput) {
+  const saved = await saveVenueViaLink(token, input);
+  if (!saved.ok) return saved;
+  return confirmApprovalViaLink(token);
 }
 
 /**

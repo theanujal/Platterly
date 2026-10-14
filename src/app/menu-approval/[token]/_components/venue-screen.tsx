@@ -15,8 +15,9 @@ import { FormCard, FormSection } from "@/components/public/form-section";
 import type { VenueDetails } from "@/modules/menu-approvals/approval-link";
 import type { ApprovalView } from "@/modules/menu-approvals/approval-view";
 import { VENUE_TYPE_OPTIONS } from "@/modules/menu-approvals/venue-options";
-import { askAboutApprovedMenuAction, submitVenueAction } from "../actions";
+import { askAboutApprovedMenuAction, confirmApprovalAction, submitVenueAction } from "../actions";
 import { ApprovedMenuCard } from "./approved-menu-card";
+import { PaymentDialog } from "./payment-dialog";
 
 const venueTypeItems = Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -25,7 +26,15 @@ const venueTypeItems = Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value
  * address starts with the Venue Location they gave at the beginning. Required: venue type, venue / building name,
  * complete address, contact person and number; the rest is optional.
  */
-export function VenueScreen({ token, view, initial, onBack }: { token: string; view: ApprovalView; initial: VenueDetails; onBack?: () => void }) {
+/** What the pop-up after the venue details needs; null when the kitchen cannot take online payment (nothing to show). */
+export interface VenuePayment {
+  advance: number;
+  balance: number;
+  advancePercent: number;
+  orderNumber: string | null;
+}
+
+export function VenueScreen({ token, view, initial, onBack, payment = null }: { token: string; view: ApprovalView; initial: VenueDetails; onBack?: () => void; payment?: VenuePayment | null }) {
   const router = useRouter();
   const [values, setValues] = useState({
     venueType: initial.venueType ?? "",
@@ -44,6 +53,19 @@ export function VenueScreen({ token, view, initial, onBack }: { token: string; v
   });
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+
+  // Past the payment pop-up (Not now, or paid): only now is the menu approved and the order confirmed, then the confirmation shows.
+  async function finish() {
+    setPending(true);
+    const result = await confirmApprovalAction(token);
+    setPending(false);
+    if (!result.ok) {
+      setPayOpen(false);
+      return setError(result.error);
+    }
+    router.refresh();
+  }
 
   const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) => setValues((prev) => ({ ...prev, [key]: value }));
 
@@ -53,17 +75,24 @@ export function VenueScreen({ token, view, initial, onBack }: { token: string; v
     if (!values.venueType) return setError("Venue Type is required.");
     if (!values.venueContactPhone) return setError("Contact Number is required.");
     setPending(true);
-    const result = await submitVenueAction(token, values);
+    // With the payment pop-up in between, the details are only saved now; the approval is recorded when the customer gets past it.
+    const result = await submitVenueAction(token, values, !payment);
     if (!result.ok) {
       setPending(false);
       return setError(result.error);
     }
-    // The same link now shows the Confirmation.
+    // The same link now shows the Confirmation, after the payment pop-up when the kitchen takes payments (AJ, 2026-10-14).
+    if (payment) {
+      setPending(false);
+      setPayOpen(true);
+      return;
+    }
     router.refresh();
   }
 
   return (
     <div className="flex flex-col gap-6">
+      {payment && <PaymentDialog open={payOpen} onDone={finish} token={token} {...payment} />}
       <div role="status" className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/10 p-4">
         <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" />
         <div className="text-sm">
@@ -193,7 +222,7 @@ export function VenueScreen({ token, view, initial, onBack }: { token: string; v
 }
 
 /** "Need to make changes?": leaves a note for the team about the approved menu (nothing is reopened automatically). */
-export function ChangesCard({ token }: { token: string }) {
+export function ChangesCard({ token, children }: { token: string; children?: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState("");
   const [pending, setPending] = useState(false);
@@ -248,6 +277,7 @@ export function ChangesCard({ token }: { token: string }) {
           Request Menu Changes
         </Button>
       )}
+      {children}
     </FormCard>
   );
 }

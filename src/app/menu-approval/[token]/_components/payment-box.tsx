@@ -5,28 +5,29 @@ import { ChevronRight, CreditCard, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { FormCard } from "@/components/public/form-section";
 import { inr } from "@/modules/invoices/invoice-format";
 import { cn } from "cn";
+import type { PayView } from "@/app/pay/[token]/pay-view";
 import { createApprovalPaymentLinkAction } from "../actions";
 
-type Choice = "ADVANCE" | "FULL" | "CUSTOM";
+type Choice = "ADVANCE" | "CUSTOM";
 
 /**
- * "Pay now to secure your date" on the Confirmation stage. Advance, Full amount or a custom amount, then the kitchen's
- * own payment page. Skipping is fine: the same payment link is sent to the customer anyway.
+ * The amount choice and Pay button: the advance or any other amount (no "full payment" option, AJ 2026-10-14), then the
+ * kitchen's own payment screen, where the customer pays or, on a UPI QR, confirms with the transaction number. Used by the
+ * pop-up shown right after the venue details, which then embeds the kitchen's payment screen. "Not now" is fine: the same
+ * payment link is sent to the customer anyway.
  */
-export function PaymentBox({ token, advance, balance, advancePercent, paid }: { token: string; advance: number; balance: number; advancePercent: number; paid: number }) {
+export function PaymentChoice({ token, advance, balance, advancePercent, onPay, onNotNow }: { token: string; advance: number; balance: number; advancePercent: number; onPay: (pay: PayView) => void; onNotNow: () => void }) {
   const [choice, setChoice] = useState<Choice>("ADVANCE");
   const [custom, setCustom] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const amount = choice === "ADVANCE" ? advance : choice === "FULL" ? balance : Number(custom) || 0;
+  const amount = choice === "ADVANCE" ? advance : Number(custom) || 0;
   const options: { key: Choice; title: string; hint: string; value: string | null }[] = [
     { key: "ADVANCE", title: "Advance", hint: `${advancePercent}% to confirm your date`, value: inr(advance) },
-    { key: "FULL", title: paid > 0 ? "Remaining balance" : "Full amount", hint: "Nothing left to pay later", value: inr(balance) },
-    { key: "CUSTOM", title: "Custom amount", hint: "Pay any amount you choose", value: null },
+    { key: "CUSTOM", title: "Other amount", hint: `Pay any amount you like, up to ${inr(balance)}`, value: null },
   ];
 
   async function pay() {
@@ -38,21 +39,12 @@ export function PaymentBox({ token, advance, balance, advancePercent, paid }: { 
       setPending(false);
       return setError(result.error);
     }
-    window.location.assign(result.path);
+    setPending(false);
+    onPay(result.pay); // the pop-up shows the payment screen right here
   }
 
   return (
-    <div data-testid="payment-box">
-    <FormCard className="gap-4">
-      <div className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <CreditCard className="size-5" />
-        </span>
-        <div>
-          <h2 className="text-[15px] font-semibold">Pay now to secure your date</h2>
-          <p className="text-sm text-muted-foreground">Your menu is final and our kitchen is getting ready.</p>
-        </div>
-      </div>
+    <>
       <div role="radiogroup" aria-label="How much would you like to pay?" className="flex flex-col gap-2.5">
         {options.map((option) => (
           <button
@@ -91,12 +83,16 @@ export function PaymentBox({ token, advance, balance, advancePercent, paid }: { 
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
           <Send className="size-4" />
         </span>
-        <div>
-          <p className="font-semibold">Not now? No problem.</p>
-          <p className="text-muted-foreground">We are also sending you a payment link, so you can pay whenever you like.</p>
+        <div className="flex flex-col gap-2">
+          <div>
+            <p className="font-semibold">Not now? No problem.</p>
+            <p className="text-muted-foreground">We are also sending you a payment link, so you can pay whenever you like.</p>
+          </div>
+          <Button type="button" variant="outline" size="md" className="self-start" onClick={onNotNow}>
+            Not now
+          </Button>
         </div>
       </div>
-    </FormCard>
-    </div>
+    </>
   );
 }

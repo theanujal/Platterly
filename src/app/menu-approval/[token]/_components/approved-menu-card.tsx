@@ -38,7 +38,7 @@ export function ApprovedMenuCard({ view }: { view: ApprovalView }) {
         {view.guests !== null && (
           <div className="flex items-center gap-2">
             <Users className="size-4 shrink-0" />
-            <dd>{view.guests} guests</dd>
+            <dd data-testid="approved-guests">{view.kids > 0 && view.adults !== null ? `${view.adults} adults + ${view.kids} kid${view.kids === 1 ? "" : "s"} (${view.guests} guests)` : `${view.guests} guests`}</dd>
           </div>
         )}
       </dl>

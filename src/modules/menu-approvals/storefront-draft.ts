@@ -616,6 +616,13 @@ export async function getDraft(organizationId: string, draftId: string) {
   return { ...draft, data: readData(draft) };
 }
 
+/** The number a submitted request got as an Order (shown on the confirmation so the customer can quote it). */
+export async function getDraftOrderNumber(organizationId: string, orderId: string | null): Promise<string | null> {
+  if (!orderId) return null;
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true } });
+  return order?.orderNumber ?? null;
+}
+
 async function purgeExpiredDrafts(organizationId: string) {
   const cutoff = new Date(Date.now() - DRAFT_PURGE_DAYS * 24 * 60 * 60 * 1000);
   await prisma.storefrontDraft.deleteMany({ where: { organizationId, lastActivityAt: { lt: cutoff } } });

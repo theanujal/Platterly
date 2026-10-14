@@ -379,7 +379,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(orderCard()).toContainText("Menu sent");
 
   // --- The customer opens the link: no login, no account — and asks for a change ---
-  const customerContext = await browser.newContext();
+  const customerContext = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` } });
   const customerPage = await customerContext.newPage();
   await customerPage.goto(linkV1);
   await expect(customerPage.getByRole("heading", { name: "Review & Approve Your Menu" })).toBeVisible();
@@ -478,10 +478,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByTestId("venue-summary")).toContainText("12 Green Villa Road");
   await expect(customerPage.getByText("We're starting the preparation")).toBeVisible();
   await expect(customerPage.getByTestId("payment-box")).toHaveCount(0); // the kitchen has not set up UPI or Razorpay yet
-  await expect(customerPage.getByTestId("payment-later")).toHaveText("Your caterer will share payment details with you.");
+  await expect(customerPage.getByTestId("payment-later")).toContainText("Your caterer will share payment details with you.");
   await customerPage.close();
 
-  // The kitchen sets its own UPI id and advance (Settings -> Payments); the confirmation then offers payment (Chunk 14).
+  // The kitchen sets its own UPI id and advance (Settings -> Payments); later customers get the payment pop-up (Chunk 14).
   await page.goto("/settings/integration/payments");
   await page.getByTestId("upi-accordion").getByRole("button", { name: /UPI QR/ }).click();
   await page.getByLabel("UPI ID").fill("approvals@okhdfc");
@@ -492,25 +492,13 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.getByRole("button", { name: "Save Advance" }).click();
   await expect(page.getByText("Advance saved.")).toBeVisible();
 
+  // With a method set up there is no Payment card on the confirmation any more (AJ, 2026-10-14): payment is the pop-up
+  // after the venue details (see approval-payment.spec.ts), so nothing about paying is left on this page.
   const payerPage = await customerContext.newPage();
   await payerPage.goto(linkV2);
-  const paymentBox = payerPage.getByTestId("payment-box");
-  await expect(paymentBox).toContainText("Pay now to secure your date");
-  await expect(payerPage.getByTestId("payment-later")).toHaveCount(0); // a method is set up now: the card replaces the line
-  await expect(paymentBox.getByRole("radio", { name: /Advance/ })).toHaveAttribute("aria-checked", "true");
-  await expect(paymentBox).toContainText("40% to confirm your date");
-  await expect(paymentBox).toContainText("We are also sending you a payment link");
-  // Custom amount: more than the balance is refused, a smaller one opens that amount's payment page.
-  await paymentBox.getByRole("radio", { name: /Custom amount/ }).click();
-  await paymentBox.getByLabel(/^Amount/).fill("99999999");
-  await paymentBox.getByRole("button", { name: /^Pay / }).click();
-  await expect(paymentBox.getByRole("alert")).toContainText("more than the balance");
-  await paymentBox.getByLabel(/^Amount/).fill("1000");
-  await paymentBox.getByRole("button", { name: "Pay ₹1,000.00" }).click();
-  await expect(payerPage).toHaveURL(/\/pay\/[A-Za-z0-9_-]+$/);
-  await expect(payerPage.getByTestId("pay-amount")).toHaveText("Pay ₹1,000.00");
-  await expect(payerPage.getByTestId("upi-qr")).toBeVisible();
-  await expect(payerPage.locator('a[href^="upi://"]')).toHaveAttribute("href", /pa=approvals%40okhdfc.*am=1000\.00/);
+  await expect(payerPage.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(payerPage.getByTestId("payment-box")).toHaveCount(0);
+  await expect(payerPage.getByTestId("payment-later")).toHaveCount(0);
   await payerPage.close();
   await customerContext.close();
 
@@ -536,6 +524,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // --- A status can be set by hand, but only with a reason, and the change is recorded (AJ, 2026-09-30) ---
   await orderCard().getByRole("link", { name: customerName }).click();
   // Sent to the kitchen: view only, and nothing to recall (AJ, 2026-10-10).
+  // Menu History follows the live status (AJ, 2026-10-14): not the "Awaiting Customer Approval" the version was sent with.
+  const menuHistory = page.getByTestId("order-approval-panel");
+  await expect(menuHistory.getByTestId("menu-version-summary").first()).toContainText("Approved & Sent to Kitchen");
+  await expect(menuHistory).not.toContainText("Awaiting Customer Approval");
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "locked");
   await expect(page.getByRole("button", { name: "Recall to edit" })).toHaveCount(0);
