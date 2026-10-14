@@ -3,8 +3,8 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { listMenuItems } from "@/modules/menus/item";
 import { listRecipes } from "@/modules/recipes/recipe";
 import { listInventoryItems } from "@/modules/inventory/inventory";
-import { currentUnitCosts } from "@/modules/inventory/batches";
-import { costPerServing } from "@/modules/recipes/recipe-math";
+import { usableQueues } from "@/modules/inventory/batches";
+import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { RecipesBrowser, type RecipeRow } from "./_components/recipes-browser";
 
@@ -25,29 +25,49 @@ export default async function RecipesPage() {
     hasPermission({ menus: ["edit"] }, organizationId),
   ]);
 
-  // Each ingredient is costed at the batch the kitchen would use next (oldest first), falling back to the item's own cost.
-  const unitCost = await currentUnitCosts(organizationId, inventory.map((i) => i.id));
+  // Each recipe is costed from the batches it would actually use (FIFO, oldest first); the item's own cost is only an estimate.
+  const queues = await usableQueues(
+    organizationId,
+    inventory.map((i) => i.id),
+  );
+  const itemCost = new Map(inventory.map((i) => [i.id, i.costPerUnit === null ? null : Number(i.costPerUnit)]));
   const recipeByItem = new Map(recipes.map((r) => [r.menuItemId, r]));
   const rows: RecipeRow[] = items.map((item) => {
     const recipe = recipeByItem.get(item.id);
-    const lines = recipe
-      ? recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), costPerUnit: unitCost.get(i.inventoryId) ?? null }))
-      : [];
+    const cost = recipe
+      ? costRecipe(
+          recipe.ingredients.map((i) => ({
+            inventoryId: i.inventoryId,
+            name: i.inventory.name,
+            unit: i.inventory.unit,
+            quantity: Number(i.quantity),
+            queue: queues.get(i.inventoryId) ?? [],
+            itemCost: itemCost.get(i.inventoryId) ?? null,
+          })),
+          Number(recipe.yieldServings),
+        )
+      : null;
     return {
       id: item.id,
       name: item.name,
       image: item.image,
       category: item.categories[0]?.category.name ?? null,
       hasRecipe: Boolean(recipe),
-      ingredientCount: lines.length,
+      ingredientCount: recipe ? recipe.ingredients.length : 0,
       yieldServings: recipe ? Number(recipe.yieldServings) : null,
-      costPerServing: recipe ? costPerServing(lines, Number(recipe.yieldServings)) : null,
+      cost: cost
+        ? { state: cost.state, verified: cost.verifiedCostPerServing, estimate: cost.estimatedCostPerServing, issues: cost.issues.map((i) => ({ name: i.name, reason: i.reason })) }
+        : null,
       recipe: recipe
-        ? { yieldServings: recipe.yieldServings.toString(), notes: recipe.notes ?? "", ingredients: recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })) }
+        ? {
+            yieldServings: recipe.yieldServings.toString(),
+            notes: recipe.notes ?? "",
+            ingredients: recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })),
+          }
         : null,
     };
   });
-  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: unitCost.get(i.id) ?? null }));
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: itemCost.get(i.id) ?? null, queue: queues.get(i.id) ?? [] }));
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

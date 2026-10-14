@@ -168,6 +168,8 @@ export async function receiveStock(organizationId: string, id: string, input: Re
   if (new Set(entries.map((l) => l.itemId)).size !== entries.length) throw new PurchaseOrderError("Each item can be listed only once.");
   const today = todayDate();
 
+  // What each line booked, for the audit entry: quantity, cost, the authorised extra and its reason, and the batch it made.
+  const lineAudit: { inventoryId: string; item: string; quantity: number; unitCost: number; extraQuantity: number; extraReason: string | null; costNote: string | null; batchId: string }[] = [];
   let result: { number: string; status: PurchaseOrderStatus; receiptId: string; duplicate: boolean };
   try {
     result = await prisma.$transaction(async (tx) => {
@@ -219,6 +221,7 @@ export async function receiveStock(organizationId: string, id: string, input: Re
           costNote: entry.unitCost === 0 ? entry.costNote?.trim() || null : null,
           receiptLineId: line.id,
         });
+        lineAudit.push({ inventoryId: item.inventoryId, item: item.inventory.name, quantity: entry.quantity, unitCost: entry.unitCost, extraQuantity: extra, extraReason: extra > 0 ? entry.extraReason?.trim() || null : null, costNote: entry.unitCost === 0 ? entry.costNote?.trim() || null : null, batchId: batch.id });
         const row = await tx.inventoryTransaction.create({ data: { inventoryId: item.inventoryId, type: "STOCK_IN", quantity: entry.quantity, note: `Received on ${po.number}`, actorUserId } });
         await tx.stockAllocation.create({ data: { transactionId: row.id, batchId: batch.id, quantity: entry.quantity, unitCost: entry.unitCost } });
         // The item's own cost follows the latest purchase price (the batches keep every earlier price); free goods do not reset it to 0.
@@ -239,7 +242,7 @@ export async function receiveStock(organizationId: string, id: string, input: Re
     throw error;
   }
 
-  if (!result.duplicate) await audit({ organizationId, actorUserId, action: "purchase_order.receive", recordType: "PurchaseOrder", recordId: id, after: { status: result.status, lines: entries.length, receiptId: result.receiptId } });
+  if (!result.duplicate) await audit({ organizationId, actorUserId, action: "purchase_order.receive", recordType: "PurchaseOrder", recordId: id, after: { status: result.status, lines: entries.length, receiptId: result.receiptId, receivedDate: input.receivedDate.toISOString().slice(0, 10), invoiceNumber: input.invoiceNumber?.trim() || null, details: lineAudit, extraAuthorised: lineAudit.filter((l) => l.extraQuantity > 0).map((l) => ({ item: l.item, extraQuantity: l.extraQuantity, reason: l.extraReason })) } });
   return result;
 }
 

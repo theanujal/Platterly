@@ -46,7 +46,7 @@ export async function loadInventoryReport(scope: ReportScope, range: ReportRange
   const [items, transactions, purchaseOrders] = await Promise.all([
     prisma.inventory.findMany({
       where: itemWhere,
-      select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, stockBatches: { where: { remainingQuantity: { gt: 0 } }, select: { remainingQuantity: true, unitCost: true, expiryDate: true } } },
+      select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, tracksExpiry: true, stockBatches: { where: { remainingQuantity: { gt: 0 } }, select: { remainingQuantity: true, unitCost: true, expiryDate: true } } },
     }),
     prisma.inventoryTransaction.findMany({
       where: { inventory: itemWhere, ...(when ? { createdAt: when } : {}) },
@@ -63,7 +63,8 @@ export async function loadInventoryReport(scope: ReportScope, range: ReportRange
     stock: computeStock(
       items.map((i) => {
         const v = valuation.items.get(i.id)!;
-        const expiries = i.stockBatches.flatMap((b) => (b.expiryDate ? [b.expiryDate] : []));
+        // Only items that track expiry are listed as expiring.
+        const expiries = i.tracksExpiry ? i.stockBatches.flatMap((b) => (b.expiryDate ? [b.expiryDate] : [])) : [];
         return {
           id: i.id,
           name: i.name,

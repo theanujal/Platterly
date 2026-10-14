@@ -20,17 +20,26 @@ export interface RecipeRow {
   hasRecipe: boolean;
   ingredientCount: number;
   yieldServings: number | null;
-  costPerServing: number | null;
+  /** Null without a recipe. VERIFIED only when every ingredient's quantity is covered by batches with a known cost. */
+  cost: { state: "VERIFIED" | "INCOMPLETE"; verified: number | null; estimate: number | null; issues: { name: string; reason: string }[] } | null;
   recipe: RecipeFormValues | null;
 }
 
-/** Cost per serving: the amount, "Cost unavailable" when an ingredient has no cost in Inventory, a dash when the dish has no recipe. */
+/** Cost per serving: the verified amount, or "Incomplete" with what is missing (and a separate Estimated figure), or a dash with no recipe. */
 function CostCell({ row }: { row: RecipeRow }) {
-  if (row.costPerServing !== null) return <>{formatRupees(row.costPerServing)}</>;
-  if (!row.hasRecipe) return <>—</>;
+  if (!row.cost) return <>—</>;
+  if (row.cost.state === "VERIFIED") return <>{formatRupees(row.cost.verified!)}</>;
   return (
-    <span className="text-muted-foreground" title="An ingredient has no cost set in Inventory">
-      Cost unavailable
+    <span className="flex flex-col gap-0.5 font-normal">
+      <span className="text-muted-foreground" title={row.cost.issues.map((i) => `${i.name}: ${i.reason}`).join("\n")}>
+        Incomplete
+      </span>
+      <span className="max-w-64 text-xs whitespace-normal text-muted-foreground" data-testid="cost-issues">
+        {row.cost.issues.map((i) => i.name).join(", ")}
+      </span>
+      <span className="text-xs text-muted-foreground italic" data-testid="cost-estimate">
+        {row.cost.estimate !== null ? `Estimated ${formatRupees(row.cost.estimate)}` : "Estimate unavailable"}
+      </span>
     </span>
   );
 }
@@ -40,12 +49,13 @@ type StatusFilter = "ALL" | "MISSING" | "INCOMPLETE" | "HAS";
 /** Missing: no recipe. Incomplete: a recipe, but an ingredient has no cost in Inventory so the cost per serving cannot be worked out. Complete: a recipe with a cost. */
 function statusOf(row: RecipeRow): "MISSING" | "INCOMPLETE" | "COMPLETE" {
   if (!row.hasRecipe) return "MISSING";
-  return row.costPerServing === null ? "INCOMPLETE" : "COMPLETE";
+  return row.cost?.state === "VERIFIED" ? "COMPLETE" : "INCOMPLETE";
 }
 
 function StatusBadge({ row }: { row: RecipeRow }) {
   const status = statusOf(row);
-  const [variant, label] = status === "MISSING" ? (["warning", "Missing"] as const) : status === "INCOMPLETE" ? (["info", "Incomplete"] as const) : (["success", "Complete"] as const);
+  const [variant, label] =
+    status === "MISSING" ? (["warning", "Missing"] as const) : status === "INCOMPLETE" ? (["info", "Incomplete"] as const) : (["success", "Complete"] as const);
   return (
     <Badge variant={variant}>
       <span className="size-1.5 rounded-full bg-current" />
@@ -80,7 +90,13 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
   const entries: CatalogEntry[] = shown.map((row) => {
     const status = <StatusBadge row={row} />;
     const action = canEdit ? (
-      <Button type="button" variant={row.hasRecipe ? "outline" : "default"} size="md" aria-label={`${row.hasRecipe ? "Edit" : "Add"} recipe for ${row.name}`} onClick={() => setEditing(row)}>
+      <Button
+        type="button"
+        variant={row.hasRecipe ? "outline" : "default"}
+        size="md"
+        aria-label={`${row.hasRecipe ? "Edit" : "Add"} recipe for ${row.name}`}
+        onClick={() => setEditing(row)}
+      >
         <BookOpenText /> {row.hasRecipe ? "Edit Recipe" : "Add Recipe"}
       </Button>
     ) : null;
@@ -88,7 +104,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
       id: row.id,
       searchText: `${row.name} ${row.category ?? ""}`,
       filterValues: { category: row.category ?? undefined },
-      sortValues: { name: row.name, cost: row.costPerServing ?? Number.MAX_SAFE_INTEGER },
+      sortValues: { name: row.name, cost: row.cost?.verified ?? Number.MAX_SAFE_INTEGER },
       card: (
         <>
           <CatalogCardMedia src={row.image} icon={UtensilsCrossed} />
@@ -157,7 +173,14 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
         filters={
           <div key="status-pills" role="group" aria-label="Recipe status" className="flex flex-wrap gap-2">
             {PILLS.map((p) => (
-              <Button key={p.key} type="button" size="md" variant={statusFilter === p.key ? "default" : "outline"} aria-pressed={statusFilter === p.key} onClick={() => setStatusFilter(p.key)}>
+              <Button
+                key={p.key}
+                type="button"
+                size="md"
+                variant={statusFilter === p.key ? "default" : "outline"}
+                aria-pressed={statusFilter === p.key}
+                onClick={() => setStatusFilter(p.key)}
+              >
                 {p.label}
                 <span className={cn("rounded-full px-1.5 text-xs", statusFilter === p.key ? "bg-primary-foreground/20" : "bg-muted")}>{counts[p.key]}</span>
               </Button>

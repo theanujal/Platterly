@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { scaleQuantity, scaleRecipe, costPerServing, type RecipeLine } from "../recipe-math";
+import { scaleQuantity, scaleRecipe, type RecipeLine } from "../recipe-math";
 
-const line = (over: Partial<RecipeLine> = {}): RecipeLine => ({ inventoryId: "i", name: "Paneer", unit: "kg", quantity: 2, costPerUnit: 300, ...over });
+const line = (over: Partial<RecipeLine> = {}): RecipeLine => ({ inventoryId: "i", name: "Paneer", unit: "kg", quantity: 2, ...over });
 
 describe("recipe maths", () => {
   it("scales linearly: 2 kg for 10 servings is 20 kg for 100", () => {
@@ -20,13 +20,6 @@ describe("recipe maths", () => {
   it("scaleRecipe adds `needed` per line", () => {
     const [a] = scaleRecipe([line()], 10, 50);
     expect(a.needed).toBe(10);
-  });
-  it("cost per serving: 2kg x 300 over 10 servings is 60", () => {
-    expect(costPerServing([line()], 10)).toBe(60);
-  });
-  it("cost is unknown when any ingredient has no cost, or there are none", () => {
-    expect(costPerServing([line(), line({ costPerUnit: null })], 10)).toBeNull();
-    expect(costPerServing([], 10)).toBeNull();
   });
 });
 

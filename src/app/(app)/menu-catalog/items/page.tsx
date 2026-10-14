@@ -5,7 +5,7 @@ import { requireActiveOrganization } from "@/lib/auth/require-session";
 import { listMenuItems } from "@/modules/menus/item";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
-import { currentUnitCosts } from "@/modules/inventory/batches";
+import { usableQueues } from "@/modules/inventory/batches";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { listRecipes } from "@/modules/recipes/recipe";
 import { Badge } from "@/components/ui/badge";
@@ -35,8 +35,8 @@ export default async function ItemsPage() {
     listRecipes(organizationId),
     listCatalog(organizationId),
   ]);
-  const unitCost = await currentUnitCosts(organizationId, inventory.map((i) => i.id));
-  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: unitCost.get(i.id) ?? null }));
+  const queues = await usableQueues(organizationId, inventory.map((i) => i.id));
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: i.costPerUnit === null ? null : Number(i.costPerUnit), queue: queues.get(i.id) ?? [] }));
   const recipeByItem = new Map(
     recipes.map((r) => [
       r.menuItemId,

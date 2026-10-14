@@ -66,8 +66,9 @@ Chunk 23 UI on the schema Chunk 1 already stubbed.
 - Expired and quarantined batches are never consumed automatically (the expiry day itself is still usable). A Stock Out is refused with the reason ("Only 30 is usable: 40 is quarantined"); sending items to an order treats them as short. A negative Adjustment is the way to write off expired stock, and takes the unusable batches first.
 - Returns (an order's undo or a cancelled order) go back into the same batches at the same costs (`restoreOrderStock`); anything that cannot be traced to a batch (sent before batches existed) returns as unbatched stock.
 - FEFO is advice only: the Batches drawer shows the batch that expires soonest when it differs from the FIFO one (`recommendedBatchId`). Costing stays FIFO.
+- **Tracks expiry controls expiry:** for an item that does not track it, a stored batch expiry date is kept but neither blocks consumption nor warns (Inventory list, Batches, Dashboard, report); switching tracking on again resumes both from the stored dates. Nothing is rewritten when the setting changes.
 
-**Recipe costing:** the formulas are unchanged (`recipe-math.ts`, `costPerServing`). Each ingredient is costed at `currentUnitCosts`: the cost of the batch that would be used next, falling back to the item's own cost when it has none. What an order's stock cost is read from its allocations (`orderStockCost`), shown on the order's Inventory tab, and does not change when later batches arrive.
+**Recipe costing (2026-10-15, second pass):** a recipe is costed by allocating each ingredient's required quantity across its usable batches with the same FIFO rule consumption uses (`fifo-plan.ts` `planFifo`, shared by `consumeStock`, the server preview `previewConsumption` and the recipe dialog). `recipe-cost-math.ts` `costRecipe` returns VERIFIED only when every unit comes from a batch with a known cost (a confirmed 0 is known); otherwise INCOMPLETE, with the ingredients named as UNKNOWN_COST (an unknown-cost batch or loose stock is used in its turn, never skipped) or NOT_COVERED (not enough usable stock). The item's own cost is never used for the verified figure; it only feeds a separate, labelled "Estimated" figure. The old single-batch `currentUnitCosts` and the item-cost based `costPerServing` were removed. What an order's stock cost is read from its allocations (`orderStockCost`), shown on the order's Inventory tab, and does not change when later batches arrive.
 
 **Screens:** Inventory list (earliest expiry, "Expired stock" / "Expires soon", a banner), a Batches drawer per item (FIFO order, cost, expiry, lot, quarantine / release), the Dashboard's Inventory Status card (counts by batch), the Receive stock drawer, and the order page's receipt history.
 
@@ -91,7 +92,8 @@ Quantity above zero and not more than is still to arrive (no over-delivery); uni
 7. **Historical consumption** is not backfilled. A movement with no batch allocation has an unknown cost; the report leaves it out of the actual-cost totals, counts it, and shows an estimate at today's item cost separately, labelled as an estimate and in no total.
 
 ### Limitations and open points
+- Recipe costs are informational previews against current stock: each recipe is previewed on its own, nothing is reserved or deducted, and shared ingredient demand across recipes is left to production planning.
+- Estimates are calculated on demand from the item's own cost, labelled Estimated (or "Estimate unavailable" when none can be worked out), and never stored or mixed into verified cost; historical consumption cost comes only from recorded batch allocations.
 - Amending an order's quantity is not built (only the authorised extra).
-- Recipe cost per serving (a planning figure, not actual consumption) still falls back to the item's own cost when an ingredient has no usable batch cost; it is not an actual-cost figure.
 - The category list that supplies the Tracks expiry default is fixed in code (`EXPIRY_DEFAULT_CATEGORIES`).
 - Supplier balances and purchase totals for orders received before receipts were recorded still use the order line's own cost.

@@ -4,6 +4,7 @@ import { audit } from "@/lib/audit/audit";
 import { checkUnitCost } from "@/modules/purchasing/receipt-rules";
 import type { Prisma } from "@/generated/prisma/client";
 import type { StockBatchSource, StockBatchStatus } from "@/generated/prisma/enums";
+import { planFifo, type PlanBatch } from "./fifo-plan";
 
 /**
  * Stock batches: stock that arrived together at one cost and one expiry date (AJ, 2026-10-15).
@@ -14,7 +15,10 @@ import type { StockBatchSource, StockBatchStatus } from "@/generated/prisma/enum
  * - Consumption is FIFO for costing: the oldest received batch is used first (batches with no received date, such as opening
  *   stock, count as the oldest). Each slice is recorded as a StockAllocation with the batch's cost copied onto it, so a later
  *   delivery at another price never changes what an earlier consumption cost.
- * - Expired and quarantined batches are never consumed automatically. A person can still write them off with a negative
+ * - Expiry only counts for items that track it (`Inventory.tracksExpiry`): for those, expired and quarantined batches are never
+ *   consumed automatically; for the rest, a stored expiry date is kept but neither blocks consumption nor warns. Switching the
+ *   setting never rewrites batches.
+ * - Quarantined batches are never consumed automatically either. A person can still write them off with a negative
  *   adjustment, which takes them first.
  * - FIFO here is the financial rule. Which batch is best to use first in the kitchen (earliest expiry, FEFO) is only
  *   recommended (`recommendedBatchId`), never forced.
@@ -46,6 +50,9 @@ export function todayDate(now = new Date()): Date {
 /** Expired once the day after the expiry date has begun; the expiry day itself is still usable. */
 export const isExpired = (expiryDate: Date | null, today: Date) => expiryDate !== null && expiryDate.getTime() < today.getTime();
 
+/** The expiry that matters for an item: its stored date only when the item tracks expiry. The stored date itself is never changed. */
+export const effectiveExpiry = (expiryDate: Date | null, tracksExpiry: boolean) => (tracksExpiry ? expiryDate : null);
+
 export const isExpiringSoon = (expiryDate: Date | null, today: Date, days = EXPIRY_SOON_DAYS) =>
   expiryDate !== null && !isExpired(expiryDate, today) && expiryDate.getTime() <= today.getTime() + days * 86_400_000;
 
@@ -58,6 +65,7 @@ async function lockInventory(tx: Tx, inventoryId: string) {
 
 export interface StockPosition {
   stockCount: number;
+  tracksExpiry: boolean;
   /** Can be consumed: active, unexpired batches plus unbatched stock. */
   usable: number;
   expired: number;
@@ -68,7 +76,7 @@ export interface StockPosition {
 
 export async function stockPosition(tx: Tx | typeof prisma, inventoryId: string, today = todayDate()): Promise<StockPosition> {
   const [item, batches] = await Promise.all([
-    tx.inventory.findUniqueOrThrow({ where: { id: inventoryId }, select: { stockCount: true } }),
+    tx.inventory.findUniqueOrThrow({ where: { id: inventoryId }, select: { stockCount: true, tracksExpiry: true } }),
     tx.stockBatch.findMany({ where: { inventoryId, remainingQuantity: { gt: 0 } }, select: { remainingQuantity: true, status: true, expiryDate: true } }),
   ]);
   let usableBatches = 0;
@@ -77,12 +85,12 @@ export async function stockPosition(tx: Tx | typeof prisma, inventoryId: string,
   for (const b of batches) {
     const q = Number(b.remainingQuantity);
     if (b.status === "QUARANTINED") quarantined += q;
-    else if (isExpired(b.expiryDate, today)) expired += q;
+    else if (isExpired(effectiveExpiry(b.expiryDate, item.tracksExpiry), today)) expired += q;
     else usableBatches += q;
   }
   const stockCount = Number(item.stockCount);
   const unbatched = Math.max(0, round3(stockCount - usableBatches - expired - quarantined));
-  return { stockCount, usable: round3(usableBatches + unbatched), expired: round3(expired), quarantined: round3(quarantined), unbatched };
+  return { stockCount, tracksExpiry: item.tracksExpiry, usable: round3(usableBatches + unbatched), expired: round3(expired), quarantined: round3(quarantined), unbatched };
 }
 
 export interface BatchInput {
@@ -161,27 +169,26 @@ export async function consumeStock(tx: Tx, p: { inventoryId: string; quantity: n
   }
 
   const batches = await tx.stockBatch.findMany({ where: { inventoryId: p.inventoryId, remainingQuantity: { gt: 0 } }, orderBy: [...FIFO_ORDER] });
-  const unusable = (b: (typeof batches)[number]) => b.status === "QUARANTINED" || isExpired(b.expiryDate, today);
+  const unusable = (b: (typeof batches)[number]) => b.status === "QUARANTINED" || isExpired(effectiveExpiry(b.expiryDate, position.tracksExpiry), today);
   // Unbatched stock first (the oldest there is), then batches; a write-off takes the unusable batches before the usable ones.
-  const queue = p.includeUnusable ? [...batches.filter(unusable), ...batches.filter((b) => !unusable(b))] : batches.filter((b) => !unusable(b));
+  const ordered = p.includeUnusable ? [...batches.filter(unusable), ...batches.filter((b) => !unusable(b))] : batches.filter((b) => !unusable(b));
+  const queue: PlanBatch[] = [
+    ...(position.unbatched > 0 ? [{ id: null, remaining: position.unbatched, unitCost: null }] : []),
+    ...ordered.map((b) => ({ id: b.id, remaining: Number(b.remainingQuantity), unitCost: b.unitCost === null ? null : Number(b.unitCost) })),
+  ];
+  // The same allocation rule a recipe preview uses; here the slices are applied and recorded.
+  const plan = planFifo(queue, p.quantity);
+  if (plan.shortfall > 0.0005) throw new InsufficientStockError("This would take stock below zero.", position.usable);
 
   const allocations: Allocation[] = [];
-  let need = round3(p.quantity);
-  const takeFromUnbatched = Math.min(need, position.unbatched);
-  if (takeFromUnbatched > 0) {
-    allocations.push({ batchId: null, quantity: round3(takeFromUnbatched), unitCost: null });
-    need = round3(need - takeFromUnbatched);
+  for (const slice of plan.slices) {
+    if (slice.batchId !== null) {
+      // The guard in the write means two consumers can never both take the same units.
+      const done = await tx.stockBatch.updateMany({ where: { id: slice.batchId, remainingQuantity: { gte: slice.quantity } }, data: { remainingQuantity: { decrement: slice.quantity } } });
+      if (done.count === 0) throw new InsufficientStockError("Stock changed while this was being saved. Try again.", position.usable);
+    }
+    allocations.push({ batchId: slice.batchId, quantity: slice.quantity, unitCost: slice.unitCost });
   }
-  for (const batch of queue) {
-    if (need <= 0) break;
-    const take = Math.min(need, Number(batch.remainingQuantity));
-    // The guard in the write means two consumers can never both take the same units.
-    const done = await tx.stockBatch.updateMany({ where: { id: batch.id, remainingQuantity: { gte: take } }, data: { remainingQuantity: { decrement: take } } });
-    if (done.count === 0) throw new InsufficientStockError("Stock changed while this was being saved. Try again.", position.usable);
-    allocations.push({ batchId: batch.id, quantity: round3(take), unitCost: batch.unitCost === null ? null : Number(batch.unitCost) });
-    need = round3(need - take);
-  }
-  if (need > 0.0005) throw new InsufficientStockError("This would take stock below zero.", position.usable);
 
   const moved = await tx.inventory.updateMany({ where: { id: p.inventoryId, stockCount: { gte: p.quantity } }, data: { stockCount: { decrement: p.quantity } } });
   if (moved.count === 0) throw new InsufficientStockError("This would take stock below zero.", position.usable);
@@ -228,24 +235,40 @@ export async function restoreOrderStock(tx: Tx, p: { inventoryId: string; orderI
   return allocations;
 }
 
-/** The unit cost of the next unit that would be consumed (the oldest usable batch with a cost); the item's own cost when there is none. */
-export async function currentUnitCosts(organizationId: string, inventoryIds: string[], today = todayDate()): Promise<Map<string, number | null>> {
-  const result = new Map<string, number | null>();
-  if (inventoryIds.length === 0) return result;
+/** The usable stock of each item as a FIFO queue (unbatched first, then active unexpired batches oldest first), for planning and previews. */
+export async function usableQueues(organizationId: string, inventoryIds: string[], today = todayDate()): Promise<Map<string, PlanBatch[]>> {
+  const out = new Map<string, PlanBatch[]>();
+  if (inventoryIds.length === 0) return out;
   const [items, batches] = await Promise.all([
-    prisma.inventory.findMany({ where: { organizationId, id: { in: inventoryIds } }, select: { id: true, costPerUnit: true } }),
-    prisma.stockBatch.findMany({ where: { organizationId, inventoryId: { in: inventoryIds }, remainingQuantity: { gt: 0 }, status: "ACTIVE" }, orderBy: [...FIFO_ORDER], select: { inventoryId: true, unitCost: true, expiryDate: true } }),
+    prisma.inventory.findMany({ where: { organizationId, id: { in: inventoryIds } }, select: { id: true, stockCount: true, tracksExpiry: true } }),
+    prisma.stockBatch.findMany({ where: { organizationId, inventoryId: { in: inventoryIds }, remainingQuantity: { gt: 0 } }, orderBy: [...FIFO_ORDER], select: { id: true, inventoryId: true, remainingQuantity: true, unitCost: true, status: true, expiryDate: true } }),
   ]);
-  const head = new Map<string, number | null>();
+  const tracks = new Map(items.map((i) => [i.id, i.tracksExpiry]));
+  const held = new Map<string, number>();
+  const usable = new Map<string, PlanBatch[]>();
   for (const b of batches) {
-    if (isExpired(b.expiryDate, today) || head.has(b.inventoryId)) continue;
-    head.set(b.inventoryId, b.unitCost === null ? null : Number(b.unitCost));
+    const q = Number(b.remainingQuantity);
+    held.set(b.inventoryId, (held.get(b.inventoryId) ?? 0) + q);
+    if (b.status !== "ACTIVE" || isExpired(effectiveExpiry(b.expiryDate, tracks.get(b.inventoryId) ?? false), today)) continue;
+    const list = usable.get(b.inventoryId) ?? [];
+    list.push({ id: b.id, remaining: q, unitCost: b.unitCost === null ? null : Number(b.unitCost) });
+    usable.set(b.inventoryId, list);
   }
   for (const item of items) {
-    const fromBatch = head.get(item.id);
-    result.set(item.id, fromBatch ?? (item.costPerUnit === null ? null : Number(item.costPerUnit)));
+    const unbatched = Math.max(0, round3(Number(item.stockCount) - (held.get(item.id) ?? 0)));
+    out.set(item.id, [...(unbatched > 0 ? [{ id: null, remaining: unbatched, unitCost: null }] : []), ...(usable.get(item.id) ?? [])]);
   }
-  return result;
+  return out;
+}
+
+/**
+ * What consuming each requested quantity would take from which batches, at which costs. A read-only simulation of
+ * `consumeStock` (same rule, `planFifo`): nothing is deducted and nothing is recorded. Each request is planned against the
+ * stock as it is now, independently of the others.
+ */
+export async function previewConsumption(organizationId: string, requests: { key: string; inventoryId: string; quantity: number }[], today = todayDate()) {
+  const queues = await usableQueues(organizationId, [...new Set(requests.map((r) => r.inventoryId))], today);
+  return new Map(requests.map((r) => [r.key, planFifo(queues.get(r.inventoryId) ?? [], r.quantity)]));
 }
 
 export interface BatchView {
@@ -270,10 +293,11 @@ export interface BatchView {
 /** Batches of one item for the Batches drawer, with FIFO order and the kitchen's FEFO recommendation. */
 export async function listBatches(organizationId: string, inventoryId: string, today = todayDate()) {
   const [rows, item] = await Promise.all([prisma.stockBatch.findMany({ where: { organizationId, inventoryId }, orderBy: [...FIFO_ORDER] }), prisma.inventory.findFirst({ where: { id: inventoryId, organizationId }, select: { tracksExpiry: true } })]);
+  const tracks = Boolean(item?.tracksExpiry);
   let rank = 0;
   const batches: BatchView[] = rows.map((b) => {
     const remaining = Number(b.remainingQuantity);
-    const state = remaining <= 0 ? "empty" : b.status === "QUARANTINED" ? "quarantined" : isExpired(b.expiryDate, today) ? "expired" : "usable";
+    const state = remaining <= 0 ? "empty" : b.status === "QUARANTINED" ? "quarantined" : isExpired(effectiveExpiry(b.expiryDate, tracks), today) ? "expired" : "usable";
     return {
       id: b.id,
       source: b.source,
@@ -285,13 +309,13 @@ export async function listBatches(organizationId: string, inventoryId: string, t
       expiryDate: b.expiryDate,
       lotNumber: b.lotNumber,
       costNote: b.costNote,
-      expiryMissing: Boolean(item?.tracksExpiry) && b.expiryDate === null && remaining > 0,
+      expiryMissing: tracks && b.expiryDate === null && remaining > 0,
       state,
-      expiringSoon: state === "usable" && isExpiringSoon(b.expiryDate, today),
+      expiringSoon: state === "usable" && isExpiringSoon(effectiveExpiry(b.expiryDate, tracks), today),
       fifoRank: state === "usable" ? ++rank : null,
     };
   });
-  return { batches, recommendedBatchId: recommendedBatchId(batches) };
+  return { batches, recommendedBatchId: tracks ? recommendedBatchId(batches) : null };
 }
 
 /** Kitchen rotation advice (FEFO): the usable batch that expires soonest. Costing still follows FIFO. */
@@ -314,12 +338,14 @@ export async function setBatchStatus(organizationId: string, batchId: string, st
 export async function expiryByItem(organizationId: string, inventoryIds: string[], today = todayDate()) {
   const out = new Map<string, { earliest: Date | null; expired: boolean; expiringSoon: boolean }>();
   if (inventoryIds.length === 0) return out;
-  const batches = await prisma.stockBatch.findMany({ where: { organizationId, inventoryId: { in: inventoryIds }, remainingQuantity: { gt: 0 }, expiryDate: { not: null } }, select: { inventoryId: true, expiryDate: true } });
+  const batches = await prisma.stockBatch.findMany({ where: { organizationId, inventoryId: { in: inventoryIds }, remainingQuantity: { gt: 0 }, expiryDate: { not: null } }, select: { inventoryId: true, expiryDate: true, inventory: { select: { tracksExpiry: true } } } });
   for (const b of batches) {
+    const tracks = b.inventory.tracksExpiry;
     const entry = out.get(b.inventoryId) ?? { earliest: null, expired: false, expiringSoon: false };
     if (!entry.earliest || b.expiryDate!.getTime() < entry.earliest.getTime()) entry.earliest = b.expiryDate;
-    if (isExpired(b.expiryDate, today)) entry.expired = true;
-    else if (isExpiringSoon(b.expiryDate, today)) entry.expiringSoon = true;
+    // The stored date is shown, but only an item that tracks expiry is flagged.
+    if (tracks && isExpired(b.expiryDate, today)) entry.expired = true;
+    else if (tracks && isExpiringSoon(b.expiryDate, today)) entry.expiringSoon = true;
     out.set(b.inventoryId, entry);
   }
   return out;
@@ -356,15 +382,16 @@ export async function usableStockMap(organizationId: string, inventoryIds: strin
   const out = new Map<string, number>();
   if (inventoryIds.length === 0) return out;
   const [items, batches] = await Promise.all([
-    prisma.inventory.findMany({ where: { organizationId, id: { in: inventoryIds } }, select: { id: true, stockCount: true } }),
+    prisma.inventory.findMany({ where: { organizationId, id: { in: inventoryIds } }, select: { id: true, stockCount: true, tracksExpiry: true } }),
     prisma.stockBatch.findMany({ where: { organizationId, inventoryId: { in: inventoryIds }, remainingQuantity: { gt: 0 } }, select: { inventoryId: true, remainingQuantity: true, status: true, expiryDate: true } }),
   ]);
   const held = new Map<string, number>();
   const usableBatches = new Map<string, number>();
+  const tracksById = new Map(items.map((i) => [i.id, i.tracksExpiry]));
   for (const b of batches) {
     const q = Number(b.remainingQuantity);
     held.set(b.inventoryId, (held.get(b.inventoryId) ?? 0) + q);
-    if (b.status === "ACTIVE" && !isExpired(b.expiryDate, today)) usableBatches.set(b.inventoryId, (usableBatches.get(b.inventoryId) ?? 0) + q);
+    if (b.status === "ACTIVE" && !isExpired(effectiveExpiry(b.expiryDate, tracksById.get(b.inventoryId) ?? false), today)) usableBatches.set(b.inventoryId, (usableBatches.get(b.inventoryId) ?? 0) + q);
   }
   for (const item of items) {
     const unbatched = Math.max(0, Number(item.stockCount) - (held.get(item.id) ?? 0));

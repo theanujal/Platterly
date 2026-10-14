@@ -11,7 +11,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { costPerServing, enterableUnits, friendlyQuantity, toStockUnit, type RecipeLine } from "@/modules/recipes/recipe-math";
+import { enterableUnits, friendlyQuantity, toStockUnit } from "@/modules/recipes/recipe-math";
+import { costRecipe } from "@/modules/recipes/recipe-cost-math";
+import type { PlanBatch } from "@/modules/inventory/fifo-plan";
 import { UNIT_OPTIONS } from "@/modules/inventory/options";
 import { createRecipeIngredientAction, deleteRecipeAction, saveRecipeAction } from "../actions";
 
@@ -26,7 +28,10 @@ export interface IngredientOption {
   id: string;
   name: string;
   unit: string;
-  costPerUnit: number | null;
+  /** The item's own cost per unit: only for the separate estimate, never for the verified cost. */
+  itemCost: number | null;
+  /** The usable stock in the order it would be used (unbatched first, then batches oldest first), for the cost preview. */
+  queue: PlanBatch[];
 }
 
 /** Another dish's recipe, offered as a starting point: its quantities are copied into the form, not saved. */
@@ -84,12 +89,15 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
   const dirty = useIsDirty({ values });
 
   const yieldNumber = Number.parseFloat(values.yieldServings);
-  const lines: RecipeLine[] = values.ingredients.flatMap((row) => {
-    const option = optionById.get(row.inventoryId);
-    const quantity = Number.parseFloat(row.quantity);
-    return option && quantity > 0 ? [{ inventoryId: option.id, name: option.name, unit: option.unit, quantity: toStockUnit(quantity, row.unit ?? option.unit, option.unit), costPerUnit: option.costPerUnit }] : [];
-  });
-  const perServing = yieldNumber > 0 ? costPerServing(lines, yieldNumber) : null;
+  // The same FIFO rule as real consumption, run on the stock as it is now: nothing is deducted by looking at the cost.
+  const cost = costRecipe(
+    values.ingredients.flatMap((row) => {
+      const option = optionById.get(row.inventoryId);
+      const quantity = Number.parseFloat(row.quantity);
+      return option && quantity > 0 ? [{ inventoryId: option.id, name: option.name, unit: option.unit, quantity: toStockUnit(quantity, row.unit ?? option.unit, option.unit), queue: option.queue, itemCost: option.itemCost }] : [];
+    }),
+    yieldNumber > 0 ? yieldNumber : 0,
+  );
 
   function setRow(index: number, patch: Partial<RecipeFormValues["ingredients"][number]>) {
     setValues((v) => ({ ...v, ingredients: v.ingredients.map((row, i) => (i === index ? { ...row, ...patch } : row)) }));
@@ -117,7 +125,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
       setError(result.error);
       return;
     }
-    setExtraOptions((list) => [...list, { id: result.id, name: result.name, unit: result.unit, costPerUnit: null }]);
+    setExtraOptions((list) => [...list, { id: result.id, name: result.name, unit: result.unit, itemCost: null, queue: [] }]);
     setRow(creating.index, { inventoryId: result.id, unit: result.unit });
     setCreating(null);
   }
@@ -274,10 +282,39 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
               <Textarea id="recipe-notes" value={values.notes} onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))} />
             </div>
 
-            <div className="rounded-lg border border-border bg-muted p-4">
-              <p className="text-sm text-muted-foreground">
-                Ingredient cost per serving: <span className="font-medium text-foreground">{perServing === null ? "needs a cost on every ingredient" : `₹${perServing.toFixed(2)}`}</span>
-              </p>
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4" data-testid="recipe-cost">
+              {cost.state === "VERIFIED" ? (
+                <p className="text-sm text-muted-foreground">
+                  Ingredient cost per serving: <span className="font-medium text-foreground">₹{cost.verifiedCostPerServing!.toFixed(2)}</span> <span className="text-xs">(verified from batch costs)</span>
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Ingredient cost per serving: <span className="font-medium text-foreground">incomplete</span>
+                  </p>
+                  {cost.ingredients.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Add ingredients and quantities to see the cost.</p>
+                  ) : (
+                    <ul className="flex list-disc flex-col gap-0.5 pl-5 text-xs text-muted-foreground">
+                      {cost.issues.map((issue) => (
+                        <li key={issue.inventoryId}>
+                          {issue.name}: {issue.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-muted-foreground" data-testid="recipe-cost-estimate">
+                    {cost.estimatedCostPerServing !== null ? (
+                      <>
+                        Estimated: <span className="font-medium text-foreground">₹{cost.estimatedCostPerServing.toFixed(2)}</span> (values stock with no known cost at the item&apos;s own cost; not a verified cost)
+                      </>
+                    ) : (
+                      "Estimate unavailable (an ingredient has no known cost and no item cost to estimate from)."
+                    )}
+                  </p>
+                </>
+              )}
+              <p className="text-xs text-muted-foreground">A preview against the stock as it is now: nothing is reserved or deducted, and each recipe is previewed on its own.</p>
             </div>
 
             {initialValues && (

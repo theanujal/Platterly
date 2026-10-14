@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { editInventoryItem } from "./inventory-helpers";
+import { stockIn } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
 /** Chunk 18.1 — a Food Item's recipe: pick inventory ingredients, see the cost per serving, save, reopen, and the ingredient is then protected from deletion. */
@@ -32,7 +32,8 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
-  await editInventoryItem(page, ingredient, { cost: "300" });
+  // Recipe cost is verified from batch costs: 100 kg arrive at a confirmed ₹300 a kg
+  await stockIn(page, ingredient, "100", "300");
 
   // A Food Item.
   const dish = `Paneer Masala ${suffix}`;
@@ -51,7 +52,8 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await page.getByPlaceholder("Search ingredients…").fill(ingredient.slice(0, 8).toLowerCase());
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("2");
-  await expect(page.getByText("₹60.00")).toBeVisible();
+  await expect(page.getByTestId("recipe-cost")).toContainText("₹60.00");
+  await expect(page.getByTestId("recipe-cost")).toContainText("verified");
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText("Recipe", { exact: true })).toBeVisible();

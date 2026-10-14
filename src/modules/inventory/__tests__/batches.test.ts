@@ -1,13 +1,14 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createSupplier } from "@/modules/suppliers/supplier";
-import { createInventoryItem, recordStockTransaction } from "@/modules/inventory/inventory";
+import { createInventoryItem, getInventoryOverviewStats, recordStockTransaction } from "@/modules/inventory/inventory";
 import { createPurchaseOrder, markOrdered, receiveStock } from "@/modules/purchasing/purchase-order";
 import {
   allocationCost,
   confirmBatchCost,
   consumeStock,
-  currentUnitCosts,
+  previewConsumption,
+  expiryByItem,
   findStockMismatches,
   InsufficientStockError,
   listBatches,
@@ -184,9 +185,10 @@ describe("FIFO consumption", () => {
     const costs = await prisma.stockAllocation.findMany({ where: { transaction: { inventoryId: ctx.item.id, type: "STOCK_OUT" } } });
     expect(costs.map((c) => Number(c.unitCost))).toEqual([40]);
     expect(allocationCost(first).cost).toBe(160);
-    expect((await currentUnitCosts(ctx.org.id, [ctx.item.id])).get(ctx.item.id)).toBe(40); // the next unit still comes from the old batch
+    // the next unit still comes from the old batch
+    expect((await previewConsumption(ctx.org.id, [{ key: "k", inventoryId: ctx.item.id, quantity: 1 }])).get("k")?.slices).toEqual([{ batchId: expect.any(String), quantity: 1, unitCost: 40 }]);
     await takeOut(ctx, 6); // the rest of the first batch
-    expect((await currentUnitCosts(ctx.org.id, [ctx.item.id])).get(ctx.item.id)).toBe(99);
+    expect((await previewConsumption(ctx.org.id, [{ key: "k", inventoryId: ctx.item.id, quantity: 1 }])).get("k")?.slices[0].unitCost).toBe(99);
   });
 
   it("is explicit about insufficient stock and changes nothing", async () => {
@@ -467,5 +469,67 @@ describe("Manual Stock In", () => {
     expect(await batchSum(ctx.item.id)).toBe(11);
     const adjusted = await prisma.stockBatch.findFirstOrThrow({ where: { inventoryId: ctx.item.id, source: "ADJUSTMENT" } });
     expect(adjusted.unitCost).toBeNull(); // an adjustment never invents a cost
+  });
+});
+
+describe("Tracks expiry controls expiry enforcement and warnings", () => {
+  async function expiredBatchItem(category: string, tracks: boolean) {
+    const ctx = await setup(category);
+    await prisma.inventory.update({ where: { id: ctx.item.id }, data: { tracksExpiry: tracks } });
+    const { receive } = await orderFor(ctx, 20);
+    await receive(10, 40, { expiryDate: day(30) });
+    await receive(10, 50, { expiryDate: day(30) });
+    const batches = await prisma.stockBatch.findMany({ where: { inventoryId: ctx.item.id }, orderBy: { createdAt: "asc" } });
+    await prisma.stockBatch.update({ where: { id: batches[0].id }, data: { expiryDate: day(-3) } }); // the oldest is past its date
+    return { ...ctx, batches };
+  }
+
+  it("with tracking off, a stored expiry date neither blocks consumption nor warns, and the date is kept", async () => {
+    const { item, org, batches } = await expiredBatchItem("Dairy", false);
+    expect(await stockPosition(prisma, item.id)).toMatchObject({ usable: 20, expired: 0 });
+    expect((await expiryByItem(org.id, [item.id])).get(item.id)).toMatchObject({ expired: false, expiringSoon: false });
+    const { batches: view, recommendedBatchId } = await listBatches(org.id, item.id);
+    expect(view.map((b) => [b.state, b.expiringSoon])).toEqual([["usable", false], ["usable", false]]);
+    expect(recommendedBatchId).toBeNull();
+    expect((await getInventoryOverviewStats(org.id)).expired).toBe(0);
+    expect((await usableStockMap(org.id, [item.id])).get(item.id)).toBe(20);
+    // consumption takes the oldest batch, even though its stored date has passed
+    const allocations = await takeOut({ item }, 12);
+    expect(allocations.map((a) => [a.quantity, a.unitCost])).toEqual([[10, 40], [2, 50]]);
+    // nothing was rewritten
+    expect((await prisma.stockBatch.findUniqueOrThrow({ where: { id: batches[0].id } })).expiryDate?.getTime()).toBe(day(-3).getTime());
+  });
+
+  it("switching it on again uses the stored dates: the expired batch is blocked and warned, with no records rewritten", async () => {
+    const { item, org, batches } = await expiredBatchItem("Grains", false);
+    expect((await stockPosition(prisma, item.id)).expired).toBe(0);
+    await prisma.inventory.update({ where: { id: item.id }, data: { tracksExpiry: true } });
+    expect(await stockPosition(prisma, item.id)).toMatchObject({ usable: 10, expired: 10 });
+    expect((await expiryByItem(org.id, [item.id])).get(item.id)).toMatchObject({ expired: true });
+    expect((await getInventoryOverviewStats(org.id)).expired).toBe(1);
+    await expect(takeOut({ item }, 11)).rejects.toThrow(/Only 10 is usable.*expired/);
+    expect((await takeOut({ item }, 4)).map((a) => a.unitCost)).toEqual([50]);
+    expect(await prisma.stockBatch.count({ where: { inventoryId: item.id } })).toBe(batches.length);
+    // and off again: unblocked, still nothing rewritten
+    await prisma.inventory.update({ where: { id: item.id }, data: { tracksExpiry: false } });
+    expect((await takeOut({ item }, 8)).map((a) => [a.quantity, a.unitCost])).toEqual([[8, 40]]);
+  });
+});
+
+describe("Authorised extra receipts keep the ordered quantity and leave an audit trail", () => {
+  it("the audit entry records the extra, its reason, the cost and the batch; the ordered quantity is untouched", async () => {
+    const ctx = await setup();
+    const { po, lineId } = await orderFor(ctx, 10);
+    await receiveStock(ctx.org.id, po.id, { idempotencyKey: crypto.randomUUID(), receivedDate: todayDate(), invoiceNumber: "INV-9", lines: [{ itemId: lineId, quantity: 12, unitCost: 41, extraReason: "Goodwill top-up" }] }, ctx.actor.id);
+    const line = await prisma.purchaseOrderItem.findUniqueOrThrow({ where: { id: lineId } });
+    expect([Number(line.quantity), Number(line.receivedQuantity)]).toEqual([10, 12]); // ordered stays 10
+    const entry = await prisma.auditLog.findFirstOrThrow({ where: { organizationId: ctx.org.id, recordId: po.id, action: "purchase_order.receive" } });
+    const after = entry.after as { receiptId: string; invoiceNumber: string; details: { item: string; quantity: number; unitCost: number; extraQuantity: number; extraReason: string; batchId: string }[]; extraAuthorised: { item: string; extraQuantity: number; reason: string }[] };
+    const batch = await prisma.stockBatch.findFirstOrThrow({ where: { inventoryId: ctx.item.id } });
+    expect(after.invoiceNumber).toBe("INV-9");
+    expect(after.details).toMatchObject([{ item: "Rice", quantity: 12, unitCost: 41, extraQuantity: 2, extraReason: "Goodwill top-up", batchId: batch.id }]);
+    expect(after.extraAuthorised).toEqual([{ item: "Rice", extraQuantity: 2, reason: "Goodwill top-up" }]);
+    // the same retried submission adds neither stock nor a second audit entry
+    expect(await prisma.auditLog.count({ where: { organizationId: ctx.org.id, recordId: po.id, action: "purchase_order.receive" } })).toBe(1);
   });
 });

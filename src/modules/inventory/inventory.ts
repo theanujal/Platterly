@@ -301,11 +301,11 @@ export async function getInventoryOverviewStats(organizationId: string, location
   const where = { organizationId, ...sharedOrAt(locationId) };
   const [items, batches, valuation] = await Promise.all([
     prisma.inventory.findMany({ where, select: { category: true, stockCount: true, lowStockThreshold: true } }),
-    prisma.stockBatch.findMany({ where: { organizationId, remainingQuantity: { gt: 0 }, inventory: where }, select: { inventoryId: true, expiryDate: true } }),
+    prisma.stockBatch.findMany({ where: { organizationId, remainingQuantity: { gt: 0 }, inventory: { ...where, tracksExpiry: true } }, select: { inventoryId: true, expiryDate: true } }),
     valueStock(organizationId, sharedOrAt(locationId)),
   ]);
 
-  // Expiry is per batch: an item has expired stock when a batch with stock left is past its date, and expires soon when one is about to be.
+  // Expiry is per batch and only for items that track it: an item has expired stock when a batch with stock left is past its date, and expires soon when one is about to be.
   const today = todayDate();
   const expiredItems = new Set<string>();
   const soonItems = new Set<string>();

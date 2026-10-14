@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
-import { editInventoryItem } from "./inventory-helpers";
+import { stockIn } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -34,7 +34,8 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
-  await editInventoryItem(page, ingredient, { cost: "300" });
+  // Recipe cost is verified from batch costs: 100 kg arrive at a confirmed ₹300 a kg
+  await stockIn(page, ingredient, "100", "300");
 
   const dishes = [`Paneer Masala ${suffix}`, `Paneer Tikka ${suffix}`];
   for (const dish of dishes) {
@@ -63,7 +64,7 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   // A dish without a recipe shows a dash, not a cost.
   const noRecipe = page.getByRole("row").filter({ hasText: dishes[0] });
   await expect(noRecipe).not.toContainText("₹");
-  await expect(noRecipe).not.toContainText("Cost unavailable");
+  await expect(noRecipe).not.toContainText("Incomplete");
 
   // Add a recipe to the first dish: 2 kg makes 10 servings.
   await page.getByRole("button", { name: `Add recipe for ${dishes[0]}` }).click();
@@ -104,15 +105,12 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(first).toContainText("₹120.00");
 
-  // Editing the inventory cost changes every recipe that uses it: 400 per kg.
+  // A later delivery at another price does not change what the next kilos cost: the first batch is used first (FIFO).
   await page.goto("/inventory");
-  await page.getByRole("button", { name: `Edit ${ingredient}` }).click();
-  await page.getByLabel("Cost Per Unit").fill("400");
-  await page.getByRole("button", { name: /^(Save|Update)/ }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await stockIn(page, ingredient, "100", "400");
   await page.goto("/recipes");
-  await expect(first).toContainText("₹160.00"); // 4 kg x 400 / 10
-  await expect(second).toContainText("₹120.00"); // 3 kg x 400 / 10
+  await expect(first).toContainText("₹120.00");
+  await expect(second).toContainText("₹90.00");
 
   // Filters: nothing is missing any more.
   await expect(page.getByRole("button", { name: /Missing Recipe/ })).toContainText("0");
@@ -122,7 +120,7 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(page.getByRole("row").filter({ hasText: "Complete" })).toHaveCount(0);
 });
 
-test("a recipe with an ingredient that has no cost shows 'Cost unavailable'", async ({ page }) => {
+test("a recipe whose ingredient has no stock, or stock with no known cost, is Incomplete: no verified cost, and the ingredient is named", async ({ page }) => {
   test.setTimeout(90_000);
   const email = `e2e-recipes-nocost-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -159,7 +157,22 @@ test("a recipe with an ingredient that has no cost shows 'Cost unavailable'", as
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   const row = page.getByRole("row").filter({ hasText: dish });
-  await expect(row.getByText("Incomplete", { exact: true })).toBeVisible();
-  await expect(row).toContainText("Cost unavailable");
+  // No stock at all: not verifiable
+  await expect(row.getByText("Incomplete", { exact: true }).first()).toBeVisible();
+  await expect(row.getByTestId("cost-issues")).toContainText(ingredient);
   await expect(row).not.toContainText("₹");
+  await expect(row.getByTestId("cost-estimate")).toHaveText("Estimate unavailable"); // no item cost to estimate from
+
+  // Stock with an unknown cost is still not verifiable (and the item's own cost is not used)
+  await page.goto("/inventory");
+  await stockIn(page, ingredient, "10");
+  await page.goto("/recipes");
+  await expect(row.getByTestId("cost-issues")).toContainText(ingredient);
+  await expect(row).not.toContainText("₹");
+  await page.getByRole("button", { name: `Edit recipe for ${dish}` }).click();
+  await expect(page.getByTestId("recipe-cost")).toContainText("incomplete");
+  await expect(page.getByTestId("recipe-cost")).toContainText("no known cost");
+  await expect(page.getByTestId("recipe-cost")).not.toContainText("verified");
+  await expect(page.getByTestId("recipe-cost-estimate")).toContainText("Estimate unavailable");
+  await expect(page.getByTestId("recipe-cost")).toContainText("nothing is reserved or deducted");
 });

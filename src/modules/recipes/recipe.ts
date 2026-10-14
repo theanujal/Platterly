@@ -13,7 +13,7 @@ export interface RecipeInput {
 const MAX_INGREDIENTS = 100;
 
 const recipeInclude = {
-  ingredients: { include: { inventory: { select: { id: true, name: true, unit: true, costPerUnit: true } } }, orderBy: { inventory: { name: "asc" as const } } },
+  ingredients: { include: { inventory: { select: { id: true, name: true, unit: true } } }, orderBy: { inventory: { name: "asc" as const } } },
 };
 
 export async function getRecipeForItem(organizationId: string, menuItemId: string) {

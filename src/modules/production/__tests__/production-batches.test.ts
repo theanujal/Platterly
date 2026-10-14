@@ -5,8 +5,8 @@ import { createOrder } from "@/modules/orders/order";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem } from "@/modules/inventory/inventory";
 import { saveRecipe } from "@/modules/recipes/recipe";
-import { costPerServing } from "@/modules/recipes/recipe-math";
-import { createBatch, currentUnitCosts, findStockMismatches, todayDate } from "@/modules/inventory/batches";
+import { createBatch, findStockMismatches, previewConsumption, todayDate, usableQueues } from "@/modules/inventory/batches";
+import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, sendOrderItems, returnAllOrderItems } from "@/modules/production/production";
 
 const orgIds: string[] = [];
@@ -74,23 +74,49 @@ describe("Recipe consumption and costing with batches", () => {
     expect((await getOrderInventory(org.id, order.id))?.lines[0]).toMatchObject({ sentCost: 2200 });
   });
 
-  it("recipe cost per serving uses the batch the kitchen would use next, with the existing formula", async () => {
+  it("the recipe cost preview and the real consumption use the same FIFO slices, and the preview deducts nothing", async () => {
     const { org, actor, order, paneer, batch } = await setup();
     await batch(10, 100, { receivedDate: day(-5) });
     await batch(30, 150, { receivedDate: day(-1) });
-    const line = (cost: number | null) => [{ inventoryId: paneer.id, name: "Paneer", unit: "kg", quantity: 2, costPerUnit: cost }];
-    let cost = (await currentUnitCosts(org.id, [paneer.id])).get(paneer.id) ?? null;
-    expect(cost).toBe(100);
-    expect(costPerServing(line(cost), 10)).toBe(20); // 2 kg x 100 / 10 servings
-    await sendOrderItems(org.id, order.id, actor.id); // 22 kg: empties the first batch and takes 12 of the second
-    cost = (await currentUnitCosts(org.id, [paneer.id])).get(paneer.id) ?? null;
-    expect(cost).toBe(150);
-    expect(costPerServing(line(cost), 10)).toBe(30);
-    // an item with no usable batch falls back to its own cost
-    await prisma.inventory.update({ where: { id: paneer.id }, data: { costPerUnit: 90 } });
-    await prisma.stockBatch.updateMany({ where: { inventoryId: paneer.id }, data: { remainingQuantity: 0 } });
-    await prisma.inventory.update({ where: { id: paneer.id }, data: { stockCount: 0 } });
-    expect((await currentUnitCosts(org.id, [paneer.id])).get(paneer.id)).toBe(90);
+    const before = { stock: await stock(paneer.id), batches: await prisma.stockBatch.count(), tx: await prisma.inventoryTransaction.count({ where: { inventoryId: paneer.id } }), allocs: await prisma.stockAllocation.count() };
+
+    const preview = (await previewConsumption(org.id, [{ key: "order", inventoryId: paneer.id, quantity: 22 }])).get("order")!;
+    expect(preview.shortfall).toBe(0);
+    expect(preview.slices.map((s) => [s.quantity, s.unitCost])).toEqual([[10, 100], [12, 150]]);
+    // nothing changed by looking
+    expect({ stock: await stock(paneer.id), batches: await prisma.stockBatch.count(), tx: await prisma.inventoryTransaction.count({ where: { inventoryId: paneer.id } }), allocs: await prisma.stockAllocation.count() }).toEqual(before);
+    expect((await prisma.stockBatch.findMany({ where: { inventoryId: paneer.id }, orderBy: { createdAt: "asc" } })).map((b) => Number(b.remainingQuantity))).toEqual([10, 30]);
+
+    await sendOrderItems(org.id, order.id, actor.id);
+    const stored = await prisma.stockAllocation.findMany({ where: { transaction: { orderId: order.id } }, orderBy: { unitCost: "asc" } });
+    expect(stored.map((s) => [Number(s.quantity), Number(s.unitCost)])).toEqual(preview.slices.map((s) => [s.quantity, s.unitCost]));
+    expect(await stock(paneer.id)).toBe(18);
+  });
+
+  it("a recipe is costed from the batches it would use: known costs verify, and the cost moves to the next batch as stock is used", async () => {
+    const { org, actor, order, paneer, batch } = await setup();
+    await batch(10, 100, { receivedDate: day(-5) });
+    await batch(30, 150, { receivedDate: day(-1) });
+    const recipeCost = async () => {
+      const queue = (await usableQueues(org.id, [paneer.id])).get(paneer.id) ?? [];
+      return costRecipe([{ inventoryId: paneer.id, name: "Paneer", unit: "kg", quantity: 2, queue, itemCost: 90 }], 10);
+    };
+    expect(await recipeCost()).toMatchObject({ state: "VERIFIED", verifiedCostPerServing: 20, estimatedCostPerServing: null }); // 2 kg x 100 / 10 servings
+    await sendOrderItems(org.id, order.id, actor.id); // 22 kg: empties the first batch, takes 12 of the second
+    expect(await recipeCost()).toMatchObject({ state: "VERIFIED", verifiedCostPerServing: 30 });
+  });
+
+  it("unknown-cost stock before a known batch makes the recipe incomplete (not skipped); the item's own cost is only a separate estimate", async () => {
+    const { org, paneer, batch } = await setup();
+    await prisma.$transaction((tx) => createBatch(tx, { organizationId: org.id, inventoryId: paneer.id, source: "OPENING", quantity: 3, unitCost: null }));
+    await batch(40, 150, { receivedDate: day(-1) });
+    const queue = (await usableQueues(org.id, [paneer.id])).get(paneer.id) ?? [];
+    const cost = costRecipe([{ inventoryId: paneer.id, name: "Paneer", unit: "kg", quantity: 5, queue, itemCost: 100 }], 10);
+    expect(cost.state).toBe("INCOMPLETE");
+    expect(cost.verifiedCostPerServing).toBeNull();
+    expect(cost.ingredients[0]).toMatchObject({ status: "UNKNOWN_COST", unknownQuantity: 3, knownCost: 300 }); // the unknown 3 kg comes first; the later 150 batch is not used to stand in for it
+    expect(cost.issues).toEqual([{ inventoryId: paneer.id, name: "Paneer", reason: "3 kg would come from stock with no known cost" }]);
+    expect(cost.estimatedCostPerServing).toBe(60); // (3 x 100 item cost + 2 x 150) / 10, labelled Estimated in the screens
   });
 
   it("expired stock is not sent to the order: it is treated as short and the plan shows only usable stock", async () => {
