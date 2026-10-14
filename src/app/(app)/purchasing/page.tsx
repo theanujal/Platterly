@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ClipboardList, Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { TableCell } from "@/components/ui/table";
+import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { CATALOG_GRID_CLASSNAME, CatalogCardBody } from "@/components/catalog/catalog-display";
 import { formatRupees } from "@/components/catalog/catalog-display";
 import type { PurchaseOrderStatus } from "@/generated/prisma/enums";
 
@@ -27,6 +29,58 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
   await requirePermission({ inventory: ["view"] }, organizationId);
   const filter = STATUSES.includes(status as PurchaseOrderStatus) ? (status as PurchaseOrderStatus) : undefined;
   const [orders, canCreate] = await Promise.all([listPurchaseOrders(organizationId, filter, undefined, locationId), hasPermission({ inventory: ["create"] }, organizationId)]);
+
+  // Orders raised without prices have no value yet (₹0.00 would read as a real total); received stock is valued at the price actually paid on each receipt.
+  function totalOf(po: (typeof orders)[number]) {
+    const lines = po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
+    const received = po.items.reduce((sum, i) => {
+      const receiptQty = i.receiptLines.reduce((q, l) => q + Number(l.quantity), 0);
+      const legacy = Math.max(0, Number(i.receivedQuantity) - receiptQty);
+      return sum + i.receiptLines.reduce((v, l) => v + Number(l.quantity) * Number(l.unitCost), 0) + legacy * Number(i.unitCost);
+    }, 0);
+    if (isPriced(lines)) return { text: formatRupees(orderedValue(lines)), sort: orderedValue(lines) };
+    if (received > 0) return { text: `${formatRupees(received)} received`, sort: received };
+    return { text: "Not yet priced", sort: 0 };
+  }
+
+  const entries: CatalogEntry[] = orders.map((po) => {
+    const total = totalOf(po);
+    const status = <Badge variant={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>;
+    return {
+      id: po.id,
+      href: `/purchasing/${po.id}`,
+      searchText: `${po.number} ${po.supplier.name} ${PO_STATUS_LABEL[po.status]}`,
+      sortValues: { newest: po.createdAt.getTime(), number: po.number, total: total.sort },
+      card: (
+        <CatalogCardBody
+          title={po.number}
+          titleIcon={ClipboardList}
+          titleHref={`/purchasing/${po.id}`}
+          description={po.supplier.name}
+          footer={<span className={total.text === "Not yet priced" ? "text-sm font-normal text-muted-foreground" : "text-base font-semibold"}>{total.text}</span>}
+          statusBadge={status}
+        />
+      ),
+      listRow: (
+        <>
+          <TableCell className="px-3 py-3">
+            <Link href={`/purchasing/${po.id}`} className="font-semibold text-primary hover:underline">
+              {po.number}
+            </Link>
+          </TableCell>
+          <TableCell className="px-3 py-3 text-sm">{po.supplier.name}</TableCell>
+          <TableCell className="px-3 py-3">{status}</TableCell>
+          <TableCell className="px-3 py-3 text-sm">{po.items.length}</TableCell>
+          <TableCell className={`px-3 py-3 text-sm ${total.text === "Not yet priced" ? "text-muted-foreground" : "font-semibold"}`}>{total.text}</TableCell>
+        </>
+      ),
+    };
+  });
+  const sortOptions: CatalogSortOption[] = [
+    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "number", label: "Order number", key: "number" },
+    { value: "total", label: "Total (High–Low)", key: "total", direction: "desc" },
+  ];
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -49,55 +103,28 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
       </div>
       <SectionTabs group="stock" active="/purchasing" organizationId={organizationId} />
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
-        <Button size="md" variant={filter ? "outline" : "default"} render={<Link href="/purchasing" />} nativeButton={false}>
-          All
-        </Button>
-        {STATUSES.map((s) => (
-          <Button key={s} size="md" variant={filter === s ? "default" : "outline"} render={<Link href={`/purchasing?status=${s}`} />} nativeButton={false}>
-            {PO_STATUS_LABEL[s]}
-          </Button>
-        ))}
-      </div>
-
-      {orders.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">No purchase orders{filter ? ` that are ${PO_STATUS_LABEL[filter].toLowerCase()}` : " yet"}.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Order</TableHead>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Items</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {orders.map((po) => (
-              <TableRow key={po.id}>
-                <TableCell>
-                  <Link href={`/purchasing/${po.id}`} className="font-medium hover:underline">
-                    {po.number}
-                  </Link>
-                </TableCell>
-                <TableCell>{po.supplier.name}</TableCell>
-                <TableCell>
-                  <Badge variant={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>
-                </TableCell>
-                <TableCell>{po.items.length}</TableCell>
-                <TableCell className="text-right font-medium">
-                  {(() => {
-                    const lines = po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
-                    // Orders raised without prices have no value yet; ₹0.00 would read as a real total.
-                    return isPriced(lines) ? formatRupees(orderedValue(lines)) : <span className="font-normal text-muted-foreground">Not yet priced</span>;
-                  })()}
-                </TableCell>
-              </TableRow>
+      <CatalogBrowser
+        entries={entries}
+        columns={["Order", "Supplier", "Status", "Items", "Total"]}
+        richList
+        gridColumnsClassName={CATALOG_GRID_CLASSNAME}
+        searchPlaceholder="Search orders or suppliers…"
+        emptyLabel={`No purchase orders${filter ? ` that are ${PO_STATUS_LABEL[filter].toLowerCase()}` : " yet"}.`}
+        sortOptions={sortOptions}
+        defaultView="list"
+        filters={
+          <div key="status-filter" className="flex flex-wrap gap-2" role="group" aria-label="Filter by status">
+            <Button size="md" variant={filter ? "outline" : "default"} render={<Link href="/purchasing" />} nativeButton={false}>
+              All
+            </Button>
+            {STATUSES.map((s) => (
+              <Button key={s} size="md" variant={filter === s ? "default" : "outline"} render={<Link href={`/purchasing?status=${s}`} />} nativeButton={false}>
+                {PO_STATUS_LABEL[s]}
+              </Button>
             ))}
-          </TableBody>
-        </Table>
-      )}
+          </div>
+        }
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Boxes } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { listLocations } from "@/modules/locations/locations";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
@@ -10,6 +10,9 @@ import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CATALOG_GRID_CLASSNAME, CatalogCardBody, CatalogCardMedia, CatalogNameCell } from "@/components/catalog/catalog-display";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { expiryByItem } from "@/modules/inventory/batches";
+import { sharedOrAt } from "@/modules/locations/scope";
+import { valueStock } from "@/modules/inventory/valuation";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { AddInventoryDialog } from "./_components/add-inventory-dialog";
 import { AddInventoryMenu } from "./_components/add-inventory-menu";
@@ -39,6 +42,8 @@ function formatDate(date: Date) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
+const formatRupeesPlain = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default async function InventoryPage() {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
@@ -49,6 +54,8 @@ export default async function InventoryPage() {
     active.enabled ? listLocations(organizationId) : Promise.resolve([]),
     listIngredientCatalog(organizationId, active.locationId),
   ]);
+  const [expiry, valuation] = await Promise.all([expiryByItem(organizationId, items.map((i) => i.id)), valueStock(organizationId, sharedOrAt(active.locationId))]);
+  const canEditStock = await hasPermission({ inventory: ["edit"] }, organizationId);
   const locations = active.enabled ? allLocations.map((l) => ({ id: l.id, name: l.name })) : null;
   const locationName = new Map(allLocations.map((l) => [l.id, l.name]));
 
@@ -68,6 +75,7 @@ export default async function InventoryPage() {
       supplierId: item.supplierId ?? "",
       kitchenId: item.kitchenId ?? "",
       expiryDate: toDateInputValue(item.expiryDate),
+      tracksExpiry: item.tracksExpiry,
       imageUrl: item.image,
     };
 
@@ -115,13 +123,17 @@ export default async function InventoryPage() {
           </TableCell>
           <TableCell className="px-3 py-3 text-sm">{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{[item.kitchenId ? locationName.get(item.kitchenId) : null, item.storageLocation].filter(Boolean).join(" · ") || "—"}</TableCell>
-          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{item.expiryDate ? formatDate(item.expiryDate) : "—"}</TableCell>
+          <TableCell className="px-3 py-3 text-sm text-muted-foreground">{expiry.get(item.id)?.earliest ? formatDate(expiry.get(item.id)!.earliest!) : "—"}</TableCell>
           <TableCell className="px-3 py-3">
-            <Badge variant={status.variant}>{status.label}</Badge>
+            <div className="flex flex-wrap gap-1.5">
+              <Badge variant={status.variant}>{status.label}</Badge>
+              {expiry.get(item.id)?.expired && <Badge variant="danger">Expired stock</Badge>}
+              {!expiry.get(item.id)?.expired && expiry.get(item.id)?.expiringSoon && <Badge variant="warning">Expires soon</Badge>}
+            </div>
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} locations={locations} variant="plain" />
+              <InventoryCardActions itemId={item.id} name={item.name} unit={item.unit} currentStock={stock} initialValues={initialValues} suppliers={supplierOptions} locations={locations} variant="plain" canEdit={canEditStock} />
             </div>
           </TableCell>
         </>
@@ -129,6 +141,8 @@ export default async function InventoryPage() {
     };
   });
 
+  const expiredItems = items.filter((i) => expiry.get(i.id)?.expired).map((i) => i.name);
+  const soonItems = items.filter((i) => !expiry.get(i.id)?.expired && expiry.get(i.id)?.expiringSoon).map((i) => i.name);
   const categories = [...new Set(items.map((item) => item.category))].sort();
   const filterOptions: CatalogFilterOption[] = [
     { key: "category", allLabel: "Category", options: categories.map((c) => ({ value: c, label: c })) },
@@ -161,6 +175,26 @@ export default async function InventoryPage() {
         <AddInventoryMenu suppliers={supplierOptions} locations={locations} catalog={catalog} />
       </div>
       <SectionTabs group="stock" active="/inventory" organizationId={organizationId} />
+
+      <p data-testid="stock-value" className="text-sm text-muted-foreground">
+        Stock value: <span className="font-semibold text-foreground">{formatRupeesPlain(valuation.totalValue)}</span> (batch cost x quantity left)
+        {valuation.incomplete ? ` · incomplete: ${valuation.itemsWithUnknownCost} ${valuation.itemsWithUnknownCost === 1 ? "item has" : "items have"} stock with no known cost, which is not valued` : ""}
+      </p>
+
+      {(expiredItems.length > 0 || soonItems.length > 0) && (
+        <div role="status" data-testid="expiry-banner" className="flex flex-col gap-1 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
+          {expiredItems.length > 0 && (
+            <p>
+              <span className="font-semibold">Expired stock:</span> {expiredItems.join(", ")}. It is not used automatically; open the item&apos;s Batches to see it, or write it off with an adjustment.
+            </p>
+          )}
+          {soonItems.length > 0 && (
+            <p>
+              <span className="font-semibold">Expiring within 7 days:</span> {soonItems.join(", ")}. Use the batch that expires first.
+            </p>
+          )}
+        </div>
+      )}
 
       <CatalogBrowser
         entries={entries}

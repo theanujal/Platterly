@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { monthLabel } from "@/modules/reports/report-math";
 import { computeMenuReport } from "@/modules/reports/menu-math";
-import { computeMovements, computePurchases, computeStock } from "@/modules/reports/inventory-math";
+import { computeMovements, computePurchases, computeStock, movementCostHint, stockValueHint } from "@/modules/reports/inventory-math";
 import { computeFinance, computePayables, computeReceivables } from "@/modules/reports/finance-math";
 import { computeChannels, computeStorefront, type VisitRow } from "@/modules/reports/storefront-math";
 
@@ -41,37 +41,46 @@ describe("menu report", () => {
 describe("inventory report", () => {
   const now = new Date("2026-10-04T10:00:00Z");
   const rows = [
-    { id: "a", name: "Rice", category: "Grains", unit: "kg", stock: 10, costPerUnit: 60, lowStockThreshold: 20, expiryDate: new Date("2026-10-20T00:00:00Z") },
-    { id: "b", name: "Oil", category: "Pantry", unit: "l", stock: 5, costPerUnit: null, lowStockThreshold: null, expiryDate: null },
-    { id: "c", name: "Milk", category: "Dairy", unit: "l", stock: 4, costPerUnit: 50, lowStockThreshold: 2, expiryDate: new Date("2026-10-01T00:00:00Z") },
-    { id: "d", name: "Salt", category: "Pantry", unit: "kg", stock: 0, costPerUnit: 20, lowStockThreshold: 1, expiryDate: new Date("2026-10-02T00:00:00Z") },
+    { id: "a", name: "Rice", category: "Grains", unit: "kg", stock: 10, knownValue: 600, unknownQuantity: 0, lowStockThreshold: 20, expiryDate: new Date("2026-10-20T00:00:00Z") },
+    { id: "b", name: "Oil", category: "Pantry", unit: "l", stock: 5, knownValue: 0, unknownQuantity: 5, lowStockThreshold: null, expiryDate: null },
+    { id: "c", name: "Milk", category: "Dairy", unit: "l", stock: 4, knownValue: 200, unknownQuantity: 0, lowStockThreshold: 2, expiryDate: new Date("2026-10-01T00:00:00Z") },
+    { id: "d", name: "Salt", category: "Pantry", unit: "kg", stock: 0, knownValue: 0, unknownQuantity: 0, lowStockThreshold: 1, expiryDate: new Date("2026-10-02T00:00:00Z") },
   ];
   const stock = computeStock(rows, now);
-  it("values stock at cost, flags items with no cost, and groups by category", () => {
-    expect(stock.totalValue).toBe(10 * 60 + 4 * 50);
-    expect(stock.itemsWithoutCost).toBe(1);
-    expect(stock.byCategory[0]).toEqual({ category: "Grains", items: 1, value: 600 });
+  it("totals the known batch values, reports unknown-cost stock apart and flags the valuation incomplete, by category", () => {
+    expect(stock.totalValue).toBe(600 + 200);
+    expect(stock.itemsWithUnknownCost).toBe(1);
+    expect(stock.incomplete).toBe(true);
+    expect(stock.byCategory[0]).toEqual({ category: "Grains", items: 1, value: 600, unknownCostItems: 0 });
+    expect(stock.byCategory.find((c) => c.category === "Pantry")).toEqual({ category: "Pantry", items: 2, value: 0, unknownCostItems: 1 });
+    expect(computeStock(rows.filter((r) => r.unknownQuantity === 0), now).incomplete).toBe(false);
+    expect(stockValueHint(stock)).toMatch(/Incomplete: 1 item has stock with no known cost/);
   });
   it("low stock is at or below the alert level; expiry covers expired and the next 30 days, never an empty shelf", () => {
     expect(stock.lowStock.map((i) => i.name)).toEqual(["Salt", "Rice"]);
     expect(stock.expiring.map((i) => [i.name, i.daysLeft])).toEqual([["Milk", -3], ["Rice", 16]]);
   });
-  it("movements total in, out and adjustments by value, and count what was taken for orders", () => {
+  it("movements total actual costs only; movements with no recorded cost are counted, left out, and estimated separately", () => {
     const m = computeMovements([
-      { type: "STOCK_IN", quantity: 10, inventoryId: "a", name: "Rice", unit: "kg", costPerUnit: 60, forOrder: false },
-      { type: "STOCK_OUT", quantity: 4, inventoryId: "a", name: "Rice", unit: "kg", costPerUnit: 60, forOrder: true },
-      { type: "ADJUSTMENT", quantity: -1, inventoryId: "a", name: "Rice", unit: "kg", costPerUnit: 60, forOrder: false },
+      { type: "STOCK_IN", quantity: 10, inventoryId: "a", name: "Rice", unit: "kg", actualCost: 600, unknownQuantity: 0, estimateCostPerUnit: 60, forOrder: false },
+      { type: "STOCK_OUT", quantity: 4, inventoryId: "a", name: "Rice", unit: "kg", actualCost: 240, unknownQuantity: 0, estimateCostPerUnit: 60, forOrder: true },
+      { type: "ADJUSTMENT", quantity: -1, inventoryId: "a", name: "Rice", unit: "kg", actualCost: 60, unknownQuantity: 0, estimateCostPerUnit: 60, forOrder: false },
+      // before batches: no allocation, so the cost is unknown (not backfilled from the item's cost)
+      { type: "STOCK_OUT", quantity: 5, inventoryId: "a", name: "Rice", unit: "kg", actualCost: 0, unknownQuantity: 5, estimateCostPerUnit: 60, forOrder: true },
     ]);
-    expect(m).toMatchObject({ movements: 3, stockInValue: 600, stockOutValue: 240, adjustmentValue: -60, takenForOrders: 1 });
-    expect(m.busiest[0]).toMatchObject({ name: "Rice", moves: 3, inQty: 10, outQty: 5 });
+    expect(m).toMatchObject({ movements: 4, stockInValue: 600, stockOutValue: 240, adjustmentValue: -60, takenForOrders: 2, unknownCostMovements: 1, estimatedUnknownValue: 300 });
+    expect(m.busiest[0]).toMatchObject({ name: "Rice", moves: 4, inQty: 10, outQty: 10 });
+    expect(movementCostHint(m)).toMatch(/1 movement has no recorded cost.*about ₹300.*estimate, not included/);
+    expect(movementCostHint(computeMovements([]))).toBeUndefined();
   });
-  it("purchases split ordered, received and still to arrive per supplier", () => {
+  it("purchases split ordered, received (at the receipt prices) and still to arrive per supplier, and count unpriced orders", () => {
     const p = computePurchases([
-      { id: "p1", lines: [{ supplierId: "s1", supplierName: "Anna", quantity: 10, receivedQuantity: 10, unitCost: 100 }, { supplierId: "s1", supplierName: "Anna", quantity: 5, receivedQuantity: 0, unitCost: 40 }] },
-      { id: "p2", lines: [{ supplierId: "s2", supplierName: "Bhat", quantity: 2, receivedQuantity: 1, unitCost: 500 }] },
+      { id: "p1", lines: [{ supplierId: "s1", supplierName: "Anna", quantity: 10, receivedQuantity: 10, unitCost: 100, receivedValue: 1000 }, { supplierId: "s1", supplierName: "Anna", quantity: 5, receivedQuantity: 0, unitCost: 40, receivedValue: 0 }] },
+      { id: "p2", lines: [{ supplierId: "s2", supplierName: "Bhat", quantity: 2, receivedQuantity: 1, unitCost: 500, receivedValue: 500 }] },
+      { id: "p3", lines: [{ supplierId: "s2", supplierName: "Bhat", quantity: 4, receivedQuantity: 4, unitCost: 0, receivedValue: 900 }] }, // raised without a price; the receipt carries it
     ]);
-    expect(p).toMatchObject({ orderedValue: 1000 + 200 + 1000, receivedValue: 1000 + 500, stillToReceive: 700, orders: 2 });
-    expect(p.bySupplier.map((s) => [s.supplierName, s.orders, s.orderedValue])).toEqual([["Anna", 1, 1200], ["Bhat", 1, 1000]]);
+    expect(p).toMatchObject({ orderedValue: 1000 + 200 + 1000, receivedValue: 1000 + 500 + 900, stillToReceive: 700, orders: 3, unpricedOrders: 1 });
+    expect(p.bySupplier.map((s) => [s.supplierName, s.orders, s.orderedValue])).toEqual([["Anna", 1, 1200], ["Bhat", 2, 1000]]);
   });
 });
 

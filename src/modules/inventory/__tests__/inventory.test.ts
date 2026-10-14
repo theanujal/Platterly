@@ -130,7 +130,7 @@ describe("recordStockTransaction — stock quantity math (Verify line, dev plans
     const actor = await makeActor();
     const item = await createInventoryItem(org.id, { name: "Flour", category: "Grains", unit: "kg" }, actor.id, 10);
 
-    const { item: updated, transaction } = await recordStockTransaction(org.id, item.id, { type: "STOCK_IN", quantity: 15 }, actor.id);
+    const { item: updated, transaction } = await recordStockTransaction(org.id, item.id, { type: "STOCK_IN", quantity: 15, costUnknown: true }, actor.id);
     expect(Number(updated.stockCount)).toBe(25);
     expect(transaction.type).toBe("STOCK_IN");
     expect(Number(transaction.quantity)).toBe(15);
@@ -202,7 +202,7 @@ describe("recordStockTransaction — stock quantity math (Verify line, dev plans
     const actor = await makeActor();
     const item = await createInventoryItem(orgA.id, { name: "Cardamom", category: "Spices", unit: "kg" }, actor.id, 5);
 
-    await expect(recordStockTransaction(orgB.id, item.id, { type: "STOCK_IN", quantity: 5 }, actor.id)).rejects.toThrow();
+    await expect(recordStockTransaction(orgB.id, item.id, { type: "STOCK_IN", quantity: 5, costUnknown: true }, actor.id)).rejects.toThrow();
   });
 });
 
@@ -211,9 +211,9 @@ describe("getInventoryOverviewStats / listLowStockItems — Dashboard Inventory 
     const org = await makeOrg();
     const actor = await makeActor();
 
-    await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg", lowStockThreshold: 10, costPerUnit: 40 }, actor.id, 100); // in stock
-    await createInventoryItem(org.id, { name: "Oil", category: "Oils", unit: "ltr", lowStockThreshold: 20, costPerUnit: 150 }, actor.id, 15); // low stock
-    await createInventoryItem(org.id, { name: "Salt", category: "Grains", unit: "kg", costPerUnit: 20 }, actor.id, 0); // out of stock, no threshold
+    await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg", lowStockThreshold: 10, costPerUnit: 40 }, actor.id, 100, 40); // in stock
+    await createInventoryItem(org.id, { name: "Oil", category: "Oils", unit: "ltr", lowStockThreshold: 20, costPerUnit: 150 }, actor.id, 15, 150); // low stock
+    await createInventoryItem(org.id, { name: "Salt", category: "Grains", unit: "kg", costPerUnit: 20 }, actor.id, 0, 20); // out of stock, no threshold
 
     const stats = await getInventoryOverviewStats(org.id);
     expect(stats.totalItems).toBe(3);

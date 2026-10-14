@@ -3,6 +3,9 @@ import "server-only";
 import { sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import { valueStock } from "./valuation";
+import { defaultTracksExpiry, checkUnitCost } from "@/modules/purchasing/receipt-rules";
+import { consumeStock, createBatch, isExpired, isExpiringSoon, todayDate } from "./batches";
 import type { InventoryTransactionType } from "@/generated/prisma/enums";
 
 export interface InventoryItemInput {
@@ -19,6 +22,8 @@ export interface InventoryItemInput {
   /** Chunk 23: the location holding this item. Null = shared by every location; undefined = leave as it is. */
   kitchenId?: string | null;
   expiryDate?: Date;
+  /** Whether new batches must carry an expiry date. On create, left out = the category's default; on update, left out = unchanged. */
+  tracksExpiry?: boolean;
 }
 
 export interface StockTransactionInput {
@@ -26,6 +31,16 @@ export interface StockTransactionInput {
   /** Positive magnitude for STOCK_IN/STOCK_OUT; a signed delta for ADJUSTMENT. */
   quantity: number;
   note?: string;
+  /**
+   * Stock In only: the batch it starts. A Stock In must say what it cost: `unitCost` (0 = free, with `costNote`), or
+   * `costUnknown: true`. The item's own cost is never copied in. A positive Adjustment starts a batch with an unknown cost.
+   */
+  unitCost?: number | null;
+  costUnknown?: boolean;
+  costNote?: string | null;
+  /** Required for Stock In and positive Adjustment when the item tracks expiry. Must not already be past. */
+  expiryDate?: Date | null;
+  lotNumber?: string | null;
 }
 
 async function assertSupplier(organizationId: string, supplierId?: string | null) {
@@ -57,6 +72,8 @@ export async function createInventoryItem(
   input: InventoryItemInput,
   actorUserId: string,
   openingStock?: number,
+  /** The cost the person confirmed for the opening stock. Left out = unknown; the item's own cost is not used. */
+  openingCost?: number | null,
 ) {
   validateInput(input, RULES.inventoryItem);
   await assertSupplier(organizationId, input.supplierId);
@@ -78,11 +95,13 @@ export async function createInventoryItem(
         supplierId: input.supplierId ?? null,
         kitchenId: input.kitchenId ?? null,
         expiryDate: input.expiryDate,
+        tracksExpiry: input.tracksExpiry ?? defaultTracksExpiry(input.category),
       },
     });
 
     if (openingStock && openingStock > 0) {
-      await tx.inventory.update({ where: { id: created.id }, data: { stockCount: openingStock } });
+      // Opening stock is an OPENING batch: its cost is the one the person confirmed (unknown otherwise, never the item's own cost), no received date.
+      await createBatch(tx, { organizationId, inventoryId: created.id, source: "OPENING", quantity: openingStock, unitCost: openingCost ?? null, expiryDate: input.expiryDate ?? null });
       await tx.inventoryTransaction.create({
         data: {
           inventoryId: created.id,
@@ -136,6 +155,7 @@ export async function updateInventoryItem(
       supplierId: input.supplierId ?? null,
       ...(input.kitchenId !== undefined ? { kitchenId: input.kitchenId } : {}),
       expiryDate: input.expiryDate,
+      ...(input.tracksExpiry !== undefined ? { tracksExpiry: input.tracksExpiry } : {}),
     },
   });
 
@@ -220,15 +240,28 @@ export async function recordStockTransaction(
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const item = await tx.inventory.findFirstOrThrow({ where: { id: inventoryId, organizationId } });
+    const item = await tx.inventory.findFirstOrThrow({ where: { id: inventoryId, organizationId }, select: { id: true, name: true, tracksExpiry: true } });
+    const startsBatch = input.type === "STOCK_IN" || (input.type === "ADJUSTMENT" && input.quantity > 0);
 
-    const delta = input.type === "STOCK_OUT" ? -input.quantity : input.quantity;
-    const newStock = Number(item.stockCount) + delta;
-    if (newStock < 0) {
-      throw new Error("This would take stock below zero.");
+    // A new batch: what it cost (or that it is unknown) and, for an item that tracks expiry, when it expires.
+    let unitCost: number | null = null;
+    if (input.type === "STOCK_IN") {
+      if (input.costUnknown) unitCost = null;
+      else if (input.unitCost === undefined || input.unitCost === null) throw new Error("Enter the unit cost, or mark the cost as unknown.");
+      else {
+        checkUnitCost(item.name, input.unitCost, input.costNote);
+        unitCost = input.unitCost;
+      }
+    }
+    if (startsBatch) {
+      if (input.lotNumber && input.lotNumber.length > 60) throw new Error("The lot number is too long (at most 60 characters).");
+      if (input.expiryDate) {
+        if (Number.isNaN(input.expiryDate.getTime())) throw new Error("Enter a valid expiry date.");
+        if (input.expiryDate.getTime() < todayDate().getTime()) throw new Error("This stock has already expired, so it cannot be added.");
+      } else if (item.tracksExpiry) throw new Error(`Enter an expiry date for ${item.name} (it tracks expiry).`);
     }
 
-    const updated = await tx.inventory.update({ where: { id: inventoryId }, data: { stockCount: newStock } });
+    // The ledger row first: the batch slices it took from (or created) hang off it.
     const transaction = await tx.inventoryTransaction.create({
       data: {
         inventoryId,
@@ -238,7 +271,16 @@ export async function recordStockTransaction(
         actorUserId,
       },
     });
+    // Stock Out takes the oldest usable batches (FIFO) and refuses to touch expired or quarantined stock; a negative
+    // adjustment is a write-off, so it takes those first. Stock In and a positive adjustment start a batch.
+    if (input.type === "STOCK_OUT") await consumeStock(tx, { inventoryId, quantity: input.quantity, transactionId: transaction.id });
+    else if (input.type === "ADJUSTMENT" && input.quantity < 0) await consumeStock(tx, { inventoryId, quantity: -input.quantity, transactionId: transaction.id, includeUnusable: true });
+    else {
+      const batch = await createBatch(tx, { organizationId, inventoryId, source: input.type === "STOCK_IN" ? "STOCK_IN" : "ADJUSTMENT", quantity: input.quantity, unitCost, receivedDate: todayDate(), expiryDate: input.expiryDate ?? null, lotNumber: input.lotNumber, costNote: input.costNote });
+      await tx.stockAllocation.create({ data: { transactionId: transaction.id, batchId: batch.id, quantity: input.quantity, unitCost } });
+    }
 
+    const updated = await tx.inventory.findUniqueOrThrow({ where: { id: inventoryId } });
     return { item: updated, transaction };
   });
 
@@ -256,26 +298,31 @@ export async function recordStockTransaction(
 
 /** Feeds the Dashboard's Inventory Overview card (Chunk 5 placeholder, wired for real here). */
 export async function getInventoryOverviewStats(organizationId: string, locationId?: string | null) {
-  const items = await prisma.inventory.findMany({
-    where: { organizationId, ...sharedOrAt(locationId) },
-    select: { category: true, stockCount: true, lowStockThreshold: true, costPerUnit: true, expiryDate: true },
-  });
+  const where = { organizationId, ...sharedOrAt(locationId) };
+  const [items, batches, valuation] = await Promise.all([
+    prisma.inventory.findMany({ where, select: { category: true, stockCount: true, lowStockThreshold: true } }),
+    prisma.stockBatch.findMany({ where: { organizationId, remainingQuantity: { gt: 0 }, inventory: where }, select: { inventoryId: true, expiryDate: true } }),
+    valueStock(organizationId, sharedOrAt(locationId)),
+  ]);
+
+  // Expiry is per batch: an item has expired stock when a batch with stock left is past its date, and expires soon when one is about to be.
+  const today = todayDate();
+  const expiredItems = new Set<string>();
+  const soonItems = new Set<string>();
+  for (const b of batches) {
+    if (isExpired(b.expiryDate, today)) expiredItems.add(b.inventoryId);
+    else if (isExpiringSoon(b.expiryDate, today)) soonItems.add(b.inventoryId);
+  }
 
   let inStock = 0;
   let lowStock = 0;
   let outOfStock = 0;
-  let expired = 0;
-  let totalValue = 0;
   const categories = new Set<string>();
-  const now = new Date();
 
   for (const item of items) {
     categories.add(item.category);
     const stock = Number(item.stockCount);
     const threshold = item.lowStockThreshold !== null ? Number(item.lowStockThreshold) : null;
-    if (item.costPerUnit !== null) totalValue += stock * Number(item.costPerUnit);
-    if (item.expiryDate !== null && item.expiryDate < now) expired += 1;
-
     if (stock <= 0) outOfStock += 1;
     else if (threshold !== null && stock <= threshold) lowStock += 1;
     else inStock += 1;
@@ -286,9 +333,13 @@ export async function getInventoryOverviewStats(organizationId: string, location
     inStock,
     lowStock,
     outOfStock,
-    expired,
+    expired: expiredItems.size,
+    expiringSoon: soonItems.size,
     categories: categories.size,
-    totalValue,
+    /** Value of the stock whose cost is known (batch cost x remaining); see `valuationIncomplete`. */
+    totalValue: valuation.totalValue,
+    itemsWithUnknownCost: valuation.itemsWithUnknownCost,
+    valuationIncomplete: valuation.incomplete,
   };
 }
 

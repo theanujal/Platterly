@@ -227,6 +227,8 @@ model Organization {
   eventStaffCounts        EventStaffCount[]
   suppliers               Supplier[]
   supplierItems           SupplierItem[]
+  stockBatches            StockBatch[]
+  goodsReceipts           GoodsReceipt[]
   customers               Customer[]
   events                  Event[]
   orders                  Order[]
@@ -1207,13 +1209,16 @@ model Inventory {
   // kept in sync with each InventoryTransaction inside one DB transaction
   // (src/modules/inventory/inventory.ts's `recordStockTransaction`) rather
   // than recomputed by summing the ledger on every read.
-  stockCount        Decimal      @default(0) @db.Decimal(12, 2)
+  stockCount        Decimal      @default(0) @db.Decimal(12, 3)
   lowStockThreshold Decimal?     @db.Decimal(12, 2)
   costPerUnit       Decimal?     @db.Decimal(10, 2)
   storageLocation   String?
   supplierId        String?
   supplier          Supplier?    @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   expiryDate        DateTime?
+  // Whether new batches of this item must carry an expiry date. The category gives the default when an item is created; this
+  // switch is what receiving and Stock In actually check.
+  tracksExpiry      Boolean      @default(false)
   // Chunk 23: which location holds this item. Null = shared by every location.
   kitchenId         String?
   kitchen           Kitchen?     @relation(fields: [kitchenId], references: [id], onDelete: SetNull)
@@ -1223,6 +1228,7 @@ model Inventory {
   recipeIngredients  RecipeIngredient[]
   purchaseOrderItems PurchaseOrderItem[]
   suppliedBy         SupplierItem[]
+  stockBatches       StockBatch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1472,7 +1478,8 @@ model PurchaseOrder {
   kitchenId       String?
   kitchen         Kitchen?            @relation(fields: [kitchenId], references: [id], onDelete: SetNull)
 
-  items PurchaseOrderItem[]
+  items    PurchaseOrderItem[]
+  receipts GoodsReceipt[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1485,14 +1492,15 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
-  id               String        @id @default(cuid())
+  id               String             @id @default(cuid())
   purchaseOrderId  String
-  purchaseOrder    PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrder    PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   inventoryId      String
-  inventory        Inventory     @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
-  quantity         Decimal       @db.Decimal(12, 3)
-  receivedQuantity Decimal       @default(0) @db.Decimal(12, 3)
-  unitCost         Decimal       @db.Decimal(10, 2)
+  inventory        Inventory          @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  quantity         Decimal            @db.Decimal(12, 3)
+  receivedQuantity Decimal            @default(0) @db.Decimal(12, 3)
+  unitCost         Decimal            @db.Decimal(10, 2)
+  receiptLines     GoodsReceiptLine[]
 
   @@unique([purchaseOrderId, inventoryId])
   @@index([inventoryId])
@@ -1567,7 +1575,7 @@ model InventoryTransaction {
   // Always a positive magnitude for STOCK_IN/STOCK_OUT; a signed delta
   // (can be negative) for ADJUSTMENT — see `recordStockTransaction`'s
   // stock-quantity math for the exact rules each type applies.
-  quantity    Decimal                  @db.Decimal(12, 2)
+  quantity    Decimal                  @db.Decimal(12, 3)
   note        String?
   // Chunk 18.4 — set when an order's recipe-based stock take wrote this row (a plain id, no FK, so the ledger outlives the order).
   orderId     String?
@@ -1576,6 +1584,9 @@ model InventoryTransaction {
   // rationale as AuditLog.actorUserId.
   actorUserId String?
   actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  // Which batches a stock out took from (or a return put back into), with the cost at that moment.
+  allocations StockAllocation[]
 
   createdAt DateTime @default(now())
 
@@ -2910,4 +2921,113 @@ model OpsPull {
   lastStatus   Int
 
   @@map("ops_pull")
+}
+
+// Receiving and FIFO batches (AJ, 2026-10-15). Inventory.stockCount stays the on-hand number every screen reads; it equals the
+// sum of the batches' remaining quantities (plus any stock that predates batches and has no batch, see batches.ts).
+enum StockBatchSource {
+  OPENING // existing stock when batches were introduced; price and received date unknown unless the item had them
+  RECEIPT // received against a purchase order
+  STOCK_IN // a manual Stock In
+  ADJUSTMENT // a manual positive adjustment
+}
+
+enum StockBatchStatus {
+  ACTIVE
+  QUARANTINED // held back: never consumed automatically until released
+}
+
+// One delivery line against a purchase order. Header and lines are written once and never edited, so an earlier price or
+// expiry date can never be overwritten by a later receipt. `idempotencyKey` is generated when the Receive drawer opens, so a
+// retry or double click of the same submission is recognised and adds nothing.
+model GoodsReceipt {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  receivedDate    DateTime      @db.Date
+  invoiceNumber   String?
+  notes           String?
+  idempotencyKey  String
+  createdByUserId String?
+
+  lines GoodsReceiptLine[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([purchaseOrderId, idempotencyKey])
+  @@index([organizationId])
+  @@map("goods_receipt")
+}
+
+model GoodsReceiptLine {
+  id                  String            @id @default(cuid())
+  receiptId           String
+  receipt             GoodsReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItemId String
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id], onDelete: Cascade)
+  inventoryId         String
+  quantity            Decimal           @db.Decimal(12, 3)
+  unitCost            Decimal           @db.Decimal(10, 2)
+  expiryDate          DateTime?         @db.Date
+  lotNumber           String?
+  // A unit cost of 0 is a confirmed free item and needs a reason here. A line always has a cost; an unknown cost exists only on a batch.
+  costNote            String?
+  // The part of this delivery above what was still to arrive on the order, which only goes in with an authorising reason.
+  extraQuantity       Decimal           @default(0) @db.Decimal(12, 3)
+  extraReason         String?
+
+  batch StockBatch?
+
+  @@index([purchaseOrderItemId])
+  @@map("goods_receipt_line")
+}
+
+// Stock of one item that arrived together at one cost and one expiry date. Consumed oldest first (FIFO, for costing) and
+// never below zero. `unitCost` / `receivedDate` are null where they were never known (opening stock, manual Stock In).
+model StockBatch {
+  id                String            @id @default(cuid())
+  organizationId    String
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inventoryId       String
+  inventory         Inventory         @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  source            StockBatchSource
+  status            StockBatchStatus  @default(ACTIVE)
+  originalQuantity  Decimal           @db.Decimal(12, 3)
+  remainingQuantity Decimal           @db.Decimal(12, 3)
+  unitCost          Decimal?          @db.Decimal(10, 2)
+  receivedDate      DateTime?         @db.Date
+  expiryDate        DateTime?         @db.Date
+  lotNumber         String?
+  // null unitCost = the cost is unknown; 0 = confirmed free (this says why); above 0 = a confirmed cost.
+  costNote          String?
+  receiptLineId     String?           @unique
+  receiptLine       GoodsReceiptLine? @relation(fields: [receiptLineId], references: [id], onDelete: SetNull)
+
+  allocations StockAllocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([inventoryId, remainingQuantity])
+  @@index([organizationId])
+  @@map("stock_batch")
+}
+
+// One slice of a stock movement: how much of which batch, at what cost. A stock out has one per batch it took from; a return
+// has the same batches again. `batchId` null = stock that had no batch (cost unknown). The cost is copied here so a later
+// receipt at another price never changes what an earlier consumption cost.
+model StockAllocation {
+  id            String               @id @default(cuid())
+  transactionId String
+  transaction   InventoryTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  batchId       String?
+  batch         StockBatch?          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  quantity      Decimal              @db.Decimal(12, 3)
+  unitCost      Decimal?             @db.Decimal(10, 2)
+
+  @@index([transactionId])
+  @@index([batchId])
+  @@map("stock_allocation")
 }

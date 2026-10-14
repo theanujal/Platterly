@@ -108,10 +108,6 @@ export function PurchaseOrderForm({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <Label htmlFor="po-notes">Notes (optional)</Label>
-            <Textarea id="po-notes" value={values.notes} onChange={(e) => setValues((x) => ({ ...x, notes: e.target.value }))} />
-          </div>
         </CardContent>
       </Card>
 
@@ -172,6 +168,16 @@ export function PurchaseOrderForm({
               {notice}
             </p>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1.5">
+          <Label htmlFor="po-notes">Notes (optional)</Label>
+          <Textarea id="po-notes" value={values.notes} onChange={(e) => setValues((x) => ({ ...x, notes: e.target.value }))} />
         </CardContent>
       </Card>
 

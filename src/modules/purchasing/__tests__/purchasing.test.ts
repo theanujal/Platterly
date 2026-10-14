@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createSupplier, deleteSupplier, SupplierInUseError } from "@/modules/suppliers/supplier";
 import { createInventoryItem } from "@/modules/inventory/inventory";
+import { todayDate } from "@/modules/inventory/batches";
 import {
   createPurchaseOrder,
   updatePurchaseOrder,
@@ -29,6 +30,10 @@ afterEach(async () => {
   orgIds.length = 0;
   userIds.length = 0;
 });
+
+/** A delivery booked the way the drawer does: today, one new receipt each time, at ₹40 a unit unless the test says otherwise. */
+const rcv = (orgId: string, poId: string, lines: { itemId: string; quantity: number; unitCost?: number; expiryDate?: Date | null }[], actorId: string) =>
+  receiveStock(orgId, poId, { idempotencyKey: crypto.randomUUID(), receivedDate: todayDate(), lines: lines.map((l) => ({ unitCost: 40, ...l })) }, actorId);
 
 async function setup() {
   const org = await prisma.organization.create({ data: { id: crypto.randomUUID(), name: "PO Org", slug: `po-${crypto.randomUUID().slice(0, 8)}`, createdAt: new Date() } });
@@ -76,19 +81,19 @@ describe("Purchase orders (Chunk 18.3)", () => {
   it("receiving books real stock-in rows, supports partial receipts, and refuses more than is outstanding", async () => {
     const { org, actor, supplier, rice } = await setup();
     const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 50, unitCost: 40 }] }, actor.id);
-    await expect(receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 1 }], actor.id)).rejects.toThrow(); // still a draft
+    await expect(rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 1 }], actor.id)).rejects.toThrow(); // still a draft
     await markOrdered(org.id, po.id, actor.id);
-    await expect(receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 51 }], actor.id)).rejects.toThrow();
+    await expect(rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 51 }], actor.id)).rejects.toThrow();
 
-    const first = await receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 30 }], actor.id);
+    const first = await rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 30 }], actor.id);
     expect(first.status).toBe("PARTIALLY_RECEIVED");
     expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } })).stockCount)).toBe(30);
-    const second = await receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 20 }], actor.id);
+    const second = await rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 20 }], actor.id);
     expect(second.status).toBe("RECEIVED");
     expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } })).stockCount)).toBe(50);
     const ledger = await prisma.inventoryTransaction.findMany({ where: { inventoryId: rice.id }, orderBy: { createdAt: "asc" } });
     expect(ledger.map((l) => [l.type, Number(l.quantity), l.note])).toEqual([["STOCK_IN", 30, "Received on PO-0001"], ["STOCK_IN", 20, "Received on PO-0001"]]);
-    await expect(receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 1 }], actor.id)).rejects.toThrow();
+    await expect(rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 1 }], actor.id)).rejects.toThrow();
   });
 
   it("cancel works before anything arrives, not after; delete only for draft or cancelled", async () => {
@@ -102,7 +107,7 @@ describe("Purchase orders (Chunk 18.3)", () => {
 
     const b = await createPurchaseOrder(org.id, { supplierId: supplier.id, items }, actor.id);
     await markOrdered(org.id, b.id, actor.id);
-    await receiveStock(org.id, b.id, [{ itemId: b.items[0].id, quantity: 3 }], actor.id);
+    await rcv(org.id, b.id, [{ itemId: b.items[0].id, quantity: 3 }], actor.id);
     await expect(cancelPurchaseOrder(org.id, b.id, actor.id)).rejects.toThrow();
   });
 
@@ -111,8 +116,8 @@ describe("Purchase orders (Chunk 18.3)", () => {
     const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 10, unitCost: 40 }] }, actor.id);
     await markOrdered(org.id, po.id, actor.id);
     const results = await Promise.allSettled([
-      receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 10 }], actor.id),
-      receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 10 }], actor.id),
+      rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 10 }], actor.id),
+      rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 10 }], actor.id),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } })).stockCount)).toBe(10);
@@ -122,7 +127,7 @@ describe("Purchase orders (Chunk 18.3)", () => {
     const { org, actor, supplier, rice } = await setup();
     const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 50, unitCost: 40 }] }, actor.id);
     await markOrdered(org.id, po.id, actor.id);
-    await receiveStock(org.id, po.id, [{ itemId: po.items[0].id, quantity: 25 }], actor.id);
+    await rcv(org.id, po.id, [{ itemId: po.items[0].id, quantity: 25 }], actor.id);
     expect(await getSupplierBalance(org.id, supplier.id)).toEqual({ received: 1000, paid: 0, outstanding: 1000 });
     const pay = await recordSupplierPayment(org.id, supplier.id, { amount: 400, paidAt: new Date() }, actor.id);
     expect((await getSupplierBalance(org.id, supplier.id)).outstanding).toBe(600);
@@ -188,16 +193,15 @@ describe("Purchase orders raised without prices (Purchasing workflow)", () => {
     await expect(markOrdered(org.id, other.id, actor.id)).rejects.toBeInstanceOf(PurchaseOrderError);
   });
 
-  it("lists the receipts booked against an order from the stock ledger, and filters by status", async () => {
+  it("lists the receipts booked against an order, newest first, with their lines, and filters by status", async () => {
     const { org, actor, supplier, rice } = await setup();
     const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 10 }] }, actor.id);
     await markOrdered(org.id, po.id, actor.id);
     const line = (await prisma.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } })).id;
-    await receiveStock(org.id, po.id, [{ itemId: line, quantity: 4 }], actor.id);
-    await receiveStock(org.id, po.id, [{ itemId: line, quantity: 6 }], actor.id);
-    const full = await prisma.purchaseOrder.findFirstOrThrow({ where: { id: po.id }, include: { items: true } });
-    const receipts = await listReceipts(org.id, full);
-    expect(receipts.map((r) => r.quantity).sort()).toEqual([4, 6]);
+    await rcv(org.id, po.id, [{ itemId: line, quantity: 4 }], actor.id);
+    await rcv(org.id, po.id, [{ itemId: line, quantity: 6 }], actor.id);
+    const receipts = await listReceipts(org.id, po.id);
+    expect(receipts.flatMap((r) => r.lines.map((l) => l.quantity)).sort()).toEqual([4, 6]);
     expect((await listPurchaseOrders(org.id, "RECEIVED")).map((p) => p.id)).toEqual([po.id]);
     expect(await listPurchaseOrders(org.id, "DRAFT")).toHaveLength(0);
   });

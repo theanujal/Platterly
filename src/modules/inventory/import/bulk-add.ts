@@ -57,6 +57,8 @@ export async function bulkAddInventory(
         },
         actorUserId,
         entry.openingStock,
+        // The sheet gives a cost next to the opening stock, so it is the cost the person confirmed for that stock.
+        entry.costPerUnit ?? null,
       );
       taken.add(name.toLowerCase());
       result.created++;

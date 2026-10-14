@@ -50,3 +50,48 @@ Chunk 23 UI on the schema Chunk 1 already stubbed.
   about stock: new items show "Out of Stock" until stock is recorded.
 - Location of new items: the person's held location, else the one the owner is viewing, else shared (locations off:
   shared). UI: the chevron next to Add Item (`_components/add-inventory-menu.tsx`).
+
+## Stock batches and FIFO (2026-10-15)
+
+**One rule keeps the numbers honest:** `Inventory.stockCount` is the on-hand number every screen reads, and it equals the sum of the batches' `remainingQuantity` plus any *unbatched* stock (written before batches existed or directly in the database; its cost is unknown). Every change to stock goes through `batches.ts` (`createBatch`, `consumeStock`, `restoreOrderStock`), which updates the batch and the count together, so they cannot drift. `findStockMismatches` reports any item where they disagree, and `recordOpeningBatch` gives unbatched stock an explicit opening batch.
+
+**Where batches come from**
+- A delivery received on a purchase order (`RECEIPT`): quantity, actual unit cost, received date, optional expiry and lot. Different costs or expiry dates are different batches, and earlier receipts and batches are never edited.
+- Opening stock (`OPENING`): what an item already held when batches were introduced, or the opening stock given when an item is created or imported. Cost and expiry are the item's own, if it had them; the received date is never invented, so it stays empty.
+- Manual Stock In (`STOCK_IN`) and positive Adjustment (`ADJUSTMENT`): a batch with no price and no expiry (use a purchase order receipt when those are known).
+
+**How stock is used**
+- FIFO for costing: `consumeStock` takes the oldest batch first (no received date counts as oldest, then arrival order), after any unbatched stock. Each slice is a `StockAllocation` on the ledger row with the batch's cost copied onto it, so a later delivery at another price never changes what an earlier consumption cost (`allocationCost`, `orderStockCost`).
+- Never below zero: the batch and the count are decremented only while enough is left; two people taking stock at once cannot take the same units. Too little usable stock throws `InsufficientStockError` and changes nothing.
+- Expired and quarantined batches are never consumed automatically (the expiry day itself is still usable). A Stock Out is refused with the reason ("Only 30 is usable: 40 is quarantined"); sending items to an order treats them as short. A negative Adjustment is the way to write off expired stock, and takes the unusable batches first.
+- Returns (an order's undo or a cancelled order) go back into the same batches at the same costs (`restoreOrderStock`); anything that cannot be traced to a batch (sent before batches existed) returns as unbatched stock.
+- FEFO is advice only: the Batches drawer shows the batch that expires soonest when it differs from the FIFO one (`recommendedBatchId`). Costing stays FIFO.
+
+**Recipe costing:** the formulas are unchanged (`recipe-math.ts`, `costPerServing`). Each ingredient is costed at `currentUnitCosts`: the cost of the batch that would be used next, falling back to the item's own cost when it has none. What an order's stock cost is read from its allocations (`orderStockCost`), shown on the order's Inventory tab, and does not change when later batches arrive.
+
+**Screens:** Inventory list (earliest expiry, "Expired stock" / "Expires soon", a banner), a Batches drawer per item (FIFO order, cost, expiry, lot, quarantine / release), the Dashboard's Inventory Status card (counts by batch), the Receive stock drawer, and the order page's receipt history.
+
+### Existing stock (migration `20261015100000_receiving_and_fifo_batches`)
+- `stockCount` and the ledger quantity were widened from 2 to 3 decimals (the purchase order quantities already had 3), which loses nothing.
+- Every item with stock got one `OPENING` batch holding exactly its `stockCount`, so the sums match from day one. The batch's cost is the item's own `costPerUnit` and its expiry the item's own `expiryDate`, if it had them (otherwise empty); `receivedDate` is empty because it was never recorded. Nothing was invented, and `stockCount` and the old ledger rows were not changed. Older ledger rows have no allocations (what those past consumptions cost is unknown).
+- Legacy stock needing attention: opening batches with no cost (their consumption has an "unknown" cost and the order page says so) and perishable items whose opening batch has no expiry. List them with:
+  `select i.name, b."remainingQuantity", b."unitCost", b."expiryDate" from stock_batch b join inventory i on i.id = b."inventoryId" where b.source = 'OPENING' and b."remainingQuantity" > 0 and (b."unitCost" is null or (i.category in ('Dairy','Vegetables','Fruits','Meat & Poultry','Seafood') and b."expiryDate" is null));`
+- Run `findStockMismatches` after the migration on a real database; the migration itself leaves none.
+
+### Rules for receiving (`purchasing/receipt-rules.ts`)
+Quantity above zero and not more than is still to arrive (no over-delivery); unit cost required and above zero; received date not in the future and not before the order was raised; expiry required for Dairy, Vegetables, Fruits, Meat & Poultry and Seafood, never before the received date and never already past; lot, invoice number and notes optional with length limits; one idempotency key per submission.
+
+### Decisions applied (AJ, 2026-10-15; migration `20261015200000_batch_cost_and_expiry_rules`)
+1. **Over-delivery** stays refused. The explicit route is an authorised extra on the receipt line: tick "Authorise the extra", give a reason, and the actual cost is recorded with it (`GoodsReceiptLine.extraQuantity` / `extraReason`, shown in the receipt history). Amending the ordered quantity is not built; the extra can only be authorised while the order is still open (Ordered or Partly received).
+2. **Zero cost** is allowed as confirmed free goods and needs a reason (`costNote`, on the receipt line and the batch). Negative is refused. `StockBatch.unitCost` null = unknown, 0 = confirmed free, above 0 = a confirmed cost. A receipt always has a cost; unknown exists only on opening stock, manual Stock In and positive adjustments. Free goods do not reset the item's own cost.
+3. **Opening batches** no longer carry the item's cost: the migration set every opening batch's cost to unknown, and `createInventoryItem` only uses a cost passed with the opening stock (the Excel/CSV import's cost column counts). A batch with an unknown cost can be confirmed once (Batches -> Confirm cost: a cost, or 0 with a reason); a known cost is never changed (`confirmBatchCost`). No historical cost or expiry date is invented.
+4. **Tracks expiry** is an item setting (`Inventory.tracksExpiry`). The category only supplies the default when an item is created (the form's switch follows the category until it is touched); receiving, manual Stock In and positive adjustments require an expiry date for items that track it, and never accept one that has passed. The migration turned the setting on for the categories that were already enforced. Opening and other legacy batches keep their empty expiry and are flagged "Not recorded".
+5. **Manual Stock In** (Stock Movement drawer): unit cost (0 needs a reason) or "Cost unknown" must be chosen, expiry date (design-system calendar) when required, optional lot, note. Each Stock In writes one ledger row and one batch (and an allocation linking them); the quantity is counted once. A positive adjustment starts a batch with an unknown cost.
+6. **Valuation** is one calculation (`valuation-math.ts`, loaded by `valuation.ts`): remaining quantity x batch cost over known-cost batches, unknown-cost quantity reported apart, flagged incomplete while any exists. The Dashboard's Inventory Status card, the Inventory page and the Inventory report (also the Ops view and the Excel export) all use it. The report's purchases and supplier balances value received stock at the price on each receipt.
+7. **Historical consumption** is not backfilled. A movement with no batch allocation has an unknown cost; the report leaves it out of the actual-cost totals, counts it, and shows an estimate at today's item cost separately, labelled as an estimate and in no total.
+
+### Limitations and open points
+- Amending an order's quantity is not built (only the authorised extra).
+- Recipe cost per serving (a planning figure, not actual consumption) still falls back to the item's own cost when an ingredient has no usable batch cost; it is not an actual-cost figure.
+- The category list that supplies the Tracks expiry default is fixed in code (`EXPIRY_DEFAULT_CATEGORIES`).
+- Supplier balances and purchase totals for orders received before receipts were recorded still use the order line's own cost.

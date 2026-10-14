@@ -354,7 +354,7 @@ test("an expense can be set to repeat: it books its due dates, and can be change
 
 test("Profitability filters orders by event date: presets and a custom range", async ({ page }) => {
   test.setTimeout(180_000);
-  const email = `e2e-range-${Date.now()}@example.test`;
+  const email = `e2e-expense-range-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   await signUpCaterer(page, email, { firstName: "Range", lastName: "Tester", phone: "9800000082" });
   await seedOrderForBilling(email, 20000); // its event is 10 days from now

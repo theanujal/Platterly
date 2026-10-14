@@ -46,9 +46,15 @@ beforeAll(async () => {
 
   // --- inventory, purchases, payables, expenses ---
   const rice = await prisma.inventory.create({ data: { organizationId: a.org, name: "Rice", category: "Grains", unit: "kg", stockCount: 10, costPerUnit: 60, lowStockThreshold: 20 } });
-  await prisma.inventory.create({ data: { organizationId: b.org, name: "B Saffron", category: "Spices", unit: "g", stockCount: 1000, costPerUnit: 500 } });
-  await prisma.inventoryTransaction.create({ data: { inventoryId: rice.id, type: "STOCK_IN", quantity: 10 } });
-  await prisma.inventoryTransaction.create({ data: { inventoryId: rice.id, type: "STOCK_OUT", quantity: 2, orderId: order.id } });
+  const saffron = await prisma.inventory.create({ data: { organizationId: b.org, name: "B Saffron", category: "Spices", unit: "g", stockCount: 1000, costPerUnit: 500 } });
+  // Stock is valued from batches: 10 kg of rice at a confirmed 60, and B's saffron at 500 (so it only shows in the all-kitchens view).
+  const riceBatch = await prisma.stockBatch.create({ data: { organizationId: a.org, inventoryId: rice.id, source: "RECEIPT", originalQuantity: 10, remainingQuantity: 10, unitCost: 60, receivedDate: new Date() } });
+  await prisma.stockBatch.create({ data: { organizationId: b.org, inventoryId: saffron.id, source: "RECEIPT", originalQuantity: 1000, remainingQuantity: 1000, unitCost: 500, receivedDate: new Date() } });
+  // Movements are costed from their batch allocations (actual cost), never from the item's current cost.
+  const stockIn = await prisma.inventoryTransaction.create({ data: { inventoryId: rice.id, type: "STOCK_IN", quantity: 10 } });
+  await prisma.stockAllocation.create({ data: { transactionId: stockIn.id, batchId: riceBatch.id, quantity: 10, unitCost: 60 } });
+  const stockOut = await prisma.inventoryTransaction.create({ data: { inventoryId: rice.id, type: "STOCK_OUT", quantity: 2, orderId: order.id } });
+  await prisma.stockAllocation.create({ data: { transactionId: stockOut.id, batchId: riceBatch.id, quantity: 2, unitCost: 60 } });
   const supplier = await prisma.supplier.create({ data: { organizationId: a.org, name: "Anna Traders" } });
   const po = await prisma.purchaseOrder.create({ data: { organizationId: a.org, number: "PO-1", supplierId: supplier.id, status: "RECEIVED", orderedAt: new Date(), receivedAt: new Date() } });
   await prisma.purchaseOrderItem.create({ data: { purchaseOrderId: po.id, inventoryId: rice.id, quantity: 10, receivedQuantity: 10, unitCost: 100 } });
@@ -86,11 +92,22 @@ describe("Menu report", () => {
 describe("Inventory report", () => {
   it("values this kitchen's stock, finds low stock, totals movements and purchases", async () => {
     const r = await loadInventoryReport({ organizationId: a.org }, none);
-    expect(r.stock.totalValue).toBe(600);
+    expect(r.stock).toMatchObject({ totalValue: 600, incomplete: false, itemsWithUnknownCost: 0 });
     expect(r.stock.lowStock.map((i) => i.name)).toEqual(["Rice"]);
-    expect(r.movements).toMatchObject({ movements: 2, stockInValue: 600, stockOutValue: 120, takenForOrders: 1 });
+    expect(r.movements).toMatchObject({ movements: 2, stockInValue: 600, stockOutValue: 120, takenForOrders: 1, unknownCostMovements: 0 });
     expect(r.purchases).toMatchObject({ orderedValue: 1000, receivedValue: 1000, stillToReceive: 0, orders: 1 });
     expect(r.purchases.bySupplier[0].supplierName).toBe("Anna Traders");
+  });
+  it("stock with no known cost is reported apart and the valuation is incomplete; a movement with no allocation is unknown, not backfilled", async () => {
+    const item = await prisma.inventory.create({ data: { organizationId: a.org, name: "Mystery Flour", category: "Grains", unit: "kg", stockCount: 4, costPerUnit: 999 } });
+    await prisma.stockBatch.create({ data: { organizationId: a.org, inventoryId: item.id, source: "OPENING", originalQuantity: 4, remainingQuantity: 4, unitCost: null } });
+    await prisma.inventoryTransaction.create({ data: { inventoryId: item.id, type: "STOCK_OUT", quantity: 3 } }); // no allocation: it predates batches
+    const r = await loadInventoryReport({ organizationId: a.org }, none);
+    expect(r.stock.totalValue).toBe(600); // the item's own 999 is not used to value its unknown-cost stock
+    expect(r.stock).toMatchObject({ incomplete: true, itemsWithUnknownCost: 1 });
+    expect(r.movements.stockOutValue).toBe(120); // the unallocated 3 kg is not costed at 999
+    expect(r.movements).toMatchObject({ unknownCostMovements: 1, estimatedUnknownValue: 2997 });
+    await prisma.inventory.delete({ where: { id: item.id } });
   });
   it("the Super Admin view adds every kitchen", async () => {
     const all = await loadInventoryReport({ all: true }, none);

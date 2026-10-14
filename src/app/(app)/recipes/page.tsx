@@ -3,6 +3,7 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { listMenuItems } from "@/modules/menus/item";
 import { listRecipes } from "@/modules/recipes/recipe";
 import { listInventoryItems } from "@/modules/inventory/inventory";
+import { currentUnitCosts } from "@/modules/inventory/batches";
 import { costPerServing } from "@/modules/recipes/recipe-math";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { RecipesBrowser, type RecipeRow } from "./_components/recipes-browser";
@@ -24,11 +25,13 @@ export default async function RecipesPage() {
     hasPermission({ menus: ["edit"] }, organizationId),
   ]);
 
+  // Each ingredient is costed at the batch the kitchen would use next (oldest first), falling back to the item's own cost.
+  const unitCost = await currentUnitCosts(organizationId, inventory.map((i) => i.id));
   const recipeByItem = new Map(recipes.map((r) => [r.menuItemId, r]));
   const rows: RecipeRow[] = items.map((item) => {
     const recipe = recipeByItem.get(item.id);
     const lines = recipe
-      ? recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), costPerUnit: i.inventory.costPerUnit === null ? null : Number(i.inventory.costPerUnit) }))
+      ? recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), costPerUnit: unitCost.get(i.inventoryId) ?? null }))
       : [];
     return {
       id: item.id,
@@ -44,7 +47,7 @@ export default async function RecipesPage() {
         : null,
     };
   });
-  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: unitCost.get(i.id) ?? null }));
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">

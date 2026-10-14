@@ -1,4 +1,4 @@
-import { eventAt, orderAt, sharedOrAt } from "@/modules/locations/scope";
+import { eventAt, orderAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { todayStartInZone } from "@/lib/time/timezone";
@@ -148,7 +148,6 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     allCount,
     mealEntries,
     inventory,
-    expiringSoon,
     lowStockItems,
     orderCountsByDay,
   ] = await Promise.all([
@@ -185,7 +184,6 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
       select: { mealType: true, order: { select: { totalParticipants: true, adultCount: true, childBelow5Count: true, child5To10Count: true } } },
     }),
     getInventoryOverviewStats(organizationId, locationId),
-    prisma.inventory.count({ where: { organizationId, ...sharedOrAt(locationId), expiryDate: { gte: now, lte: new Date(now.getTime() + 7 * DAY_MS) } } }),
     listLowStockItems(organizationId, locationId),
     getOrderCountsByDay(organizationId, dateKey(calendarStart), dateKey(calendarEnd), locationId),
   ]);
@@ -252,7 +250,7 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     inventory: {
       lowStock: inventory.lowStock,
       expired: inventory.expired,
-      expiringSoon,
+      expiringSoon: inventory.expiringSoon,
       keyItems: lowStockItems.slice(0, 3).map((item) => ({ id: item.id, name: item.name, stock: Number(item.stockCount), unit: item.unit })),
     },
   };

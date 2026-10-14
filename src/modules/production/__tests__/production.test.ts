@@ -110,7 +110,7 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     expect(Number(row.quantity)).toBe(10);
     expect(row.note).toContain("short by 12");
 
-    await recordStockTransaction(org.id, paneer.id, { type: "STOCK_IN", quantity: 30 }, actor.id);
+    await recordStockTransaction(org.id, paneer.id, { type: "STOCK_IN", quantity: 30, costUnknown: true, expiryDate: new Date(Date.now() + 30 * 86400000) }, actor.id);
     const topUp = await sendOrderItems(org.id, order.id, actor.id);
     expect(topUp.shortages).toEqual([]);
     expect((await getOrderInventory(org.id, order.id))?.lines[0]).toMatchObject({ sent: 22, remaining: 0 });
@@ -209,7 +209,7 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     expect(plan.shortfalls).toEqual([expect.objectContaining({ name: "Paneer", needed: 22, inStock: 10, short: 12 })]);
     expect(plan.missingRecipe).toEqual(["Salad"]);
 
-    await recordStockTransaction(a.org.id, a.paneer.id, { type: "STOCK_IN", quantity: 20 }, a.actor.id);
+    await recordStockTransaction(a.org.id, a.paneer.id, { type: "STOCK_IN", quantity: 20, costUnknown: true, expiryDate: new Date(Date.now() + 30 * 86400000) }, a.actor.id);
     expect((await getProductionPlan(a.org.id)).shortfalls).toEqual([]);
 
     const far = await setup(10, 100, new Date(Date.now() + 30 * 86400000));

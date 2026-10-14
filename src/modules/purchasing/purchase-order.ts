@@ -4,7 +4,9 @@ import { audit } from "@/lib/audit/audit";
 import { checkMoney, checkText } from "@/lib/validation";
 import type { PurchaseOrderStatus } from "@/generated/prisma/enums";
 import { sharedOrAt } from "@/modules/locations/scope";
+import { createBatch, todayDate } from "@/modules/inventory/batches";
 import { remainingQuantity, statusAfterReceipt } from "./po-math";
+import { checkReceiptHeader, checkReceiptLine } from "./receipt-rules";
 
 export class PurchaseOrderError extends Error {}
 
@@ -21,7 +23,7 @@ const MAX_LINES = 100;
 
 const poInclude = {
   supplier: { select: { id: true, name: true, phone: true } },
-  items: { include: { inventory: { select: { id: true, name: true, unit: true, stockCount: true } } }, orderBy: { inventory: { name: "asc" as const } } },
+  items: { include: { inventory: { select: { id: true, name: true, unit: true, stockCount: true, category: true, costPerUnit: true, tracksExpiry: true } } }, orderBy: { inventory: { name: "asc" as const } } },
 };
 
 /** `existing` is the order being edited: its own lines stay allowed even if the supplier mapping has changed since. */
@@ -135,42 +137,109 @@ export async function deletePurchaseOrder(organizationId: string, id: string, ac
   await audit({ organizationId, actorUserId, action: "purchase_order.delete", recordType: "PurchaseOrder", recordId: id, before: { number: po.number, status: po.status } });
 }
 
+export interface ReceiptInput {
+  /** Made when the Receive drawer opens; a retry of the same submission carries the same key and adds nothing. */
+  idempotencyKey: string;
+  receivedDate: Date;
+  invoiceNumber?: string | null;
+  notes?: string | null;
+  lines: {
+    itemId: string;
+    quantity: number;
+    unitCost: number;
+    /** Why the cost is 0 (free sample, complimentary goods). Required for a zero cost. */
+    costNote?: string | null;
+    /** Authorises the part of `quantity` above what is still to arrive, with the reason. Without it, over-delivery is refused. */
+    extraReason?: string | null;
+    expiryDate?: Date | null;
+    lotNumber?: string | null;
+  }[];
+}
+
 /**
- * Books what arrived: a real STOCK_IN ledger row per line (so stock, low-stock alerts and the history all agree),
- * the received quantity on the line, and the order's new status. Nothing above what is still outstanding is accepted.
+ * Books a delivery against an order (see receipt-rules.ts for the rules): one receipt, a line and a new stock batch per
+ * item received (so different costs or expiry dates stay separate), the accepted quantity added to stock, a STOCK_IN row in the
+ * ledger, and the order's new status. All of it is one transaction, and a receipt with the same idempotency key is booked
+ * only once. Receipts and batches are never edited afterwards, so earlier prices and expiry dates stay as they were.
  */
-export async function receiveStock(organizationId: string, id: string, lines: { itemId: string; quantity: number }[], actorUserId: string) {
-  const entries = lines.filter((l) => l.quantity > 0);
+export async function receiveStock(organizationId: string, id: string, input: ReceiptInput, actorUserId: string) {
+  const entries = input.lines.filter((l) => l.quantity > 0);
   if (entries.length === 0) throw new PurchaseOrderError("Enter a quantity for at least one item.");
   if (new Set(entries.map((l) => l.itemId)).size !== entries.length) throw new PurchaseOrderError("Each item can be listed only once.");
+  const today = todayDate();
 
-  const result = await prisma.$transaction(async (tx) => {
-    const po = await tx.purchaseOrder.findFirst({ where: { id, organizationId }, include: { items: true } });
-    if (!po) throw new PurchaseOrderError("Purchase order not found.");
-    if (po.status !== "ORDERED" && po.status !== "PARTIALLY_RECEIVED") throw new PurchaseOrderError("Stock can only be received on an order that has been placed.");
+  let result: { number: string; status: PurchaseOrderStatus; receiptId: string; duplicate: boolean };
+  try {
+    result = await prisma.$transaction(async (tx) => {
+      const po = await tx.purchaseOrder.findFirst({ where: { id, organizationId }, include: { items: { include: { inventory: { select: { name: true, tracksExpiry: true } } } } } });
+      if (!po) throw new PurchaseOrderError("Purchase order not found.");
+      // A retry of a receipt that already went through: nothing is added, and the caller is told it is done.
+      const done = await tx.goodsReceipt.findUnique({ where: { purchaseOrderId_idempotencyKey: { purchaseOrderId: id, idempotencyKey: input.idempotencyKey } }, select: { id: true } });
+      if (done) return { number: po.number, status: po.status, receiptId: done.id, duplicate: true };
+      if (po.status !== "ORDERED" && po.status !== "PARTIALLY_RECEIVED") throw new PurchaseOrderError("Stock can only be received on an order that has been placed.");
+      checkReceiptHeader({ receivedDate: input.receivedDate, today, orderPlacedAt: po.createdAt, invoiceNumber: input.invoiceNumber, notes: input.notes, idempotencyKey: input.idempotencyKey });
 
-    for (const entry of entries) {
-      const item = po.items.find((i) => i.id === entry.itemId);
-      if (!item) throw new PurchaseOrderError("That item is not on this order.");
-      const remaining = remainingQuantity({ quantity: Number(item.quantity), receivedQuantity: Number(item.receivedQuantity), unitCost: Number(item.unitCost) });
-      if (entry.quantity > remaining) throw new PurchaseOrderError(`Only ${remaining} is still to arrive for one of the items.`);
-      // The check above can be stale if two receipts run at once, so the write itself only succeeds while enough is still outstanding.
-      const booked = await tx.purchaseOrderItem.updateMany({
-        where: { id: item.id, receivedQuantity: { lte: Math.round((Number(item.quantity) - entry.quantity) * 1000) / 1000 } },
-        data: { receivedQuantity: { increment: entry.quantity } },
+      const receipt = await tx.goodsReceipt.create({
+        data: { organizationId, purchaseOrderId: id, receivedDate: input.receivedDate, invoiceNumber: input.invoiceNumber?.trim() || null, notes: input.notes?.trim() || null, idempotencyKey: input.idempotencyKey, createdByUserId: actorUserId },
       });
-      if (booked.count === 0) throw new PurchaseOrderError("This item has just been received by someone else. Refresh and try again.");
-      await tx.inventory.update({ where: { id: item.inventoryId }, data: { stockCount: { increment: entry.quantity } } });
-      await tx.inventoryTransaction.create({ data: { inventoryId: item.inventoryId, type: "STOCK_IN", quantity: entry.quantity, note: `Received on ${po.number}`, actorUserId } });
+
+      for (const entry of entries) {
+        const item = po.items.find((i) => i.id === entry.itemId);
+        if (!item) throw new PurchaseOrderError("That item is not on this order.");
+        const remaining = remainingQuantity({ quantity: Number(item.quantity), receivedQuantity: Number(item.receivedQuantity), unitCost: Number(item.unitCost) });
+        checkReceiptLine({ name: item.inventory.name, tracksExpiry: item.inventory.tracksExpiry, remaining, quantity: entry.quantity, unitCost: entry.unitCost, costNote: entry.costNote, extraReason: entry.extraReason, expiryDate: entry.expiryDate, lotNumber: entry.lotNumber, receivedDate: input.receivedDate, today });
+        const extra = Math.max(0, Math.round((entry.quantity - remaining) * 1000) / 1000);
+        // The check above can be stale if two receipts run at once, so the write itself only succeeds while nothing else has been received since it was read.
+        const booked = await tx.purchaseOrderItem.updateMany({ where: { id: item.id, receivedQuantity: item.receivedQuantity }, data: { receivedQuantity: { increment: entry.quantity } } });
+        if (booked.count === 0) throw new PurchaseOrderError("This item has just been received by someone else. Refresh and try again.");
+
+        const line = await tx.goodsReceiptLine.create({
+          data: {
+            receiptId: receipt.id,
+            purchaseOrderItemId: item.id,
+            inventoryId: item.inventoryId,
+            quantity: entry.quantity,
+            unitCost: entry.unitCost,
+            costNote: entry.unitCost === 0 ? entry.costNote?.trim() || null : null,
+            extraQuantity: extra,
+            extraReason: extra > 0 ? entry.extraReason?.trim() || null : null,
+            expiryDate: entry.expiryDate ?? null,
+            lotNumber: entry.lotNumber?.trim() || null,
+          },
+        });
+        const batch = await createBatch(tx, {
+          organizationId,
+          inventoryId: item.inventoryId,
+          source: "RECEIPT",
+          quantity: entry.quantity,
+          unitCost: entry.unitCost,
+          receivedDate: input.receivedDate,
+          expiryDate: entry.expiryDate ?? null,
+          lotNumber: entry.lotNumber,
+          costNote: entry.unitCost === 0 ? entry.costNote?.trim() || null : null,
+          receiptLineId: line.id,
+        });
+        const row = await tx.inventoryTransaction.create({ data: { inventoryId: item.inventoryId, type: "STOCK_IN", quantity: entry.quantity, note: `Received on ${po.number}`, actorUserId } });
+        await tx.stockAllocation.create({ data: { transactionId: row.id, batchId: batch.id, quantity: entry.quantity, unitCost: entry.unitCost } });
+        // The item's own cost follows the latest purchase price (the batches keep every earlier price); free goods do not reset it to 0.
+        if (entry.unitCost > 0) await tx.inventory.update({ where: { id: item.inventoryId }, data: { costPerUnit: entry.unitCost } });
+      }
+
+      const fresh = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: id } });
+      const status = statusAfterReceipt(fresh.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) })));
+      await tx.purchaseOrder.update({ where: { id }, data: { status, receivedAt: status === "RECEIVED" ? new Date() : null } });
+      return { number: po.number, status, receiptId: receipt.id, duplicate: false };
+    });
+  } catch (error) {
+    // Two identical submissions at the same moment: the loser hits the unique key and is told the receipt is already in.
+    if ((error as { code?: string }).code === "P2002") {
+      const existing = await prisma.goodsReceipt.findUnique({ where: { purchaseOrderId_idempotencyKey: { purchaseOrderId: id, idempotencyKey: input.idempotencyKey } }, select: { id: true, purchaseOrder: { select: { number: true, status: true } } } });
+      if (existing) return { number: existing.purchaseOrder.number, status: existing.purchaseOrder.status, receiptId: existing.id, duplicate: true };
     }
+    throw error;
+  }
 
-    const fresh = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: id } });
-    const status = statusAfterReceipt(fresh.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) })));
-    await tx.purchaseOrder.update({ where: { id }, data: { status, receivedAt: status === "RECEIVED" ? new Date() : null } });
-    return { number: po.number, status };
-  });
-
-  await audit({ organizationId, actorUserId, action: "purchase_order.receive", recordType: "PurchaseOrder", recordId: id, after: { status: result.status, lines: entries.length } });
+  if (!result.duplicate) await audit({ organizationId, actorUserId, action: "purchase_order.receive", recordType: "PurchaseOrder", recordId: id, after: { status: result.status, lines: entries.length, receiptId: result.receiptId } });
   return result;
 }
 
@@ -183,7 +252,7 @@ export async function listPurchaseOrders(organizationId: string, status?: Purcha
   return prisma.purchaseOrder.findMany({
     where: { organizationId, ...sharedOrAt(locationId), ...(status ? { status } : {}), ...(supplierId ? { supplierId } : {}) },
     orderBy: { createdAt: "desc" },
-    include: { supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true } } },
+    include: { supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true, receiptLines: { select: { quantity: true, unitCost: true } } } } },
   });
 }
 
@@ -195,12 +264,37 @@ export async function suggestReorder(organizationId: string, locationId?: string
     .map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: Number(i.stockCount), suggested: Math.max(1, Math.ceil(Number(i.lowStockThreshold) * 2 - Number(i.stockCount))), costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
 }
 
-/** What has been received on an order, from the stock ledger ("Received on PO-0001" rows), newest first. */
-export async function listReceipts(organizationId: string, po: { number: string; items: { inventoryId: string }[] }) {
-  const rows = await prisma.inventoryTransaction.findMany({
-    where: { type: "STOCK_IN", note: `Received on ${po.number}`, inventoryId: { in: po.items.map((i) => i.inventoryId) }, inventory: { organizationId } },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, quantity: true, createdAt: true, inventory: { select: { name: true, unit: true } } },
+/** Receipts booked against an order, newest first, each with its lines (actual cost, expiry, lot). */
+export async function listReceipts(organizationId: string, purchaseOrderId: string) {
+  const receipts = await prisma.goodsReceipt.findMany({
+    where: { organizationId, purchaseOrderId },
+    orderBy: [{ receivedDate: "desc" }, { createdAt: "desc" }],
+    include: { lines: { include: { purchaseOrderItem: { select: { inventory: { select: { name: true, unit: true } } } } } } },
   });
-  return rows.map((r) => ({ id: r.id, name: r.inventory.name, unit: r.inventory.unit, quantity: Number(r.quantity), at: r.createdAt }));
+  return receipts.map((r) => ({
+    id: r.id,
+    receivedDate: r.receivedDate,
+    invoiceNumber: r.invoiceNumber,
+    notes: r.notes,
+    createdAt: r.createdAt,
+    lines: r.lines.map((l) => ({ id: l.id, name: l.purchaseOrderItem.inventory.name, unit: l.purchaseOrderItem.inventory.unit, quantity: Number(l.quantity), unitCost: Number(l.unitCost), costNote: l.costNote, extraQuantity: Number(l.extraQuantity), extraReason: l.extraReason, expiryDate: l.expiryDate, lotNumber: l.lotNumber })),
+  }));
+}
+
+/**
+ * What an order's received stock cost: the actual receipt prices, plus stock received before receipts were recorded
+ * (valued at the line's own unit cost, as before). `legacyQuantity` is that earlier stock, which has no price of its own.
+ */
+export async function receivedValueOf(purchaseOrderId: string) {
+  const items = await prisma.purchaseOrderItem.findMany({ where: { purchaseOrderId }, select: { id: true, receivedQuantity: true, unitCost: true, receiptLines: { select: { quantity: true, unitCost: true } } } });
+  let value = 0;
+  let legacyQuantity = 0;
+  for (const item of items) {
+    const fromReceipts = item.receiptLines.reduce((sum, l) => sum + Number(l.quantity) * Number(l.unitCost), 0);
+    const receiptQty = item.receiptLines.reduce((sum, l) => sum + Number(l.quantity), 0);
+    const legacy = Math.max(0, Math.round((Number(item.receivedQuantity) - receiptQty) * 1000) / 1000);
+    legacyQuantity += legacy;
+    value += fromReceipts + legacy * Number(item.unitCost);
+  }
+  return { value: Math.round((value + Number.EPSILON) * 100) / 100, legacyQuantity: Math.round(legacyQuantity * 1000) / 1000 };
 }

@@ -14,10 +14,13 @@ export async function editInventoryItem(page: Page, name: string, details: { cos
 }
 
 /** Adds opening-style stock the only way the app allows: a Stock In entry. */
-export async function stockIn(page: Page, name: string, quantity: string) {
+export async function stockIn(page: Page, name: string, quantity: string, cost?: string) {
   await page.getByRole("button", { name: `Record stock movement for ${name}` }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel(/Quantity/).fill(quantity);
+  // A Stock In says what it cost: a cost, or explicitly unknown (the item's own cost is never copied in)
+  if (cost === undefined) await dialog.getByRole("checkbox", { name: /Cost unknown/ }).click();
+  else await dialog.getByLabel(/Unit cost/).fill(cost);
   await dialog.getByRole("button", { name: "Record movement" }).click();
   await dialog.waitFor({ state: "hidden" });
 }

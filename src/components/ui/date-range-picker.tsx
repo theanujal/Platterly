@@ -44,6 +44,10 @@ interface DateRangePickerProps {
   className?: string;
   /** "YYYY-MM-DD" — days before this are shown greyed out and can't be picked (no backdated orders). Omit to allow any day. */
   minDate?: string;
+  /** "YYYY-MM-DD" — days after this are greyed out and can't be picked (for example a received date cannot be in the future). */
+  maxDate?: string;
+  /** Names the button for screen readers when the visible label is shared by several pickers on one form. */
+  ariaLabel?: string;
   /**
    * Optional busy-ness data (Chunk 13 Group 13.1): given a "YYYY-MM-DD"
    * window, resolves how many orders fall on each day. When provided, dates
@@ -64,7 +68,7 @@ interface DateRangePickerProps {
  * `minDate` (Create Order does, so nothing can be booked in the past); any
  * other rule stays a message-based validation next to the field.
  */
-export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, minDate, loadOrderCounts, single }: DateRangePickerProps) {
+export function DateRangePicker({ id, startDate, endDate, onChange, placeholder = "Select event dates", className, minDate, maxDate, ariaLabel, loadOrderCounts, single }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingStart, setPendingStart] = useState<string | null>(null);
   const [viewMonth, setViewMonth] = useState(() => (startDate ? parseIsoDate(startDate) : new Date()));
@@ -136,6 +140,7 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         id={id}
+        aria-label={ariaLabel}
         type="button"
         className={cn(
           "flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-transparent px-3 text-left text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -209,7 +214,7 @@ export function DateRangePicker({ id, startDate, endDate, onChange, placeholder 
             // own legend colour; every other busy date gets a line instead.
             // A selected endpoint is already filled, so it shows no line.
             const todayFill = !inRange && isToday && band;
-            const isPastMin = Boolean(minDate && iso < minDate);
+            const isPastMin = Boolean((minDate && iso < minDate) || (maxDate && iso > maxDate));
             return (
               <button
                 key={iso}

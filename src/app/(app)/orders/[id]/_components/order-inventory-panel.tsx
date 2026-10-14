@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { returnOrderItemAction, sendOrderItemsAction } from "../../../kitchen-dashboard/production/actions";
+import { formatRupees } from "@/components/catalog/catalog-display";
 import { cn } from "cn";
 
 export interface OrderInventoryLineData {
@@ -24,6 +25,8 @@ export interface OrderInventoryLineData {
   inStock: number;
   short: number;
   forDishes: string[];
+  sentCost: number;
+  sentCostUnknown: number;
 }
 
 export interface OrderInventoryData {
@@ -216,6 +219,8 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                       <span className="truncate text-sm font-medium">{line.name}</span>
                       <span className="text-xs text-muted-foreground">
                         {num(line.sent)} {line.unit} sent
+                        {line.sent > 0 && line.sentCostUnknown < line.sent ? ` · ${formatRupees(line.sentCost)} at batch cost` : ""}
+                        {line.sentCostUnknown > 0 ? ` · cost of ${num(line.sentCostUnknown)} ${line.unit} unknown` : ""}
                       </span>
                     </span>
                     <span className="flex shrink-0 flex-col items-center rounded-lg bg-muted px-3 py-1.5">
@@ -230,6 +235,12 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                   </li>
                 ))}
               </ul>
+            )}
+            {sentLines.length > 0 && (
+              <p className="border-t border-border pt-3 text-sm text-muted-foreground" data-testid="sent-cost">
+                Cost of items sent (batch cost, oldest first): <span className="font-semibold text-foreground">{formatRupees(sentLines.reduce((sum, l) => sum + l.sentCost, 0))}</span>
+                {sentLines.some((l) => l.sentCostUnknown > 0) ? " — leaves out stock whose cost is not known." : ""}
+              </p>
             )}
           </CardContent>
         </Card>

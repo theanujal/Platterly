@@ -3,6 +3,7 @@
 import { assertInventoryItemAtMyLocation, getActiveLocation, myHeldLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
   createInventoryItem,
@@ -12,6 +13,7 @@ import {
   type InventoryItemInput,
 } from "@/modules/inventory/inventory";
 import { lowStockError } from "@/modules/inventory/options";
+import { confirmBatchCost, listBatches, setBatchStatus, stockPosition } from "@/modules/inventory/batches";
 import { importInventoryItems } from "@/modules/inventory/import/import";
 import { addIngredientsFromCatalog } from "@/modules/inventory/catalog/catalog";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
@@ -70,6 +72,8 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     // Only sent while multiple locations are on; absent leaves the item as it is.
     kitchenId: formData.has("kitchenId") ? (stringField(formData, "kitchenId") ?? null) : undefined,
     expiryDate: dateField(formData, "expiryDate"),
+    // Left out of the form data = the category's default on create, unchanged on update.
+    tracksExpiry: formData.has("tracksExpiry") ? formData.get("tracksExpiry") === "true" : undefined,
   };
 }
 
@@ -153,7 +157,17 @@ export async function recordStockTransactionAction(
     await recordStockTransaction(
       organizationId,
       inventoryId,
-      { type, quantity, note: stringField(formData, "note") },
+      {
+        type,
+        quantity,
+        note: stringField(formData, "note"),
+        // Stock In says what it cost, or that the cost is unknown; the item's own cost is never copied in.
+        unitCost: numberField(formData, "unitCost"),
+        costUnknown: formData.get("costUnknown") === "true",
+        costNote: stringField(formData, "costNote"),
+        expiryDate: dateField(formData, "expiryDate") ?? null,
+        lotNumber: stringField(formData, "lotNumber"),
+      },
       session.user.id,
     );
   } catch (error) {
@@ -201,4 +215,77 @@ export async function addIngredientsAction(picks: { id: string; unit: string }[]
   } catch (error) {
     return { ok: false, error: userMessage(error, "Could not add those ingredients.") };
   }
+}
+
+export interface BatchRow {
+  id: string;
+  source: "OPENING" | "RECEIPT" | "STOCK_IN" | "ADJUSTMENT";
+  state: "usable" | "expired" | "quarantined" | "empty";
+  expiringSoon: boolean;
+  fifoRank: number | null;
+  originalQuantity: number;
+  remainingQuantity: number;
+  unitCost: number | null;
+  /** YYYY-MM-DD, or null when never recorded. */
+  receivedDate: string | null;
+  expiryDate: string | null;
+  lotNumber: string | null;
+  costNote: string | null;
+  expiryMissing: boolean;
+}
+
+export type BatchesResult =
+  | { ok: true; batches: BatchRow[]; recommendedBatchId: string | null; position: { stockCount: number; usable: number; expired: number; quarantined: number; unbatched: number } }
+  | { ok: false; error: string };
+
+const isoDay = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
+/** The batches of one item for the Batches drawer. */
+export async function listBatchesAction(inventoryId: string): Promise<BatchesResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ inventory: ["view"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
+  try {
+    const [{ batches, recommendedBatchId }, position] = await Promise.all([listBatches(organizationId, inventoryId), stockPosition(prisma, inventoryId)]);
+    return {
+      ok: true,
+      recommendedBatchId,
+      position,
+      batches: batches.map((b) => ({ id: b.id, source: b.source, state: b.state, expiringSoon: b.expiringSoon, fifoRank: b.fifoRank, originalQuantity: b.originalQuantity, remainingQuantity: b.remainingQuantity, unitCost: b.unitCost, receivedDate: isoDay(b.receivedDate), expiryDate: isoDay(b.expiryDate), lotNumber: b.lotNumber, costNote: b.costNote, expiryMissing: b.expiryMissing })),
+    };
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Something went wrong.") };
+  }
+}
+
+/** Holds a batch back from use (quarantine) or releases it. */
+export async function setBatchStatusAction(inventoryId: string, batchId: string, status: "ACTIVE" | "QUARANTINED"): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
+  try {
+    await setBatchStatus(organizationId, batchId, status, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/inventory");
+  revalidatePath("/dashboard");
+  revalidatePath("/recipes");
+  return { ok: true };
+}
+
+/** Confirms the cost of a batch whose cost is unknown (a cost above zero, or 0 with a reason for free goods). */
+export async function confirmBatchCostAction(inventoryId: string, batchId: string, unitCost: number, costNote: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ inventory: ["edit"] }, organizationId);
+  await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
+  try {
+    await confirmBatchCost(organizationId, batchId, { unitCost, costNote }, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/inventory");
+  revalidatePath("/dashboard");
+  revalidatePath("/recipes");
+  return { ok: true };
 }

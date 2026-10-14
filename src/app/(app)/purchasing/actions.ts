@@ -99,12 +99,35 @@ export async function deletePurchaseOrderAction(id: string): Promise<ActionResul
   return { ok: true };
 }
 
-export async function receiveStockAction(id: string, lines: { itemId: string; quantity: number }[]): Promise<ActionResult> {
+export interface ReceiptPayload {
+  /** Made when the drawer opens, so a retry of the same submission adds nothing. */
+  idempotencyKey: string;
+  /** YYYY-MM-DD. */
+  receivedDate: string;
+  invoiceNumber: string;
+  notes: string;
+  lines: { itemId: string; quantity: number; unitCost: number; costNote: string; extraReason: string; /** YYYY-MM-DD or empty. */ expiryDate: string; lotNumber: string }[];
+}
+
+const asDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00.000Z`) : new Date(Number.NaN));
+
+export async function receiveStockAction(id: string, payload: ReceiptPayload): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
   await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
-    await receiveStock(organizationId, id, lines, session.user.id);
+    await receiveStock(
+      organizationId,
+      id,
+      {
+        idempotencyKey: payload.idempotencyKey,
+        receivedDate: asDate(payload.receivedDate),
+        invoiceNumber: payload.invoiceNumber,
+        notes: payload.notes,
+        lines: payload.lines.map((l) => ({ itemId: l.itemId, quantity: l.quantity, unitCost: l.unitCost, costNote: l.costNote, extraReason: l.extraReason, expiryDate: l.expiryDate ? asDate(l.expiryDate) : null, lotNumber: l.lotNumber })),
+      },
+      session.user.id,
+    );
   } catch (error) {
     return fail(error);
   }

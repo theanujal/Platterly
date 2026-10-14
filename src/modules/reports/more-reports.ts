@@ -4,6 +4,7 @@ import type { ExpenseCategoryValue } from "@/modules/expenses/profitability";
 import { VISIT_SOURCE_LABEL } from "@/modules/storefront-visits/visit-math";
 import { byLocation, dateFilter, orderScope, scopeWhere, type ReportRange, type ReportScope } from "./reports";
 import { sharedOrAt } from "@/modules/locations/scope";
+import { summariseValuation } from "@/modules/inventory/valuation-math";
 import { computeMenuReport } from "./menu-math";
 import { computeMovements, computePurchases, computeStock } from "./inventory-math";
 import { computeFinance, computePayables, computeReceivables } from "./finance-math";
@@ -41,45 +42,76 @@ export async function loadMenuReport(scope: ReportScope, range: ReportRange) {
 export async function loadInventoryReport(scope: ReportScope, range: ReportRange) {
   const when = dateFilter(range, "ist");
   const locationId = "organizationId" in scope ? scope.locationId : null;
+  const itemWhere = { ...scopeWhere(scope), ...sharedOrAt(locationId) };
   const [items, transactions, purchaseOrders] = await Promise.all([
-    prisma.inventory.findMany({ where: { ...scopeWhere(scope), ...sharedOrAt(locationId) }, select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, expiryDate: true } }),
+    prisma.inventory.findMany({
+      where: itemWhere,
+      select: { id: true, name: true, category: true, unit: true, stockCount: true, costPerUnit: true, lowStockThreshold: true, stockBatches: { where: { remainingQuantity: { gt: 0 } }, select: { remainingQuantity: true, unitCost: true, expiryDate: true } } },
+    }),
     prisma.inventoryTransaction.findMany({
-      where: { inventory: { ...scopeWhere(scope), ...sharedOrAt(locationId) }, ...(when ? { createdAt: when } : {}) },
-      select: { type: true, quantity: true, inventoryId: true, orderId: true, inventory: { select: { name: true, unit: true, costPerUnit: true } } },
+      where: { inventory: itemWhere, ...(when ? { createdAt: when } : {}) },
+      select: { type: true, quantity: true, inventoryId: true, orderId: true, inventory: { select: { name: true, unit: true, costPerUnit: true } }, allocations: { select: { quantity: true, unitCost: true } } },
     }),
     prisma.purchaseOrder.findMany({
       where: { ...scopeWhere(scope), ...sharedOrAt(locationId), status: { in: ["ORDERED", "PARTIALLY_RECEIVED", "RECEIVED"] }, ...(when ? { orderedAt: when } : {}) },
-      select: { id: true, supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true } } },
+      select: { id: true, supplier: { select: { id: true, name: true } }, items: { select: { quantity: true, receivedQuantity: true, unitCost: true, receiptLines: { select: { quantity: true, unitCost: true } } } } },
     }),
   ]);
+  // The same valuation the Dashboard and Inventory use: batch cost x remaining, unknown cost reported apart.
+  const valuation = summariseValuation(items.map((i) => ({ id: i.id, stockCount: Number(i.stockCount), batches: i.stockBatches.map((b) => ({ remainingQuantity: Number(b.remainingQuantity), unitCost: b.unitCost === null ? null : Number(b.unitCost) })) })));
   return {
     stock: computeStock(
-      items.map((i) => ({
-        id: i.id,
-        name: i.name,
-        category: i.category,
-        unit: i.unit,
-        stock: Number(i.stockCount),
-        costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit),
-        lowStockThreshold: i.lowStockThreshold === null ? null : Number(i.lowStockThreshold),
-        expiryDate: i.expiryDate,
-      })),
+      items.map((i) => {
+        const v = valuation.items.get(i.id)!;
+        const expiries = i.stockBatches.flatMap((b) => (b.expiryDate ? [b.expiryDate] : []));
+        return {
+          id: i.id,
+          name: i.name,
+          category: i.category,
+          unit: i.unit,
+          stock: Number(i.stockCount),
+          knownValue: v.knownValue,
+          unknownQuantity: v.unknownQuantity,
+          lowStockThreshold: i.lowStockThreshold === null ? null : Number(i.lowStockThreshold),
+          expiryDate: expiries.length > 0 ? new Date(Math.min(...expiries.map((d) => d.getTime()))) : null,
+        };
+      }),
     ),
     movements: computeMovements(
-      transactions.map((t) => ({
-        type: t.type,
-        quantity: Number(t.quantity),
-        inventoryId: t.inventoryId,
-        name: t.inventory.name,
-        unit: t.inventory.unit,
-        costPerUnit: t.inventory.costPerUnit === null ? null : Number(t.inventory.costPerUnit),
-        forOrder: t.orderId !== null,
-      })),
+      transactions.map((t) => {
+        const magnitude = Math.abs(Number(t.quantity));
+        const known = t.allocations.filter((a) => a.unitCost !== null);
+        const knownQuantity = known.reduce((sum, a) => sum + Number(a.quantity), 0);
+        return {
+          type: t.type,
+          quantity: Number(t.quantity),
+          inventoryId: t.inventoryId,
+          name: t.inventory.name,
+          unit: t.inventory.unit,
+          actualCost: known.reduce((sum, a) => sum + Number(a.quantity) * Number(a.unitCost), 0),
+          // No allocation = it happened before batches existed; its cost is not known and is not backfilled.
+          unknownQuantity: Math.max(0, Math.round((magnitude - knownQuantity) * 1000) / 1000),
+          estimateCostPerUnit: t.inventory.costPerUnit === null ? null : Number(t.inventory.costPerUnit),
+          forOrder: t.orderId !== null,
+        };
+      }),
     ),
     purchases: computePurchases(
       purchaseOrders.map((po) => ({
         id: po.id,
-        lines: po.items.map((l) => ({ supplierId: po.supplier.id, supplierName: po.supplier.name, quantity: Number(l.quantity), receivedQuantity: Number(l.receivedQuantity), unitCost: Number(l.unitCost) })),
+        lines: po.items.map((l) => {
+          const receiptQty = l.receiptLines.reduce((sum, r) => sum + Number(r.quantity), 0);
+          const legacy = Math.max(0, Number(l.receivedQuantity) - receiptQty);
+          return {
+            supplierId: po.supplier.id,
+            supplierName: po.supplier.name,
+            quantity: Number(l.quantity),
+            receivedQuantity: Number(l.receivedQuantity),
+            unitCost: Number(l.unitCost),
+            // The price actually paid on each receipt; stock received before receipts were recorded keeps the line's own cost.
+            receivedValue: l.receiptLines.reduce((sum, r) => sum + Number(r.quantity) * Number(r.unitCost), 0) + legacy * Number(l.unitCost),
+          };
+        }),
       })),
     ),
   };
@@ -99,14 +131,19 @@ export async function loadFinanceReport(scope: ReportScope, range: ReportRange, 
     }),
     prisma.purchaseOrder.findMany({
       where: { ...scopeWhere(scope), ...sharedOrAt("organizationId" in scope ? scope.locationId : null), status: { in: ["PARTIALLY_RECEIVED", "RECEIVED"] } },
-      select: { receivedAt: true, orderedAt: true, createdAt: true, supplier: { select: { id: true, name: true } }, items: { select: { receivedQuantity: true, unitCost: true } } },
+      select: { receivedAt: true, orderedAt: true, createdAt: true, supplier: { select: { id: true, name: true } }, items: { select: { receivedQuantity: true, unitCost: true, receiptLines: { select: { quantity: true, unitCost: true } } } } },
     }),
     prisma.supplierPayment.groupBy({ by: ["supplierId"], where: scopeWhere(scope), _sum: { amount: true } }),
   ]);
 
   const suppliers = new Map<string, { supplierName: string; received: { date: Date; value: number }[]; paid: number }>();
   for (const po of receipts) {
-    const value = po.items.reduce((sum, l) => sum + Number(l.receivedQuantity) * Number(l.unitCost), 0);
+    // Received stock is valued at the price paid on each receipt; older stock keeps its line cost.
+    const value = po.items.reduce((sum, l) => {
+      const receiptQty = l.receiptLines.reduce((q, r) => q + Number(r.quantity), 0);
+      const legacy = Math.max(0, Number(l.receivedQuantity) - receiptQty);
+      return sum + l.receiptLines.reduce((v, r) => v + Number(r.quantity) * Number(r.unitCost), 0) + legacy * Number(l.unitCost);
+    }, 0);
     if (value <= 0) continue;
     const entry = suppliers.get(po.supplier.id) ?? { supplierName: po.supplier.name, received: [], paid: 0 };
     entry.received.push({ date: po.receivedAt ?? po.orderedAt ?? po.createdAt, value });

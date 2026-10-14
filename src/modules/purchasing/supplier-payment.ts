@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { checkMoney, checkText } from "@/lib/validation";
 import type { PaymentMethod } from "@/generated/prisma/enums";
-import { outstandingBalance, receivedValue } from "./po-math";
+import { outstandingBalance } from "./po-math";
 
 export class SupplierPaymentError extends Error {}
 
@@ -37,10 +37,20 @@ export async function deleteSupplierPayment(organizationId: string, id: string, 
 /** Value received on this supplier's orders, what was paid, and the difference (what we owe). */
 export async function getSupplierBalance(organizationId: string, supplierId: string) {
   const [items, paid] = await Promise.all([
-    prisma.purchaseOrderItem.findMany({ where: { purchaseOrder: { organizationId, supplierId, status: { not: "CANCELLED" } } }, select: { quantity: true, receivedQuantity: true, unitCost: true } }),
+    prisma.purchaseOrderItem.findMany({
+      where: { purchaseOrder: { organizationId, supplierId, status: { not: "CANCELLED" } } },
+      select: { receivedQuantity: true, unitCost: true, receiptLines: { select: { quantity: true, unitCost: true } } },
+    }),
     prisma.supplierPayment.aggregate({ where: { organizationId, supplierId }, _sum: { amount: true } }),
   ]);
-  const received = receivedValue(items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) })));
+  // What arrived is valued at the price actually paid on each receipt; stock received before receipts were recorded keeps the order line's own cost.
+  let received = 0;
+  for (const i of items) {
+    const receiptQty = i.receiptLines.reduce((s, l) => s + Number(l.quantity), 0);
+    const legacy = Math.max(0, Number(i.receivedQuantity) - receiptQty);
+    received += i.receiptLines.reduce((s, l) => s + Number(l.quantity) * Number(l.unitCost), 0) + legacy * Number(i.unitCost);
+  }
+  received = Math.round((received + Number.EPSILON) * 100) / 100;
   const paidTotal = Number(paid._sum.amount ?? 0);
   return { received, paid: paidTotal, outstanding: outstandingBalance(received, paidTotal) };
 }

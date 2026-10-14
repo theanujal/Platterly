@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, seedKitchenOrderWithDish, priceOrderLines } from "./db";
+import { cleanupOnboardingTestUser, seedKitchenOrderWithDish } from "./db";
 import { editInventoryItem } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
@@ -90,15 +90,17 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
 
   await page.getByRole("button", { name: "Receive stock" }).click();
   await page.getByRole("button", { name: "Everything has arrived" }).click();
+  // The price is entered on receiving: a missing cost is refused, then 300 a kg is booked
+  await page.getByRole("button", { name: "Add to stock" }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("unit cost");
+  await page.getByLabel(`Unit cost ${ingredient}`).fill("300");
   await page.getByRole("button", { name: "Add to stock" }).click();
   await expect(page.getByRole("button", { name: "Receive stock" })).toHaveCount(0); // fully received, nothing left to receive
   await expect(page.getByRole("button", { name: "View receipt history" })).toBeVisible();
   await expect(page.locator("#receipts").getByText("Receipt history", { exact: true })).toBeVisible();
 
-  // The price is captured when stock is received (next phase); until then price the order directly so the balance below has a value.
-  await priceOrderLines(email, "PO-0001", 300);
-  await page.reload();
-  await expect(page.getByText("Received so far: ₹12,000")).toBeVisible();
+  await expect(page.getByText("Received so far, at the prices paid:")).toBeVisible();
+  await expect(page.getByText("₹12,000.00").first()).toBeVisible();
 
   await page.goto("/inventory");
   await expect(page.getByText("40 kg")).toBeVisible();

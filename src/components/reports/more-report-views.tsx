@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import type { MenuReport } from "@/modules/reports/menu-math";
-import type { MovementReport, PurchaseReport, StockReport } from "@/modules/reports/inventory-math";
+import { movementCostHint, stockValueHint, type MovementReport, type PurchaseReport, type StockReport } from "@/modules/reports/inventory-math";
 import type { FinanceReport, PayablesReport, ReceivablesReport } from "@/modules/reports/finance-math";
 import type { ChannelRow, StorefrontReport } from "@/modules/reports/storefront-math";
 import type { RecentVisitor } from "@/modules/reports/more-reports";
@@ -96,7 +96,7 @@ export function InventoryView({ stock, movements, purchases }: { stock: StockRep
   return (
     <div className="flex flex-col gap-4" data-testid="inventory-report">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <ReportTile label="Stock value" value={inr(stock.totalValue)} hint={stock.itemsWithoutCost ? `${whole(stock.itemsWithoutCost)} items have no cost, counted as 0` : "Stock on hand x cost per unit, as of today"} testId="inv-value" />
+        <ReportTile label="Stock value" value={inr(stock.totalValue)} hint={stockValueHint(stock)} testId="inv-value" />
         <ReportTile label="Low-stock items" value={whole(stock.lowStock.length)} testId="inv-low" />
         <ReportTile label="Purchases ordered" value={inr(purchases.orderedValue)} hint={`${whole(purchases.orders)} purchase ${purchases.orders === 1 ? "order" : "orders"}`} testId="inv-ordered" />
         <ReportTile label="Received so far" value={inr(purchases.receivedValue)} hint={`${inr(purchases.stillToReceive)} still to arrive`} testId="inv-received" />
@@ -134,6 +134,11 @@ export function InventoryView({ stock, movements, purchases }: { stock: StockRep
         <ReportTile label="Stock out (value)" value={inr(movements.stockOutValue)} hint={`${whole(movements.takenForOrders)} taken for orders`} testId="inv-out" />
         <ReportTile label="Adjustments (value)" value={inr(movements.adjustmentValue)} hint="Negative means stock written down" testId="inv-adj" />
       </div>
+      {movementCostHint(movements) && (
+        <p data-testid="inv-unknown-cost" className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+          {movementCostHint(movements)}
+        </p>
+      )}
       <ReportSection title="Busiest items" description="The items with the most stock movements in the period.">
         {movements.busiest.length === 0 ? (
           <Empty />

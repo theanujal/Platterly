@@ -5,6 +5,8 @@ import { Boxes, IndianRupee, BellRing, CalendarDays, MapPin } from "lucide-react
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { defaultTracksExpiry } from "@/modules/purchasing/receipt-rules";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +26,8 @@ export interface InventoryFormValues {
   /** Chunk 23: empty string = shared by every location. */
   kitchenId: string;
   expiryDate: string;
+  /** New batches of this item must carry an expiry date. */
+  tracksExpiry: boolean;
   imageUrl: string | null;
 }
 
@@ -38,6 +42,7 @@ export const EMPTY_INVENTORY_VALUES: InventoryFormValues = {
   supplierId: "",
   kitchenId: "",
   expiryDate: "",
+  tracksExpiry: false,
   imageUrl: null,
 };
 
@@ -58,6 +63,8 @@ interface InventoryFormProps {
 export function InventoryForm({ initialValues, creating, suppliers, locations, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
+  // Until the person flips the switch themselves, it follows the category (the category only supplies a default).
+  const [expiryTouched, setExpiryTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const dirty = useIsDirty({ values, image: image?.name ?? null });
@@ -86,6 +93,7 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
     formData.set("description", values.description);
     formData.set("unit", values.unit);
     formData.set("lowStockThreshold", values.lowStockThreshold);
+    formData.set("tracksExpiry", String(values.tracksExpiry));
     formData.set("storageLocation", values.storageLocation);
     if (!creating) {
       formData.set("costPerUnit", values.costPerUnit);
@@ -128,7 +136,10 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
           {(() => {
             const options = values.category && !CATEGORY_OPTIONS.includes(values.category) ? [values.category, ...CATEGORY_OPTIONS] : CATEGORY_OPTIONS;
             return (
-              <Select items={Object.fromEntries(options.map((c) => [c, c]))} value={values.category} onValueChange={(v) => setField("category", v ?? "")}>
+              <Select items={Object.fromEntries(options.map((c) => [c, c]))} value={values.category} onValueChange={(v) => {
+                setField("category", v ?? "");
+                if (creating && !expiryTouched) setField("tracksExpiry", defaultTracksExpiry(v ?? ""));
+              }}>
                 <SelectTrigger id="inv-category" className="w-full">
                   <SelectValue placeholder="Select a category" />
                 </SelectTrigger>
@@ -147,6 +158,21 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="inv-description">Description</Label>
           <Textarea id="inv-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
+        </div>
+
+        <div className="col-span-2 flex items-center justify-between gap-4 rounded-lg border border-border px-4 py-3">
+          <div>
+            <Label htmlFor="inv-tracks-expiry">Tracks expiry</Label>
+            <p className="text-xs text-muted-foreground">When on, every new batch of this item needs an expiry date, and expired stock is never used automatically.</p>
+          </div>
+          <Switch
+            id="inv-tracks-expiry"
+            checked={values.tracksExpiry}
+            onCheckedChange={(checked) => {
+              setExpiryTouched(true);
+              setField("tracksExpiry", checked);
+            }}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">

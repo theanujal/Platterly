@@ -6,6 +6,7 @@ import type { OrderStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit/audit";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { cookQuantity } from "@/modules/menu-approvals/kitchen-production-status";
+import { consumeStock, InsufficientStockError, orderStockCost, restoreOrderStock, stockPosition, usableStockMap } from "@/modules/inventory/batches";
 import { aggregateNeeds, quantityToTake, withStock, type PlanDish } from "./production-math";
 
 export class StockTakeError extends Error {}
@@ -53,9 +54,9 @@ function dishesOf(order: PlanOrder, servings: number): PlanDish[] {
   );
 }
 
+/** What can actually be used for an order: stock that has not expired and is not quarantined. */
 async function stockOf(organizationId: string, ids: string[]) {
-  const rows = await prisma.inventory.findMany({ where: { organizationId, id: { in: ids } }, select: { id: true, stockCount: true } });
-  return new Map(rows.map((r) => [r.id, Number(r.stockCount)]));
+  return usableStockMap(organizationId, ids);
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -82,6 +83,10 @@ export interface OrderInventoryLine {
   /** Of what is still to send, how much the shelf cannot cover. */
   short: number;
   forDishes: string[];
+  /** What the stock sent so far cost, from the batches it was taken from (FIFO). Unchanged by later deliveries. */
+  sentCost: number;
+  /** Quantity sent whose cost was never known (so `sentCost` leaves it out). */
+  sentCostUnknown: number;
 }
 
 /**
@@ -110,6 +115,8 @@ export async function getOrderInventory(organizationId: string, orderId: string)
 
   const ids = [...new Set([...recipeLines.map((l) => l.inventoryId), ...extras.keys(), ...[...sentBy.entries()].filter(([, q]) => q !== 0).map(([id]) => id)])];
   const items = await prisma.inventory.findMany({ where: { organizationId, id: { in: ids } }, select: { id: true, name: true, unit: true, stockCount: true } });
+  const usable = await usableStockMap(organizationId, ids);
+  const costs = await orderStockCost(orderId);
   const itemById = new Map(items.map((i) => [i.id, i]));
   const recipeById = new Map(recipeLines.map((l) => [l.inventoryId, l]));
 
@@ -122,7 +129,7 @@ export async function getOrderInventory(organizationId: string, orderId: string)
       const required = round3(fromRecipes + extra);
       const sent = Math.max(0, sentBy.get(id) ?? 0);
       const remaining = Math.max(0, round3(required - sent));
-      const inStock = Number(item.stockCount);
+      const inStock = usable.get(id) ?? Number(item.stockCount);
       return [
         {
           inventoryId: id,
@@ -137,6 +144,8 @@ export async function getOrderInventory(organizationId: string, orderId: string)
           inStock,
           short: Math.max(0, round3(remaining - inStock)),
           forDishes: recipeById.get(id)?.forDishes ?? [],
+          sentCost: costs.get(id)?.cost ?? 0,
+          sentCostUnknown: costs.get(id)?.unknownQuantity ?? 0,
         },
       ];
     })
@@ -203,15 +212,21 @@ export async function sendOrderItems(organizationId: string, orderId: string, ac
       const already = Math.max(0, await netSent(tx, orderId, line.inventoryId));
       const remaining = Math.max(0, round3(line.required - already));
       if (remaining === 0) continue;
-      const fresh = await tx.inventory.findFirstOrThrow({ where: { id: line.inventoryId, organizationId }, select: { stockCount: true } });
-      const take = quantityToTake(remaining, Number(fresh.stockCount));
+      await tx.inventory.findFirstOrThrow({ where: { id: line.inventoryId, organizationId }, select: { id: true } });
+      // Only usable stock is taken: an expired or quarantined batch is never sent to an order automatically.
+      const fresh = await stockPosition(tx, line.inventoryId);
+      const take = quantityToTake(remaining, fresh.usable);
       const short = round3(remaining - take);
       if (take > 0) {
-        const done = await tx.inventory.updateMany({ where: { id: line.inventoryId, stockCount: { gte: take } }, data: { stockCount: { decrement: take } } });
-        if (done.count === 0) throw new StockTakeError("Stock changed while you were confirming. Review it and try again.");
-        await tx.inventoryTransaction.create({
+        const row = await tx.inventoryTransaction.create({
           data: { inventoryId: line.inventoryId, type: "STOCK_OUT", quantity: take, orderId, actorUserId, note: short > 0 ? `${plan.orderNumber} (short by ${short} ${line.unit})` : plan.orderNumber },
         });
+        try {
+          await consumeStock(tx, { inventoryId: line.inventoryId, quantity: take, transactionId: row.id });
+        } catch (error) {
+          if (error instanceof InsufficientStockError) throw new StockTakeError("Stock changed while you were confirming. Review it and try again.");
+          throw error;
+        }
         sentLines.push({ name: line.name, quantity: take });
       }
       if (short > 0) shortages.push({ name: line.name, short });
@@ -237,8 +252,9 @@ export async function returnOrderItem(organizationId: string, orderId: string, i
     await lockOrder(tx, orderId);
     const sent = await netSent(tx, orderId, inventoryId);
     if (sent <= 0) throw new StockTakeError("Nothing is sent to this order for that item.");
-    await tx.inventory.update({ where: { id: inventoryId }, data: { stockCount: { increment: sent } } });
-    await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: sent, orderId, actorUserId, note: `Returned from ${order.orderNumber ?? "order"}` } });
+    const row = await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: sent, orderId, actorUserId, note: `Returned from ${order.orderNumber ?? "order"}` } });
+    // Back into the batches it was taken from, at the same costs.
+    await restoreOrderStock(tx, { inventoryId, orderId, quantity: sent, transactionId: row.id });
     return sent;
   });
 
@@ -260,8 +276,8 @@ export async function returnAllOrderItems(organizationId: string, orderId: strin
     for (const { inventoryId } of ids) {
       const out = await netSent(tx, orderId, inventoryId);
       if (out <= 0) continue;
-      await tx.inventory.update({ where: { id: inventoryId }, data: { stockCount: { increment: out } } });
-      await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: out, orderId, actorUserId: actorUserId ?? null, note: `Returned, ${order.orderNumber ?? "order"} cancelled` } });
+      const row = await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: out, orderId, actorUserId: actorUserId ?? null, note: `Returned, ${order.orderNumber ?? "order"} cancelled` } });
+      await restoreOrderStock(tx, { inventoryId, orderId, quantity: out, transactionId: row.id });
       returned.push({ inventoryId, quantity: out });
     }
   });

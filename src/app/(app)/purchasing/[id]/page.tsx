@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
-import { getPurchaseOrder, listReceipts } from "@/modules/purchasing/purchase-order";
-import { isPriced, orderedValue, receivedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
+import { getPurchaseOrder, listReceipts, receivedValueOf } from "@/modules/purchasing/purchase-order";
+import { isPriced, orderedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { buildPoWhatsappMessage, whatsappOrderLink } from "@/modules/purchasing/po-whatsapp";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const formatDateTime = (d: Date) => d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+const formatDate = (d: Date | null) => (d ? d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
 
 export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +27,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   await requirePermission({ inventory: ["view"] }, organizationId);
   const [po, canEdit, canDelete] = await Promise.all([getPurchaseOrder(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId), hasPermission({ inventory: ["delete"] }, organizationId)]);
   if (!po) notFound();
-  const receipts = await listReceipts(organizationId, po);
+  const [receipts, received] = await Promise.all([listReceipts(organizationId, po.id), receivedValueOf(po.id)]);
   await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
 
   const lines = po.items.map((i) => ({ id: i.id, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
@@ -62,8 +62,9 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           supplierName={po.supplier.name}
           message={message}
           waLink={waLink}
-          hasReceipts={receipts.length > 0}
-          receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l) }))}
+          hasReceipts={receipts.length > 0 || received.legacyQuantity > 0}
+          orderPlacedOn={`${po.createdAt.getFullYear()}-${String(po.createdAt.getMonth() + 1).padStart(2, "0")}-${String(po.createdAt.getDate()).padStart(2, "0")}`}
+          receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l), expiryRequired: po.items[index].inventory.tracksExpiry, lastCost: po.items[index].inventory.costPerUnit === null ? null : Number(po.items[index].inventory.costPerUnit) }))}
         />
       </div>
       <Separator />
@@ -99,20 +100,23 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
               ))}
             </TableBody>
           </Table>
-          {priced ? (
+          {priced && (
             <div className="mt-4 flex flex-col items-end gap-1 text-sm">
               <p>
                 Order total: <span className="font-semibold">{formatRupees(orderedValue(lines))}</span>
               </p>
-              <p className="text-muted-foreground">Received so far: {formatRupees(receivedValue(lines))}</p>
             </div>
-          ) : (
-            <p className="mt-4 text-sm text-muted-foreground">Not yet priced. The actual cost is entered when the stock is received.</p>
+          )}
+          {!priced && <p className="mt-4 text-sm text-muted-foreground">Not yet priced. The actual cost is entered when the stock is received.</p>}
+          {received.value > 0 && (
+            <p className="mt-2 text-right text-sm text-muted-foreground">
+              Received so far, at the prices paid: <span className="font-semibold text-foreground">{formatRupees(received.value)}</span>
+            </p>
           )}
         </CardContent>
       </Card>
 
-      {receipts.length > 0 && (
+      {(receipts.length > 0 || received.legacyQuantity > 0) && (
         <Card id="receipts">
           <CardHeader>
             <CardTitle>Receipt history</CardTitle>
@@ -124,20 +128,35 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                   <TableHead>Received on</TableHead>
                   <TableHead>Item</TableHead>
                   <TableHead>Quantity</TableHead>
+                  <TableHead>Unit cost</TableHead>
+                  <TableHead>Expiry</TableHead>
+                  <TableHead>Lot</TableHead>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Notes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {receipts.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell>{formatDateTime(r.at)}</TableCell>
-                    <TableCell className="font-medium">{r.name}</TableCell>
-                    <TableCell>
-                      {r.quantity} {r.unit}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {receipts.flatMap((r) =>
+                  r.lines.map((l, index) => (
+                    <TableRow key={l.id}>
+                      <TableCell>{index === 0 ? formatDate(r.receivedDate) : ""}</TableCell>
+                      <TableCell className="font-medium">{l.name}</TableCell>
+                      <TableCell>
+                        {l.quantity} {l.unit}
+                      </TableCell>
+                      <TableCell>{formatRupees(l.unitCost)}</TableCell>
+                      <TableCell>{formatDate(l.expiryDate)}</TableCell>
+                      <TableCell>{l.lotNumber ?? "—"}</TableCell>
+                      <TableCell>{index === 0 ? (r.invoiceNumber ?? "—") : ""}</TableCell>
+                      <TableCell className="max-w-64 text-xs whitespace-normal text-muted-foreground">
+                        {[l.costNote ? `Free: ${l.costNote}` : null, l.extraQuantity > 0 ? `${l.extraQuantity} ${l.unit} above the order, authorised: ${l.extraReason ?? ""}` : null].filter(Boolean).join(" · ") || "—"}
+                      </TableCell>
+                    </TableRow>
+                  )),
+                )}
               </TableBody>
             </Table>
+            {received.legacyQuantity > 0 && <p className="mt-3 text-sm text-muted-foreground">{received.legacyQuantity} was received before individual receipts were recorded, so it has no price or expiry date of its own.</p>}
           </CardContent>
         </Card>
       )}

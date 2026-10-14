@@ -1,3 +1,4 @@
+import { movementCostHint, stockValueHint } from "@/modules/reports/inventory-math";
 import "server-only";
 import type { ReportBarRow, ReportBlock, ReportDoc, ReportListing } from "@platterly/contract";
 import { inr } from "@/modules/invoices/invoice-format";
@@ -91,13 +92,13 @@ async function inventory(range: Range): Promise<ReportBlock[]> {
   const { stock, movements, purchases } = await loadInventoryReport({ all: true }, range);
   return [
     tiles([
-      { label: "Stock value", value: inr(stock.totalValue), hint: stock.itemsWithoutCost ? `${whole(stock.itemsWithoutCost)} items have no cost, counted as 0` : "Stock on hand x cost per unit, as of today" },
+      { label: "Stock value", value: inr(stock.totalValue), hint: stockValueHint(stock) },
       { label: "Low-stock items", value: whole(stock.lowStock.length) },
       { label: "Purchases ordered", value: inr(purchases.orderedValue), hint: plural(purchases.orders, "purchase order") },
       { label: "Received so far", value: inr(purchases.receivedValue), hint: `${inr(purchases.stillToReceive)} still to arrive` },
       { label: "Stock movements", value: whole(movements.movements), hint: "In the period" },
       { label: "Stock in (value)", value: inr(movements.stockInValue) },
-      { label: "Stock out (value)", value: inr(movements.stockOutValue), hint: `${whole(movements.takenForOrders)} taken for orders` },
+      { label: "Stock out (value)", value: inr(movements.stockOutValue), hint: [`${whole(movements.takenForOrders)} taken for orders`, movementCostHint(movements)].filter(Boolean).join(". ") },
       { label: "Adjustments (value)", value: inr(movements.adjustmentValue), hint: "Negative means stock written down" },
     ]),
     bars("Stock value by category", stock.byCategory.map((c) => ({ label: c.category, value: c.value, text: inr(c.value), sub: plural(c.items, "item") })), "As of today, not limited to the date range.", "No inventory items yet."),
