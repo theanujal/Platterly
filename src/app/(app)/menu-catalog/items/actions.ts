@@ -8,6 +8,8 @@ import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import { importFoodItems } from "@/modules/menus/import/import";
 import { addCatalogItems } from "@/modules/menus/catalog/catalog";
 import { saveRecipe, deleteRecipe } from "@/modules/recipes/recipe";
+import { createInventoryItem } from "@/modules/inventory/inventory";
+import { myHeldLocation } from "@/modules/locations/active-location";
 import type {
   FoodType,
   MenuItemOrigin,
@@ -156,6 +158,23 @@ export async function saveRecipeAction(menuItemId: string, payload: RecipePayloa
   revalidatePath("/menu-catalog/items");
   revalidatePath("/recipes");
   return { ok: true };
+}
+
+/** An ingredient that is not in Inventory yet, added from the recipe form: zero stock, category Other, the unit it is stocked in. */
+export async function createRecipeIngredientAction(
+  name: string,
+  unit: string,
+): Promise<{ ok: true; id: string; name: string; unit: string } | { ok: false; error: string }> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ inventory: ["create"] }, organizationId);
+  try {
+    const kitchenId = await myHeldLocation(organizationId, session.user.id);
+    const item = await createInventoryItem(organizationId, { name: name.trim(), category: "Other", unit, kitchenId }, session.user.id);
+    revalidatePath("/inventory");
+    return { ok: true, id: item.id, name: item.name, unit: item.unit };
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Something went wrong.") };
+  }
 }
 
 export async function deleteRecipeAction(menuItemId: string): Promise<ActionResult> {

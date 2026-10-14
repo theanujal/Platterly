@@ -26,6 +26,9 @@ export function SearchableSelect({
   emptyLabel = "No matches.",
   "aria-label": ariaLabel,
   className,
+  allowCustom = false,
+  onCreate,
+  disabled = false,
 }: {
   options: SearchableOption[]
   value: string
@@ -35,12 +38,28 @@ export function SearchableSelect({
   emptyLabel?: string
   "aria-label": string
   className?: string
+  /** Lets the typed text itself be chosen when it is not in the list (a free-text field with suggestions). */
+  allowCustom?: boolean
+  /** Offers "Add “typed” as new" when the typed text matches nothing; the parent decides what adding means. */
+  onCreate?: (typed: string) => void
+  disabled?: boolean
 }) {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
-  const selected = options.find((o) => o.value === value)
+  const selected = options.find((o) => o.value === value) ?? (allowCustom && value ? { value, label: value } : undefined)
   const q = query.trim().toLowerCase()
   const visible = q ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)) : options
+
+  const typed = query.trim()
+  const customOption = allowCustom && typed && !options.some((o) => o.label.toLowerCase() === typed.toLowerCase()) ? typed : null
+
+  const createName = onCreate && typed && !options.some((o) => o.label.toLowerCase() === typed.toLowerCase()) ? typed : null
+
+  function create(name: string) {
+    onCreate?.(name)
+    setOpen(false)
+    setQuery("")
+  }
 
   function pick(next: string) {
     onValueChange(next)
@@ -58,6 +77,7 @@ export function SearchableSelect({
     >
       <PopoverTrigger
         aria-label={ariaLabel}
+        disabled={disabled}
         data-slot="searchable-select-trigger"
         className={cn(
           "flex h-10 w-full items-center justify-between gap-1.5 rounded-lg border border-input bg-transparent py-2 pr-2.5 pl-3 text-left text-sm transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
@@ -79,6 +99,8 @@ export function SearchableSelect({
               if (e.key === "Enter") {
                 e.preventDefault()
                 if (visible[0]) pick(visible[0].value)
+                else if (customOption) pick(customOption)
+                else if (createName) create(createName)
               }
             }}
             placeholder={searchPlaceholder}
@@ -101,7 +123,29 @@ export function SearchableSelect({
               {option.value === value && <Check className="size-4" />}
             </button>
           ))}
-          {visible.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</p>}
+          {customOption && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              onClick={() => pick(customOption)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm outline-hidden hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+            >
+              Use &ldquo;{customOption}&rdquo;
+            </button>
+          )}
+          {createName && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={false}
+              onClick={() => create(createName)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm font-medium outline-hidden hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent"
+            >
+              Add &ldquo;{createName}&rdquo; as a new ingredient
+            </button>
+          )}
+          {visible.length === 0 && !customOption && !createName && <p className="px-2 py-3 text-sm text-muted-foreground">{emptyLabel}</p>}
         </div>
       </PopoverContent>
     </Popover>

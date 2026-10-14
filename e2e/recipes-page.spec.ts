@@ -62,9 +62,9 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   // Add a recipe to the first dish: 2 kg makes 10 servings.
   await page.getByRole("button", { name: `Add recipe for ${dishes[0]}` }).click();
   await page.getByLabel("Ingredient 1").click();
-  // The ingredient list is searchable: a search with no match shows that, then the right text finds it.
+  // The ingredient list is searchable: a search with no match offers to add it as a new ingredient, then the right text finds it.
   await page.getByPlaceholder("Search ingredients…").fill("zzz-no-such-item");
-  await expect(page.getByText("No inventory item matches.")).toBeVisible();
+  await expect(page.getByRole("option", { name: /as a new ingredient/ })).toBeVisible();
   await page.getByPlaceholder("Search ingredients…").fill(ingredient.slice(0, 8).toLowerCase());
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("2");

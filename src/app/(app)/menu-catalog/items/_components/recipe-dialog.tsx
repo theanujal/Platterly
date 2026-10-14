@@ -10,13 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelect } from "@/components/ui/searchable-select";
-import { costPerServing, scaleQuantity, type RecipeLine } from "@/modules/recipes/recipe-math";
-import { deleteRecipeAction, saveRecipeAction } from "../actions";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { costPerServing, enterableUnits, friendlyQuantity, scaleQuantity, toStockUnit, type RecipeLine } from "@/modules/recipes/recipe-math";
+import { UNIT_OPTIONS } from "@/modules/inventory/options";
+import { createRecipeIngredientAction, deleteRecipeAction, saveRecipeAction } from "../actions";
 
 export interface RecipeFormValues {
   yieldServings: string;
   notes: string;
-  ingredients: { inventoryId: string; quantity: string }[];
+  /** `unit` is the unit the quantity was typed in (g for a kg item); absent means the item's stock unit. */
+  ingredients: { inventoryId: string; quantity: string; unit?: string }[];
 }
 
 export interface IngredientOption {
@@ -58,7 +61,22 @@ export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, 
 // The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
 function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources }: Pick<RecipeDialogProps, "onOpenChange" | "itemId" | "initialValues" | "options"> & { copySources: CopySource[] }) {
   const router = useRouter();
-  const [values, setValues] = useState<RecipeFormValues>(initialValues ?? EMPTY);
+  const [extraOptions, setExtraOptions] = useState<IngredientOption[]>([]);
+  const allOptions = [...options, ...extraOptions];
+  const optionById = new Map(allOptions.map((o) => [o.id, o]));
+  // Stored quantities are in the stock unit; show 0.7 kg as 700 g, the way a cook says it.
+  const readable = (v: RecipeFormValues): RecipeFormValues => ({
+    ...v,
+    ingredients: v.ingredients.map((r) => {
+      const stock = optionById.get(r.inventoryId)?.unit;
+      const q = Number.parseFloat(r.quantity);
+      if (!stock || r.unit || !(q > 0)) return r;
+      const f = friendlyQuantity(q, stock);
+      return f.unit === stock ? r : { ...r, quantity: String(f.quantity), unit: f.unit };
+    }),
+  });
+  const [values, setValues] = useState<RecipeFormValues>(() => readable(initialValues ?? EMPTY));
+  const [creating, setCreating] = useState<{ index: number; name: string; unit: string } | null>(null);
   const [previewServings, setPreviewServings] = useState("100");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -66,13 +84,12 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
   const [confirmRemove, setConfirmRemove] = useState(false);
   const dirty = useIsDirty({ values, previewServings });
 
-  const optionById = new Map(options.map((o) => [o.id, o]));
   const yieldNumber = Number.parseFloat(values.yieldServings);
   const previewNumber = Number.parseFloat(previewServings);
   const lines: RecipeLine[] = values.ingredients.flatMap((row) => {
     const option = optionById.get(row.inventoryId);
     const quantity = Number.parseFloat(row.quantity);
-    return option && quantity > 0 ? [{ inventoryId: option.id, name: option.name, unit: option.unit, quantity, costPerUnit: option.costPerUnit }] : [];
+    return option && quantity > 0 ? [{ inventoryId: option.id, name: option.name, unit: option.unit, quantity: toStockUnit(quantity, row.unit ?? option.unit, option.unit), costPerUnit: option.costPerUnit }] : [];
   });
   const canPreview = yieldNumber > 0 && previewNumber >= 0 && lines.length > 0;
   const perServing = yieldNumber > 0 ? costPerServing(lines, yieldNumber) : null;
@@ -85,12 +102,27 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
   function copyFrom(sourceId: string) {
     const source = copySources.find((s) => s.id === sourceId);
     if (!source) return;
-    setValues({
+    setValues(readable({
       yieldServings: source.recipe.yieldServings,
       notes: source.recipe.notes,
       ingredients: source.recipe.ingredients.length ? source.recipe.ingredients.map((r) => ({ ...r })) : EMPTY.ingredients,
-    });
+    }));
     setCopiedFrom(source.name);
+  }
+
+  async function addNewIngredient() {
+    if (!creating) return;
+    setError(null);
+    setPending(true);
+    const result = await createRecipeIngredientAction(creating.name, creating.unit);
+    setPending(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setExtraOptions((list) => [...list, { id: result.id, name: result.name, unit: result.unit, costPerUnit: null }]);
+    setRow(creating.index, { inventoryId: result.id, unit: result.unit });
+    setCreating(null);
   }
 
   async function handleSubmit(event: React.FormEvent) {
@@ -100,7 +132,12 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
     const result = await saveRecipeAction(itemId, {
       yieldServings: yieldNumber,
       notes: values.notes.trim() || undefined,
-      ingredients: values.ingredients.filter((r) => r.inventoryId).map((r) => ({ inventoryId: r.inventoryId, quantity: Number.parseFloat(r.quantity) })),
+      ingredients: values.ingredients
+        .filter((r) => r.inventoryId)
+        .map((r) => {
+          const stock = optionById.get(r.inventoryId)?.unit ?? r.unit ?? "";
+          return { inventoryId: r.inventoryId, quantity: toStockUnit(Number.parseFloat(r.quantity), r.unit ?? stock, stock) };
+        }),
     });
     setPending(false);
     if (!result.ok) {
@@ -129,10 +166,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
   return (
     <>
       <DrawerForm dirty={dirty} onSubmit={handleSubmit} error={error} pending={pending} submitLabel="Save recipe" onCancel={() => onOpenChange(false)}>
-        {options.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Add items to Inventory first. Ingredients are picked from there.</p>
-        ) : (
-          <>
+        <>
             {copySources.length > 0 && (
               <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-muted p-3">
                 <Label>Copy from another dish</Label>
@@ -158,7 +192,9 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
             <div className="flex flex-col gap-3">
               <Label>Ingredients</Label>
               {values.ingredients.map((row, index) => {
-                const unit = optionById.get(row.inventoryId)?.unit;
+                const stockUnit = optionById.get(row.inventoryId)?.unit;
+                const unit = row.unit ?? stockUnit;
+                const units = stockUnit ? enterableUnits(stockUnit) : [];
                 return (
                   <div key={index} className="flex items-end gap-2">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -167,15 +203,34 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
                         placeholder="Search an inventory item"
                         searchPlaceholder="Search ingredients…"
                         emptyLabel="No inventory item matches."
-                        options={options
+                        onCreate={(typed) => setCreating({ index, name: typed, unit: "kg" })}
+                        options={allOptions
                           .filter((o) => o.id === row.inventoryId || !values.ingredients.some((r) => r.inventoryId === o.id))
                           .map((o) => ({ value: o.id, label: o.name, hint: o.unit }))}
                         value={row.inventoryId}
-                        onValueChange={(v) => setRow(index, { inventoryId: v })}
+                        onValueChange={(v) => setRow(index, { inventoryId: v, unit: undefined })}
                       />
                     </div>
                     <div className="flex w-36 flex-col gap-1.5">
-                      <Input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.001" placeholder={unit ? `Qty (${unit})` : "Qty"} value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} />
+                      <Input aria-label={`Quantity ${index + 1}`} type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} />
+                    </div>
+                    <div className="flex w-24 flex-col gap-1.5">
+                      {units.length > 1 ? (
+                        <Select items={Object.fromEntries(units.map((u) => [u, u]))} value={unit} onValueChange={(v) => setRow(index, { unit: v ?? stockUnit })}>
+                          <SelectTrigger aria-label={`Unit ${index + 1}`} className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {units.map((u) => (
+                              <SelectItem key={u} value={u}>
+                                {u}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span aria-label={`Unit ${index + 1}`} className="flex h-10 items-center px-1 text-sm text-muted-foreground">{unit ?? "unit"}</span>
+                      )}
                     </div>
                     <Button type="button" variant="ghost" size="icon" aria-label={`Remove row ${index + 1}`} onClick={() => setValues((v) => ({ ...v, ingredients: v.ingredients.length > 1 ? v.ingredients.filter((_, i) => i !== index) : [{ inventoryId: "", quantity: "" }] }))}>
                       <Trash2 className="size-4" />
@@ -183,6 +238,35 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
                   </div>
                 );
               })}
+              {creating && (
+                <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted p-3">
+                  <p className="text-sm font-medium">New ingredient: {creating.name}</p>
+                  <p className="text-xs text-muted-foreground">It is added to Inventory with zero stock. Pick the unit you buy and stock it in.</p>
+                  <div className="flex items-end gap-2">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <Label htmlFor="recipe-new-unit">Stock unit</Label>
+                      <Select items={Object.fromEntries(UNIT_OPTIONS.map((o) => [o.value, o.label]))} value={creating.unit} onValueChange={(v) => setCreating({ ...creating, unit: v ?? "kg" })}>
+                        <SelectTrigger id="recipe-new-unit" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {UNIT_OPTIONS.map((o) => (
+                            <SelectItem key={o.value} value={o.value}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button type="button" disabled={pending} onClick={addNewIngredient}>
+                      Add ingredient to inventory
+                    </Button>
+                    <Button type="button" variant="ghost" onClick={() => setCreating(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
               <Button type="button" variant="outline" className="self-start" onClick={() => setValues((v) => ({ ...v, ingredients: [...v.ingredients, { inventoryId: "", quantity: "" }] }))}>
                 <Plus /> Add ingredient
               </Button>
@@ -223,8 +307,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
                 <Trash2 /> Remove recipe
               </Button>
             )}
-          </>
-        )}
+        </>
       </DrawerForm>
       <ConfirmDialog
         open={confirmRemove}

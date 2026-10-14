@@ -67,3 +67,45 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByText(/ingredient in 1 recipe/)).toBeVisible();
 });
+
+test("add an ingredient that is not in Inventory and enter 700 g of a kg item", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-recipes-newing-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  const suffix = Date.now().toString().slice(-6);
+
+  await signUpCaterer(page, email, { firstName: "Recipe", lastName: "Tester", closeClaimDialog: false });
+  await page.getByRole("button", { name: "Close" }).click();
+
+  const dish = `Dal Fry ${suffix}`;
+  await page.goto("/menu-catalog/items");
+  await page.getByRole("button", { name: "Add Item" }).click();
+  await page.getByLabel("Item Name").fill(dish);
+  await page.getByLabel("Item Price Per Plate").fill("150");
+  await page.getByRole("button", { name: "Create item" }).click();
+  await expect(page.getByText(dish)).toBeVisible();
+
+  await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
+  const ingredient = `Zzq Masoor ${suffix}`;
+  await page.getByLabel("Ingredient 1").click();
+  await page.getByPlaceholder("Search ingredients…").fill(ingredient);
+  await page.getByRole("option", { name: /as a new ingredient/ }).click();
+  await page.getByLabel("Stock unit").click();
+  await page.getByRole("option", { name: "Kilogram (kg)" }).click();
+  await page.getByRole("button", { name: "Add ingredient to inventory" }).click();
+
+  // Stocked in kg, entered in g.
+  await expect(page.getByLabel("Ingredient 1")).toContainText(ingredient);
+  await page.getByLabel("Quantity 1").fill("700");
+  await page.getByLabel("Unit 1").click();
+  await page.getByRole("option", { name: "g", exact: true }).click({ timeout: 5000 });
+  await page.getByLabel("These quantities make (servings)").fill("10");
+  await page.getByRole("button", { name: "Save recipe" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
+  // Reopens as 700 g, and the ingredient is now in Inventory in kg.
+  await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
+  await expect(page.getByLabel("Quantity 1")).toHaveValue("700");
+  await page.goto("/inventory");
+  await expect(page.getByText(ingredient)).toBeVisible();
+});
