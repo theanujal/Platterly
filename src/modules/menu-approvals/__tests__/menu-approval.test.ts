@@ -425,17 +425,25 @@ describe("Changing a status by hand (AJ, 2026-09-30)", () => {
     expect(entry).toMatchObject({ subject: "MENU_APPROVAL", source: "MANUAL", fromStatus: "SENT_TO_CUSTOMER", toStatus: "CUSTOMER_APPROVED", trigger: "Order is now Approved" });
   });
 
-  it("can move a locked order back for editing, and Completed / Cancelled set the kitchen stage", async () => {
+  it("can move a sent order back for editing, and Completed sets the kitchen stage; a completed order is closed", async () => {
     const { org, actor, order, selection } = await setup();
-    await changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "COMPLETED" }, reason: "Delivered, recorded late", actorUserId: actor.id });
+    await changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "SENT_TO_KITCHEN" }, reason: "Sent by phone with the customer", actorUserId: actor.id });
+    expect(await orderStatusOf(order.id)).toBe("SENT_TO_KITCHEN");
+
+    await changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "PENDING_REVIEW" }, reason: "Customer wants to change the menu", actorUserId: actor.id });
     let now = await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } });
+    expect([now.status, now.kitchenProductionStatus, now.lockedAt]).toEqual(["DRAFT", "PENDING", null]);
+    expect(await orderStatusOf(order.id)).toBe("PENDING_REVIEW");
+
+    await changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "COMPLETED" }, reason: "Delivered, recorded late", actorUserId: actor.id });
+    now = await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } });
     expect([now.status, now.kitchenProductionStatus]).toEqual(["FINAL_LOCKED", "DELIVERED"]);
     expect(await orderStatusOf(order.id)).toBe("COMPLETED");
 
-    await changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "PENDING_REVIEW" }, reason: "Customer wants to change the menu", actorUserId: actor.id });
-    now = await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } });
-    expect([now.status, now.kitchenProductionStatus, now.lockedAt]).toEqual(["DRAFT", "PENDING", null]);
-    expect(await orderStatusOf(order.id)).toBe("PENDING_REVIEW");
+    // Completed is closed (AJ, 2026-10-14): not even a status change by hand, for the order or its menu.
+    await expect(changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "PENDING_REVIEW" }, reason: "Customer wants to change the menu", actorUserId: actor.id })).rejects.toThrow(/completed/);
+    await expect(changeStatusManually(org.id, { menuSelectionId: selection.id, target: { kind: "MENU", status: "DRAFT" }, reason: "Reopen the menu", actorUserId: actor.id })).rejects.toThrow(/completed/);
+    expect(await orderStatusOf(order.id)).toBe("COMPLETED");
   });
 
   it("does nothing, and records nothing, when the status is already there", async () => {

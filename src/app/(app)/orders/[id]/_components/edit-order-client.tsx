@@ -20,8 +20,10 @@ interface EditOrderClientProps {
   menuPlanBanner?: React.ReactNode;
   /** True while the menu is with the customer or the kitchen (see menu-status-banner.tsx's phases). */
   menuPlanReadOnly: boolean;
-  /** The order already has a confirmed payment, so the advance and payment status are shown, not edited. */
-  paymentsRecorded: boolean;
+  /** Sent to the kitchen (or completed): the order is final, so the form is read-only (payments still work). */
+  locked: boolean;
+  /** Completed: even the inventory, expenses and staffing tabs are read-only. */
+  completed: boolean;
   eventTypes: { id: string; name: string }[];
   menus: {
     id: string;
@@ -55,7 +57,8 @@ export function EditOrderClient({
   sidebarInvoiceAction,
   menuPlanBanner,
   menuPlanReadOnly,
-  paymentsRecorded,
+  locked,
+  completed,
 }: EditOrderClientProps) {
   const router = useRouter();
 
@@ -72,7 +75,8 @@ export function EditOrderClient({
       sidebarInvoiceAction={sidebarInvoiceAction}
       menuPlanReadOnly={menuPlanReadOnly}
       menuPlanOnlyIfChanged
-      paymentsRecorded={paymentsRecorded}
+      locked={locked}
+      completed={completed}
       menuPlanBanner={menuPlanBanner}
       customers={customers}
       eventTypes={eventTypes}

@@ -1,3 +1,4 @@
+import { assertEventOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -49,6 +50,7 @@ export interface EventOperationsPatch {
  * deliberately not the full `updateEvent`.
  */
 export async function updateEventOperations(organizationId: string, id: string, patch: EventOperationsPatch, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, id);
   const before = await prisma.event.findFirstOrThrow({ where: { id, organizationId } });
   if (patch.assignedKitchenId) {
     const kitchen = await prisma.kitchen.findFirst({ where: { id: patch.assignedKitchenId, organizationId }, select: { id: true } });

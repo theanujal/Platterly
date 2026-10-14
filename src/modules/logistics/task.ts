@@ -1,3 +1,4 @@
+import { assertEventOrderNotCompleted, assertTaskOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -29,6 +30,7 @@ function clean(input: TaskInput) {
 }
 
 export async function createTask(organizationId: string, eventId: string, input: TaskInput, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, eventId);
   const data = clean(input);
   await prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { id: true } });
   await checkAssignment(organizationId, eventId, input.assignmentId);
@@ -40,6 +42,7 @@ export async function createTask(organizationId: string, eventId: string, input:
 }
 
 export async function updateTask(organizationId: string, id: string, input: TaskInput, actorUserId: string) {
+  await assertTaskOrderNotCompleted(organizationId, id);
   const before = await prisma.eventTask.findFirstOrThrow({ where: { id, organizationId } });
   const data = clean(input);
   await checkAssignment(organizationId, before.eventId, input.assignmentId);
@@ -52,6 +55,7 @@ export async function updateTask(organizationId: string, id: string, input: Task
 
 /** Ticks a task off (or back on), stamping who and when. */
 export async function setTaskDone(organizationId: string, id: string, done: boolean, actorUserId: string) {
+  await assertTaskOrderNotCompleted(organizationId, id);
   await prisma.eventTask.findFirstOrThrow({ where: { id, organizationId }, select: { id: true } });
   const task = await prisma.eventTask.update({ where: { id }, data: { done, completedAt: done ? new Date() : null, completedByUserId: done ? actorUserId : null } });
   await audit({ organizationId, actorUserId, action: done ? "event_task.done" : "event_task.reopened", recordType: "EventTask", recordId: id, after: { done } });
@@ -59,6 +63,7 @@ export async function setTaskDone(organizationId: string, id: string, done: bool
 }
 
 export async function deleteTask(organizationId: string, id: string, actorUserId: string) {
+  await assertTaskOrderNotCompleted(organizationId, id);
   const before = await prisma.eventTask.findFirstOrThrow({ where: { id, organizationId } });
   await prisma.eventTask.delete({ where: { id } });
   await audit({ organizationId, actorUserId, action: "event_task.delete", recordType: "EventTask", recordId: id, before: { title: before.title } });

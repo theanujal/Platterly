@@ -50,6 +50,93 @@ function SelectField({ id, label, value, onChange, options }: { id: string; labe
   );
 }
 
+/** The "Payment summary" card (total, paid, balance, progress), the same on an existing order and on the New Order page. */
+export function PaymentSummaryCard({ total, paid, balance, overdue = false, children }: { total: number; paid: number; balance: number; overdue?: boolean; children?: React.ReactNode }) {
+  const percent = total > 0 ? Math.min(Math.round((paid / total) * 1000) / 10, 100) : 0;
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
+        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <CreditCard className="size-4" />
+        </span>
+        Payment summary
+        {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
+      </h2>
+      <dl className="flex flex-col gap-2 text-sm tabular-nums">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Total</dt>
+          <dd className="font-semibold">{inr(total)}</dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Paid</dt>
+          <dd className="font-semibold text-success" data-testid="paid-amount">
+            {inr(paid)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Balance</dt>
+          <dd className="font-semibold" data-testid="balance-amount">
+            {inr(balance)}
+          </dd>
+        </div>
+      </dl>
+      <div className="h-2 overflow-hidden rounded-full bg-secondary" aria-hidden>
+        <div className="h-full rounded-full bg-success" style={{ width: `${percent}%` }} />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** The "Payments" history card: its rows are `PaymentRowView`s. */
+export function PaymentsListCard({ empty, children }: { empty: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
+      <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
+        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Clock className="size-4" />
+        </span>
+        Payments
+      </h2>
+      {empty && <p className="text-sm text-muted-foreground">No payments yet.</p>}
+      <ul className="flex flex-col divide-y divide-border">{children}</ul>
+    </div>
+  );
+}
+
+export function PaymentRowView({
+  id,
+  amount,
+  type,
+  method,
+  receivedAt,
+  sourceText,
+  reference,
+  trailing,
+}: {
+  id: string;
+  amount: number;
+  type: keyof typeof TYPE_LABEL;
+  method: keyof typeof METHOD_LABEL;
+  receivedAt: string;
+  sourceText: string;
+  reference: string | null;
+  trailing: React.ReactNode;
+}) {
+  return (
+    <li key={id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0" data-testid="payment-row">
+      <div className="min-w-36 flex-1">
+        <span className="block font-semibold tabular-nums">{inr(amount)}</span>
+        <span className="block text-xs text-muted-foreground">
+          {TYPE_LABEL[type]} · {METHOD_LABEL[method]} · {longDate(new Date(receivedAt))} · {sourceText}
+        </span>
+        {reference && <span className="block text-xs text-muted-foreground">Ref {reference}</span>}
+      </div>
+      {trailing}
+    </li>
+  );
+}
+
 export function PaymentsPanel({
   orderId,
   invoiceId,
@@ -77,7 +164,6 @@ export function PaymentsPanel({
   const [linkOpen, setLinkOpen] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const percent = total > 0 ? Math.min(Math.round((paid / total) * 1000) / 10, 100) : 0;
 
   async function rowAction(id: string, task: () => Promise<ActionResult>) {
     setBusyId(id);
@@ -89,35 +175,7 @@ export function PaymentsPanel({
 
   return (
     <div className="flex flex-col gap-3" data-testid="payments-panel">
-      <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-        <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <CreditCard className="size-4" />
-          </span>
-          Payment summary
-          {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
-        </h2>
-        <dl className="flex flex-col gap-2 text-sm tabular-nums">
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted-foreground">Total</dt>
-            <dd className="font-semibold">{inr(total)}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted-foreground">Paid</dt>
-            <dd className="font-semibold text-success" data-testid="paid-amount">
-              {inr(paid)}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-muted-foreground">Balance</dt>
-            <dd className="font-semibold" data-testid="balance-amount">
-              {inr(balance)}
-            </dd>
-          </div>
-        </dl>
-        <div className="h-2 overflow-hidden rounded-full bg-secondary" aria-hidden>
-          <div className="h-full rounded-full bg-success" style={{ width: `${percent}%` }} />
-        </div>
+      <PaymentSummaryCard total={total} paid={paid} balance={balance} overdue={overdue}>
         {canRecord && balance > 0 && (
           <div className="flex flex-col gap-2">
             <Button type="button" size="md" onClick={() => setRecordOpen(true)}>
@@ -130,7 +188,7 @@ export function PaymentsPanel({
             </Button>
           </div>
         )}
-      </div>
+      </PaymentSummaryCard>
 
       {notice && (
         <p role={notice.ok ? "status" : "alert"} className={cn("rounded-lg border px-3 py-2 text-sm", notice.ok ? "border-success/25 bg-success/10 text-success" : "border-destructive/30 bg-destructive/10 text-destructive")}>
@@ -138,45 +196,41 @@ export function PaymentsPanel({
         </p>
       )}
 
-      <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-        <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Clock className="size-4" />
-          </span>
-          Payments
-        </h2>
-        {payments.length === 0 && <p className="text-sm text-muted-foreground">No payments yet.</p>}
-        <ul className="flex flex-col divide-y divide-border">
-          {payments.map((payment) => (
-            <li key={payment.id} className="flex flex-wrap items-center gap-2 py-2.5 first:pt-0 last:pb-0" data-testid="payment-row">
-              <div className="min-w-36 flex-1">
-                <span className="block font-semibold tabular-nums">{inr(payment.amount)}</span>
-                <span className="block text-xs text-muted-foreground">
-                  {TYPE_LABEL[payment.type]} · {METHOD_LABEL[payment.method]} · {longDate(new Date(payment.receivedAt))} · {SOURCE_LABEL[payment.source]}
-                </span>
-                {payment.reference && <span className="block text-xs text-muted-foreground">Ref {payment.reference}</span>}
-              </div>
-              <PaymentStatusBadge status={payment.status} />
-              {payment.status === "PENDING" && canManage && (
-                <div className="flex gap-2">
-                  <Button type="button" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => confirmPaymentAction(payment.id, false))}>
-                    Confirm
+      <PaymentsListCard empty={payments.length === 0}>
+        {payments.map((payment) => (
+          <PaymentRowView
+            key={payment.id}
+            id={payment.id}
+            amount={payment.amount}
+            type={payment.type}
+            method={payment.method}
+            receivedAt={payment.receivedAt}
+            sourceText={SOURCE_LABEL[payment.source]}
+            reference={payment.reference}
+            trailing={
+              <>
+                <PaymentStatusBadge status={payment.status} />
+                {payment.status === "PENDING" && canManage && (
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => confirmPaymentAction(payment.id, false))}>
+                      Confirm
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => rejectPaymentAction(payment.id))}>
+                      Reject
+                    </Button>
+                  </div>
+                )}
+                {payment.status === "CONFIRMED" && payment.receipt && canManage && (
+                  <Button type="button" variant="ghost" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => sendReceiptAction(payment.id))} title={`Send receipt ${payment.receipt.number}`}>
+                    <Send />
+                    Send receipt
                   </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => rejectPaymentAction(payment.id))}>
-                    Reject
-                  </Button>
-                </div>
-              )}
-              {payment.status === "CONFIRMED" && payment.receipt && canManage && (
-                <Button type="button" variant="ghost" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => sendReceiptAction(payment.id))} title={`Send receipt ${payment.receipt.number}`}>
-                  <Send />
-                  Send receipt
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
+                )}
+              </>
+            }
+          />
+        ))}
+      </PaymentsListCard>
 
       <RecordPaymentDialog
         open={recordOpen}
@@ -195,6 +249,17 @@ export function PaymentsPanel({
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+/** A payment added on the New Order page: held in the form and recorded when the order is saved. */
+export interface StagedPaymentDraft {
+  key: string;
+  amount: number;
+  type: "ADVANCE" | "PARTIAL" | "FINAL";
+  method: "UPI" | "CARD" | "NET_BANKING" | "CASH" | "BANK_TRANSFER";
+  receivedAt: string;
+  reference: string;
+  sendReceipt: boolean;
+}
+
 export function RecordPaymentDialog({
   open,
   onOpenChange,
@@ -204,15 +269,18 @@ export function RecordPaymentDialog({
   paid,
   total,
   onDone,
+  onStage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  orderId: string;
+  /** Absent on the New Order page, where the payment is staged (`onStage`) instead of recorded. */
+  orderId?: string;
   invoiceId?: string;
   balance: number;
   paid: number;
   total: number;
-  onDone: (message: string) => void;
+  onDone?: (message: string) => void;
+  onStage?: (payment: Omit<StagedPaymentDraft, "key">) => void;
 }) {
   const router = useRouter();
   const [amount, setAmount] = useState(String(balance));
@@ -227,12 +295,20 @@ export function RecordPaymentDialog({
     setError(null);
     const value = Number(amount);
     if (!(value > 0)) return setError("Enter an amount greater than zero.");
+    if (onStage) {
+      // New order: nothing to record against yet. The payment is held with the form and recorded, with its receipt, on Save.
+      if (value > balance + 0.005) return setError(`That is more than the balance of ${inr(balance)}.`);
+      onStage({ amount: value, type: type as StagedPaymentDraft["type"], method: method as StagedPaymentDraft["method"], receivedAt, reference, sendReceipt });
+      onOpenChange(false);
+      return;
+    }
+    if (!orderId) return;
     setPending(sendReceipt ? "send" : "only");
     const result = await recordPaymentAction({ orderId, invoiceId: invoiceId ?? null, amount: value, type, method, receivedAt, reference, sendReceipt });
     setPending(null);
     if (!result.ok) return setError(result.error);
     onOpenChange(false);
-    onDone(result.message ?? "Payment recorded.");
+    onDone?.(result.message ?? "Payment recorded.");
     router.refresh();
   }
 

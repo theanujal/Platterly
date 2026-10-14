@@ -85,6 +85,7 @@ export default async function MenuApprovalDetailPage({
         menuSelectionId={menuSelection.id}
         status={menuSelection.status}
         statusLabel={MENU_SELECTION_STATUS_LABEL[menuSelection.status]}
+        orderCompleted={order.status === "COMPLETED"}
         currentVersion={menuSelection.currentVersion}
         lockedAt={menuSelection.lockedAt}
         isCustomMenu={menuSelection.isCustomMenu}

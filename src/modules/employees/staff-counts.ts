@@ -1,3 +1,4 @@
+import { assertEventOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -28,6 +29,7 @@ export async function totalsByEvent(organizationId: string, eventIds: string[]):
 
 /** Replaces the event's numbers. Zero removes the row; an unknown duty or a non-whole number is refused. */
 export async function saveStaffCounts(organizationId: string, eventId: string, input: Record<string, number>, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, eventId);
   const entries = Object.entries(input);
   for (const [duty, count] of entries) {
     if (!isStaffDuty(duty)) throw new ValidationError("Choose a duty from the list.");

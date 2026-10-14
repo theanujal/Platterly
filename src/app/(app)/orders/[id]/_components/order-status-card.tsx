@@ -18,7 +18,7 @@ export function OrderStatusCard({ orderId, status, hint, history }: { orderId: s
       hint={hint}
       options={ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }))}
       currentValue={status}
-      canChange
+      canChange={status !== "COMPLETED"}
       onChange={(value, reason) => changeOrderStatusAction(orderId, value as OrderStatus, reason)}
       history={history}
     />

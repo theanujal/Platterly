@@ -76,6 +76,8 @@ interface MenuApprovalReviewProps {
   menuSelectionId: string;
   status: MenuSelectionStatus;
   statusLabel: string;
+  /** The order is completed: closed, so the menu status can't be changed by hand either. */
+  orderCompleted?: boolean;
   currentVersion: number;
   lockedAt: Date | null;
   isCustomMenu: boolean;
@@ -170,6 +172,7 @@ export function MenuApprovalReview({
   menuSelectionId,
   status,
   statusLabel,
+  orderCompleted = false,
   currentVersion,
   lockedAt,
   isCustomMenu,
@@ -646,7 +649,7 @@ export function MenuApprovalReview({
             extra={`Version ${currentVersion}`}
             options={MENU_SELECTION_STATUS_ORDER.map((value) => ({ value, label: MENU_SELECTION_STATUS_LABEL[value] }))}
             currentValue={status}
-            canChange
+            canChange={!orderCompleted}
             onChange={(value, reason) => changeMenuStatusAction(menuSelectionId, value as MenuSelectionStatus, reason)}
             history={statusHistory}
           />

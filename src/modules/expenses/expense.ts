@@ -1,3 +1,4 @@
+import { assertOrderNotCompleted, assertExpenseOrderNotCompleted } from "@/modules/orders/order-guard";
 import { RULES, validateInput } from "@/lib/validation";
 import "server-only";
 import { prisma } from "@/lib/db";
@@ -39,6 +40,7 @@ async function clean(organizationId: string, input: ExpenseInput, forOrder: bool
 
 /** `orderId` null records a company (overhead) expense, such as rent, that belongs to no order. */
 export async function createExpense(organizationId: string, orderId: string | null, input: ExpenseInput, actorUserId?: string) {
+  await assertOrderNotCompleted(organizationId, orderId);
   validateInput(input, RULES.expense);
   if (orderId) await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { id: true } });
   const expense = await prisma.expense.create({ data: { organizationId, orderId, recordedByUserId: actorUserId, ...(await clean(organizationId, input, orderId !== null)) } });
@@ -47,6 +49,7 @@ export async function createExpense(organizationId: string, orderId: string | nu
 }
 
 export async function updateExpense(organizationId: string, id: string, input: ExpenseInput, actorUserId?: string) {
+  await assertExpenseOrderNotCompleted(organizationId, id);
   validateInput(input, RULES.expense);
   const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId } });
   const expense = await prisma.expense.update({ where: { id }, data: await clean(organizationId, input, before.orderId !== null) });
@@ -63,6 +66,7 @@ export async function updateExpense(organizationId: string, id: string, input: E
 }
 
 export async function deleteExpense(organizationId: string, id: string, actorUserId?: string) {
+  await assertExpenseOrderNotCompleted(organizationId, id);
   const before = await prisma.expense.findFirstOrThrow({ where: { id, organizationId }, include: { attachments: { select: { key: true } } } });
   await prisma.expense.delete({ where: { id } });
   await deleteStoredFiles(before.attachments.map((a) => a.key));

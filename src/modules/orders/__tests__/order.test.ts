@@ -15,6 +15,8 @@ import {
   syncOrderEvent,
 } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
+import { createExpense, updateExpense, deleteExpense } from "@/modules/expenses/expense";
+import { changeStatusManually } from "@/modules/menu-approvals/manual-status";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenu } from "@/modules/menus/menu";
 import { createMenuItem } from "@/modules/menus/item";
@@ -98,6 +100,44 @@ describe("Order CRUD (Chunk 10 Groups 10.2/10.3)", () => {
 
     const log = await prisma.auditLog.findFirst({ where: { organizationId: org.id, action: "order.update", recordId: order.id } });
     expect(log).not.toBeNull();
+  });
+
+  it("an order sent to the kitchen (or completed) can't be changed or deleted; earlier statuses can", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const base = { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() };
+    const order = await createOrder(org.id, base, actor.id);
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+    await expect(updateOrder(org.id, order.id, { ...base, venue: "Still editable" }, actor.id)).resolves.toBeTruthy();
+
+    for (const status of ["SENT_TO_KITCHEN", "COMPLETED"] as const) {
+      await prisma.order.update({ where: { id: order.id }, data: { status } });
+      await expect(updateOrder(org.id, order.id, { ...base, venue: "Changed after sending" }, actor.id)).rejects.toThrow(/can't be changed any more/);
+      await expect(deleteOrder(org.id, order.id, actor.id)).rejects.toThrow(/can't be changed any more/);
+    }
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(after.venue).toBe("Still editable"); // nothing from the refused saves reached the order
+  });
+
+  it("a completed order is closed: no expenses, no manual status change; an approved one allows both", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
+    const expense = { category: "FOOD" as const, amount: 100, spentAt: new Date() };
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+    const created = await createExpense(org.id, order.id, expense, actor.id);
+
+    await prisma.order.update({ where: { id: order.id }, data: { status: "COMPLETED" } });
+    await expect(createExpense(org.id, order.id, expense, actor.id)).rejects.toThrow(/completed, so it can't be changed/);
+    await expect(updateExpense(org.id, created.id, { ...expense, amount: 5 }, actor.id)).rejects.toThrow(/completed/);
+    await expect(deleteExpense(org.id, created.id, actor.id)).rejects.toThrow(/completed/);
+    await expect(changeStatusManually(org.id, { orderId: order.id, target: { kind: "ORDER", status: "APPROVED" }, reason: "Customer asked to reopen", actorUserId: actor.id })).rejects.toThrow(/completed/);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("COMPLETED");
+    expect(await prisma.expense.count({ where: { orderId: order.id } })).toBe(1);
   });
 
   it("the kitchen notes timestamp moves only when the notes actually change", async () => {

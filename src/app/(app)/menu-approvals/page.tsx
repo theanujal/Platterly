@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, ChefHat, Circle, Clock, TriangleAlert, Check, Lock, User } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
@@ -75,7 +76,7 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
       },
       // The whole card is one stretched link to the review page (after:inset-0), like the Orders card.
       card: (
-        <div className="relative flex flex-1 flex-col gap-4 p-5">
+        <div key={`card-${menuSelection.id}`} className="relative flex flex-1 flex-col gap-4 p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             {statusBadge}
             <span className="text-xs text-muted-foreground">Updated {formatDate(menuSelection.updatedAt)}</span>
@@ -111,7 +112,7 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
         </div>
       ),
       listRow: (
-        <>
+        <Fragment key={`row-${menuSelection.id}`}>
           <TableCell className="px-3 py-3">
             <div className="flex items-center gap-3">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -132,7 +133,7 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
               </Button>
             </div>
           </TableCell>
-        </>
+        </Fragment>
       ),
     };
   });
@@ -161,7 +162,7 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search customer or event…"
         emptyLabel="No menu selections yet."
-        filters={<MenuApprovalsFilterBar />}
+        filters={<MenuApprovalsFilterBar key="menu-approvals-filters" />}
         sortOptions={sortOptions}
         defaultView="list"
       />

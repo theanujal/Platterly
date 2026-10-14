@@ -35,6 +35,7 @@ import { EventOps } from "../../staff/_components/event-ops";
 import { OrderInventoryPanel } from "./_components/order-inventory-panel";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
+import { isOrderLocked } from "@/modules/orders/order-lock";
 import { MenuStatusBanner, menuPlanPhase } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
@@ -166,10 +167,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     transportationCost: order.transportationCost.toString(),
     otherCharges: order.otherCharges.toString(),
     customCharges: parseCustomCharges(order.customCharges).map((c) => ({ label: c.label, amount: c.amount.toString() })),
-    advance: order.advance.toString(),
-    advanceMethod: "CASH",
-    advanceReference: "",
-    paymentStatus: order.paymentStatus,
     status: order.status,
     notes: order.notes ?? "",
     kitchenNotes: order.kitchenNotes ?? "",
@@ -199,7 +196,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <EditOrderClient
         orderId={order.id}
         menuPlanReadOnly={menuPlanPhase(menuApproval?.status ?? null) !== "editable"}
-        paymentsRecorded={orderPayments.some((p) => p.status === "CONFIRMED")}
+        locked={isOrderLocked(order.status)}
+        completed={order.status === "COMPLETED"}
         initialValues={initialValues}
         header={
           <div key="header" className="flex flex-col gap-4">
@@ -236,7 +234,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </div>
           </div>
         }
-        headerActions={<DeleteOrderButton key="header-actions" orderId={order.id} name={order.customer.name} />}
+        headerActions={isOrderLocked(order.status) ? undefined : <DeleteOrderButton key="header-actions" orderId={order.id} name={order.customer.name} />}
         menuPlanBanner={
           <MenuStatusBanner
             key="menu-status-banner"
@@ -286,11 +284,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             />
             <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
             {active.enabled && (
+              <fieldset disabled={order.status === "COMPLETED"} className="m-0 min-w-0 border-0 p-0 disabled:[&_button]:pointer-events-none disabled:[&_[role=combobox]]:pointer-events-none disabled:[&_:disabled]:opacity-100!">
               <EventOperationsCard
                 orderId={order.id}
                 event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
                 kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
               />
+              </fieldset>
             )}
           </Fragment>
         }

@@ -6,6 +6,7 @@ import { syncOrderStatus } from "./menu-approval";
 import { ensureOrderMenuSelection, revokeOutstandingApprovalLinks } from "./approval-link";
 import { addMenuApprovalNote } from "./menu-approval";
 import { recordStatusChange } from "./status-history";
+import { ORDER_COMPLETED_MESSAGE } from "@/modules/orders/order-guard";
 import { returnAllOrderItems } from "@/modules/production/production";
 import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
 import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "@/generated/prisma/enums";
@@ -57,6 +58,7 @@ export async function changeStatusManually(
   }
 
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
+  if (order.status === "COMPLETED") throw new ManualStatusChangeError(ORDER_COMPLETED_MESSAGE); // a completed order is closed
 
   // An order that can't have a menu approval yet (no Event Type): only its own status can be written.
   if (!selectionId) {

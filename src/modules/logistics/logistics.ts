@@ -1,3 +1,4 @@
+import { assertEventOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -27,6 +28,7 @@ const blank = (v?: string) => v?.trim() || null;
  * left, "delivered" when it arrived; moving back clears the later stamp, so the times always match the status.
  */
 export async function saveLogistics(organizationId: string, eventId: string, input: LogisticsInput, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, eventId);
   validateInput(input, RULES.eventLogistics);
   if (input.driverPhone?.trim()) checkPhone(input.driverPhone, "driver phone");
   if (!DISPATCH_STATUSES.includes(input.dispatchStatus)) throw new LogisticsError("Choose a dispatch status.");

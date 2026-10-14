@@ -1,3 +1,4 @@
+import { isOrderLocked, OrderLockedError } from "./order-lock";
 import { validateOrderLike } from "@/lib/validation";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -409,6 +410,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
   validateOrderLike(input);
   await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId });
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
+  if (isOrderLocked(before.status)) throw new OrderLockedError();
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;
@@ -491,6 +493,7 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
 /** Hard delete — items/mealPlanEntries cascade; any linked Event just gets orderId unset (SetNull), not deleted. */
 export async function deleteOrder(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
+  if (isOrderLocked(before.status)) throw new OrderLockedError();
   // The DB removes the order's expenses and their attachment rows; their stored files need removing by hand.
   const expenseFiles = await prisma.expenseAttachment.findMany({ where: { expense: { orderId: id } }, select: { key: true } });
   await returnAllOrderItems(organizationId, id, actorUserId);

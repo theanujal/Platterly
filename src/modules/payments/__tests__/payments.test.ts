@@ -6,7 +6,7 @@ import { createCustomer } from "@/modules/customers/customer";
 import { resolveToken } from "@/lib/secure-access/token";
 import { generateInvoiceFromOrder, createInvoiceOnKitchenHandoff, InvoiceError } from "@/modules/invoices/invoice";
 import { sendInvoiceDocument } from "@/modules/invoices/invoice-send";
-import { confirmPayment, recordPayment, recordInitialAdvance, rejectPayment, PaymentError } from "../payment";
+import { confirmPayment, recordPayment, recordInitialAdvance, parseStagedPayments, recordStagedPayments, rejectPayment, PaymentError } from "../payment";
 import { createPaymentLink, resolvePaymentLink } from "../payment-links";
 import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveGstSettings, setAutoInvoice, saveRazorpay, saveUpi, setMethodEnabled, buildUpiUri, PaymentSettingsError } from "../payment-settings";
 import { decryptSecret, encryptSecret } from "../secret-box";
@@ -330,6 +330,38 @@ describe("the invoice is created when the order is sent to the kitchen (AJ, 2026
   it("never throws: a failure is logged and the hand-off carries on", async () => {
     const { org, actor } = await makeOrderWithTotal();
     expect(await createInvoiceOnKitchenHandoff(org.id, "no-such-order", actor.id)).toBeNull();
+  });
+});
+
+describe("payments added on the New Order page are recorded when the order is saved (AJ, 2026-10-14)", () => {
+  it("reads the form's list and refuses what is malformed", () => {
+    expect(parseStagedPayments(undefined)).toEqual([]);
+    expect(parseStagedPayments(JSON.stringify([{ amount: "3000.456", type: "ADVANCE", method: "UPI", receivedAt: "2026-10-14", reference: "R1", sendReceipt: true }]))).toEqual([
+      { amount: 3000.46, type: "ADVANCE", method: "UPI", receivedAt: "2026-10-14", reference: "R1", sendReceipt: true },
+    ]);
+    expect(() => parseStagedPayments("{not json")).toThrow(PaymentError);
+    expect(() => parseStagedPayments(JSON.stringify([{ amount: 0, type: "ADVANCE", method: "UPI" }]))).toThrow(/greater than zero/);
+    expect(() => parseStagedPayments(JSON.stringify([{ amount: 5, type: "NOPE", method: "UPI" }]))).toThrow(/type and method/);
+  });
+
+  it("records each as a confirmed payment, in order, and the order follows", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    const recorded = await recordStagedPayments(org.id, order.id, parseStagedPayments(JSON.stringify([
+      { amount: 3000, type: "ADVANCE", method: "UPI", reference: "U1", sendReceipt: true },
+      { amount: 2000, type: "PARTIAL", method: "CASH" },
+    ])), actor.id);
+    expect(recorded.map((r) => r.sendReceipt)).toEqual([true, false]);
+    const payments = await prisma.payment.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" }, include: { receipt: true } });
+    expect(payments.map((p) => [Number(p.amount), p.type, p.method, p.status])).toEqual([[3000, "ADVANCE", "UPI", "CONFIRMED"], [2000, "PARTIAL", "CASH", "CONFIRMED"]]);
+    expect(payments.every((p) => p.receipt?.number.startsWith("RCT-"))).toBe(true);
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect([Number(after.advance), Number(after.balance), after.paymentStatus]).toEqual([5000, 5000, "PARTIALLY_PAID"]);
+  });
+
+  it("stops at a payment the order cannot take; the ones before it stay", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    await expect(recordStagedPayments(org.id, order.id, [{ amount: 6000, type: "ADVANCE", method: "CASH" }, { amount: 6000, type: "PARTIAL", method: "CASH" }], actor.id)).rejects.toThrow(/more than the balance/);
+    expect(await prisma.payment.count({ where: { orderId: order.id } })).toBe(1);
   });
 });
 

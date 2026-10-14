@@ -206,18 +206,37 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByLabel("Charge 1 label").fill("Generator");
   await page.getByLabel("Charge 1 amount").fill("40");
 
-  // Payment Status — Advance Received lives here now (not Order Details).
-  await page.getByLabel("Advance Received").fill("50");
-  // The advance is recorded as a real payment, so it asks how it was collected (AJ, 2026-10-10).
-  await page.getByLabel("Payment method").click();
+  // New order: the same Payment summary and Record Payment as an existing order (AJ, 2026-10-14). The payment is held with the
+  // form and recorded, with its receipt, when the order is saved.
+  await expect(page.getByRole("heading", { name: "Payment summary" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
+  await expect(page.getByLabel("Advance Received")).toHaveCount(0); // the old Payment Details card is gone
+  await page.getByRole("button", { name: "Record Payment" }).click();
+  const recordDialog = page.getByRole("dialog");
+  await recordDialog.getByLabel("Amount").fill("50");
+  await recordDialog.getByLabel("Method").click();
   await page.getByRole("option", { name: "UPI", exact: true }).click();
+  await recordDialog.getByRole("button", { name: "Record Only" }).click();
+  await expect(recordDialog).not.toBeVisible();
+  await expect(page.getByTestId("payment-row")).toHaveCount(1);
+  await expect(page.getByTestId("payment-row")).toContainText("₹50.00");
+  await expect(page.getByTestId("paid-amount")).toHaveText("₹50.00");
+
+  // Another one can be added and taken back out before saving; the balance follows.
+  await page.getByRole("button", { name: "Record Payment" }).click();
+  await recordDialog.getByLabel("Amount").fill("10");
+  await recordDialog.getByRole("button", { name: "Record Only" }).click();
+  await expect(page.getByTestId("payment-row")).toHaveCount(2);
+  await page.getByTestId("payment-row").nth(1).getByRole("button", { name: /^Remove the 10 payment/ }).click();
+  await expect(page.getByTestId("payment-row")).toHaveCount(1);
+  await expect(page.getByTestId("paid-amount")).toHaveText("₹50.00");
 
   // Pricing summary live preview (one rule: a dish inside the menu is included, so the 150 Paneer adds nothing):
   // The typed Individual Pricing price is per plate (AJ, 2026-10-10): subtotal = 300 x 80 adults = 24,000;
   // total = 24,000-100+30+20+40 (Generator) = 23,990; balance = 23,990-50 = 23,940.
   await expect(page.getByText("₹24000.00").first()).toBeVisible();
   await expect(page.getByText("₹23990.00").first()).toBeVisible();
-  await expect(page.getByText("₹23940.00")).toBeVisible();
+  await expect(page.getByTestId("balance-amount")).toHaveText("₹23,940.00"); // the Payment summary: total less the payment added above
 
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
@@ -272,7 +291,10 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(advanceRow).toContainText("UPI");
   await expect(advanceRow).toContainText("₹50.00");
   await expect(page.getByTestId("paid-amount")).toHaveText("₹50.00");
-  await expect(page.getByLabel("Advance Payment Amount")).toHaveAttribute("readonly", "");
+  // On an existing order the Payment Details card is gone (AJ, 2026-10-14): Payment summary, history and Record Payment own the money.
+  await expect(page.getByRole("heading", { name: "Payment Details" })).toHaveCount(0);
+  await expect(page.getByLabel("Advance Received")).toHaveCount(0);
+  await expect(page.getByLabel("Payment Status")).toHaveCount(0);
   await page.getByRole("tab", { name: "Order Details" }).click();
   // The detail page splits the order into tabs (AJ, 2026-09-30).
   await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");

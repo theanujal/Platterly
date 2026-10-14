@@ -135,6 +135,60 @@ export async function recordInitialAdvance(
   }
 }
 
+const STAGED_TYPES: PaymentType[] = ["ADVANCE", "PARTIAL", "FINAL"];
+
+/** A payment collected on the New Order page, before the order exists; it is recorded when the order is saved (AJ, 2026-10-14). */
+export interface StagedPayment {
+  amount: number;
+  type: PaymentType;
+  method: PaymentMethod;
+  receivedAt?: string;
+  reference?: string;
+  sendReceipt?: boolean;
+}
+
+/** The staged payments as the form sends them (a JSON list). Anything malformed is refused with a message a person can read. */
+export function parseStagedPayments(raw: string | null | undefined): StagedPayment[] {
+  if (!raw) return [];
+  let list: unknown;
+  try {
+    list = JSON.parse(raw);
+  } catch {
+    throw new PaymentError("The payments on this order could not be read. Please add them again.");
+  }
+  if (!Array.isArray(list) || list.length > 20) throw new PaymentError("The payments on this order could not be read. Please add them again.");
+  return list.map((item) => {
+    const row = item as Partial<StagedPayment>;
+    const amount = round2(Number(row.amount));
+    if (!Number.isFinite(amount) || amount <= 0) throw new PaymentError("Enter an amount greater than zero for each payment.");
+    if (!STAGED_TYPES.includes(row.type as PaymentType) || !ADVANCE_METHODS.includes(row.method as PaymentMethod)) throw new PaymentError("Choose a payment type and method for each payment.");
+    const receivedAt = typeof row.receivedAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.receivedAt) ? row.receivedAt : undefined;
+    return { amount, type: row.type as PaymentType, method: row.method as PaymentMethod, receivedAt, reference: typeof row.reference === "string" ? row.reference.slice(0, 80) : undefined, sendReceipt: row.sendReceipt === true };
+  });
+}
+
+/**
+ * Records the staged payments on the order just created, in the order they were added, each as a confirmed payment with
+ * its receipt. Stops at the first one the order cannot take (more than the balance) and says so; the ones before it stay.
+ */
+export async function recordStagedPayments(organizationId: string, orderId: string, staged: StagedPayment[], actorUserId?: string) {
+  const recorded: { paymentId: string; sendReceipt: boolean }[] = [];
+  for (const item of staged) {
+    const payment = await recordPayment({
+      organizationId,
+      orderId,
+      amount: item.amount,
+      type: item.type,
+      method: item.method,
+      receivedAt: item.receivedAt ? new Date(item.receivedAt) : undefined,
+      reference: item.reference,
+      actorUserId,
+    });
+    recorded.push({ paymentId: payment.id, sendReceipt: item.sendReceipt === true });
+  }
+  return recorded;
+}
+
 /** The kitchen team confirms a UPI payment once it has reached their account. */
 export async function confirmPayment(organizationId: string, paymentId: string, actorUserId?: string) {
   const payment = await prisma.payment.findFirstOrThrow({ where: { id: paymentId, organizationId } });

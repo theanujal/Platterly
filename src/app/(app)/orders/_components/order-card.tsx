@@ -7,6 +7,7 @@ import { cn } from "cn";
 import type { listOrders } from "@/modules/orders/order";
 import { formatAmount, formatEventWhen, getGuestCount, getOrderLocation, getPaymentBreakdown, getCardCountdown, summarizeMenuApproval } from "@/modules/orders/order-card";
 import { OrderCardMenu } from "./order-card-menu";
+import { isOrderLocked } from "@/modules/orders/order-lock";
 import { ORDER_KIND_ICON, ORDER_KIND_LABEL, ORDER_KIND_VARIANT, STATUS_ICON, STATUS_LABEL, STATUS_VARIANT, TONE_SURFACE } from "./order-display";
 
 // Badge pads its leading edge tighter when it sees this attribute on an icon child.
@@ -64,7 +65,7 @@ export function OrderCard({ order, now, timeZone, canEdit, canDelete }: OrderCar
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
         <span className="mr-auto text-sm font-medium whitespace-nowrap text-muted-foreground">{order.orderNumber ?? "—"}</span>
         <div className="relative z-10 order-2 @sm:order-3">
-          <OrderCardMenu orderId={order.id} orderLabel={orderLabel} customerName={order.customer.name} canEdit={canEdit} canDelete={canDelete} />
+          <OrderCardMenu orderId={order.id} orderLabel={orderLabel} customerName={order.customer.name} canEdit={canEdit} canDelete={canDelete && !isOrderLocked(order.status)} />
         </div>
         <div className="order-3 basis-full @sm:order-2 @sm:basis-auto">
           <Badge variant={STATUS_VARIANT[order.status]}>

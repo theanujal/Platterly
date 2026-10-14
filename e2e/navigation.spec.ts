@@ -89,10 +89,10 @@ test("the Order page: no pricing or payments in the sidebar, payments beside the
   // They are in the Pricing & Payment tab, side by side
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   const pricing = page.getByRole("heading", { name: "Pricing Details" });
-  const payment = page.getByRole("heading", { name: "Payment Details" });
+  const payment = page.getByTestId("order-billing"); // Payment summary, history and Record Payment (the old Payment Details card is gone from an existing order)
   await expect(pricing).toBeVisible();
   await expect(payment).toBeVisible();
-  await expect(page.getByTestId("order-billing")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Payment Details" })).toHaveCount(0);
   const [a, b] = [await pricing.boundingBox(), await payment.boundingBox()];
   expect(Math.abs((a?.y ?? 0) - (b?.y ?? 100))).toBeLessThan(40); // same row
   expect((b?.x ?? 0) - (a?.x ?? 0)).toBeGreaterThan(300); // payment is to the right

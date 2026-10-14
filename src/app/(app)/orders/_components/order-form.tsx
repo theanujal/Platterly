@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, ClipboardList, CreditCard, Info, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Lock, ClipboardList, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "@/components/customers/customer-combobox";
 import { MenuPlanningSection, MEAL_TYPES, type MealSelection, type MenuOption, type MealTypeValue } from "@/components/catalog/menu-planning-section";
+import { DraftPaymentsPanel } from "./draft-payments-panel";
+import type { StagedPaymentDraft } from "../../invoices/_components/payments-panel";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
@@ -52,20 +54,6 @@ function startsInPreview(days: number | null): { caption: string; label: string;
   if (days === 0) return { caption: "Event", label: "Today", tone: "orange" };
   return { caption: "Starts in", label: `${days} ${days === 1 ? "day" : "days"}`, tone: days <= 2 ? "yellow" : "success" };
 }
-
-const PAYMENT_METHOD_OPTIONS = [
-  { value: "CASH", label: "Cash" },
-  { value: "UPI", label: "UPI" },
-  { value: "CARD", label: "Card" },
-  { value: "NET_BANKING", label: "Net Banking" },
-  { value: "BANK_TRANSFER", label: "Bank Transfer" },
-] as const;
-
-const PAYMENT_STATUS_OPTIONS = [
-  { value: "UNPAID", label: "Unpaid" },
-  { value: "PARTIALLY_PAID", label: "Partially Paid" },
-  { value: "PAID", label: "Paid" },
-] as const;
 
 // Mirrors the customer-facing intake form's own VENUE_TYPE_OPTIONS
 // (event-details-form.tsx) exactly — same Order.venueType enum, same labels.
@@ -134,11 +122,6 @@ export interface OrderFormValues {
   otherCharges: string;
   /** Team-added label + amount lines (amount typed as text, like the other money fields). */
   customCharges: { label: string; amount: string }[];
-  advance: string;
-  /** How the advance was collected (a PaymentMethod); only used when the advance is recorded as a payment. */
-  advanceMethod: string;
-  advanceReference: string;
-  paymentStatus: string;
   status: string;
   notes: string;
   /** Internal, kitchen-facing — distinct from the customer-facing Notes above. */
@@ -183,10 +166,6 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   transportationCost: "0",
   otherCharges: "0",
   customCharges: [],
-  advance: "0",
-  advanceMethod: "CASH",
-  advanceReference: "",
-  paymentStatus: "UNPAID",
   status: "PENDING_REVIEW",
   notes: "",
   kitchenNotes: "",
@@ -289,11 +268,10 @@ interface OrderFormProps {
    * were changed, so saving other fields never rewrites the plan or logs a menu edit.
    */
   menuPlanOnlyIfChanged?: boolean;
-  /**
-   * Edit page: the order already has payments (AJ, 2026-10-10). The advance is then a real payment, so Payment Status and the advance
-   * are shown, not edited here; more money goes through Record Payment in the Pricing & Payment tab.
-   */
-  paymentsRecorded?: boolean;
+  /** Sent to the kitchen or completed: nothing on the order can be changed any more (AJ, 2026-10-14). Payments and the kitchen's own cards still work. */
+  locked?: boolean;
+  /** Completed: closed completely, so the inventory, expenses and staffing tabs are read-only too (payments still work). */
+  completed?: boolean;
   /** Shown above the planner: the menu approval status and what the team can do with it (edit, recall, view only). */
   menuPlanBanner?: React.ReactNode;
   cancelHref?: string;
@@ -329,7 +307,8 @@ export function OrderForm({
   sidebarInvoiceAction,
   menuPlanReadOnly = false,
   menuPlanOnlyIfChanged = false,
-  paymentsRecorded = false,
+  locked = false,
+  completed = false,
   menuPlanBanner = null,
   cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
@@ -350,9 +329,11 @@ export function OrderForm({
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(initialSelectedCustomer);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"save" | "whatsapp" | null>(null);
+  // New order: payments added with Record Payment, held until the order is saved.
+  const [draftPayments, setDraftPayments] = useState<StagedPaymentDraft[]>([]);
   // What the form held when it was opened or last saved: anything different is an unsaved change.
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(values));
-  const dirty = JSON.stringify(values) !== savedSnapshot;
+  const dirty = JSON.stringify(values) !== savedSnapshot || draftPayments.length > 0;
   const guard = useUnsavedChangesGuard(dirty, "order");
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
@@ -471,10 +452,8 @@ export function OrderForm({
   const transportationCostNum = Number.parseFloat(values.transportationCost) || 0;
   const otherChargesNum = Number.parseFloat(values.otherCharges) || 0;
   const customChargesNum = sumCustomCharges(parseCustomCharges(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
-  const advanceNum = Number.parseFloat(values.advance) || 0;
   // Mirrors order.ts's server-side recalculateOrderTotals exactly.
   const total = subtotal - discountNum + transportationCostNum + otherChargesNum + customChargesNum;
-  const balance = total - advanceNum;
 
   function buildFormData(): FormData {
     const formData = new FormData();
@@ -516,10 +495,8 @@ export function OrderForm({
     formData.set("transportationCost", values.transportationCost);
     formData.set("otherCharges", values.otherCharges);
     formData.set("customCharges", JSON.stringify(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
-    formData.set("advance", values.advance);
-    formData.set("advanceMethod", values.advanceMethod);
-    formData.set("advanceReference", values.advanceReference);
-    formData.set("paymentStatus", values.paymentStatus);
+    // New order only: the payments added on this page, recorded once the order is saved.
+    if (!initialValues) formData.set("payments", JSON.stringify(draftPayments.map(({ amount, type, method, receivedAt, reference, sendReceipt }) => ({ amount, type, method, receivedAt, reference, sendReceipt }))));
     formData.set("notes", values.notes);
     formData.set("kitchenNotes", values.kitchenNotes);
     formData.set("staffingNotes", values.staffingNotes);
@@ -546,6 +523,7 @@ export function OrderForm({
   }
 
   async function handleSubmit(notifyWhatsApp: boolean) {
+    if (locked) return;
     setError(null);
     if (!values.customerId) {
       setError("A Customer is required.");
@@ -565,12 +543,8 @@ export function OrderForm({
       setError(`Select food items for ${label}${days.length > 1 ? ` on ${emptyMeal.date}` : ""}, or remove the meal.`);
       return;
     }
-    if (values.paymentStatus === "PARTIALLY_PAID" && advanceNum <= 0) {
-      setError("Enter the Advance Payment Amount received so far.");
-      return;
-    }
-    if (!paymentsRecorded && advanceNum > total + 0.005) {
-      setError("The advance cannot be more than the order total.");
+    if (!initialValues && draftPayments.reduce((sum, p) => sum + p.amount, 0) > total + 0.005) {
+      setError("The payments added are more than the order total. Remove one, or raise the total.");
       return;
     }
     setPending(notifyWhatsApp ? "whatsapp" : "save");
@@ -1095,81 +1069,6 @@ export function OrderForm({
   </SummaryCard>
   );
 
-  const paymentCard = (
-  <SummaryCard icon={CreditCard} title="Payment Details">
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor="order-payment-status">Payment Status</Label>
-      <Select
-        items={Object.fromEntries(PAYMENT_STATUS_OPTIONS.map((o) => [o.value, o.label]))}
-        value={values.paymentStatus}
-        onValueChange={(v) => setField("paymentStatus", v ?? values.paymentStatus)}
-        disabled={paymentsRecorded}
-      >
-        <SelectTrigger id="order-payment-status" className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {PAYMENT_STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-    {values.paymentStatus === "PARTIALLY_PAID" ? (
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="order-advance" required>Advance Payment Amount</Label>
-        <Input id="order-advance" type="number" min="0.01" step="0.01" readOnly={paymentsRecorded} value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
-      </div>
-    ) : (
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="order-advance">Advance Received</Label>
-        <Input id="order-advance" type="number" min="0" step="0.01" readOnly={paymentsRecorded} value={values.advance} onChange={(e) => setField("advance", e.target.value)} />
-      </div>
-    )}
-    {!paymentsRecorded && advanceNum > 0 && (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="order-advance-method">Payment method</Label>
-          <Select
-            items={Object.fromEntries(PAYMENT_METHOD_OPTIONS.map((o) => [o.value, o.label]))}
-            value={values.advanceMethod}
-            onValueChange={(v) => setField("advanceMethod", v ?? values.advanceMethod)}
-          >
-            <SelectTrigger id="order-advance-method" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {PAYMENT_METHOD_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="order-advance-reference">Reference (optional)</Label>
-          <Input id="order-advance-reference" maxLength={80} placeholder="UPI / cheque / transaction no." value={values.advanceReference} onChange={(e) => setField("advanceReference", e.target.value)} />
-        </div>
-      </div>
-    )}
-    <div className="flex items-center justify-between gap-3 text-sm">
-      <span className="text-muted-foreground">Balance</span>
-      <span className="font-semibold">{formatCurrency(balance)}</span>
-    </div>
-    <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
-      <Info className="mt-0.5 size-4 shrink-0" />
-      <span>
-        {paymentsRecorded
-          ? "Payments are recorded in the Payment Summary. Use Record Payment there to add more."
-          : "The advance is recorded as a payment when you save, and a receipt is issued. More payments can be added from the order page."}
-      </span>
-    </div>
-  </SummaryCard>
-  );
-
   const multiDialog = (
   <>
   <AlertDialog open={pendingKind !== null} onOpenChange={(open) => !open && setPendingKind(null)}>
@@ -1239,30 +1138,41 @@ export function OrderForm({
     </SummaryCard>
   );
 
+  // Locked orders (sent to the kitchen): the fields stay on screen at full strength but cannot be changed. A disabled
+  // fieldset covers every input and button inside; the pointer rules cover Base UI dropdowns, which are not native controls.
+  const freeze = (node: React.ReactNode, when: boolean = locked) =>
+    when ? (
+      <fieldset disabled className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0 [&_:disabled]:bg-muted! [&_:disabled]:opacity-100! [&_button]:pointer-events-none [&_[role=combobox]]:pointer-events-none" data-testid="order-locked-fields">
+        {node}
+      </fieldset>
+    ) : (
+      node
+    );
+
   const tabs: FormTab[] = [
     {
       id: "details",
       label: "Order Details",
-      panel: (
+      panel: freeze(
         <>
           {customerSection}
           {orderTypeSection}
           {multiDialog}
           {eventSection}
-        </>
+        </>,
       ),
     },
     {
       id: "menu",
       label: "Guests & Menu Planning",
-      panel: (
+      panel: freeze(
         <>
           {guestSection}
           {menuSection}
-        </>
+        </>,
       ),
     },
-    { id: "additional", label: "Additional Details", panel: additionalSection },
+    { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
     {
       id: "pricing",
       label: "Pricing & Payment",
@@ -1271,10 +1181,12 @@ export function OrderForm({
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-4">
             {pricingExtra}
-            {pricingEditorCard}
+            {freeze(pricingEditorCard)}
           </div>
           <div className="flex min-w-0 flex-col gap-4">
-            {paymentCard}
+            {/* Editing an order: Payment summary, history and Record Payment own the money, and the payment status follows the payments. */}
+            {/* Payment summary and Payments are the same on a new order and an existing one; a new order holds its payments until it is saved. */}
+            {initialValues ? null : <DraftPaymentsPanel total={total} payments={draftPayments} onChange={setDraftPayments} />}
             {billingPanel}
           </div>
         </div>
@@ -1295,14 +1207,14 @@ export function OrderForm({
             }
           }}
         >
-          {inventoryTab}
+          {freeze(inventoryTab, completed)}
         </div>
       ),
     },
         ]
       : []),
-    ...(expensesTab ? [{ id: "expenses", label: "Expenses", panel: expensesTab }] : []),
-    ...(staffingTab ? [{ id: "staffing", label: "Staffing & Logistics", panel: staffingTab }] : []),
+    ...(expensesTab ? [{ id: "expenses", label: "Expenses", panel: freeze(expensesTab, completed) }] : []),
+    ...(staffingTab ? [{ id: "staffing", label: "Staffing & Logistics", panel: freeze(staffingTab, completed) }] : []),
   ];
 
   return (
@@ -1329,13 +1241,13 @@ export function OrderForm({
                 </>
               )}
             </Button>
-            {onSubmitAndNotify && (
+            {onSubmitAndNotify && !locked && (
               <Button type="button" variant="outline" disabled={pending !== null} onClick={() => void handleSubmit(true)}>
                 {pending === "whatsapp" ? "Sending…" : "Create & Send WhatsApp"}
               </Button>
             )}
             {/* On a big screen Save lives in the sticky card beside the form; here for a phone or tablet. */}
-            <Button type="submit" className="lg:hidden" disabled={pending !== null}>
+            <Button type="submit" className={cn("lg:hidden", locked && "hidden")} disabled={pending !== null}>
               {pending === "save" ? "Saving…" : submitLabel}
             </Button>
           </div>
@@ -1344,6 +1256,18 @@ export function OrderForm({
           <p role="status" className="-mt-3 text-xs font-medium text-warning lg:hidden">
             Unsaved changes
           </p>
+        )}
+
+        {locked && (
+          <div role="status" className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm" data-testid="order-locked-banner">
+            <Lock className="mt-0.5 size-4 shrink-0 text-info" />
+            <div>
+              <p className="font-semibold">{completed ? "Completed: this order can't be changed any more." : "Sent to the kitchen: this order can't be changed any more."}</p>
+              <p className="text-muted-foreground">
+                {completed ? "You can still record payments and send invoices." : "You can still record payments and send invoices. If the send was a mistake, change the status with a reason first."}
+              </p>
+            </div>
+          </div>
         )}
 
         {error && (
@@ -1364,7 +1288,7 @@ export function OrderForm({
             {sidebarTop ?? orderSummaryCard}
             {!sidebarTop && pricingSummaryCard}
             {/* Save stays at the bottom of the summary column and in view while a long order scrolls (AJ, 2026-10-14). */}
-            <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card">
+            <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card" hidden={locked}>
               {dirty && (
                 <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
                   Unsaved changes

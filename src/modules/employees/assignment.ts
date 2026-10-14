@@ -1,3 +1,4 @@
+import { assertEventOrderNotCompleted, assertAssignmentOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
@@ -43,6 +44,7 @@ async function findConflicts(organizationId: string, eventId: string, person: { 
 }
 
 export async function assignStaff(organizationId: string, eventId: string, input: AssignInput, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, eventId);
   validateInput(input, RULES.staffAssignment);
   if (!isStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
   if (Boolean(input.staffMemberId) === Boolean(input.memberId)) throw new StaffAssignmentError("Choose one person.");
@@ -72,6 +74,7 @@ export async function assignStaff(organizationId: string, eventId: string, input
 }
 
 export async function updateAssignment(organizationId: string, id: string, input: { duty: StaffDuty; notes?: string }, actorUserId: string) {
+  await assertAssignmentOrderNotCompleted(organizationId, id);
   validateInput(input, RULES.staffAssignment);
   if (!isStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
   const before = await prisma.staffAssignment.findFirstOrThrow({ where: { id, organizationId } });
@@ -81,6 +84,7 @@ export async function updateAssignment(organizationId: string, id: string, input
 }
 
 export async function removeAssignment(organizationId: string, id: string, actorUserId: string) {
+  await assertAssignmentOrderNotCompleted(organizationId, id);
   const before = await prisma.staffAssignment.findFirstOrThrow({ where: { id, organizationId } });
   await prisma.staffAssignment.delete({ where: { id } });
   await audit({ organizationId, actorUserId, action: "staff_assignment.delete", recordType: "StaffAssignment", recordId: id, before: { eventId: before.eventId, duty: before.duty } });

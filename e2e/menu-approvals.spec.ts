@@ -534,6 +534,13 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
+  // Sent to the kitchen, the order itself is final (AJ, 2026-10-14): fields cannot be edited, no Save, no Delete.
+  await expect(page.getByTestId("order-locked-banner")).toContainText("can't be changed any more");
+  await expect(page.getByLabel("Venue / Building Name")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create & Send WhatsApp" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
+  await expect(page.getByTestId("order-save-card")).toBeHidden();
   await page.getByRole("combobox", { name: "Change status" }).click();
   await page.getByRole("option", { name: "Approved", exact: true }).click();
   const reasonDialog = page.getByRole("dialog");
