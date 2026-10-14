@@ -14,12 +14,16 @@ import { requiredShortfalls, splitPicks } from "@/modules/menu-approvals/storefr
 import { estimateQuoteAction, saveBuildMenuAction } from "../actions";
 import { MenuSection } from "./menu-section";
 import { DishesSection } from "./dishes-section";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { EventDetailsForm, type EventDetailsFormValues } from "./event-details-form";
 import { AddOnsSection, type StorefrontAddOn } from "./addons-section";
 
 export interface BuildMenuEventSummary {
   date: string;
   eventType: string;
-  guests: string;
+  adults: number;
+  kidsBelow5: number;
+  kids5To10: number;
   meals: string;
   preference: string;
   location: string;
@@ -38,6 +42,8 @@ interface BuildMenuStepProps {
   addOns: StorefrontAddOn[];
   guests: number;
   event: BuildMenuEventSummary;
+  /** What the Edit panel needs to change the event details without leaving this page. */
+  editDetails: { businessName: string; eventTypes: { id: string; name: string; minGuests: number | null }[]; values: EventDetailsFormValues };
   initial: { choice: MenuChoice | null; itemIds: string[]; addOnIds: string[] };
 }
 
@@ -69,7 +75,7 @@ function scrollToRef(element: HTMLElement | null) {
  * Once the dishes are complete they fold into a one-line accordion (tap to reopen and change them) and the Add-ons card
  * is brought into view.
  */
-export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, event, initial }: BuildMenuStepProps) {
+export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, event, editDetails, initial }: BuildMenuStepProps) {
   const router = useRouter();
   const [choice, setChoice] = useState<MenuChoice | null>(initial.choice);
   const [listOpen, setListOpen] = useState(initial.choice === null);
@@ -81,6 +87,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [announcement, setAnnouncement] = useState("");
+  const [editOpen, setEditOpen] = useState(false);
   const dishesRef = useRef<HTMLDivElement>(null);
   const addOnsRef = useRef<HTMLDivElement>(null);
 
@@ -254,14 +261,17 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold">Event Summary</h4>
-              <Link href={`/${tenantSlug}/plan/${draftId}?step=details`} className="text-sm font-medium text-primary hover:underline">
+              <button type="button" onClick={() => setEditOpen(true)} className="text-sm font-medium text-primary hover:underline">
                 Edit
-              </Link>
+              </button>
             </div>
             <dl className="flex flex-col gap-1.5 text-sm">
               <SummaryRow label="Date" value={event.date} />
               <SummaryRow label="Event Type" value={event.eventType} />
-              <SummaryRow label="Guests" value={event.guests} />
+              <SummaryRow label="Adult Guests" value={String(event.adults)} />
+              <SummaryRow label="Kids (0–5)" value={String(event.kidsBelow5)} />
+              <SummaryRow label="Kids (5–10)" value={String(event.kids5To10)} />
+              <SummaryRow label="Total Guests" value={String(event.adults + event.kidsBelow5 + event.kids5To10)} bold testId="summary-total-guests" />
               <SummaryRow label="Meals" value={event.meals} />
               <SummaryRow label="Preference" value={event.preference} />
               <SummaryRow label="Location" value={event.location} />
@@ -307,6 +317,25 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
         </aside>
       </div>
 
+      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+        <SheetContent className="w-full overflow-y-auto data-[side=right]:sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Edit Event Details</SheetTitle>
+            <SheetDescription>Your menu and dish choices stay on this page.</SheetDescription>
+          </SheetHeader>
+          <EventDetailsForm
+            tenantSlug={tenantSlug}
+            businessName={editDetails.businessName}
+            eventTypes={editDetails.eventTypes}
+            draft={{ id: draftId, values: editDetails.values }}
+            onSaved={() => {
+              setEditOpen(false);
+              router.refresh(); // new summary, guest count and prices; the picks on screen are untouched
+            }}
+          />
+        </SheetContent>
+      </Sheet>
+
       <StepFooter
         onBack={goBack}
         summary={
@@ -332,11 +361,11 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   );
 }
 
-function SummaryRow({ label, value }: { label: string; value: string }) {
+function SummaryRow({ label, value, bold, testId }: { label: string; value: string; bold?: boolean; testId?: string }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="text-right font-medium">{value}</dd>
+    <div className={bold ? "flex items-start justify-between gap-4 border-t border-border pt-1.5 font-semibold" : "flex items-start justify-between gap-4"}>
+      <dt className={bold ? undefined : "text-muted-foreground"}>{label}</dt>
+      <dd className="text-right font-medium" data-testid={testId}>{value}</dd>
     </div>
   );
 }

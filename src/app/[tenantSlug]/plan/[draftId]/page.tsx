@@ -152,10 +152,10 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
     const selection = data.meals[meal] ?? {};
     // A saved choice that no longer exists (menu switched off) starts the customer at the menu list again.
     const savedChoice = selection.menuChoice && (selection.menuChoice.kind === "CUSTOM" || menus.some((m) => m.id === (selection.menuChoice as { menuId: string }).menuId)) ? selection.menuChoice : null;
-    const kids = data.childBelow5Count + data.child5To10Count;
     content = (
       <BuildMenuStep
-        key={meal}
+        // A new event type or menu preference clears the saved picks, so it also starts the page afresh; other edits keep what is on screen.
+        key={`${meal}:${data.eventTypeId}:${data.menuPreference}`}
         tenantSlug={tenantSlug}
         draftId={draft.id}
         meal={meal}
@@ -167,10 +167,29 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
         event={{
           date: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
           eventType: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
-          guests: kids > 0 ? `${data.guestCount} (${kids} kid${kids === 1 ? "" : "s"})` : String(data.guestCount),
+          adults: data.guestCount,
+          kidsBelow5: data.childBelow5Count,
+          kids5To10: data.child5To10Count,
           meals: mealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
           preference: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
           location: data.venueLocation,
+        }}
+        editDetails={{
+          businessName: organization.name,
+          eventTypes: eventTypes.filter((et) => et.isActive).map((et) => ({ id: et.id, name: et.name, minGuests: et.minGuests })),
+          values: {
+            name: draft.customer.name,
+            email: draft.customer.email ?? "",
+            phone: formatPhoneDisplay(draft.customer.phone),
+            eventTypeId: data.eventTypeId,
+            eventDate: data.eventDate,
+            guestCount: String(data.guestCount),
+            childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
+            child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
+            eventMealTypes: data.eventMealTypes,
+            menuPreference: data.menuPreference,
+            venueLocation: data.venueLocation,
+          },
         }}
         initial={{ choice: savedChoice, itemIds: savedChoice ? (selection.itemIds ?? []) : [], addOnIds: selection.addOnIds ?? [] }}
       />

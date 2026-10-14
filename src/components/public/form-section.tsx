@@ -19,6 +19,7 @@ export function FormSection({
   optional,
   required,
   description,
+  stacked,
   children,
 }: {
   icon: LucideIcon;
@@ -26,10 +27,12 @@ export function FormSection({
   optional?: boolean;
   required?: boolean;
   description?: string;
+  /** Title above the fields at every width, for a narrow container such as a side panel. */
+  stacked?: boolean;
   children: ReactNode;
 }) {
   return (
-    <section className="grid gap-4 border-t border-border pt-6 first:border-t-0 first:pt-0 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] md:gap-8">
+    <section className={cn("grid gap-4 border-t border-border pt-6 first:border-t-0 first:pt-0", !stacked && "md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)] md:gap-8")}>
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Icon className="size-5" />

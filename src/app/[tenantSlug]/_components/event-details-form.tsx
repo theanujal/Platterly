@@ -16,6 +16,7 @@ import { FormCard, FormSection } from "@/components/public/form-section";
 import { MARKETING_CONSENT_DEFAULT_CHECKED } from "@/modules/menu-approvals/storefront-draft-constants";
 import { startDraftAction, saveDetailsAction } from "../actions";
 import { cn } from "cn";
+import { guestBreakdown } from "@/modules/menu-approvals/guest-summary";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "@/modules/menu-approvals/public-lead-time";
 
 const MEAL_TYPE_OPTIONS = [
@@ -60,11 +61,14 @@ interface EventDetailsFormProps {
   eventTypes: { id: string; name: string; minGuests: number | null }[];
   /** Present when stepping back to edit an existing draft — contact fields are then read-only. */
   draft?: { id: string; values: FormValues };
+  /** Set when the form sits in the Build Your Menu side panel: it saves, then calls this instead of moving to the next step. */
+  onSaved?: () => void;
 }
 
 export type { FormValues as EventDetailsFormValues };
 
-export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }: EventDetailsFormProps) {
+export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, onSaved }: EventDetailsFormProps) {
+  const inPanel = !!onSaved;
   const router = useRouter();
   const [values, setValues] = useState<FormValues>(draft?.values ?? EMPTY_VALUES);
   const [consent, setConsent] = useState(MARKETING_CONSENT_DEFAULT_CHECKED);
@@ -111,6 +115,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
       const result = await saveDetailsAction(tenantSlug, draft.id, formData);
       setPending(false);
       if (!result.ok) return setError(result.error);
+      if (onSaved) return onSaved();
       router.push(`/${tenantSlug}/plan/${draft.id}?step=menu`);
       return;
     }
@@ -128,12 +133,21 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
     router.push(`/${tenantSlug}/plan/${result.draftId}?step=menu`);
   }
 
+  // The server clears every meal's menu and dishes when either of these changes (add-ons are kept).
+  const resetsPicks = !!draft && (values.eventTypeId !== draft.values.eventTypeId || values.menuPreference !== draft.values.menuPreference);
+
+  // Shown once any kids are entered, so it is clear they are added on top of the adults.
+  const adultsEntered = Number(values.guestCount) || 0;
+  const kidsBelow5 = Number(values.childBelow5Count) || 0;
+  const kids5To10 = Number(values.child5To10Count) || 0;
+  const guestTotal = kidsBelow5 + kids5To10 > 0 ? guestBreakdown(adultsEntered, kidsBelow5, kids5To10) : null;
+
   const eventTypeItems = Object.fromEntries(eventTypes.map((et) => [et.id, et.name]));
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6 pb-28">
-      <FormCard>
-        <FormSection icon={User} title="About You" description="Let us know how to reach you.">
+    <form onSubmit={handleSubmit} className={cn("flex flex-col gap-6", inPanel ? "p-4 pt-0" : "pb-28")}>
+      <FormCard className={inPanel ? "p-0 ring-0 md:p-0" : undefined}>
+        <FormSection stacked={inPanel} icon={User} title="About You" description="Let us know how to reach you.">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="ed-name" required>Your Name</Label>
             <IconInput icon={User} id="ed-name" required readOnly={!!draft} placeholder="Enter your full name" value={values.name} onChange={(e) => setField("name", e.target.value)} />
@@ -154,7 +168,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
           </div>
         </FormSection>
 
-        <FormSection icon={CalendarDays} title="Your Event" description="Share the event details.">
+        <FormSection stacked={inPanel} icon={CalendarDays} title="Your Event" description="Share the event details.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-date" required>Event Date</Label>
@@ -200,9 +214,9 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
           </div>
         </FormSection>
 
-        <FormSection icon={Users} title="Guests" description="Tell us who is coming. Children are optional and help us plan the right quantities.">
+        <FormSection stacked={inPanel} icon={Users} title="Guests" description="Children are counted in addition to adults. Kids under 5 are usually free; kids 5–10 are charged a reduced rate. Your quote shows the exact amount.">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="ed-guests" required>Number of Adults</Label>
+            <Label htmlFor="ed-guests" required>Number of Adults (11+ years)</Label>
             <IconInput
               icon={Users}
               id="ed-guests"
@@ -214,7 +228,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
               onChange={(e) => setField("guestCount", e.target.value)}
             />
             {/* Shown from the start: the minimum depends on the event type, so until one is chosen it says so. */}
-            <p className="text-xs text-muted-foreground">{minGuests ? `Minimum ${minGuests} adults required` : "The minimum number of adults depends on your event type."}</p>
+            <p className="text-xs text-muted-foreground">{minGuests ? `Minimum ${minGuests} adults required. ` : "The minimum number of adults depends on your event type. "}Adults only. Add children separately below.</p>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
@@ -226,9 +240,14 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
               <IconInput icon={Users} id="ed-kids-5-10" type="number" min={0} placeholder="0" value={values.child5To10Count} onChange={(e) => setField("child5To10Count", e.target.value)} />
             </div>
           </div>
+          {guestTotal && (
+            <p className="text-sm font-medium" data-testid="guest-total" aria-live="polite">
+              Total guests: {guestTotal.total} ({guestTotal.parts})
+            </p>
+          )}
         </FormSection>
 
-        <FormSection icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need on this day. You can pick more than one, and you will build a menu for each.">
+        <FormSection stacked={inPanel} icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need on this day. You can pick more than one, and you will build a menu for each.">
           <div role="group" aria-label="Meals Required" className="flex flex-wrap gap-3">
             {MEAL_TYPE_OPTIONS.map((o) => {
               const selected = values.eventMealTypes.includes(o.value);
@@ -254,7 +273,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
           </div>
         </FormSection>
 
-        <FormSection icon={Leaf} title="Menu Preference" required description="Choose your preferred menu type.">
+        <FormSection stacked={inPanel} icon={Leaf} title="Menu Preference" required description="Choose your preferred menu type.">
           <div role="radiogroup" aria-label="Menu Preference" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <PreferenceCard
               selected={values.menuPreference === "VEGETARIAN"}
@@ -285,17 +304,28 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft }
         )}
       </FormCard>
 
+      {resetsPicks && (
+        <p role="status" className="rounded-lg bg-warning/10 p-3 text-sm" data-testid="picks-reset-warning">
+          Changing the event type or menu preference clears the menu and dishes you chose for every meal, because the menus on offer can differ. Your add-ons are kept.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
-      <StepFooter>
+      {inPanel ? (
         <Button type="submit" size="lg" disabled={pending}>
-          {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Build Your Menu</span></span>}
-          <ArrowRight />
+          {pending ? "Saving…" : "Save Changes"}
         </Button>
-      </StepFooter>
+      ) : (
+        <StepFooter>
+          <Button type="submit" size="lg" disabled={pending}>
+            {pending ? "Saving…" : <span>Continue<span className="max-sm:sr-only"> to Build Your Menu</span></span>}
+            <ArrowRight />
+          </Button>
+        </StepFooter>
+      )}
     </form>
   );
 }
