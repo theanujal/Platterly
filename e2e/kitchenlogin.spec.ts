@@ -77,12 +77,16 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // Nothing to go back to on the first step (AJ, 2026-10-13).
   await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(0);
   await expect(page.getByLabel("First name")).toHaveValue("Priya");
-  await expect(page.getByLabel("First name")).toBeDisabled();
   await expect(page.getByLabel("Last name")).toHaveValue("Sharma");
   // Left-panel stage list (redesigned onboarding, AJ 2026-09-14): step 1 is
   // the only one shown as the current stage on load.
   await expect(page.getByText("Getting Started")).toBeVisible();
 
+  // The name carried over from sign-up is read-only but not faded: full-strength text so it can be read and copied (AJ, 2026-10-14).
+  const firstName = page.getByLabel("First name");
+  await expect(firstName).toHaveAttribute("readonly", "");
+  await expect(firstName).toBeEnabled();
+  await expect(firstName).toHaveCSS("opacity", "1");
   await page.getByLabel("Company / business name").fill(businessName);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
@@ -118,6 +122,11 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByText("KIT-0101")).toBeVisible();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 4 of 5")).toBeVisible();
+  // Online presence fields show where to type: an icon and an example in each (AJ, 2026-10-14).
+  for (const [id, placeholder] of [["websiteUrl", "https://yourwebsite.com"], ["instagramUrl", "https://instagram.com/yourkitchen"], ["facebookUrl", "https://facebook.com/yourkitchen"]]) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute("placeholder", placeholder);
+    await expect(page.locator(`div:has(> #${id}) svg`)).toHaveCount(1);
+  }
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 5 of 5")).toBeVisible();
 
@@ -158,6 +167,8 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // Sharma, filled in above), not the business name — AJ's explicit ask,
   // 2026-09-16, to match a richer dashboard reference design.
   await expect(page.getByRole("heading", { name: /Good (morning|afternoon|evening), Priya Sharma/ })).toBeVisible();
+  // The date beside New Order is regular text, not the faint muted grey (AJ, 2026-10-14).
+  await expect(page.getByTestId("dashboard-date")).toHaveClass(/text-foreground/);
   await expect(page.getByText("You haven't set your public menu link yet.")).toBeVisible();
   await expect(page.getByAltText("QR code for your public menu link")).not.toBeVisible();
 
@@ -268,6 +279,20 @@ test("creating an account without ticking the Terms stops with the browser's own
   // The hidden input sits over the checkbox (not at the top-left of the screen), so the browser's message appears beside it.
   const box = page.getByRole("checkbox", { name: /I accept the Terms and Conditions and Privacy Policy/ });
   const input = page.locator("input#signup-terms");
+  // The unticked box has a visible border: the input border colour, now 3.3:1 (AJ, 2026-10-14), not the old near-white one.
+  const borders = await box.evaluate((el) => {
+    const probe = (variable: string) => {
+      const p = document.createElement("span");
+      p.style.color = `var(${variable})`;
+      document.body.appendChild(p);
+      const c = getComputedStyle(p).color;
+      p.remove();
+      return c;
+    };
+    return { box: getComputedStyle(el).borderTopColor, muted: probe("--muted-foreground"), input: probe("--input") };
+  });
+  expect(borders.box).toBe(borders.input);
+  expect(borders.input).toBe("rgb(135, 141, 152)");
   const boxRect = (await box.boundingBox())!;
   const inputRect = (await input.boundingBox())!;
   expect(Math.abs(inputRect.x - boxRect.x)).toBeLessThan(4);

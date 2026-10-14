@@ -61,6 +61,15 @@ test("Edit event details in a side panel: unsaved dish picks stay, the summary u
   await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random() * 89999));
   await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10));
   await p.getByLabel("Event Type").click();
+  // The list opens just below its field, not on top of it, and is not narrower than the field (AJ, 2026-10-14).
+  const trigger = (await p.getByLabel("Event Type").boundingBox())!;
+  // (polled: the list animates in)
+  await expect
+    .poll(async () => {
+      const list = (await p.getByRole("listbox").boundingBox())!;
+      return list.y >= trigger.y + trigger.height - 1 && list.x >= trigger.x - 1 && list.x + list.width <= trigger.x + trigger.width + 1;
+    })
+    .toBe(true);
   await p.getByRole("option", { name: eventType }).click();
   await p.getByLabel("Number of Adults").fill("40");
   await p.getByRole("checkbox", { name: "Dinner" }).click();

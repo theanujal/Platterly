@@ -1,5 +1,4 @@
-import type { ComponentProps } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentProps, ComponentType } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "cn";
 
@@ -9,7 +8,7 @@ import { cn } from "cn";
  * auth-only pattern) so Customer/Item/Event forms can reuse it too, instead
  * of each form hand-rolling its own icon-in-field markup.
  */
-export function IconInput({ icon: Icon, className, ...props }: ComponentProps<typeof Input> & { icon: LucideIcon }) {
+export function IconInput({ icon: Icon, className, ...props }: ComponentProps<typeof Input> & { icon: ComponentType<{ className?: string }> }) {
   return (
     <div className="relative">
       <Icon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

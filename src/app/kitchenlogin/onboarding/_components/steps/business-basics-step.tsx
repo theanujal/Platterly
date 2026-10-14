@@ -21,11 +21,11 @@ export function BusinessBasicsStep({ accountHolderFirstName, accountHolderLastNa
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="accountHolderFirstName">First name</Label>
-          <Input id="accountHolderFirstName" value={accountHolderFirstName} disabled readOnly />
+          <Input id="accountHolderFirstName" value={accountHolderFirstName} readOnly className="bg-muted" />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="accountHolderLastName">Last name</Label>
-          <Input id="accountHolderLastName" value={accountHolderLastName} disabled readOnly />
+          <Input id="accountHolderLastName" value={accountHolderLastName} readOnly className="bg-muted" />
         </div>
       </div>
       <div className="flex flex-col gap-1.5">

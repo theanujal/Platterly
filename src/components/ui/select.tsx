@@ -70,7 +70,8 @@ function SelectContent({
   sideOffset = 4,
   align = "center",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Opens as a list just below the field (AJ, 2026-10-14). The old macOS-style "selected option over the field" covered the field and spilled past its edge when it had an icon.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<

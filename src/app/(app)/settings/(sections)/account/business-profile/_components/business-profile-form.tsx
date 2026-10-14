@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building, Globe, Hash, Link as LinkIcon, MapPin, Palette, Store } from "lucide-react";
+import { Building, Globe, Hash, MapPin, Palette, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
+import { FacebookIcon, InstagramIcon } from "@/components/ui/brand-icons";
 import { Label } from "@/components/ui/label";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -150,18 +151,18 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
           <IconInput
             icon={Globe}
             id="websiteUrl"
+            placeholder="https://yourwebsite.com"
             type="url"
             value={values.websiteUrl}
             onChange={(e) => setField("websiteUrl", e.target.value)}
           />
         </div>
         <div className="flex flex-col gap-1.5">
-          {/* lucide-react has no brand icons (Instagram/Facebook), so both
-              social fields use the same generic external-link glyph. */}
           <Label htmlFor="instagramUrl">Instagram URL</Label>
           <IconInput
-            icon={LinkIcon}
+            icon={InstagramIcon}
             id="instagramUrl"
+            placeholder="https://instagram.com/yourkitchen"
             type="url"
             value={values.instagramUrl}
             onChange={(e) => setField("instagramUrl", e.target.value)}
@@ -170,8 +171,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="facebookUrl">Facebook URL</Label>
           <IconInput
-            icon={LinkIcon}
+            icon={FacebookIcon}
             id="facebookUrl"
+            placeholder="https://facebook.com/yourkitchen"
             type="url"
             value={values.facebookUrl}
             onChange={(e) => setField("facebookUrl", e.target.value)}

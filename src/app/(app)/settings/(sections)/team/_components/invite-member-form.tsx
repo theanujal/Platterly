@@ -71,7 +71,7 @@ export function InviteMemberForm({ roles, seatsFullMessage }: { roles: InviteRol
                 {role.label}
               </span>
             </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
+            <SelectContent>
               {roles.map((option) => (
                 <SelectItem key={option.id} value={option.id} label={option.label}>
                   <RoleIcon role={option.id} />

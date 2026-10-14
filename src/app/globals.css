@@ -58,27 +58,30 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Contrast pass (AJ, 2026-10-14): text and field edges now meet WCAG AA. Secondary text slate-600 (7.6:1), field and checkbox
+   edges 3.3:1 and red/green/amber 4.8-5.0:1 as text. The brand orange stays the bright #ff6900 (AJ's call, 2026-10-14: the darker
+   #c2410c was tried and pulled back); white on it is 2.9:1, below AA for small button labels, a known and accepted trade-off. */
 :root {
   --background: #ffffff;
-  --foreground: #111827;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --card-foreground: #111827;
+  --card-foreground: #0f172a;
   --popover: #ffffff;
-  --popover-foreground: #111827;
+  --popover-foreground: #0f172a;
   --primary: #ff6900;
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
-  --secondary-foreground: #111827;
+  --secondary-foreground: #0f172a;
   --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
+  --muted-foreground: #475569;
   --accent: #fff7ed;
   --accent-foreground: #9a3412;
-  --destructive: #ef4444;
+  --destructive: #dc2626;
   /* Status-badge color legend (AJ, 2026-09-19) — neutral/info/warning/
      success/danger, one set of tokens reused by every status badge across
      the app instead of each page picking bg-primary/bg-secondary ad hoc. */
-  --success: #16a34a;
-  --warning: #d97706;
+  --success: #15803d;
+  --warning: #b45309;
   --info: #2563eb;
   /* Accent tones (AJ, 2026-09-27) — the 5-tone legend left every "needs
      attention" state amber, so a card could show four amber badges at once.
@@ -93,7 +96,7 @@
   --tone-yellow: #a16207;
   --tone-orange: #ea580c;
   --border: #e5e7eb;
-  --input: #e5e7eb;
+  --input: #878d98;
   --ring: #ff6900;
   --chart-1: #ff6900;
   --chart-2: #16a34a;
@@ -107,7 +110,7 @@
      --sidebar-primary (Orange 600 / white) is what the active nav item now
      uses instead of --sidebar-accent, for the same reason. */
   --sidebar: #fff7ed;
-  --sidebar-foreground: #111827;
+  --sidebar-foreground: #0f172a;
   --sidebar-primary: #ff6900;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #ffedd5;

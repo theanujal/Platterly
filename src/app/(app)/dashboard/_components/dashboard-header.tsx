@@ -27,7 +27,7 @@ export function DashboardHeader({
         <p className="text-sm text-muted-foreground">Here&apos;s what&apos;s happening with {businessName} today.</p>
       </div>
       <div className="flex flex-wrap items-center gap-4">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <p className="flex items-center gap-2 text-sm font-medium text-foreground" data-testid="dashboard-date">
           {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           <CalendarDays className="size-4" />
         </p>
