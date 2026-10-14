@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
-import { getPurchaseOrder } from "@/modules/purchasing/purchase-order";
-import { orderedValue, receivedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
+import { getPurchaseOrder, listReceipts } from "@/modules/purchasing/purchase-order";
+import { isPriced, orderedValue, receivedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
+import { buildPoWhatsappMessage, whatsappOrderLink } from "@/modules/purchasing/po-whatsapp";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const formatDate = (d: Date | null) => (d ? d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
+const formatDateTime = (d: Date) => d.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 export default async function PurchaseOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,9 +27,15 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   await requirePermission({ inventory: ["view"] }, organizationId);
   const [po, canEdit, canDelete] = await Promise.all([getPurchaseOrder(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId), hasPermission({ inventory: ["delete"] }, organizationId)]);
   if (!po) notFound();
+  const receipts = await listReceipts(organizationId, po);
   await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
 
   const lines = po.items.map((i) => ({ id: i.id, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
+
+  const priced = isPriced(lines);
+  // Click-to-chat for a draft: no prices, and the order only becomes "Ordered" once the person confirms they sent it.
+  const message = buildPoWhatsappMessage({ supplierName: po.supplier.name, number: po.number, lines: lines.map((l) => ({ name: l.name, quantity: l.quantity, unit: l.unit })) });
+  const waLink = whatsappOrderLink(po.supplier.phone, message);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -44,7 +51,6 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             <Link href={`/suppliers/${po.supplier.id}`} className="font-medium text-foreground hover:underline">
               {po.supplier.name}
             </Link>
-            {" · "}Expected {formatDate(po.expectedDate)}
           </p>
         </div>
         <PurchaseOrderActions
@@ -53,6 +59,10 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
           status={po.status}
           canEdit={canEdit}
           canDelete={canDelete}
+          supplierName={po.supplier.name}
+          message={message}
+          waLink={waLink}
+          hasReceipts={receipts.length > 0}
           receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l) }))}
         />
       </div>
@@ -69,8 +79,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                 <TableHead>Item</TableHead>
                 <TableHead>Ordered</TableHead>
                 <TableHead>Received</TableHead>
-                <TableHead>Unit cost</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                {priced && <TableHead>Unit cost</TableHead>}
+                {priced && <TableHead className="text-right">Amount</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -83,20 +93,54 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                   <TableCell>
                     {l.receivedQuantity} {l.unit}
                   </TableCell>
-                  <TableCell>{formatRupees(l.unitCost)}</TableCell>
-                  <TableCell className="text-right">{formatRupees(l.quantity * l.unitCost)}</TableCell>
+                  {priced && <TableCell>{formatRupees(l.unitCost)}</TableCell>}
+                  {priced && <TableCell className="text-right">{formatRupees(l.quantity * l.unitCost)}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          <div className="mt-4 flex flex-col items-end gap-1 text-sm">
-            <p>
-              Order total: <span className="font-semibold">{formatRupees(orderedValue(lines))}</span>
-            </p>
-            <p className="text-muted-foreground">Received so far: {formatRupees(receivedValue(lines))}</p>
-          </div>
+          {priced ? (
+            <div className="mt-4 flex flex-col items-end gap-1 text-sm">
+              <p>
+                Order total: <span className="font-semibold">{formatRupees(orderedValue(lines))}</span>
+              </p>
+              <p className="text-muted-foreground">Received so far: {formatRupees(receivedValue(lines))}</p>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted-foreground">Not yet priced. The actual cost is entered when the stock is received.</p>
+          )}
         </CardContent>
       </Card>
+
+      {receipts.length > 0 && (
+        <Card id="receipts">
+          <CardHeader>
+            <CardTitle>Receipt history</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Received on</TableHead>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Quantity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {receipts.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell>{formatDateTime(r.at)}</TableCell>
+                    <TableCell className="font-medium">{r.name}</TableCell>
+                    <TableCell>
+                      {r.quantity} {r.unit}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {po.notes && (
         <Card>

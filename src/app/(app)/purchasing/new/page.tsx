@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { listSupplierOptions } from "@/modules/suppliers/supplier";
+import { listSupplierOptions, listSupplierProductMap } from "@/modules/suppliers/supplier";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { suggestReorder } from "@/modules/purchasing/purchase-order";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -19,8 +19,8 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
   const { organizationId, session } = await requireActiveOrganization();
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ inventory: ["create"] }, organizationId);
-  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId), listInventoryItems(organizationId, locationId)]);
-  const options = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
+  const [suppliers, inventory, supplierProducts] = await Promise.all([listSupplierOptions(organizationId), listInventoryItems(organizationId, locationId), listSupplierProductMap(organizationId)]);
+  const options = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit }));
   const known = new Map(options.map((o) => [o.id, o]));
 
   let seeded: PurchaseOrderFormValues["items"] = [];
@@ -29,9 +29,9 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
       .split(",")
       .map((pair) => pair.split(":"))
       .filter(([id, qty]) => known.has(id) && Number.parseFloat(qty) > 0)
-      .map(([id, qty]) => ({ inventoryId: id, quantity: String(Number.parseFloat(qty)), unitCost: known.get(id)?.costPerUnit != null ? String(known.get(id)?.costPerUnit) : "" }));
+      .map(([id, qty]) => ({ inventoryId: id, quantity: String(Number.parseFloat(qty)) }));
   } else if (from === "low-stock") {
-    seeded = (await suggestReorder(organizationId, locationId)).map((s) => ({ inventoryId: s.id, quantity: String(s.suggested), unitCost: s.costPerUnit !== null ? String(s.costPerUnit) : "" }));
+    seeded = (await suggestReorder(organizationId, locationId)).map((s) => ({ inventoryId: s.id, quantity: String(s.suggested) }));
   }
 
   return (
@@ -39,13 +39,13 @@ export default async function NewPurchaseOrderPage({ searchParams }: { searchPar
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Purchasing", href: "/purchasing" }, { label: "New order" }]} />
       <div>
         <h1 className="text-2xl font-semibold">New purchase order</h1>
-        <p className="text-sm text-muted-foreground">Saved as a draft (the purchase request). Mark it as ordered when it goes to the supplier.</p>
+        <p className="text-sm text-muted-foreground">Saved as a draft (the purchase request). Send it to the supplier from the order page.</p>
       </div>
       <Separator />
       {suppliers.length === 0 ? (
         <p className="text-sm text-muted-foreground">Add a supplier first (Suppliers in the left menu).</p>
       ) : (
-        <PurchaseOrderForm suppliers={suppliers} options={options} initialValues={{ supplierId: "", expectedDate: "", notes: "", items: seeded.length > 0 ? seeded : [{ inventoryId: "", quantity: "", unitCost: "" }] }} />
+        <PurchaseOrderForm suppliers={suppliers} options={options} supplierProducts={supplierProducts} initialValues={{ supplierId: "", notes: "", items: seeded.length > 0 ? seeded : [{ inventoryId: "", quantity: "" }] }} />
       )}
     </div>
   );

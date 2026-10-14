@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getPurchaseOrder } from "@/modules/purchasing/purchase-order";
-import { listSupplierOptions } from "@/modules/suppliers/supplier";
+import { listSupplierOptions, listSupplierProductMap } from "@/modules/suppliers/supplier";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
@@ -22,7 +22,7 @@ export default async function EditPurchaseOrderPage({ params }: { params: Promis
   if (!po) notFound();
   await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
   if (po.status !== "DRAFT") redirect(`/purchasing/${id}`);
-  const [suppliers, inventory] = await Promise.all([listSupplierOptions(organizationId, po.supplierId), listInventoryItems(organizationId, po.kitchenId)]);
+  const [suppliers, inventory, supplierProducts] = await Promise.all([listSupplierOptions(organizationId, po.supplierId), listInventoryItems(organizationId, po.kitchenId), listSupplierProductMap(organizationId)]);
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
@@ -32,12 +32,12 @@ export default async function EditPurchaseOrderPage({ params }: { params: Promis
       <PurchaseOrderForm
         poId={po.id}
         suppliers={suppliers}
-        options={inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }))}
+        options={inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+        supplierProducts={supplierProducts}
         initialValues={{
           supplierId: po.supplierId,
-          expectedDate: po.expectedDate ? po.expectedDate.toISOString().slice(0, 10) : "",
           notes: po.notes ?? "",
-          items: po.items.map((i) => ({ inventoryId: i.inventoryId, quantity: String(Number(i.quantity)), unitCost: String(Number(i.unitCost)) })),
+          items: po.items.map((i) => ({ inventoryId: i.inventoryId, quantity: String(Number(i.quantity)) })),
         }}
       />
     </div>

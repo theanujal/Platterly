@@ -37,3 +37,6 @@ export const PO_STATUS_TONE = {
   RECEIVED: "success",
   CANCELLED: "danger",
 } as const;
+
+/** An order has a price once any line has a unit cost; orders raised without prices (the actual cost is captured on receiving) have none yet. */
+export const isPriced = (lines: PoLine[]) => lines.some((l) => l.unitCost > 0);

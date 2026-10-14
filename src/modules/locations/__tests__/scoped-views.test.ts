@@ -135,6 +135,7 @@ describe("location-scoped Dashboard, Reports and Purchasing (Chunk 23)", () => {
     const { org, user, north, south, make } = await seed();
     const supplier = await prisma.supplier.create({ data: { organizationId: org.id, name: "Fresh Mart" } });
     const rice = await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg", lowStockThreshold: 10 }, user.id);
+    await prisma.supplierItem.create({ data: { organizationId: org.id, supplierId: supplier.id, inventoryId: rice.id } }); // orders list only items the supplier provides
     const line = [{ inventoryId: rice.id, quantity: 5, unitCost: 40 }];
     const po = (locationId: string | null) => createPurchaseOrder(org.id, { supplierId: supplier.id, items: line, locationId }, user.id);
     const atNorth = await po(north.id);

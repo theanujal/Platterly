@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
-import { orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
+import { isPriced, orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
@@ -19,8 +19,6 @@ export const metadata: Metadata = {
 };
 
 const STATUSES = Object.keys(PO_STATUS_LABEL) as PurchaseOrderStatus[];
-
-const formatDate = (d: Date | null) => (d ? d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "—");
 
 export default async function PurchasingPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const { status } = await searchParams;
@@ -72,7 +70,6 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
               <TableHead>Supplier</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Items</TableHead>
-              <TableHead>Expected</TableHead>
               <TableHead className="text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
@@ -89,8 +86,13 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
                   <Badge variant={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>
                 </TableCell>
                 <TableCell>{po.items.length}</TableCell>
-                <TableCell>{formatDate(po.expectedDate)}</TableCell>
-                <TableCell className="text-right font-medium">{formatRupees(orderedValue(po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }))))}</TableCell>
+                <TableCell className="text-right font-medium">
+                  {(() => {
+                    const lines = po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
+                    // Orders raised without prices have no value yet; ₹0.00 would read as a real total.
+                    return isPriced(lines) ? formatRupees(orderedValue(lines)) : <span className="font-normal text-muted-foreground">Not yet priced</span>;
+                  })()}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

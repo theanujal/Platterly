@@ -17,14 +17,12 @@ function fail(error: unknown): { ok: false; error: string } {
 
 export interface PurchaseOrderPayload {
   supplierId: string;
-  /** YYYY-MM-DD or empty. */
-  expectedDate: string;
   notes: string;
-  items: { inventoryId: string; quantity: number; unitCost: number }[];
+  items: { inventoryId: string; quantity: number }[];
 }
 
 function toInput(payload: PurchaseOrderPayload) {
-  return { supplierId: payload.supplierId, expectedDate: payload.expectedDate ? new Date(payload.expectedDate) : null, notes: payload.notes, items: payload.items };
+  return { supplierId: payload.supplierId, notes: payload.notes, items: payload.items };
 }
 
 function refresh(id?: string) {

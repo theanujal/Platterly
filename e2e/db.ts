@@ -684,3 +684,16 @@ export async function markPublicLinkClaimed(email: string): Promise<void> {
     [email],
   );
 }
+
+/** Prices a purchase order's lines directly. Raising an order no longer asks for prices (the actual cost is captured when stock is received, which is the next phase), so a spec that needs a priced order (supplier balances) sets one here. */
+export async function priceOrderLines(email: string, orderNumber: string, unitCost: number): Promise<void> {
+  await pool.query(
+    `UPDATE purchase_order_item SET "unitCost" = $3
+     WHERE "purchaseOrderId" IN (
+       SELECT po.id FROM purchase_order po
+       JOIN member m ON m."organizationId" = po."organizationId"
+       JOIN "user" u ON u.id = m."userId"
+       WHERE u.email = $1 AND po.number = $2)`,
+    [email, orderNumber, unitCost],
+  );
+}

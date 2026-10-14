@@ -10,11 +10,11 @@ export class PurchaseOrderError extends Error {}
 
 export interface PurchaseOrderInput {
   supplierId: string;
-  expectedDate?: Date | null;
   notes?: string | null;
   /** Chunk 23: the location this order is for; null or omitted = not tied to one (shown at every location). */
   locationId?: string | null;
-  items: { inventoryId: string; quantity: number; unitCost: number }[];
+  /** Prices are not known when an order is raised (the actual cost is captured when stock is received), so the screens send no unit cost: a new line is stored at 0, and a line kept from before keeps the cost it had. */
+  items: { inventoryId: string; quantity: number; unitCost?: number }[];
 }
 
 const MAX_LINES = 100;
@@ -24,22 +24,30 @@ const poInclude = {
   items: { include: { inventory: { select: { id: true, name: true, unit: true, stockCount: true } } }, orderBy: { inventory: { name: "asc" as const } } },
 };
 
-async function checkInput(organizationId: string, input: PurchaseOrderInput) {
+/** `existing` is the order being edited: its own lines stay allowed even if the supplier mapping has changed since. */
+async function checkInput(organizationId: string, input: PurchaseOrderInput, existing?: { supplierId: string; inventoryIds: string[] }) {
   checkText(input.notes, "notes", 2000);
-  if (input.expectedDate && Number.isNaN(input.expectedDate.getTime())) throw new PurchaseOrderError("Enter a valid expected date.");
   if (input.items.length === 0) throw new PurchaseOrderError("Add at least one item.");
   if (input.items.length > MAX_LINES) throw new PurchaseOrderError(`An order can have at most ${MAX_LINES} items.`);
   const ids = input.items.map((i) => i.inventoryId);
   if (new Set(ids).size !== ids.length) throw new PurchaseOrderError("Each item can be listed only once.");
   for (const line of input.items) {
     if (!(line.quantity > 0)) throw new PurchaseOrderError("Every item needs a quantity greater than zero.");
-    if (!(line.unitCost >= 0)) throw new PurchaseOrderError("A unit cost cannot be negative.");
+    if (line.unitCost !== undefined && !(line.unitCost >= 0)) throw new PurchaseOrderError("A unit cost cannot be negative.");
     checkMoney(line.quantity, "quantity", { max: 1_000_000_000 });
-    checkMoney(line.unitCost, "unit cost");
+    if (line.unitCost !== undefined) checkMoney(line.unitCost, "unit cost");
   }
   const supplier = await prisma.supplier.findFirst({ where: { id: input.supplierId, organizationId }, select: { id: true, isActive: true } });
   if (!supplier) throw new PurchaseOrderError("Choose a supplier.");
+  const sameSupplier = existing?.supplierId === input.supplierId;
+  if (!supplier.isActive && !sameSupplier) throw new PurchaseOrderError("That supplier is inactive. Choose an active supplier.");
   if ((await prisma.inventory.count({ where: { id: { in: ids }, organizationId } })) !== ids.length) throw new PurchaseOrderError("One of the items is not in your inventory.");
+  // Only items the supplier is mapped to (Products Supplied) can be ordered from them; an edited order keeps the lines it already had.
+  const keep = new Set(sameSupplier ? (existing?.inventoryIds ?? []) : []);
+  const needMapping = ids.filter((id) => !keep.has(id));
+  if (needMapping.length > 0 && (await prisma.supplierItem.count({ where: { organizationId, supplierId: input.supplierId, inventoryId: { in: needMapping } } })) !== needMapping.length) {
+    throw new PurchaseOrderError("Every item must be one this supplier provides. Add it to the supplier's Products Supplied first.");
+  }
   if (input.locationId && !(await prisma.kitchen.findFirst({ where: { id: input.locationId, organizationId }, select: { id: true } }))) throw new PurchaseOrderError("That location does not exist.");
 }
 
@@ -59,11 +67,10 @@ export async function createPurchaseOrder(organizationId: string, input: Purchas
           organizationId,
           number,
           supplierId: input.supplierId,
-          expectedDate: input.expectedDate ?? null,
           notes: input.notes?.trim() || null,
           kitchenId: input.locationId ?? null,
           createdByUserId: actorUserId,
-          items: { create: input.items.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity, unitCost: i.unitCost })) },
+          items: { create: input.items.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity, unitCost: i.unitCost ?? 0 })) },
         },
         include: poInclude,
       });
@@ -86,16 +93,17 @@ async function loadFor(organizationId: string, id: string) {
 export async function updatePurchaseOrder(organizationId: string, id: string, input: PurchaseOrderInput, actorUserId: string) {
   const before = await loadFor(organizationId, id);
   if (before.status !== "DRAFT") throw new PurchaseOrderError("Only a draft can be edited.");
-  await checkInput(organizationId, input);
+  await checkInput(organizationId, input, { supplierId: before.supplierId, inventoryIds: before.items.map((i) => i.inventoryId) });
+  // A draft saved before prices were dropped keeps the cost it had on a line that stays.
+  const keptCost = new Map(before.items.map((i) => [i.inventoryId, Number(i.unitCost)]));
   const po = await prisma.$transaction(async (tx) => {
     await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
     return tx.purchaseOrder.update({
       where: { id },
       data: {
         supplierId: input.supplierId,
-        expectedDate: input.expectedDate ?? null,
         notes: input.notes?.trim() || null,
-        items: { create: input.items.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity, unitCost: i.unitCost })) },
+        items: { create: input.items.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity, unitCost: keptCost.get(i.inventoryId) ?? i.unitCost ?? 0 })) },
       },
       include: poInclude,
     });
@@ -185,4 +193,14 @@ export async function suggestReorder(organizationId: string, locationId?: string
   return items
     .filter((i) => Number(i.stockCount) <= Number(i.lowStockThreshold))
     .map((i) => ({ id: i.id, name: i.name, unit: i.unit, stock: Number(i.stockCount), suggested: Math.max(1, Math.ceil(Number(i.lowStockThreshold) * 2 - Number(i.stockCount))), costPerUnit: i.costPerUnit === null ? null : Number(i.costPerUnit) }));
+}
+
+/** What has been received on an order, from the stock ledger ("Received on PO-0001" rows), newest first. */
+export async function listReceipts(organizationId: string, po: { number: string; items: { inventoryId: string }[] }) {
+  const rows = await prisma.inventoryTransaction.findMany({
+    where: { type: "STOCK_IN", note: `Received on ${po.number}`, inventoryId: { in: po.items.map((i) => i.inventoryId) }, inventory: { organizationId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, quantity: true, createdAt: true, inventory: { select: { name: true, unit: true } } },
+  });
+  return rows.map((r) => ({ id: r.id, name: r.inventory.name, unit: r.inventory.unit, quantity: Number(r.quantity), at: r.createdAt }));
 }

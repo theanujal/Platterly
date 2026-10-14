@@ -202,3 +202,11 @@ export async function resolveSupplierFields(organizationId: string, input: { sup
   if (input.supplierId) return { supplierId: input.supplierId, supplierName: await resolveSupplierName(organizationId, input.supplierId) };
   return { supplierId: null, supplierName: input.supplierName?.trim() || null };
 }
+
+/** supplierId -> the inventory items it provides (Products Supplied), for the purchase order form. */
+export async function listSupplierProductMap(organizationId: string): Promise<Record<string, string[]>> {
+  const rows = await prisma.supplierItem.findMany({ where: { organizationId }, select: { supplierId: true, inventoryId: true } });
+  const map: Record<string, string[]> = {};
+  for (const r of rows) (map[r.supplierId] ??= []).push(r.inventoryId);
+  return map;
+}

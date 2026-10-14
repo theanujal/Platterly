@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, seedKitchenOrderWithDish } from "./db";
+import { cleanupOnboardingTestUser, seedKitchenOrderWithDish, priceOrderLines } from "./db";
 import { editInventoryItem } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
@@ -45,6 +45,14 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await expect(page.getByText(ingredient)).toBeVisible();
   await editInventoryItem(page, ingredient, { cost: "300" });
 
+  // The supplier provides the ingredient (Products Supplied), so it can be ordered from them
+  await page.goto("/suppliers");
+  await page.getByRole("button", { name: `Edit ${supplier}` }).click();
+  await page.getByRole("button", { name: "Add a product" }).click();
+  await page.getByRole("option", { name: new RegExp(ingredient) }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+
   await page.goto("/menu-catalog/items");
   await page.getByRole("button", { name: "Add Item" }).click();
   await page.getByLabel("Item Name").fill(dish);
@@ -68,20 +76,28 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByLabel("Item 1").click();
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("40");
-  await expect(page.getByLabel("Unit cost 1")).toHaveValue("300"); // starts from the item's own cost
+  await expect(page.getByLabel("Unit cost 1")).toHaveCount(0); // no prices when an order is raised
   await page.getByRole("button", { name: "Save as draft" }).click();
   await expect(page.getByRole("heading", { name: "PO-0001" })).toBeVisible();
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
-  await expect(page.getByText("Order total: ₹12,000")).toBeVisible();
+  await expect(page.getByText(/Not yet priced/)).toBeVisible();
 
-  await page.getByRole("button", { name: "Mark as ordered" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Mark as ordered" }).click();
+  // This supplier has no phone number: the order can be copied and, once the person says it was sent, marked as ordered
+  await page.getByRole("button", { name: "Send via WhatsApp" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "I sent it another way" }).click();
+  await page.getByRole("alertdialog", { name: "Have you sent this purchase order to the supplier?" }).getByRole("button", { name: "Yes, I sent it" }).click();
   await expect(page.getByText("Ordered", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Receive stock" }).click();
   await page.getByRole("button", { name: "Everything has arrived" }).click();
   await page.getByRole("button", { name: "Add to stock" }).click();
   await expect(page.getByRole("button", { name: "Receive stock" })).toHaveCount(0); // fully received, nothing left to receive
+  await expect(page.getByRole("button", { name: "View receipt history" })).toBeVisible();
+  await expect(page.locator("#receipts").getByText("Receipt history", { exact: true })).toBeVisible();
+
+  // The price is captured when stock is received (next phase); until then price the order directly so the balance below has a value.
+  await priceOrderLines(email, "PO-0001", 300);
+  await page.reload();
   await expect(page.getByText("Received so far: ₹12,000")).toBeVisible();
 
   await page.goto("/inventory");

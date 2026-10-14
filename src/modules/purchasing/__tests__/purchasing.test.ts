@@ -10,6 +10,7 @@ import {
   cancelPurchaseOrder,
   deletePurchaseOrder,
   listPurchaseOrders,
+  listReceipts,
   suggestReorder,
   PurchaseOrderError,
 } from "@/modules/purchasing/purchase-order";
@@ -37,6 +38,8 @@ async function setup() {
   const supplier = await createSupplier(org.id, { name: "Grain Co" }, actor.id);
   const rice = await createInventoryItem(org.id, { name: "Rice", category: "Grains", unit: "kg", lowStockThreshold: 20 }, actor.id);
   const dal = await createInventoryItem(org.id, { name: "Dal", category: "Grains", unit: "kg" }, actor.id);
+  // Orders can only list items the supplier provides (Products Supplied).
+  await prisma.supplierItem.createMany({ data: [rice, dal].map((i) => ({ organizationId: org.id, supplierId: supplier.id, inventoryId: i.id })) });
   return { org, actor, supplier, rice, dal };
 }
 
@@ -138,3 +141,65 @@ describe("Purchase orders (Chunk 18.3)", () => {
     expect((await suggestReorder(a.org.id)).map((s) => s.name)).toEqual(["Rice"]);
   });
 });
+
+describe("Purchase orders raised without prices (Purchasing workflow)", () => {
+  it("a draft changes no stock and makes no stock movement; its lines are unpriced", async () => {
+    const { org, actor, supplier, rice } = await setup();
+    const before = await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } });
+    const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 12 }] }, actor.id);
+    expect(Number(po.items[0].unitCost)).toBe(0);
+    const after = await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } });
+    expect(Number(after.stockCount)).toBe(Number(before.stockCount));
+    expect(await prisma.inventoryTransaction.count({ where: { inventoryId: rice.id } })).toBe(0);
+    // ordering it does not add stock either
+    await markOrdered(org.id, po.id, actor.id);
+    expect(Number((await prisma.inventory.findUniqueOrThrow({ where: { id: rice.id } })).stockCount)).toBe(Number(before.stockCount));
+    expect(await prisma.inventoryTransaction.count({ where: { inventoryId: rice.id } })).toBe(0);
+  });
+
+  it("only items the supplier provides can be ordered, and an inactive supplier is refused", async () => {
+    const { org, actor, supplier, rice } = await setup();
+    const salt = await createInventoryItem(org.id, { name: "Salt", category: "Spices", unit: "kg" }, actor.id); // not mapped
+    await expect(createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: salt.id, quantity: 1 }] }, actor.id)).rejects.toThrow(/provides/);
+    await expect(createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 1 }, { inventoryId: salt.id, quantity: 1 }] }, actor.id)).rejects.toThrow(/provides/);
+    await prisma.supplier.update({ where: { id: supplier.id }, data: { isActive: false } });
+    await expect(createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 1 }] }, actor.id)).rejects.toThrow(/inactive/);
+    expect(await prisma.purchaseOrder.count({ where: { organizationId: org.id } })).toBe(0);
+  });
+
+  it("a draft keeps the lines it had when edited, even if the mapping was removed since", async () => {
+    const { org, actor, supplier, rice, dal } = await setup();
+    const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 5, unitCost: 40 }] }, actor.id);
+    await prisma.supplierItem.deleteMany({ where: { supplierId: supplier.id, inventoryId: rice.id } });
+    const edited = await updatePurchaseOrder(org.id, po.id, { supplierId: supplier.id, notes: "n", items: [{ inventoryId: rice.id, quantity: 8 }, { inventoryId: dal.id, quantity: 2 }] }, actor.id);
+    const rows = Object.fromEntries(edited.items.map((i) => [i.inventoryId, [Number(i.quantity), Number(i.unitCost)]]));
+    expect(rows[rice.id]).toEqual([8, 40]); // an older price on a kept line survives
+    expect(rows[dal.id]).toEqual([2, 0]);
+  });
+
+  it("ordering happens once; a second confirmation is refused; a cancelled order cannot be ordered", async () => {
+    const { org, actor, supplier, rice } = await setup();
+    const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 5 }] }, actor.id);
+    await markOrdered(org.id, po.id, actor.id);
+    await expect(markOrdered(org.id, po.id, actor.id)).rejects.toBeInstanceOf(PurchaseOrderError);
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, recordId: po.id, action: "purchase_order.ordered" } })).toBe(1);
+    const other = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 1 }] }, actor.id);
+    await cancelPurchaseOrder(org.id, other.id, actor.id);
+    await expect(markOrdered(org.id, other.id, actor.id)).rejects.toBeInstanceOf(PurchaseOrderError);
+  });
+
+  it("lists the receipts booked against an order from the stock ledger, and filters by status", async () => {
+    const { org, actor, supplier, rice } = await setup();
+    const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: rice.id, quantity: 10 }] }, actor.id);
+    await markOrdered(org.id, po.id, actor.id);
+    const line = (await prisma.purchaseOrderItem.findFirstOrThrow({ where: { purchaseOrderId: po.id } })).id;
+    await receiveStock(org.id, po.id, [{ itemId: line, quantity: 4 }], actor.id);
+    await receiveStock(org.id, po.id, [{ itemId: line, quantity: 6 }], actor.id);
+    const full = await prisma.purchaseOrder.findFirstOrThrow({ where: { id: po.id }, include: { items: true } });
+    const receipts = await listReceipts(org.id, full);
+    expect(receipts.map((r) => r.quantity).sort()).toEqual([4, 6]);
+    expect((await listPurchaseOrders(org.id, "RECEIVED")).map((p) => p.id)).toEqual([po.id]);
+    expect(await listPurchaseOrders(org.id, "DRAFT")).toHaveLength(0);
+  });
+});
+

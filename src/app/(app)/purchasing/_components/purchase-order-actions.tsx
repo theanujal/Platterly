@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { PackageCheck, Pencil, Send, Trash2, XCircle } from "lucide-react";
+import { ClipboardList, Copy, PackageCheck, Pencil, Trash2, XCircle } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ export interface ReceiveLine {
   remaining: number;
 }
 
-type Confirm = { title: string; text: string; label: string; run: () => Promise<ActionResult>; destructive?: boolean; then?: "list" | "stay" };
+type Confirm = { title: string; text: string; label: string; cancelLabel?: string; run: () => Promise<ActionResult>; destructive?: boolean; then?: "list" | "stay" };
 
 /** The buttons that move a purchase order along, each asking first where it cannot be undone. */
 export function PurchaseOrderActions({
@@ -28,6 +29,10 @@ export function PurchaseOrderActions({
   receiveLines,
   canEdit,
   canDelete,
+  supplierName,
+  message,
+  waLink,
+  hasReceipts,
 }: {
   id: string;
   number: string;
@@ -35,12 +40,20 @@ export function PurchaseOrderActions({
   receiveLines: ReceiveLine[];
   canEdit: boolean;
   canDelete: boolean;
+  supplierName: string;
+  /** The WhatsApp text for this order (no prices). */
+  message: string;
+  /** Click-to-chat link with the message; null when the supplier has no usable phone number. */
+  waLink: string | null;
+  hasReceipts: boolean;
 }) {
   const router = useRouter();
   const [confirm, setConfirm] = useState<Confirm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [noPhoneOpen, setNoPhoneOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function runConfirmed() {
     if (!confirm) return;
@@ -56,6 +69,20 @@ export function PurchaseOrderActions({
   }
 
   const canReceive = status === "ORDERED" || status === "PARTIALLY_RECEIVED";
+
+  // Opening WhatsApp is not sending. The order stays a draft until the person says they sent it.
+  const askSent = (why: string): Confirm => ({
+    title: "Have you sent this purchase order to the supplier?",
+    text: `${why} ${number} is marked as ordered only after you confirm.`,
+    label: "Yes, I sent it",
+    cancelLabel: "Not yet",
+    run: () => markOrderedAction(id),
+  });
+  async function copyDetails() {
+    await navigator.clipboard.writeText(message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -64,14 +91,25 @@ export function PurchaseOrderActions({
             <Button variant="outline" render={<Link href={`/purchasing/${id}/edit`} />} nativeButton={false}>
               <Pencil /> Edit
             </Button>
-            <Button onClick={() => setConfirm({ title: `Mark ${number} as ordered?`, text: "This says the order has gone to the supplier. The items can no longer be changed.", label: "Mark as ordered", run: () => markOrderedAction(id) })}>
-              <Send /> Mark as ordered
-            </Button>
+            {waLink ? (
+              <Button render={<a href={waLink} target="_blank" rel="noopener noreferrer" />} nativeButton={false} onClick={() => setConfirm(askSent(`WhatsApp opened with the order for ${supplierName}.`))}>
+                <WhatsAppIcon className="size-4" /> Send via WhatsApp
+              </Button>
+            ) : (
+              <Button onClick={() => setNoPhoneOpen(true)}>
+                <WhatsAppIcon className="size-4" /> Send via WhatsApp
+              </Button>
+            )}
           </>
         )}
         {canEdit && canReceive && (
           <Button onClick={() => setReceiveOpen(true)}>
-            <PackageCheck /> Receive stock
+            <PackageCheck /> {status === "PARTIALLY_RECEIVED" ? "Receive remaining stock" : "Receive stock"}
+          </Button>
+        )}
+        {(status === "RECEIVED" || (hasReceipts && status === "CANCELLED")) && (
+          <Button variant="outline" render={<a href="#receipts" />} nativeButton={false}>
+            <ClipboardList /> View receipt history
           </Button>
         )}
         {canEdit && (status === "DRAFT" || status === "ORDERED") && (
@@ -98,10 +136,38 @@ export function PurchaseOrderActions({
             </p>
           )}
           <AlertDialogFooter>
-            <AlertDialogCancel>Back</AlertDialogCancel>
+            <AlertDialogCancel>{confirm?.cancelLabel ?? "Back"}</AlertDialogCancel>
             <AlertDialogAction variant={confirm?.destructive ? "destructive" : "default"} disabled={pending} onClick={(e) => { e.preventDefault(); void runConfirmed(); }}>
               {pending ? "Working…" : confirm?.label}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={noPhoneOpen} onOpenChange={setNoPhoneOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>No WhatsApp number for {supplierName}</AlertDialogTitle>
+            <AlertDialogDescription>
+              This supplier has no phone number, or it is not a valid number, so WhatsApp cannot be opened. Copy the order details and send them another way, or add a number in the supplier&apos;s details.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <pre className="max-h-48 overflow-y-auto rounded-lg bg-muted p-3 text-sm whitespace-pre-wrap">{message}</pre>
+          <AlertDialogFooter>
+            <Button type="button" variant="outline" onClick={() => void copyDetails()}>
+              <Copy /> {copied ? "Copied!" : "Copy order details"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setNoPhoneOpen(false);
+                setConfirm(askSent("You are sending it another way."));
+              }}
+            >
+              I sent it another way
+            </Button>
+            <AlertDialogCancel>Close</AlertDialogCancel>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
