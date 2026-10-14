@@ -61,3 +61,13 @@ describe("receipt line rules", () => {
     expect(defaultTracksExpiry("Grains & Cereals")).toBe(false);
   });
 });
+
+describe("precision of receipt quantities and costs", () => {
+  it("refuses a cost finer than 2 decimals (0.004 would be stored as a free 0.00) and a quantity finer than 3", () => {
+    expect(() => checkReceiptLine(line({ unitCost: 0.004 }))).toThrow(/2 decimal/);
+    expect(() => checkReceiptLine(line({ unitCost: 12.345 }))).toThrow(/2 decimal/);
+    expect(() => checkReceiptLine(line({ quantity: 1.2345 }))).toThrow(/3 decimal/);
+    expect(() => checkReceiptLine(line({ quantity: 1.234, unitCost: 12.34 }))).not.toThrow();
+    expect(() => checkReceiptLine(line({ unitCost: 0.1 + 0.2 }))).not.toThrow(); // floating-point noise on a 2-decimal figure is fine
+  });
+});

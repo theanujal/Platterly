@@ -29,10 +29,19 @@ export function checkReason(value: string | null | undefined, what: string): str
   return reason;
 }
 
+/** Costs are stored to 2 decimals and quantities to 3, so anything finer is refused rather than rounded (a cost of 0.004 would otherwise be saved as a free 0.00). */
+const hasMoreDecimals = (n: number, places: number) => Math.abs(n * 10 ** places - Math.round(n * 10 ** places)) > 1e-6;
+
+export function checkQuantityPrecision(name: string, quantity: number) {
+  if (!Number.isFinite(quantity)) throw new ReceiptError(`Enter a valid quantity for ${name}.`);
+  if (hasMoreDecimals(quantity, 3)) throw new ReceiptError(`The quantity for ${name} can have at most 3 decimal places.`);
+}
+
 /** One check of a unit cost, shared by receipts and manual Stock In: negative is refused, zero (free goods) needs a reason. */
 export function checkUnitCost(name: string, unitCost: number, costNote?: string | null) {
   if (!Number.isFinite(unitCost)) throw new ReceiptError(`Enter the unit cost for ${name}.`);
   if (unitCost < 0) throw new ReceiptError(`The unit cost for ${name} cannot be negative.`);
+  if (hasMoreDecimals(unitCost, 2)) throw new ReceiptError(`The unit cost for ${name} can have at most 2 decimal places.`);
   if (unitCost > MAX_UNIT_COST) throw new ReceiptError(`The unit cost for ${name} is too large.`);
   if (unitCost === 0) checkReason(costNote, `${name} has a unit cost of 0. Confirm it is free (for example a free sample) and say why.`);
 }
@@ -85,6 +94,7 @@ export interface ReceiptLineCheck {
 
 export function checkReceiptLine(l: ReceiptLineCheck) {
   if (!(l.quantity > 0) || !Number.isFinite(l.quantity)) throw new ReceiptError(`Enter a quantity greater than zero for ${l.name}.`);
+  checkQuantityPrecision(l.name, l.quantity);
   if (l.quantity > l.remaining + 0.0005) {
     checkReason(l.extraReason, `${l.name}: ${l.quantity} is more than the ${l.remaining} still to arrive on this order. To book the extra, authorise it and give the reason.`);
   }

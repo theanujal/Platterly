@@ -4,7 +4,7 @@ import { sharedOrAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { valueStock } from "./valuation";
-import { defaultTracksExpiry, checkUnitCost } from "@/modules/purchasing/receipt-rules";
+import { defaultTracksExpiry, checkUnitCost, checkQuantityPrecision } from "@/modules/purchasing/receipt-rules";
 import { consumeStock, createBatch, isExpired, isExpiringSoon, todayDate } from "./batches";
 import type { InventoryTransactionType } from "@/generated/prisma/enums";
 
@@ -241,6 +241,7 @@ export async function recordStockTransaction(
 
   const result = await prisma.$transaction(async (tx) => {
     const item = await tx.inventory.findFirstOrThrow({ where: { id: inventoryId, organizationId }, select: { id: true, name: true, tracksExpiry: true } });
+    checkQuantityPrecision(item.name, input.quantity);
     const startsBatch = input.type === "STOCK_IN" || (input.type === "ADJUSTMENT" && input.quantity > 0);
 
     // A new batch: what it cost (or that it is unknown) and, for an item that tracks expiry, when it expires.
