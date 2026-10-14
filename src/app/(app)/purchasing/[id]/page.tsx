@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
@@ -7,6 +8,7 @@ import { getPurchaseOrder, listReceipts, receivedValueOf } from "@/modules/purch
 import { isPriced, orderedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { buildPoWhatsappMessage, whatsappOrderLink } from "@/modules/purchasing/po-whatsapp";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -53,19 +55,25 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             </Link>
           </p>
         </div>
-        <PurchaseOrderActions
-          id={po.id}
-          number={po.number}
-          status={po.status}
-          canEdit={canEdit}
-          canDelete={canDelete}
-          supplierName={po.supplier.name}
-          message={message}
-          waLink={waLink}
-          hasReceipts={receipts.length > 0 || received.legacyQuantity > 0}
-          orderPlacedOn={`${po.createdAt.getFullYear()}-${String(po.createdAt.getMonth() + 1).padStart(2, "0")}-${String(po.createdAt.getDate()).padStart(2, "0")}`}
-          receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l), expiryRequired: po.items[index].inventory.tracksExpiry, lastCost: po.items[index].inventory.costPerUnit === null ? null : Number(po.items[index].inventory.costPerUnit) }))}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" render={<a href={`/purchasing/${po.id}/pdf`} download />} nativeButton={false}>
+            <Download aria-hidden />
+            Download PDF
+          </Button>
+          <PurchaseOrderActions
+            id={po.id}
+            number={po.number}
+            status={po.status}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            supplierName={po.supplier.name}
+            message={message}
+            waLink={waLink}
+            hasReceipts={receipts.length > 0 || received.legacyQuantity > 0}
+            orderPlacedOn={`${po.createdAt.getFullYear()}-${String(po.createdAt.getMonth() + 1).padStart(2, "0")}-${String(po.createdAt.getDate()).padStart(2, "0")}`}
+            receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l), expiryRequired: po.items[index].inventory.tracksExpiry, lastCost: po.items[index].inventory.costPerUnit === null ? null : Number(po.items[index].inventory.costPerUnit) }))}
+          />
+        </div>
       </div>
       <Separator />
 

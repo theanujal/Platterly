@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ClipboardList, Plus } from "lucide-react";
+import { ClipboardList, Download, Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
 import { isPriced, orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { IconTip } from "@/components/ui/icon-tip";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { TableCell } from "@/components/ui/table";
@@ -72,6 +73,15 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
           <TableCell className="px-3 py-3">{status}</TableCell>
           <TableCell className="px-3 py-3 text-sm">{po.items.length}</TableCell>
           <TableCell className={`px-3 py-3 text-sm ${total.text === "Not yet priced" ? "text-muted-foreground" : "font-semibold"}`}>{total.text}</TableCell>
+          <TableCell className="px-3 py-3">
+            <div className="flex justify-end">
+              <IconTip label="Download PDF">
+                <Button variant="ghost" size="icon" render={<a href={`/purchasing/${po.id}/pdf`} download />} nativeButton={false} aria-label={`Download PDF for ${po.number}`}>
+                  <Download className="size-4" aria-hidden />
+                </Button>
+              </IconTip>
+            </div>
+          </TableCell>
         </>
       ),
     };
@@ -105,7 +115,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
 
       <CatalogBrowser
         entries={entries}
-        columns={["Order", "Supplier", "Status", "Items", "Total"]}
+        columns={["Order", "Supplier", "Status", "Items", "Total", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search orders or suppliers…"
