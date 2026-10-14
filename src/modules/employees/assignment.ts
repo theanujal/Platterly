@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { RULES, validateInput } from "@/lib/validation";
 import type { StaffDuty } from "@/generated/prisma/enums";
-import { isStaffDuty } from "./duty";
+import { isAnyStaffDuty, staffingStatus } from "./duty";
 import { onStaffAssigned } from "@/modules/notifications/triggers";
 
 export class StaffAssignmentError extends Error {}
@@ -46,7 +46,7 @@ async function findConflicts(organizationId: string, eventId: string, person: { 
 export async function assignStaff(organizationId: string, eventId: string, input: AssignInput, actorUserId: string) {
   await assertEventOrderNotCompleted(organizationId, eventId);
   validateInput(input, RULES.staffAssignment);
-  if (!isStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
+  if (!isAnyStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
   if (Boolean(input.staffMemberId) === Boolean(input.memberId)) throw new StaffAssignmentError("Choose one person.");
   await prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { id: true } });
 
@@ -76,7 +76,7 @@ export async function assignStaff(organizationId: string, eventId: string, input
 export async function updateAssignment(organizationId: string, id: string, input: { duty: StaffDuty; notes?: string }, actorUserId: string) {
   await assertAssignmentOrderNotCompleted(organizationId, id);
   validateInput(input, RULES.staffAssignment);
-  if (!isStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
+  if (!isAnyStaffDuty(input.duty)) throw new StaffAssignmentError("Choose a duty.");
   const before = await prisma.staffAssignment.findFirstOrThrow({ where: { id, organizationId } });
   const after = await prisma.staffAssignment.update({ where: { id }, data: { duty: input.duty, notes: input.notes?.trim() || null } });
   await audit({ organizationId, actorUserId, action: "staff_assignment.update", recordType: "StaffAssignment", recordId: id, before: { duty: before.duty }, after: { duty: after.duty } });
@@ -111,16 +111,25 @@ export async function listEventAssignments(organizationId: string, eventId: stri
   });
 }
 
-/** Events in the next `days` days with how many people each needs, so the kitchen team can see what still needs filling. */
-export async function listUpcomingSchedule(organizationId: string, days = 14) {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + days + 1);
+/** Events in the next `days` days with who and how many each needs, so the kitchen team can see what still needs filling. */
+export async function listUpcomingSchedule(organizationId: string, days = 3) {
+  // Event dates are stored as calendar days at UTC midnight, so the window is today's calendar date in UTC terms too.
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const end = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate() + days + 1));
   const events = await prisma.event.findMany({
     where: { organizationId, endDate: { gte: start }, startDate: { lt: end }, OR: [{ orderId: null }, { order: { status: { notIn: ["CANCELLED", "COMPLETED"] } } }] },
     orderBy: { startDate: "asc" },
-    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffCounts: { select: { duty: true, count: true } }, logistics: { select: { dispatchStatus: true } } },
+    include: { order: { select: { id: true, orderNumber: true } }, customer: { select: { name: true } }, staffCounts: { select: { duty: true, count: true } } },
   });
-  return events.map((e) => ({ id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, staff: Object.fromEntries(e.staffCounts.map((c) => [c.duty, c.count])) as Partial<Record<StaffDuty, number>>, staffTotal: e.staffCounts.reduce((sum, c) => sum + c.count, 0), dispatchStatus: e.logistics?.dispatchStatus ?? "NOT_DISPATCHED" }));
+  return events.map((e) => {
+    const counts = Object.fromEntries(e.staffCounts.map((c) => [c.duty, c.count])) as Partial<Record<StaffDuty, number>>;
+    return { id: e.id, orderId: e.order?.id ?? null, orderNumber: e.order?.orderNumber ?? null, name: e.name, customer: e.customer.name, startDate: e.startDate, guestCount: e.guestCount, eventManagerName: e.eventManagerName, staffing: staffingStatus(e.eventManagerName, counts) };
+  });
+}
+
+/** Names the Event Manager box suggests: operational staff and team members with a login. */
+export async function listManagerSuggestions(organizationId: string) {
+  const [staff, members] = await Promise.all([prisma.staffMember.findMany({ where: { organizationId, isActive: true }, select: { name: true } }), listAssignableMembers(organizationId)]);
+  return [...new Set([...members.map((m) => m.name), ...staff.map((s) => s.name)])].sort((a, b) => a.localeCompare(b));
 }

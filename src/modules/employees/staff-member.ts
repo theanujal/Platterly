@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { RULES, validateInput, checkPhone } from "@/lib/validation";
 import type { StaffDuty } from "@/generated/prisma/enums";
-import { isStaffDuty } from "./duty";
+import { isAnyStaffDuty } from "./duty";
 
 export class StaffMemberError extends Error {}
 
@@ -18,7 +18,7 @@ export interface StaffMemberInput {
 function clean(input: StaffMemberInput) {
   validateInput(input, RULES.staffMember);
   if (input.phone?.trim()) checkPhone(input.phone);
-  if (!isStaffDuty(input.defaultDuty)) throw new StaffMemberError("Choose a duty.");
+  if (!isAnyStaffDuty(input.defaultDuty)) throw new StaffMemberError("Choose a duty.");
   return { name: input.name.trim(), phone: input.phone?.trim() || null, defaultDuty: input.defaultDuty, notes: input.notes?.trim() || null };
 }
 

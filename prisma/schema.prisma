@@ -1671,6 +1671,8 @@ model Event {
   staffAssignments  StaffAssignment[]
   tasks             EventTask[]
   staffCounts       EventStaffCount[]
+  // Free-text Event Manager for the Staff page and the order's Staffing tab (AJ, 2026-10-14); the other duties are numbers.
+  eventManagerName  String?
   logistics         EventLogistics?
   // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
   // is @unique).

@@ -1,9 +1,9 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createStaffMember, updateStaffMember, setStaffMemberActive, deleteStaffMember, listStaffMembers, StaffMemberError } from "@/modules/employees/staff-member";
-import { assignStaff, updateAssignment, removeAssignment, listEventAssignments, listAssignableMembers, listUpcomingSchedule, StaffAssignmentError } from "@/modules/employees/assignment";
-import { saveStaffCounts } from "@/modules/employees/staff-counts";
-import { STAFF_DUTIES, isStaffDuty } from "@/modules/employees/duty";
+import { assignStaff, updateAssignment, removeAssignment, listEventAssignments, listAssignableMembers, listUpcomingSchedule, listManagerSuggestions, StaffAssignmentError } from "@/modules/employees/assignment";
+import { saveStaffCounts, saveEventManager } from "@/modules/employees/staff-counts";
+import { STAFF_DUTIES, ALL_STAFF_DUTIES, isStaffDuty, staffingStatus } from "@/modules/employees/duty";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -128,9 +128,10 @@ describe("Staff members and scheduling (Chunk 19.2)", () => {
     const { org, actor, member, event } = await setup();
     const soon = await event(1, 1);
     const later = await event(40, 40);
-    await saveStaffCounts(org.id, soon.id, { EVENT_MANAGER: 2, SERVING: 10 }, actor.id);
+    await saveStaffCounts(org.id, soon.id, { KITCHEN: 3, SERVING: 10 }, actor.id);
+    await saveEventManager(org.id, soon.id, "  Asha Rao ", actor.id);
     const schedule = await listUpcomingSchedule(org.id, 14);
-    expect(schedule.map((s) => [s.id, s.staffTotal])).toEqual([[soon.id, 12]]);
+    expect(schedule.map((s) => [s.id, s.eventManagerName, s.staffing])).toEqual([[soon.id, "Asha Rao", "COMPLETE"]]);
     expect(schedule.some((s) => s.id === later.id)).toBe(false);
     await prisma.member.update({ where: { id: member.id }, data: { disabledAt: new Date() } });
     await expect(assignStaff(org.id, soon.id, { memberId: member.id, duty: "KITCHEN" }, actor.id)).rejects.toThrow();
@@ -144,8 +145,30 @@ describe("Staff members and scheduling (Chunk 19.2)", () => {
   });
 
   it("duties list is complete", () => {
-    expect(STAFF_DUTIES).toHaveLength(6);
+    expect(ALL_STAFF_DUTIES).toHaveLength(6);
+    expect(STAFF_DUTIES).toEqual(["KITCHEN", "SERVING", "SETUP"]);
     expect(isStaffDuty("SERVING")).toBe(true);
     expect(isStaffDuty("x")).toBe(false);
+    expect(isStaffDuty("DELIVERY")).toBe(false);
+  });
+
+  it("staffing status: nothing is Not started, a manager plus Cooking and Serving is Complete, anything else In progress", () => {
+    expect(staffingStatus(null, {})).toBe("NOT_STARTED");
+    expect(staffingStatus("  ", { SERVING: 0 })).toBe("NOT_STARTED");
+    expect(staffingStatus("Asha", {})).toBe("IN_PROGRESS");
+    expect(staffingStatus(null, { KITCHEN: 2, SERVING: 4 })).toBe("IN_PROGRESS");
+    expect(staffingStatus("Asha", { SERVING: 4 })).toBe("IN_PROGRESS");
+    expect(staffingStatus("Asha", { KITCHEN: 2, SERVING: 4 })).toBe("COMPLETE");
+    expect(staffingStatus("Asha", { KITCHEN: 2, SERVING: 4, SETUP: 0 })).toBe("COMPLETE");
+  });
+
+  it("the default window is 3 days, and the suggestions list team and active operational staff", async () => {
+    const { org, actor, event } = await setup();
+    const inTwo = await event(2, 2);
+    const inFive = await event(5, 5);
+    expect((await listUpcomingSchedule(org.id)).map((s) => s.id)).toEqual([inTwo.id]);
+    expect((await listUpcomingSchedule(org.id, 7)).map((s) => s.id)).toEqual([inTwo.id, inFive.id]);
+    await createStaffMember(org.id, { name: "Ravi", defaultDuty: "SERVING" }, actor.id);
+    expect(await listManagerSuggestions(org.id)).toContain("Ravi");
   });
 });

@@ -3,9 +3,9 @@ import { cleanupOnboardingTestUser, seedOrderWithEvent, setMemberRole } from "./
 import { signUpCaterer } from "./auth-helpers";
 
 /**
- * Staffing as numbers (AJ, 2026-10-04): the kitchen team types how many people each duty needs ("Event Manager 2,
- * Serving 10"). Nobody is picked by name, there is no task list, and the staffing and logistics notes live under
- * Additional Details on the order.
+ * Staffing (AJ, 2026-10-14): the Event Manager is a typed name with suggestions; Cooking, Serving and Setup are numbers
+ * only (no Delivery or Store). There is no task list, and the staffing and logistics notes live under Additional
+ * Details on the order. The Staff page lists the next 3 days and pages after 10 events.
  */
 
 const cleanupEmails: string[] = [];
@@ -29,7 +29,7 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   const { orderId, orderNumber } = await seedOrderWithEvent(email);
   await page.getByRole("link", { name: "Staff", exact: true }).click();
   await expect(page).toHaveURL(/\/staff$/);
-  await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("Not entered yet");
+  await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("Not started");
   // The Staff page keeps its directory of people
   await expect(page.getByRole("button", { name: "Add Staff Member" })).toBeVisible();
 
@@ -45,11 +45,21 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   const card = page.getByTestId("staffing-counts-card");
   await expect(card).toContainText("Staffing (0 people)");
   await expect(page.getByTestId("tasks-card")).toHaveCount(0);
-  await card.getByLabel("Event Manager").fill("2");
+  await expect(card.getByLabel("Delivery")).toHaveCount(0);
+  await expect(card.getByLabel("Store")).toHaveCount(0);
+  await card.getByLabel("Event Manager").fill("Asha Rao");
   await card.getByLabel("Serving").fill("10");
   await card.getByRole("button", { name: "Save staffing" }).click();
   await expect(card.getByText("Saved.")).toBeVisible();
-  await expect(card).toContainText("Staffing (12 people)");
+  await expect(card).toContainText("Staffing (11 people)");
+  // Manager and Serving only is not complete yet: Cooking is needed too
+  await page.goto("/staff");
+  await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("In progress");
+  await page.goto(`/orders/${orderId}`);
+  await page.getByRole("tab", { name: "Staffing & Logistics" }).click();
+  await card.getByLabel("Cooking").fill("3");
+  await card.getByRole("button", { name: "Save staffing" }).click();
+  await expect(card.getByText("Saved.")).toBeVisible();
   await card.getByLabel("Serving").fill("-3");
   await card.getByRole("button", { name: "Save staffing" }).click();
   await expect(card.getByRole("alert")).toContainText("whole number");
@@ -87,19 +97,25 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   // The Staffing page lists the numbers by duty
   await page.goto("/staff");
   const row = page.getByRole("row", { name: new RegExp(orderNumber) });
-  await expect(row).toContainText("12");
-  await expect(row).toContainText("Event Manager 2");
-  await expect(row).toContainText("Serving 10");
-  await expect(row).toContainText("On the way");
+  await expect(row).toContainText("Asha Rao");
+  await expect(row).toContainText("Complete");
+  await expect(page.getByTestId("staff-paging")).toHaveCount(0);
 
   // The kitchen role can open the event page (it cannot open the order itself) and change the numbers
   await setMemberRole(email, "kitchen");
   await page.goto("/staff");
-  await page.getByRole("link", { name: new RegExp(orderNumber) }).click();
+  await page.getByRole("row", { name: new RegExp(orderNumber) }).getByRole("button", { name: "Manage Staffing" }).click();
   await expect(page).toHaveURL(/\/staff\/events\//);
   const kitchenCard = page.getByTestId("staffing-counts-card");
   await kitchenCard.getByLabel("Serving").fill("8");
   await kitchenCard.getByRole("button", { name: "Save staffing" }).click();
   await expect(kitchenCard.getByText("Saved.")).toBeVisible();
-  await expect(kitchenCard).toContainText("Staffing (10 people)");
+  await expect(kitchenCard).toContainText("Staffing (12 people)");
+
+  // More than 10 events in the window: the list pages
+  for (let i = 0; i < 10; i++) await seedOrderWithEvent(email);
+  await page.goto("/staff");
+  await expect(page.getByTestId("staff-paging")).toContainText("Showing 1–10 of 11");
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(page.getByTestId("staff-paging")).toContainText("Showing 11–11 of 11");
 });

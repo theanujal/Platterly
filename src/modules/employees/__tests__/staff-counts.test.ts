@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { getStaffCounts, saveStaffCounts, totalsByEvent, MAX_STAFF_COUNT } from "@/modules/employees/staff-counts";
+import { getStaffCounts, saveStaffCounts, saveEventManager, totalsByEvent, MAX_STAFF_COUNT } from "@/modules/employees/staff-counts";
 import { STAFF_DUTIES } from "@/modules/employees/duty";
 
 const orgIds: string[] = [];
@@ -34,9 +34,24 @@ describe("staffing as numbers (Managers 2, Serving 10)", () => {
     const { org, actor, event } = await kitchen("Counts A");
     const empty = await getStaffCounts(org.id, event.id);
     expect(STAFF_DUTIES.every((d) => empty[d] === 0)).toBe(true);
-    const saved = await saveStaffCounts(org.id, event.id, { EVENT_MANAGER: 2, SERVING: 10, KITCHEN: 0 }, actor.id);
-    expect(saved).toMatchObject({ EVENT_MANAGER: 2, SERVING: 10, KITCHEN: 0, DELIVERY: 0 });
+    const saved = await saveStaffCounts(org.id, event.id, { SETUP: 2, SERVING: 10, KITCHEN: 0 }, actor.id);
+    expect(saved).toMatchObject({ SETUP: 2, SERVING: 10, KITCHEN: 0 });
     expect((await totalsByEvent(org.id, [event.id])).get(event.id)).toBe(12);
+  });
+
+  it("Delivery, Store and Event Manager are not counted here", async () => {
+    const { org, actor, event } = await kitchen("Counts F");
+    for (const duty of ["DELIVERY", "STORE", "EVENT_MANAGER"]) await expect(saveStaffCounts(org.id, event.id, { [duty]: 1 }, actor.id)).rejects.toThrow();
+  });
+
+  it("the Event Manager is a trimmed name that can be cleared, and is audited", async () => {
+    const { org, actor, event } = await kitchen("Counts G");
+    await saveEventManager(org.id, event.id, "  Asha Rao ", actor.id);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).eventManagerName).toBe("Asha Rao");
+    await expect(saveEventManager(org.id, event.id, "x".repeat(101), actor.id)).rejects.toThrow();
+    await saveEventManager(org.id, event.id, "", actor.id);
+    expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).eventManagerName).toBeNull();
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "event.event_manager_updated" } })).toBe(2);
   });
 
   it("changing a number replaces it, and zero removes the row", async () => {
@@ -67,7 +82,7 @@ describe("staffing as numbers (Managers 2, Serving 10)", () => {
 
   it("records who changed it in the audit log", async () => {
     const { org, actor, event } = await kitchen("Counts E");
-    await saveStaffCounts(org.id, event.id, { DELIVERY: 2 }, actor.id);
+    await saveStaffCounts(org.id, event.id, { SETUP: 2 }, actor.id);
     expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "event.staff_counts_updated", recordId: event.id } })).toBe(1);
   });
 });

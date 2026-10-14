@@ -12,20 +12,21 @@ import type { StaffDuty } from "@/generated/prisma/enums";
 import { saveStaffCountsAction } from "../event-ops-actions";
 
 /**
- * Staffing as numbers only (AJ, 2026-10-04): how many people the event needs for each duty, such as Event Manager 2 and
- * Serving 10. Nobody is picked by name. A blank box is zero.
+ * Staffing (AJ, 2026-10-14): the Event Manager is a typed name with suggestions; Cooking, Serving and Setup are numbers
+ * only. A blank box is zero. The Staff page and the order's Staffing tab both use this card, so they always agree.
  */
-export function StaffingCountsCard({ orderId, eventId, initial, canEdit }: { orderId: string | null; eventId: string; initial: Record<StaffDuty, number>; canEdit: boolean }) {
+export function StaffingCountsCard({ orderId, eventId, initial, eventManager, suggestions, canEdit }: { orderId: string | null; eventId: string; initial: Record<StaffDuty, number>; eventManager: string; suggestions: string[]; canEdit: boolean }) {
+  const [manager, setManager] = useState(eventManager);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(STAFF_DUTIES.map((d) => [d, initial[d] ? String(initial[d]) : ""])));
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
-  const total = STAFF_DUTIES.reduce((sum, d) => sum + (Number(values[d]) || 0), 0);
+  const total = STAFF_DUTIES.reduce((sum, d) => sum + (Number(values[d]) || 0), 0) + (manager.trim() ? 1 : 0);
 
   async function save() {
     setState("saving");
     setError(null);
     const counts = Object.fromEntries(STAFF_DUTIES.map((d) => [d, values[d].trim() === "" ? 0 : Number(values[d])]));
-    const result = await saveStaffCountsAction(orderId, eventId, counts);
+    const result = await saveStaffCountsAction(orderId, eventId, counts, manager);
     if (!result.ok) {
       setState("error");
       setError(result.error);
@@ -41,9 +42,30 @@ export function StaffingCountsCard({ orderId, eventId, initial, canEdit }: { ord
           <Users className="size-4 text-muted-foreground" />
           Staffing ({total} {total === 1 ? "person" : "people"})
         </CardTitle>
-        <CardDescription>How many people this event needs for each duty. Just the numbers, no names.</CardDescription>
+        <CardDescription>Name the Event Manager, then enter how many people this event needs for Cooking, Serving and Setup.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="staff-event-manager">Event Manager</Label>
+          <Input
+            id="staff-event-manager"
+            list="staff-event-manager-suggestions"
+            autoComplete="off"
+            maxLength={100}
+            placeholder="Type or pick a name"
+            disabled={!canEdit}
+            value={manager}
+            onChange={(e) => {
+              setManager(e.target.value);
+              setState("idle");
+            }}
+          />
+          <datalist id="staff-event-manager-suggestions">
+            {suggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           {STAFF_DUTIES.map((duty) => (
             <div key={duty} className="flex flex-col gap-1.5">

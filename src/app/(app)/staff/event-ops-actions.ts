@@ -4,7 +4,7 @@ import { assertEventAtMyLocationById } from "@/modules/locations/active-location
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { saveStaffCounts } from "@/modules/employees/staff-counts";
+import { saveStaffCounts, saveEventManager } from "@/modules/employees/staff-counts";
 import { saveLogistics } from "@/modules/logistics/logistics";
 import { DISPATCH_STATUSES, SETUP_STATUSES } from "@/modules/logistics/labels";
 import type { DispatchStatus, SetupStatus } from "@/generated/prisma/enums";
@@ -27,11 +27,12 @@ const naive = (value: string): Date | null => {
   return new Date(iso);
 };
 
-export async function saveStaffCountsAction(orderId: string | null, eventId: string, counts: Record<string, number>): Promise<ActionResult> {
+export async function saveStaffCountsAction(orderId: string | null, eventId: string, counts: Record<string, number>, eventManager: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
   await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
   try {
+    await saveEventManager(organizationId, eventId, eventManager, session.user.id);
     await saveStaffCounts(organizationId, eventId, counts, session.user.id);
   } catch (error) {
     return fail(error);

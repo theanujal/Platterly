@@ -27,6 +27,17 @@ export async function totalsByEvent(organizationId: string, eventIds: string[]):
   return new Map(rows.map((r) => [r.eventId, r._sum.count ?? 0]));
 }
 
+/** Event Manager name as typed (AJ, 2026-10-14); blank clears it. Shared by the Staff page and the order's Staffing tab. */
+export async function saveEventManager(organizationId: string, eventId: string, name: string, actorUserId: string) {
+  await assertEventOrderNotCompleted(organizationId, eventId);
+  const next = name.trim();
+  if (next.length > 100) throw new ValidationError("Keep the Event Manager name under 100 characters.");
+  const before = await prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { eventManagerName: true } });
+  if ((before.eventManagerName ?? "") === next) return;
+  await prisma.event.update({ where: { id: eventId }, data: { eventManagerName: next || null } });
+  await audit({ organizationId, actorUserId, action: "event.event_manager_updated", recordType: "Event", recordId: eventId, before: { eventManagerName: before.eventManagerName }, after: { eventManagerName: next || null } });
+}
+
 /** Replaces the event's numbers. Zero removes the row; an unknown duty or a non-whole number is refused. */
 export async function saveStaffCounts(organizationId: string, eventId: string, input: Record<string, number>, actorUserId: string) {
   await assertEventOrderNotCompleted(organizationId, eventId);
