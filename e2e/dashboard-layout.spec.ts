@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser } from "./db";
+import { cleanupOnboardingTestUser, markPublicLinkClaimed } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /** Dashboard layout (AJ, 2026-10-14): Order Activity with only Orders and Revenue; Event Insights then Public Menu / QR side by side; all three cards the same height. */
@@ -33,4 +33,28 @@ test("Order Activity has Orders and Revenue only, and Event Insights and Public 
   expect(events!.x).toBeLessThan(qr!.x); // Event Insights is the left of the two
   expect(activity!.x + activity!.width).toBeLessThanOrEqual(events!.x);
   await expect(page.getByText("Event Type Distribution")).toHaveCount(0);
+});
+
+test("icon actions show a tooltip on hover: Public Menu / QR on the dashboard and Edit on the Staff page's team card", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-icontips-${Date.now()}@example.test`;
+  emails.push(email);
+  await signUpCaterer(page, email);
+  await markPublicLinkClaimed(email);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/dashboard");
+
+  for (const label of ["View public menu", "Copy link", "Download QR code", "Share on WhatsApp", "Manage public link"]) {
+    await page.getByRole("button", { name: label }).or(page.getByRole("link", { name: label })).hover();
+    await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: label })).toBeVisible();
+  }
+
+  // Copy link: the tooltip stays on screen after the click and says "Copied!".
+  await page.getByRole("button", { name: "Copy link" }).click();
+  await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: "Copied!" })).toBeVisible();
+
+  await page.goto("/staff");
+  await page.getByRole("button", { name: /in Team settings/ }).hover();
+  await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: "Edit in Team settings" })).toBeVisible();
 });

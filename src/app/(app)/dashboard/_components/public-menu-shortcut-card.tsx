@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { QrCode, ExternalLink, Settings2, Download } from "lucide-react";
+import { QrCode, ExternalLink, Settings, Download } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { IconTip } from "@/components/ui/icon-tip";
 import { canonicalUrl, withSrc } from "@/lib/seo/canonical";
 import { generateQrCodeDataUrl } from "@/lib/secure-access/qr";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -39,28 +40,37 @@ export async function PublicMenuShortcutCard({ slug, slugChangeCount }: PublicMe
             )}
             <p className="w-full min-w-0 truncate text-sm text-muted-foreground">{url}</p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button variant="outline" size="icon-sm" aria-label="View public menu" title="View public menu" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
-                <ExternalLink className="size-4" />
-              </Button>
+              <IconTip label="View public menu">
+                <Button variant="outline" size="icon-sm" aria-label="View public menu" render={<a href={url} target="_blank" rel="noopener" />} nativeButton={false}>
+                  <ExternalLink className="size-4" />
+                </Button>
+              </IconTip>
               <CopyButton value={url} label="Copy link" iconOnly />
               {qrDataUrl && (
-                <Button variant="outline" size="icon-sm" aria-label="Download QR code" title="Download QR code" render={<a href={qrDataUrl} download="public-menu-qr.png" />} nativeButton={false}>
-                  <Download className="size-4" />
-                </Button>
+                <IconTip label="Download QR code">
+                  <Button variant="outline" size="icon-sm" aria-label="Download QR code" render={<a href={qrDataUrl} download="public-menu-qr.png" />} nativeButton={false}>
+                    <Download className="size-4" />
+                  </Button>
+                </IconTip>
               )}
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label="Share on WhatsApp"
-                title="Share on WhatsApp"
-                render={<a href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${withSrc(url, "whatsapp")}`)}`} target="_blank" rel="noopener" />}
-                nativeButton={false}
-              >
-                <WhatsAppIcon className="size-4 text-emerald-600" />
-              </Button>
-              <Button variant="outline" size="icon-sm" aria-label="Manage public link" title="Manage public link" render={<Link href="/settings/integration/public-menu-link" />} nativeButton={false}>
-                <Settings2 className="size-4" />
-              </Button>
+              <IconTip label="Share on WhatsApp">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Share on WhatsApp"
+                  render={
+                    <a href={`https://wa.me/?text=${encodeURIComponent(`Check out our menu and book with us: ${withSrc(url, "whatsapp")}`)}`} target="_blank" rel="noopener" />
+                  }
+                  nativeButton={false}
+                >
+                  <WhatsAppIcon className="size-4 text-emerald-600" />
+                </Button>
+              </IconTip>
+              <IconTip label="Manage public link">
+                <Button variant="outline" size="icon-sm" aria-label="Manage public link" render={<Link href="/settings/integration/public-menu-link" />} nativeButton={false}>
+                  <Settings className="size-4" />
+                </Button>
+              </IconTip>
             </div>
           </>
         ) : (

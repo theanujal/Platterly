@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, seedKitchenOrderWithDish } from "./db";
+import { editInventoryItem } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -38,11 +39,11 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByLabel("Item Name").fill(ingredient);
   await page.getByLabel("Category", { exact: true }).click();
   await page.getByRole("option", { name: "Grains & Cereals" }).click();
-  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByLabel("Base Stock Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
-  await page.getByLabel("Cost Per Unit").fill("300");
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
+  await editInventoryItem(page, ingredient, { cost: "300" });
 
   await page.goto("/menu-catalog/items");
   await page.getByRole("button", { name: "Add Item" }).click();

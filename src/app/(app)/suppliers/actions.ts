@@ -3,7 +3,7 @@
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { createSupplier, updateSupplier, deleteSupplier, setSupplierActive, type SupplierInput } from "@/modules/suppliers/supplier";
+import { createSupplier, updateSupplier, deleteSupplier, setSupplierActive, type SupplierInput, type SupplierProductInput } from "@/modules/suppliers/supplier";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -31,6 +31,23 @@ function buildInput(formData: FormData): SupplierInput {
   };
 }
 
+/** The Products Supplied list arrives as JSON; absent means "leave the mappings alone". Checked here for shape, and again against the kitchen's inventory in the module. */
+function buildProducts(formData: FormData): SupplierProductInput[] | undefined {
+  const raw = formData.get("products");
+  if (typeof raw !== "string") return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("The products list could not be read.");
+  }
+  if (!Array.isArray(parsed)) throw new Error("The products list could not be read.");
+  return parsed.map((p) => {
+    if (typeof p !== "object" || !p || typeof (p as { inventoryId?: unknown }).inventoryId !== "string" || !(p as { inventoryId: string }).inventoryId) throw new Error("The products list could not be read.");
+    return { inventoryId: (p as { inventoryId: string }).inventoryId, isPreferred: (p as { isPreferred?: unknown }).isPreferred === true };
+  });
+}
+
 function refresh(id?: string) {
   revalidatePath("/suppliers");
   if (id) revalidatePath(`/suppliers/${id}`);
@@ -42,7 +59,7 @@ export async function createSupplierAction(formData: FormData): Promise<ActionRe
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["create"] }, organizationId);
   try {
-    await createSupplier(organizationId, buildInput(formData), session.user.id);
+    await createSupplier(organizationId, buildInput(formData), session.user.id, buildProducts(formData) ?? []);
   } catch (error) {
     return toErrorResult(error);
   }
@@ -54,7 +71,7 @@ export async function updateSupplierAction(id: string, formData: FormData): Prom
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
   try {
-    await updateSupplier(organizationId, id, buildInput(formData), session.user.id);
+    await updateSupplier(organizationId, id, buildInput(formData), session.user.id, buildProducts(formData));
   } catch (error) {
     return toErrorResult(error);
   }

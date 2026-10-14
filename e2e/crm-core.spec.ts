@@ -55,9 +55,8 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await page.getByLabel("Category", { exact: true }).click();
   await page.getByRole("option", { name: "Grains & Cereals" }).click();
   // Unit is a dropdown now, not free text (AJ, 2026-09-19).
-  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByLabel("Base Stock Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
-  await page.getByLabel("Opening Stock").fill("100");
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
 

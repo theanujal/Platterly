@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit/audit";
 import { RULES, validateInput, checkPhone } from "@/lib/validation";
 
@@ -12,6 +13,12 @@ export interface SupplierInput {
   gstin?: string;
   notes?: string;
   isActive?: boolean;
+}
+
+/** One inventory item a supplier provides, and whether this supplier is the preferred one for it. */
+export interface SupplierProductInput {
+  inventoryId: string;
+  isPreferred: boolean;
 }
 
 export class SupplierInUseError extends Error {}
@@ -44,21 +51,78 @@ async function assertNameFree(organizationId: string, name: string, exceptId?: s
   if (clash) throw new DuplicateSupplierError(`A supplier called "${name}" already exists.`);
 }
 
-export async function createSupplier(organizationId: string, input: SupplierInput, actorUserId: string) {
+
+/** Rejects duplicates and items that are not this kitchen's own, before anything is written. */
+async function assertProducts(organizationId: string, products: SupplierProductInput[]) {
+  const ids = products.map((p) => p.inventoryId);
+  if (new Set(ids).size !== ids.length) throw new Error("An inventory item can only be listed once for a supplier.");
+  if (ids.length === 0) return;
+  const found = await prisma.inventory.count({ where: { organizationId, id: { in: ids } } });
+  if (found !== ids.length) throw new Error("One of the selected inventory items was not found.");
+}
+
+/**
+ * Makes the supplier's mappings exactly `products`: removes the others, adds the new, and keeps one preferred supplier per
+ * item (marking this supplier preferred clears the flag on whichever supplier had it). Runs inside the caller's transaction.
+ * The partial unique index is the backstop if two people do this at the same moment.
+ */
+async function applyProducts(tx: Prisma.TransactionClient, organizationId: string, supplierId: string, products: SupplierProductInput[]) {
+  await tx.supplierItem.deleteMany({ where: { supplierId, inventoryId: { notIn: products.map((p) => p.inventoryId) } } });
+  for (const product of products) {
+    if (product.isPreferred) {
+      await tx.supplierItem.updateMany({ where: { organizationId, inventoryId: product.inventoryId, supplierId: { not: supplierId }, isPreferred: true }, data: { isPreferred: false } });
+    }
+    await tx.supplierItem.upsert({
+      where: { supplierId_inventoryId: { supplierId, inventoryId: product.inventoryId } },
+      create: { organizationId, supplierId, inventoryId: product.inventoryId, isPreferred: product.isPreferred },
+      update: { isPreferred: product.isPreferred },
+    });
+  }
+}
+
+function conflictMessage(error: unknown): never {
+  if (typeof error === "object" && error && (error as { code?: string }).code === "P2002") {
+    throw new Error("These products were just changed by someone else. Reload and try again.");
+  }
+  throw error;
+}
+
+/** Every inventory item a supplier can be mapped to, for the Products Supplied picker. */
+export async function listProductOptions(organizationId: string) {
+  return prisma.inventory.findMany({ where: { organizationId }, orderBy: { name: "asc" }, select: { id: true, name: true, category: true, unit: true } });
+}
+
+export async function createSupplier(organizationId: string, input: SupplierInput, actorUserId: string, products: SupplierProductInput[] = []) {
   validate(input);
   const data = clean(input);
   await assertNameFree(organizationId, data.name);
-  const supplier = await prisma.supplier.create({ data: { organizationId, ...data, isActive: input.isActive ?? true } });
+  await assertProducts(organizationId, products);
+  // The supplier and its mappings are saved together or not at all.
+  const supplier = await prisma
+    .$transaction(async (tx) => {
+      const created = await tx.supplier.create({ data: { organizationId, ...data, isActive: input.isActive ?? true } });
+      await applyProducts(tx, organizationId, created.id, products);
+      return created;
+    })
+    .catch(conflictMessage);
   await audit({ organizationId, actorUserId, action: "supplier.create", recordType: "Supplier", recordId: supplier.id, after: JSON.parse(JSON.stringify(supplier)) });
   return supplier;
 }
 
-export async function updateSupplier(organizationId: string, id: string, input: SupplierInput, actorUserId: string) {
+/** `products` undefined leaves the mappings as they are; an empty list removes them all. */
+export async function updateSupplier(organizationId: string, id: string, input: SupplierInput, actorUserId: string, products?: SupplierProductInput[]) {
   validate(input);
   const before = await prisma.supplier.findFirstOrThrow({ where: { id, organizationId } });
   const data = clean(input);
   await assertNameFree(organizationId, data.name, id);
-  const after = await prisma.supplier.update({ where: { id }, data: { ...data, isActive: input.isActive ?? before.isActive } });
+  if (products) await assertProducts(organizationId, products);
+  const after = await prisma
+    .$transaction(async (tx) => {
+      const updated = await tx.supplier.update({ where: { id }, data: { ...data, isActive: input.isActive ?? before.isActive } });
+      if (products) await applyProducts(tx, organizationId, id, products);
+      return updated;
+    })
+    .catch(conflictMessage);
   // Expenses keep the name as it was when they were booked, except those that point here: keep them in step.
   if (before.name !== after.name) {
     await prisma.expense.updateMany({ where: { organizationId, supplierId: id }, data: { supplierName: after.name } });
@@ -95,7 +159,7 @@ export async function deleteSupplier(organizationId: string, id: string, actorUs
 /** Every supplier with how many inventory items and how much spend point at it, for the list. */
 export async function listSuppliers(organizationId: string) {
   const [suppliers, spend] = await Promise.all([
-    prisma.supplier.findMany({ where: { organizationId }, orderBy: { name: "asc" }, include: { _count: { select: { inventoryItems: true, expenses: true } } } }),
+    prisma.supplier.findMany({ where: { organizationId }, orderBy: { name: "asc" }, include: { _count: { select: { inventoryItems: true, expenses: true } }, products: { select: { inventoryId: true, isPreferred: true } } } }),
     prisma.expense.groupBy({ by: ["supplierId"], where: { organizationId, supplierId: { not: null } }, _sum: { amount: true } }),
   ]);
   const spendBySupplier = new Map(spend.map((s) => [s.supplierId, Number(s._sum.amount ?? 0)]));

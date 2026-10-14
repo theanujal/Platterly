@@ -65,6 +65,7 @@ export const TENANT_SCOPED_DELEGATES = [
   "staffMember",
   "purchaseOrder",
   "supplierPayment",
+  "supplierItem", // cascades off supplier and inventory; listed for the guardrail (order does not matter)
   "inventory",
   "supplier", // inventory / expense / recurringExpense point at it with SetNull, so order does not matter
   // Chunk 10 — orderItem/mealPlanEntry have no organizationId of their own;

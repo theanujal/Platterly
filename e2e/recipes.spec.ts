@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
+import { editInventoryItem } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
 /** Chunk 18.1 — a Food Item's recipe: pick inventory ingredients, see the cost per serving, save, reopen, and the ingredient is then protected from deletion. */
@@ -27,11 +28,11 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await page.getByLabel("Item Name").fill(ingredient);
   await page.getByLabel("Category", { exact: true }).click();
   await page.getByRole("option", { name: "Grains & Cereals" }).click();
-  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByLabel("Base Stock Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
-  await page.getByLabel("Cost Per Unit").fill("300");
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
+  await editInventoryItem(page, ingredient, { cost: "300" });
 
   // A Food Item.
   const dish = `Paneer Masala ${suffix}`;

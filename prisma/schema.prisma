@@ -226,6 +226,7 @@ model Organization {
   eventLogistics          EventLogistics[]
   eventStaffCounts        EventStaffCount[]
   suppliers               Supplier[]
+  supplierItems           SupplierItem[]
   customers               Customer[]
   events                  Event[]
   orders                  Order[]
@@ -1221,6 +1222,7 @@ model Inventory {
   requiredByEvents   EventRequiredInventory[]
   recipeIngredients  RecipeIngredient[]
   purchaseOrderItems PurchaseOrderItem[]
+  suppliedBy         SupplierItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1250,12 +1252,36 @@ model Supplier {
   recurringExpenses RecurringExpense[]
   purchaseOrders    PurchaseOrder[]
   payments          SupplierPayment[]
+  products          SupplierItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, name])
   @@map("supplier")
+}
+
+// Products Supplied (AJ, 2026-10-15): which inventory items a supplier provides, and which supplier is preferred for an
+// item. Many-to-many; Inventory.supplierId (the single "usual supplier" on the item) is untouched. A mapping is not
+// history: it goes with its supplier or its item. At most one preferred supplier per item is enforced by a partial
+// unique index in the migration (Prisma cannot declare it); the item already belongs to exactly one kitchen.
+model SupplierItem {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       Supplier     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  inventoryId    String
+  inventory      Inventory    @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  isPreferred    Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([supplierId, inventoryId])
+  @@index([inventoryId])
+  @@index([organizationId])
+  @@map("supplier_item")
 }
 
 // Chunk 19.3 — Event tasks and logistics (AJ, 2026-10-04). A plain checklist per event, filled in by hand like staffing.

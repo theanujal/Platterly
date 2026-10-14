@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "cn";
 
 interface CopyButtonProps {
@@ -20,6 +21,7 @@ interface CopyButtonProps {
 // pattern (e.g. a QR/secure-access link) can reuse it as-is.
 export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = false, className }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   async function handleCopy() {
     await navigator.clipboard.writeText(value);
@@ -27,7 +29,7 @@ export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = fals
     setTimeout(() => setCopied(false), 2000);
   }
 
-  return (
+  const button = (
     <Button
       type="button"
       variant="outline"
@@ -35,10 +37,18 @@ export function CopyButton({ value, label = "Copy", size = "sm", iconOnly = fals
       onClick={handleCopy}
       className={cn(iconOnly && size === "md" && "w-[38px] px-0", className)}
       aria-label={iconOnly ? (copied ? "Copied" : label) : undefined}
-      title={iconOnly ? (copied ? "Copied!" : label) : undefined}
     >
       {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
       {!iconOnly && (copied ? "Copied!" : label)}
     </Button>
+  );
+  // A click closes a plain tooltip, so keep it open while "Copied!" shows.
+  return iconOnly ? (
+    <Tooltip open={hovered || copied} onOpenChange={setHovered}>
+      <TooltipTrigger delay={300} render={button} />
+      <TooltipContent>{copied ? "Copied!" : label}</TooltipContent>
+    </Tooltip>
+  ) : (
+    button
   );
 }

@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Truck } from "lucide-react";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { listSuppliers } from "@/modules/suppliers/supplier";
+import { getActiveLocation } from "@/modules/locations/active-location";
+import { listLocations } from "@/modules/locations/locations";
+import { listProductOptions, listSuppliers } from "@/modules/suppliers/supplier";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
@@ -18,9 +20,12 @@ export const metadata: Metadata = {
 };
 
 export default async function SuppliersPage() {
-  const { organizationId } = await requireActiveOrganization();
+  const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
-  const suppliers = await listSuppliers(organizationId);
+  const active = await getActiveLocation(organizationId, session.user.id);
+  const [suppliers, productOptions, allLocations] = await Promise.all([listSuppliers(organizationId), listProductOptions(organizationId), active.enabled ? listLocations(organizationId) : Promise.resolve([])]);
+  // For the New Inventory Item form opened from Products Supplied; null while multiple locations are off.
+  const locations = active.enabled ? allLocations.map((l) => ({ id: l.id, name: l.name })) : null;
 
   const entries: CatalogEntry[] = suppliers.map((s) => {
     const initialValues: SupplierFormValues = {
@@ -32,6 +37,7 @@ export default async function SuppliersPage() {
       gstin: s.gstin ?? "",
       notes: s.notes ?? "",
       isActive: s.isActive,
+      products: s.products,
     };
     const supplies = `${s._count.inventoryItems} item${s._count.inventoryItems === 1 ? "" : "s"}`;
     return {
@@ -41,7 +47,7 @@ export default async function SuppliersPage() {
       sortValues: { name: s.name, spend: s.totalSpend, newest: s.createdAt.getTime() },
       card: (
         <>
-          <CatalogCardMedia src={null} icon={Truck} overlay={<SupplierCardActions id={s.id} name={s.name} initialValues={initialValues} />} />
+          <CatalogCardMedia src={null} icon={Truck} overlay={<SupplierCardActions id={s.id} name={s.name} initialValues={initialValues} productOptions={productOptions} locations={locations} />} />
           <CatalogCardBody
             title={s.name}
             titleHref={`/suppliers/${s.id}`}
@@ -68,7 +74,7 @@ export default async function SuppliersPage() {
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <SupplierCardActions id={s.id} name={s.name} initialValues={initialValues} variant="plain" />
+              <SupplierCardActions id={s.id} name={s.name} initialValues={initialValues} productOptions={productOptions} locations={locations} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -93,12 +99,12 @@ export default async function SuppliersPage() {
           <h1 className="text-2xl font-semibold">Stock & Supplies</h1>
           <p className="text-sm text-muted-foreground">Who you buy from. Pick them on inventory items and expenses.</p>
         </div>
-        <AddSupplierDialog />
+        <AddSupplierDialog productOptions={productOptions} locations={locations} />
       </div>
       <SectionTabs group="stock" active="/suppliers" organizationId={organizationId} />
       <CatalogBrowser
         entries={entries}
-        addTile={<AddSupplierDialog variant="tile" />}
+        addTile={<AddSupplierDialog variant="tile" productOptions={productOptions} locations={locations} />}
         columns={["Supplier", "Contact", "Phone", "Supplies", "Spend", "Status", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}

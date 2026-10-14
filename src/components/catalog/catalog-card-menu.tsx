@@ -15,18 +15,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { IconTip } from "@/components/ui/icon-tip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-/** The words shown on hover for an icon-only button (the button keeps its own aria-label). A short delay keeps it calm when the mouse crosses a row. */
-function IconTip({ label, children }: { label: string; children: React.ReactElement }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger delay={300} render={children} />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  );
-}
 
 type Result = { ok: true; name?: string } | { ok: false; error: string };
 

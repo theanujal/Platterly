@@ -4,21 +4,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StageSelect } from "./stage-select";
 import { formatDate, menuName, priority, type ProductionCardMenuSelection } from "./production-card";
 
+const HEAD = "h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase";
+
 /** The Kitchen Dashboard's list view: one row per confirmed menu, same data as the cards, stage changeable inline. */
 export function ProductionList({ menuSelections }: { menuSelections: (ProductionCardMenuSelection & { event: { order: { orderNumber: string | null } | null } })[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
+    <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted">
           <TableRow>
-            <TableHead>Order</TableHead>
-            <TableHead>Customer</TableHead>
-            <TableHead>Event type</TableHead>
-            <TableHead>Menu</TableHead>
-            <TableHead>Guests</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>When</TableHead>
-            <TableHead>Stage</TableHead>
+            <TableHead className={HEAD}>Order</TableHead>
+            <TableHead className={HEAD}>Customer</TableHead>
+            <TableHead className={HEAD}>Event type</TableHead>
+            <TableHead className={HEAD}>Menu</TableHead>
+            <TableHead className={HEAD}>Guests</TableHead>
+            <TableHead className={HEAD}>Date</TableHead>
+            <TableHead className={HEAD}>When</TableHead>
+            <TableHead className={HEAD}>Stage</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -26,20 +28,20 @@ export function ProductionList({ menuSelections }: { menuSelections: (Production
             const pr = priority(ms.event.startDate);
             return (
               <TableRow key={ms.id}>
-                <TableCell className="font-semibold text-primary">{ms.event.order?.orderNumber ?? "—"}</TableCell>
-                <TableCell>
+                <TableCell className="px-3 py-3 font-semibold text-primary">{ms.event.order?.orderNumber ?? "—"}</TableCell>
+                <TableCell className="px-3 py-3">
                   <Link href={`/kitchen-dashboard/${ms.id}`} className="font-semibold hover:underline">
                     {ms.event.customer.name}
                   </Link>
                 </TableCell>
-                <TableCell>{ms.event.eventType.name}</TableCell>
-                <TableCell>{menuName(ms.event.eventType.menus)}</TableCell>
-                <TableCell>{ms.event.guestCount ?? 0}</TableCell>
-                <TableCell className="whitespace-nowrap">{formatDate(ms.event.startDate)}</TableCell>
-                <TableCell>
+                <TableCell className="px-3 py-3 text-sm">{ms.event.eventType.name}</TableCell>
+                <TableCell className="px-3 py-3 text-sm">{menuName(ms.event.eventType.menus)}</TableCell>
+                <TableCell className="px-3 py-3 text-sm">{ms.event.guestCount ?? 0}</TableCell>
+                <TableCell className="px-3 py-3 text-sm text-muted-foreground">{formatDate(ms.event.startDate)}</TableCell>
+                <TableCell className="px-3 py-3">
                   <Badge variant={pr.variant}>{pr.label}</Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="px-3 py-3">
                   <StageSelect menuSelectionId={ms.id} currentStage={ms.kitchenProductionStatus} />
                 </TableCell>
               </TableRow>

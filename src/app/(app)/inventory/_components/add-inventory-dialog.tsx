@@ -12,7 +12,7 @@ export function AddInventoryDialog({ variant = "button", suppliers, locations }:
     <AddDrawer variant={variant} buttonLabel="Add Item" tileLabel="Add New Item" tileDescription="Track a new item in stock" title="New Inventory Item">
       {(close) => (
         <InventoryForm
-          showOpeningStock
+          creating
           suppliers={suppliers}
           locations={locations}
           submitLabel="Create item"

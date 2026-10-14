@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Boxes, IndianRupee, PackagePlus, BellRing, CalendarDays, MapPin } from "lucide-react";
+import { Boxes, IndianRupee, BellRing, CalendarDays, MapPin } from "lucide-react";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CATEGORY_OPTIONS, UNIT_OPTIONS } from "@/modules/inventory/options";
+import { CATEGORY_OPTIONS, UNIT_OPTIONS, lowStockError, lowStockStep } from "@/modules/inventory/options";
 import type { ActionResult } from "../actions";
 
 export interface InventoryFormValues {
@@ -43,24 +43,24 @@ export const EMPTY_INVENTORY_VALUES: InventoryFormValues = {
 
 interface InventoryFormProps {
   initialValues?: Partial<InventoryFormValues>;
-  /** Opening Stock is only offered at creation — every change after that goes through a Stock In/Out/Adjustment entry, never a direct field edit. */
-  showOpeningStock?: boolean;
+  /** The New Inventory Item form is short: cost, supplier, expiry and opening stock are not asked at creation (stock only ever changes through a Stock In/Out/Adjustment entry; cost and supplier come from Purchasing or the Edit form). */
+  creating?: boolean;
   suppliers: { id: string; name: string }[];
   /** Null while multiple locations are off; the field is then hidden and not sent. */
   locations?: { id: string; name: string }[] | null;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
-  onSuccess: () => void;
+  /** `id` is the new item's id after a create. */
+  onSuccess: (id?: string) => void;
   submitLabel: string;
   onCancel: () => void;
 }
 
-export function InventoryForm({ initialValues, showOpeningStock, suppliers, locations, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
+export function InventoryForm({ initialValues, creating, suppliers, locations, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
-  const [openingStock, setOpeningStock] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const dirty = useIsDirty({ values, openingStock, image: image?.name ?? null });
+  const dirty = useIsDirty({ values, image: image?.name ?? null });
 
   function setField<K extends keyof InventoryFormValues>(key: K, value: InventoryFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -68,7 +68,16 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    // Opened inside another form's drawer (a portal), a submit would otherwise bubble up to that form too.
+    event.stopPropagation();
     setError(null);
+    if (creating) {
+      if (!values.name.trim()) return setError("Item name is required.");
+      if (!values.category) return setError("Category is required.");
+      if (!values.unit) return setError("Base stock unit is required.");
+    }
+    const lowStockProblem = lowStockError(values.unit, values.lowStockThreshold);
+    if (creating && lowStockProblem) return setError(lowStockProblem);
     setPending(true);
 
     const formData = new FormData();
@@ -77,12 +86,13 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
     formData.set("description", values.description);
     formData.set("unit", values.unit);
     formData.set("lowStockThreshold", values.lowStockThreshold);
-    formData.set("costPerUnit", values.costPerUnit);
     formData.set("storageLocation", values.storageLocation);
-    formData.set("supplierId", values.supplierId);
+    if (!creating) {
+      formData.set("costPerUnit", values.costPerUnit);
+      formData.set("supplierId", values.supplierId);
+      formData.set("expiryDate", values.expiryDate);
+    }
     if (locations) formData.set("kitchenId", values.kitchenId);
-    formData.set("expiryDate", values.expiryDate);
-    if (showOpeningStock) formData.set("openingStock", openingStock);
     if (image) formData.set("image", image);
 
     const result = await onSubmit(formData);
@@ -91,7 +101,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
       setError(result.error);
       return;
     }
-    onSuccess();
+    onSuccess(result.id);
   }
 
   return (
@@ -104,7 +114,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
           lines up exactly the same as in Add. */}
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="inv-image">Image</Label>
+          <Label htmlFor="inv-image">Item Image</Label>
           <ImageDropzone id="inv-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
         </div>
 
@@ -140,10 +150,10 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-unit">Unit</Label>
+          <Label htmlFor="inv-unit">Base Stock Unit</Label>
           <Select items={Object.fromEntries(UNIT_OPTIONS.map((o) => [o.value, o.label]))} value={values.unit} onValueChange={(v) => setField("unit", v ?? "")}>
             <SelectTrigger id="inv-unit" className="w-full">
-              <SelectValue placeholder="Select a unit" />
+              <SelectValue placeholder="Select a base stock unit" />
             </SelectTrigger>
             <SelectContent>
               {UNIT_OPTIONS.map((option) => (
@@ -154,35 +164,20 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
             </SelectContent>
           </Select>
         </div>
-        {showOpeningStock ? (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="inv-opening-stock">Opening Stock</Label>
-            <IconInput
-              icon={PackagePlus}
-              id="inv-opening-stock"
-              type="number"
-              step="0.01"
-              min="0"
-              value={openingStock}
-              onChange={(e) => setOpeningStock(e.target.value)}
-            />
-          </div>
-        ) : (
-          <div aria-hidden="true" />
-        )}
-
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-low-stock">Low Stock Alert</Label>
           <IconInput
             icon={BellRing}
             id="inv-low-stock"
             type="number"
-            step="0.01"
+            step={creating ? lowStockStep(values.unit) : "0.01"}
             min="0"
             value={values.lowStockThreshold}
             onChange={(e) => setField("lowStockThreshold", e.target.value)}
           />
         </div>
+        {!creating && (
+          <>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-expiry">Expiry Date</Label>
           <IconInput icon={CalendarDays} id="inv-expiry" type="date" value={values.expiryDate} onChange={(e) => setField("expiryDate", e.target.value)} />
@@ -200,8 +195,10 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
             onChange={(e) => setField("costPerUnit", e.target.value)}
           />
         </div>
+          </>
+        )}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-location">Storage Location</Label>
+          <Label htmlFor="inv-location">Default Storage Location</Label>
           <IconInput icon={MapPin} id="inv-location" value={values.storageLocation} onChange={(e) => setField("storageLocation", e.target.value)} />
         </div>
 
@@ -228,6 +225,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
           </div>
         )}
 
+        {!creating && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-supplier">Supplier</Label>
           <Select
@@ -248,6 +246,7 @@ export function InventoryForm({ initialValues, showOpeningStock, suppliers, loca
             </SelectContent>
           </Select>
         </div>
+        )}
       </div>
 
     </DrawerForm>

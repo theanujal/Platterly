@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
+import { editInventoryItem } from "./inventory-helpers";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -29,11 +30,11 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await page.getByLabel("Item Name").fill(ingredient);
   await page.getByLabel("Category", { exact: true }).click();
   await page.getByRole("option", { name: "Grains & Cereals" }).click();
-  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByLabel("Base Stock Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
-  await page.getByLabel("Cost Per Unit").fill("300");
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
+  await editInventoryItem(page, ingredient, { cost: "300" });
 
   const dishes = [`Paneer Masala ${suffix}`, `Paneer Tikka ${suffix}`];
   for (const dish of dishes) {
@@ -56,11 +57,11 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await sidebar.getByRole("link", { name: "Recipes", exact: true }).click();
   await expect(page).toHaveURL(/\/recipes$/);
   await expect(page.getByRole("heading", { name: "Recipes", exact: true })).toBeVisible();
-  await expect(page.getByTestId("recipe-row")).toHaveCount(2);
-  await expect(page.getByRole("button", { name: "Missing recipe" })).toContainText("2");
+  await expect(page.getByRole("row").filter({ hasText: "Missing" })).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /All Dishes/ })).toContainText("2");
 
   // A dish without a recipe shows a dash, not a cost.
-  const noRecipe = page.getByTestId("recipe-row").filter({ hasText: dishes[0] });
+  const noRecipe = page.getByRole("row").filter({ hasText: dishes[0] });
   await expect(noRecipe).not.toContainText("₹");
   await expect(noRecipe).not.toContainText("Cost unavailable");
 
@@ -75,12 +76,14 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await page.getByLabel("Quantity 1").fill("2");
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  const first = page.getByTestId("recipe-row").filter({ hasText: dishes[0] });
+  const first = page.getByRole("row").filter({ hasText: dishes[0] });
   await expect(first.getByText("Complete", { exact: true })).toBeVisible();
   await expect(first).toContainText("₹60.00"); // 2 kg x 300 / 10 servings
 
   // The second dish starts from the first one's recipe, adjusted before saving: 3 kg instead of 2.
-  await page.getByRole("button", { name: `Add recipe for ${dishes[1]}` }).click();
+  await page.getByRole("button", { name: "Add Recipe", exact: true }).click(); // the header button asks which dish
+  await page.getByLabel("Dish", { exact: true }).click();
+  await page.getByRole("option", { name: new RegExp(dishes[1]) }).click();
   await page.getByLabel("Copy from another dish").click();
   await page.getByPlaceholder("Search dishes with a recipe…").fill(dishes[0].slice(0, 6).toLowerCase());
   await page.getByRole("option", { name: dishes[0] }).click();
@@ -89,7 +92,7 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await page.getByLabel("Quantity 1").fill("3");
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  const second = page.getByTestId("recipe-row").filter({ hasText: dishes[1] });
+  const second = page.getByRole("row").filter({ hasText: dishes[1] });
   await expect(second.getByText("Complete", { exact: true })).toBeVisible();
   await expect(second).toContainText("₹90.00"); // 3 kg x 300 / 10 servings
   await expect(first).toContainText("₹60.00"); // the first dish is unchanged
@@ -112,10 +115,11 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(second).toContainText("₹120.00"); // 3 kg x 400 / 10
 
   // Filters: nothing is missing any more.
-  await page.getByRole("button", { name: "Missing recipe" }).click();
-  await expect(page.getByText("No dishes match.")).toBeVisible();
-  await page.getByRole("button", { name: "Has recipe" }).click();
-  await expect(page.getByTestId("recipe-row")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /Missing Recipe/ })).toContainText("0");
+  await page.getByRole("button", { name: /Has Recipe/ }).click();
+  await expect(page.getByRole("row").filter({ hasText: "Complete" })).toHaveCount(2);
+  await page.getByRole("button", { name: /Missing Recipe/ }).click();
+  await expect(page.getByRole("row").filter({ hasText: "Complete" })).toHaveCount(0);
 });
 
 test("a recipe with an ingredient that has no cost shows 'Cost unavailable'", async ({ page }) => {
@@ -133,7 +137,7 @@ test("a recipe with an ingredient that has no cost shows 'Cost unavailable'", as
   await page.getByLabel("Item Name").fill(ingredient);
   await page.getByLabel("Category", { exact: true }).click();
   await page.getByRole("option", { name: "Grains & Cereals" }).click();
-  await page.getByLabel("Unit", { exact: true }).click();
+  await page.getByLabel("Base Stock Unit", { exact: true }).click();
   await page.getByRole("option", { name: "Kilogram (kg)" }).click();
   await page.getByRole("button", { name: "Create item" }).click();
   await expect(page.getByText(ingredient)).toBeVisible();
@@ -154,8 +158,8 @@ test("a recipe with an ingredient that has no cost shows 'Cost unavailable'", as
   await page.getByLabel("Quantity 1").fill("1");
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  const row = page.getByTestId("recipe-row").filter({ hasText: dish });
-  await expect(row.getByText("Complete", { exact: true })).toBeVisible();
+  const row = page.getByRole("row").filter({ hasText: dish });
+  await expect(row.getByText("Incomplete", { exact: true })).toBeVisible();
   await expect(row).toContainText("Cost unavailable");
   await expect(row).not.toContainText("₹");
 });

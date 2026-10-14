@@ -35,6 +35,25 @@ export const CATEGORY_OPTIONS: readonly string[] = [
   "Other",
 ];
 
+/** Units counted in whole numbers; a low stock alert in these must be a whole number too (weights and volumes may have decimals). */
+const COUNTED_UNITS: readonly string[] = ["pcs", "dozen", "box", "packet", "bag", "bottle"];
+
+/** The `step` for a low stock alert typed in the given base stock unit. */
+export function lowStockStep(unit: string): string {
+  return COUNTED_UNITS.includes(unit) ? "1" : "0.001";
+}
+
+/** Why a low stock alert is not acceptable for the base stock unit, or null when it is fine or empty. */
+export function lowStockError(unit: string, raw: string | number | undefined | null): string | null {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return "Low stock alert must be zero or more.";
+  if (value > 1_000_000_000) return "Low stock alert is too large.";
+  if (COUNTED_UNITS.includes(unit) && !Number.isInteger(value)) return `Low stock alert must be a whole number for items counted in ${unit}.`;
+  if (!COUNTED_UNITS.includes(unit) && Math.round(value * 1000) / 1000 !== value) return "Low stock alert can have at most 3 decimal places.";
+  return null;
+}
+
 const UNIT_ALIASES: Record<string, string> = {
   kg: "kg", kgs: "kg", kilo: "kg", kilos: "kg", kilogram: "kg", kilograms: "kg",
   g: "g", gm: "g", gms: "g", gram: "g", grams: "g", gr: "g",

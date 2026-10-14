@@ -33,6 +33,7 @@ export default async function RecipesPage() {
     return {
       id: item.id,
       name: item.name,
+      image: item.image,
       category: item.categories[0]?.category.name ?? null,
       hasRecipe: Boolean(recipe),
       ingredientCount: lines.length,
@@ -48,10 +49,6 @@ export default async function RecipesPage() {
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Recipes" }]} />
-      <div>
-        <h1 className="text-2xl font-semibold">Recipes</h1>
-        <p className="text-sm text-muted-foreground">A recipe per dish tells the kitchen what each order needs from the store. Dishes without one are left out of the stock plan.</p>
-      </div>
       <RecipesBrowser rows={rows} ingredientOptions={ingredientOptions} canEdit={canEdit} />
     </div>
   );

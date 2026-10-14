@@ -52,7 +52,7 @@ test("locations stay hidden until the plan allows them and the kitchen switches 
     await dialog.getByLabel("Item Name").fill(name);
     await dialog.getByLabel("Category", { exact: true }).click();
     await page.getByRole("option", { name: "Grains & Cereals" }).click();
-    await dialog.getByLabel("Unit", { exact: true }).click();
+    await dialog.getByLabel("Base Stock Unit", { exact: true }).click();
     await page.getByRole("option", { name: "Kilogram (kg)" }).click();
     if (location) {
       await dialog.getByLabel("Location", { exact: true }).click();

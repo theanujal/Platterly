@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
+import { IconTip } from "@/components/ui/icon-tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ActiveBadge } from "@/components/catalog/catalog-display";
 import { ScheduleFilters } from "./_components/schedule-filters";
@@ -23,6 +24,9 @@ export const metadata: Metadata = {
 const formatDate = (d: Date) => d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
 
 const PAGE_SIZE = 10;
+// Shared list styling (design system: rich list): muted header row with small uppercase headings, roomy cells.
+const HEAD = "h-12 px-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase";
+const CELL = "px-3 py-3 text-sm";
 const STATUS_TONE: Record<StaffingStatus, "warning" | "info" | "success"> = { NOT_STARTED: "warning", IN_PROGRESS: "info", COMPLETE: "success" };
 
 function StatCard({ icon: Icon, tile, value, label, children }: { icon: typeof Users; tile: string; value: number; label: string; children?: React.ReactNode }) {
@@ -114,31 +118,32 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
           {schedule.length === 0 ? (
             <p className="text-sm text-muted-foreground">{q ? "No events match your search." : `No events in the next ${days} days.`}</p>
           ) : (
+            <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted">
                 <TableRow>
-                  <TableHead>Event / Order ID</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Guests</TableHead>
-                  <TableHead>Event Manager</TableHead>
-                  <TableHead>Staffing Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className={HEAD}>Event / Order ID</TableHead>
+                  <TableHead className={HEAD}>Date</TableHead>
+                  <TableHead className={HEAD}>Guests</TableHead>
+                  <TableHead className={HEAD}>Event Manager</TableHead>
+                  <TableHead className={HEAD}>Staffing Status</TableHead>
+                  <TableHead className={`${HEAD} text-right`}>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rows.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell>
-                      <div className="font-medium">{e.customer}</div>
+                    <TableCell className={CELL}>
+                      <div className="font-semibold">{e.customer}</div>
                       <div className="text-xs text-muted-foreground">{e.orderNumber ?? e.name}</div>
                     </TableCell>
-                    <TableCell>{formatDate(e.startDate)}</TableCell>
-                    <TableCell>{e.guestCount ?? "—"}</TableCell>
-                    <TableCell>{e.eventManagerName ?? "—"}</TableCell>
-                    <TableCell>
+                    <TableCell className={CELL}>{formatDate(e.startDate)}</TableCell>
+                    <TableCell className={CELL}>{e.guestCount ?? "—"}</TableCell>
+                    <TableCell className={CELL}>{e.eventManagerName ?? "—"}</TableCell>
+                    <TableCell className={CELL}>
                       <Badge variant={STATUS_TONE[e.staffing]}>{STAFFING_STATUS_LABEL[e.staffing]}</Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={CELL}>
                       <div className="flex justify-end">
                         <Button variant="outline" size="md" render={<Link href={`/staff/events/${e.id}`} />} nativeButton={false}>
                           Manage Staffing
@@ -149,6 +154,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
           {schedule.length > PAGE_SIZE && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground" data-testid="staff-paging">
@@ -188,28 +194,29 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             {staff.length === 0 ? (
               <p className="text-sm text-muted-foreground">No staff added yet.</p>
             ) : (
+              <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted">
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
-                    <TableHead>Usual duty</TableHead>
-                    <TableHead>Events</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className={HEAD}>Name</TableHead>
+                    <TableHead className={HEAD}>Phone</TableHead>
+                    <TableHead className={HEAD}>Usual duty</TableHead>
+                    <TableHead className={HEAD}>Events</TableHead>
+                    <TableHead className={HEAD}>Status</TableHead>
+                    <TableHead className={`${HEAD} text-right`}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {staff.map((s) => (
                     <TableRow key={s.id}>
-                      <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell>{s.phone ?? "—"}</TableCell>
-                      <TableCell>{STAFF_DUTY_LABEL[s.defaultDuty]}</TableCell>
-                      <TableCell>{s._count.assignments}</TableCell>
-                      <TableCell>
+                      <TableCell className={`${CELL} font-semibold`}>{s.name}</TableCell>
+                      <TableCell className={CELL}>{s.phone ?? "—"}</TableCell>
+                      <TableCell className={CELL}>{STAFF_DUTY_LABEL[s.defaultDuty]}</TableCell>
+                      <TableCell className={CELL}>{s._count.assignments}</TableCell>
+                      <TableCell className={CELL}>
                         <ActiveBadge active={s.isActive} />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={CELL}>
                         <div className="flex justify-end">
                           <StaffMemberRowActions id={s.id} name={s.name} canEdit={canEdit} canDelete={canDelete} initialValues={{ name: s.name, phone: s.phone ?? "", defaultDuty: s.defaultDuty, notes: s.notes ?? "", isActive: s.isActive }} />
                         </div>
@@ -218,6 +225,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                   ))}
                 </TableBody>
               </Table>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -236,34 +244,38 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
               </div>
             </CardHeader>
             <CardContent>
+              <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
               <Table>
-                <TableHeader>
+                <TableHeader className="bg-muted">
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className={HEAD}>Name</TableHead>
+                    <TableHead className={HEAD}>Role</TableHead>
+                    <TableHead className={HEAD}>Status</TableHead>
+                    <TableHead className={`${HEAD} text-right`}>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {members.map((m) => (
                     <TableRow key={m.id}>
-                      <TableCell className="font-medium">{m.name}</TableCell>
-                      <TableCell>{roleLabel(m.role)}</TableCell>
-                      <TableCell>
+                      <TableCell className={`${CELL} font-semibold`}>{m.name}</TableCell>
+                      <TableCell className={CELL}>{roleLabel(m.role)}</TableCell>
+                      <TableCell className={CELL}>
                         <ActiveBadge active />
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={CELL}>
                         <div className="flex justify-end">
-                          <Button variant="ghost" size="icon" render={<Link href="/settings/team" />} nativeButton={false} aria-label={`Manage ${m.name} in Team settings`}>
+                          <IconTip label="Edit in Team settings">
+                            <Button variant="ghost" size="icon" render={<Link href="/settings/team" />} nativeButton={false} aria-label={`Manage ${m.name} in Team settings`}>
                             <Pencil className="size-4" aria-hidden />
                           </Button>
+                          </IconTip>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         )}

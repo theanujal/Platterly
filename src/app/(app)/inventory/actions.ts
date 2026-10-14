@@ -11,12 +11,14 @@ import {
   recordStockTransaction,
   type InventoryItemInput,
 } from "@/modules/inventory/inventory";
+import { lowStockError } from "@/modules/inventory/options";
 import { importInventoryItems } from "@/modules/inventory/import/import";
 import { addIngredientsFromCatalog } from "@/modules/inventory/catalog/catalog";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { InventoryTransactionType } from "@/generated/prisma/enums";
 
-export type ActionResult = { ok: true } | { ok: false; error: string };
+/** `id` is set by the create action, so a caller that opened the form from elsewhere (the supplier drawer) can pick the new item. */
+export type ActionResult = { ok: true; id?: string } | { ok: false; error: string };
 
 function toErrorResult(error: unknown): ActionResult {
   return { ok: false, error: userMessage(error, "Something went wrong.") };
@@ -74,20 +76,27 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
 export async function createInventoryItemAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["create"] }, organizationId);
+  let created: Awaited<ReturnType<typeof createInventoryItem>>;
   try {
     const input = await buildInput(organizationId, formData);
+    // The New Inventory Item form asks for no cost, supplier, expiry or opening stock: whatever is posted for them is ignored, and no stock movement is created.
+    const problem = lowStockError(input.unit, input.lowStockThreshold);
+    if (problem) throw new Error(problem);
+    input.costPerUnit = undefined;
+    input.supplierId = null;
+    input.expiryDate = undefined;
     // A person held to a location creates items at that location.
     const held = await myHeldLocation(organizationId, session.user.id);
     if (held) input.kitchenId = held;
-    const openingStock = numberField(formData, "openingStock");
-    await createInventoryItem(organizationId, input, session.user.id, openingStock);
+    created = await createInventoryItem(organizationId, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
   revalidatePath("/recipes");
-  return { ok: true };
+  revalidatePath("/suppliers");
+  return { ok: true, id: created.id };
 }
 
 export async function updateInventoryItemAction(

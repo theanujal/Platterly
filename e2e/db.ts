@@ -675,3 +675,12 @@ export async function getApprovalState(orderId: string): Promise<{ selection: st
 export async function setOrderStatus(orderId: string, status: "SENT_TO_KITCHEN" | "COMPLETED"): Promise<void> {
   await pool.query('UPDATE "order" SET status = $2 WHERE id = $1', [orderId, status]);
 }
+
+/** Marks the user's business as having claimed its public link, so the dashboard shows the real link and QR actions. */
+export async function markPublicLinkClaimed(email: string): Promise<void> {
+  await pool.query(
+    `UPDATE organization SET "slugChangeCount" = 1
+     WHERE id IN (SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1)`,
+    [email],
+  );
+}

@@ -117,3 +117,98 @@ describe("Suppliers (Chunk 18.2)", () => {
     expect(booked.every((e) => e.supplierId === s.id && e.supplierName === "Landlord")).toBe(true);
   });
 });
+
+describe("Products Supplied (supplier to inventory mapping)", () => {
+  async function item(orgId: string, actorId: string, name: string) {
+    return createInventoryItem(orgId, { name, category: "Dairy", unit: "kg" }, actorId);
+  }
+  const mappings = (supplierId: string) => prisma.supplierItem.findMany({ where: { supplierId }, orderBy: { createdAt: "asc" } });
+
+  it("creates a supplier with no products, or with several, in one go", async () => {
+    const { org, actor } = await setup();
+    const a = await item(org.id, actor.id, "Paneer");
+    const b = await item(org.id, actor.id, "Milk");
+    const none = await createSupplier(org.id, { name: "Plain" }, actor.id);
+    expect(await mappings(none.id)).toHaveLength(0);
+    const two = await createSupplier(org.id, { name: "Dairy Co" }, actor.id, [{ inventoryId: a.id, isPreferred: true }, { inventoryId: b.id, isPreferred: false }]);
+    const rows = await mappings(two.id);
+    expect(rows.map((r) => [r.inventoryId, r.isPreferred]).sort()).toEqual([[a.id, true], [b.id, false]].sort());
+  });
+
+  it("an item can have several suppliers, and only one of them preferred; naming another preferred moves the flag", async () => {
+    const { org, actor } = await setup();
+    const paneer = await item(org.id, actor.id, "Paneer");
+    const milk = await item(org.id, actor.id, "Milk");
+    const s1 = await createSupplier(org.id, { name: "S1" }, actor.id, [{ inventoryId: paneer.id, isPreferred: true }]);
+    // Not preferred automatically, even as the only mapping or the second supplier.
+    const s2 = await createSupplier(org.id, { name: "S2" }, actor.id, [{ inventoryId: paneer.id, isPreferred: false }, { inventoryId: milk.id, isPreferred: true }]);
+    expect((await mappings(s2.id)).find((r) => r.inventoryId === paneer.id)?.isPreferred).toBe(false);
+    expect(await prisma.supplierItem.count({ where: { inventoryId: paneer.id } })).toBe(2);
+    // Preferred for one item, not for another, on the same supplier
+    expect((await mappings(s2.id)).find((r) => r.inventoryId === milk.id)?.isPreferred).toBe(true);
+
+    await updateSupplier(org.id, s2.id, { name: "S2" }, actor.id, [{ inventoryId: paneer.id, isPreferred: true }, { inventoryId: milk.id, isPreferred: true }]);
+    expect((await mappings(s1.id))[0].isPreferred).toBe(false);
+    expect(await prisma.supplierItem.count({ where: { inventoryId: paneer.id, isPreferred: true } })).toBe(1);
+  });
+
+  it("the database itself refuses a second preferred supplier for an item", async () => {
+    const { org, actor } = await setup();
+    const paneer = await item(org.id, actor.id, "Paneer");
+    const s1 = await createSupplier(org.id, { name: "S1" }, actor.id, [{ inventoryId: paneer.id, isPreferred: true }]);
+    const s2 = await createSupplier(org.id, { name: "S2" }, actor.id);
+    expect(s1.id).not.toBe(s2.id);
+    await expect(prisma.supplierItem.create({ data: { organizationId: org.id, supplierId: s2.id, inventoryId: paneer.id, isPreferred: true } })).rejects.toThrow();
+    await expect(prisma.supplierItem.create({ data: { organizationId: org.id, supplierId: s1.id, inventoryId: paneer.id } })).rejects.toThrow(); // and a repeat mapping
+  });
+
+  it("editing: add, change the preferred flag, remove, and leave them alone when no list is sent; removing a mapping keeps the item", async () => {
+    const { org, actor } = await setup();
+    const a = await item(org.id, actor.id, "Paneer");
+    const b = await item(org.id, actor.id, "Milk");
+    const s = await createSupplier(org.id, { name: "S" }, actor.id, [{ inventoryId: a.id, isPreferred: false }]);
+    await updateSupplier(org.id, s.id, { name: "S renamed" }, actor.id); // no list: untouched
+    expect(await mappings(s.id)).toHaveLength(1);
+    await updateSupplier(org.id, s.id, { name: "S renamed" }, actor.id, [{ inventoryId: a.id, isPreferred: true }, { inventoryId: b.id, isPreferred: false }]);
+    expect((await mappings(s.id)).find((r) => r.inventoryId === a.id)?.isPreferred).toBe(true);
+    expect(await mappings(s.id)).toHaveLength(2); // no duplicate row for the item that was already mapped
+    await updateSupplier(org.id, s.id, { name: "S renamed" }, actor.id, [{ inventoryId: b.id, isPreferred: false }]);
+    expect((await mappings(s.id)).map((r) => r.inventoryId)).toEqual([b.id]);
+    await updateSupplier(org.id, s.id, { name: "S renamed" }, actor.id, []); // remove all
+    expect(await mappings(s.id)).toHaveLength(0);
+    expect(await prisma.inventory.count({ where: { id: { in: [a.id, b.id] } } })).toBe(2);
+  });
+
+  it("deactivating keeps the mappings; the supplier leaves the pickers", async () => {
+    const { org, actor } = await setup();
+    const a = await item(org.id, actor.id, "Paneer");
+    const s = await createSupplier(org.id, { name: "S" }, actor.id, [{ inventoryId: a.id, isPreferred: true }]);
+    await setSupplierActive(org.id, s.id, false, actor.id);
+    expect(await mappings(s.id)).toHaveLength(1);
+    expect(await listSupplierOptions(org.id)).toHaveLength(0);
+  });
+
+  it("rejects duplicates and another kitchen's items, and a failed create leaves no supplier behind", async () => {
+    const mine = await setup();
+    const other = await setup();
+    const a = await item(mine.org.id, mine.actor.id, "Paneer");
+    const theirs = await item(other.org.id, other.actor.id, "Their Rice");
+    await expect(createSupplier(mine.org.id, { name: "Dup" }, mine.actor.id, [{ inventoryId: a.id, isPreferred: false }, { inventoryId: a.id, isPreferred: true }])).rejects.toThrow(/once/);
+    await expect(createSupplier(mine.org.id, { name: "Cross" }, mine.actor.id, [{ inventoryId: theirs.id, isPreferred: false }])).rejects.toThrow(/not found/);
+    expect(await prisma.supplier.count({ where: { organizationId: mine.org.id } })).toBe(0);
+    const s = await createSupplier(mine.org.id, { name: "Ok" }, mine.actor.id);
+    await expect(updateSupplier(mine.org.id, s.id, { name: "Ok" }, mine.actor.id, [{ inventoryId: theirs.id, isPreferred: false }])).rejects.toThrow(/not found/);
+    // another kitchen cannot map to this kitchen's supplier either
+    await expect(updateSupplier(other.org.id, s.id, { name: "Ok" }, other.actor.id, [])).rejects.toThrow();
+    expect(await prisma.supplierItem.count({ where: { supplierId: s.id } })).toBe(0);
+  });
+
+  it("deleting an unused supplier removes its mappings but not the items; mappings do not block the delete", async () => {
+    const { org, actor } = await setup();
+    const a = await item(org.id, actor.id, "Paneer");
+    const s = await createSupplier(org.id, { name: "S" }, actor.id, [{ inventoryId: a.id, isPreferred: true }]);
+    await deleteSupplier(org.id, s.id, actor.id);
+    expect(await prisma.supplierItem.count({ where: { inventoryId: a.id } })).toBe(0);
+    expect(await prisma.inventory.count({ where: { id: a.id } })).toBe(1);
+  });
+});

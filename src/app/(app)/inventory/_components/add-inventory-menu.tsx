@@ -48,7 +48,7 @@ export function AddInventoryMenu({
 
       <FormDrawer open={open === "item"} onOpenChange={(o) => !o && close()} title="New Inventory Item">
         <InventoryForm
-          showOpeningStock
+          creating
           suppliers={suppliers}
           locations={locations}
           submitLabel="Create item"
