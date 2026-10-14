@@ -93,7 +93,17 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
                   <TableCell>{row.hasRecipe ? <Badge variant="success">Complete</Badge> : <Badge variant="warning">Missing</Badge>}</TableCell>
                   <TableCell>{row.hasRecipe ? row.ingredientCount : "—"}</TableCell>
                   <TableCell>{row.yieldServings !== null ? `${row.yieldServings} servings` : "—"}</TableCell>
-                  <TableCell>{row.costPerServing !== null ? formatRupees(row.costPerServing) : "—"}</TableCell>
+                  <TableCell>
+                    {row.costPerServing !== null ? (
+                      formatRupees(row.costPerServing)
+                    ) : row.hasRecipe ? (
+                      <span className="text-muted-foreground" title="An ingredient has no cost set in Inventory">
+                        Cost unavailable
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
                   <TableCell className="text-right">
                     {canEdit && (
                       <div className="flex justify-end gap-2">

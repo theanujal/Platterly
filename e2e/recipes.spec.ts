@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
-/** Chunk 18.1 — a Food Item's recipe: pick inventory ingredients, see the scaled preview, save, reopen, and the ingredient is then protected from deletion. */
+/** Chunk 18.1 — a Food Item's recipe: pick inventory ingredients, see the cost per serving, save, reopen, and the ingredient is then protected from deletion. */
 
 const cleanupEmails: string[] = [];
 
@@ -43,14 +43,13 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await expect(page.getByText(dish)).toBeVisible();
   await expect(page.getByText("Recipe", { exact: true })).toHaveCount(0);
 
-  // Recipe: 2 kg makes 10 servings; the preview for 100 servings shows 20 kg and a cost of 60 a serving.
+  // Recipe: 2 kg makes 10 servings; the cost shows 60 a serving.
   await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Ingredient 1").click();
   await page.getByPlaceholder("Search ingredients…").fill(ingredient.slice(0, 8).toLowerCase());
   await page.getByRole("option", { name: ingredient }).click();
   await page.getByLabel("Quantity 1").fill("2");
-  await expect(page.getByText("20 kg")).toBeVisible();
   await expect(page.getByText("₹60.00")).toBeVisible();
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();

@@ -86,6 +86,7 @@ export async function createInventoryItemAction(formData: FormData): Promise<Act
   }
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
+  revalidatePath("/recipes");
   return { ok: true };
 }
 
@@ -107,6 +108,7 @@ export async function updateInventoryItemAction(
   }
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
+  revalidatePath("/recipes");
   return { ok: true };
 }
 
@@ -121,6 +123,7 @@ export async function deleteInventoryItemAction(id: string): Promise<ActionResul
   }
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
+  revalidatePath("/recipes");
   return { ok: true };
 }
 
@@ -149,6 +152,7 @@ export async function recordStockTransactionAction(
   }
   revalidatePath("/inventory");
   revalidatePath("/dashboard");
+  revalidatePath("/recipes");
   return { ok: true };
 }
 
@@ -167,6 +171,7 @@ export async function importInventoryItemsAction(formData: FormData): Promise<Bu
     const result = await importInventoryItems(organizationId, { name: file.name, data: new Uint8Array(await file.arrayBuffer()) }, session.user.id, active.locationId);
     revalidatePath("/inventory");
     revalidatePath("/dashboard");
+    revalidatePath("/recipes");
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, error: userMessage(error, "Could not read that file.") };
@@ -182,6 +187,7 @@ export async function addIngredientsAction(picks: { id: string; unit: string }[]
     const result = await addIngredientsFromCatalog(organizationId, picks, session.user.id, active.locationId);
     revalidatePath("/inventory");
     revalidatePath("/dashboard");
+    revalidatePath("/recipes");
     return { ok: true, ...result };
   } catch (error) {
     return { ok: false, error: userMessage(error, "Could not add those ingredients.") };
