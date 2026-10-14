@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -100,10 +100,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
         {/* Icon matches whatever's picked below (AJ, 2026-09-19) — reinforces the choice instead of showing an unrelated generic glyph. */}
         <IconInput icon={getEventTypeIcon(values.icon)} id="event-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="event-description">Description</Label>
-        <Textarea id="event-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
-      </div>
+      <DescriptionField id="event-description" label="Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.eventType} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-image">Event Image</Label>
         <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />

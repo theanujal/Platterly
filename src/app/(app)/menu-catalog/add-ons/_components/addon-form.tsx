@@ -6,7 +6,7 @@ import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/ui/multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -114,14 +114,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
           <Label htmlFor="addon-name">Name</Label>
           <IconInput icon={Sparkles} id="addon-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="addon-description">Description</Label>
-          <Textarea
-            id="addon-description"
-            value={values.description}
-            onChange={(e) => setField("description", e.target.value)}
-          />
-        </div>
+        <DescriptionField id="addon-description" label="Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.addOn} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-image">Image</Label>
           <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />

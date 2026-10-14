@@ -1,4 +1,5 @@
 import { MapPin, Hash, Globe } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { IconInput } from "../../../_components/icon-input";
@@ -32,11 +33,11 @@ export function ContactAddressStep({ values, setField }: ContactAddressStepProps
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="city" required>City</Label>
-          <IconInput id="city" icon={MapPin} required value={values.city} onChange={(e) => setField("city", e.target.value)} />
+          <Input id="city" className="h-10 rounded-lg" required value={values.city} onChange={(e) => setField("city", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="state" required>State</Label>
-          <IconInput id="state" icon={MapPin} required value={values.state} onChange={(e) => setField("state", e.target.value)} />
+          <Input id="state" className="h-10 rounded-lg" required value={values.state} onChange={(e) => setField("state", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="postalCode" required>ZIP code</Label>

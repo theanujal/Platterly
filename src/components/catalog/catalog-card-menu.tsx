@@ -15,7 +15,18 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+
+/** The words shown on hover for an icon-only button (the button keeps its own aria-label). A short delay keeps it calm when the mouse crosses a row. */
+function IconTip({ label, children }: { label: string; children: React.ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger delay={300} render={children} />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 type Result = { ok: true; name?: string } | { ok: false; error: string };
 
@@ -108,36 +119,44 @@ export function CatalogCardMenu({
     variant === "plain" ? (
       <div className="flex items-center gap-0.5">
         {extraActions.map((action) => (
-          <Button key={action.label} type="button" variant="ghost" size="icon-sm" aria-label={action.ariaLabel} onClick={action.onClick}>
-            <action.icon className="size-4" />
-          </Button>
+          <IconTip key={action.label} label={action.label}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={action.ariaLabel} onClick={action.onClick}>
+              <action.icon className="size-4" />
+            </Button>
+          </IconTip>
         ))}
-        {editHref ? (
-          <Button variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} render={<Link href={editHref} />} nativeButton={false}>
-            <Pencil className="size-4" />
-          </Button>
-        ) : (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} onClick={onEdit}>
-            <Pencil className="size-4" />
-          </Button>
-        )}
+        <IconTip label="Edit">
+          {editHref ? (
+            <Button variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} render={<Link href={editHref} />} nativeButton={false}>
+              <Pencil className="size-4" />
+            </Button>
+          ) : (
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Edit ${name}`} onClick={onEdit}>
+              <Pencil className="size-4" />
+            </Button>
+          )}
+        </IconTip>
         {onDuplicate && (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Duplicate ${name}`} onClick={() => setDuplicateOpen(true)}>
-            <Copy className="size-4" />
-          </Button>
+          <IconTip label="Duplicate">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Duplicate ${name}`} onClick={() => setDuplicateOpen(true)}>
+              <Copy className="size-4" />
+            </Button>
+          </IconTip>
         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Delete ${name}`}
-          onClick={() => {
-            setDeleteError(null);
-            setConfirmOpen(true);
-          }}
-        >
-          <Trash2 className="size-4" />
-        </Button>
+        <IconTip label="Delete">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Delete ${name}`}
+            onClick={() => {
+              setDeleteError(null);
+              setConfirmOpen(true);
+            }}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </IconTip>
       </div>
     ) : (
       <DropdownMenu>

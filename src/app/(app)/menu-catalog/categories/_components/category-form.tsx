@@ -5,7 +5,7 @@ import { LayoutGrid } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import type { CategoryInput } from "@/modules/menus/category";
@@ -105,14 +105,7 @@ export function CategoryForm({ initialValues, availableMenus, onSubmit, onSucces
         <Label htmlFor="category-name">Category Name</Label>
         <IconInput icon={LayoutGrid} id="category-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="category-description">Category Description</Label>
-        <Textarea
-          id="category-description"
-          value={values.description}
-          onChange={(e) => setField("description", e.target.value)}
-        />
-      </div>
+      <DescriptionField id="category-description" label="Category Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.category} />
 
       <div className="flex flex-col gap-2 border-t border-border pt-4">
         <Label>Assign to Menus</Label>

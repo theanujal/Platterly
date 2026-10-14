@@ -212,3 +212,33 @@ test("the Edit drawers (Event Type, Menu Type) ask before discarding a change", 
     await expect(page.getByText(`${name} changed`)).toHaveCount(0);
   }
 });
+
+test("an order form with unsaved edits: Back to orders becomes Discard changes and asks, the sidebar asks, Save stays beside the form", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-discard-order-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email, { firstName: "Discard", lastName: "Orders" });
+
+  await page.goto("/orders/new");
+  const asking = page.getByRole("alertdialog", { name: "Discard your changes to this order?" });
+  // Untouched: the button is "Back to orders" (never "Cancel") and goes straight back.
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await page.getByLabel("Adults").fill("40");
+
+  // Edited: the note shows in the Save card, the button now reads Discard changes and asks first.
+  await expect(page.getByTestId("unsaved-note")).toBeVisible();
+  await expect(page.getByTestId("order-save-card").getByRole("button", { name: "Save Order" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard changes" }).click();
+  await expect(asking).toBeVisible();
+  await asking.getByRole("button", { name: "Keep editing" }).click();
+  await expect(asking).toHaveCount(0);
+  await expect(page.getByLabel("Adults")).toHaveValue("40");
+
+  // A sidebar link asks too; Discard leaves.
+  await page.getByRole("link", { name: "Dashboard" }).first().click();
+  await expect(asking).toBeVisible();
+  await asking.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+});

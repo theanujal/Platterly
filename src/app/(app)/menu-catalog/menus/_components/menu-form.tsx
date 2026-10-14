@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -145,10 +145,7 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
           <Label htmlFor="menu-name">Menu Name</Label>
           <IconInput icon={BookOpen} id="menu-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="menu-description">Menu Description</Label>
-          <Textarea id="menu-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
-        </div>
+        <DescriptionField id="menu-description" label="Menu Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.menu} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="menu-image">Menu Image</Label>
           <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />

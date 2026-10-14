@@ -242,6 +242,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   await expect(page.getByLabel("Adults")).toHaveValue("80");
+  // A freshly opened order has no unsaved changes: Back to orders, no warning note (AJ, 2026-10-14).
+  await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Back to orders" })).toBeVisible();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByLabel("Charge 1 label")).toHaveValue("Generator");
   await expect(page.getByLabel("Charge 1 amount")).toHaveValue("40");

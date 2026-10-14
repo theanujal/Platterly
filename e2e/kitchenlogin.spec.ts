@@ -93,6 +93,10 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByLabel("Mobile number")).toHaveValue("+91 98000 00099");
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await page.getByLabel("Street address").fill("221B Baker Street");
+  // City and State are plain fields: no map-pin (Street address, ZIP and Country keep theirs).
+  await expect(page.locator("div:has(> #city) svg")).toHaveCount(0);
+  await expect(page.locator("div:has(> #state) svg")).toHaveCount(0);
+  await expect(page.locator("div:has(> #addressLine1) svg")).toHaveCount(1);
   await page.getByLabel("City").fill("Mumbai");
   await page.getByLabel("State").fill("Maharashtra");
   await page.getByLabel("ZIP code").fill("400001");

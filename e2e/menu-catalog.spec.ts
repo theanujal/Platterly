@@ -55,6 +55,11 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByRole("button", { name: "Add Category" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByLabel("Category Name").fill(startersName);
+  // Descriptions are limited and show how much is used (AJ, 2026-10-14): 200 for a category.
+  await expect(page.getByTestId("category-description-count")).toHaveText("0/200");
+  await page.locator("#category-description").fill("x".repeat(250));
+  await expect(page.getByTestId("category-description-count")).toHaveText("200/200");
+  await page.locator("#category-description").fill("");
   await page.getByText(menuName).click();
   await page.getByPlaceholder("Max selection").fill("2");
   await page.getByRole("button", { name: "Create category" }).click();
@@ -73,6 +78,12 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByLabel("List view").click();
   await expect(page.getByRole("columnheader", { name: "Menu Category" })).toBeVisible();
   await expect(page.getByRole("columnheader", { name: "Status" })).toBeVisible();
+  // The row's icon buttons say what they do on hover (AJ, 2026-10-14).
+  const rowTips: [string, string][] = [[`Edit ${mainsName}`, "Edit"], [`Duplicate ${mainsName}`, "Duplicate"], [`Delete ${mainsName}`, "Delete"]];
+  for (const [button, tip] of rowTips) {
+    await page.getByRole("button", { name: button }).or(page.getByRole("link", { name: button })).first().hover();
+    await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: tip })).toBeVisible();
+  }
   await page.getByLabel("Grid view").click();
 
   // --- Back on the Menu: both categories now show up, read-only, with their max-selection, in assignment order ---

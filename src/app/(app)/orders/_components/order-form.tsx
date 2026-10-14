@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { CalendarDays, ClipboardList, CreditCard, Info, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, ClipboardList, CreditCard, Info, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +24,7 @@ import {
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "@/components/customers/customer-combobox";
 import { MenuPlanningSection, MEAL_TYPES, type MealSelection, type MenuOption, type MealTypeValue } from "@/components/catalog/menu-planning-section";
+import { useUnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
 import { FormTabs, type FormTab } from "./form-tabs";
@@ -349,6 +349,10 @@ export function OrderForm({
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(initialSelectedCustomer);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"save" | "whatsapp" | null>(null);
+  // What the form held when it was opened or last saved: anything different is an unsaved change.
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(values));
+  const dirty = JSON.stringify(values) !== savedSnapshot;
+  const guard = useUnsavedChangesGuard(dirty, "order");
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
   const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
@@ -562,12 +566,14 @@ export function OrderForm({
     setPending(notifyWhatsApp ? "whatsapp" : "save");
 
     const submitFn = notifyWhatsApp && onSubmitAndNotify ? onSubmitAndNotify : onSubmit;
+    const submitted = JSON.stringify(values);
     const result = await submitFn(buildFormData());
     setPending(null);
     if (!result.ok) {
       setError(result.error);
       return;
     }
+    setSavedSnapshot(submitted); // saved: leaving now loses nothing
     onSuccess();
   }
 
@@ -1277,19 +1283,32 @@ export function OrderForm({
           <div className="min-w-0">{header}</div>
           <div className="flex flex-wrap items-center gap-2">
             {headerActions}
-            <Button type="button" variant="outline" render={<Link href={cancelHref} />} nativeButton={false}>
-              Cancel
+            {/* Never just "Cancel" on an order: that reads as cancelling the order itself. */}
+            <Button type="button" variant="outline" onClick={() => guard.requestLeave(cancelHref)}>
+              {dirty ? (
+                "Discard changes"
+              ) : (
+                <>
+                  <ArrowLeft /> Back to orders
+                </>
+              )}
             </Button>
             {onSubmitAndNotify && (
               <Button type="button" variant="outline" disabled={pending !== null} onClick={() => void handleSubmit(true)}>
                 {pending === "whatsapp" ? "Sending…" : "Create & Send WhatsApp"}
               </Button>
             )}
-            <Button type="submit" disabled={pending !== null}>
+            {/* On a big screen Save lives in the sticky card beside the form; here for a phone or tablet. */}
+            <Button type="submit" className="lg:hidden" disabled={pending !== null}>
               {pending === "save" ? "Saving…" : submitLabel}
             </Button>
           </div>
         </div>
+        {dirty && (
+          <p role="status" className="-mt-3 text-xs font-medium text-warning lg:hidden">
+            Unsaved changes
+          </p>
+        )}
 
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -1304,13 +1323,25 @@ export function OrderForm({
           </div>
 
           {/* ---------------- Summary column ---------------- */}
-          <aside className="flex min-w-0 flex-col gap-4">
+          <aside className="flex min-w-0 flex-col gap-4 lg:self-stretch">
+            {/* Save stays in view while a long order scrolls (AJ, 2026-10-14). */}
+            <div className="hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:top-4 lg:z-10 lg:flex" data-testid="order-save-card">
+              {dirty && (
+                <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
+                  Unsaved changes
+                </p>
+              )}
+              <Button type="submit" disabled={pending !== null}>
+                {pending === "save" ? "Saving…" : submitLabel}
+              </Button>
+            </div>
             {activeTab === "pricing" && sidebarInvoiceAction}
             {sidebarTop ?? orderSummaryCard}
             {!sidebarTop && pricingSummaryCard}
           </aside>
         </div>
       </form>
+      {guard.dialog}
     </>
   );
 }

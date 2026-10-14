@@ -5,7 +5,7 @@ import { UtensilsCrossed, IndianRupee } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
@@ -228,10 +228,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
           <Label htmlFor="item-name">Item Name</Label>
           <IconInput icon={UtensilsCrossed} id="item-name" required value={values.name} onChange={(e) => setField("name", e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-description">Item Description</Label>
-          <Textarea id="item-description" value={values.description} onChange={(e) => setField("description", e.target.value)} />
-        </div>
+        <DescriptionField id="item-description" label="Item Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.item} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="item-image">Image</Label>
           <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
