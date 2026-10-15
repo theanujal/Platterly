@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, Lock, ClipboardList, MapPin, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, Lock, ClipboardList, MapPin, Pencil, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -247,6 +247,10 @@ interface OrderFormProps {
    * omit it for a live Order Summary built from the form.
    */
   sidebarTop?: React.ReactNode;
+  /** Order detail only: the Order Status card, shown in the Order Details tab under Order Type. Outside the locked fieldset, because the status can still be changed by hand. */
+  statusCard?: React.ReactNode;
+  /** Order detail only: further cards (menu approval, kitchen assignment) at the foot of the Order Details tab. */
+  detailsExtra?: React.ReactNode;
   /** Tabbed only: the Inventory tab's content and anything extra for the top of Pricing & Payment. */
   inventoryTab?: React.ReactNode;
   /** The Expenses tab (Chunk 15); only passed on the order's own page and only to roles that may view expenses. */
@@ -313,6 +317,8 @@ export function OrderForm({
   header,
   headerActions,
   sidebarTop,
+  statusCard,
+  detailsExtra,
   inventoryTab,
   expensesTab,
   staffingTab,
@@ -352,6 +358,11 @@ export function OrderForm({
     : null;
   // Who is picked right now — feeds the read-only Email / Phone fields and the Order Summary.
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(initialSelectedCustomer);
+  // Editing an order: Customer Details and Order Type read as plain details until Edit is pressed (AJ, 2026-10-16), like Business Settings.
+  // Edit only reveals the fields; the changes are saved with the order's Save changes button.
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [editingKind, setEditingKind] = useState(false);
+  const [customerBeforeEdit, setCustomerBeforeEdit] = useState<{ customerId: string; customer: SelectedCustomer | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"save" | "whatsapp" | null>(null);
   // New order: payments added with Record Payment, held until the order is saved.
@@ -627,13 +638,63 @@ export function OrderForm({
 
   const sec = (_n: number, icon: LucideIcon) => ({ icon });
 
-  const customerSection = (
-  <FormSection {...sec(1, User)} title="Customer Details" description="Search for an existing customer or add a new one.">
+  const detailView = !!initialValues;
+  const editButton = (label: string, ariaLabel: string, onClick: () => void) =>
+    locked ? null : (
+      <Button type="button" variant="outline" size="md" aria-label={ariaLabel} onClick={onClick}>
+        <Pencil data-icon="inline-start" />
+        {label}
+      </Button>
+    );
+  const customerReadOnly = detailView && !editingCustomer;
+  const customerSection = customerReadOnly ? (
+    <FormSection
+      {...sec(1, User)}
+      title="Customer Details"
+      action={editButton("Edit", "Edit customer details", () => {
+        setCustomerBeforeEdit({ customerId: values.customerId, customer: selectedCustomer });
+        setEditingCustomer(true);
+      })}
+    >
+      <SummaryRow label="Customer">
+        <span className="break-words">{selectedCustomer?.name ?? "Not selected"}</span>
+      </SummaryRow>
+      <SummaryRow label="Email">
+        <span className="break-words">{selectedCustomer?.email || "Not set"}</span>
+      </SummaryRow>
+      <SummaryRow label="Phone">{selectedCustomer?.phone || "Not set"}</SummaryRow>
+    </FormSection>
+  ) : (
+  <FormSection {...sec(1, User)} title="Customer Details" description="Search for an existing customer or add a new one."
+    action={
+      detailView ? (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={() => {
+              if (customerBeforeEdit) {
+                setField("customerId", customerBeforeEdit.customerId);
+                setSelectedCustomer(customerBeforeEdit.customer);
+              }
+              setEditingCustomer(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="button" size="md" disabled={!values.customerId} onClick={() => setEditingCustomer(false)}>
+            Done
+          </Button>
+        </div>
+      ) : undefined
+    }
+  >
     <div className="flex flex-col gap-1.5">
       <Label htmlFor="order-customer" required>Customer</Label>
       <CustomerCombobox
         id="order-customer"
-        initialCustomer={initialSelectedCustomer}
+        initialCustomer={selectedCustomer}
         onSelect={(customer) => {
           setField("customerId", customer.id);
           setSelectedCustomer(customer);
@@ -659,10 +720,22 @@ export function OrderForm({
   </FormSection>
   );
 
-  const orderTypeSection = (
+  const kindReadOnly = detailView && !editingKind;
+  const orderTypeSection = kindReadOnly ? (
+    <FormSection {...sec(2, Users)} title="Order Type" action={editButton("Edit", "Edit order type", () => setEditingKind(true))}>
+      <SummaryRow label="Order Type">{values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}</SummaryRow>
+    </FormSection>
+  ) : (
   <FormSection
     {...sec(2, Users)}
     title="Order Type"
+    action={
+      detailView ? (
+        <Button type="button" size="md" onClick={() => setEditingKind(false)}>
+          Done
+        </Button>
+      ) : undefined
+    }
     description={
       values.orderKind === "MULTI"
         ? multiRequired
@@ -1190,22 +1263,31 @@ export function OrderForm({
     {
       id: "details",
       label: "Order Details",
-      panel: freeze(
+      panel: (
         <>
-          {customerSection}
-          {orderTypeSection}
-          {multiDialog}
-          {eventSection}
-        </>,
+          {freeze(
+            <>
+              <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+                {customerSection}
+                {orderTypeSection}
+              </div>
+              {multiDialog}
+            </>,
+          )}
+          {statusCard}
+          {detailsExtra}
+        </>
       ),
     },
     {
       id: "menu",
-      label: "Guests & Menu Planning",
+      label: "Guests & Event Info",
       panel: (
         <>
           {freeze(guestSection, locked || priceFrozen)}
-          {freeze(menuSection)}
+          {freeze(eventSection)}
+          {/* Once a menu approval exists the menu is planned in the Menu Approval tab, not here. Before that this is the only place to enter meals. */}
+          {menuPlanInApprovalTab ? null : freeze(menuSection)}
         </>
       ),
     },

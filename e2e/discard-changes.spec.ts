@@ -224,7 +224,7 @@ test("an order form with unsaved edits: Back to orders becomes Discard changes a
   // Untouched: the button is "Back to orders" (never "Cancel") and goes straight back.
   await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
-  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await page.getByLabel("Adults").fill("40");
 
   // Edited: the note shows in the Save card, the button now reads Discard changes and asks first.

@@ -4,7 +4,7 @@ import { signUpCaterer } from "./auth-helpers";
 
 /**
  * Menu Approvals + Orders merge, Phase 3: the Orders list's Menu Approval column and filter, "Not Started", and the Past view
- * (hidden by default; past-event orders whose approval is still outstanding). Orders are inserted straight into each state.
+ * (the default list shows every order; past-event orders whose approval is still outstanding). Orders are inserted straight into each state.
  */
 
 const cleanupEmails: string[] = [];
@@ -30,12 +30,12 @@ test("the list shows each order's menu approval, filters on it, and keeps past o
 
   const row = (name: string) => page.getByRole("row").filter({ hasText: name });
 
-  // Default list: upcoming orders with their approval status; "Not Started" for the one without; no past order.
+  // Default list: every order, past events included, with its approval status; "Not Started" for the one without.
   await page.goto("/orders");
   await expect(row("Review Guest").getByTestId("order-approval-cell")).toHaveText("Needs Review");
   await expect(row("Sent Guest").getByTestId("order-approval-cell")).toHaveText("Awaiting Customer Approval");
   await expect(row("Fresh Guest").getByTestId("order-approval-cell")).toHaveText("Not Started");
-  for (const hidden of ["Late Guest", "Done Guest", "Gone Guest"]) await expect(page.getByText(hidden)).toHaveCount(0);
+  for (const past of ["Late Guest", "Done Guest", "Gone Guest"]) await expect(row(past)).toHaveCount(1);
 
   // The approval filter, by address (the same params the dropdown sets).
   await page.goto("/orders?approval=NOT_STARTED");

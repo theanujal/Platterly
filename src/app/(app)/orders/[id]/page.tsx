@@ -27,7 +27,6 @@ import { EditOrderClient } from "./_components/edit-order-client";
 import { DeleteOrderButton } from "./_components/delete-order-button";
 import { EventOperationsCard } from "./_components/event-operations-card";
 import { RequiredInventoryCard } from "./_components/required-inventory-card";
-import { OrderApprovalPanel } from "./_components/order-approval-panel";
 import { OrderSummaryCard } from "./_components/order-summary-card";
 import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
@@ -272,8 +271,8 @@ export default async function OrderDetailPage({ params, searchParams }: { params
             canRecall={canManageApproval}
           />
         }
-        sidebarTop={
-          <Fragment key="sidebar-top">
+        statusCard={
+          <Fragment key="status-card">
             <OrderStatusCard
               orderId={order.id}
               status={order.status}
@@ -290,6 +289,23 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 createdAt: c.createdAt,
               }))}
             />
+          </Fragment>
+        }
+        detailsExtra={
+          <Fragment key="details-extra">
+            {active.enabled && (
+              <fieldset disabled={order.status === "COMPLETED"} className="m-0 min-w-0 border-0 p-0 disabled:[&_button]:pointer-events-none disabled:[&_[role=combobox]]:pointer-events-none disabled:[&_:disabled]:opacity-100!">
+              <EventOperationsCard
+                orderId={order.id}
+                event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
+                kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
+              />
+              </fieldset>
+            )}
+          </Fragment>
+        }
+        sidebarTop={
+          <Fragment key="sidebar-top">
             <OrderSummaryCard
               orderNumber={order.orderNumber}
               status={order.status}
@@ -309,16 +325,6 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 from5to10: order.child5To10Count ?? 0,
               }}
             />
-            <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} tabHref={`/orders/${order.id}?tab=approval`} />
-            {active.enabled && (
-              <fieldset disabled={order.status === "COMPLETED"} className="m-0 min-w-0 border-0 p-0 disabled:[&_button]:pointer-events-none disabled:[&_[role=combobox]]:pointer-events-none disabled:[&_:disabled]:opacity-100!">
-              <EventOperationsCard
-                orderId={order.id}
-                event={event ? { id: event.id, assignedKitchenId: event.assignedKitchenId } : null}
-                kitchens={kitchens.filter((k) => !active.locked || k.id === active.locationId).map((k) => ({ id: k.id, name: k.name }))}
-              />
-              </fieldset>
-            )}
           </Fragment>
         }
         sidebarInvoiceAction={

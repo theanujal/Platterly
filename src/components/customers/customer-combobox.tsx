@@ -59,7 +59,7 @@ interface CustomerComboboxProps {
  */
 export function CustomerCombobox({ id = "customer", initialCustomer, onSelect, onClear, onSearch, onCreate }: CustomerComboboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [query, setQuery] = useState(initialCustomer ? `${initialCustomer.name} (${formatPhoneDisplay(initialCustomer.phone)})` : "");
+  const [query, setQuery] = useState(initialCustomer ? initialCustomer.name : "");
   const [confirmed, setConfirmed] = useState(Boolean(initialCustomer));
   const [results, setResults] = useState<CustomerSearchResult[]>([]);
   const [open, setOpen] = useState(false);
@@ -111,7 +111,7 @@ export function CustomerCombobox({ id = "customer", initialCustomer, onSelect, o
 
   function selectCustomer(customer: SelectedCustomer) {
     onSelect(customer);
-    setQuery(`${customer.name} (${formatPhoneDisplay(customer.phone)})`);
+    setQuery(customer.name);
     setConfirmed(true);
     setOpen(false);
     setShowCreateForm(false);

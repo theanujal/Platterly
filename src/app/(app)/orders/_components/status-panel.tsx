@@ -79,6 +79,7 @@ export function StatusPanel({
   onChange,
   history,
   idPrefix,
+  requireEdit = false,
 }: {
   title: string;
   icon: LucideIcon;
@@ -93,6 +94,8 @@ export function StatusPanel({
   onChange: (value: string, reason: string) => Promise<Result>;
   history: StatusHistoryEntry[];
   idPrefix: string;
+  /** The change select stays hidden until Edit is pressed (the Order Details tab, AJ 2026-10-16). */
+  requireEdit?: boolean;
 }) {
   const router = useRouter();
   const [pendingValue, setPendingValue] = useState<string | null>(null);
@@ -100,6 +103,7 @@ export function StatusPanel({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const targetLabel = options.find((o) => o.value === pendingValue)?.label ?? "";
 
@@ -119,6 +123,7 @@ export function StatusPanel({
     }
     setPendingValue(null);
     setReason("");
+    setEditing(false);
     router.refresh();
   }
 
@@ -129,14 +134,31 @@ export function StatusPanel({
   }
 
   return (
-    <SummaryCard icon={icon} title={title}>
+    <SummaryCard
+      icon={icon}
+      title={title}
+      action={
+        requireEdit && canChange ? (
+          <Button type="button" variant="outline" size="md" aria-label={editing ? "Cancel status change" : "Edit order status"} onClick={() => setEditing((on) => !on)}>
+            {editing ? (
+              "Cancel"
+            ) : (
+              <>
+                <Pencil data-icon="inline-start" />
+                Edit
+              </>
+            )}
+          </Button>
+        ) : undefined
+      }
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={currentTone}>{currentLabel}</Badge>
         {extra && <span className="text-sm text-muted-foreground">{extra}</span>}
       </div>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
 
-      {canChange && (
+      {canChange && (!requireEdit || editing) && (
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-change`} className="text-xs">
             Change status manually

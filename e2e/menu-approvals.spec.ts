@@ -334,12 +334,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const reviewUrl = page.url();
   await page.goto("/orders");
   await page.getByText(customerName).click();
-  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  const menuPanel = page.locator("#order-panel-menu");
-  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "editable");
-  await expect(menuPanel.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
-  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
-  await menuPanel.getByRole("button", { name: "Open the Menu Approval tab" }).click();
+  // The Guests & Event Info tab no longer holds the menu; the Menu Approval tab is the only planner.
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.locator("#order-panel-menu").getByTestId("meal-item-counts")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.getByRole("tab", { name: "Menu Approval" })).toHaveAttribute("aria-selected", "true");
   const approvalPanel = page.locator("#order-panel-approval");
   await approvalPanel.getByRole("button", { name: "Edit Items" }).first().click();
@@ -352,10 +350,6 @@ test("team sends a placed order for approval, the customer approves via a no-log
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
     approvalPanel.getByRole("button", { name: "Save Changes" }).click(),
   ]);
-  // The same stored data: the read-only planner on the Guests & Menu Planning tab follows without a reload, and does not read as an unsaved change.
-  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Dish", { exact: true })).toBeVisible();
-  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
   // ...and the tab, opened again by address, shows the same meals.
   await page.goto(reviewUrl);
@@ -376,12 +370,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(review.getByText(/Version 1 is with the customer/)).toBeVisible();
   const linkV1 = new URL((await review.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
-  // The menu is with the customer: the order's planner is read-only, with Recall to edit (AJ, 2026-10-10).
+  // The menu is with the customer: the Menu Approval tab offers Recall to Edit and no item editing (AJ, 2026-10-10).
   await page.goto("/orders");
   await page.getByText(customerName).click();
-  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "recall");
-  await expect(page.getByRole("button", { name: "Recall to edit" })).toBeVisible();
+  await page.getByRole("tab", { name: "Menu Approval" }).click();
+  await expect(page.getByRole("button", { name: "Recall to Edit" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
 
   await page.goto("/orders");
@@ -456,21 +449,14 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await resend.getByRole("button", { name: "Back to current" }).click();
   await expect(resend.getByText(/Viewing Version 1/)).toHaveCount(0);
 
-  // --- The order page shows the approval next to the kitchen / status card, and the versions open in a popup (AJ, 2026-09-27) ---
+  // --- The order page has no menu history card any more (AJ, 2026-10-16); a kitchen with one location has no assigned-kitchen card either ---
   await page.goto("/orders");
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await orderCard().getByRole("link", { name: customerName }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
-  await expect(page.getByTestId("order-approval-panel")).toBeVisible();
-  // A kitchen with one location has no assigned-kitchen card (AJ, 2026-10-04).
+  await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("order-approval-panel")).toHaveCount(0);
   await expect(page.getByTestId("event-operations-card")).toHaveCount(0);
-  await page.getByRole("button", { name: "View History" }).click();
-  const versions = page.getByRole("dialog", { name: "Menu version history" });
-  await expect(versions.getByTestId("menu-version-row")).toHaveCount(2);
-  await expect(versions.getByTestId("menu-version-row").first()).toContainText("Version 2");
-  await expect(versions.getByTestId("menu-version-row").first()).toContainText("Current");
-  await expect(versions.getByTestId("menu-version-row").nth(1)).toContainText("Replaced");
-  await page.keyboard.press("Escape");
 
   // --- The customer approves the latest version; an outdated link can never approve ---
   await customerPage.goto(linkV1);
@@ -518,7 +504,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(orderCard()).toContainText("Approved");
   // What the customer sent lands on the order, and the team can see it arrived.
   await orderCard().getByRole("link", { name: customerName }).click();
-  await expect(page.getByTestId("order-approval-panel").getByTestId("venue-details-status")).toContainText("Received");
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("12 Green Villa Road");
   const handoff = await openOrderApprovalTab(page, customerName);
@@ -533,13 +519,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // --- A status can be set by hand, but only with a reason, and the change is recorded (AJ, 2026-09-30) ---
   await orderCard().getByRole("link", { name: customerName }).click();
   // Sent to the kitchen: view only, and nothing to recall (AJ, 2026-10-10).
-  // Menu History follows the live status (AJ, 2026-10-14): not the "Awaiting Customer Approval" the version was sent with.
-  const menuHistory = page.getByTestId("order-approval-panel");
-  await expect(menuHistory.getByTestId("menu-version-summary").first()).toContainText("Approved & Sent to Kitchen");
-  await expect(menuHistory).not.toContainText("Awaiting Customer Approval");
-  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "locked");
-  await expect(page.getByRole("button", { name: "Recall to edit" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Menu Approval" }).click();
+  await expect(page.getByRole("button", { name: "Recall to Edit" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
@@ -550,6 +531,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByRole("button", { name: "Create & Send WhatsApp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
   await expect(page.getByTestId("order-save-card")).toBeHidden();
+  await page.getByRole("button", { name: "Edit order status" }).click();
   await page.getByRole("combobox", { name: "Change status" }).click();
   await page.getByRole("option", { name: "Approved", exact: true }).click();
   const reasonDialog = page.getByRole("dialog");
@@ -564,7 +546,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(history).toContainText("Manual");
   await expect(history).toContainText("Customer asked us to hold it back after a call");
   await page.reload();
-  await expect(page.getByRole("combobox", { name: "Change status" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit order status" })).toBeVisible();
   await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
 
   // The menu approval moved with the order (Approved -> Customer Approved), and it goes to the kitchen again in one click.

@@ -11,6 +11,8 @@ interface EditOrderClientProps {
   header: React.ReactNode;
   headerActions?: React.ReactNode;
   sidebarTop?: React.ReactNode;
+  statusCard?: React.ReactNode;
+  detailsExtra?: React.ReactNode;
   inventoryTab?: React.ReactNode;
   expensesTab?: React.ReactNode;
   staffingTab?: React.ReactNode;
@@ -53,6 +55,8 @@ export function EditOrderClient({
   header,
   headerActions,
   sidebarTop,
+  statusCard,
+  detailsExtra,
   inventoryTab,
   expensesTab,
   staffingTab,
@@ -75,6 +79,8 @@ export function EditOrderClient({
       header={header}
       headerActions={headerActions}
       sidebarTop={sidebarTop}
+      statusCard={statusCard}
+      detailsExtra={detailsExtra}
       inventoryTab={inventoryTab}
       expensesTab={expensesTab}
       staffingTab={staffingTab}

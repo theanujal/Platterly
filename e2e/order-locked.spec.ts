@@ -31,6 +31,7 @@ test("Sent to Kitchen: fields read-only; Completed: closed completely; payments 
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-locked-banner")).toContainText("Sent to the kitchen");
   await expect(page.getByLabel("Venue / Building Name")).toBeDisabled();
+  await page.getByRole("button", { name: "Edit order status" }).click();
   await expect(page.getByRole("combobox", { name: "Change status" })).toBeVisible();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByLabel("Transportation Cost")).toBeDisabled();

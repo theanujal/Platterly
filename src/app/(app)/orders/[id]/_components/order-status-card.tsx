@@ -11,6 +11,7 @@ export function OrderStatusCard({ orderId, status, hint, history, canChange = tr
   return (
     <StatusPanel
       idPrefix="order-status"
+      requireEdit
       title="Order Status"
       icon={ReceiptText}
       currentLabel={ORDER_STATUS_LABEL[status]}

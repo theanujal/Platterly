@@ -16,7 +16,7 @@ const APPROVAL_OPTIONS = [
 ];
 
 const VIEW_OPTIONS = [
-  { value: "ALL", label: "Upcoming Orders" },
+  { value: "ALL", label: "All Orders" },
   { value: "past", label: "Past: Approval Pending" },
 ];
 
@@ -42,7 +42,7 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
 
   return (
     <>
-      {/* Past-event orders are hidden by default (Decision 2); this view lists only those with approval work still outstanding. */}
+      {/* The default view lists every order; this view lists only past-event orders with approval work still outstanding. */}
       <Select items={Object.fromEntries(VIEW_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("view") === "past" ? "past" : "ALL"} onValueChange={(v) => updateParam("view", v ?? "ALL")}>
         <SelectTrigger aria-label="Orders view" className="w-52">
           <SelectValue />

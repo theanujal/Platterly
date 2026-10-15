@@ -47,12 +47,12 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
 
   const [orders, canEdit, canDelete] = await Promise.all([
-    // Orders whose event is over never show in the default list, under any status (AJ, 2026-09-30); they appear in the customer's order history.
-    // The Past view (Decision 2) is the one exception: past-event orders whose menu approval is still outstanding (Decision 9).
+    // The default list shows every order, past events included (AJ, 2026-10-16; it hid past-event orders from 2026-09-30).
+    // The Past view narrows to past-event orders whose menu approval is still outstanding (Decision 9).
     // Overdue payments live under Finance now (AJ, 2026-10-12): it is the finance team's job to collect them.
     listOrders(organizationId, {
       locationId: activeLocation.locationId,
-      when: ordersView === "past" ? "past" : "upcoming",
+      when: ordersView === "past" ? "past" : undefined,
       outstandingApproval: ordersView === "past",
       status: validStatus,
       orderKind: validOrderKind,
@@ -67,7 +67,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const timeZone = await getTenantTimeZone(organizationId);
 
   const sortOptions: CatalogSortOption[] = [
-    { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
+    { value: "newest", label: "Recent First", key: "newest", direction: "desc" },
     { value: "customer", label: "Customer (A–Z)", key: "customer" },
     { value: "total-high", label: "Total (High–Low)", key: "total", direction: "desc" },
     { value: "total-low", label: "Total (Low–High)", key: "total" },
@@ -83,7 +83,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       sortValues: {
         customer: order.customer.name,
         total: Number(order.total),
-        newest: order.eventStartDate.getTime(),
+        newest: order.createdAt.getTime(),
         eventDate: order.eventStartDate.getTime(),
       },
       card: <OrderCard order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} />,

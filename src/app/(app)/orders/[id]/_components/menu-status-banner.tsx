@@ -20,7 +20,7 @@ export function menuPlanPhase(status: MenuSelectionStatus | null): MenuPlanPhase
 }
 
 /**
- * Sits above the planner on the Order's Guests & Menu Planning tab: where the menu is in the approval, in plain words,
+ * Sits above the planner on the Order's Guests & Event Info tab: where the menu is in the approval, in plain words,
  * and what the team can do next (Recall to edit, or open Menu Approvals).
  */
 export function MenuStatusBanner({

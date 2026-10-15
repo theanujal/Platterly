@@ -121,6 +121,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await customerInput.click();
   await customerInput.fill(leadName);
   await page.getByRole("button", { name: new RegExp(leadName) }).click();
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
   // Event Date is a single range-picker (DateRangePicker), defaulting to the
