@@ -2,21 +2,23 @@ import { createPaymentLink, sendPaymentLink } from "@/modules/payments/payment-l
 import { getPaymentSettingsView } from "@/modules/payments/payment-settings";
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit/audit";
 import { emailPayload, loadOrderContext, notifyCustomer, onCustomerMenuAction, onMenuSentForApproval } from "@/modules/notifications/triggers";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
-import { createEventForOrder } from "@/modules/orders/order";
+import { createEventForOrder, lockOrderRow } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
   addMenuApprovalNote,
   mirrorSelectionItemsFromMealPlan,
   createMenuSelection,
+  lockMenuSelection,
   customerApproves,
   customerRequestsChanges,
-  recallMenu,
-  sendToCustomer,
+  runHandoffTransaction,
+  transitionInTransaction,
   InvalidMenuSelectionTransitionError,
 } from "./menu-approval";
 import type { ApprovalSnapshot } from "./approval-snapshot";
@@ -149,9 +151,9 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
   };
 }
 
-async function revokeVersionTokens(organizationId: string, versionIds: string[]) {
+async function revokeVersionTokens(organizationId: string, versionIds: string[], db: Prisma.TransactionClient | typeof prisma = prisma) {
   if (versionIds.length === 0) return;
-  await prisma.secureAccessToken.updateMany({
+  await db.secureAccessToken.updateMany({
     where: { organizationId, resourceType: "MENU_APPROVAL", resourceId: { in: versionIds }, revokedAt: null },
     data: { revokedAt: new Date() },
   });
@@ -159,15 +161,23 @@ async function revokeVersionTokens(organizationId: string, versionIds: string[])
 
 /** The order's menu selection, creating its Event and MenuSelection first for an Order that has none (an admin-created Order). */
 async function ensureMenuSelection(organizationId: string, orderId: string, actorUserId?: string) {
-  const existing = await prisma.menuSelection.findFirst({ where: { organizationId, event: { orderId } }, orderBy: { createdAt: "asc" } });
-  if (existing) return existing;
+  // The check and the creates are one transaction under the order's row lock. Two first sends (or two saves) at once: the second waits,
+  // then finds the first one's selection and uses it, so there is one Event and one MenuSelection, never two, and a failure part way
+  // (no Event Type, a plan limit) rolls back the Event too, leaving nothing behind.
+  return prisma.$transaction(
+    async (tx) => {
+      await lockOrderRow(tx, organizationId, orderId);
+      const existing = await tx.menuSelection.findFirst({ where: { organizationId, event: { orderId } }, orderBy: { createdAt: "asc" } });
+      if (existing) return existing;
 
-  // createEventForOrder refuses an Order without an Event Type, with a message the caller can show as-is.
-  let event = await prisma.event.findFirst({ where: { organizationId, orderId }, orderBy: { createdAt: "asc" } });
-  if (!event) {
-    event = await createEventForOrder(organizationId, orderId, actorUserId);
-  }
-  return createMenuSelection(organizationId, event.id);
+      // createEventForOrder refuses an Order without an Event Type, with a message the caller can show as-is.
+      const event =
+        (await tx.event.findFirst({ where: { organizationId, orderId }, orderBy: { createdAt: "asc" } })) ??
+        (await createEventForOrder(organizationId, orderId, actorUserId, undefined, tx));
+      return createMenuSelection(organizationId, event.id, undefined, tx);
+    },
+    { timeout: 20_000 },
+  );
 }
 
 /**
@@ -193,86 +203,101 @@ export async function ensureOrderMenuSelection(organizationId: string, orderId: 
  * returned `url` to staff.
  */
 export async function sendMenuForApproval(organizationId: string, target: { orderId: string } | { menuSelectionId: string }, actorUserId: string, note?: string) {
-  let menuSelection;
+  let selectionId: string;
   let orderId: string;
   if ("menuSelectionId" in target) {
-    menuSelection = await prisma.menuSelection.findFirstOrThrow({ where: { id: target.menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
-    if (!menuSelection.event.orderId) throw new InvalidMenuSelectionTransitionError("This menu isn't attached to an order.");
-    orderId = menuSelection.event.orderId;
+    const found = await prisma.menuSelection.findFirstOrThrow({ where: { id: target.menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+    if (!found.event.orderId) throw new InvalidMenuSelectionTransitionError("This menu isn't attached to an order.");
+    selectionId = found.id;
+    orderId = found.event.orderId;
   } else {
     orderId = target.orderId;
-    menuSelection = await ensureMenuSelection(organizationId, orderId, actorUserId);
+    selectionId = (await ensureMenuSelection(organizationId, orderId, actorUserId)).id;
   }
 
-  if (!SENDABLE_STATUSES.includes(menuSelection.status)) {
-    throw new InvalidMenuSelectionTransitionError(
-      AWAITING_CUSTOMER.includes(menuSelection.status)
-        ? "This menu is already with the customer. Recall it first if you need to change it."
-        : "This menu has already been approved by the customer.",
-    );
-  }
+  // Everything that makes a send (the version, its items, replacing the older versions and their links, the status change and the
+  // new link) is one transaction under the menu's row lock. Two sends at once run one after the other: the second finds the menu
+  // already with the customer and is refused, and a refused send leaves no version, no revoked link and no status change behind.
+  const sent = await runHandoffTransaction(organizationId, { recordId: orderId, actorUserId }, async (tx, afterCommit) => {
+    await lockMenuSelection(tx, organizationId, selectionId);
+    const menuSelection = await tx.menuSelection.findFirstOrThrow({ where: { id: selectionId, organizationId } });
+    if (!SENDABLE_STATUSES.includes(menuSelection.status)) {
+      throw new InvalidMenuSelectionTransitionError(
+        AWAITING_CUSTOMER.includes(menuSelection.status)
+          ? "This menu is already with the customer. Recall it first if you need to change it."
+          : "This menu has already been approved by the customer.",
+      );
+    }
 
-  const previous = await prisma.menuVersion.findMany({ where: { menuSelectionId: menuSelection.id }, select: { id: true, versionNumber: true } });
-  const versionNumber = previous.reduce((max, v) => Math.max(max, v.versionNumber), 0) + 1;
-  const snapshot = await buildSnapshot(organizationId, orderId, menuSelection.id);
-  const items = await prisma.menuSelectionItem.findMany({ where: { menuSelectionId: menuSelection.id } });
+    const previous = await tx.menuVersion.findMany({ where: { menuSelectionId: menuSelection.id }, select: { id: true, versionNumber: true } });
+    const versionNumber = previous.reduce((max, v) => Math.max(max, v.versionNumber), 0) + 1;
+    const snapshot = await buildSnapshot(organizationId, orderId, menuSelection.id);
+    const items = await tx.menuSelectionItem.findMany({ where: { menuSelectionId: menuSelection.id } });
 
-  const now = new Date();
-  const version = await prisma.menuVersion.create({
-    data: {
-      menuSelectionId: menuSelection.id,
-      versionNumber,
-      status: "SENT_TO_CUSTOMER",
-      sentAt: now,
-      snapshot: JSON.parse(JSON.stringify(snapshot)),
-    },
-  });
-  if (items.length > 0) {
-    await prisma.menuVersionItem.createMany({
-      data: items.map((item) => ({
-        menuVersionId: version.id,
-        itemType: item.itemType,
-        menuId: item.menuId,
-        menuItemId: item.menuItemId,
-        addOnId: item.addOnId,
-        name: item.name,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-      })),
+    const now = new Date();
+    const version = await tx.menuVersion.create({
+      data: {
+        menuSelectionId: menuSelection.id,
+        versionNumber,
+        status: "SENT_TO_CUSTOMER",
+        sentAt: now,
+        snapshot: JSON.parse(JSON.stringify(snapshot)),
+      },
     });
-  }
-  await prisma.menuVersion.updateMany({ where: { menuSelectionId: menuSelection.id, id: { not: version.id }, supersededAt: null }, data: { supersededAt: now } });
-  await revokeVersionTokens(organizationId, previous.map((v) => v.id));
+    if (items.length > 0) {
+      await tx.menuVersionItem.createMany({
+        data: items.map((item) => ({
+          menuVersionId: version.id,
+          itemType: item.itemType,
+          menuId: item.menuId,
+          menuItemId: item.menuItemId,
+          addOnId: item.addOnId,
+          name: item.name,
+          unitPrice: item.unitPrice,
+          quantity: item.quantity,
+        })),
+      });
+    }
+    await tx.menuVersion.updateMany({ where: { menuSelectionId: menuSelection.id, id: { not: version.id }, supersededAt: null }, data: { supersededAt: now } });
+    await revokeVersionTokens(organizationId, previous.map((v) => v.id), tx);
 
-  await prisma.menuSelection.update({ where: { id: menuSelection.id }, data: { currentVersion: versionNumber } });
-  await sendToCustomer(organizationId, menuSelection.id, actorUserId, versionNumber > 1);
+    await tx.menuSelection.update({ where: { id: menuSelection.id }, data: { currentVersion: versionNumber } });
+    const isResend = versionNumber > 1;
+    await transitionInTransaction(tx, afterCommit, organizationId, menuSelection.id, isResend ? "CUSTOMER_REVIEWING" : "SENT_TO_CUSTOMER", "menu_selection.sent_to_customer", {
+      actorUserId,
+      trigger: isResend ? "Updated menu sent to customer" : "Menu sent to customer",
+    });
 
-  if (note?.trim()) {
-    const author = await prisma.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
-    await addMenuApprovalNote(organizationId, menuSelection.id, { authorType: "TEAM", authorName: author?.name ?? null, body: note, versionNumber });
-  }
+    if (note?.trim()) {
+      const author = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
+      await addMenuApprovalNote(organizationId, menuSelection.id, { authorType: "TEAM", authorName: author?.name ?? null, body: note, versionNumber }, tx);
+    }
 
-  const token = await issueToken({ organizationId, resourceType: "MENU_APPROVAL", resourceId: version.id, expiresInDays: APPROVAL_LINK_DAYS });
-  const url = canonicalUrl(`/menu-approval/${token.token}`);
+    const token = await issueToken({ organizationId, resourceType: "MENU_APPROVAL", resourceId: version.id, expiresInDays: APPROVAL_LINK_DAYS }, tx);
+    await audit(
+      {
+        organizationId,
+        actorUserId,
+        action: "menu_selection.version_sent",
+        recordType: "MenuSelection",
+        recordId: menuSelection.id,
+        after: { versionNumber, versionId: version.id },
+      },
+      tx,
+    );
+    return { menuSelectionId: menuSelection.id, versionId: version.id, versionNumber, url: canonicalUrl(`/menu-approval/${token.token}`) };
+  });
 
+  // Only once the send has committed: tell the customer and the team (a refused or rolled-back send tells nobody).
   const context = await loadOrderContext(organizationId, orderId);
   await notifyCustomer({
     organizationId,
     event: "menu_approval.sent",
     email: context.customerEmail,
-    payload: emailPayload(context, { menuSelectionId: menuSelection.id, versionNumber, url }),
+    payload: emailPayload(context, { menuSelectionId: sent.menuSelectionId, versionNumber: sent.versionNumber, url: sent.url }),
   });
-  await onMenuSentForApproval(organizationId, orderId, versionNumber);
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "menu_selection.version_sent",
-    recordType: "MenuSelection",
-    recordId: menuSelection.id,
-    after: { versionNumber, versionId: version.id },
-  });
-
-  return { menuSelectionId: menuSelection.id, versionId: version.id, versionNumber, url };
+  await onMenuSentForApproval(organizationId, orderId, sent.versionNumber);
+  return sent;
 }
 
 /**
@@ -299,24 +324,28 @@ export async function getActiveApprovalUrl(organizationId: string, menuSelection
 
 /** Pulls a sent menu back for editing and kills its link — the customer's email stops working immediately. */
 export async function recallMenuFromCustomer(organizationId: string, menuSelectionId: string, actorUserId: string) {
-  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId } });
-  const result = await recallMenu(organizationId, menuSelectionId, actorUserId);
-  const versions = await prisma.menuVersion.findMany({ where: { menuSelectionId: selection.id, supersededAt: null }, select: { id: true } });
-  await prisma.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
-  await revokeVersionTokens(organizationId, versions.map((v) => v.id));
-  return result;
+  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+  // The status change, the replaced versions and the dead links are one transaction: a recall that loses a race (the customer approved
+  // first, or someone else already recalled it) is refused and leaves every version and link exactly as it was.
+  return runHandoffTransaction(organizationId, { recordId: selection.event.orderId ?? selection.id, actorUserId }, async (tx, afterCommit) => {
+    const result = await transitionInTransaction(tx, afterCommit, organizationId, menuSelectionId, "DRAFT", "menu_selection.recalled", { actorUserId, trigger: "Menu recalled for editing" });
+    const versions = await tx.menuVersion.findMany({ where: { menuSelectionId: selection.id, supersededAt: null }, select: { id: true } });
+    await tx.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
+    await revokeVersionTokens(organizationId, versions.map((v) => v.id), tx);
+    return result;
+  });
 }
 
 /**
  * Kills the live customer link(s) for a menu (the approved or recalled version's link must stop working). `supersede`
  * also marks the outstanding versions as replaced, as a recall does; without it the last approved version stays current.
  */
-export async function revokeOutstandingApprovalLinks(organizationId: string, menuSelectionId: string, options?: { supersede?: boolean }) {
-  const versions = await prisma.menuVersion.findMany({ where: { menuSelectionId, supersededAt: null }, select: { id: true } });
+export async function revokeOutstandingApprovalLinks(organizationId: string, menuSelectionId: string, options?: { supersede?: boolean }, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const versions = await db.menuVersion.findMany({ where: { menuSelectionId, supersededAt: null }, select: { id: true } });
   if (options?.supersede) {
-    await prisma.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
+    await db.menuVersion.updateMany({ where: { id: { in: versions.map((v) => v.id) } }, data: { supersededAt: new Date() } });
   }
-  await revokeVersionTokens(organizationId, versions.map((v) => v.id));
+  await revokeVersionTokens(organizationId, versions.map((v) => v.id), db);
 }
 
 /** Which screen the link shows: the menu to approve, the venue form once approved, or the read-only confirmation. */

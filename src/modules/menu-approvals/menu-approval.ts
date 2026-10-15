@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit/audit";
 import { findCustomerByPhone, createCustomer } from "@/modules/customers/customer";
 import {
@@ -15,13 +16,40 @@ import {
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
 import { listKitchens } from "@/modules/events/event";
-import { deriveOrderStatus } from "@/modules/orders/order-status";
-import { recordStatusChange } from "./status-history";
-import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
+import { deriveOrderStatus, MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
+import { recordStatusChange, type StatusChangeContext } from "./status-history";
+import { createInvoiceOnKitchenHandoff, KitchenHandoffInvoiceError } from "@/modules/invoices/invoice";
 import { returnAllOrderItems } from "@/modules/production/production";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 export class InvalidMenuSelectionTransitionError extends Error {}
+
+/** The hand-off to the kitchen was rolled back because its invoice could not be created. Nothing changed, so it is safe to try again. */
+export class KitchenHandoffError extends InvalidMenuSelectionTransitionError {}
+
+type Db = Prisma.TransactionClient | typeof prisma;
+
+/** Work that must only happen once a transaction has committed (customer notifications, putting stock back). */
+export type AfterCommit = (() => Promise<unknown>)[];
+
+/** Runs what a committed transaction queued. A failure here is logged, never reported as a failure of the change that already committed. */
+export async function runAfterCommit(queue: AfterCommit) {
+  for (const effect of queue) {
+    try {
+      await effect();
+    } catch (error) {
+      console.error("[menu-approval] after-commit effect failed", error);
+    }
+  }
+}
+
+/**
+ * Takes the menu selection's row lock for the rest of the transaction, so two requests on the same menu run one after the other:
+ * the second one reads the status the first left behind. Everything that changes the approval's status goes through this.
+ */
+export async function lockMenuSelection(tx: Prisma.TransactionClient, organizationId: string, id: string) {
+  await tx.$queryRaw`SELECT "id" FROM "menu_selection" WHERE "id" = ${id} AND "organizationId" = ${organizationId} FOR UPDATE`;
+}
 
 // --- Group 11.2 — public intake form (no login; see dev plans/chunk-11's
 // 2026-09-17 redesign). Every visitor, new or repeat customer, fills the
@@ -158,47 +186,65 @@ export const EDITABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUE
  * `trigger` names what caused the change in the status history; `record: false` lets a manual
  * change write its own single history row instead.
  */
-export async function syncOrderStatus(organizationId: string, menuSelectionId: string, actorUserId?: string, options?: { trigger?: string; record?: boolean }) {
-  const selection = await prisma.menuSelection.findFirst({
+export async function syncOrderStatus(
+  organizationId: string,
+  menuSelectionId: string,
+  actorUserId?: string,
+  options?: { trigger?: string; record?: boolean },
+  context: StatusChangeContext = {},
+) {
+  const db = context.db ?? prisma;
+  const selection = await db.menuSelection.findFirst({
     where: { id: menuSelectionId, organizationId },
     select: { event: { select: { orderId: true } } },
   });
   const orderId = selection?.event.orderId;
   if (!orderId) return;
 
-  const selections = await prisma.menuSelection.findMany({
+  const selections = await db.menuSelection.findMany({
     where: { organizationId, event: { orderId } },
     select: { status: true, kitchenProductionStatus: true },
   });
   const next = deriveOrderStatus(selections);
   if (!next) return;
 
-  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { status: true } });
+  const order = await db.order.findFirst({ where: { id: orderId, organizationId }, select: { status: true } });
   if (!order || order.status === next) return;
 
-  await prisma.order.update({ where: { id: orderId }, data: { status: next } });
-  if (next === "CANCELLED") await returnAllOrderItems(organizationId, orderId, actorUserId);
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "order.status_synced",
-    recordType: "Order",
-    recordId: orderId,
-    before: { status: order.status },
-    after: { status: next },
-  });
-  if (options?.record !== false) {
-    await recordStatusChange({
+  await db.order.update({ where: { id: orderId }, data: { status: next } });
+  if (next === "CANCELLED") {
+    // Putting the stock back has its own transaction, so inside a larger one it waits until that has committed.
+    const putBack = () => returnAllOrderItems(organizationId, orderId, actorUserId);
+    if (context.afterCommit) context.afterCommit.push(putBack);
+    else await putBack();
+  }
+  await audit(
+    {
       organizationId,
-      orderId,
-      menuSelectionId,
-      subject: "ORDER",
-      fromStatus: order.status,
-      toStatus: next,
-      source: "AUTOMATIC",
-      trigger: options?.trigger ?? "Follows the menu approval",
       actorUserId,
-    });
+      action: "order.status_synced",
+      recordType: "Order",
+      recordId: orderId,
+      before: { status: order.status },
+      after: { status: next },
+    },
+    db,
+  );
+  if (options?.record !== false) {
+    await recordStatusChange(
+      {
+        organizationId,
+        orderId,
+        menuSelectionId,
+        subject: "ORDER",
+        fromStatus: order.status,
+        toStatus: next,
+        source: "AUTOMATIC",
+        trigger: options?.trigger ?? "Follows the menu approval",
+        actorUserId,
+      },
+      context,
+    );
   }
 }
 
@@ -206,18 +252,22 @@ export async function createMenuSelection(
   organizationId: string,
   eventId: string,
   options?: { chosenMenuId?: string | null; isCustomMenu?: boolean },
+  db: Db = prisma,
 ) {
-  const menuSelection = await prisma.menuSelection.create({
+  const menuSelection = await db.menuSelection.create({
     data: { organizationId, eventId, chosenMenuId: options?.chosenMenuId ?? null, isCustomMenu: options?.isCustomMenu ?? false },
   });
 
-  await audit({
-    organizationId,
-    action: "menu_selection.create",
-    recordType: "MenuSelection",
-    recordId: menuSelection.id,
-    after: JSON.parse(JSON.stringify(menuSelection)),
-  });
+  await audit(
+    {
+      organizationId,
+      action: "menu_selection.create",
+      recordType: "MenuSelection",
+      recordId: menuSelection.id,
+      after: JSON.parse(JSON.stringify(menuSelection)),
+    },
+    db,
+  );
 
   return menuSelection;
 }
@@ -229,8 +279,27 @@ interface TransitionOptions {
   trigger?: string;
 }
 
-async function transitionMenuSelection(organizationId: string, id: string, to: MenuSelectionStatus, action: string, options?: TransitionOptions) {
-  const before = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
+/**
+ * One approval transition, all or nothing, inside the caller's transaction (`tx`). The menu selection's row is locked first and its
+ * status read again after the lock, so two requests from the same old status cannot both pass: the second sees what the first
+ * left and is refused with the usual "Cannot move…" error. The write itself is also conditional on that status. Customer
+ * notifications and putting stock back wait in `afterCommit` until the transaction has committed.
+ */
+export async function transitionInTransaction(
+  tx: Prisma.TransactionClient,
+  afterCommit: AfterCommit,
+  organizationId: string,
+  id: string,
+  to: MenuSelectionStatus,
+  action: string,
+  options?: TransitionOptions,
+) {
+  await lockMenuSelection(tx, organizationId, id);
+  const before = await tx.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
+  if (before.status === to) {
+    // The same change already went through (a repeated click, a retry after a lost response, or someone else just did it): never repeated.
+    throw new InvalidMenuSelectionTransitionError(`Cannot move a MenuSelection from ${before.status} to ${to}. It is already "${MENU_SELECTION_STATUS_LABEL[to]}" (it may have just been changed by someone else), so nothing was repeated. Refresh to see where it stands.`);
+  }
   if (!VALID_TRANSITIONS[before.status].includes(to)) {
     throw new InvalidMenuSelectionTransitionError(`Cannot move a MenuSelection from ${before.status} to ${to}.`);
   }
@@ -238,13 +307,13 @@ async function transitionMenuSelection(organizationId: string, id: string, to: M
   // Every request note is kept as its own entry (AJ, 2026-09-30); the two single fields below stay for older readers.
   const noteBody = options?.note?.trim();
   if (noteBody && to === "CHANGES_REQUESTED") {
-    await prisma.menuApprovalNote.create({
+    await tx.menuApprovalNote.create({
       data: { organizationId, menuSelectionId: id, versionNumber: before.currentVersion, authorType: "CUSTOMER", authorName: null, body: noteBody },
     });
   }
 
-  const after = await prisma.menuSelection.update({
-    where: { id },
+  const claimed = await tx.menuSelection.updateMany({
+    where: { id, organizationId, status: before.status },
     data: {
       status: to,
       ...(to === "CHANGES_REQUESTED" ? { customerRequestNote: options?.note ?? before.customerRequestNote } : {}),
@@ -252,35 +321,77 @@ async function transitionMenuSelection(organizationId: string, id: string, to: M
       ...(to === "FINAL_LOCKED" ? { lockedAt: new Date() } : {}),
     },
   });
+  if (claimed.count === 0) throw new InvalidMenuSelectionTransitionError("This menu was just changed by someone else. Refresh and try again.");
+  const after = await tx.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
 
-  await audit({
-    organizationId,
-    actorUserId: options?.actorUserId,
-    action,
-    recordType: "MenuSelection",
-    recordId: id,
-    before: { status: before.status },
-    after: { status: after.status },
-  });
-  const orderId = (await prisma.event.findUnique({ where: { id: after.eventId }, select: { orderId: true } }))?.orderId;
-  if (orderId) {
-    await recordStatusChange({
+  await audit(
+    {
       organizationId,
-      orderId,
-      menuSelectionId: id,
-      subject: "MENU_APPROVAL",
-      fromStatus: before.status,
-      toStatus: after.status,
-      source: "AUTOMATIC",
-      trigger: options?.trigger ?? action,
       actorUserId: options?.actorUserId,
-    });
+      action,
+      recordType: "MenuSelection",
+      recordId: id,
+      before: { status: before.status },
+      after: { status: after.status },
+    },
+    tx,
+  );
+  const orderId = (await tx.event.findUnique({ where: { id: after.eventId }, select: { orderId: true } }))?.orderId;
+  if (orderId) {
+    await recordStatusChange(
+      {
+        organizationId,
+        orderId,
+        menuSelectionId: id,
+        subject: "MENU_APPROVAL",
+        fromStatus: before.status,
+        toStatus: after.status,
+        source: "AUTOMATIC",
+        trigger: options?.trigger ?? action,
+        actorUserId: options?.actorUserId,
+      },
+      { db: tx, afterCommit },
+    );
   }
-  await syncOrderStatus(organizationId, id, options?.actorUserId, { trigger: options?.trigger });
-  // Sent to the kitchen: the order's invoice is created for the team (as a Draft), unless they switched that off.
-  if (to === "FINAL_LOCKED" && orderId) await createInvoiceOnKitchenHandoff(organizationId, orderId, options?.actorUserId);
+  await syncOrderStatus(organizationId, id, options?.actorUserId, { trigger: options?.trigger }, { db: tx, afterCommit });
+  // Sent to the kitchen: the order's invoice is created for the team (as a Draft), unless they switched that off. Same transaction.
+  if (to === "FINAL_LOCKED" && orderId) await createInvoiceOnKitchenHandoff(organizationId, orderId, options?.actorUserId, tx);
 
   return after;
+}
+
+/**
+ * Runs the transaction a hand-off (or any change that ends with an invoice) needs and reports an invoice failure the way the
+ * team can read: the whole change was rolled back, nothing is half done, and the failure is kept in the audit log.
+ */
+export async function runHandoffTransaction<T>(organizationId: string, orderRef: { recordId: string; actorUserId?: string }, work: (tx: Prisma.TransactionClient, afterCommit: AfterCommit) => Promise<T>): Promise<T> {
+  const afterCommit: AfterCommit = [];
+  let result: T;
+  try {
+    result = await prisma.$transaction((tx) => work(tx, afterCommit), { timeout: 20_000 });
+  } catch (error) {
+    if (error instanceof KitchenHandoffInvoiceError) {
+      await audit({
+        organizationId,
+        actorUserId: orderRef.actorUserId,
+        action: "invoice.auto_create_failed",
+        recordType: "Order",
+        recordId: orderRef.recordId,
+        after: { error: error.message, rolledBack: true },
+      }).catch(() => undefined);
+      throw new KitchenHandoffError("The invoice for this order could not be created, so nothing was changed and the menu was not sent to the kitchen. Please try again.");
+    }
+    throw error;
+  }
+  await runAfterCommit(afterCommit);
+  return result;
+}
+
+async function transitionMenuSelection(organizationId: string, id: string, to: MenuSelectionStatus, action: string, options?: TransitionOptions) {
+  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId }, select: { event: { select: { orderId: true } } } });
+  return runHandoffTransaction(organizationId, { recordId: selection.event.orderId ?? id, actorUserId: options?.actorUserId }, (tx, afterCommit) =>
+    transitionInTransaction(tx, afterCommit, organizationId, id, to, action, options),
+  );
 }
 
 /**
@@ -590,27 +701,38 @@ export async function setKitchenProductionStatus(
   status: KitchenProductionStatus,
   actorUserId: string,
 ) {
-  const before = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
-  if (before.status !== "FINAL_LOCKED") {
-    throw new InvalidMenuSelectionTransitionError("Only a final/locked menu selection has a kitchen production status.");
-  }
-  if (before.kitchenProductionStatus === status) return before;
+  // One transaction under the menu's row lock, like every other change of the approval: two stage changes at once run one after the
+  // other, the second reads the stage the first left, and the order's status follows each real change exactly once (the same stage
+  // picked twice is a no-op, which writes nothing). Any stage can still be picked from any other (free choice, AJ 2026-09-19).
+  return runHandoffTransaction(organizationId, { recordId: id, actorUserId }, async (tx, afterCommit) => {
+    await lockMenuSelection(tx, organizationId, id);
+    const before = await tx.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
+    if (before.status !== "FINAL_LOCKED") {
+      throw new InvalidMenuSelectionTransitionError("Only a final/locked menu selection has a kitchen production status.");
+    }
+    if (before.kitchenProductionStatus === status) return before;
 
-  const after = await prisma.menuSelection.update({ where: { id }, data: { kitchenProductionStatus: status } });
+    const claimed = await tx.menuSelection.updateMany({ where: { id, organizationId, status: "FINAL_LOCKED", kitchenProductionStatus: before.kitchenProductionStatus }, data: { kitchenProductionStatus: status } });
+    if (claimed.count === 0) throw new InvalidMenuSelectionTransitionError("This order was just changed by someone else. Refresh and try again.");
+    const after = await tx.menuSelection.findFirstOrThrow({ where: { id, organizationId } });
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "menu_selection.kitchen_production_status_change",
-    recordType: "MenuSelection",
-    recordId: id,
-    before: { kitchenProductionStatus: before.kitchenProductionStatus },
-    after: { kitchenProductionStatus: after.kitchenProductionStatus },
+    await audit(
+      {
+        organizationId,
+        actorUserId,
+        action: "menu_selection.kitchen_production_status_change",
+        recordType: "MenuSelection",
+        recordId: id,
+        before: { kitchenProductionStatus: before.kitchenProductionStatus },
+        after: { kitchenProductionStatus: after.kitchenProductionStatus },
+      },
+      tx,
+    );
+    // Delivered completes the Order; Cancelled cancels it (see orderStatusForSelection).
+    await syncOrderStatus(organizationId, id, actorUserId, { trigger: `Kitchen stage: ${status.replace("_", " ").toLowerCase()}` }, { db: tx, afterCommit });
+
+    return after;
   });
-  // Delivered completes the Order; Cancelled cancels it (see orderStatusForSelection).
-  await syncOrderStatus(organizationId, id, actorUserId, { trigger: `Kitchen stage: ${status.replace("_", " ").toLowerCase()}` });
-
-  return after;
 }
 
 // --- Menu Approvals edits the order's own meal plan (AJ, 2026-09-30) ---
@@ -624,10 +746,11 @@ export async function addMenuApprovalNote(
   organizationId: string,
   menuSelectionId: string,
   input: { authorType: "CUSTOMER" | "KITCHEN" | "TEAM"; authorName?: string | null; body: string; versionNumber?: number | null },
+  db: Db = prisma,
 ) {
   const body = input.body.trim();
   if (!body) return null;
-  return prisma.menuApprovalNote.create({
+  return db.menuApprovalNote.create({
     data: {
       organizationId,
       menuSelectionId,

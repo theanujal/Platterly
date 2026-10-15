@@ -17,8 +17,8 @@ export interface AuditParams {
  * Chunk 2 Group 2.2 — called incrementally by every module chunk from
  * Chunk 9 onward as each mutates its own records. Viewer UI is Chunk 17.
  */
-export async function audit(params: AuditParams) {
-  return prisma.auditLog.create({
+export async function audit(params: AuditParams, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  return db.auditLog.create({
     data: {
       organizationId: params.organizationId,
       actorUserId: params.actorUserId,

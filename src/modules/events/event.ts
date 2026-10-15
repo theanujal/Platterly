@@ -4,6 +4,7 @@ import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
+import type { Prisma } from "@/generated/prisma/client";
 import type { EventStatus } from "@/generated/prisma/enums";
 
 export interface RequiredInventoryInput {
@@ -26,11 +27,13 @@ export interface EventInput {
   requiredInventory?: RequiredInventoryInput[];
 }
 
-async function replaceRequiredInventory(eventId: string, items: RequiredInventoryInput[] | undefined) {
+type Db = Prisma.TransactionClient | typeof prisma;
+
+async function replaceRequiredInventory(eventId: string, items: RequiredInventoryInput[] | undefined, db: Db = prisma) {
   if (items === undefined) return;
-  await prisma.eventRequiredInventory.deleteMany({ where: { eventId } });
+  await db.eventRequiredInventory.deleteMany({ where: { eventId } });
   if (items.length === 0) return;
-  await prisma.eventRequiredInventory.createMany({
+  await db.eventRequiredInventory.createMany({
     data: items.map((item) => ({ eventId, inventoryId: item.inventoryId, quantity: item.quantity })),
   });
 }
@@ -74,10 +77,11 @@ export async function updateEventOperations(organizationId: string, id: string, 
   return after;
 }
 
-export async function createEvent(organizationId: string, input: EventInput, actorUserId?: string) {
+/** Pass a transaction client as `db` to make the event part of a larger all-or-nothing change (the checks above it are read-only). */
+export async function createEvent(organizationId: string, input: EventInput, actorUserId?: string, db: Db = prisma) {
   await assertWithinPlanLimit(organizationId, "maxEvents");
   await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId, kitchenId: input.assignedKitchenId });
-  const event = await prisma.event.create({
+  const event = await db.event.create({
     data: {
       organizationId,
       customerId: input.customerId,
@@ -92,16 +96,19 @@ export async function createEvent(organizationId: string, input: EventInput, act
       status: input.status ?? "PENDING",
     },
   });
-  await replaceRequiredInventory(event.id, input.requiredInventory);
+  await replaceRequiredInventory(event.id, input.requiredInventory, db);
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "event.create",
-    recordType: "Event",
-    recordId: event.id,
-    after: JSON.parse(JSON.stringify(event)),
-  });
+  await audit(
+    {
+      organizationId,
+      actorUserId,
+      action: "event.create",
+      recordType: "Event",
+      recordId: event.id,
+      after: JSON.parse(JSON.stringify(event)),
+    },
+    db,
+  );
 
   return event;
 }

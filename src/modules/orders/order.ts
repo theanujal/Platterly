@@ -716,8 +716,16 @@ export class OrderEventTypeRequiredError extends Error {}
 export async function syncOrderEvent(organizationId: string, orderId: string, actorUserId?: string, locationId?: string | null) {
   const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId } });
   if (!order.eventTypeId) return null;
-  const linked = await prisma.event.findMany({ where: { organizationId, orderId }, select: { id: true } });
-  if (linked.length === 0) return createEventForOrder(organizationId, orderId, actorUserId, locationId);
+  // The check and the create are one transaction under the order's row lock, so two saves at once make one Event, not two.
+  const created = await prisma.$transaction(
+    async (tx) => {
+      await lockOrderRow(tx, organizationId, orderId);
+      const linked = await tx.event.findMany({ where: { organizationId, orderId }, select: { id: true } });
+      return linked.length === 0 ? createEventForOrder(organizationId, orderId, actorUserId, locationId, tx) : null;
+    },
+    { timeout: 20_000 },
+  );
+  if (created) return created;
   await prisma.event.updateMany({
     where: { organizationId, orderId },
     data: {
@@ -733,8 +741,8 @@ export async function syncOrderEvent(organizationId: string, orderId: string, ac
 }
 
 /** `locationId` puts the event at that location (a person held to one); without it the default location is used. */
-export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string, locationId?: string | null) {
-  const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { customer: true } });
+export async function createEventForOrder(organizationId: string, orderId: string, actorUserId?: string, locationId?: string | null, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  const order = await db.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { customer: true } });
   if (!order.eventTypeId) {
     throw new OrderEventTypeRequiredError("Set an Event Type on this Order before creating an Event for it.");
   }
@@ -754,18 +762,30 @@ export async function createEventForOrder(organizationId: string, orderId: strin
       guestCount: order.totalParticipants ?? undefined,
     },
     actorUserId,
+    db,
   );
 
-  const linked = await prisma.event.update({ where: { id: event.id }, data: { orderId } });
+  const linked = await db.event.update({ where: { id: event.id }, data: { orderId } });
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "order.event_created",
-    recordType: "Order",
-    recordId: orderId,
-    after: { eventId: event.id },
-  });
+  await audit(
+    {
+      organizationId,
+      actorUserId,
+      action: "order.event_created",
+      recordType: "Order",
+      recordId: orderId,
+      after: { eventId: event.id },
+    },
+    db,
+  );
 
   return linked;
+}
+
+/**
+ * Takes the order's row lock for the rest of the transaction. Whatever creates an order's Event or approval, or its invoice, does
+ * so under this lock after checking again that it is still needed, so two requests at once cannot both create it.
+ */
+export async function lockOrderRow(tx: Prisma.TransactionClient, organizationId: string, orderId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId} AND "organizationId" = ${organizationId} FOR UPDATE`;
 }

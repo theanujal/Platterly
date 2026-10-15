@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { ORDER_STATUS_LABEL, MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
-import { syncOrderStatus } from "./menu-approval";
+import { syncOrderStatus, lockMenuSelection, runHandoffTransaction } from "./menu-approval";
 import { ensureOrderMenuSelection, revokeOutstandingApprovalLinks } from "./approval-link";
 import { addMenuApprovalNote } from "./menu-approval";
 import { recordStatusChange } from "./status-history";
@@ -57,97 +57,115 @@ export async function changeStatusManually(
     throw new ManualStatusChangeError("Say which order to change.");
   }
 
-  const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
-  if (order.status === "COMPLETED") throw new ManualStatusChangeError(ORDER_COMPLETED_MESSAGE); // a completed order is closed
+  // The whole change (menu approval, order, invoice, history, note, audit) is one transaction under the menu's row lock (or the
+  // order's, when there is no menu approval yet). Two people setting a status at once run one after the other; the second reads
+  // what the first left, so a repeated change finds "already there" and writes nothing, and a failed one leaves nothing behind.
+  return runHandoffTransaction(organizationId, { recordId: orderId, actorUserId: input.actorUserId }, async (tx, afterCommit) => {
+    if (selectionId) await lockMenuSelection(tx, organizationId, selectionId);
+    else await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId} AND "organizationId" = ${organizationId} FOR UPDATE`;
 
-  // An order that can't have a menu approval yet (no Event Type): only its own status can be written.
-  if (!selectionId) {
-    if (input.target.kind !== "ORDER") throw new ManualStatusChangeError("This order has no menu approval yet.");
-    if (order.status === input.target.status) return { unchanged: true as const };
-    await prisma.order.update({ where: { id: orderId }, data: { status: input.target.status } });
-    if (input.target.status === "CANCELLED") await returnAllOrderItems(organizationId, orderId, input.actorUserId);
-    await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId });
-    await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } });
-    if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId);
+    const order = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
+    if (order.status === "COMPLETED") throw new ManualStatusChangeError(ORDER_COMPLETED_MESSAGE); // a completed order is closed
+
+    // An order that can't have a menu approval yet (no Event Type): only its own status can be written.
+    if (!selectionId) {
+      if (input.target.kind !== "ORDER") throw new ManualStatusChangeError("This order has no menu approval yet.");
+      if (order.status === input.target.status) return { unchanged: true as const };
+      await tx.order.update({ where: { id: orderId }, data: { status: input.target.status } });
+      if (input.target.status === "CANCELLED") afterCommit.push(() => returnAllOrderItems(organizationId, orderId, input.actorUserId));
+      await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId }, { db: tx, afterCommit });
+      await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } }, tx);
+      if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx);
+      return { unchanged: false as const };
+    }
+
+    const selection = await tx.menuSelection.findFirstOrThrow({ where: { id: selectionId, organizationId } });
+    const wanted =
+      input.target.kind === "ORDER"
+        ? MENU_FOR_ORDER_STATUS[input.target.status]
+        : { menu: input.target.status, stage: input.target.status === "FINAL_LOCKED" ? selection.kitchenProductionStatus : undefined };
+    const nextStage: KitchenProductionStatus = wanted.menu === "FINAL_LOCKED" ? (wanted.stage ?? "PENDING") : "PENDING";
+
+    if (selection.status === wanted.menu && selection.kitchenProductionStatus === nextStage && (input.target.kind === "MENU" || order.status === input.target.status)) {
+      return { unchanged: true as const };
+    }
+
+    const claimed = await tx.menuSelection.updateMany({
+      where: { id: selectionId, organizationId, status: selection.status, kitchenProductionStatus: selection.kitchenProductionStatus },
+      data: {
+        status: wanted.menu,
+        kitchenProductionStatus: nextStage,
+        ...(wanted.menu === "CUSTOMER_APPROVED" ? { submittedAt: selection.submittedAt ?? new Date() } : {}),
+        lockedAt: wanted.menu === "FINAL_LOCKED" ? (selection.lockedAt ?? new Date()) : null,
+      },
+    });
+    if (claimed.count === 0) throw new ManualStatusChangeError("This order was just changed by someone else. Refresh and try again.");
+
+    // The customer's link must not outlive the status it was for. Going back to editing also retires the version that was out.
+    if (wanted.menu === "DRAFT" || wanted.menu === "CHANGES_REQUESTED") await revokeOutstandingApprovalLinks(organizationId, selectionId, { supersede: true }, tx);
+    else if (wanted.menu === "CUSTOMER_APPROVED" || wanted.menu === "FINAL_LOCKED") await revokeOutstandingApprovalLinks(organizationId, selectionId, undefined, tx);
+
+    // The order follows (no separate history row for it: this manual row is the record).
+    await syncOrderStatus(organizationId, selectionId, input.actorUserId, { record: false }, { db: tx, afterCommit });
+    if (wanted.menu === "FINAL_LOCKED") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx);
+    const orderAfter = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
+
+    const menuFrom = MENU_SELECTION_STATUS_LABEL[selection.status];
+    const menuTo = MENU_SELECTION_STATUS_LABEL[wanted.menu];
+    if (input.target.kind === "ORDER") {
+      await recordStatusChange(
+        {
+          organizationId,
+          orderId,
+          menuSelectionId: selectionId,
+          subject: "ORDER",
+          fromStatus: order.status,
+          toStatus: orderAfter.status,
+          source: "MANUAL",
+          trigger: `Menu approval set to ${menuTo}`,
+          reason,
+          actorUserId: input.actorUserId,
+        },
+        { db: tx, afterCommit },
+      );
+    } else {
+      await recordStatusChange(
+        {
+          organizationId,
+          orderId,
+          menuSelectionId: selectionId,
+          subject: "MENU_APPROVAL",
+          fromStatus: selection.status,
+          toStatus: wanted.menu,
+          source: "MANUAL",
+          trigger: order.status === orderAfter.status ? null : `Order is now ${ORDER_STATUS_LABEL[orderAfter.status]}`,
+          reason,
+          actorUserId: input.actorUserId,
+        },
+        { db: tx, afterCommit },
+      );
+    }
+
+    const actor = await tx.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } });
+    await addMenuApprovalNote(
+      organizationId,
+      selectionId,
+      { authorType: "TEAM", authorName: actor?.name ?? null, versionNumber: selection.currentVersion, body: `Status changed by hand from ${menuFrom} to ${menuTo}. Reason: ${reason}` },
+      tx,
+    );
+    await audit(
+      {
+        organizationId,
+        actorUserId: input.actorUserId,
+        action: "menu_selection.status_changed_manually",
+        recordType: "MenuSelection",
+        recordId: selectionId,
+        before: { status: selection.status, kitchenProductionStatus: selection.kitchenProductionStatus, orderStatus: order.status },
+        after: { status: wanted.menu, kitchenProductionStatus: nextStage, orderStatus: orderAfter.status, reason },
+      },
+      tx,
+    );
+
     return { unchanged: false as const };
-  }
-
-  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id: selectionId, organizationId } });
-  const wanted =
-    input.target.kind === "ORDER"
-      ? MENU_FOR_ORDER_STATUS[input.target.status]
-      : { menu: input.target.status, stage: input.target.status === "FINAL_LOCKED" ? selection.kitchenProductionStatus : undefined };
-  const nextStage: KitchenProductionStatus = wanted.menu === "FINAL_LOCKED" ? (wanted.stage ?? "PENDING") : "PENDING";
-
-  if (selection.status === wanted.menu && selection.kitchenProductionStatus === nextStage && (input.target.kind === "MENU" || order.status === input.target.status)) {
-    return { unchanged: true as const };
-  }
-
-  await prisma.menuSelection.update({
-    where: { id: selectionId },
-    data: {
-      status: wanted.menu,
-      kitchenProductionStatus: nextStage,
-      ...(wanted.menu === "CUSTOMER_APPROVED" ? { submittedAt: selection.submittedAt ?? new Date() } : {}),
-      lockedAt: wanted.menu === "FINAL_LOCKED" ? (selection.lockedAt ?? new Date()) : null,
-    },
   });
-
-  // The customer's link must not outlive the status it was for. Going back to editing also retires the version that was out.
-  if (wanted.menu === "DRAFT" || wanted.menu === "CHANGES_REQUESTED") await revokeOutstandingApprovalLinks(organizationId, selectionId, { supersede: true });
-  else if (wanted.menu === "CUSTOMER_APPROVED" || wanted.menu === "FINAL_LOCKED") await revokeOutstandingApprovalLinks(organizationId, selectionId);
-
-  // The order follows (no separate history row for it: this manual row is the record).
-  await syncOrderStatus(organizationId, selectionId, input.actorUserId, { record: false });
-  if (wanted.menu === "FINAL_LOCKED") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId);
-  const orderAfter = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
-
-  const menuFrom = MENU_SELECTION_STATUS_LABEL[selection.status];
-  const menuTo = MENU_SELECTION_STATUS_LABEL[wanted.menu];
-  if (input.target.kind === "ORDER") {
-    await recordStatusChange({
-      organizationId,
-      orderId,
-      menuSelectionId: selectionId,
-      subject: "ORDER",
-      fromStatus: order.status,
-      toStatus: orderAfter.status,
-      source: "MANUAL",
-      trigger: `Menu approval set to ${menuTo}`,
-      reason,
-      actorUserId: input.actorUserId,
-    });
-  } else {
-    await recordStatusChange({
-      organizationId,
-      orderId,
-      menuSelectionId: selectionId,
-      subject: "MENU_APPROVAL",
-      fromStatus: selection.status,
-      toStatus: wanted.menu,
-      source: "MANUAL",
-      trigger: order.status === orderAfter.status ? null : `Order is now ${ORDER_STATUS_LABEL[orderAfter.status]}`,
-      reason,
-      actorUserId: input.actorUserId,
-    });
-  }
-
-  const actor = await prisma.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } });
-  await addMenuApprovalNote(organizationId, selectionId, {
-    authorType: "TEAM",
-    authorName: actor?.name ?? null,
-    versionNumber: selection.currentVersion,
-    body: `Status changed by hand from ${menuFrom} to ${menuTo}. Reason: ${reason}`,
-  });
-  await audit({
-    organizationId,
-    actorUserId: input.actorUserId,
-    action: "menu_selection.status_changed_manually",
-    recordType: "MenuSelection",
-    recordId: selectionId,
-    before: { status: selection.status, kitchenProductionStatus: selection.kitchenProductionStatus, orderStatus: order.status },
-    after: { status: wanted.menu, kitchenProductionStatus: nextStage, orderStatus: orderAfter.status, reason },
-  });
-
-  return { unchanged: false as const };
 }

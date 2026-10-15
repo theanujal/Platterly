@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import { onOrderStatusChanged } from "@/modules/notifications/triggers";
 
 /**
@@ -20,9 +21,19 @@ export interface StatusChangeInput {
   actorUserId?: string | null;
 }
 
-export async function recordStatusChange(input: StatusChangeInput) {
-  const actor = input.actorUserId ? await prisma.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } }) : null;
-  const change = await prisma.statusChange.create({
+/**
+ * Inside a transaction, pass its client as `db` and an `afterCommit` list: the row is written with the rest of the change, and the
+ * customer notification waits in the list until the transaction has committed (a rolled-back change must tell nobody anything).
+ */
+export interface StatusChangeContext {
+  db?: Prisma.TransactionClient | typeof prisma;
+  afterCommit?: (() => Promise<unknown>)[];
+}
+
+export async function recordStatusChange(input: StatusChangeInput, context: StatusChangeContext = {}) {
+  const db = context.db ?? prisma;
+  const actor = input.actorUserId ? await db.user.findUnique({ where: { id: input.actorUserId }, select: { name: true } }) : null;
+  const change = await db.statusChange.create({
     data: {
       organizationId: input.organizationId,
       orderId: input.orderId,
@@ -38,7 +49,11 @@ export async function recordStatusChange(input: StatusChangeInput) {
     },
   });
   // The customer hears about the order's own status changes (not the menu approval's internal steps).
-  if (input.subject === "ORDER") await onOrderStatusChanged(input.organizationId, input.orderId, input.toStatus, input.reason);
+  if (input.subject === "ORDER") {
+    const notify = () => onOrderStatusChanged(input.organizationId, input.orderId, input.toStatus, input.reason);
+    if (context.afterCommit) context.afterCommit.push(notify);
+    else await notify();
+  }
   return change;
 }
 

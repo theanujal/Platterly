@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma/client";
 import type { SecureAccessResourceType } from "@/generated/prisma/enums";
 
 export interface IssueTokenParams {
@@ -25,9 +26,9 @@ export interface ResolvedToken {
  * Public Storefront's slug is a *separate* mechanism built on Chunk 1's
  * routing, not this service.
  */
-export async function issueToken(params: IssueTokenParams) {
+export async function issueToken(params: IssueTokenParams, db: Prisma.TransactionClient | typeof prisma = prisma) {
   const token = randomBytes(24).toString("base64url");
-  return prisma.secureAccessToken.create({
+  return db.secureAccessToken.create({
     data: {
       organizationId: params.organizationId,
       resourceType: params.resourceType,
