@@ -53,6 +53,7 @@ export default async function RecipesPage() {
       image: item.image,
       category: item.categories[0]?.category.name ?? null,
       hasRecipe: Boolean(recipe),
+      status: recipe?.status ?? null,
       ingredientCount: recipe ? recipe.ingredients.length : 0,
       yieldServings: recipe ? Number(recipe.yieldServings) : null,
       cost: cost
@@ -63,6 +64,7 @@ export default async function RecipesPage() {
             yieldServings: recipe.yieldServings.toString(),
             notes: recipe.notes ?? "",
             ingredients: recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })),
+            status: recipe.status,
           }
         : null,
     };

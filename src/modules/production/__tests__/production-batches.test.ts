@@ -4,7 +4,7 @@ import { createCustomer } from "@/modules/customers/customer";
 import { createOrder } from "@/modules/orders/order";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem } from "@/modules/inventory/inventory";
-import { saveRecipe } from "@/modules/recipes/recipe";
+import { saveRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { createBatch, findStockMismatches, previewConsumption, todayDate, usableQueues } from "@/modules/inventory/batches";
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, sendOrderItems, returnAllOrderItems } from "@/modules/production/production";
@@ -39,6 +39,7 @@ async function setup() {
   const paneer = await createInventoryItem(org.id, { name: "Paneer", category: "Dairy", unit: "kg" }, actor.id);
   const dish = await createMenuItem(org.id, { name: "Paneer Masala", foodType: "VEGETARIAN", price: 100 }, actor.id);
   await saveRecipe(org.id, dish.id, { yieldServings: 10, ingredients: [{ inventoryId: paneer.id, quantity: 2 }] }, actor.id);
+  await setRecipeStatus(org.id, dish.id, "ACTIVE", actor.id); // a recipe is only used for production once it is approved
   const date = new Date();
   const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: date, eventEndDate: date, totalParticipants: 100, mealPlanEntries: [{ date, mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 }] }] }, actor.id);
   await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });

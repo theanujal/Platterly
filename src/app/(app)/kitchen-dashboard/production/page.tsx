@@ -98,6 +98,12 @@ export default async function ProductionPlanningPage() {
             </p>
           )}
 
+          {plan.draftRecipes.length > 0 && (
+            <p className="text-sm text-muted-foreground" data-testid="production-draft-recipes">
+              <Badge variant="warning">Draft recipe</Badge> {plan.draftRecipes.join(", ")} (not approved for production, not counted)
+            </p>
+          )}
+
           {plan.orders.map((o) => (
             <Card key={o.id}>
               <CardHeader>

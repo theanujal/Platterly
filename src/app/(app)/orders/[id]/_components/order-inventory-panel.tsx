@@ -35,6 +35,8 @@ export interface OrderInventoryData {
   extraPercent: number;
   lines: OrderInventoryLineData[];
   withoutRecipe: string[];
+  /** Dishes whose recipe is still a Draft: not approved for production, so not counted. */
+  draftRecipe: string[];
   approved: boolean;
   closed: boolean;
   canSend: boolean;
@@ -117,6 +119,15 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                 <span>
                   No recipe for {data.withoutRecipe.join(", ")}, so their ingredients are not counted.{" "}
                   <Link href="/recipes" className="font-medium underline underline-offset-2">Add recipes</Link>
+                </span>
+              </p>
+            )}
+            {data.draftRecipe.length > 0 && (
+              <p className="flex items-start gap-2 rounded-lg bg-warning/10 p-3 text-sm text-warning" data-testid="inventory-draft-recipe">
+                <CircleAlert className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  The recipe for {data.draftRecipe.join(", ")} is still a Draft, so its ingredients are not counted and none are sent.{" "}
+                  <Link href="/recipes" className="font-medium underline underline-offset-2">Activate it in Recipes</Link>
                 </span>
               </p>
             )}

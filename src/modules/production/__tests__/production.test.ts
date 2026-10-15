@@ -5,7 +5,7 @@ import { createOrder, createEventForOrder, updateOrder, deleteOrder } from "@/mo
 import { createEventType } from "@/modules/events/event-type";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem, recordStockTransaction } from "@/modules/inventory/inventory";
-import { saveRecipe } from "@/modules/recipes/recipe";
+import { saveRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { getOrderInventory, sendOrderItems, returnOrderItem, returnAllOrderItems, getProductionPlan, StockTakeError } from "@/modules/production/production";
 
 const orgIds: string[] = [];
@@ -37,6 +37,7 @@ async function setup(stock: number, guests: number | null = 100, eventDate: Date
   const dish = await createMenuItem(org.id, { name: "Paneer Masala", foodType: "VEGETARIAN", price: 100 }, actor.id);
   const plain = await createMenuItem(org.id, { name: "Salad", foodType: "VEGETARIAN", price: 10 }, actor.id);
   await saveRecipe(org.id, dish.id, { yieldServings: 10, ingredients: [{ inventoryId: paneer.id, quantity: 2 }] }, actor.id);
+  await setRecipeStatus(org.id, dish.id, "ACTIVE", actor.id); // a recipe is only used for production once it is approved
   const order = await createOrder(
     org.id,
     {

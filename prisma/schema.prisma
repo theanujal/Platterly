@@ -1531,6 +1531,13 @@ model SupplierPayment {
 // ingredient (AJ, 2026-10-04), so there is no separate Ingredient table and no
 // second stock count to keep in step. Quantities are for `yieldServings`
 // servings and scale linearly (src/modules/recipes/recipe-math.ts).
+// Lifecycle (approval), kept apart from cost verification (which is worked out from batches, never stored): a Draft recipe is
+// being written or reviewed and is never used for production; an Active one has been explicitly approved for production.
+enum RecipeStatus {
+  DRAFT
+  ACTIVE
+}
+
 model Recipe {
   id             String       @id @default(cuid())
   organizationId String
@@ -1539,6 +1546,10 @@ model Recipe {
   menuItem       MenuItem     @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   yieldServings  Decimal      @default(1) @db.Decimal(10, 2)
   notes          String?
+  status         RecipeStatus @default(DRAFT)
+  // When and by whom it was last approved (null while Draft).
+  activatedAt       DateTime?
+  activatedByUserId String?
 
   ingredients RecipeIngredient[]
 

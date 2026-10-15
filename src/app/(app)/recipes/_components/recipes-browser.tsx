@@ -18,6 +18,8 @@ export interface RecipeRow {
   image: string | null;
   category: string | null;
   hasRecipe: boolean;
+  /** Lifecycle: Draft until approved for production. Null without a recipe. Independent of the cost state below. */
+  status: "DRAFT" | "ACTIVE" | null;
   ingredientCount: number;
   yieldServings: number | null;
   /** Null without a recipe. VERIFIED only when every ingredient's quantity is covered by batches with a known cost. */
@@ -44,18 +46,16 @@ function CostCell({ row }: { row: RecipeRow }) {
   );
 }
 
-type StatusFilter = "ALL" | "MISSING" | "INCOMPLETE" | "HAS";
+type StatusFilter = "ALL" | "MISSING" | "DRAFT" | "ACTIVE" | "INCOMPLETE" | "HAS";
 
-/** Missing: no recipe. Incomplete: a recipe, but an ingredient has no cost in Inventory so the cost per serving cannot be worked out. Complete: a recipe with a cost. */
-function statusOf(row: RecipeRow): "MISSING" | "INCOMPLETE" | "COMPLETE" {
-  if (!row.hasRecipe) return "MISSING";
-  return row.cost?.state === "VERIFIED" ? "COMPLETE" : "INCOMPLETE";
+/** Cost state, apart from the lifecycle: Incomplete means the cost per serving cannot be verified from the stock batches. */
+function costIncomplete(row: RecipeRow) {
+  return row.hasRecipe && row.cost?.state !== "VERIFIED";
 }
 
+/** The recipe's lifecycle: Missing (no recipe), Draft (not approved for production) or Active (approved). Cost is shown in its own column. */
 function StatusBadge({ row }: { row: RecipeRow }) {
-  const status = statusOf(row);
-  const [variant, label] =
-    status === "MISSING" ? (["warning", "Missing"] as const) : status === "INCOMPLETE" ? (["info", "Incomplete"] as const) : (["success", "Complete"] as const);
+  const [variant, label] = !row.hasRecipe ? (["warning", "Missing"] as const) : row.status === "ACTIVE" ? (["success", "Active"] as const) : (["info", "Draft"] as const);
   return (
     <Badge variant={variant}>
       <span className="size-1.5 rounded-full bg-current" />
@@ -75,17 +75,21 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
 
   const counts = {
     ALL: rows.length,
-    MISSING: rows.filter((r) => statusOf(r) === "MISSING").length,
-    INCOMPLETE: rows.filter((r) => statusOf(r) === "INCOMPLETE").length,
+    MISSING: rows.filter((r) => !r.hasRecipe).length,
+    DRAFT: rows.filter((r) => r.status === "DRAFT").length,
+    ACTIVE: rows.filter((r) => r.status === "ACTIVE").length,
+    INCOMPLETE: rows.filter(costIncomplete).length,
     HAS: rows.filter((r) => r.hasRecipe).length,
   };
   const PILLS: { key: StatusFilter; label: string }[] = [
     { key: "ALL", label: "All Dishes" },
     { key: "MISSING", label: "Missing Recipe" },
-    { key: "INCOMPLETE", label: "Incomplete" },
+    { key: "DRAFT", label: "Draft" },
+    { key: "ACTIVE", label: "Active" },
+    { key: "INCOMPLETE", label: "Cost Incomplete" },
     { key: "HAS", label: "Has Recipe" },
   ];
-  const shown = rows.filter((r) => statusFilter === "ALL" || (statusFilter === "HAS" ? r.hasRecipe : statusOf(r) === statusFilter));
+  const shown = rows.filter((r) => statusFilter === "ALL" || (statusFilter === "HAS" ? r.hasRecipe : statusFilter === "MISSING" ? !r.hasRecipe : statusFilter === "INCOMPLETE" ? costIncomplete(r) : r.status === statusFilter));
 
   const entries: CatalogEntry[] = shown.map((row) => {
     const status = <StatusBadge row={row} />;

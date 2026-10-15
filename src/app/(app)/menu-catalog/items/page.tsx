@@ -40,7 +40,7 @@ export default async function ItemsPage() {
   const recipeByItem = new Map(
     recipes.map((r) => [
       r.menuItemId,
-      { yieldServings: r.yieldServings.toString(), notes: r.notes ?? "", ingredients: r.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })) },
+      { yieldServings: r.yieldServings.toString(), notes: r.notes ?? "", ingredients: r.ingredients.map((i) => ({ inventoryId: i.inventoryId, quantity: i.quantity.toString() })), status: r.status },
     ]),
   );
 
@@ -104,7 +104,7 @@ export default async function ItemsPage() {
                 <Badge variant="outline">
                   Categories: {item.categories.length}
                 </Badge>
-                {recipeByItem.has(item.id) && <Badge variant="info">Recipe</Badge>}
+                {recipeByItem.has(item.id) && <Badge variant={recipeByItem.get(item.id)?.status === "DRAFT" ? "warning" : "info"}>{recipeByItem.get(item.id)?.status === "DRAFT" ? "Draft recipe" : "Recipe"}</Badge>}
               </>
             }
             footer={<span className="text-base font-semibold">{formatRupees(Number(item.price))}</span>}
@@ -122,7 +122,7 @@ export default async function ItemsPage() {
             <div className="flex flex-wrap items-center gap-1.5">
               <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} />
               <ItemHighlightBadges highlights={{ popular: item.isPopular, chefsSpecial: item.isChefsSpecial, liveCounter: item.isLiveCounter }} className="contents" />
-              {recipeByItem.has(item.id) && <Badge variant="info">Recipe</Badge>}
+              {recipeByItem.has(item.id) && <Badge variant={recipeByItem.get(item.id)?.status === "DRAFT" ? "warning" : "info"}>{recipeByItem.get(item.id)?.status === "DRAFT" ? "Draft recipe" : "Recipe"}</Badge>}
             </div>
           </TableCell>
           <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(Number(item.price))}</TableCell>

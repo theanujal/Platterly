@@ -7,7 +7,10 @@ export interface PlanDish {
   name: string;
   /** Servings to cook (guests plus the kitchen's extra percentage). */
   servings: number;
+  /** Only an Active recipe is passed in. */
   recipe: { yieldServings: number; lines: { inventoryId: string; name: string; unit: string; quantity: number }[] } | null;
+  /** The dish has a recipe, but it is a Draft (not approved for production), so it is not counted. */
+  draftRecipe?: boolean;
 }
 
 export interface NeedLine {
@@ -20,13 +23,14 @@ export interface NeedLine {
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
-/** Adds up every ingredient across the dishes (a dish served at two meals counts twice). Dishes with no recipe are listed, not guessed at. */
-export function aggregateNeeds(dishes: PlanDish[]): { lines: NeedLine[]; withoutRecipe: string[] } {
+/** Adds up every ingredient across the dishes (a dish served at two meals counts twice). Dishes with no recipe, or only a Draft one, are listed, not guessed at. */
+export function aggregateNeeds(dishes: PlanDish[]): { lines: NeedLine[]; withoutRecipe: string[]; draftRecipe: string[] } {
   const byItem = new Map<string, NeedLine>();
   const withoutRecipe = new Set<string>();
+  const draftRecipe = new Set<string>();
   for (const dish of dishes) {
     if (!dish.recipe) {
-      withoutRecipe.add(dish.name);
+      (dish.draftRecipe ? draftRecipe : withoutRecipe).add(dish.name);
       continue;
     }
     for (const line of dish.recipe.lines) {
@@ -40,7 +44,7 @@ export function aggregateNeeds(dishes: PlanDish[]): { lines: NeedLine[]; without
       }
     }
   }
-  return { lines: [...byItem.values()].sort((a, b) => a.name.localeCompare(b.name)), withoutRecipe: [...withoutRecipe].sort() };
+  return { lines: [...byItem.values()].sort((a, b) => a.name.localeCompare(b.name)), withoutRecipe: [...withoutRecipe].sort(), draftRecipe: [...draftRecipe].sort() };
 }
 
 export interface StockedLine extends NeedLine {

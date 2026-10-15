@@ -31,8 +31,8 @@ const ORDER_PLAN_INCLUDE = {
 
 type PlanOrder = NonNullable<Awaited<ReturnType<typeof loadPlanOrder>>>;
 
-async function loadPlanOrder(organizationId: string, orderId: string) {
-  return prisma.order.findFirst({ where: { id: orderId, organizationId }, include: ORDER_PLAN_INCLUDE });
+async function loadPlanOrder(organizationId: string, orderId: string, db: Prisma.TransactionClient | typeof prisma = prisma) {
+  return db.order.findFirst({ where: { id: orderId, organizationId }, include: ORDER_PLAN_INCLUDE });
 }
 
 function dishesOf(order: PlanOrder, servings: number): PlanDish[] {
@@ -45,7 +45,9 @@ function dishesOf(order: PlanOrder, servings: number): PlanDish[] {
           menuItemId: dish.id,
           name: dish.name,
           servings,
-          recipe: dish.recipe
+          // Only an Active recipe is used for production, stock planning and stock deduction; a Draft is reported, never counted.
+          draftRecipe: dish.recipe?.status === "DRAFT",
+          recipe: dish.recipe?.status === "ACTIVE"
             ? { yieldServings: Number(dish.recipe.yieldServings), lines: dish.recipe.ingredients.map((i) => ({ inventoryId: i.inventoryId, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity) })) }
             : null,
         },
@@ -100,7 +102,7 @@ export async function getOrderInventory(organizationId: string, orderId: string)
   const { extraPercent } = await getKitchenRules(organizationId);
   const guests = guestsFor(order);
   const servings = guests > 0 ? cookQuantity(guests, extraPercent) : 0;
-  const { lines: recipeLines, withoutRecipe } = aggregateNeeds(dishesOf(order, servings));
+  const { lines: recipeLines, withoutRecipe, draftRecipe } = aggregateNeeds(dishesOf(order, servings));
 
   const extras = new Map<string, number>();
   for (const event of order.events) for (const r of event.requiredInventory) extras.set(r.inventoryId, round3((extras.get(r.inventoryId) ?? 0) + Number(r.quantity)));
@@ -159,7 +161,9 @@ export async function getOrderInventory(organizationId: string, orderId: string)
     : !approved
       ? "Items can be set once the customer approves the menu."
       : lines.length === 0
-        ? "Nothing to send yet: add recipes to the dishes, or add extra items."
+        ? draftRecipe.length > 0
+          ? `Nothing to send yet: the recipe for ${draftRecipe.join(", ")} is still a Draft. Activate it in Recipes to approve it for production, or add extra items.`
+          : "Nothing to send yet: add recipes to the dishes, or add extra items."
         : !toSend
         ? "Everything this order requires has been sent."
         : null;
@@ -172,6 +176,7 @@ export async function getOrderInventory(organizationId: string, orderId: string)
     extraPercent,
     lines,
     withoutRecipe,
+    draftRecipe,
     approved,
     closed,
     hasEvent: order.events.length > 0,
@@ -195,6 +200,25 @@ async function netSent(tx: Prisma.TransactionClient, orderId: string, inventoryI
 }
 
 /**
+ * Called inside the send transaction, after the order is locked. The plan the person confirmed was read before the transaction
+ * started, so a recipe may have been returned to Draft (or changed, which also returns it to Draft) since. This locks every recipe
+ * on the order (FOR SHARE: a status change or edit of one waits until this transaction ends, so none can slip in before the
+ * commit), reads them again, and refuses unless the needs from Active recipes are exactly what was confirmed.
+ */
+async function assertRecipesUnchanged(tx: Prisma.TransactionClient, organizationId: string, orderId: string, plan: { servings: number; lines: { inventoryId: string; fromRecipes: number }[] }) {
+  const listed = await loadPlanOrder(organizationId, orderId, tx);
+  const recipeIds = [...new Set(listed?.mealPlanEntries.flatMap((entry) => entry.items.flatMap((item) => (item.menuItem?.recipe ? [item.menuItem.recipe.id] : []))) ?? [])];
+  if (recipeIds.length > 0) await tx.$queryRaw`SELECT "id" FROM "recipe" WHERE "id" = ANY(${recipeIds}::text[]) FOR SHARE`;
+  // Read again now that the locks are held: this sees every change that was committed before them.
+  const locked = await loadPlanOrder(organizationId, orderId, tx);
+  if (!locked) throw new StockTakeError("Order not found.");
+  const now = new Map(aggregateNeeds(dishesOf(locked, plan.servings)).lines.map((l) => [l.inventoryId, l.needed]));
+  const confirmed = new Map(plan.lines.filter((l) => l.fromRecipes > 0).map((l) => [l.inventoryId, l.fromRecipes]));
+  const same = now.size === confirmed.size && [...confirmed].every(([id, quantity]) => now.get(id) !== undefined && Math.abs((now.get(id) ?? 0) - quantity) < 0.0005);
+  if (!same) throw new StockTakeError("The recipes for this order changed while you were confirming (a recipe was returned to Draft or edited). Review the order and try again. Nothing was sent.");
+}
+
+/**
  * "Send items to this order": takes what is still required from the shelf and records it against the order. Only once the
  * customer has approved the menu. It can be run again after the menu or the extra items change, and then sends only the
  * difference. Where stock is short it takes what is there (never below zero) and writes the shortfall on the row.
@@ -208,6 +232,7 @@ export async function sendOrderItems(organizationId: string, orderId: string, ac
   const sentLines: { name: string; quantity: number }[] = [];
   await prisma.$transaction(async (tx) => {
     await lockOrder(tx, orderId);
+    await assertRecipesUnchanged(tx, organizationId, orderId, plan);
     for (const line of plan.lines) {
       const already = Math.max(0, await netSent(tx, orderId, line.inventoryId));
       const remaining = Math.max(0, round3(line.required - already));
@@ -305,8 +330,8 @@ export async function getProductionPlan(organizationId: string, locationId?: str
   const perOrder = orders.map((order) => {
     const guests = guestsFor(order);
     const servings = guests > 0 ? cookQuantity(guests, extraPercent) : 0;
-    const { lines, withoutRecipe } = aggregateNeeds(dishesOf(order, servings));
-    return { id: order.id, orderNumber: order.orderNumber, customer: order.customer.name, eventStartDate: order.eventStartDate, guests, servings, lines, withoutRecipe, taken: order.stockDeductedAt !== null };
+    const { lines, withoutRecipe, draftRecipe } = aggregateNeeds(dishesOf(order, servings));
+    return { id: order.id, orderNumber: order.orderNumber, customer: order.customer.name, eventStartDate: order.eventStartDate, guests, servings, lines, withoutRecipe, draftRecipe, taken: order.stockDeductedAt !== null };
   });
 
   // Combined demand from orders that have not taken their stock yet — what the shelf still has to cover.
@@ -314,5 +339,5 @@ export async function getProductionPlan(organizationId: string, locationId?: str
   const combined = aggregateNeeds(open.flatMap((o) => o.lines.map((l) => ({ menuItemId: l.inventoryId, name: l.name, servings: 1, recipe: { yieldServings: 1, lines: [{ inventoryId: l.inventoryId, name: l.name, unit: l.unit, quantity: l.needed }] } }))));
   const stocked = withStock(combined.lines, await stockOf(organizationId, combined.lines.map((l) => l.inventoryId)));
 
-  return { daysBeforeEvent, extraPercent, orders: perOrder, shortfalls: stocked.filter((l) => l.short > 0), totals: stocked, missingRecipe: [...new Set(perOrder.flatMap((o) => o.withoutRecipe))].sort() };
+  return { daysBeforeEvent, extraPercent, orders: perOrder, shortfalls: stocked.filter((l) => l.short > 0), totals: stocked, missingRecipe: [...new Set(perOrder.flatMap((o) => o.withoutRecipe))].sort(), draftRecipes: [...new Set(perOrder.flatMap((o) => o.draftRecipe))].sort() };
 }

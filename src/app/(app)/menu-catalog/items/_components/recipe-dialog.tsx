@@ -15,13 +15,16 @@ import { enterableUnits, friendlyQuantity, toStockUnit } from "@/modules/recipes
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import type { PlanBatch } from "@/modules/inventory/fifo-plan";
 import { UNIT_OPTIONS } from "@/modules/inventory/options";
-import { createRecipeIngredientAction, deleteRecipeAction, saveRecipeAction } from "../actions";
+import { Badge } from "@/components/ui/badge";
+import { createRecipeIngredientAction, deleteRecipeAction, saveRecipeAction, setRecipeStatusAction } from "../actions";
 
 export interface RecipeFormValues {
   yieldServings: string;
   notes: string;
   /** `unit` is the unit the quantity was typed in (g for a kg item); absent means the item's stock unit. */
   ingredients: { inventoryId: string; quantity: string; unit?: string }[];
+  /** Lifecycle of the saved recipe: Draft until someone approves it for production. Absent for a recipe that is not saved yet. */
+  status?: "DRAFT" | "ACTIVE";
 }
 
 export interface IngredientOption {
@@ -86,6 +89,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
   const [pending, setPending] = useState(false);
   const [copiedFrom, setCopiedFrom] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [confirmStatus, setConfirmStatus] = useState<"ACTIVE" | "DRAFT" | null>(null);
   const dirty = useIsDirty({ values });
 
   const yieldNumber = Number.parseFloat(values.yieldServings);
@@ -144,6 +148,21 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
           return { inventoryId: r.inventoryId, quantity: toStockUnit(Number.parseFloat(r.quantity), r.unit ?? stock, stock) };
         }),
     });
+    setPending(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    onOpenChange(false);
+    router.refresh();
+  }
+
+  /** Changes the saved recipe's lifecycle (never its ingredients, stock or costs). Unsaved edits must be saved first. */
+  async function handleStatus(next: "ACTIVE" | "DRAFT") {
+    setConfirmStatus(null);
+    setError(null);
+    setPending(true);
+    const result = await setRecipeStatusAction(itemId, next);
     setPending(false);
     if (!result.ok) {
       setError(result.error);
@@ -282,6 +301,38 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
               <Textarea id="recipe-notes" value={values.notes} onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))} />
             </div>
 
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4" data-testid="recipe-status">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="flex items-center gap-2 text-sm font-medium">
+                  Recipe status
+                  <Badge variant={initialValues?.status === "ACTIVE" ? "success" : "warning"} data-testid="recipe-status-badge">
+                    {initialValues?.status === "ACTIVE" ? "Active" : "Draft"}
+                  </Badge>
+                </p>
+                {initialValues && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="md"
+                    disabled={pending || dirty}
+                    onClick={() => setConfirmStatus(initialValues.status === "ACTIVE" ? "DRAFT" : "ACTIVE")}
+                  >
+                    {initialValues.status === "ACTIVE" ? "Return to Draft" : "Activate recipe"}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {!initialValues
+                  ? "A new recipe starts as a Draft. Save it, then activate it to approve it for production."
+                  : dirty
+                    ? "Save your changes first, then change the status."
+                    : initialValues.status === "ACTIVE"
+                      ? "Approved for production. Changing the servings or the ingredients returns it to Draft for re-approval."
+                      : "Not used for production while it is a Draft."}
+              </p>
+              <p className="text-xs text-muted-foreground">Activating approves the recipe for production. It does not verify the cost: that comes from the stock batches, shown below.</p>
+            </div>
+
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4" data-testid="recipe-cost">
               {cost.state === "VERIFIED" ? (
                 <p className="text-sm text-muted-foreground">
@@ -324,6 +375,19 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
             )}
         </>
       </DrawerForm>
+      <ConfirmDialog
+        open={confirmStatus !== null}
+        onOpenChange={(open) => !open && setConfirmStatus(null)}
+        title={confirmStatus === "ACTIVE" ? "Activate this recipe?" : "Return this recipe to Draft?"}
+        description={
+          confirmStatus === "ACTIVE"
+            ? "This approves the recipe for production: orders can plan and send stock from it. It does not verify the cost, and stock is only sent where it is available."
+            : "The recipe is no longer used for production, planning or sending stock until it is activated again. Stock and history are not changed."
+        }
+        confirmLabel={confirmStatus === "ACTIVE" ? "Activate recipe" : "Return to Draft"}
+        destructive={false}
+        onConfirm={() => (confirmStatus ? handleStatus(confirmStatus) : undefined)}
+      />
       <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}

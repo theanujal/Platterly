@@ -56,7 +56,7 @@ test("build a recipe for a food item, scale it, and see the ingredient protected
   await expect(page.getByTestId("recipe-cost")).toContainText("verified");
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(page.getByText("Recipe", { exact: true })).toBeVisible();
+  await expect(page.getByText("Draft recipe", { exact: true })).toBeVisible(); // a new recipe is a Draft until activated
 
   // Reopens with what was saved.
   await page.getByRole("button", { name: `Recipe for ${dish}` }).click();

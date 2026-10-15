@@ -124,6 +124,18 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   const { orderId } = await seedKitchenOrderWithDish(email, dish);
   await page.goto(`/orders/${orderId}`);
   await page.getByRole("tab", { name: "Inventory" }).click();
+  // The recipe is still a Draft (not approved for production): the order counts nothing from it and cannot send items.
+  await expect(page.getByTestId("inventory-draft-recipe")).toContainText(dish);
+  await expect(page.getByTestId("inventory-required-card").getByRole("button", { name: "Send items to this order" })).toBeDisabled();
+  // Activating the recipe is the explicit approval; the order then needs the recipe's stock.
+  await page.goto("/menu-catalog/items");
+  await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
+  await page.getByRole("button", { name: "Activate recipe" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Activate recipe" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.goto(`/orders/${orderId}`);
+  await page.getByRole("tab", { name: "Inventory" }).click();
+  await expect(page.getByTestId("inventory-draft-recipe")).toHaveCount(0);
   const card = page.getByTestId("inventory-required-card");
   await expect(card).toContainText("100 guests plus 10% extra");
   const line = card.getByTestId("required-line").filter({ hasText: ingredient });

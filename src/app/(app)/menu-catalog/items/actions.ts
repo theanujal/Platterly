@@ -7,7 +7,7 @@ import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, d
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import { importFoodItems } from "@/modules/menus/import/import";
 import { addCatalogItems } from "@/modules/menus/catalog/catalog";
-import { saveRecipe, deleteRecipe } from "@/modules/recipes/recipe";
+import { saveRecipe, deleteRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { createInventoryItem } from "@/modules/inventory/inventory";
 import { myHeldLocation } from "@/modules/locations/active-location";
 import type {
@@ -157,6 +157,21 @@ export async function saveRecipeAction(menuItemId: string, payload: RecipePayloa
   }
   revalidatePath("/menu-catalog/items");
   revalidatePath("/recipes");
+  return { ok: true };
+}
+
+/** Approves a recipe for production (Active) or returns it to Draft. Same permission as editing the recipe; the module re-checks the recipe on the server. */
+export async function setRecipeStatusAction(menuItemId: string, status: "ACTIVE" | "DRAFT"): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["edit"] }, organizationId);
+  try {
+    await setRecipeStatus(organizationId, menuItemId, status === "ACTIVE" ? "ACTIVE" : "DRAFT", session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-catalog/items");
+  revalidatePath("/recipes");
+  revalidatePath("/orders");
   return { ok: true };
 }
 
