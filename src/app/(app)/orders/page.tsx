@@ -5,6 +5,7 @@ import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listOrders } from "@/modules/orders/order";
+import { parseApprovalFilter, parseOrdersView } from "@/modules/orders/approval-list";
 import { listEventTypes } from "@/modules/events/event-type";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -28,14 +29,16 @@ export const metadata: Metadata = {
 };
 
 interface OrdersPageProps {
-  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string }>;
+  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string; approval?: string; view?: string }>;
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
   const activeLocation = await getActiveLocation(organizationId, session.user.id);
-  const { status, orderKind, eventType } = await searchParams;
+  const { status, orderKind, eventType, approval, view } = await searchParams;
+  const ordersView = parseOrdersView(view);
+  const approvalFilter = parseApprovalFilter(approval);
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
   const validOrderKind = orderKind && orderKind in ORDER_KIND_LABEL ? (orderKind as OrderKind) : undefined;
 
@@ -44,9 +47,18 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
 
   const [orders, canEdit, canDelete] = await Promise.all([
-    // Orders whose event is over never show here, under any status (AJ, 2026-09-30); they appear in the customer's order history.
+    // Orders whose event is over never show in the default list, under any status (AJ, 2026-09-30); they appear in the customer's order history.
+    // The Past view (Decision 2) is the one exception: past-event orders whose menu approval is still outstanding (Decision 9).
     // Overdue payments live under Finance now (AJ, 2026-10-12): it is the finance team's job to collect them.
-    listOrders(organizationId, { locationId: activeLocation.locationId, when: "upcoming", status: validStatus, orderKind: validOrderKind, eventTypeId: validEventTypeId }),
+    listOrders(organizationId, {
+      locationId: activeLocation.locationId,
+      when: ordersView === "past" ? "past" : "upcoming",
+      outstandingApproval: ordersView === "past",
+      status: validStatus,
+      orderKind: validOrderKind,
+      eventTypeId: validEventTypeId,
+      approval: approvalFilter,
+    }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);
@@ -101,11 +113,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
           </Link>
         }
-        columns={["Order #", "Order Type", "Customer", "Event", "Guests", "Amount", "Status", "Open"]}
+        columns={["Order #", "Order Type", "Customer", "Event", "Guests", "Amount", "Status", "Menu Approval", "Open"]}
         richList
         defaultView="list"
         searchPlaceholder="Search orders by customer, phone, or order #…"
-        emptyLabel="No orders yet."
+        emptyLabel={ordersView === "past" ? "No past orders with menu approval work outstanding." : "No orders yet."}
         filters={<OrdersFilterBar eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}
         sortOptions={sortOptions}
         // The design system's Order card (§09) switches from its stacked layout to

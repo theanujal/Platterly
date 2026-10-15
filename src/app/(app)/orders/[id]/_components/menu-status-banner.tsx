@@ -29,12 +29,15 @@ export function MenuStatusBanner({
   editHref,
   menuSelectionId,
   canRecall,
+  inApprovalTab = false,
 }: {
   status: MenuSelectionStatus | null;
   version: number | null;
   editHref: string | null;
   menuSelectionId: string | null;
   canRecall: boolean;
+  /** The Menu Approval tab owns the meals (Decision 11): the planner below is read-only and the text says where to edit. */
+  inApprovalTab?: boolean;
 }) {
   const phase = menuPlanPhase(status);
   return (
@@ -51,7 +54,7 @@ export function MenuStatusBanner({
         </div>
         <p className="text-sm text-muted-foreground">
           {status ? MENU_SELECTION_STATUS_HINT[status] : "Set an Event Type on this order and save it to start the menu approval."}
-          {phase === "editable" && status && " You can edit the menu below; it saves with the order and shows in Menu Approvals."}
+          {phase === "editable" && status && (inApprovalTab ? " Edit the menu in the Menu Approval tab." : " You can edit the menu below; it saves with the order and shows in Menu Approvals.")}
           {phase === "recall" && " The menu is read-only until it is recalled."}
           {phase === "locked" && " It is with the kitchen, so it can no longer be changed here."}
         </p>
@@ -60,7 +63,7 @@ export function MenuStatusBanner({
         {phase === "recall" && canRecall && menuSelectionId && <RecallMenuButton menuSelectionId={menuSelectionId} />}
         {editHref && (
           <Button variant="outline" render={<Link href={editHref} />} nativeButton={false}>
-            Open Menu Approvals
+            {inApprovalTab ? "Open the Menu Approval tab" : "Open Menu Approvals"}
           </Button>
         )}
       </div>

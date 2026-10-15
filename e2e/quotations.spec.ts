@@ -214,7 +214,8 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
 
   // The converted Order has a real MealPlanEntry for Lunch, not a flattened whole-order item.
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(page.getByTestId("meal-slot-2026-12-15-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  // The Menu Approval tab holds its own copy of the planner, so the meal is looked up in the Guests & Menu Planning panel.
+  await expect(page.locator("#order-panel-menu").getByTestId("meal-slot-2026-12-15-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   // subtotal = 6000 (the meal on its Menu); otherCharges = 10+5+2 = 17; total = 6000-20+17 = 5997
   // The total now sits in the Pricing & Payment tab, not the sidebar (AJ, 2026-10-04).
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();

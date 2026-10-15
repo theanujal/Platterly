@@ -684,3 +684,157 @@ export async function markPublicLinkClaimed(email: string): Promise<void> {
     [email],
   );
 }
+
+export interface ReviewFixtureOptions {
+  customer: string;
+  /** Makes the order number and the menu / dish names the same on every run (1 to 99), so two runs can be compared pixel for pixel. */
+  ordinal: number;
+  status: "DRAFT" | "SENT_TO_CUSTOMER" | "CUSTOMER_REVIEWING" | "CHANGES_REQUESTED" | "CUSTOMER_APPROVED" | "FINAL_LOCKED";
+  /** How many versions were sent to the customer (the last one is the current version while a menu is out). */
+  versions?: number;
+  /** Customer-picked dishes, no price: the team quotes a per-plate price. */
+  customMenu?: boolean;
+  /** A live customer link on the current version. */
+  link?: boolean;
+  venueSubmitted?: boolean;
+  /** The order has an Event but no menu approval yet (legacy and not-started orders). */
+  noSelection?: boolean;
+  /** The order has no Event Type (so no Event and no menu approval, and none can start). */
+  noEventType?: boolean;
+  /** Put the order straight into this status (a Completed or Cancelled order). */
+  orderStatus?: "COMPLETED" | "CANCELLED";
+  notes?: { authorType: "CUSTOMER" | "KITCHEN" | "TEAM"; body: string; versionNumber?: number }[];
+}
+
+const ORDER_FOR_MENU = {
+  DRAFT: "PENDING_REVIEW",
+  CHANGES_REQUESTED: "PENDING_REVIEW",
+  SENT_TO_CUSTOMER: "AWAITING_CUSTOMER_APPROVAL",
+  CUSTOMER_REVIEWING: "AWAITING_CUSTOMER_APPROVAL",
+  CUSTOMER_APPROVED: "APPROVED",
+  FINAL_LOCKED: "SENT_TO_KITCHEN",
+} as const;
+
+/**
+ * Menu Approvals review-page spec: one order three days out with a Dinner meal on a Menu (or, for a custom menu, a Dinner with
+ * picked dishes and no Menu), one event, one menu selection in the given state, its sent versions (with dish ids in the
+ * snapshot so Compare works), team/customer notes and, optionally, the live customer link. Inserted directly so a spec can
+ * reach every state of the review page without driving the whole public flow.
+ */
+export async function seedReviewFixture(email: string, options: ReviewFixtureOptions): Promise<{ orderId: string; selectionId: string; customerPhone: string }> {
+  const { rows: members } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
+  const organizationId = members[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  const suffix = Math.random().toString(36).slice(2, 10);
+  const orderId = `ord_${suffix}`;
+  const eventId = `ev_${suffix}`;
+  const selectionId = `ms_${suffix}`;
+  const customerId = `cust_${suffix}`;
+  const eventTypeId = `et_${suffix}`;
+  const menuId = `mn_${suffix}`;
+  const dishId = `mi_${suffix}`;
+  const versions = options.versions ?? 0;
+  // Fixed dates and times, so the page reads the same on every run (the planner and the history show them).
+  const day = "2027-01-15";
+  const sentAt = (hoursBack: number) => `2026-10-01 ${String(12 - hoursBack).padStart(2, "0")}:30:00+00`;
+  const customerPhone = `+9199${Math.floor(10000000 + Math.random() * 89999999)}`;
+  await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [customerId, organizationId, options.customer, customerPhone]);
+  await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [eventTypeId, organizationId, "Wedding"]);
+  await pool.query(`INSERT INTO menu (id, "organizationId", name, "menuType", "pricePerPlate", "updatedAt") VALUES ($1, $2, $3, 'VEGETARIAN', 400, now())`, [menuId, organizationId, `Royal Dinner ${options.ordinal}`]);
+  await pool.query(`INSERT INTO menu_item (id, "organizationId", name, "foodType", price, "updatedAt") VALUES ($1, $2, $3, 'VEGETARIAN', 150, now())`, [dishId, organizationId, `Paneer Tikka ${options.ordinal}`]);
+  await pool.query(
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, "venueDetailsSubmittedAt", "updatedAt")
+     VALUES ($1, $2, $3, $4, $5, '${options.orderStatus ?? ORDER_FOR_MENU[options.status]}', $6::date, $6::date, 100, 100, 40000, 40000, 40000, ${options.venueSubmitted ? "'2026-10-01 14:00:00+00'" : "NULL"}, now())`,
+    [orderId, organizationId, customerId, options.noEventType ? null : eventTypeId, `ORD-${9000 + options.ordinal}`, day],
+  );
+  if (!options.noEventType) {
+    await pool.query(
+      `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", "orderId", name, "startDate", "endDate", "guestCount", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7::date, $7::date, 100, now())`,
+      [eventId, organizationId, customerId, eventTypeId, orderId, `${options.customer} Wedding`, day],
+    );
+  }
+  const mealId = `mp_${suffix}`;
+  await pool.query(`INSERT INTO meal_plan_entry (id, "orderId", date, "mealType", "menuId") VALUES ($1, $2, $3::date, 'DINNER', $4)`, [mealId, orderId, day, options.customMenu ? null : menuId]);
+  await pool.query(
+    `INSERT INTO order_item (id, "orderId", "itemType", "menuItemId", name, "unitPrice", "mealPlanEntryId") VALUES ($1, $2, 'MENU_ITEM', $3, $4, 150, $5)`,
+    [`oi_${suffix}`, orderId, dishId, `Paneer Tikka ${options.ordinal}`, mealId],
+  );
+  if (options.noSelection || options.noEventType) return { orderId, selectionId: "", customerPhone };
+  await pool.query(
+    `INSERT INTO menu_selection (id, "organizationId", "eventId", status, "kitchenProductionStatus", "currentVersion", "isCustomMenu", "lockedAt", "updatedAt")
+     VALUES ($1, $2, $3, '${options.status}', 'PENDING', $4, $5, ${options.status === "FINAL_LOCKED" ? "'2026-10-02 12:00:00+00'" : "NULL"}, now())`,
+    [selectionId, organizationId, eventId, Math.max(versions, 1), options.customMenu === true],
+  );
+  for (let v = 1; v <= versions; v++) {
+    const snapshot = {
+      customerName: options.customer,
+      eventTypeName: "Wedding",
+      eventStartDate: day,
+      eventEndDate: day,
+      venue: null,
+      guests: 100,
+      total: 40000 + v * 100,
+      meals: [
+        {
+          date: day,
+          mealType: "DINNER",
+          menuName: `Royal Dinner ${options.ordinal}`,
+          menuId,
+          price: null,
+          pricePerPlate: 400,
+          items: [{ name: `Paneer Tikka ${options.ordinal}`, quantity: 1, itemType: "MENU_ITEM", catalogId: dishId, unitPrice: 150, category: "Starters" }],
+        },
+      ],
+      selectedItems: [],
+      isCustomMenu: options.customMenu === true,
+    };
+    const versionId = `mv_${suffix}_${v}`;
+    await pool.query(
+      `INSERT INTO menu_version (id, "menuSelectionId", "versionNumber", status, snapshot, "sentAt", "supersededAt")
+       VALUES ($1, $2, $3, 'SENT_TO_CUSTOMER', $4, $5, ${v < versions ? "'2026-10-01 12:45:00+00'" : "NULL"})`,
+      [versionId, selectionId, v, JSON.stringify(snapshot), sentAt(versions - v + 1)],
+    );
+    if (options.link && v === versions) {
+      await pool.query(`INSERT INTO secure_access_token (id, "organizationId", "resourceType", "resourceId", token) VALUES ($1, $2, 'MENU_APPROVAL', $3, $4)`, [`sat_${suffix}`, organizationId, versionId, `tok_${suffix}`]);
+    }
+  }
+  for (const [index, note] of (options.notes ?? []).entries()) {
+    await pool.query(
+      `INSERT INTO menu_approval_note (id, "organizationId", "menuSelectionId", "versionNumber", "authorType", "authorName", body, "createdAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [`mn_${suffix}_${index}`, organizationId, selectionId, note.versionNumber ?? null, note.authorType, note.authorType === "CUSTOMER" ? options.customer : null, note.body, `2026-10-01 13:0${index}:00+00`],
+    );
+  }
+  return { orderId, selectionId, customerPhone };
+}
+
+/**
+ * Replaces what a role may do in the user's business (the owner's Manage Role Permissions): `grants` maps a module to its actions, e.g.
+ * { orders: ["view"], menus: ["view", "approve"] }. Used to make a role that can approve menus but cannot edit orders.
+ */
+export async function setRoleGrants(email: string, role: string, grants: Record<string, string[]>): Promise<void> {
+  const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
+  const organizationId = rows[0]?.organizationId;
+  if (!organizationId) throw new Error(`No organization for ${email}`);
+  await pool.query(
+    `INSERT INTO "RolePermissionOverride" (id, "organizationId", role, grants, "updatedAt") VALUES ($1, $2, $3, $4, now())
+     ON CONFLICT ("organizationId", role) DO UPDATE SET grants = EXCLUDED.grants, "updatedAt" = now()`,
+    [`rpo_${Math.random().toString(36).slice(2, 10)}`, organizationId, role, JSON.stringify(grants)],
+  );
+}
+
+export async function getOrderRow(orderId: string): Promise<{ discount: string; total: string; notes: string | null }> {
+  const { rows } = await pool.query('SELECT discount::text, total::text, notes FROM "order" WHERE id = $1', [orderId]);
+  return rows[0];
+}
+
+export async function countInvoicesForOrder(orderId: string): Promise<number> {
+  const { rows } = await pool.query('SELECT count(*)::int AS n FROM invoice WHERE "orderId" = $1', [orderId]);
+  return rows[0].n;
+}
+
+/** Orders-list spec: moves an order and its event to a given day (an ISO date), e.g. into the past. */
+export async function setOrderEventDay(orderId: string, isoDay: string): Promise<void> {
+  await pool.query('UPDATE "order" SET "eventStartDate" = $2::date, "eventEndDate" = $2::date WHERE id = $1', [orderId, isoDay]);
+  await pool.query('UPDATE event SET "startDate" = $2::date, "endDate" = $2::date WHERE "orderId" = $1', [orderId, isoDay]);
+}

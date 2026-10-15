@@ -1,0 +1,119 @@
+import { describe, it, expect, afterEach } from "vitest";
+import { prisma } from "@/lib/db";
+import { createOrder } from "@/modules/orders/order";
+import { createCustomer } from "@/modules/customers/customer";
+import { createEventType } from "@/modules/events/event-type";
+import { addMenuApprovalNote, getMenuSelection } from "@/modules/menu-approvals/menu-approval";
+import { ensureOrderMenuSelection, sendMenuForApproval } from "@/modules/menu-approvals/approval-link";
+import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
+
+/**
+ * `loadMenuApprovalReviewData` is the data half of the Menu Approvals review page, moved out of `/menu-approvals/[id]/page.tsx`
+ * in Phase 1 of the merge so the Order page can reuse it later. It reads only; permission and location checks stay with the caller.
+ */
+
+const orgIds: string[] = [];
+const userIds: string[] = [];
+
+afterEach(async () => {
+  await prisma.auditLog.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.statusChange.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.secureAccessToken.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.menuVersionItem.deleteMany({ where: { menuVersion: { menuSelection: { organizationId: { in: orgIds } } } } });
+  await prisma.menuVersion.deleteMany({ where: { menuSelection: { organizationId: { in: orgIds } } } });
+  await prisma.menuSelectionItem.deleteMany({ where: { menuSelection: { organizationId: { in: orgIds } } } });
+  await prisma.menuApprovalNote.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.menuSelection.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.event.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.order.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.eventType.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.customer.deleteMany({ where: { organizationId: { in: orgIds } } });
+  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
+  await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  orgIds.length = 0;
+  userIds.length = 0;
+});
+
+async function business(name: string) {
+  const org = await prisma.organization.create({ data: { id: crypto.randomUUID(), name, slug: `rev-${crypto.randomUUID().slice(0, 8)}`, createdAt: new Date() } });
+  orgIds.push(org.id);
+  const actor = await prisma.user.create({ data: { id: crypto.randomUUID(), name: "Team", email: `team-${crypto.randomUUID()}@example.test`, emailVerified: true } });
+  userIds.push(actor.id);
+  await prisma.member.create({ data: { id: crypto.randomUUID(), organizationId: org.id, userId: actor.id, role: "owner", createdAt: new Date() } });
+  const customer = await createCustomer(org.id, { name: `${name} Customer`, phone: `98${Math.floor(10000000 + Math.random() * 89999999)}`, email: `c-${crypto.randomUUID()}@example.test` }, actor.id);
+  const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+  const order = await createOrder(
+    org.id,
+    {
+      customerId: customer.id,
+      eventTypeId: eventType.id,
+      eventStartDate: new Date("2026-12-05"),
+      eventEndDate: new Date("2026-12-05"),
+      totalParticipants: 120,
+      adultCount: 100,
+      individualPricingEnabled: true,
+      mealPlanEntries: [{ date: new Date("2026-12-05"), mealType: "DINNER", price: 400 }],
+    },
+    actor.id,
+  );
+  const selection = (await ensureOrderMenuSelection(org.id, order.id, actor.id))!;
+  return { org, actor, order, selection };
+}
+
+describe("loadMenuApprovalReviewData", () => {
+  it("returns the review's data for a menu that has not been sent", async () => {
+    const { org, order, selection } = await business("Alpha");
+    const loaded = (await getMenuSelection(org.id, selection.id))!;
+    const data = (await loadMenuApprovalReviewData(org.id, loaded))!;
+
+    expect(data.menuSelectionId).toBe(selection.id);
+    expect(data.status).toBe("DRAFT");
+    expect(data.statusLabel).toBe("Needs Review");
+    expect(data.orderCompleted).toBe(false);
+    expect(data.currentVersion).toBe(1);
+    expect(data.header).toMatchObject({ orderId: order.id, customer: "Alpha Customer", guests: 120, kitchen: null });
+    expect(data.pricing).toMatchObject({ individualPricingEnabled: true, totalGuests: 120, menuGuests: 100 });
+    expect(data.entries).toHaveLength(1);
+    expect(data.entries[0]).toMatchObject({ date: "2026-12-05", mealType: "DINNER", price: "400" });
+    expect(data.days).toEqual(["2026-12-05"]);
+    expect(data.versions).toEqual([]);
+    expect(data.notes).toEqual([]);
+    expect(data.approvalUrl).toBeNull();
+    expect(data.viewVersion).toBeNull();
+    expect(data.venueDetailsSubmittedAt).toBeNull();
+  });
+
+  it("includes sent versions, the live customer link, notes and the version being viewed", async () => {
+    const { org, actor, selection } = await business("Beta");
+    await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+    await addMenuApprovalNote(org.id, selection.id, { authorType: "TEAM", authorName: "Team", body: "Call the customer", versionNumber: 1 });
+    const loaded = (await getMenuSelection(org.id, selection.id))!;
+    const data = (await loadMenuApprovalReviewData(org.id, loaded, { viewVersion: 1 }))!;
+
+    expect(data.status).toBe("SENT_TO_CUSTOMER");
+    expect(data.statusLabel).toBe("Awaiting Customer Approval");
+    expect(data.versions).toHaveLength(1);
+    expect(data.versions[0]).toMatchObject({ versionNumber: 1, superseded: false });
+    expect(data.versions[0].snapshot?.customerName).toBe("Beta Customer");
+    expect(data.approvalUrl).toMatch(/\/menu-approval\//);
+    expect(data.notes.map((n) => [n.authorType, n.body, n.versionNumber])).toEqual([["TEAM", "Call the customer", 1]]);
+    expect(data.statusHistory.length).toBeGreaterThan(0);
+    expect(data.viewVersion).toBe(1);
+  });
+
+  it("returns nothing for a selection with no order", async () => {
+    const { org, selection } = await business("Gamma");
+    const loaded = (await getMenuSelection(org.id, selection.id))!;
+    expect(await loadMenuApprovalReviewData(org.id, { ...loaded, event: { ...loaded.event, orderId: null } })).toBeNull();
+  });
+
+  it("never reads another business's order: the caller's own business id scopes every read", async () => {
+    const a = await business("Delta");
+    const b = await business("Epsilon");
+    // The page only ever loads a selection through getMenuSelection(organizationId, id), which refuses another business's id.
+    expect(await getMenuSelection(a.org.id, b.selection.id)).toBeNull();
+    // Even handed a foreign selection by mistake, the loader reads with the caller's business id and finds no order.
+    const foreign = (await getMenuSelection(b.org.id, b.selection.id))!;
+    expect(await loadMenuApprovalReviewData(a.org.id, foreign)).toBeNull();
+  });
+});

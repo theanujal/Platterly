@@ -113,7 +113,7 @@ export const MENU_SELECTION_STATUS_TONE: Record<MenuSelectionStatus, Tone> = {
 /** The order of the menu approval statuses in a picker (workflow order). */
 export const MENU_SELECTION_STATUS_ORDER: MenuSelectionStatus[] = ["DRAFT", "SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING", "CHANGES_REQUESTED", "CUSTOMER_APPROVED", "FINAL_LOCKED"];
 
-/** One line on what each menu approval status means, for the banner on the Order's menu tab and the Menu Approvals page. */
+/** One line on what each menu approval status means, for the banner on the Order's menu tab and the Menu Approval tab. */
 export const MENU_SELECTION_STATUS_HINT: Record<MenuSelectionStatus, string> = {
   DRAFT: "The team is reviewing the menu. Nothing has gone to the customer yet.",
   SENT_TO_CUSTOMER: "The menu is with the customer for approval.",

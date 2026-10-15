@@ -1,4 +1,5 @@
 import { assertEventOrderNotCompleted } from "@/modules/orders/order-guard";
+import { assertOrderNotKitchenLocked } from "@/modules/orders/kitchen-lock";
 import "server-only";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -115,6 +116,8 @@ export async function createEvent(organizationId: string, input: EventInput, act
 
 export async function updateEvent(organizationId: string, id: string, input: EventInput, actorUserId: string) {
   const before = await prisma.event.findFirstOrThrow({ where: { id, organizationId } });
+  // An event's type, dates, venue and guests follow its order, so an order that has reached the kitchen can't be changed from here either.
+  await prisma.$transaction((tx) => assertOrderNotKitchenLocked(tx, organizationId, before.orderId));
   await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId, kitchenId: input.assignedKitchenId });
 
   const after = await prisma.event.update({
@@ -150,6 +153,7 @@ export async function updateEvent(organizationId: string, id: string, input: Eve
 /** Hard delete — nothing references Event yet (Chunk 10's Order.eventId, once it exists, will be the first). EventRequiredInventory cascades. */
 export async function deleteEvent(organizationId: string, id: string, actorUserId: string) {
   const before = await prisma.event.findFirstOrThrow({ where: { id, organizationId } });
+  await prisma.$transaction((tx) => assertOrderNotKitchenLocked(tx, organizationId, before.orderId));
   await prisma.event.delete({ where: { id } });
 
   await audit({

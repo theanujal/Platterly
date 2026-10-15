@@ -1,4 +1,9 @@
-import { isOrderLocked, OrderLockedError } from "./order-lock";
+import { isKitchenLocked, isOrderLocked, OrderLockedError } from "./order-lock";
+import { lockAndReadOrder } from "./kitchen-lock";
+import { approvalWhere, outstandingApprovalWhere, type ApprovalFilter } from "./approval-list";
+import { PriceFrozenError, priceFieldChanges } from "./price-freeze";
+import { isPriceFrozenStatus } from "@/modules/menu-approvals/approval-stages";
+import { runAfterCommit, type AfterCommit } from "@/lib/after-commit";
 import { validateOrderLike } from "@/lib/validation";
 import { assertOwnedRefs } from "@/lib/tenant-refs";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
@@ -16,9 +21,9 @@ import { orderAt } from "@/modules/locations/scope";
 import { createEvent, listKitchens } from "@/modules/events/event";
 import { menuGuestCount, priceMeals } from "./meal-pricing";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
-import { returnAllOrderItems } from "@/modules/production/production";
+import { returnAllOrderItems, returnAllOrderItemsInTransaction } from "@/modules/production/production";
 import type { Prisma } from "@/generated/prisma/client";
-import type { OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
+import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -115,19 +120,21 @@ export interface OrderInput {
  * for `quotations/quotation.ts`'s own `QuotationItem` add-flow, which needs
  * the identical snapshot behavior.
  */
-export async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string, scope?: { menuId: string | null }) {
+type Db = Prisma.TransactionClient | typeof prisma;
+
+export async function resolveCatalogItem(organizationId: string, itemType: OrderItemType, catalogId: string, scope?: { menuId: string | null }, db: Db = prisma) {
   if (itemType === "MENU") {
-    const menu = await prisma.menu.findFirstOrThrow({ where: { id: catalogId, organizationId } });
+    const menu = await db.menu.findFirstOrThrow({ where: { id: catalogId, organizationId } });
     return { name: menu.name, unitPrice: menu.pricePerPlate, menuId: catalogId, menuItemId: null, addOnId: null };
   }
   if (itemType === "MENU_ITEM") {
-    const item = await prisma.menuItem.findFirstOrThrow({ where: { id: catalogId, organizationId } });
+    const item = await db.menuItem.findFirstOrThrow({ where: { id: catalogId, organizationId } });
     return { name: item.name, unitPrice: item.price, menuId: null, menuItemId: catalogId, addOnId: null };
   }
-  const addOn = await prisma.addOn.findFirstOrThrow({ where: { id: catalogId, organizationId }, include: { menus: { select: { menuId: true } } } });
+  const addOn = await db.addOn.findFirstOrThrow({ where: { id: catalogId, organizationId }, include: { menus: { select: { menuId: true } } } });
   // The meal's Menu has to offer it (pass `scope` where the add-on is picked for a meal; a meal with no Menu only gets all-menus add-ons).
   if (scope && !addOnOfferedOnMenu(addOn, scope.menuId)) {
-    const menu = scope.menuId ? await prisma.menu.findFirst({ where: { id: scope.menuId, organizationId }, select: { name: true } }) : null;
+    const menu = scope.menuId ? await db.menu.findFirst({ where: { id: scope.menuId, organizationId }, select: { name: true } }) : null;
     throw new ValidationError(`${addOn.name} isn't offered with ${menu ? `the ${menu.name} menu` : "this meal's menu"}. Remove it or choose a menu that offers it.`);
   }
   // An add-on that is part of the package is on the order but costs nothing.
@@ -139,7 +146,7 @@ export async function resolveCatalogItem(organizationId: string, itemType: Order
  * narrow, slot-scoped delete-then-recreate, never touching another meal's
  * items.
  */
-async function replaceMealPlanEntryItems(organizationId: string, orderId: string, mealPlanEntryId: string, menuId: string | null, items: OrderItemCatalogInput[]) {
+async function replaceMealPlanEntryItems(organizationId: string, orderId: string, mealPlanEntryId: string, menuId: string | null, items: OrderItemCatalogInput[], db: Db) {
   // Resolved first, so an item the meal's menu doesn't offer fails before anything is deleted.
   const resolved = await Promise.all(
     items.map(async (item) => ({
@@ -148,12 +155,12 @@ async function replaceMealPlanEntryItems(organizationId: string, orderId: string
       itemType: item.itemType,
       quantity: item.quantity,
       isExtra: item.isExtra === true,
-      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId, { menuId })),
+      ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId, { menuId }, db)),
     })),
   );
-  await prisma.orderItem.deleteMany({ where: { mealPlanEntryId } });
+  await db.orderItem.deleteMany({ where: { mealPlanEntryId } });
   if (items.length === 0) return;
-  await prisma.orderItem.createMany({ data: resolved });
+  await db.orderItem.createMany({ data: resolved });
 }
 
 /**
@@ -165,30 +172,30 @@ async function replaceMealPlanEntryItems(organizationId: string, orderId: string
  * with them). Every meal's `menuId`/`items` are stored regardless of
  * `orderKind` (2026-09-20 redesign) — see MealPlanEntryInput's own comment.
  */
-export async function replaceMealPlanEntries(organizationId: string, orderId: string, entries: MealPlanEntryInput[] | undefined) {
+export async function replaceMealPlanEntries(organizationId: string, orderId: string, entries: MealPlanEntryInput[] | undefined, db: Db = prisma) {
   if (entries === undefined) return;
-  const existing = await prisma.mealPlanEntry.findMany({ where: { orderId } });
+  const existing = await db.mealPlanEntry.findMany({ where: { orderId } });
   const existingByKey = new Map(existing.map((e) => [`${e.date.toISOString()}|${e.mealType}`, e]));
   const keepIds = new Set<string>();
 
   for (const entry of entries) {
     const menuId = entry.menuId ?? null;
     if (menuId) {
-      await prisma.menu.findFirstOrThrow({ where: { id: menuId, organizationId } });
+      await db.menu.findFirstOrThrow({ where: { id: menuId, organizationId } });
     }
     const key = `${entry.date.toISOString()}|${entry.mealType}`;
     const match = existingByKey.get(key);
     const entryId = match
-      ? (await prisma.mealPlanEntry.update({ where: { id: match.id }, data: { price: entry.price, menuId } })).id
-      : (await prisma.mealPlanEntry.create({ data: { orderId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
+      ? (await db.mealPlanEntry.update({ where: { id: match.id }, data: { price: entry.price, menuId } })).id
+      : (await db.mealPlanEntry.create({ data: { orderId, date: entry.date, mealType: entry.mealType, price: entry.price, menuId } })).id;
     keepIds.add(entryId);
 
-    await replaceMealPlanEntryItems(organizationId, orderId, entryId, menuId, entry.items ?? []);
+    await replaceMealPlanEntryItems(organizationId, orderId, entryId, menuId, entry.items ?? [], db);
   }
 
   const toDelete = existing.filter((e) => !keepIds.has(e.id));
   if (toDelete.length > 0) {
-    await prisma.mealPlanEntry.deleteMany({ where: { id: { in: toDelete.map((e) => e.id) } } });
+    await db.mealPlanEntry.deleteMany({ where: { id: { in: toDelete.map((e) => e.id) } } });
   }
 }
 
@@ -281,8 +288,8 @@ export function computeIndividualChildrenCharge(
  * + transportationCost + otherCharges (taxes removed from Create Order
  * entirely, 2026-09-20); `balance` = total - advance.
  */
-export async function recalculateOrderTotals(orderId: string) {
-  const order = await prisma.order.findUniqueOrThrow({
+export async function recalculateOrderTotals(orderId: string, db: Db = prisma) {
+  const order = await db.order.findUniqueOrThrow({
     where: { id: orderId },
     include: { mealPlanEntries: { include: { items: true, menu: true } }, childPricingMenu: true },
   });
@@ -305,17 +312,17 @@ export async function recalculateOrderTotals(orderId: string) {
   const subtotal = mealsSubtotal + childrenCharge;
   const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges) + sumCustomCharges(parseCustomCharges(order.customCharges));
   // Once an order has confirmed payments, they decide advance, balance and payment status (Chunk 14).
-  const paid = await prisma.payment.aggregate({ where: { orderId, status: "CONFIRMED" }, _sum: { amount: true } });
+  const paid = await db.payment.aggregate({ where: { orderId, status: "CONFIRMED" }, _sum: { amount: true } });
   const confirmedPaid = Number(paid._sum.amount ?? 0);
   if (confirmedPaid > 0) {
-    return prisma.order.update({
+    return db.order.update({
       where: { id: orderId },
       data: { subtotal, childrenCharge, total, advance: confirmedPaid, balance: total - confirmedPaid, paymentStatus: derivePaymentState(total, confirmedPaid) },
     });
   }
   const balance = total - Number(order.advance);
 
-  return prisma.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, total, balance } });
+  return db.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, total, balance } });
 }
 
 /**
@@ -406,18 +413,41 @@ export async function createOrder(organizationId: string, input: OrderInput, act
   return withTotals;
 }
 
-export async function updateOrder(organizationId: string, id: string, input: OrderInput, actorUserId?: string) {
+/**
+ * Takes the row locks of the order's menu selections for the rest of the transaction and returns their statuses. Everything that
+ * moves an approval (customer approves, team sends, recalls, hands off) takes the same lock first, so whoever comes second reads what
+ * the first left behind. Empty for an order that has no menu selection yet.
+ */
+export async function lockOrderSelections(tx: Prisma.TransactionClient, organizationId: string, orderId: string) {
+  return tx.$queryRaw<{ id: string; status: MenuSelectionStatus }[]>`
+    SELECT ms."id", ms."status" FROM "menu_selection" ms JOIN "event" e ON e."id" = ms."eventId"
+    WHERE e."orderId" = ${orderId} AND ms."organizationId" = ${organizationId} ORDER BY ms."id" FOR UPDATE OF ms`;
+}
+
+/**
+ * The whole order save in the caller's transaction: the order fields, the meals (when given), the guest quantities, the totals and
+ * the audit entry are written together or not at all. While the order's menu is with the customer, approved or with the kitchen a
+ * real price-field change is refused (`PriceFrozenError`); the check happens after the menu's row lock is taken, in the same
+ * transaction as the write, so an approval that lands a moment earlier is seen. An unchanged value is never a change.
+ * Stock put back by a cancel waits in `afterCommit`.
+ */
+export async function updateOrderInTransaction(tx: Prisma.TransactionClient, afterCommit: AfterCommit, organizationId: string, id: string, input: OrderInput, actorUserId?: string) {
   validateOrderLike(input);
   await assertOwnedRefs(organizationId, { customerId: input.customerId, eventTypeId: input.eventTypeId });
-  const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
-  if (isOrderLocked(before.status)) throw new OrderLockedError();
+  const selections = await lockOrderSelections(tx, organizationId, id);
+  const before = await tx.order.findFirstOrThrow({ where: { id, organizationId } });
+  // The authoritative kitchen lock: the order's status AND its menu approvals, read under the menu's row lock in this transaction.
+  if (isKitchenLocked(before.status, selections.map((selection) => selection.status))) throw new OrderLockedError();
+  // The kitchen hand-off and the kitchen's own progress are the only ways into Sent to Kitchen / Completed. A plain save can't write them.
+  if (input.status !== undefined && input.status !== before.status && isOrderLocked(input.status)) throw new OrderLockedError();
+  if (selections.some((selection) => isPriceFrozenStatus(selection.status)) && priceFieldChanges(before, input).length > 0) throw new PriceFrozenError();
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;
   // Meal plan left untouched (the order page shows it read-only; Menu Approvals edits it) keeps the derived child-pricing Menu.
   const childPricingMenuId = input.mealPlanEntries === undefined ? before.childPricingMenuId : deriveStandardChildPricingMenuId(input.mealPlanEntries);
 
-  await prisma.order.update({
+  await tx.order.update({
     where: { id },
     data: {
       customerId: input.customerId,
@@ -466,16 +496,16 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
       ...(input.kitchenNotes !== undefined && (input.kitchenNotes.trim() || null) !== (before.kitchenNotes?.trim() || null) ? { kitchenNotesUpdatedAt: input.kitchenNotes.trim() ? new Date() : null } : {}),
     },
   });
-  if (input.status === "CANCELLED" && before.status !== "CANCELLED") await returnAllOrderItems(organizationId, id, actorUserId);
-  await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries);
+  if (input.status === "CANCELLED" && before.status !== "CANCELLED") afterCommit.push(() => returnAllOrderItems(organizationId, id, actorUserId));
+  await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries, tx);
   if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && input.totalParticipants !== before.totalParticipants) {
     // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity.
-    await prisma.orderItem.updateMany({
+    await tx.orderItem.updateMany({
       where: { orderId: id, mealPlanEntryId: { not: null }, OR: [{ isExtra: true }, { itemType: "ADD_ON", quantity: { gt: 1 } }] },
       data: { quantity: Math.max(input.totalParticipants ?? 0, 1) },
     });
   }
-  const withTotals = await recalculateOrderTotals(id);
+  const withTotals = await recalculateOrderTotals(id, tx);
 
   await audit({
     organizationId,
@@ -485,19 +515,37 @@ export async function updateOrder(organizationId: string, id: string, input: Ord
     recordId: id,
     before: JSON.parse(JSON.stringify(before)),
     after: JSON.parse(JSON.stringify(withTotals)),
-  });
+  }, tx);
 
   return withTotals;
 }
 
+export async function updateOrder(organizationId: string, id: string, input: OrderInput, actorUserId?: string) {
+  const afterCommit: AfterCommit = [];
+  const updated = await prisma.$transaction((tx) => updateOrderInTransaction(tx, afterCommit, organizationId, id, input, actorUserId), { timeout: 20_000 });
+  await runAfterCommit(afterCommit);
+  return updated;
+}
+
 /** Hard delete — items/mealPlanEntries cascade; any linked Event just gets orderId unset (SetNull), not deleted. */
 export async function deleteOrder(organizationId: string, id: string, actorUserId: string) {
+  // One transaction, locks in the strategy's order (menu approvals, then the order): the eligibility check, the stock coming back and
+  // the delete stand or fall together. A hand-off that lands first makes the check refuse and nothing is touched; a delete that fails
+  // part way (a later statement, a constraint) rolls the returned stock back with it. A Cancelled order that never reached the
+  // kitchen can still be removed; anything with the kitchen can't.
   const before = await prisma.order.findFirstOrThrow({ where: { id, organizationId } });
-  if (isOrderLocked(before.status)) throw new OrderLockedError();
-  // The DB removes the order's expenses and their attachment rows; their stored files need removing by hand.
   const expenseFiles = await prisma.expenseAttachment.findMany({ where: { expense: { orderId: id } }, select: { key: true } });
-  await returnAllOrderItems(organizationId, id, actorUserId);
-  await prisma.order.delete({ where: { id } });
+  await prisma.$transaction(
+    async (tx) => {
+      const state = await lockAndReadOrder(tx, organizationId, id, { alsoLockOrder: true });
+      if (!state) throw new ValidationError("Order not found.");
+      if (isOrderLocked(state.orderStatus) || state.selections.some((s) => s.status === "FINAL_LOCKED" && s.stage !== "CANCELLED")) throw new OrderLockedError();
+      await returnAllOrderItemsInTransaction(tx, organizationId, id, actorUserId);
+      await tx.order.delete({ where: { id } });
+    },
+    { timeout: 20_000 },
+  );
+  // The DB removed the order's expenses and their attachment rows; their stored files need removing by hand (after the commit).
   await deleteStoredFiles(expenseFiles.map((f) => f.key));
 
   await audit({
@@ -519,6 +567,10 @@ export interface OrderListFilter {
   orderKind?: OrderKind;
   eventTypeId?: string;
   search?: string;
+  /** Menu approval status, or "NOT_STARTED" for an order with no approval (Phase 3 of the Menu Approvals + Orders merge). */
+  approval?: ApprovalFilter;
+  /** Only open orders with approval work outstanding (Decision 9). Used with `when: "past"` for the Orders page's Past view. */
+  outstandingApproval?: boolean;
   /**
    * "upcoming" = the event is not over yet, whatever the status (cancelled ones included); "past" =
    * the event is over. "Over" means the last day of the event (`eventEndDate`, so a multi-day order
@@ -543,7 +595,8 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
   return prisma.order.findMany({
     where: {
       organizationId,
-      AND: [whenWhere(filter?.when)],
+      // In the AND list so these `events` fragments never collide with the location filter's own `events` key below.
+      AND: [whenWhere(filter?.when), approvalWhere(filter?.approval), ...(filter?.outstandingApproval ? [outstandingApprovalWhere()] : [])],
       ...(filter?.locationId ? { events: { some: { assignedKitchenId: filter.locationId } } } : {}),
       status: filter?.status,
       orderKind: filter?.orderKind,

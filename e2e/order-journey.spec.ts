@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId } from "./db";
 import { pickCalendarDate, selectOption, signOutFromMenu, signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
-import { submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
  * The whole order journey in one run, across the three people who touch it
@@ -135,11 +135,10 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await page.getByLabel("Grid view").click();
   await expect(orderCard()).toContainText("Pending Review");
 
-  await page.goto("/menu-approvals");
-  await page.getByRole("button", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Send Menu for Approval" }).click();
-  await expect(page.getByText(/Version 1 is with the customer/)).toBeVisible();
-  const approvalPath = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+  const sendTab = await openOrderApprovalTab(page, customerName);
+  await sendTab.getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(sendTab.getByText(/Version 1 is with the customer/)).toBeVisible();
+  const approvalPath = new URL((await sendTab.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
   await page.goto("/orders");
   await page.getByLabel("Grid view").click();
@@ -157,11 +156,10 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await page.goto("/orders");
   await page.getByLabel("Grid view").click();
   await expect(orderCard()).toContainText("Approved");
-  await page.goto("/menu-approvals");
-  await expect(page.getByText("Customer Approved")).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
-  await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
+  const handoffTab = await openOrderApprovalTab(page, customerName);
+  await expect(handoffTab.getByText("Customer Approved").first()).toBeVisible();
+  await handoffTab.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
+  await expect(handoffTab.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");
   await page.getByLabel("Grid view").click();
   await expect(orderCard()).toContainText("Sent to Kitchen");

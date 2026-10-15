@@ -19,28 +19,26 @@ interface OrderApprovalPanelProps {
     venueDetailsSubmittedAt: Date | null;
     versions: { versionNumber: number; status: MenuSelectionStatus; note: string | null; sentAt: Date | null; supersededAt: Date | null }[];
   } | null;
-  /** Same permission as the Menu Approvals page — without it the link would lead nowhere. */
+  /** Same permission as the approval actions (`menus: approve`). */
   canManage: boolean;
+  /** The order's own Menu Approval tab, where the approval lives (it also starts one for an order that has none). */
+  tabHref: string;
 }
-
-/** Sent to the kitchen: nothing left for the team to do, so no shortcut to Menu Approvals. */
-const DONE: MenuSelectionStatus[] = ["FINAL_LOCKED"];
 
 const fmt = (d: Date | null) =>
   d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null;
 
 /**
  * The Order page's read-only view of the menu approval: the latest two versions
- * and their status. Sending, recalling and reviewing all happen on the Menu
- * Approvals page (AJ, 2026-09-30), so the only control here is a link there,
- * shown while something is still pending.
+ * and their status. Sending, recalling and reviewing all happen on the order's
+ * Menu Approval tab, so the only control here is a link to it.
  */
-export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelProps) {
+export function OrderApprovalPanel({ approval, canManage, tabHref }: OrderApprovalPanelProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const status = approval?.status ?? null;
   // A version's own status is frozen at the moment it was sent. The current version shows the menu's live status
-  // (customer approved, sent to the kitchen...), the same as the Menu Approvals page and the banner above.
+  // (customer approved, sent to the kitchen...), the same as the Menu Approval tab and the banner above.
   const statusOf = (v: { versionNumber: number; status: MenuSelectionStatus }) => (status && v.versionNumber === approval?.currentVersion ? status : v.status);
   // Latest two versions; before the first send, one placeholder step so the card looks the same from the start.
   const sentVersions = approval?.versions ?? [];
@@ -65,8 +63,8 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
               : { variant: "neutral" as const, label: "Not sent" },
           },
         ];
-  const showLink = canManage && (status === null || !DONE.includes(status));
-  const linkHref = approval ? `/menu-approvals/${approval.menuSelectionId}` : "/menu-approvals";
+  // An order with an approval always links to its tab; one without links there only for someone who can start it.
+  const showLink = approval ? true : canManage;
 
   return (
     <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]" data-testid="order-approval-panel">
@@ -114,8 +112,8 @@ export function OrderApprovalPanel({ approval, canManage }: OrderApprovalPanelPr
       )}
 
       {showLink && (
-        <Button size="md" variant="outline" className="w-fit" render={<Link href={linkHref} />} nativeButton={false}>
-          Open in Menu Approvals
+        <Button size="md" variant="outline" className="w-fit" render={<Link href={tabHref} />} nativeButton={false}>
+          {tabHref ? "Open the Menu Approval tab" : "Open in Menu Approvals"}
         </Button>
       )}
 

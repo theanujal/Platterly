@@ -7,9 +7,13 @@ import { ensureOrderMenuSelection, revokeOutstandingApprovalLinks } from "./appr
 import { addMenuApprovalNote } from "./menu-approval";
 import { recordStatusChange } from "./status-history";
 import { ORDER_COMPLETED_MESSAGE } from "@/modules/orders/order-guard";
+import { isMoveBack, kitchenWorkStarted, KITCHEN_STARTED_MESSAGE } from "@/modules/orders/kitchen-lock";
 import { returnAllOrderItems } from "@/modules/production/production";
 import { createInvoiceOnKitchenHandoff } from "@/modules/invoices/invoice";
+import type { ApprovalSnapshot } from "./approval-snapshot";
 import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "@/generated/prisma/enums";
+
+const formatMoney = (amount: number) => `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export class ManualStatusChangeError extends Error {}
 
@@ -71,6 +75,10 @@ export async function changeStatusManually(
     if (!selectionId) {
       if (input.target.kind !== "ORDER") throw new ManualStatusChangeError("This order has no menu approval yet.");
       if (order.status === input.target.status) return { unchanged: true as const };
+      // Sent to Kitchen with no menu approval to read: only recorded stock can show the kitchen has started. Forward and Cancelled are not a way back.
+      if (order.status === "SENT_TO_KITCHEN" && input.target.status !== "COMPLETED" && input.target.status !== "CANCELLED" && (await kitchenWorkStarted(tx, organizationId, orderId, null))) {
+        throw new ManualStatusChangeError(KITCHEN_STARTED_MESSAGE);
+      }
       await tx.order.update({ where: { id: orderId }, data: { status: input.target.status } });
       if (input.target.status === "CANCELLED") afterCommit.push(() => returnAllOrderItems(organizationId, orderId, input.actorUserId));
       await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId }, { db: tx, afterCommit });
@@ -88,6 +96,30 @@ export async function changeStatusManually(
 
     if (selection.status === wanted.menu && selection.kitchenProductionStatus === nextStage && (input.target.kind === "MENU" || order.status === input.target.status)) {
       return { unchanged: true as const };
+    }
+
+    // The kitchen boundary (AJ, 2026-10-16). Once the order is with the kitchen, a manual change may close it (Cancelled, Delivered) or
+    // keep it where it is, but may not take it back (out of Final/Locked, out of Cancelled, or to an earlier stage) once the kitchen has
+    // started. Before that (Pending, nothing recorded) the team's way back for a mistaken send stays. Read under this menu's row lock,
+    // the same lock the kitchen's stage change takes.
+    // An order whose own status says Sent to Kitchen counts as with the kitchen even if its approval record disagrees (no stale status).
+    const staleKitchenOrder = selection.status !== "FINAL_LOCKED" && order.status === "SENT_TO_KITCHEN" && wanted.menu !== "FINAL_LOCKED";
+    if (staleKitchenOrder || isMoveBack({ menu: selection.status, stage: selection.kitchenProductionStatus }, { menu: wanted.menu, stage: nextStage })) {
+      if (await kitchenWorkStarted(tx, organizationId, orderId, { id: selectionId, stage: selection.kitchenProductionStatus })) throw new ManualStatusChangeError(KITCHEN_STARTED_MESSAGE);
+    }
+
+    // A status change can't stand in for the customer's approval of a new price (Decision 14). Moving forward to Customer Approved or
+    // to the kitchen is refused while the order's price differs from the version the customer last saw: send the updated menu and let the
+    // customer approve it. A menu no version was ever sent for has nothing the customer saw, so an agreement made by phone still works.
+    if (selection.status !== "FINAL_LOCKED" && (wanted.menu === "CUSTOMER_APPROVED" || wanted.menu === "FINAL_LOCKED")) {
+      const lastSent = await tx.menuVersion.findFirst({ where: { menuSelectionId: selectionId }, orderBy: { versionNumber: "desc" }, select: { snapshot: true } });
+      const seen = (lastSent?.snapshot as ApprovalSnapshot | null)?.total;
+      const priced = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } });
+      if (typeof seen === "number" && Math.abs(Number(priced.total) - seen) > 0.005) {
+        throw new ManualStatusChangeError(
+          `The price has changed since the customer last saw this menu (it was ${formatMoney(seen)}, it is now ${formatMoney(Number(priced.total))}). Send the updated menu and let the customer approve it; a status change can't replace that approval.`,
+        );
+      }
     }
 
     const claimed = await tx.menuSelection.updateMany({

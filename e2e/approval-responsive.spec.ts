@@ -6,7 +6,7 @@ import { cleanupOnboardingTestUser } from "./db";
  * Builds a small catalog, takes an order from the public form, sends the menu, then walks the customer through the link.
  */
 import { pickCalendarDate, signUpCaterer } from "./auth-helpers";
-import { submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 function toLocalIsoDate(date: Date): string {
   return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0");
@@ -100,11 +100,10 @@ test("the approval link fits desktop, tablet and phone at every stage: review, v
   await page.getByLabel("Grid view").click();
   await expect(orderCard()).toContainText("Pending Review");
 
-  await page.goto("/menu-approvals");
-  await page.getByRole("button", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Send Menu for Approval" }).click();
-  await expect(page.getByText(/Version 1 is with the customer/)).toBeVisible();
-  const approvalPath = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+  const review = await openOrderApprovalTab(page, customerName);
+  await review.getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(review.getByText(/Version 1 is with the customer/)).toBeVisible();
+  const approvalPath = new URL((await review.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
   await page.goto("/orders");
   await page.getByLabel("Grid view").click();

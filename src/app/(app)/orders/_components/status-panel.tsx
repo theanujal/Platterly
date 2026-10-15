@@ -63,7 +63,7 @@ function HistoryItem({ entry }: { entry: StatusHistoryEntry }) {
 }
 
 /**
- * The status card shared by the Order sidebar and the Menu Approvals page (AJ, 2026-09-30): the current status and what it
+ * The status card shared by the Order sidebar, the Menu Approval tab and the restricted order view (AJ, 2026-09-30): the current status and what it
  * means, a "Change status" select that asks for a reason, and the recorded history. Anyone may see the history; `canChange` gates the select.
  */
 export function StatusPanel({

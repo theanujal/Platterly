@@ -4,6 +4,8 @@ import { CalendarDays, ChevronRight, MapPin, User, Users, type LucideProps } fro
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import type { listOrders } from "@/modules/orders/order";
+import { approvalColumnStatus } from "@/modules/orders/approval-list";
+import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import { formatAmountExact, formatEventWhen, getGuestCount, getOrderLocation, getPaymentBreakdown } from "@/modules/orders/order-card";
 import { ORDER_KIND_ICON, ORDER_KIND_LABEL, ORDER_KIND_VARIANT, STATUS_ICON, STATUS_LABEL, STATUS_VARIANT, TONE_TEXT } from "./order-display";
 
@@ -16,7 +18,7 @@ const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
  * The Orders list view's cells (AJ, 2026-09-26/27): order #, order type,
  * customer + venue, event (Today / Tomorrow / date, with the event type as
  * text below), guests, amount (with the payment status as colored text below),
- * and status (the badge alone). Same data and rules as the grid card (order-card.ts),
+ * status (the badge alone) and the menu approval status ("Not Started" when there is none). Same data and rules as the grid card (order-card.ts),
  * so the two views can't disagree. The row click itself is CatalogBrowser's;
  * the customer name is also a real link so the row is keyboard-reachable.
  */
@@ -27,6 +29,7 @@ export function OrderListCells({ order, now, timeZone }: { order: OrderListItem;
   const payment = getPaymentBreakdown({ total, advance: Number(order.advance), paymentStatus: order.paymentStatus, status: order.status, eventEndDate: order.eventEndDate }, now, timeZone);
   const guests = getGuestCount(order);
   const location = getOrderLocation(order);
+  const approval = approvalColumnStatus(order.events.flatMap((event) => (event.menuSelection ? [event.menuSelection] : [])), order.status);
 
   return (
     <>
@@ -90,6 +93,16 @@ export function OrderListCells({ order, now, timeZone }: { order: OrderListItem;
           {createElement(StatusIcon, INLINE_START_ICON)}
           {STATUS_LABEL[order.status]}
         </Badge>
+      </TableCell>
+
+      <TableCell className="px-3 py-3" data-testid="order-approval-cell">
+        {approval === null ? (
+          <span className="text-sm text-muted-foreground">—</span>
+        ) : approval === "NOT_STARTED" ? (
+          <Badge variant="neutral">Not Started</Badge>
+        ) : (
+          <Badge variant={MENU_SELECTION_STATUS_TONE[approval]}>{MENU_SELECTION_STATUS_LABEL[approval]}</Badge>
+        )}
       </TableCell>
 
       <TableCell className="px-3 py-3 text-right">

@@ -29,3 +29,12 @@ export const NAV_PERMISSIONS: Record<string, Needs> = {
   "/audit-log": { audit: ["view"] },
   "/settings": { settings: ["view"] },
 };
+
+/**
+ * Menu Approvals + Orders merge, Phase 4: Orders is the way into menu approval (its Menu Approval column, filter and Past view,
+ * and the approval tab on each order). The old "Menu Approvals" queue stays in the sidebar only for a role that can approve menus
+ * but cannot open the Orders list, because it is that role's only way in. Each page still enforces its own permission.
+ */
+export function withoutSupersededEntries(allowedHrefs: string[]): string[] {
+  return allowedHrefs.includes("/orders") ? allowedHrefs.filter((href) => href !== "/menu-approvals") : allowedHrefs;
+}

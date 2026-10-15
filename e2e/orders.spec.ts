@@ -299,11 +299,13 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // The detail page splits the order into tabs (AJ, 2026-09-30).
   await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
-  await expect(page.getByTestId("meal-slot-2026-12-01-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
-  // A draft menu can be edited right here (AJ, 2026-10-10); it saves through the same path as Menu Approvals.
+  // The Menu Approval tab holds its own copy of the planner, so the meals are looked up in the Guests & Menu Planning panel.
+  const menuPanel = page.locator("#order-panel-menu");
+  await expect(menuPanel.getByTestId("meal-slot-2026-12-01-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  // Once the order has a menu approval the meals are edited in the Menu Approval tab only (AJ, 2026-10-16): the planner here is read-only.
   await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "editable");
-  await expect(page.getByRole("button", { name: "Edit Items" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open Menu Approvals" })).toBeVisible();
+  await expect(menuPanel.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
+  await expect(menuPanel.getByRole("button", { name: "Open the Menu Approval tab" })).toBeVisible();
 
   // --- The Event is created automatically when the order is saved (AJ, 2026-09-27) ---
   await expect(page.getByText("Create an event for this order?")).toHaveCount(0);
@@ -484,9 +486,9 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(page.getByRole("heading", { name: "AJ-0001" })).toBeVisible();
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   // The sidebar defaults to focusing Day 1 on a fresh page load.
-  await expect(page.getByTestId("meal-slot-2026-12-05-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(page.locator("#order-panel-menu").getByTestId("meal-slot-2026-12-05-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   await focusDate(page, "2026-12-06");
-  await expect(page.getByTestId("meal-slot-2026-12-06-DINNER").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(page.locator("#order-panel-menu").getByTestId("meal-slot-2026-12-06-DINNER").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
 
   // --- Order Type filter ---
   await page.goto("/orders");

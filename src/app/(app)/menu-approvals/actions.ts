@@ -9,14 +9,14 @@ import {
   setCustomMenuPricePerPlate,
   approveAndSendToKitchen,
   updateMenuApprovalMealPlan,
-  addMenuApprovalNote,
+  addNoteToOpenOrder,
   InvalidMenuSelectionTransitionError,
   type MenuSelectionItemInput,
 } from "@/modules/menu-approvals/menu-approval";
 import { getMenuPickerData, type MenuPickerData } from "@/modules/menus/menu";
 import { prisma } from "@/lib/db";
 import type { MealType, MenuSelectionStatus } from "@/generated/prisma/enums";
-import { sendMenuForApproval, recallMenuFromCustomer } from "@/modules/menu-approvals/approval-link";
+import { sendMenuForApproval, recallMenuFromCustomer, ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { changeStatusManually, ManualStatusChangeError, type ManualStatusTarget } from "@/modules/menu-approvals/manual-status";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -111,9 +111,15 @@ export async function recallMenuAction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
+/**
+ * Quotes a Custom Menu's price per plate. It sets the order's menu amount, so it needs the permission that governs order prices
+ * (`orders: edit`) as well as `menus: approve` (Decision 8): an approval-only user gains no pricing right. Only while the menu is in
+ * Needs Review or Changes Requested (the module refuses the other stages).
+ */
 export async function setCustomMenuPriceAction(id: string, pricePerPlate: number): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
+  await requirePermission({ orders: ["edit"] }, organizationId);
   await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await setCustomMenuPricePerPlate(organizationId, id, pricePerPlate, session.user.id);
@@ -134,7 +140,7 @@ export interface MealPlanEntryPayload {
   items: { itemType: "MENU_ITEM" | "ADD_ON"; catalogId: string; quantity: number; isExtra?: boolean }[];
 }
 
-/** Saves the Menu Planning grid from the Menu Approvals page straight onto the order (live sync), re-pricing it. */
+/** Saves the Menu Planning grid from the order's Menu Approval tab straight onto the order (live sync), re-pricing it. */
 export async function updateMenuApprovalMealPlanAction(id: string, entries: MealPlanEntryPayload[]): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
@@ -160,7 +166,7 @@ export async function updateMenuApprovalMealPlanAction(id: string, entries: Meal
   return { ok: true };
 }
 
-/** Feeds the food-item drawer on the Menu Approvals page — gated by menus:approve, not orders:view, so the approving team needs no order access. */
+/** Feeds the food-item drawer in the Menu Approval tab — gated by menus:approve, not orders:view, so the approving team needs no order access. */
 export async function getMenuForApprovalPickerAction(menuId: string): Promise<MenuPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
@@ -176,10 +182,37 @@ export async function addMenuApprovalNoteAction(id: string, body: string): Promi
     if (!body.trim()) return { ok: false, error: "Write a note first." };
     if (body.length > 2000) return { ok: false, error: "Keep the note under 2000 characters." };
     const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id, organizationId }, select: { currentVersion: true } });
-    await addMenuApprovalNote(organizationId, id, { authorType: "TEAM", authorName: session.user.name ?? null, body, versionNumber: selection.currentVersion });
+    // A completed order is closed (Decision 15): no new notes, from any screen. Checked inside the write's own transaction, under the
+    // menu's lock, so a delivery landing at the same moment is seen. The existing notes stay readable.
+    await addNoteToOpenOrder(organizationId, id, { authorType: "TEAM", authorName: session.user.name ?? null, body, versionNumber: selection.currentVersion });
   } catch (error) {
     return toErrorResult(error);
   }
   revalidate(id);
+  return { ok: true };
+}
+
+/**
+ * "Start menu approval" for an order that has none yet (the order page's Menu Approval tab). It only creates the approval in Needs
+ * Review, through the same race-safe `ensureOrderMenuSelection` the first send uses; nothing is sent to the customer. Asking twice
+ * returns the same approval. Needs an Event Type, and an order that is Completed or Cancelled is closed.
+ */
+export async function startMenuApprovalAction(orderId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ menus: ["approve"] }, organizationId);
+  await assertOrderAtMyLocation(organizationId, session.user.id, orderId);
+  try {
+    const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { status: true, eventTypeId: true } });
+    if (!order) return { ok: false, error: "Order not found." };
+    if (order.status === "COMPLETED" || order.status === "CANCELLED") return { ok: false, error: "This order is closed, so a menu approval can't be started." };
+    if (!order.eventTypeId) return { ok: false, error: "Set an Event Type on the order first. Someone who can edit the order has to do that." };
+    const selection = await ensureOrderMenuSelection(organizationId, orderId, session.user.id);
+    if (!selection) return { ok: false, error: "Set an Event Type on the order first. Someone who can edit the order has to do that." };
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/menu-approvals");
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${orderId}`);
   return { ok: true };
 }

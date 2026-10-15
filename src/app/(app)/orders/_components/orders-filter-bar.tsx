@@ -1,12 +1,23 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
+import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_ORDER, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
   ...ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] })),
+];
+
+const APPROVAL_OPTIONS = [
+  { value: "ALL", label: "All Approvals" },
+  { value: "NOT_STARTED", label: "Not Started" },
+  ...MENU_SELECTION_STATUS_ORDER.map((value) => ({ value, label: MENU_SELECTION_STATUS_LABEL[value] })),
+];
+
+const VIEW_OPTIONS = [
+  { value: "ALL", label: "Upcoming Orders" },
+  { value: "past", label: "Past: Approval Pending" },
 ];
 
 const ORDER_KIND_OPTIONS = [
@@ -31,6 +42,20 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
 
   return (
     <>
+      {/* Past-event orders are hidden by default (Decision 2); this view lists only those with approval work still outstanding. */}
+      <Select items={Object.fromEntries(VIEW_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("view") === "past" ? "past" : "ALL"} onValueChange={(v) => updateParam("view", v ?? "ALL")}>
+        <SelectTrigger aria-label="Orders view" className="w-52">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {VIEW_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
       <Select
         items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
         value={searchParams.get("status") ?? "ALL"}
@@ -41,6 +66,19 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         </SelectTrigger>
         <SelectContent>
           {STATUS_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select items={Object.fromEntries(APPROVAL_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("approval") ?? "ALL"} onValueChange={(v) => updateParam("approval", v ?? "ALL")}>
+        <SelectTrigger aria-label="Menu approval filter" className="w-56">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {APPROVAL_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

@@ -274,6 +274,20 @@ interface OrderFormProps {
   completed?: boolean;
   /** Shown above the planner: the menu approval status and what the team can do with it (edit, recall, view only). */
   menuPlanBanner?: React.ReactNode;
+  /**
+   * Edit page, once the order has a menu approval (Menu Approvals + Orders merge, Decision 11): the meals are edited in the Menu Approval
+   * tab only. The planner here is read-only and always shows the saved meal plan (the same stored data the tab edits), never a draft of its own.
+   */
+  menuPlanInApprovalTab?: boolean;
+  /** Order detail only: the Menu Approval tab's content. */
+  menuApprovalTab?: React.ReactNode;
+  /** Order detail only: the tab to open first (from `?tab=`). */
+  initialTab?: string;
+  /**
+   * The menu is with the customer, approved or with the kitchen (Decision 14): the guest counts and the pricing editor are read-only, like
+   * the server enforces. Recall the menu to change them.
+   */
+  priceFrozen?: boolean;
   cancelHref?: string;
   /**
    * The frozen total of any whole-order items carried over from an accepted
@@ -310,6 +324,10 @@ export function OrderForm({
   locked = false,
   completed = false,
   menuPlanBanner = null,
+  menuPlanInApprovalTab = false,
+  menuApprovalTab,
+  initialTab,
+  priceFrozen = false,
   cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
   onSubmit,
@@ -317,7 +335,14 @@ export function OrderForm({
   submitLabel,
   onSubmitAndNotify,
 }: OrderFormProps) {
-  const [activeTab, setActiveTab] = useState<string>("details");
+  const [activeTab, setActiveTab] = useState<string>(initialTab ?? "details");
+  // A link to ?tab=... on this page (the banner, the sidebar card, a redirect) opens that tab. Adjusted while rendering, the way React
+  // recommends for state that follows a prop, not in an effect.
+  const [seenInitialTab, setSeenInitialTab] = useState(initialTab);
+  if (initialTab !== seenInitialTab) {
+    setSeenInitialTab(initialTab);
+    if (initialTab) setActiveTab(initialTab);
+  }
   const [values, setValues] = useState<OrderFormValues>({ ...EMPTY_ORDER_VALUES, ...initialValues });
   // Edit mode's already-selected Customer, found once from the full list
   // passed down — CustomerCombobox only needs this single row to seed its
@@ -335,6 +360,18 @@ export function OrderForm({
   const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(values));
   const dirty = JSON.stringify(values) !== savedSnapshot || draftPayments.length > 0;
   const guard = useUnsavedChangesGuard(dirty, "order");
+  // The planner is read-only when the Menu Approval tab owns the meals (or the menu is out): show the saved plan from the server, so a save
+  // made in the tab shows here at once. Both the form's values and its saved snapshot take it, so it never reads as an unsaved change.
+  const savedMealsKey = JSON.stringify(initialValues?.mealPlanEntries ?? []);
+  const [seenMealsKey, setSeenMealsKey] = useState(savedMealsKey);
+  if (seenMealsKey !== savedMealsKey) {
+    setSeenMealsKey(savedMealsKey);
+    if (menuPlanReadOnly && initialValues) {
+      const entries = initialValues.mealPlanEntries ?? [];
+      setValues((prev) => ({ ...prev, mealPlanEntries: entries }));
+      setSavedSnapshot((snapshot) => JSON.stringify({ ...JSON.parse(snapshot), mealPlanEntries: entries }));
+    }
+  }
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
   const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
@@ -861,7 +898,7 @@ export function OrderForm({
   <FormSection
     {...sec(5, UtensilsCrossed)}
     title="Menu Planning"
-    description={menuPlanReadOnly ? "The menu is with the customer or the kitchen. Recall it to change it; changes are approved again before they reach the kitchen." : "Select meals and assign menu items for this event."}
+    description={menuPlanInApprovalTab ? "The menu is planned in the Menu Approval tab, so it is shown here as read-only. Edit meals and dishes there." : menuPlanReadOnly ? "The menu is with the customer or the kitchen. Recall it to change it; changes are approved again before they reach the kitchen." : "Select meals and assign menu items for this event."}
     action={menuPlanReadOnly ? null : individualToggle}
   >
     {menuPlanBanner}
@@ -1165,13 +1202,33 @@ export function OrderForm({
     {
       id: "menu",
       label: "Guests & Menu Planning",
-      panel: freeze(
+      panel: (
         <>
-          {guestSection}
-          {menuSection}
-        </>,
+          {freeze(guestSection, locked || priceFrozen)}
+          {freeze(menuSection)}
+        </>
       ),
     },
+    ...(menuApprovalTab
+      ? [
+          {
+            id: "approval",
+            label: "Menu Approval",
+            // Its own fields (the price quote, the note box) act on the approval, not the order: Enter there must not submit the order form.
+            panel: (
+              <div
+                className="flex min-w-0 flex-col gap-6"
+                data-testid="order-approval-tab"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && e.target instanceof HTMLInputElement && e.target.type !== "checkbox") e.preventDefault();
+                }}
+              >
+                {menuApprovalTab}
+              </div>
+            ),
+          },
+        ]
+      : []),
     { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
     {
       id: "pricing",
@@ -1181,7 +1238,7 @@ export function OrderForm({
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-4">
             {pricingExtra}
-            {freeze(pricingEditorCard)}
+            {freeze(pricingEditorCard, locked || priceFrozen)}
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             {/* Editing an order: Payment summary, history and Record Payment own the money, and the payment status follows the payments. */}
@@ -1279,7 +1336,7 @@ export function OrderForm({
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           {/* ---------------- Main column ---------------- */}
           <div className="flex min-w-0 flex-col gap-4">
-            <FormTabs tabs={tabs} idPrefix="order" onActiveChange={setActiveTab} />
+            <FormTabs tabs={tabs} idPrefix="order" activeId={activeTab} onActiveChange={setActiveTab} />
           </div>
 
           {/* ---------------- Summary column ---------------- */}

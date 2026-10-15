@@ -9,7 +9,7 @@ import { TRIAL_DURATION_DAYS } from "@/modules/subscriptions/trial-plan";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
-import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
+import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shell/nav-permissions";
 import { UserMenu } from "@/components/app-shell/user-menu";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
@@ -53,7 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Links the role can't open are left out of the sidebar. Each page still enforces its own permission.
   const navHrefs = Object.keys(NAV_PERMISSIONS);
   const navAllowed = await Promise.all(navHrefs.map((href) => hasPermission(NAV_PERMISSIONS[href], organizationId)));
-  const allowedHrefs = navHrefs.filter((_, index) => navAllowed[index]);
+  const allowedHrefs = withoutSupersededEntries(navHrefs.filter((_, index) => navAllowed[index]));
 
   const cookieStore = await cookies();
   const sidebarState = cookieStore.get("sidebar_state")?.value;

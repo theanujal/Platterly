@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowRight, CalendarDays, ChefHat, Circle, Clock, TriangleAlert, Check, Lock, User } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listMenuSelectionsForKitchen } from "@/modules/menu-approvals/menu-approval";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,10 @@ export default async function MenuApprovalsPage({ searchParams }: MenuApprovalsP
   await requirePermission({ menus: ["approve"] }, organizationId);
   const { status } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as MenuSelectionStatus) : undefined;
+
+  // Phase 4 of the Menu Approvals + Orders merge: the Orders list is the way in now. Anyone who can open it goes there (a status in the
+  // address becomes the approval filter). This queue stays only for a role that can approve menus but cannot open Orders.
+  if (await hasPermission({ orders: ["view"] }, organizationId)) redirect(validStatus ? `/orders?approval=${validStatus}` : "/orders");
 
   const menuSelections = await listMenuSelectionsForKitchen(organizationId, validStatus ? [validStatus] : undefined, locationId);
 

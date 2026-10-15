@@ -7,7 +7,7 @@ import { changeOrderStatusAction } from "../../actions";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
 /** The order's status in the sidebar, with the manual change (reason required) and its history (AJ, 2026-09-30). */
-export function OrderStatusCard({ orderId, status, hint, history }: { orderId: string; status: OrderStatus; hint: string; history: StatusHistoryEntry[] }) {
+export function OrderStatusCard({ orderId, status, hint, history, canChange = true }: { orderId: string; status: OrderStatus; hint: string; history: StatusHistoryEntry[]; /** Changing it by hand needs `orders: edit`; the restricted approval view shows the history only. */ canChange?: boolean }) {
   return (
     <StatusPanel
       idPrefix="order-status"
@@ -18,7 +18,7 @@ export function OrderStatusCard({ orderId, status, hint, history }: { orderId: s
       hint={hint}
       options={ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }))}
       currentValue={status}
-      canChange={status !== "COMPLETED"}
+      canChange={canChange && status !== "COMPLETED"}
       onChange={(value, reason) => changeOrderStatusAction(orderId, value as OrderStatus, reason)}
       history={history}
     />

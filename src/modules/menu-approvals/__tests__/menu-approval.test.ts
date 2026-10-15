@@ -3,7 +3,6 @@ import { setKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { prisma } from "@/lib/db";
 import {
   submitEventDetails,
-  createMenuSelection,
   sendToCustomer,
   recallMenu,
   customerRequestsChanges,
@@ -234,17 +233,9 @@ describe("MenuSelection state machine (team -> customer -> kitchen, AJ 2026-09-3
     const org = await makeOrg();
     const actor = await makeActor();
     const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
-    const event1 = await prisma.event.create({
-      data: {
-        organizationId: org.id,
-        customerId: (await prisma.customer.create({ data: { organizationId: org.id, name: "X", phone: "1" } })).id,
-        eventTypeId: eventType.id,
-        name: "Test Event",
-        startDate: new Date(),
-        endDate: new Date(),
-      },
-    });
-    const draft = await createMenuSelection(org.id, event1.id);
+    // A real order and event (a menu with no order can't reach the kitchen: see the hand-off guard in transitionInTransaction).
+    const { event: event1 } = await submitEventDetails(org.id, intakeInput(eventType.id));
+    const draft = await prisma.menuSelection.findFirstOrThrow({ where: { eventId: event1.id } });
 
     // DRAFT cannot skip straight to any customer or kitchen state.
     await expect(customerApproves(org.id, draft.id)).rejects.toThrow(InvalidMenuSelectionTransitionError);

@@ -1,11 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, backdateStorefrontDrafts } from "./db";
 import { pickCalendarDate, selectOption, signUpCaterer } from "./auth-helpers";
-import { submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
  * Chunk 11 Group 11.3 + Chunk 12 — the public multi-step order flow and the
- * kitchen-side review (`/menu-approvals`, `/menu-approvals/[id]`). Builds a
+ * kitchen-side review on the order's Menu Approval tab (`/orders/[id]?tab=approval`; the old `/menu-approvals` pages redirect there). Builds a
  * real Menu Type + Category (capped at 1 pick) + two Food Items + Add-on +
  * Event Type, then walks an anonymous customer (cookie-less browser context)
  * through Event Details -> Build Your Menu (menu, dishes incl. the View
@@ -316,54 +316,65 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("");
   await expect(page.getByLabel("Additional Notes")).toHaveValue("Please call before delivery");
 
-  await page.goto("/menu-approvals");
-  await expect(page.getByText(customerName, { exact: true })).toBeVisible();
-  await expect(page.getByText("Needs Review")).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
-  await expect(page).toHaveURL(/\/menu-approvals\/.+/);
+  // The way in is the order's Menu Approval tab now (the old queue redirects to Orders; Phase 4 of the Menu Approvals + Orders merge).
+  const review = await openOrderApprovalTab(page, customerName);
+  await expect(review.getByText("Needs Review").first()).toBeVisible();
+  await expect(page).toHaveURL(/\/orders\/[^/?]+\?tab=approval/);
 
   // --- The team checks the real selections (add/remove, no quantity), then sends the menu for approval ---
-  await expect(page.getByLabel(/Quantity/)).toHaveCount(0);
+  await expect(review.getByLabel(/Quantity/)).toHaveCount(0);
   // The meal card shows counts, not names (AJ, 2026-10-10); it is editable while Needs Review.
-  const counts = page.getByTestId("meal-item-counts").first();
+  const counts = review.getByTestId("meal-item-counts").first();
   await expect(counts.getByText("1 Dish", { exact: true })).toBeVisible();
   await expect(counts.getByText("1 Extra", { exact: true })).toBeVisible();
   await expect(counts.getByText("1 Add-on", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Edit Items" }).first()).toBeVisible();
+  await expect(review.getByRole("button", { name: "Edit Items" }).first()).toBeVisible();
 
-  // --- Both ways, one planner (AJ, 2026-10-10): the draft menu can be edited on the order page and in Menu Approvals ---
+  // --- One planner (AJ, 2026-10-16): the order page's planner is read-only; the Menu Approval tab edits the same stored meals ---
   const reviewUrl = page.url();
   await page.goto("/orders");
   await page.getByText(customerName).click();
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  const menuPanel = page.locator("#order-panel-menu");
   await expect(page.getByTestId("menu-status-banner")).toHaveAttribute("data-phase", "editable");
-  await page.getByRole("button", { name: "Edit Items" }).first().click();
+  await expect(menuPanel.getByRole("button", { name: "Edit Items" })).toHaveCount(0);
+  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
+  await menuPanel.getByRole("button", { name: "Open the Menu Approval tab" }).click();
+  await expect(page.getByRole("tab", { name: "Menu Approval" })).toHaveAttribute("aria-selected", "true");
+  const approvalPanel = page.locator("#order-panel-approval");
+  await approvalPanel.getByRole("button", { name: "Edit Items" }).first().click();
   const orderDrawer = page.getByRole("dialog", { name: /Select Menu Items/ });
   await orderDrawer.getByRole("button", { name: "Add-ons" }).click();
   await orderDrawer.getByRole("button", { name: new RegExp(addOnName) }).click(); // off
   await orderDrawer.getByRole("button", { name: "Save Items" }).click();
-  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
+  await expect(approvalPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
-    page.getByRole("button", { name: "Save changes" }).first().click(),
+    approvalPanel.getByRole("button", { name: "Save Changes" }).click(),
   ]);
+  // The same stored data: the read-only planner on the Guests & Menu Planning tab follows without a reload, and does not read as an unsaved change.
+  await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
+  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(menuPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
+  // ...and the tab, opened again by address, shows the same meals.
   await page.goto(reviewUrl);
-  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Dish", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit Items" }).first().click();
+  await expect(review.getByTestId("meal-item-counts").first().getByText("1 Dish", { exact: true })).toBeVisible();
+  await expect(review.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
+  await review.getByRole("button", { name: "Edit Items" }).first().click();
   const reviewDrawer = page.getByRole("dialog", { name: /Select Menu Items/ });
   await reviewDrawer.getByRole("button", { name: "Add-ons" }).click();
   await reviewDrawer.getByRole("button", { name: new RegExp(addOnName) }).click(); // back on
   await reviewDrawer.getByRole("button", { name: "Save Items" }).click();
   await Promise.all([
-    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/menu-approvals/")),
-    page.getByRole("button", { name: "Save Changes" }).click(),
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
+    review.getByRole("button", { name: "Save Changes" }).click(),
   ]);
   await page.goto(reviewUrl);
-  await expect(page.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Send Menu for Approval" }).click();
-  await expect(page.getByText(/Version 1 is with the customer/)).toBeVisible();
-  const linkV1 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+  await expect(review.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
+  await review.getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(review.getByText(/Version 1 is with the customer/)).toBeVisible();
+  const linkV1 = new URL((await review.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
 
   // The menu is with the customer: the order's planner is read-only, with Recall to edit (AJ, 2026-10-10).
   await page.goto("/orders");
@@ -423,28 +434,27 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Pending Review");
   await expect(orderCard()).toContainText("Customer requested changes");
-  await page.goto("/menu-approvals");
-  await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByText("Please swap the starter for something lighter.")).toBeVisible();
-  await page.getByRole("button", { name: "Send Updated Menu for Approval" }).click();
-  await expect(page.getByText(/Version 2 is with the customer/)).toBeVisible();
+  const resend = await openOrderApprovalTab(page, customerName);
+  await expect(resend.getByText("Please swap the starter for something lighter.")).toBeVisible();
+  await resend.getByRole("button", { name: "Send Updated Menu for Approval" }).click();
+  await expect(resend.getByText(/Version 2 is with the customer/)).toBeVisible();
   // A re-send after the first is "Customer Reviewing", not another "Awaiting Customer Approval" (AJ, 2026-09-30).
-  await expect(page.getByTestId("menu-history-card").getByText("Customer Reviewing").first()).toBeVisible();
-  const linkV2 = new URL((await page.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
+  await expect(resend.getByTestId("menu-history-card").getByText("Customer Reviewing").first()).toBeVisible();
+  const linkV2 = new URL((await resend.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
   expect(linkV2).not.toBe(linkV1);
-  await expect(page.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
+  await expect(resend.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
 
   // --- Older versions open read-only in the same planner, with Compare, and history stays a small card (AJ, 2026-09-30) ---
-  await expect(page.getByTestId("menu-note")).toContainText("Please swap the starter for something lighter.");
-  await page.getByRole("button", { name: "View version 1" }).click();
-  await expect(page.getByText(/Viewing Version 1/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send Updated Menu for Approval" })).toHaveCount(0);
-  await expect(page.locator('[data-testid^="meal-slot-"]').first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Remove / })).toHaveCount(0);
-  await page.getByRole("button", { name: "Compare with current" }).click();
-  await expect(page.getByRole("button", { name: "Hide Compare" })).toBeVisible();
-  await page.getByRole("button", { name: "Back to current" }).click();
-  await expect(page.getByText(/Viewing Version 1/)).toHaveCount(0);
+  await expect(resend.getByTestId("menu-note")).toContainText("Please swap the starter for something lighter.");
+  await resend.getByRole("button", { name: "View version 1" }).click();
+  await expect(resend.getByText(/Viewing Version 1/)).toBeVisible();
+  await expect(resend.getByRole("button", { name: "Send Updated Menu for Approval" })).toHaveCount(0);
+  await expect(resend.locator('[data-testid^="meal-slot-"]').first()).toBeVisible();
+  await expect(resend.getByRole("button", { name: /^Remove / })).toHaveCount(0);
+  await resend.getByRole("button", { name: "Compare with current" }).click();
+  await expect(resend.getByRole("button", { name: "Hide Compare" })).toBeVisible();
+  await resend.getByRole("button", { name: "Back to current" }).click();
+  await expect(resend.getByText(/Viewing Version 1/)).toHaveCount(0);
 
   // --- The order page shows the approval next to the kitchen / status card, and the versions open in a popup (AJ, 2026-09-27) ---
   await page.goto("/orders");
@@ -511,12 +521,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByTestId("order-approval-panel").getByTestId("venue-details-status")).toContainText("Received");
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("12 Green Villa Road");
-  await page.goto("/menu-approvals");
-  await expect(page.getByText("Customer Approved")).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByTestId("venue-details-status")).toContainText("Received");
-  await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
-  await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
+  const handoff = await openOrderApprovalTab(page, customerName);
+  await expect(handoff.getByText("Customer Approved").first()).toBeVisible();
+  await expect(handoff.getByTestId("venue-details-status")).toContainText("Received");
+  await handoff.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
+  await expect(handoff.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Sent to Kitchen");
@@ -559,12 +568,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
 
   // The menu approval moved with the order (Approved -> Customer Approved), and it goes to the kitchen again in one click.
-  await page.goto("/menu-approvals");
-  await expect(page.getByText("Customer Approved")).toBeVisible();
-  await page.getByRole("button", { name: "Review" }).click();
-  await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
-  await page.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
-  await expect(page.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
+  const again = await openOrderApprovalTab(page, customerName);
+  await expect(again.getByText("Customer Approved").first()).toBeVisible();
+  await expect(again.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+  await again.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
+  await expect(again.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(orderCard()).toContainText("Sent to Kitchen");

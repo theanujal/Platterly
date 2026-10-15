@@ -9,9 +9,14 @@ import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder, lockOrderRow } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
+import { runWhileOrderOpen } from "@/modules/orders/kitchen-lock";
+import { OrderLockedError } from "@/modules/orders/order-lock";
+import { OrderCompletedError } from "@/modules/orders/order-guard";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import {
   addMenuApprovalNote,
+  addNoteToOpenOrder,
+  OrderClosedError,
   mirrorSelectionItemsFromMealPlan,
   createMenuSelection,
   lockMenuSelection,
@@ -31,6 +36,10 @@ import type { MenuSelectionStatus, VenueType } from "@/generated/prisma/enums";
  * only while the menu is still awaiting the customer — an old email can never
  * approve an outdated menu.
  */
+
+/** Shown when a Custom Menu is sent before its per-plate price has been quoted. */
+export const CUSTOM_QUOTE_MISSING_MESSAGE =
+  "This custom menu has no price yet. Enter the price per plate under \"Quote the price per plate\" before sending it to the customer. If you can't change order prices, ask someone who can to enter it.";
 
 /** How long an approval link stays valid. */
 export const APPROVAL_LINK_DAYS = 14;
@@ -227,6 +236,11 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
           ? "This menu is already with the customer. Recall it first if you need to change it."
           : "This menu has already been approved by the customer.",
       );
+    }
+    // A Custom Menu has no price until the kitchen quotes one (Decision 13): sending it now would show the customer a menu with no price,
+    // or let the order's amount stand at zero. Nothing is filled in for them; the quote needs the permission to change order prices.
+    if (menuSelection.isCustomMenu && menuSelection.customPricePerPlate === null) {
+      throw new InvalidMenuSelectionTransitionError(CUSTOM_QUOTE_MISSING_MESSAGE);
     }
 
     const previous = await tx.menuVersion.findMany({ where: { menuSelectionId: menuSelection.id }, select: { id: true, versionNumber: true } });
@@ -581,7 +595,14 @@ export async function saveVenueViaLink(token: string, input: VenueDetailsInput) 
     gasElectricAvailable: input.gasElectricAvailable === true,
     liveCounterAvailable: input.liveCounterAvailable === true,
   };
-  await prisma.order.updateMany({ where: { id: link.orderId, organizationId: link.organizationId }, data });
+  // The venue is an order field: once the order has reached the kitchen the customer's link can't change it (checked in the same
+  // transaction as the write, under the menu's lock).
+  try {
+    await runWhileOrderOpen(link.organizationId, link.orderId, (tx) => tx.order.updateMany({ where: { id: link.orderId!, organizationId: link.organizationId }, data }));
+  } catch (error) {
+    if (error instanceof OrderLockedError) return { ok: false as const };
+    throw error;
+  }
   return { ok: true as const };
 }
 
@@ -597,19 +618,23 @@ export async function confirmApprovalViaLink(token: string) {
   // The details must have been saved first (step 1); nothing is confirmed without them.
   if (!order || !order.venueType || !order.venue || !order.eventAddress) return { ok: false as const };
 
-  // The approval is recorded here, once the customer has got this far.
+  // The approval is recorded here, once the customer has got this far (a hand-off the team already made is refused by the transition).
   if (link.stage === "REVIEW") await approveResolvedLink(link);
 
   // Claimed in one statement so a double confirm can't run twice. A menu sent again after changes already carries the
   // earlier round's timestamp, so that case (REVIEW) is claimed by the approval above instead.
-  if (link.stage === "VENUE") {
-    const claimed = await prisma.order.updateMany({
-      where: { id: link.orderId, organizationId: link.organizationId, venueDetailsSubmittedAt: null },
-      data: { venueDetailsSubmittedAt: new Date() },
-    });
-    if (claimed.count === 0) return { ok: false as const };
-  } else {
-    await prisma.order.updateMany({ where: { id: link.orderId, organizationId: link.organizationId }, data: { venueDetailsSubmittedAt: new Date() } });
+  try {
+    if (link.stage === "VENUE") {
+      const claimed = await runWhileOrderOpen(link.organizationId, link.orderId, (tx) =>
+        tx.order.updateMany({ where: { id: link.orderId!, organizationId: link.organizationId, venueDetailsSubmittedAt: null }, data: { venueDetailsSubmittedAt: new Date() } }),
+      );
+      if (claimed.count === 0) return { ok: false as const };
+    } else {
+      await prisma.order.updateMany({ where: { id: link.orderId, organizationId: link.organizationId }, data: { venueDetailsSubmittedAt: new Date() } });
+    }
+  } catch (error) {
+    if (error instanceof OrderLockedError) return { ok: false as const };
+    throw error;
   }
 
   await addMenuApprovalNote(link.organizationId, link.menuSelectionId, {
@@ -658,12 +683,19 @@ async function sendAdvancePaymentLink(organizationId: string, orderId: string) {
 export async function askAboutApprovedMenuViaLink(token: string, note: string) {
   const link = await resolveApprovalLink(token);
   if (!link.ok || link.stage === "REVIEW") return { ok: false as const };
-  await addMenuApprovalNote(link.organizationId, link.menuSelectionId, {
-    authorType: "CUSTOMER",
-    authorName: link.snapshot.customerName,
-    body: note,
-    versionNumber: link.versionNumber,
-  });
+  // A Completed or Cancelled order is closed: the link already stops resolving for it, and the note write checks again under the
+  // menu's lock, so a delivery landing between the two is still refused. Existing notes stay as they are.
+  try {
+    await addNoteToOpenOrder(
+      link.organizationId,
+      link.menuSelectionId,
+      { authorType: "CUSTOMER", authorName: link.snapshot.customerName, body: note, versionNumber: link.versionNumber },
+      { alsoClosed: ["CANCELLED"] },
+    );
+  } catch (error) {
+    if (error instanceof OrderCompletedError || error instanceof OrderClosedError) return { ok: false as const };
+    throw error;
+  }
   await onCustomerMenuAction(link.organizationId, link.orderId, "change_asked_after_approval", { note });
   await audit({
     organizationId: link.organizationId,

@@ -5,6 +5,9 @@ import { requireActiveOrganization, requirePermission, hasPermission } from "@/l
 import { assertOrderAtMyLocation, getActiveLocation } from "@/modules/locations/active-location";
 import { getOrder } from "@/modules/orders/order";
 import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
+import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
+import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
+import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen } from "@/modules/menu-approvals/page-access";
 import { listStatusChanges } from "@/modules/menu-approvals/status-history";
 import { getOrderStatusHint } from "@/modules/orders/order-status";
 import { listCustomers } from "@/modules/customers/customer";
@@ -35,8 +38,11 @@ import { EventOps } from "../../staff/_components/event-ops";
 import { OrderInventoryPanel } from "./_components/order-inventory-panel";
 import { computeProfitability } from "@/modules/expenses/profitability";
 import { OrderStatusCard } from "./_components/order-status-card";
+import { OrderMenuApprovalTab } from "./_components/order-menu-approval-tab";
+import { ApprovalOnlyOrderView } from "./_components/approval-only-order-view";
+import { isKitchenLocked } from "@/modules/orders/order-lock";
 import { isOrderLocked } from "@/modules/orders/order-lock";
-import { MenuStatusBanner, menuPlanPhase } from "./_components/menu-status-banner";
+import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
@@ -79,12 +85,19 @@ function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
 
-export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrderDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; version?: string }> }) {
   const { id } = await params;
+  const { tab, version } = await searchParams;
+  const viewVersion = version && /^\d+$/.test(version) ? Number(version) : null;
   const { organizationId, session } = await requireActiveOrganization();
-  await requirePermission({ orders: ["edit"] }, organizationId);
+  const [canEditOrders, canApproveMenus] = await Promise.all([hasPermission({ orders: ["edit"] }, organizationId), hasPermission({ menus: ["approve"] }, organizationId)]);
+  const can = { editOrders: canEditOrders, approveMenus: canApproveMenus };
+  const mode = orderPageMode(can);
+  // Someone with neither permission gets the same 403 as before.
+  if (mode === "none") await requirePermission({ orders: ["edit"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, id);
   const active = await getActiveLocation(organizationId, session.user.id);
+  if (mode === "approval-only") return approvalOnlyPage({ organizationId, orderId: id, activeEnabled: active.enabled, viewVersion, can });
   const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
@@ -97,6 +110,9 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     listStatusChanges(organizationId, id, { subject: "ORDER" }),
   ]);
   if (!order) notFound();
+  // The Menu Approval tab (where /menu-approvals/[id] redirects), for the viewer's capabilities (read-only without menus: approve).
+  const approvalSelection = menuApproval ? await getMenuSelection(organizationId, menuApproval.menuSelectionId) : null;
+  const reviewData = approvalSelection ? await loadMenuApprovalReviewData(organizationId, approvalSelection, { viewVersion }) : null;
 
   const [orderPayments, confirmedPaid, activeInvoice, billingOrg, canCreateInvoice, canRecordPayment, canManagePayment, gstDefaults] = await Promise.all([
     listOrderPayments(organizationId, id),
@@ -195,8 +211,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <EditOrderClient
         orderId={order.id}
-        menuPlanReadOnly={menuPlanPhase(menuApproval?.status ?? null) !== "editable"}
-        locked={isOrderLocked(order.status)}
+        menuPlanReadOnly={menuApproval !== null}
+        menuPlanInApprovalTab={menuApproval !== null}
+        priceFrozen={priceIsFrozen(menuApproval?.status ?? null)}
+        initialTab={parseOrderTab(tab)}
+        menuApprovalTab={
+          <OrderMenuApprovalTab
+            key="menu-approval-tab"
+            data={reviewData ? { ...reviewData, capabilities: approvalCapabilities(can) } : null}
+            notStarted={{ orderId: order.id, ...notStartedState(order, can) }}
+          />
+        }
+        locked={isKitchenLocked(order.status, menuApproval ? [menuApproval.status] : [])}
         completed={order.status === "COMPLETED"}
         initialValues={initialValues}
         header={
@@ -240,7 +266,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             key="menu-status-banner"
             status={menuApproval?.status ?? null}
             version={menuApproval?.currentVersion ?? null}
-            editHref={canManageApproval && menuApproval ? `/menu-approvals/${menuApproval.menuSelectionId}` : null}
+            editHref={menuApproval ? `/orders/${order.id}?tab=approval` : null}
+            inApprovalTab={menuApproval !== null}
             menuSelectionId={menuApproval?.menuSelectionId ?? null}
             canRecall={canManageApproval}
           />
@@ -282,7 +309,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 from5to10: order.child5To10Count ?? 0,
               }}
             />
-            <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} />
+            <OrderApprovalPanel approval={menuApproval} canManage={canManageApproval} tabHref={`/orders/${order.id}?tab=approval`} />
             {active.enabled && (
               <fieldset disabled={order.status === "COMPLETED"} className="m-0 min-w-0 border-0 p-0 disabled:[&_button]:pointer-events-none disabled:[&_[role=combobox]]:pointer-events-none disabled:[&_:disabled]:opacity-100!">
               <EventOperationsCard
@@ -408,5 +435,65 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         }
       />
     </div>
+  );
+}
+
+const ORDER_KIND_LABEL_TEXT: Record<OrderKind, string> = { SINGLE: "Single Order", MULTI: "Multi Order" };
+
+/**
+ * The restricted view for a person with menus: approve and no orders: edit (Decision 6). It reads only what the view shows (see
+ * ApprovalOnlyOrderView) and none of the payments, invoice, expense, staffing, inventory or customer-list loads of the full page.
+ * The caller has already checked the permission, the business (every read below is scoped by it) and the location.
+ */
+async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVersion, can }: { organizationId: string; orderId: string; activeEnabled: boolean; viewVersion: number | null; can: { editOrders: boolean; approveMenus: boolean } }) {
+  const [order, menuApproval, statusHistory] = await Promise.all([
+    getOrder(organizationId, orderId),
+    getOrderMenuApproval(organizationId, orderId),
+    listStatusChanges(organizationId, orderId, { subject: "ORDER" }),
+  ]);
+  if (!order) notFound();
+  const selection = menuApproval ? await getMenuSelection(organizationId, menuApproval.menuSelectionId) : null;
+  const review = selection ? await loadMenuApprovalReviewData(organizationId, selection, { viewVersion }) : null;
+  const event = order.events[0] ?? null;
+  return (
+    <ApprovalOnlyOrderView
+      order={{
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        customerName: order.customer.name,
+        orderKindLabel: ORDER_KIND_LABEL_TEXT[order.orderKind],
+        multiOrder: order.orderKind === "MULTI",
+        eventTypeName: order.eventType?.name ?? null,
+        eventDateText: formatEventDates(order.eventStartDate, order.eventEndDate),
+        startDateText: order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }),
+        venue: order.venue,
+        mealCount: order.mealPlanEntries.length,
+        guests: {
+          total: order.totalParticipants ?? 0,
+          adults: order.adultCount ?? 0,
+          below5: order.childBelow5Count ?? 0,
+          from5to10: order.child5To10Count ?? 0,
+        },
+        kitchenName: event?.assignedKitchen?.name ?? null,
+        showKitchen: activeEnabled,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        statusHint: getOrderStatusHint(order.status, menuApproval ? [menuApproval.kitchenProductionStatus] : []),
+        statusHistory: statusHistory.map((c) => ({
+          id: c.id,
+          subject: c.subject,
+          fromStatus: c.fromStatus,
+          toStatus: c.toStatus,
+          source: c.source,
+          trigger: c.trigger,
+          reason: c.reason,
+          actorName: c.actorName,
+          createdAt: c.createdAt,
+        })),
+      }}
+      approval={review ? { ...review, capabilities: approvalCapabilities(can) } : null}
+      notStarted={{ orderId: order.id, ...notStartedState(order, can) }}
+    />
   );
 }

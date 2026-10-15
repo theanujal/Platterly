@@ -11,6 +11,7 @@ import {
   replaceMealPlanEntries,
   deriveStandardChildPricingMenuId,
   updateOrder,
+  updateOrderInTransaction,
   type OrderInput,
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
@@ -20,28 +21,21 @@ import { deriveOrderStatus, MENU_SELECTION_STATUS_LABEL } from "@/modules/orders
 import { recordStatusChange, type StatusChangeContext } from "./status-history";
 import { createInvoiceOnKitchenHandoff, KitchenHandoffInvoiceError } from "@/modules/invoices/invoice";
 import { returnAllOrderItems } from "@/modules/production/production";
+import { assertOrderNotKitchenLocked } from "@/modules/orders/kitchen-lock";
+import { OrderCompletedError } from "@/modules/orders/order-guard";
+import { ValidationError } from "@/lib/errors";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
-export class InvalidMenuSelectionTransitionError extends Error {}
+import { InvalidMenuSelectionTransitionError, EDITABLE_STATUSES, MEAL_PLAN_FROZEN_MESSAGE, PRICE_FROZEN_MESSAGE } from "./approval-stages";
+import { runAfterCommit, type AfterCommit } from "@/lib/after-commit";
+
+export { InvalidMenuSelectionTransitionError, EDITABLE_STATUSES, runAfterCommit };
+export type { AfterCommit };
 
 /** The hand-off to the kitchen was rolled back because its invoice could not be created. Nothing changed, so it is safe to try again. */
 export class KitchenHandoffError extends InvalidMenuSelectionTransitionError {}
 
 type Db = Prisma.TransactionClient | typeof prisma;
-
-/** Work that must only happen once a transaction has committed (customer notifications, putting stock back). */
-export type AfterCommit = (() => Promise<unknown>)[];
-
-/** Runs what a committed transaction queued. A failure here is logged, never reported as a failure of the change that already committed. */
-export async function runAfterCommit(queue: AfterCommit) {
-  for (const effect of queue) {
-    try {
-      await effect();
-    } catch (error) {
-      console.error("[menu-approval] after-commit effect failed", error);
-    }
-  }
-}
 
 /**
  * Takes the menu selection's row lock for the rest of the transaction, so two requests on the same menu run one after the other:
@@ -171,11 +165,7 @@ const VALID_TRANSITIONS: Record<MenuSelectionStatus, MenuSelectionStatus[]> = {
   FINAL_LOCKED: [],
 };
 
-// The team may only edit a menu's items while no version of it is in front of
-// the customer or locked for the kitchen — otherwise the customer would approve a
-// snapshot that no longer matches what the kitchen then cooks. (To change a
-// sent or approved menu, recall it to DRAFT first.)
-export const EDITABLE_STATUSES: MenuSelectionStatus[] = ["DRAFT", "CHANGES_REQUESTED"];
+
 
 /**
  * Recomputes an Order's status from its menu selection(s) and kitchen stage
@@ -302,6 +292,12 @@ export async function transitionInTransaction(
   }
   if (!VALID_TRANSITIONS[before.status].includes(to)) {
     throw new InvalidMenuSelectionTransitionError(`Cannot move a MenuSelection from ${before.status} to ${to}.`);
+  }
+  // The hand-off needs its order, read under the lock: an order deleted a moment earlier leaves the menu without one, and a menu with
+  // no order must never reach the kitchen.
+  if (to === "FINAL_LOCKED") {
+    const linked = await tx.event.findUnique({ where: { id: before.eventId }, select: { orderId: true } });
+    if (!linked?.orderId) throw new InvalidMenuSelectionTransitionError("This menu isn't attached to an order any more, so it can't be sent to the kitchen.");
   }
 
   // Every request note is kept as its own entry (AJ, 2026-09-30); the two single fields below stay for older readers.
@@ -450,29 +446,31 @@ export type MenuSelectionItemInput = Pick<OrderItemCatalogInput, "itemType" | "c
 };
 
 export async function setMenuSelectionItems(organizationId: string, menuSelectionId: string, items: MenuSelectionItemInput[], actorUserId?: string) {
-  const menuSelection = await prisma.menuSelection.findFirstOrThrow({
-    where: { id: menuSelectionId, organizationId },
-    include: { items: true },
+  // The stage check, the kitchen-lock check and the write are one transaction under the menu's row lock.
+  await prisma.$transaction(async (tx) => {
+    await lockMenuSelection(tx, organizationId, menuSelectionId);
+    const menuSelection = await tx.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+    await assertOrderNotKitchenLocked(tx, organizationId, menuSelection.event.orderId);
+
+    if (!EDITABLE_STATUSES.includes(menuSelection.status)) {
+      throw new InvalidMenuSelectionTransitionError("This menu has been sent, so it can't be edited. Recall it to edit it first.");
+    }
+
+    await tx.menuSelectionItem.deleteMany({ where: { menuSelectionId } });
+    if (items.length > 0) {
+      const resolved = await Promise.all(
+        items.map(async (item) => ({
+          menuSelectionId,
+          itemType: item.itemType,
+          // Menu Selection is add/remove only — quantity is never client-controlled (AJ, 2026-09-25).
+          quantity: 1,
+          isExtra: item.isExtra ?? false,
+          ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId, undefined, tx)),
+        })),
+      );
+      await tx.menuSelectionItem.createMany({ data: resolved });
+    }
   });
-
-  if (!EDITABLE_STATUSES.includes(menuSelection.status)) {
-    throw new InvalidMenuSelectionTransitionError("This menu has been sent, so it can't be edited. Recall it to edit it first.");
-  }
-
-  await prisma.menuSelectionItem.deleteMany({ where: { menuSelectionId } });
-  if (items.length > 0) {
-    const resolved = await Promise.all(
-      items.map(async (item) => ({
-        menuSelectionId,
-        itemType: item.itemType,
-        // Menu Selection is add/remove only — quantity is never client-controlled (AJ, 2026-09-25).
-        quantity: 1,
-        isExtra: item.isExtra ?? false,
-        ...(await resolveCatalogItem(organizationId, item.itemType, item.catalogId)),
-      })),
-    );
-    await prisma.menuSelectionItem.createMany({ data: resolved });
-  }
 
   await audit({
     organizationId,
@@ -506,29 +504,42 @@ export async function getMenuSelection(organizationId: string, id: string) {
  */
 export async function setCustomMenuPricePerPlate(organizationId: string, menuSelectionId: string, pricePerPlate: number, actorUserId: string) {
   if (!Number.isFinite(pricePerPlate) || pricePerPlate < 0) throw new Error("Price per plate must be zero or more.");
-  const selection = await prisma.menuSelection.findFirstOrThrow({
-    where: { id: menuSelectionId, organizationId },
-    include: { event: { include: { order: { include: { mealPlanEntries: true } } } } },
-  });
-  if (!selection.isCustomMenu) throw new Error("Only a Custom Menu selection takes a per-plate quote.");
-  const order = selection.event.order;
-  if (!order) throw new Error("This selection has no Order to price.");
+  const located = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+  const orderId = located.event.orderId;
+  if (!orderId) throw new Error("This selection has no Order to price.");
 
-  await prisma.menuSelection.update({ where: { id: menuSelectionId }, data: { customPricePerPlate: pricePerPlate } });
-  const guests = order.adultCount ?? order.totalParticipants ?? 0;
-  // Only the Custom Menu meals take the kitchen's quote: a meal on a fixed Menu keeps that Menu's own price (AJ, 2026-10-12).
-  for (const entry of order.mealPlanEntries.filter((meal) => meal.menuId === null)) {
-    await prisma.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate } });
-  }
-  await recalculateOrderTotals(order.id);
+  // The stage check, the quote, the meals' prices and the order's totals are one transaction under the menu's row lock (Decision 14):
+  // a quote can't land after the customer approved or after a send, and a failure part way leaves the price exactly as it was.
+  await runHandoffTransaction(organizationId, { recordId: orderId, actorUserId }, async (tx) => {
+    await lockMenuSelection(tx, organizationId, menuSelectionId);
+    const selection = await tx.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId } });
+    if (!selection.isCustomMenu) throw new Error("Only a Custom Menu selection takes a per-plate quote.");
+    await assertOrderNotKitchenLocked(tx, organizationId, orderId);
+    if (!EDITABLE_STATUSES.includes(selection.status)) throw new InvalidMenuSelectionTransitionError(PRICE_FROZEN_MESSAGE);
+    const order = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, include: { mealPlanEntries: true } });
+    const previousTotal = Number(order.total);
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "menu_selection.custom_price_set",
-    recordType: "MenuSelection",
-    recordId: menuSelectionId,
-    after: { pricePerPlate, guests },
+    await tx.menuSelection.update({ where: { id: menuSelectionId }, data: { customPricePerPlate: pricePerPlate } });
+    const guests = order.adultCount ?? order.totalParticipants ?? 0;
+    // Only the Custom Menu meals take the kitchen's quote: a meal on a fixed Menu keeps that Menu's own price (AJ, 2026-10-12).
+    const customMeals = order.mealPlanEntries.filter((meal) => meal.menuId === null);
+    for (const entry of customMeals) {
+      await tx.mealPlanEntry.update({ where: { id: entry.id }, data: { price: pricePerPlate } });
+    }
+    const after = await recalculateOrderTotals(orderId, tx);
+
+    await audit(
+      {
+        organizationId,
+        actorUserId,
+        action: "menu_selection.custom_price_set",
+        recordType: "MenuSelection",
+        recordId: menuSelectionId,
+        before: { pricePerPlate: selection.customPricePerPlate === null ? null : Number(selection.customPricePerPlate), orderTotal: previousTotal },
+        after: { pricePerPlate, orderTotal: Number(after.total), guests, mealsPriced: customMeals.length },
+      },
+      tx,
+    );
   });
 }
 
@@ -541,7 +552,8 @@ export async function getMenuSelectionByEventId(organizationId: string, eventId:
 export async function listMenuSelectionsForKitchen(organizationId: string, statuses?: MenuSelectionStatus[], locationId?: string | null) {
   return prisma.menuSelection.findMany({
     where: { organizationId, ...(statuses ? { status: { in: statuses } } : {}), ...(locationId ? { event: { assignedKitchenId: locationId } } : {}) },
-    include: { items: true, event: { include: { customer: true, eventType: true, assignedKitchen: true } } },
+    // Only what the queue shows (the customer's name, the event and its location): no phone, email, amounts or dish prices travel with it.
+    include: { event: { include: { customer: { select: { name: true } }, assignedKitchen: { select: { name: true } } } } },
     orderBy: { updatedAt: "desc" },
   });
 }
@@ -762,18 +774,47 @@ export async function addMenuApprovalNote(
   });
 }
 
+export class OrderClosedError extends ValidationError {
+  constructor() {
+    super("This order is closed, so it can't take new notes.");
+    this.name = "OrderClosedError";
+  }
+}
+
+/**
+ * Adds a note only while the order is open. The order's status is read in the same transaction, under the menu's row lock, that
+ * writes the note, so a delivery that completes the order a moment earlier is seen (AJ, 2026-10-16). Completed always closes it;
+ * `alsoClosed` adds Cancelled for the customer's link, which ends with the order. Existing notes stay readable.
+ */
+export async function addNoteToOpenOrder(
+  organizationId: string,
+  menuSelectionId: string,
+  input: { authorType: "CUSTOMER" | "KITCHEN" | "TEAM"; authorName?: string | null; body: string; versionNumber?: number | null },
+  options?: { alsoClosed?: ("CANCELLED")[] },
+) {
+  return prisma.$transaction(async (tx) => {
+    await lockMenuSelection(tx, organizationId, menuSelectionId);
+    const selection = await tx.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, select: { event: { select: { orderId: true } } } });
+    const orderId = selection.event.orderId;
+    const order = orderId ? await tx.order.findFirst({ where: { id: orderId, organizationId }, select: { status: true } }) : null;
+    if (order?.status === "COMPLETED") throw new OrderCompletedError();
+    if (order && options?.alsoClosed?.includes(order.status as "CANCELLED")) throw new OrderClosedError();
+    return addMenuApprovalNote(organizationId, menuSelectionId, input, tx);
+  });
+}
+
 /**
  * Rebuilds the flat MenuSelectionItem rows from the order's meal plan. The meal
  * plan is the source of truth; the flat rows are a mirror that the kitchen
  * board and older code still read. A dish repeated on several meals is listed
  * once, as an Extra if any copy is.
  */
-export async function mirrorSelectionItemsFromMealPlan(organizationId: string, menuSelectionId: string) {
-  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+export async function mirrorSelectionItemsFromMealPlan(organizationId: string, menuSelectionId: string, db: Db = prisma) {
+  const selection = await db.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
   const orderId = selection.event.orderId;
   if (!orderId) return;
 
-  const entries = await prisma.mealPlanEntry.findMany({ where: { orderId }, include: { items: { orderBy: { createdAt: "asc" } } } });
+  const entries = await db.mealPlanEntry.findMany({ where: { orderId }, include: { items: { orderBy: { createdAt: "asc" } } } });
   const merged = new Map<string, { itemType: "MENU_ITEM" | "ADD_ON"; menuItemId: string | null; addOnId: string | null; name: string; unitPrice: unknown; isExtra: boolean }>();
   for (const entry of entries) {
     for (const item of entry.items) {
@@ -785,52 +826,65 @@ export async function mirrorSelectionItemsFromMealPlan(organizationId: string, m
     }
   }
 
-  await prisma.$transaction([
-    prisma.menuSelectionItem.deleteMany({ where: { menuSelectionId } }),
-    prisma.menuSelectionItem.createMany({
-      data: [...merged.values()].map((item) => ({
-        menuSelectionId,
-        itemType: item.itemType,
-        menuItemId: item.menuItemId,
-        addOnId: item.addOnId,
-        name: item.name,
-        unitPrice: item.unitPrice as number,
-        quantity: 1,
-        isExtra: item.isExtra,
-      })),
-    }),
-  ]);
+  const rows = [...merged.values()].map((item) => ({
+    menuSelectionId,
+    itemType: item.itemType,
+    menuItemId: item.menuItemId,
+    addOnId: item.addOnId,
+    name: item.name,
+    unitPrice: item.unitPrice as number,
+    quantity: 1,
+    isExtra: item.isExtra,
+  }));
+  const replace = async (client: Prisma.TransactionClient) => {
+    await client.menuSelectionItem.deleteMany({ where: { menuSelectionId } });
+    await client.menuSelectionItem.createMany({ data: rows });
+  };
+  // Inside a caller's transaction it joins it; on its own it is its own transaction, as before.
+  if ("$transaction" in db) await db.$transaction(replace);
+  else await replace(db);
 }
 
 /**
- * The team's edit on the Menu Approvals page: replaces the order's meal plan
+ * The team's edit in the order's Menu Approval tab: replaces the order's meal plan
  * (per date and meal, each with its Menu and dishes), re-prices the order by the
  * one pricing rule, and re-mirrors the flat selection rows. Only while no version
  * is with the customer or the kitchen — recall first to change a sent menu.
  */
 export async function updateMenuApprovalMealPlan(organizationId: string, menuSelectionId: string, entries: MealPlanEntryInput[], actorUserId: string) {
-  const selection = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
-  if (!EDITABLE_STATUSES.includes(selection.status)) {
-    throw new InvalidMenuSelectionTransitionError("This menu is with the customer or the kitchen. Recall it before changing it.");
-  }
-  const orderId = selection.event.orderId;
+  const located = await prisma.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId }, include: { event: { select: { orderId: true } } } });
+  const orderId = located.event.orderId;
   if (!orderId) throw new InvalidMenuSelectionTransitionError("This menu isn't attached to an order.");
-
-  const before = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } });
-  await replaceMealPlanEntries(organizationId, orderId, entries);
-  await prisma.order.update({ where: { id: orderId }, data: { childPricingMenuId: deriveStandardChildPricingMenuId(entries) } });
-  const after = await recalculateOrderTotals(orderId);
-  await mirrorSelectionItemsFromMealPlan(organizationId, menuSelectionId);
-
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "menu_selection.meal_plan_updated",
-    recordType: "MenuSelection",
-    recordId: menuSelectionId,
-    before: { total: Number(before.total) },
-    after: { total: Number(after.total), meals: entries.length },
+  // The stage check and the whole write are one transaction under the menu's row lock: a customer approving at the same moment is
+  // seen (the edit is refused), and a failure part way leaves the meal plan as it was.
+  await runHandoffTransaction(organizationId, { recordId: orderId, actorUserId }, async (tx) => {
+    await lockMenuSelection(tx, organizationId, menuSelectionId);
+    const selection = await tx.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId } });
+    await assertOrderNotKitchenLocked(tx, organizationId, orderId);
+    if (!EDITABLE_STATUSES.includes(selection.status)) throw new InvalidMenuSelectionTransitionError(MEAL_PLAN_FROZEN_MESSAGE);
+    await applyMealPlanInTransaction(tx, organizationId, menuSelectionId, orderId, entries, actorUserId);
   });
+}
+
+/** Replaces the order's meal plan, re-prices it, re-mirrors the flat selection rows and audits it, inside the caller's transaction (the menu's lock already held, the stage already checked). */
+async function applyMealPlanInTransaction(tx: Prisma.TransactionClient, organizationId: string, menuSelectionId: string, orderId: string, entries: MealPlanEntryInput[], actorUserId: string) {
+  const before = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } });
+  await replaceMealPlanEntries(organizationId, orderId, entries, tx);
+  await tx.order.update({ where: { id: orderId }, data: { childPricingMenuId: deriveStandardChildPricingMenuId(entries) } });
+  const after = await recalculateOrderTotals(orderId, tx);
+  await mirrorSelectionItemsFromMealPlan(organizationId, menuSelectionId, tx);
+  await audit(
+    {
+      organizationId,
+      actorUserId,
+      action: "menu_selection.meal_plan_updated",
+      recordType: "MenuSelection",
+      recordId: menuSelectionId,
+      before: { total: Number(before.total) },
+      after: { total: Number(after.total), meals: entries.length },
+    },
+    tx,
+  );
 }
 
 /**
@@ -843,10 +897,17 @@ export async function saveOrderWithMeals(organizationId: string, orderId: string
   const { mealPlanEntries, ...rest } = input;
   const selection =
     mealPlanEntries !== undefined ? await prisma.menuSelection.findFirst({ where: { organizationId, event: { orderId } }, orderBy: { createdAt: "asc" }, select: { id: true } }) : null;
-  if (mealPlanEntries !== undefined && selection) {
-    await updateOrder(organizationId, orderId, rest, actorUserId);
-    await updateMenuApprovalMealPlan(organizationId, selection.id, mealPlanEntries, actorUserId);
+  if (mealPlanEntries === undefined || !selection) {
+    await updateOrder(organizationId, orderId, input, actorUserId);
     return;
   }
-  await updateOrder(organizationId, orderId, input, actorUserId);
+  // One operation: the order fields and the meal plan are written together or not at all (Decision 14). The menu's lock is taken
+  // first, so a customer approving at the same moment is seen by both the stage check on the meals and the price freeze on the order.
+  await runHandoffTransaction(organizationId, { recordId: orderId, actorUserId }, async (tx, afterCommit) => {
+    await lockMenuSelection(tx, organizationId, selection.id);
+    const current = await tx.menuSelection.findFirstOrThrow({ where: { id: selection.id, organizationId }, select: { status: true } });
+    if (!EDITABLE_STATUSES.includes(current.status)) throw new InvalidMenuSelectionTransitionError(MEAL_PLAN_FROZEN_MESSAGE);
+    await updateOrderInTransaction(tx, afterCommit, organizationId, orderId, rest, actorUserId);
+    await applyMealPlanInTransaction(tx, organizationId, selection.id, orderId, mealPlanEntries, actorUserId);
+  });
 }

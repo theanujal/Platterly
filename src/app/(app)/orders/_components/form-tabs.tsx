@@ -13,8 +13,10 @@ export interface FormTab {
  * Tabbed layout shared by the Order and Quotation forms (AJ, 2026-09-30).
  * Every panel stays mounted (just hidden) so nothing typed in one tab is lost on switching.
  */
-export function FormTabs({ tabs, idPrefix, onActiveChange }: { tabs: FormTab[]; idPrefix: string; onActiveChange?: (id: string) => void }) {
-  const [active, setActive] = useState(tabs[0]?.id);
+export function FormTabs({ tabs, idPrefix, onActiveChange, activeId }: { tabs: FormTab[]; idPrefix: string; onActiveChange?: (id: string) => void; /** Set when the parent owns which tab is open. An id that is not a tab falls back to the first. */ activeId?: string }) {
+  const [own, setActive] = useState(tabs[0]?.id);
+  const requested = activeId ?? own;
+  const active = tabs.some((tab) => tab.id === requested) ? requested : tabs[0]?.id;
 
   return (
     <>

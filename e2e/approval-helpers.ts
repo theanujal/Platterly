@@ -25,3 +25,17 @@ export async function submitVenueDetailsAsCustomer(page: Page, details: { buildi
   await expect(page.getByRole("heading", { name: "Thank You!" })).toBeVisible();
   await expect(page.getByTestId("venue-summary")).toContainText(details.building);
 }
+
+/**
+ * Opens an order's Menu Approval tab from the Orders list (the way in since Phase 4 of the Menu Approvals + Orders merge; the old
+ * `/menu-approvals` queue now redirects to /orders). Returns the tab's panel, so a spec scopes its locators to it.
+ */
+export async function openOrderApprovalTab(page: Page, customerName: string) {
+  await page.goto("/orders");
+  await page.getByRole("link", { name: customerName }).first().click();
+  await expect(page).toHaveURL(/\/orders\/[^/?]+$/);
+  await page.goto(`${page.url()}?tab=approval`);
+  const panel = page.locator("#order-panel-approval");
+  await expect(panel).toBeVisible();
+  return panel;
+}

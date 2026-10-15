@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, seedPurchaseOrder } from "./db";
+import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, setRoleGrants, seedPurchaseOrder, seedReviewFixture } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -130,4 +130,42 @@ test("a person held to a location cannot open another location's order or sheets
   expect((await page.goto("/dashboard"))?.status()).toBe(200);
   // No switcher for someone who is held.
   await expect(page.getByRole("combobox", { name: "Location" })).toHaveCount(0);
+});
+
+test("another location's order stays closed by address, ?tab=approval and its approval page, and none of its details are sent", async ({ page }) => {
+  test.setTimeout(150_000);
+  const email = `e2e-held-approval-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email, { firstName: "Held", lastName: "Approver", phone: "9800000066" });
+  await givePlanWithMultiLocation(email);
+  await page.goto("/settings/kitchen/kitchen-rules");
+  await page.getByRole("switch", { name: /more than one location/i }).click();
+  await expect(page.getByText("Main", { exact: true })).toBeVisible();
+  await page.getByLabel("New location name").fill("North Branch");
+  await page.getByRole("button", { name: "Add Location" }).click();
+  await expect(page.getByText("North Branch", { exact: true })).toBeVisible();
+
+  const north = await seedReviewFixture(email, { ordinal: 71, customer: "Northern Guest", status: "SENT_TO_CUSTOMER" });
+  const main = await seedReviewFixture(email, { ordinal: 72, customer: "Mainland Secret", status: "SENT_TO_CUSTOMER" });
+  await assignOrderEventToLocation(north.orderId, "North Branch");
+  await assignOrderEventToLocation(main.orderId, "Main");
+  await holdMemberToLocation(email, "North Branch");
+  // A manager who may also approve menus, so the approval pages are refused for the location and not for the role.
+  await setRoleGrants(email, "manager", { orders: ["view", "edit"], menus: ["view", "approve"], customers: ["view"] });
+
+  // Held to North Branch: its own order opens, on both the page and the approval tab.
+  const own = await page.goto(`/orders/${north.orderId}?tab=approval`);
+  expect(own?.status()).toBe(200);
+  await expect(page.getByText("Northern Guest").first()).toBeVisible();
+
+  // Main's order: the real response is a 404 for the page, the approval tab and the approval review page, and the body carries none of it.
+  for (const path of [`/orders/${main.orderId}`, `/orders/${main.orderId}?tab=approval`, `/orders/${main.orderId}?tab=pricing`, `/menu-approvals/${main.selectionId}`]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+    const html = (await response?.text()) ?? "";
+    for (const secret of ["Mainland Secret", main.customerPhone, "Royal Dinner 72", "Paneer Tikka 72"]) { // (the id is the address typed in, which a 404 page echoes; it is not order data)
+      expect(html.includes(secret), `${path} must not contain "${secret}"`).toBe(false);
+    }
+    await expect(page.getByText("Mainland Secret")).toHaveCount(0);
+  }
 });

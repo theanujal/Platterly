@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit/audit";
+import { lockAndReadOrder } from "@/modules/orders/kitchen-lock";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { cookQuantity } from "@/modules/menu-approvals/kitchen-production-status";
 import { consumeStock, InsufficientStockError, orderStockCost, restoreOrderStock, stockPosition, usableStockMap } from "@/modules/inventory/batches";
@@ -187,9 +188,13 @@ export async function getOrderInventory(organizationId: string, orderId: string)
   };
 }
 
-/** The ledger rows are written under a lock on the order, so two people clicking at once cannot send the same items twice. */
-async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
-  await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${orderId} FOR UPDATE`;
+/**
+ * Takes the locks for anything that moves this order's stock, in the one order every order change uses (see `lockAndReadOrder`):
+ * the order's menu approvals first, then the order row. So a stock send, a return, a kitchen stage change and a manual move-back
+ * are serialised, and the status read afterwards is the one the winner left. Two people clicking at once cannot send twice either.
+ */
+async function lockOrder(tx: Prisma.TransactionClient, organizationId: string, orderId: string) {
+  return lockAndReadOrder(tx, organizationId, orderId, { alsoLockOrder: true });
 }
 
 async function netSent(tx: Prisma.TransactionClient, orderId: string, inventoryId: string) {
@@ -231,7 +236,10 @@ export async function sendOrderItems(organizationId: string, orderId: string, ac
   const shortages: { name: string; short: number }[] = [];
   const sentLines: { name: string; quantity: number }[] = [];
   await prisma.$transaction(async (tx) => {
-    await lockOrder(tx, orderId);
+    const state = await lockOrder(tx, organizationId, orderId);
+    // The plan above was read before the locks: the order's status is read again under them. An order moved back, cancelled or
+    // completed in the meantime takes no stock.
+    if (!state || !SENDABLE_STATUSES.includes(state.orderStatus)) throw new StockTakeError("This order is no longer approved for stock, so nothing was sent. Review it and try again.");
     await assertRecipesUnchanged(tx, organizationId, orderId, plan);
     for (const line of plan.lines) {
       const already = Math.max(0, await netSent(tx, orderId, line.inventoryId));
@@ -269,12 +277,14 @@ export async function sendOrderItems(organizationId: string, orderId: string, ac
 export async function returnOrderItem(organizationId: string, orderId: string, inventoryId: string, actorUserId: string) {
   const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true, status: true } });
   if (!order) throw new StockTakeError("Order not found.");
-  if (CLOSED_STATUSES.includes(order.status)) throw new StockTakeError("This order is closed, so its items cannot be returned here. Use a Stock In on the Inventory page.");
+  const closedMessage = "This order is closed, so its items cannot be returned here. Use a Stock In on the Inventory page.";
+  if (CLOSED_STATUSES.includes(order.status)) throw new StockTakeError(closedMessage);
   const item = await prisma.inventory.findFirst({ where: { id: inventoryId, organizationId }, select: { name: true, unit: true } });
   if (!item) throw new StockTakeError("Item not found.");
 
   const quantity = await prisma.$transaction(async (tx) => {
-    await lockOrder(tx, orderId);
+    const state = await lockOrder(tx, organizationId, orderId);
+    if (!state || CLOSED_STATUSES.includes(state.orderStatus)) throw new StockTakeError(closedMessage); // checked again under the locks
     const sent = await netSent(tx, orderId, inventoryId);
     if (sent <= 0) throw new StockTakeError("Nothing is sent to this order for that item.");
     const row = await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: sent, orderId, actorUserId, note: `Returned from ${order.orderNumber ?? "order"}` } });
@@ -292,21 +302,32 @@ export async function returnOrderItem(organizationId: string, orderId: string, i
  * order, for whatever is still out; safe to run again because it only returns the net amount still out.
  */
 export async function returnAllOrderItems(organizationId: string, orderId: string, actorUserId?: string) {
-  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true } });
+  const order = await prisma.order.findFirst({ where: { id: orderId, organizationId }, select: { id: true } });
+  if (!order) return [];
+  return prisma.$transaction(async (tx) => {
+    await lockOrder(tx, organizationId, orderId);
+    return returnAllOrderItemsInTransaction(tx, organizationId, orderId, actorUserId);
+  });
+}
+
+/**
+ * The same return inside the caller's transaction, whose locks (`lockAndReadOrder` with `alsoLockOrder`) are already held. Used by
+ * `deleteOrder`, so the eligibility check, the stock coming back and the delete are one transaction: a refused or failed delete puts
+ * nothing back.
+ */
+export async function returnAllOrderItemsInTransaction(tx: Prisma.TransactionClient, organizationId: string, orderId: string, actorUserId?: string) {
+  const order = await tx.order.findFirst({ where: { id: orderId, organizationId }, select: { orderNumber: true } });
   if (!order) return [];
   const returned: { inventoryId: string; quantity: number }[] = [];
-  await prisma.$transaction(async (tx) => {
-    await lockOrder(tx, orderId);
-    const ids = await tx.inventoryTransaction.findMany({ where: { orderId }, distinct: ["inventoryId"], select: { inventoryId: true } });
-    for (const { inventoryId } of ids) {
-      const out = await netSent(tx, orderId, inventoryId);
-      if (out <= 0) continue;
-      const row = await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: out, orderId, actorUserId: actorUserId ?? null, note: `Returned, ${order.orderNumber ?? "order"} cancelled` } });
-      await restoreOrderStock(tx, { inventoryId, orderId, quantity: out, transactionId: row.id });
-      returned.push({ inventoryId, quantity: out });
-    }
-  });
-  if (returned.length > 0) await audit({ organizationId, actorUserId, action: "order.items_returned_on_cancel", recordType: "Order", recordId: orderId, after: { items: returned.length } });
+  const ids = await tx.inventoryTransaction.findMany({ where: { orderId }, distinct: ["inventoryId"], select: { inventoryId: true }, orderBy: { inventoryId: "asc" } });
+  for (const { inventoryId } of ids) {
+    const out = await netSent(tx, orderId, inventoryId);
+    if (out <= 0) continue;
+    const row = await tx.inventoryTransaction.create({ data: { inventoryId, type: "STOCK_IN", quantity: out, orderId, actorUserId: actorUserId ?? null, note: `Returned, ${order.orderNumber ?? "order"} cancelled` } });
+    await restoreOrderStock(tx, { inventoryId, orderId, quantity: out, transactionId: row.id });
+    returned.push({ inventoryId, quantity: out });
+  }
+  if (returned.length > 0) await audit({ organizationId, actorUserId, action: "order.items_returned_on_cancel", recordType: "Order", recordId: orderId, after: { items: returned.length } }, tx);
   return returned;
 }
 

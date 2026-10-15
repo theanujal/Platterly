@@ -211,7 +211,7 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     // The money is owned by the Payment summary (Record Payment); saving the order never touches it.
-    await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined }, session.user.id);
+    await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined, status: undefined }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
   } catch (error) {
@@ -230,7 +230,7 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
     const input = buildInput(formData);
     assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
     // The money is owned by the Payment summary (Record Payment); saving the order never touches it.
-    await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined }, session.user.id);
+    await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined, status: undefined }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
     await ensureOrderMenuSelection(organizationId, id, session.user.id);
     await sendOrderWhatsApp(organizationId, id, session.user.id);
