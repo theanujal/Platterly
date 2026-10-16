@@ -42,10 +42,10 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         value={searchParams.get("status") ?? "ALL"}
         onValueChange={(v) => updateParam("status", v ?? "ALL")}
       >
-        <SelectTrigger aria-label="Order status filter" className="w-44">
+        <SelectTrigger aria-label="Order status filter" className="w-64">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="w-auto min-w-(--anchor-width)">
           {STATUS_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
@@ -55,10 +55,10 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
       </Select>
 
       <Select items={Object.fromEntries(APPROVAL_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("approval") ?? "ALL"} onValueChange={(v) => updateParam("approval", v ?? "ALL")}>
-        <SelectTrigger aria-label="Menu approval filter" className="w-56">
+        <SelectTrigger aria-label="Menu approval filter" className="w-64">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="w-auto min-w-(--anchor-width)">
           {APPROVAL_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
@@ -72,10 +72,10 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         value={searchParams.get("eventType") ?? "ALL"}
         onValueChange={(v) => updateParam("eventType", v ?? "ALL")}
       >
-        <SelectTrigger aria-label="Event type filter" className="w-48">
+        <SelectTrigger aria-label="Event type filter" className="w-52">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="w-auto min-w-(--anchor-width)">
           {eventTypeOptions.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
@@ -92,7 +92,7 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         <SelectTrigger aria-label="Order type filter" className="w-40">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent className="w-auto min-w-(--anchor-width)">
           {ORDER_KIND_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
