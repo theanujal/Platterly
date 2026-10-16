@@ -13,7 +13,7 @@ import type { StaffDuty } from "@/generated/prisma/enums";
 import { saveStaffCountsAction } from "../event-ops-actions";
 
 /**
- * Staffing (AJ, 2026-10-14): the Event Manager is a typed name with suggestions; Cooking, Serving and Setup are numbers
+ * Staffing (AJ, 2026-10-14): the Event Manager is picked from team members with access and staff whose duty is Event Manager (AJ, 2026-10-16); Cooking, Serving and Setup are numbers
  * only. A blank box is zero. The Staff page and the order's Staffing tab both use this card, so they always agree.
  */
 export function StaffingCountsCard({ orderId, eventId, initial, eventManager, suggestions, canEdit }: { orderId: string | null; eventId: string; initial: Record<StaffDuty, number>; eventManager: string; suggestions: string[]; canEdit: boolean }) {
@@ -43,18 +43,18 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
           <Users className="size-4 text-muted-foreground" />
           Staffing ({total} {total === 1 ? "person" : "people"})
         </CardTitle>
-        <CardDescription>Name the Event Manager, then enter how many people this event needs for Cooking, Serving and Setup.</CardDescription>
+        <CardDescription>Pick the Event Manager, then enter how many people this event needs for Cooking, Serving and Setup.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label>Event Manager</Label>
           <SearchableSelect
             aria-label="Event Manager"
-            allowCustom
             disabled={!canEdit}
-            placeholder="Type or pick a name"
-            searchPlaceholder="Search or type a name…"
-            options={suggestions.map((name) => ({ value: name, label: name }))}
+            placeholder="Pick the Event Manager"
+            searchPlaceholder="Search team members and Event Managers…"
+            emptyLabel="No team member or Event Manager staff found. Add a staff member with the duty Event Manager."
+            options={(eventManager && !suggestions.includes(eventManager) ? [eventManager, ...suggestions] : suggestions).map((name) => ({ value: name, label: name }))}
             value={manager}
             onValueChange={(v) => {
               setManager(v.slice(0, 100));

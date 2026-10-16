@@ -40,39 +40,35 @@ async function pickCustomer(page: Page, customerName: string) {
 }
 
 /**
- * Order form's "Event Date" field (DateRangePicker) — opens a calendar
+ * Order form's "Event Date" field (DateRangePicker, one day per picker) — opens a calendar
  * popover on click; days are picked by clicking day-number buttons in a
  * month grid, navigating months with the "Next month" button as needed.
- * A same-day range is committed by clicking the same day twice.
+ * A single day is one click. A range switches on "Multi-event" and picks the start and end dates separately (AJ, 2026-10-16).
  */
 async function pickEventDate(page: Page, startIso: string, endIso: string) {
-  await page.getByLabel("Event Date").click();
-  const popover = page.locator('[data-slot="popover-content"]');
-  await expect(popover).toBeVisible();
+  const popover = page.locator('[data-slot="popover-content"][data-open]');
 
-  async function gotoMonth(iso: string) {
-    const target = new Date(`${iso}T00:00:00`);
-    const targetLabel = target.toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  async function pickDay(label: string, iso: string) {
+    await page.getByLabel(label, { exact: true }).click();
+    await expect(popover).toBeVisible();
+    const targetLabel = new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
     for (let i = 0; i < 36; i++) {
-      const currentLabel = await popover.locator("span.font-medium").textContent();
-      if (currentLabel === targetLabel) return;
+      if ((await popover.locator("span.font-medium").textContent()) === targetLabel) break;
       await popover.getByRole("button", { name: "Next month" }).click();
     }
-    throw new Error(`Could not navigate calendar to ${targetLabel}`);
+    await popover.getByRole("button", { name: String(Number(iso.split("-")[2])), exact: true }).click();
   }
 
-  const startDay = String(Number(startIso.split("-")[2]));
-  const endDay = String(Number(endIso.split("-")[2]));
-
-  await gotoMonth(startIso);
-  await popover.getByRole("button", { name: startDay, exact: true }).click();
   if (startIso === endIso) {
-    // Second click on the same day commits a single-day range and closes the popover.
-    await popover.getByRole("button", { name: startDay, exact: true }).click();
-  } else {
-    await gotoMonth(endIso);
-    await popover.getByRole("button", { name: endDay, exact: true }).click();
+    await pickDay("Event Date", startIso);
+    return;
   }
+  // Several dates need a Multi Order: choosing it says so (AJ, 2026-10-16).
+  await page.getByRole("button", { name: /^Multi Order/ }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Order Type changed to Multi Order");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
+  await pickDay("Event start date", startIso);
+  await pickDay("Event end date", endIso);
 }
 
 /**
@@ -200,9 +196,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
 
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   // Order Details — Taxes is gone; Extra / Service Cost replaces "Other Charges".
-  await page.getByLabel("Discount").fill("100");
-  await page.getByLabel("Transportation Cost").fill("30");
-  await page.getByLabel("Extra / Service Cost").fill("20");
+  await page.getByRole("spinbutton", { name: "Discount" }).fill("100");
+  await page.getByRole("spinbutton", { name: "Transportation Cost" }).fill("30");
+  await page.getByRole("spinbutton", { name: "Extra / Service Cost" }).fill("20");
   // A team-added charge: label + amount, added into the Grand Total.
   await page.getByRole("button", { name: "Add charge" }).click();
   await page.getByLabel("Charge 1 label").fill("Generator");
@@ -262,7 +258,14 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // --- Open the order, confirm fields round-tripped ---
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
+  // Guest Information reads as details on an existing order; Edit reveals the fields (AJ, 2026-10-16).
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.getByLabel("Adults")).toHaveCount(0);
+  await expect(page.getByText("Adults", { exact: true }).locator("..")).toContainText("80");
+  await page.getByRole("button", { name: "Edit guest information" }).click();
   await expect(page.getByLabel("Adults")).toHaveValue("80");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   // A freshly opened order has no unsaved changes: Back to orders, no warning note (AJ, 2026-10-14).
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Back to orders" })).toBeVisible();
@@ -275,9 +278,10 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.locator("#order-customer")).toBeVisible();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator("#order-customer")).toHaveCount(0);
-  // Order Type reads as plain details until Edit is pressed (AJ, 2026-10-16).
+  // Order Type lives in Event Information and reads as plain details until Edit is pressed (AJ, 2026-10-16).
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit order type" }).click();
+  await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /^Multi Order/ }).click();
   const kindAsk = page.getByRole("alertdialog", { name: "Change this order to Multi Order?" });
@@ -289,9 +293,11 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await kindAsk.getByRole("button", { name: "Change type" }).click();
   await expect(kindAsk).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: /^Single Order/ }).click(); // back to the saved type: no question
+  await page.getByRole("button", { name: /^Single Order/ }).click(); // back to the saved type: no question, just the notice
+  await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Done" }).click();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByLabel("Charge 1 label")).toHaveValue("Generator");
   await expect(page.getByLabel("Charge 1 amount")).toHaveValue("40");
@@ -313,7 +319,12 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   // The menu is not planned on this tab (AJ, 2026-10-16): it holds the guest counts and the event information; the meals live in Menu Approval.
   const guestsPanel = page.locator("#order-panel-menu");
   await expect(guestsPanel.getByTestId("meal-item-counts")).toHaveCount(0);
+  // Event Information reads as details until Edit (AJ, 2026-10-16).
+  await expect(guestsPanel.getByLabel("Venue / Building Name")).toHaveCount(0);
+  await expect(guestsPanel.getByText("Venue / Building Name", { exact: true })).toBeVisible();
+  await guestsPanel.getByRole("button", { name: "Edit event information" }).click();
   await expect(guestsPanel.getByLabel("Venue / Building Name")).toBeVisible();
+  await guestsPanel.getByRole("button", { name: "Done" }).click();
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.locator("#order-panel-approval").getByTestId("meal-slot-2026-12-01-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
 
@@ -419,12 +430,8 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await pickCustomer(page, customerName);
   await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await pickEventDate(page, "2026-12-05", "2026-12-06");
-  // A date range switches the order to Multi Order by itself and says so (AJ, 2026-09-27).
-  await expect(page.getByRole("alertdialog")).toContainText("more than one date");
-  await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
-  await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: "Multi Order" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  // Multi-event (the helper turned it on and acknowledged the popup) made it a Multi Order.
+  await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
   await page.getByRole("tab", { name: "Guests & Event Info" }).click();
@@ -579,33 +586,29 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
 
   // Today is allowed, as a single day: still a Single Order with one meal type.
   await pickEventDate(page, toLocalIso(new Date()), toLocalIso(new Date()));
-  await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Breakfast" }).click();
-  await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
 
   // A second meal type on the same day turns it into a Multi Order, with a popup —
   // but it's still one day, so no Event Dates sidebar appears (2026-09-29).
   await page.getByRole("button", { name: "Dinner" }).click();
   await expect(page.getByRole("alertdialog")).toContainText("more than one meal type");
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
-  await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: /Multi Order/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("navigation", { name: "Event Dates" })).toHaveCount(0);
-  // ...and it can't be turned back to Single while both meals are there.
-  await expect(page.getByRole("button", { name: /Single Order/ })).toBeDisabled();
+  // ...and turning it back to Single while both meals are there asks first, naming what would go (AJ, 2026-10-16).
+  await page.getByRole("button", { name: /^Single Order/ }).click();
+  const loseAsk = page.getByRole("alertdialog");
+  await expect(loseAsk).toContainText("removes 1 planned meal");
+  await loseAsk.getByRole("button", { name: "Keep Multi Order" }).click();
+  await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
 
   // Removing the second meal brings it back to Single on its own (AJ, 2026-09-30).
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await page.getByRole("button", { name: "Remove Dinner", exact: true }).click();
   const dinnerConfirm = page.getByRole("alertdialog");
   await dinnerConfirm.getByRole("button", { name: "Remove", exact: true }).click({ timeout: 2000 }).catch(() => {}); // only asks when the meal has a menu, price or dishes
-  await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: /Single Order/ })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
 
   // Total Guests is computed and read-only.
   await page.getByLabel("Adults").fill("10");

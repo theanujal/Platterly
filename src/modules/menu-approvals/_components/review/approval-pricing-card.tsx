@@ -4,7 +4,7 @@ import { Wallet } from "lucide-react";
 import { SummaryCard } from "@/app/(app)/orders/_components/order-form-parts";
 import { formatCurrency } from "./approval-format";
 
-/** "Pricing Details": the live totals of the planner draft (computed by the one pricing rule) and the change since the last version sent. */
+/** "Pricing Summary": the live totals of the planner draft (computed by the one pricing rule) and the change since the last version sent. */
 export function ApprovalPricingCard({
   menuAmount,
   extrasAmount,
@@ -27,8 +27,8 @@ export function ApprovalPricingCard({
   dirty: boolean;
 }) {
   return (
-    <SummaryCard icon={Wallet} title="Pricing Details">
-      <div className="flex flex-col gap-3 text-sm">
+    <SummaryCard icon={Wallet} title="Pricing Summary">
+      <div className="flex flex-col gap-2.5 text-sm">
         {[
           { label: "Menu Amount", amount: menuAmount },
           { label: "Extras & Add-ons", amount: extrasAmount },

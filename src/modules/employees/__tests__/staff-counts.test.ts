@@ -46,9 +46,12 @@ describe("staffing as numbers (Managers 2, Serving 10)", () => {
 
   it("the Event Manager is a trimmed name that can be cleared, and is audited", async () => {
     const { org, actor, event } = await kitchen("Counts G");
+    await prisma.staffMember.create({ data: { organizationId: org.id, name: "Asha Rao", defaultDuty: "EVENT_MANAGER" } });
     await saveEventManager(org.id, event.id, "  Asha Rao ", actor.id);
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).eventManagerName).toBe("Asha Rao");
     await expect(saveEventManager(org.id, event.id, "x".repeat(101), actor.id)).rejects.toThrow();
+    // Only a team member with access, or a staff member whose duty is Event Manager, can be picked (AJ, 2026-10-16).
+    await expect(saveEventManager(org.id, event.id, "Somebody Else", actor.id)).rejects.toThrow(/Pick the Event Manager/);
     await saveEventManager(org.id, event.id, "", actor.id);
     expect((await prisma.event.findUniqueOrThrow({ where: { id: event.id } })).eventManagerName).toBeNull();
     expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "event.event_manager_updated" } })).toBe(2);

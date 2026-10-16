@@ -10,7 +10,7 @@ import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { deleteStoredFiles } from "@/modules/expenses/attachment";
 import { derivePaymentState, tenantTodayStart } from "@/modules/payments/payment-math";
 import "server-only";
-import { parseCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
+import { parseCustomCharges, resolveCustomCharges, sumCustomCharges, type CustomCharge } from "./custom-charges";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 import { addOnOfferedOnMenu } from "@/modules/addons/addon";
@@ -23,7 +23,8 @@ import { menuGuestCount, priceMeals } from "./meal-pricing";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { returnAllOrderItems, returnAllOrderItemsInTransaction } from "@/modules/production/production";
 import type { Prisma } from "@/generated/prisma/client";
-import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
+import { percentOf } from "./amount";
+import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, AmountMode, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -99,6 +100,14 @@ export interface OrderInput {
   /** "Order Details" section (2026-09-19) — folded into `total` by recalculateOrderTotals alongside discount. */
   transportationCost?: number;
   otherCharges?: number;
+  /** Discount and Extra / Service Cost as a percentage of the subtotal (AJ, 2026-10-16). In PERCENTAGE mode the amount is derived from the rate. */
+  discountMode?: AmountMode;
+  discountRate?: number;
+  otherChargesMode?: AmountMode;
+  otherChargesRate?: number;
+  /** Transportation Cost as a percentage of the subtotal, like Discount. */
+  transportationMode?: AmountMode;
+  transportationRate?: number;
   /** Team-added label + amount lines, summed into `total`. */
   customCharges?: CustomCharge[];
   advance?: number;
@@ -231,6 +240,15 @@ export interface ChildPricingRates {
  * Menu's own pricePerPlate or a flat per-plate amount. `menu` is null when
  * no meal has an assigned Menu yet — degrades to 0, never throws.
  */
+/**
+ * Individual child rates apply when the method is Individual, or when the Individual Pricing switch is on and child rates were typed.
+ * The form shows the child price boxes whenever the switch is on, so rates typed there count even if the method was left at Standard
+ * (AJ, 2026-10-16). Orders from the storefront also have the switch on, but no typed child rates, so they keep pricing from the Menu.
+ */
+export function usesIndividualChildRates(order: { pricingMethod: PricingMethod; individualPricingEnabled: boolean; individualChildBelow5Rate: unknown; individualChild5To10Rate: unknown }): boolean {
+  return order.pricingMethod === "INDIVIDUAL" || (order.individualPricingEnabled && (Number(order.individualChildBelow5Rate ?? 0) > 0 || Number(order.individualChild5To10Rate ?? 0) > 0));
+}
+
 export function computeChildrenCharge(menu: ChildPricingRates | null, below5Count: number | null, child5To10Count: number | null): number {
   if (!menu) return 0;
   const below5 = below5Count ?? 0;
@@ -306,23 +324,28 @@ export async function recalculateOrderTotals(orderId: string, db: Db = prisma) {
   );
   const referenceMenuPrice = order.childPricingMenu ? Number(order.childPricingMenu.pricePerPlate) : 0;
   const childrenCharge =
-    order.pricingMethod === "INDIVIDUAL"
+    usesIndividualChildRates(order)
       ? computeIndividualChildrenCharge(order, referenceMenuPrice, order.childBelow5Count, order.child5To10Count)
       : computeChildrenCharge(order.childPricingMenu, order.childBelow5Count, order.child5To10Count);
   const subtotal = mealsSubtotal + childrenCharge;
-  const total = subtotal - Number(order.discount) + Number(order.transportationCost) + Number(order.otherCharges) + sumCustomCharges(parseCustomCharges(order.customCharges));
+  // A percentage is of the subtotal (meals + children); the rupee amount is stored so every other reader keeps using `discount` / `otherCharges`.
+  const discount = order.discountMode === "PERCENTAGE" ? percentOf(subtotal, Number(order.discountRate)) : Number(order.discount);
+  const otherCharges = order.otherChargesMode === "PERCENTAGE" ? percentOf(subtotal, Number(order.otherChargesRate)) : Number(order.otherCharges);
+  const transportationCost = order.transportationMode === "PERCENTAGE" ? percentOf(subtotal, Number(order.transportationRate)) : Number(order.transportationCost);
+  const customCharges = resolveCustomCharges(parseCustomCharges(order.customCharges), subtotal);
+  const total = subtotal - discount + transportationCost + otherCharges + sumCustomCharges(customCharges);
   // Once an order has confirmed payments, they decide advance, balance and payment status (Chunk 14).
   const paid = await db.payment.aggregate({ where: { orderId, status: "CONFIRMED" }, _sum: { amount: true } });
   const confirmedPaid = Number(paid._sum.amount ?? 0);
   if (confirmedPaid > 0) {
     return db.order.update({
       where: { id: orderId },
-      data: { subtotal, childrenCharge, total, advance: confirmedPaid, balance: total - confirmedPaid, paymentStatus: derivePaymentState(total, confirmedPaid) },
+      data: { subtotal, childrenCharge, discount, otherCharges, transportationCost, customCharges, total, advance: confirmedPaid, balance: total - confirmedPaid, paymentStatus: derivePaymentState(total, confirmedPaid) },
     });
   }
   const balance = total - Number(order.advance);
 
-  return db.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, total, balance } });
+  return db.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, discount, otherCharges, transportationCost, customCharges, total, balance } });
 }
 
 /**
@@ -385,7 +408,13 @@ export async function createOrder(organizationId: string, input: OrderInput, act
       totalParticipants: input.totalParticipants,
       individualPricingEnabled: input.individualPricingEnabled ?? false,
       discount: input.discount ?? 0,
+      discountMode: input.discountMode ?? "FIXED",
+      discountRate: input.discountRate ?? 0,
+      otherChargesMode: input.otherChargesMode ?? "FIXED",
+      otherChargesRate: input.otherChargesRate ?? 0,
       transportationCost: input.transportationCost ?? 0,
+      transportationMode: input.transportationMode ?? "FIXED",
+      transportationRate: input.transportationRate ?? 0,
       otherCharges: input.otherCharges ?? 0,
       customCharges: parseCustomCharges(input.customCharges),
       advance: input.advance ?? 0,
@@ -483,7 +512,13 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
       totalParticipants: input.totalParticipants,
       individualPricingEnabled: input.individualPricingEnabled ?? before.individualPricingEnabled,
       discount: input.discount ?? before.discount,
+      discountMode: input.discountMode ?? before.discountMode,
+      discountRate: input.discountRate ?? before.discountRate,
+      otherChargesMode: input.otherChargesMode ?? before.otherChargesMode,
+      otherChargesRate: input.otherChargesRate ?? before.otherChargesRate,
       transportationCost: input.transportationCost ?? before.transportationCost,
+      transportationMode: input.transportationMode ?? before.transportationMode,
+      transportationRate: input.transportationRate ?? before.transportationRate,
       otherCharges: input.otherCharges ?? before.otherCharges,
       ...(input.customCharges ? { customCharges: parseCustomCharges(input.customCharges) } : {}),
       advance: input.advance ?? before.advance,

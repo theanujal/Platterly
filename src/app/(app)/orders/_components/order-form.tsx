@@ -32,7 +32,10 @@ import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
 import { FormTabs, type FormTab } from "./form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
-import { MAX_CUSTOM_CHARGES, parseCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
+import { percentOf } from "@/modules/orders/amount";
+import { ApprovalSidebarSlotProvider } from "@/modules/menu-approvals/_components/review/sidebar-slot";
+import { LiveOrderTotalProvider, OrderPriceLinesProvider, type OrderPriceLine } from "@/modules/orders/live-total";
+import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
 import { getOrderCountsByDayAction, getMenuForOrderPickerAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
 
@@ -117,11 +120,15 @@ export interface OrderFormValues {
   individualChild5To10Rate: string;
   individualChild5To10PricingType: string;
   individualPricingEnabled: boolean;
+  /** Discount and Extra / Service Cost: a rupee amount, or (mode PERCENTAGE) a percentage of the subtotal. Either way the typed number lives in `discount` / `otherCharges`. */
   discount: string;
+  discountMode: "FIXED" | "PERCENTAGE";
   transportationCost: string;
+  transportationMode: "FIXED" | "PERCENTAGE";
   otherCharges: string;
+  otherChargesMode: "FIXED" | "PERCENTAGE";
   /** Team-added label + amount lines (amount typed as text, like the other money fields). */
-  customCharges: { label: string; amount: string }[];
+  customCharges: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }[];
   status: string;
   notes: string;
   /** Internal, kitchen-facing — distinct from the customer-facing Notes above. */
@@ -163,8 +170,11 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   individualChild5To10PricingType: "FIXED",
   individualPricingEnabled: false,
   discount: "0",
+  discountMode: "FIXED",
   transportationCost: "0",
+  transportationMode: "FIXED",
   otherCharges: "0",
+  otherChargesMode: "FIXED",
   customCharges: [],
   status: "PENDING_REVIEW",
   notes: "",
@@ -201,6 +211,19 @@ function enumerateDates(start: string, end: string): string[] {
 function formatCurrency(amount: number) {
   return `₹${amount.toFixed(2)}`;
 }
+
+/** One typed charge line as the shared parser reads it: a percentage line carries its rate, a rupee line its amount. */
+function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }) {
+  const typed = Number.parseFloat(c.amount);
+  return c.mode === "PERCENTAGE" ? { label: c.label, mode: c.mode, rate: typed, amount: 0 } : { label: c.label, amount: typed };
+}
+
+/** The fields the Event Information card edits, kept so Cancel can put them back. */
+const EVENT_FIELDS = [
+  "orderKind", "eventTypeId", "eventStartDate", "eventEndDate", "mealPlanEntries", "venueType", "venue", "eventAddress", "venueDoorNumber", "venueTower", "venueFloor",
+  "venueLandmark", "venueContactName", "venueContactPhone", "vehicleAccess", "venueAccessInstructions", "deliveryInstructions", "cookingInstructions",
+  "liveCounterAvailable", "gasElectricAvailable",
+] as const;
 
 /** Mirrors order.ts's server-side computeChildrenCharge exactly (STANDARD). */
 function computeChildrenChargePreview(menu: MenuOption | undefined, below5Count: number, child5To10Count: number): number {
@@ -342,6 +365,8 @@ export function OrderForm({
   onSubmitAndNotify,
 }: OrderFormProps) {
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? "details");
+  const [approvalSlot, setApprovalSlot] = useState<HTMLElement | null>(null);
+  const onApprovalTab = activeTab === "approval" && Boolean(menuApprovalTab);
   // A link to ?tab=... on this page (the banner, the sidebar card, a redirect) opens that tab. Adjusted while rendering, the way React
   // recommends for state that follows a prop, not in an effect.
   const [seenInitialTab, setSeenInitialTab] = useState(initialTab);
@@ -361,7 +386,10 @@ export function OrderForm({
   // Editing an order: Customer Details and Order Type read as plain details until Edit is pressed (AJ, 2026-10-16), like Business Settings.
   // Edit only reveals the fields; the changes are saved with the order's Save changes button.
   const [editingCustomer, setEditingCustomer] = useState(false);
-  const [editingKind, setEditingKind] = useState(false);
+  const [editingGuests, setEditingGuests] = useState(false);
+  const [guestsBeforeEdit, setGuestsBeforeEdit] = useState<{ adultCount: string; childBelow5Count: string; child5To10Count: string } | null>(null);
+  const [editingEvent, setEditingEvent] = useState(false);
+  const [eventBeforeEdit, setEventBeforeEdit] = useState<Pick<OrderFormValues, (typeof EVENT_FIELDS)[number]> | null>(null);
   const [customerBeforeEdit, setCustomerBeforeEdit] = useState<{ customerId: string; customer: SelectedCustomer | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"save" | "whatsapp" | null>(null);
@@ -385,7 +413,7 @@ export function OrderForm({
   }
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
-  const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
+  const [multiNotice, setMultiNotice] = useState<"meals" | "multiOn" | "multiOff" | null>(null);
   // Which meal's "Select/Edit Food Items" drawer is open — lifted here (not
   // internal to MenuPlanningSection) so the "Selected Meals" summary card
   // can also open it directly for any date, not just the sidebar-focused one.
@@ -398,18 +426,44 @@ export function OrderForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  // On an order that is already booked, moving away from its saved Order Type asks first (AJ, 2026-10-14): the type decides
-  // how the order is grouped and filtered. Going back to the saved type, or any click on a new order, needs no question.
+  // One Order Type (AJ, 2026-10-16) decides the date and meal fields. Multi Order allows several meals, several dates, or both.
+  // Going to Single Order keeps one date and one meal type, so anything beyond that is named in a question first, never dropped silently.
+  // On an order that is already booked, moving away from its saved Order Type asks first (AJ, 2026-10-14).
   const [pendingKind, setPendingKind] = useState<string | null>(null);
-  function requestOrderKind(kind: string) {
-    if (kind === values.orderKind) return;
-    if (initialValues && kind !== initialValues.orderKind) setPendingKind(kind);
-    else setOrderKind(kind);
+
+  /** What Single Order would keep (the start date, the first meal type on it) and what it would remove. */
+  function singleOrderLoss() {
+    const onStart = values.mealPlanEntries.filter((e) => e.date === values.eventStartDate);
+    const firstType = onStart[0]?.mealType;
+    const kept = firstType ? onStart.filter((e) => e.mealType === firstType) : [];
+    return { kept, extraDates: Math.max(enumerateDates(values.eventStartDate, values.eventEndDate).length - 1, 0), removedMeals: values.mealPlanEntries.length - kept.length };
   }
 
-  function setOrderKind(kind: string) {
+  function requestOrderKind(kind: string) {
+    if (kind === values.orderKind) return;
+    if (kind === "SINGLE") {
+      const loss = singleOrderLoss();
+      if (loss.extraDates > 0 || loss.removedMeals > 0) {
+        setPendingKind("SINGLE");
+        return;
+      }
+    }
+    if (initialValues && kind !== initialValues.orderKind) {
+      setPendingKind(kind);
+      return;
+    }
+    applyOrderKind(kind);
+    setMultiNotice(kind === "MULTI" ? "multiOn" : "multiOff");
+  }
+
+  function applyOrderKind(kind: string) {
     setAutoSwitchedToMulti(false);
-    setField("orderKind", kind);
+    if (kind === "SINGLE") {
+      const { kept } = singleOrderLoss();
+      setValues((prev) => ({ ...prev, orderKind: "SINGLE", eventEndDate: prev.eventStartDate, mealPlanEntries: kept }));
+    } else {
+      setField("orderKind", kind);
+    }
   }
 
   /**
@@ -418,7 +472,7 @@ export function OrderForm({
    * why in a popup. A Multi Order can't be turned back to Single while either
    * still holds (see `multiRequired`).
    */
-  function autoMulti(reason: "dates" | "meals") {
+  function autoMulti(reason: "meals") {
     setValues((prev) => (prev.orderKind === "MULTI" ? prev : { ...prev, orderKind: "MULTI" }));
     if (values.orderKind !== "MULTI") {
       setMultiNotice(reason);
@@ -440,7 +494,6 @@ export function OrderForm({
       "mealPlanEntries",
       values.mealPlanEntries.filter((e) => newDays.has(e.date)),
     );
-    if (startDate && endDate && startDate !== endDate) autoMulti("dates");
   }
 
   const days = useMemo(() => enumerateDates(values.eventStartDate, values.eventEndDate), [values.eventStartDate, values.eventEndDate]);
@@ -471,8 +524,12 @@ export function OrderForm({
   const mealsSubtotal = pricedMeals.menuAmount;
   const childPricingMenuId = deriveStandardChildPricingMenuIdPreview(values.mealPlanEntries);
   const childPricingMenu = menus.find((m) => m.id === childPricingMenuId);
+  // Same rule as the server (usesIndividualChildRates): the Individual Pricing switch or the method.
+  const individualChildRates =
+    values.pricingMethod === "INDIVIDUAL" ||
+    (values.individualPricingEnabled && ((Number.parseFloat(values.individualChildBelow5Rate) || 0) > 0 || (Number.parseFloat(values.individualChild5To10Rate) || 0) > 0));
   const childrenCharge =
-    values.pricingMethod === "INDIVIDUAL"
+    individualChildRates
       ? computeIndividualChildrenChargePreview(
           Number.parseFloat(values.individualChildBelow5Rate) || 0,
           values.individualChildBelow5PricingType,
@@ -483,12 +540,33 @@ export function OrderForm({
           Number(values.child5To10Count) || 0,
         )
       : computeChildrenChargePreview(childPricingMenu, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
+  // The same children charge split by age band (it is linear in the counts), so the summary can list each band.
+  const below5Count = Number(values.childBelow5Count) || 0;
+  const child5To10Count = Number(values.child5To10Count) || 0;
+  const childBandCharge = (below5: number, to10: number) =>
+    individualChildRates
+      ? computeIndividualChildrenChargePreview(
+          Number.parseFloat(values.individualChildBelow5Rate) || 0,
+          values.individualChildBelow5PricingType,
+          Number.parseFloat(values.individualChild5To10Rate) || 0,
+          values.individualChild5To10PricingType,
+          childPricingMenu?.price ?? 0,
+          below5,
+          to10,
+        )
+      : computeChildrenChargePreview(childPricingMenu, below5, to10);
+  const childBelow5Charge = childBandCharge(below5Count, 0);
+  const child5To10Charge = childBandCharge(0, child5To10Count);
   const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge + carriedOverItemsSubtotal;
   const eventDaysUntil = daysUntilPreview(values.eventStartDate);
   // No backdated orders (AJ, 2026-09-27). An existing order keeps its own past date untouched.
   const eventDatePast = eventDaysUntil !== null && eventDaysUntil < 0 && values.eventStartDate !== initialValues?.eventStartDate;
   const distinctMealTypes = new Set(values.mealPlanEntries.map((e) => e.mealType)).size;
   const multiRequired = days.length > 1 || distinctMealTypes > 1;
+  const isMulti = values.orderKind === "MULTI";
+  const singleLoss = singleOrderLoss();
+  // Meals owned by the Menu Approval tab can't be removed here, so Single Order stays off until they are recalled.
+  const singleBlocked = menuPlanReadOnly && singleLoss.removedMeals > 0;
   // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
   if (autoSwitchedToMulti && !multiRequired) {
     setAutoSwitchedToMulti(false);
@@ -496,12 +574,27 @@ export function OrderForm({
   }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
-  const discountNum = Number.parseFloat(values.discount) || 0;
-  const transportationCostNum = Number.parseFloat(values.transportationCost) || 0;
-  const otherChargesNum = Number.parseFloat(values.otherCharges) || 0;
-  const customChargesNum = sumCustomCharges(parseCustomCharges(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
+  // A percentage is of the subtotal (meals + children), to the paisa, like the server (order.ts percentOf).
+  const transportationCostNum = values.transportationMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.transportationCost) || 0) : Number.parseFloat(values.transportationCost) || 0;
+  const discountNum = values.discountMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.discount) || 0) : Number.parseFloat(values.discount) || 0;
+  const otherChargesNum = values.otherChargesMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.otherCharges) || 0) : Number.parseFloat(values.otherCharges) || 0;
+  // A percentage line is a rate of the subtotal; the server resolves it the same way (resolveCustomCharges).
+  const customChargeLines = resolveCustomCharges(parseCustomCharges(values.customCharges.map(customChargeInput)), subtotal);
+  const customChargesNum = sumCustomCharges(customChargeLines);
   // Mirrors order.ts's server-side recalculateOrderTotals exactly.
   const total = subtotal - discountNum + transportationCostNum + otherChargesNum + customChargesNum;
+  const perHead = (charge: number, count: number) => `${count} × ${formatCurrency(count > 0 ? charge / count : 0)}`;
+  const priceLines: OrderPriceLine[] = [
+    { label: "Meals", amount: mealsSubtotal },
+    ...(mealItemsSubtotal > 0 ? [{ label: "Extra dishes & add-ons", amount: mealItemsSubtotal }] : []),
+    ...(carriedOverItemsSubtotal > 0 ? [{ label: "Carried over from Quotation", amount: carriedOverItemsSubtotal }] : []),
+    ...(below5Count > 0 ? [{ label: "Children (Under 5)", detail: childBelow5Charge > 0 ? perHead(childBelow5Charge, below5Count) : `${below5Count} · no charge`, amount: childBelow5Charge }] : []),
+    ...(child5To10Count > 0 ? [{ label: "Children (5–10)", detail: child5To10Charge > 0 ? perHead(child5To10Charge, child5To10Count) : `${child5To10Count} · no charge`, amount: child5To10Charge }] : []),
+    ...(transportationCostNum > 0 ? [{ label: "Transportation Cost", detail: values.transportationMode === "PERCENTAGE" ? `${values.transportationCost}% of subtotal` : undefined, amount: transportationCostNum }] : []),
+    ...(otherChargesNum > 0 ? [{ label: "Extra / Service Cost", detail: values.otherChargesMode === "PERCENTAGE" ? `${values.otherCharges}% of subtotal` : undefined, amount: otherChargesNum }] : []),
+    ...customChargeLines.map((c) => ({ label: c.label, detail: c.mode === "PERCENTAGE" ? `${c.rate}% of subtotal` : undefined, amount: c.amount })),
+    ...(discountNum > 0 ? [{ label: "Discount", detail: values.discountMode === "PERCENTAGE" ? `${values.discount}% of subtotal` : undefined, amount: discountNum, negative: true }] : []),
+  ];
 
   function buildFormData(): FormData {
     const formData = new FormData();
@@ -539,10 +632,16 @@ export function OrderForm({
     formData.set("individualChild5To10Rate", values.individualChild5To10Rate);
     formData.set("individualChild5To10PricingType", values.individualChild5To10PricingType);
     formData.set("individualPricingEnabled", String(values.individualPricingEnabled));
-    formData.set("discount", values.discount);
-    formData.set("transportationCost", values.transportationCost);
-    formData.set("otherCharges", values.otherCharges);
-    formData.set("customCharges", JSON.stringify(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))));
+    formData.set("discount", String(discountNum));
+    formData.set("discountMode", values.discountMode);
+    formData.set("discountRate", values.discountMode === "PERCENTAGE" ? values.discount || "0" : "0");
+    formData.set("transportationCost", String(transportationCostNum));
+    formData.set("transportationMode", values.transportationMode);
+    formData.set("transportationRate", values.transportationMode === "PERCENTAGE" ? values.transportationCost || "0" : "0");
+    formData.set("otherCharges", String(otherChargesNum));
+    formData.set("otherChargesMode", values.otherChargesMode);
+    formData.set("otherChargesRate", values.otherChargesMode === "PERCENTAGE" ? values.otherCharges || "0" : "0");
+    formData.set("customCharges", JSON.stringify(values.customCharges.map((c, i) => ({ ...customChargeInput(c), amount: customChargeLines[i]?.amount ?? 0 }))));
     // New order only: the payments added on this page, recorded once the order is saved.
     if (!initialValues) formData.set("payments", JSON.stringify(draftPayments.map(({ amount, type, method, receivedAt, reference, sendReceipt }) => ({ amount, type, method, receivedAt, reference, sendReceipt }))));
     formData.set("notes", values.notes);
@@ -612,8 +711,8 @@ export function OrderForm({
   const startsIn = startsInPreview(eventDaysUntil);
   const totalGuests = String(guestsComputed);
   const orderTypeOptions = [
-    { value: "SINGLE", label: "Single Order", hint: "One event / one meal type" },
-    { value: "MULTI", label: "Multi Order", hint: "Multiple meals across the same event" },
+    { value: "SINGLE", label: "Single Order", hint: "One date, one meal type" },
+    { value: "MULTI", label: "Multi Order", hint: "Several meals, several dates, or both" },
   ] as const;
   const formatDay = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", opts);
   const eventDateText =
@@ -707,7 +806,7 @@ export function OrderForm({
         onCreate={createCustomerForOrderAction}
       />
     </div>
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-customer-email">Email</Label>
         <Input id="order-customer-email" readOnly tabIndex={-1} className="bg-muted" value={selectedCustomer?.email ?? ""} placeholder="Filled in from the customer" />
@@ -720,63 +819,107 @@ export function OrderForm({
   </FormSection>
   );
 
-  const kindReadOnly = detailView && !editingKind;
-  const orderTypeSection = kindReadOnly ? (
-    <FormSection {...sec(2, Users)} title="Order Type" action={editButton("Edit", "Edit order type", () => setEditingKind(true))}>
-      <SummaryRow label="Order Type">{values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}</SummaryRow>
-    </FormSection>
+  const optionLabel = (options: readonly { value: string; label: string }[], value: string) => options.find((o) => o.value === value)?.label ?? "Not set";
+  const eventReadOnly = detailView && !editingEvent;
+  const eventViewFields: [string, React.ReactNode][] = [
+    ["Order Type", values.orderKind === "MULTI" ? "Multi Order" : "Single Order"],
+    ["Event Type", eventTypeName ?? "Not set"],
+    ["Event Date", eventDateText],
+    ["Venue Type", optionLabel(VENUE_TYPE_OPTIONS, values.venueType)],
+    ["Venue / Building Name", values.venue || "Not set"],
+    ["Complete Venue Address", values.eventAddress || "Not set"],
+    ["Door / Flat / House No.", values.venueDoorNumber || "Not set"],
+    ["Tower / Block", values.venueTower || "Not set"],
+    ["Floor", values.venueFloor || "Not set"],
+    ["Landmark", values.venueLandmark || "Not set"],
+    ["Venue Contact Person", values.venueContactName || "Not set"],
+    ["Contact Number", values.venueContactPhone || "Not set"],
+    ["Vehicle Access", optionLabel(VEHICLE_ACCESS_OPTIONS, values.vehicleAccess)],
+    ["Catering Access / Loading Instructions", values.venueAccessInstructions || "Not set"],
+    ["Delivery Instructions", values.deliveryInstructions || "Not set"],
+    ["Cooking Instructions", values.cookingInstructions || "Not set"],
+    ["Cooking / live counter facility", values.liveCounterAvailable ? "Available" : "Not available"],
+    ["Gas / electric connection at venue", values.gasElectricAvailable ? "Available" : "Not available"],
+  ];
+  const eventSection = eventReadOnly ? (
+  <FormSection
+    {...sec(3, CalendarDays)}
+    title="Event Information"
+    action={editButton("Edit", "Edit event information", () => {
+      setEventBeforeEdit(Object.fromEntries(EVENT_FIELDS.map((key) => [key, values[key]])) as Pick<OrderFormValues, (typeof EVENT_FIELDS)[number]>);
+      setEditingEvent(true);
+    })}
+  >
+    <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
+      {eventViewFields.map(([label, value]) => (
+        <div key={label} className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="break-words font-medium">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  </FormSection>
   ) : (
   <FormSection
-    {...sec(2, Users)}
-    title="Order Type"
+    {...sec(3, CalendarDays)}
+    title="Event Information"
+    description="Tell us about the event and where it will take place."
     action={
       detailView ? (
-        <Button type="button" size="md" onClick={() => setEditingKind(false)}>
-          Done
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={() => {
+              if (eventBeforeEdit) {
+                setValues((prev) => ({ ...prev, ...eventBeforeEdit }));
+              }
+              setEditingEvent(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="button" size="md" onClick={() => setEditingEvent(false)}>
+            Done
+          </Button>
+        </div>
       ) : undefined
     }
-    description={
-      values.orderKind === "MULTI"
-        ? multiRequired
-          ? "More than one date or meal type, so this stays a Multi Order."
-          : "Meal Planning below groups each date into its own event."
-        : "One date and one meal type. Adding a date or another meal makes it a Multi Order."
-    }
   >
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {orderTypeOptions.map((option) => {
-        const selected = values.orderKind === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={selected}
-            onClick={() => requestOrderKind(option.value)}
-            disabled={option.value === "SINGLE" && multiRequired}
-            className={cn(
-              "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-              selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
-            )}
-          >
-            <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
-              {selected && <span className="size-2.5 rounded-full bg-primary" />}
-            </span>
-            <span className="flex flex-col">
-              <span className="text-sm font-semibold">{option.label}</span>
-              <span className="text-xs text-muted-foreground">{option.hint}</span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  </FormSection>
-  );
-
-  const eventSection = (
-  <FormSection {...sec(3, CalendarDays)} title="Event Information" description="Tell us about the event and where it will take place.">
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-2 sm:col-span-2" role="group" aria-label="Order Type">
+        <Label>Order Type</Label>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {orderTypeOptions.map((option) => {
+            const selected = values.orderKind === option.value;
+            const blocked = option.value === "SINGLE" && singleBlocked;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => requestOrderKind(option.value)}
+                disabled={blocked}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+                  selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
+                )}
+              >
+                <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                  {selected && <span className="size-2.5 rounded-full bg-primary" />}
+                </span>
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold">{option.label}</span>
+                  <span className="text-xs text-muted-foreground">{option.hint}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {singleBlocked && <p className="text-xs text-muted-foreground">The meals are with the customer or the kitchen. Recall the menu to switch to a Single Order.</p>}
+      </div>
+      <div className={cn("flex flex-col gap-1.5", isMulti && "sm:col-span-2")}>
         <Label htmlFor="order-event-type">Event Type</Label>
         <Select
           items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
@@ -795,19 +938,51 @@ export function OrderForm({
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="order-event-date" required>Event Date</Label>
+      <div className={cn("flex flex-col gap-1.5", isMulti && "sm:col-span-2")}>
+        <Label htmlFor={isMulti ? "order-event-start" : "order-event-date"} required>{isMulti ? "Event Dates" : "Event Date"}</Label>
         <div className="flex items-stretch gap-2">
-          <div className="min-w-0 flex-1">
-            <DateRangePicker
-              id="order-event-date"
-              startDate={values.eventStartDate}
-              endDate={values.eventEndDate}
-              onChange={setEventDateRange}
-              minDate={toLocalIsoDate(new Date())}
-              loadOrderCounts={getOrderCountsByDayAction}
-            />
-          </div>
+          {isMulti ? (
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Event start date</span>
+                <DateRangePicker
+                  single
+                  id="order-event-start"
+                  ariaLabel="Event start date"
+                  startDate={values.eventStartDate}
+                  endDate={values.eventStartDate}
+                  onChange={(start) => setEventDateRange(start, values.eventEndDate && values.eventEndDate >= start ? values.eventEndDate : start)}
+                  minDate={toLocalIsoDate(new Date())}
+                  loadOrderCounts={getOrderCountsByDayAction}
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">Event end date</span>
+                <DateRangePicker
+                  single
+                  id="order-event-end"
+                  ariaLabel="Event end date"
+                  startDate={values.eventEndDate}
+                  endDate={values.eventEndDate}
+                  onChange={(end) => setEventDateRange(values.eventStartDate || end, end)}
+                  minDate={values.eventStartDate || toLocalIsoDate(new Date())}
+                  loadOrderCounts={getOrderCountsByDayAction}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="min-w-0 flex-1">
+              <DateRangePicker
+                single
+                id="order-event-date"
+                startDate={values.eventStartDate}
+                endDate={values.eventStartDate}
+                onChange={(day) => setEventDateRange(day, day)}
+                minDate={toLocalIsoDate(new Date())}
+                loadOrderCounts={getOrderCountsByDayAction}
+              />
+            </div>
+          )}
           {startsIn && (
             <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[startsIn.tone])}>
               <span>{startsIn.caption}</span>
@@ -932,9 +1107,57 @@ export function OrderForm({
   </FormSection>
   );
 
-  const guestSection = (
-  <FormSection {...sec(4, Users)} title="Guest Information" description="Enter the expected guest count. This will be used for all selected meals.">
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+  const guestsReadOnly = detailView && !editingGuests;
+  const guestSection = guestsReadOnly ? (
+  <FormSection
+    {...sec(4, Users)}
+    title="Guest Information"
+    action={locked || priceFrozen ? null : editButton("Edit", "Edit guest information", () => {
+      setGuestsBeforeEdit({ adultCount: values.adultCount, childBelow5Count: values.childBelow5Count, child5To10Count: values.child5To10Count });
+      setEditingGuests(true);
+    })}
+  >
+    <dl className="grid grid-cols-4 gap-4 text-sm">
+      {[
+        ["Adults", values.adultCount || "0"],
+        ["Children (Under 5)", values.childBelow5Count || "0"],
+        ["Children (5–10)", values.child5To10Count || "0"],
+        ["Total Guests", String(guestsComputed)],
+      ].map(([label, value]) => (
+        <div key={label} className="flex min-w-0 flex-col gap-0.5">
+          <dt className="text-muted-foreground">{label}</dt>
+          <dd className="font-medium">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  </FormSection>
+  ) : (
+  <FormSection
+    {...sec(4, Users)}
+    title="Guest Information"
+    description="Enter the expected guest count. This will be used for all selected meals."
+    action={
+      detailView ? (
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="md"
+            onClick={() => {
+              if (guestsBeforeEdit) setValues((prev) => ({ ...prev, ...guestsBeforeEdit }));
+              setEditingGuests(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button type="button" size="md" onClick={() => setEditingGuests(false)}>
+            Done
+          </Button>
+        </div>
+      ) : undefined
+    }
+  >
+    <div className="grid grid-cols-4 gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-adults">Adults</Label>
         <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
@@ -1102,34 +1325,64 @@ export function OrderForm({
           <span>{formatCurrency(carriedOverItemsSubtotal)}</span>
         </div>
       )}
-      {childrenCharge > 0 && (
+      {below5Count + child5To10Count > 0 && (
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Children Charges</span>
           <span>{formatCurrency(childrenCharge)}</span>
         </div>
       )}
+      {below5Count + child5To10Count > 0 && childrenCharge === 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="children-no-rate">
+          {childPricingMenu
+            ? individualOn
+              ? "No child rate is set. Enter the child prices above."
+              : `${childPricingMenu.name} has no child rate set, so children are not charged. Set it on the Menu, or turn on Individual Pricing.`
+            : "Children are priced from the first Menu assigned in Menu Planning. Assign a Menu to charge them."}
+        </p>
+      )}
       {(
         [
-          { id: "order-transportation-cost", label: "Transportation Cost", key: "transportationCost" },
-          { id: "order-other-charges", label: "Extra / Service Cost", key: "otherCharges" },
-          { id: "order-discount", label: "Discount", key: "discount" },
+          { id: "order-transportation-cost", label: "Transportation Cost", key: "transportationCost", modeKey: "transportationMode" },
+          { id: "order-other-charges", label: "Extra / Service Cost", key: "otherCharges", modeKey: "otherChargesMode" },
+          { id: "order-discount", label: "Discount", key: "discount", modeKey: "discountMode" },
         ] as const
-      ).map((row) => (
-        <div key={row.id} className="flex items-center justify-between gap-3">
-          <Label htmlFor={row.id} className="font-normal text-muted-foreground">
-            {row.label}
-          </Label>
-          <Input
-            id={row.id}
-            type="number"
-            min="0"
-            step="0.01"
-            className="w-32 text-right"
-            value={values[row.key]}
-            onChange={(e) => setField(row.key, e.target.value)}
-          />
-        </div>
-      ))}
+      ).map((row) => {
+        const mode = row.modeKey ? values[row.modeKey] : "FIXED";
+        return (
+          <div key={row.id} className="flex items-center justify-between gap-3">
+            <Label htmlFor={row.id} className="font-normal text-muted-foreground">
+              {row.label}
+            </Label>
+            <div className="flex items-center gap-2">
+              {row.modeKey && (
+                <Select
+                  items={{ FIXED: "₹", PERCENTAGE: "%" }}
+                  value={mode}
+                  onValueChange={(v) => setField(row.modeKey, v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED")}
+                >
+                  <SelectTrigger aria-label={`${row.label} type`} className="w-16">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FIXED">₹</SelectItem>
+                    <SelectItem value="PERCENTAGE">%</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+              <Input
+                id={row.id}
+                type="number"
+                min="0"
+                max={mode === "PERCENTAGE" ? 100 : undefined}
+                step="0.01"
+                className="w-28 text-right"
+                value={values[row.key]}
+                onChange={(e) => setField(row.key, e.target.value)}
+              />
+            </div>
+          </div>
+        );
+      })}
       {values.customCharges.map((row, index) => (
         <div key={index} className="flex items-center gap-2">
           <Input
@@ -1140,10 +1393,24 @@ export function OrderForm({
             value={row.label}
             onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, label: e.target.value } : c)))}
           />
+          <Select
+            items={{ FIXED: "₹", PERCENTAGE: "%" }}
+            value={row.mode}
+            onValueChange={(v) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, mode: v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED" } : c)))}
+          >
+            <SelectTrigger aria-label={`Charge ${index + 1} type`} className="w-16">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="FIXED">₹</SelectItem>
+              <SelectItem value="PERCENTAGE">%</SelectItem>
+            </SelectContent>
+          </Select>
           <Input
             aria-label={`Charge ${index + 1} amount`}
             type="number"
             min="0"
+            max={row.mode === "PERCENTAGE" ? 100 : undefined}
             step="0.01"
             className="w-28 text-right"
             value={row.amount}
@@ -1166,7 +1433,7 @@ export function OrderForm({
           variant="outline"
           size="sm"
           className="self-start"
-          onClick={() => setField("customCharges", [...values.customCharges, { label: "", amount: "" }])}
+          onClick={() => setField("customCharges", [...values.customCharges, { label: "", amount: "", mode: "FIXED" }])}
         >
           <Plus className="size-4" /> Add charge
         </Button>
@@ -1187,19 +1454,24 @@ export function OrderForm({
         <AlertDialogTitle>Change this order to {pendingKind === "MULTI" ? "Multi Order" : "Single Order"}?</AlertDialogTitle>
         <AlertDialogDescription>
           {pendingKind === "MULTI"
-            ? "Multi Order is for several meals or dates in the same event. You can change it back before saving."
-            : "Single Order is for one date and one meal type. You can change it back before saving."}
+            ? "Multi Order is for several meals, several dates, or both. You can change it back before saving."
+            : singleLoss.extraDates > 0 || singleLoss.removedMeals > 0
+              ? `Single Order keeps one date (${values.eventStartDate ? formatDay(values.eventStartDate, { day: "numeric", month: "short", year: "numeric" }) : "the start date"}) and one meal type. This removes ${[
+                  singleLoss.extraDates > 0 ? `${singleLoss.extraDates} extra ${singleLoss.extraDates === 1 ? "date" : "dates"}` : "",
+                  singleLoss.removedMeals > 0 ? `${singleLoss.removedMeals} planned ${singleLoss.removedMeals === 1 ? "meal" : "meals"}, with their menus and food items` : "",
+                ].filter(Boolean).join(" and ")}. Cancel to keep everything as it is.`
+              : "Single Order is for one date and one meal type. You can change it back before saving."}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
         <AlertDialogCancel>Keep {values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}</AlertDialogCancel>
         <AlertDialogAction
           onClick={() => {
-            if (pendingKind) setOrderKind(pendingKind);
+            if (pendingKind) applyOrderKind(pendingKind);
             setPendingKind(null);
           }}
         >
-          Change type
+          {pendingKind === "SINGLE" && (singleLoss.extraDates > 0 || singleLoss.removedMeals > 0) ? "Switch and remove" : "Change type"}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
@@ -1208,12 +1480,14 @@ export function OrderForm({
   <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>Order Type changed to Multi Order</AlertDialogTitle>
+        <AlertDialogTitle>{multiNotice === "multiOff" ? "Order Type changed to Single Order" : "Order Type changed to Multi Order"}</AlertDialogTitle>
         <AlertDialogDescription>
-          {multiNotice === "dates"
-            ? "You picked more than one date, so this is now a Multi Order. Menu Planning groups each date into its own event."
-            : "You picked more than one meal type, so this is now a Multi Order — even on a single day. Menu Planning groups the meals into their own events."}{" "}
-          Your meals, menus and food items are kept.
+          {multiNotice === "multiOn"
+            ? "This is now a Multi Order. Pick a start and end date (the same day for several meals on one day); Menu Planning groups each date into its own event."
+            : multiNotice === "multiOff"
+              ? "This is now a Single Order: one date and one meal type."
+              : "You picked more than one meal type, so this is now a Multi Order, even on a single day. Menu Planning groups the meals into their own events."}{" "}
+          {multiNotice === "multiOff" ? "" : "Your meals, menus and food items are kept."}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
@@ -1229,10 +1503,10 @@ export function OrderForm({
       <div className="flex flex-col gap-3 text-sm">
         {[
           { label: "Total Amount", amount: mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal },
-          ...(childrenCharge > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
+          ...(below5Count + child5To10Count > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
           { label: "Transportation Cost", amount: transportationCostNum },
           { label: "Extra / Service Cost", amount: otherChargesNum },
-          ...parseCustomCharges(values.customCharges.map((c) => ({ label: c.label, amount: Number.parseFloat(c.amount) }))),
+          ...customChargeLines,
           { label: "Discount", amount: discountNum },
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3">
@@ -1267,14 +1541,9 @@ export function OrderForm({
         <>
           {freeze(
             <>
-              <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
-                {customerSection}
-                {orderTypeSection}
-              </div>
-              {multiDialog}
+              {customerSection}
             </>,
           )}
-          {statusCard}
           {detailsExtra}
         </>
       ),
@@ -1286,6 +1555,7 @@ export function OrderForm({
         <>
           {freeze(guestSection, locked || priceFrozen)}
           {freeze(eventSection)}
+          {multiDialog}
           {/* Once a menu approval exists the menu is planned in the Menu Approval tab, not here. Before that this is the only place to enter meals. */}
           {menuPlanInApprovalTab ? null : freeze(menuSection)}
         </>
@@ -1357,7 +1627,9 @@ export function OrderForm({
   ];
 
   return (
-    <>
+    <LiveOrderTotalProvider value={initialValues && dirty ? total : null}>
+    <OrderPriceLinesProvider value={priceLines}>
+    <ApprovalSidebarSlotProvider value={approvalSlot}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1422,25 +1694,33 @@ export function OrderForm({
           </div>
 
           {/* ---------------- Summary column ---------------- */}
-          <aside className="flex min-w-0 flex-col gap-4 lg:self-stretch">
+          <aside className={cn("flex min-w-0 flex-col gap-4", onApprovalTab ? "lg:self-start" : "lg:self-stretch")}>
             {activeTab === "pricing" && sidebarInvoiceAction}
-            {sidebarTop ?? orderSummaryCard}
-            {!sidebarTop && pricingSummaryCard}
-            {/* Save stays at the bottom of the summary column and in view while a long order scrolls (AJ, 2026-10-14). */}
-            <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card" hidden={locked}>
-              {dirty && (
-                <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
-                  Unsaved changes
-                </p>
-              )}
-              <Button type="submit" disabled={pending !== null}>
-                {pending === "save" ? "Saving…" : submitLabel}
-              </Button>
+            {/* The Menu Approval tab puts its Menu Status, Notes, history and pricing cards here (order-menu-approval-tab.tsx). */}
+            {menuApprovalTab && <div ref={setApprovalSlot} id="order-approval-sidebar" className={activeTab === "approval" ? "flex min-w-0 flex-col gap-4" : "hidden"} />}
+            {/* The Menu Approval tab has its own four cards and its own Save Changes, so the order's summary, pricing and Save card step aside there. */}
+            <div className={onApprovalTab ? "hidden" : "contents"}>
+              {statusCard}
+              {sidebarTop ?? orderSummaryCard}
+              {!sidebarTop && pricingSummaryCard}
+              {/* Save stays at the bottom of the summary column and in view while a long order scrolls (AJ, 2026-10-14). */}
+              <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card" hidden={locked}>
+                {dirty && (
+                  <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
+                    Unsaved changes
+                  </p>
+                )}
+                <Button type="submit" disabled={pending !== null}>
+                  {pending === "save" ? "Saving…" : submitLabel}
+                </Button>
+              </div>
             </div>
           </aside>
         </div>
       </form>
       {guard.dialog}
-    </>
+    </ApprovalSidebarSlotProvider>
+    </OrderPriceLinesProvider>
+    </LiveOrderTotalProvider>
   );
 }

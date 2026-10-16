@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { cn } from "cn";
+import { useLiveOrderTotal, useOrderPriceLines } from "@/modules/orders/live-total";
 import { confirmPaymentAction, createPaymentLinkAction, recordPaymentAction, rejectPaymentAction, sendReceiptAction, type ActionResult } from "../actions";
 import { Badge } from "@/components/ui/badge";
 import { PaymentStatusBadge } from "./invoice-badges";
@@ -53,6 +54,7 @@ function SelectField({ id, label, value, onChange, options }: { id: string; labe
 /** The "Payment summary" card (total, paid, balance, progress), the same on an existing order and on the New Order page. */
 export function PaymentSummaryCard({ total, paid, balance, overdue = false, children }: { total: number; paid: number; balance: number; overdue?: boolean; children?: React.ReactNode }) {
   const percent = total > 0 ? Math.min(Math.round((paid / total) * 1000) / 10, 100) : 0;
+  const lines = useOrderPriceLines();
   return (
     <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
       <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
@@ -62,6 +64,19 @@ export function PaymentSummaryCard({ total, paid, balance, overdue = false, chil
         Payment summary
         {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
       </h2>
+      {lines.length > 0 && (
+        <dl className="flex flex-col gap-2 border-b border-border pb-3 text-sm tabular-nums" data-testid="payment-summary-lines">
+          {lines.map((line, index) => (
+            <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
+              <dt className="min-w-0 text-muted-foreground">
+                {line.label}
+                {line.detail && <span className="block text-xs">{line.detail}</span>}
+              </dt>
+              <dd className="shrink-0 font-medium">{line.negative ? `− ${inr(line.amount)}` : inr(line.amount)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <dl className="flex flex-col gap-2 text-sm tabular-nums">
         <div className="flex justify-between gap-3">
           <dt className="text-muted-foreground">Total</dt>
@@ -140,9 +155,9 @@ export function PaymentRowView({
 export function PaymentsPanel({
   orderId,
   invoiceId,
-  total,
+  total: savedTotal,
   paid,
-  balance,
+  balance: savedBalance,
   payments,
   canRecord,
   canManage,
@@ -160,6 +175,10 @@ export function PaymentsPanel({
   overdue?: boolean;
 }) {
   const router = useRouter();
+  // Inside the order form the total follows the pricing typed there, saved or not.
+  const liveTotal = useLiveOrderTotal();
+  const total = liveTotal ?? savedTotal;
+  const balance = liveTotal === null ? savedBalance : Math.max(liveTotal - paid, 0);
   const [recordOpen, setRecordOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);

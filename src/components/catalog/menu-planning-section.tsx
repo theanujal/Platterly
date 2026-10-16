@@ -1,11 +1,12 @@
 "use client";
 
 import { createElement, useMemo, useState } from "react";
-import { Check, ChevronDown, Coffee, Copy, Moon, PenSquare, Plus, Sun, Sunrise, Trash2, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { CalendarDays, ChevronDown, Coffee, Copy, Moon, PenSquare, Plus, Sun, Sunrise, Trash2, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -115,6 +116,33 @@ interface MenuPlanningSectionProps {
    */
   readOnly?: boolean;
   compare?: ComparisonMarks;
+  /**
+   * Menu Approval tab layout (AJ, 2026-10-16): "1. Menu Preference" and "2. Event Dates & Meals" as two cards, and the dates list shown even
+   * for a single day. Without it the section renders exactly as before, for Create Order and Quotations.
+   */
+  sectioned?: boolean;
+  /** Days that carry meals but fall outside the order's event dates (e.g. the date was changed after the menu was planned): flagged in the dates list. */
+  outsideDays?: string[];
+}
+
+/** One numbered card of the `sectioned` layout. */
+function PlanSection({ step, title, description, icon: Icon, children }: { step: number; title: string; description: string; icon: LucideIcon; children: React.ReactNode }) {
+  return (
+    <Card className="gap-4 overflow-visible px-5 [--card-spacing:--spacing(5)]">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-5" />
+        </span>
+        <div className="min-w-0">
+          <h3 className="text-base font-semibold">
+            {step}. {title}
+          </h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      {children}
+    </Card>
+  );
 }
 
 export function MenuPlanningSection({
@@ -134,6 +162,8 @@ export function MenuPlanningSection({
   onCloseFoodDialog,
   readOnly = false,
   compare,
+  sectioned = false,
+  outsideDays = [],
 }: MenuPlanningSectionProps) {
   const [focusedDate, setFocusedDate] = useState<string | null>(days[0] ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -340,14 +370,6 @@ export function MenuPlanningSection({
                     </Badge>
                   ))}
                 </div>
-                {!readOnly && (
-                  <div className="flex items-start gap-2 rounded-lg bg-success/10 p-3 text-xs text-success">
-                    <Check className="mt-0.5 size-4 shrink-0" />
-                    <span>
-                      {entry.items.length} food item{entry.items.length === 1 ? "" : "s"} selected for {meal.label}.
-                    </span>
-                  </div>
-                )}
               </>
             )}
           </div>
@@ -359,31 +381,22 @@ export function MenuPlanningSection({
   function mealTypeTabs(date: string) {
     if (readOnly) return dayMeals(date).length === 0 ? <p className="text-sm text-muted-foreground">No meals planned for this date.</p> : null;
     return (
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5" role="group" aria-label="Meals for this date">
         {MEAL_TYPES.map((meal) => {
           const selected = mealMap.has(`${date}|${meal.value}`);
           return (
             <button
               key={meal.value}
               type="button"
+              aria-pressed={selected}
               onClick={() => toggleMeal(date, meal.value)}
               className={cn(
-                "flex items-center justify-between gap-2 rounded-lg border p-3 text-left transition-colors",
-                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
+                "flex h-11 items-center justify-center gap-2 rounded-lg border px-2 text-sm font-medium whitespace-nowrap outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring/50",
+                selected ? "border-primary bg-accent/40 text-primary" : "border-input hover:bg-muted",
               )}
             >
-              <span className="flex items-center gap-2 text-sm font-medium">
-                {createElement(MEAL_ICON[meal.value], { className: "size-4 text-muted-foreground" })}
-                {meal.label}
-              </span>
-              <span
-                className={cn(
-                  "flex size-5 shrink-0 items-center justify-center rounded-full border",
-                  selected ? "border-success bg-success text-white" : "border-input",
-                )}
-              >
-                {selected && <Check className="size-3.5" />}
-              </span>
+              {createElement(MEAL_ICON[meal.value], { className: cn("size-4", selected ? "text-primary" : "text-muted-foreground") })}
+              {meal.label}
             </button>
           );
         })}
@@ -398,27 +411,14 @@ export function MenuPlanningSection({
   const removeLabel = pendingRemove ? (MEAL_TYPES.find((m) => m.value === pendingRemove.mealType)?.label ?? "") : "";
   const removeCount = removeEntry?.items.length ?? 0;
 
-  return (
-    <div className="flex flex-col gap-4">
-      <ConfirmDialog
-        open={pendingRemove !== null}
-        onOpenChange={(open) => !open && setPendingRemove(null)}
-        title={pendingRemove ? `Remove ${removeLabel} on ${formatDay(pendingRemove.date, { day: "numeric", month: "short" })}?` : ""}
-        description={`This removes its menu, price${removeCount > 0 ? ` and the ${removeCount} dish${removeCount === 1 ? "" : "es"} picked` : ""}. You can't undo this. It is only saved when you save the order or quotation, so leaving without saving keeps the old meal.`}
-        confirmLabel="Remove"
-        onConfirm={() => {
-          if (pendingRemove) removeMeal(pendingRemove.date, pendingRemove.mealType);
-          setPendingRemove(null);
-        }}
-      />
-      {!readOnly && (
-        <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
-          <Label>Menu Preference</Label>
+  const preferenceControl = readOnly ? null : (
+<div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
+          {!sectioned && <Label>Menu Preference</Label>}
           <div className="flex flex-wrap gap-3">
             {(
               [
-                { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only", dot: "bg-success" },
-                { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish", dot: "bg-destructive" },
+                { value: "VEGETARIAN", label: "Vegetarian", hint: "Vegetarian menus and dishes only" },
+                { value: "NON_VEGETARIAN", label: "Non-Vegetarian", hint: "Every menu and dish" },
               ] as const
             ).map((option) => {
               const selected = menuPreference === option.value;
@@ -437,10 +437,7 @@ export function MenuPlanningSection({
                     {selected && <span className="size-2.5 rounded-full bg-primary" />}
                   </span>
                   <span className="flex flex-col">
-                    <span className="flex items-center gap-2 text-sm font-semibold">
-                      <span className={cn("size-2 rounded-full", option.dot)} />
-                      {option.label}
-                    </span>
+                    <span className="text-sm font-semibold">{option.label}</span>
                     <span className="text-xs text-muted-foreground">{option.hint}</span>
                   </span>
                 </button>
@@ -448,19 +445,21 @@ export function MenuPlanningSection({
             })}
           </div>
         </div>
-      )}
+  );
 
+  const datesAndMeals = (
+    <>
       {days.length === 0 ? (
         <p className="text-sm text-muted-foreground">Set the Event Date above to start planning meals.</p>
-      ) : days.length === 1 ? (
+      ) : days.length === 1 && !sectioned ? (
         <div className="flex flex-col gap-3">
           {mealTypeTabs(days[0])}
           {dayMeals(days[0]).length > 0 && <div className="flex flex-col gap-3">{dayMeals(days[0]).map((m) => mealCard(days[0], m.value))}</div>}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[16rem_minmax(0,1fr)]">
-          <nav className="flex flex-row gap-1.5 overflow-x-auto rounded-xl border border-border p-2 md:flex-col md:overflow-x-visible" aria-label="Event Dates">
-            <span className="hidden px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase md:block">Event Dates</span>
+          <nav className={cn("flex flex-row gap-1.5 overflow-x-auto md:flex-col md:overflow-x-visible", !sectioned && "rounded-xl border border-border p-2")} aria-label="Event Dates">
+            {!sectioned && <span className="hidden px-2 pt-1 pb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase md:block">Event Dates</span>}
             {days.map((date) => {
               const meals = dayMeals(date);
               const isFocused = date === activeDate;
@@ -481,17 +480,21 @@ export function MenuPlanningSection({
                     </span>
                   </span>
                   <span className="pl-4 text-xs text-muted-foreground">{meals.length > 0 ? meals.map((m) => m.label).join(", ") : "No meals selected"}</span>
+                  {outsideDays.includes(date) && <span className="pl-4 text-xs font-medium text-warning">Outside the event dates</span>}
                 </button>
               );
             })}
           </nav>
 
           {activeDate && (
-            <div className="flex min-w-0 flex-col gap-4 rounded-xl border border-border p-3 sm:p-4">
+            <div className={cn("flex min-w-0 flex-col gap-4", !sectioned && "rounded-xl border border-border p-3 sm:p-4")}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-semibold">{formatDay(activeDate, { weekday: "long", day: "numeric", month: "short", year: "numeric" })}</h3>
                   <p className="text-sm text-muted-foreground">{readOnly ? "Meals planned for this date." : "Select and configure meals for this date."}</p>
+                  {outsideDays.includes(activeDate) && (
+                    <p className="mt-1 text-sm text-warning">This date is outside the order&apos;s event dates, so it is not shown on the order. These meals are still priced; remove them if they are not needed.</p>
+                  )}
                 </div>
                 {!readOnly && otherDays.length > 0 && (
                   <Popover
@@ -536,6 +539,38 @@ export function MenuPlanningSection({
             </div>
           )}
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <ConfirmDialog
+        open={pendingRemove !== null}
+        onOpenChange={(open) => !open && setPendingRemove(null)}
+        title={pendingRemove ? `Remove ${removeLabel} on ${formatDay(pendingRemove.date, { day: "numeric", month: "short" })}?` : ""}
+        description={`This removes its menu, price${removeCount > 0 ? ` and the ${removeCount} dish${removeCount === 1 ? "" : "es"} picked` : ""}. You can't undo this. It is only saved when you save the order or quotation, so leaving without saving keeps the old meal.`}
+        confirmLabel="Remove"
+        onConfirm={() => {
+          if (pendingRemove) removeMeal(pendingRemove.date, pendingRemove.mealType);
+          setPendingRemove(null);
+        }}
+      />
+      {!sectioned && preferenceControl}
+
+      {sectioned ? (
+        <>
+          {preferenceControl && (
+            <PlanSection step={1} icon={UtensilsCrossed} title="Menu Preference" description="Select the type of menu for this event.">
+              {preferenceControl}
+            </PlanSection>
+          )}
+          <PlanSection step={preferenceControl ? 2 : 1} icon={CalendarDays} title="Event Dates & Meals" description={readOnly ? "The meals planned for each event date." : "Add or configure meals for each event date. You can copy meals to other dates to save time."}>
+            {datesAndMeals}
+          </PlanSection>
+        </>
+      ) : (
+        datesAndMeals
       )}
 
       {!readOnly && foodDialogTarget && foodDialogEntry && foodDialogMenu && (

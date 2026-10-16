@@ -32,14 +32,18 @@ export interface Profitability {
   /** Food expenses as a % of revenue; null when there is no revenue. */
   foodCostPercent: number | null;
   byCategory: Record<OrderExpenseCategory, number>;
+  /** The part of Food that is the cost of the inventory sent to the order (the rest is recorded Food expenses). */
+  inventoryFoodCost: number;
 }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /** Revenue is the order total (AJ, 2026-10-03), whatever has been paid so far. */
-export function computeProfitability(revenue: number, expenses: { category: ExpenseCategoryValue; amount: number }[]): Profitability {
+export function computeProfitability(revenue: number, expenses: { category: ExpenseCategoryValue; amount: number }[], inventoryFoodCost = 0): Profitability {
   const byCategory = Object.fromEntries(EXPENSE_CATEGORIES.map((c) => [c, 0])) as Record<OrderExpenseCategory, number>;
   for (const e of expenses) if (e.category in byCategory) byCategory[e.category as OrderExpenseCategory] = round2(byCategory[e.category as OrderExpenseCategory] + e.amount);
+  // Food cost follows the inventory sent to the order (AJ, 2026-10-16), on top of any Food expense recorded by hand.
+  byCategory.FOOD = round2(byCategory.FOOD + inventoryFoodCost);
   const totalCost = round2(EXPENSE_CATEGORIES.reduce((sum, c) => sum + byCategory[c], 0));
   const rev = round2(revenue);
   return {
@@ -49,5 +53,6 @@ export function computeProfitability(revenue: number, expenses: { category: Expe
     marginPercent: rev > 0 ? round2(((rev - totalCost) / rev) * 100) : null,
     foodCostPercent: rev > 0 ? round2((byCategory.FOOD / rev) * 100) : null,
     byCategory,
+    inventoryFoodCost: round2(inventoryFoodCost),
   };
 }

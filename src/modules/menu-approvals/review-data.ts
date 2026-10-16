@@ -4,7 +4,7 @@ import { listStatusChanges } from "./status-history";
 import { getActiveApprovalUrl } from "./approval-link";
 import type { ApprovalSnapshot } from "./approval-snapshot";
 import { getOrder } from "@/modules/orders/order";
-import { menuGuestCount } from "@/modules/orders/meal-pricing";
+import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import { listMenus } from "@/modules/menus/menu";
 import { parseCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { MENU_SELECTION_STATUS_LABEL } from "@/modules/orders/order-status";
@@ -65,7 +65,19 @@ export async function loadMenuApprovalReviewData(
   }));
 
   // The order's date range, plus any day a meal is already planned on.
-  const days = [...new Set([...enumerateDays(order.eventStartDate, order.eventEndDate), ...entries.map((e) => e.date)])].sort();
+  const eventDays = enumerateDays(order.eventStartDate, order.eventEndDate);
+  const days = [...new Set([...eventDays, ...entries.map((e) => e.date)])].sort();
+  // What the order holds, the way recalculateOrderTotals works it out (stored item quantities, stored rupee amounts).
+  const savedMeals = priceMeals(
+    order.mealPlanEntries.map((entry) => ({
+      price: entry.price === null ? null : Number(entry.price),
+      menuPricePerPlate: entry.menuId ? Number(menus.find((m) => m.id === entry.menuId)?.pricePerPlate ?? 0) : null,
+      items: entry.items.map((item) => ({ itemType: item.itemType, unitPrice: Number(item.unitPrice), quantity: item.quantity, isExtra: item.isExtra })),
+    })),
+    order.individualPricingEnabled,
+    menuGuestCount(order),
+  );
+  const savedCustomCharges = sumCustomCharges(parseCustomCharges(order.customCharges));
   const totalGuests = order.totalParticipants ?? (order.adultCount ?? 0) + (order.childBelow5Count ?? 0) + (order.child5To10Count ?? 0);
   const eventDate = order.eventStartDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   const eventDateText =
@@ -99,10 +111,25 @@ export async function loadMenuApprovalReviewData(
       discount: Number(order.discount),
       transportationCost: Number(order.transportationCost),
       otherCharges: Number(order.otherCharges),
-      customCharges: sumCustomCharges(parseCustomCharges(order.customCharges)),
+      customCharges: savedCustomCharges,
+      discountMode: order.discountMode,
+      discountRate: Number(order.discountRate),
+      otherChargesMode: order.otherChargesMode,
+      otherChargesRate: Number(order.otherChargesRate),
+      transportationMode: order.transportationMode,
+      transportationRate: Number(order.transportationRate),
+      customChargeLines: parseCustomCharges(order.customCharges),
+      saved: {
+        menuAmount: savedMeals.menuAmount,
+        extrasAmount: savedMeals.extrasAmount,
+        childrenCharge: Number(order.childrenCharge),
+        chargesAndDiscount: Number(order.transportationCost) + Number(order.otherCharges) + savedCustomCharges - Number(order.discount),
+        total: Number(order.total),
+      },
     },
     menuPreference: order.menuPreference ?? "",
     days,
+    eventDays,
     entries,
     menus: menus
       .filter((m) => m.isActive || entries.some((e) => e.menuId === m.id))

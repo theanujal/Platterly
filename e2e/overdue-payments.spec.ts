@@ -29,10 +29,10 @@ test("Finance -> Overdue Payments lists overdue orders, record payment from the 
   await setOrderEventPast(second.orderId, 1);
   await setOrderEventPast(cancelled.orderId, 3, "CANCELLED");
 
-  // Orders no longer carries a payment filter, and finished events stay out of it.
+  // Orders no longer carries a payment filter; it shows every order, past events included (AJ, 2026-10-16).
   await page.goto("/orders");
   await expect(page.getByText(upcoming.orderNumber).first()).toBeVisible();
-  await expect(page.getByText(overdue.orderNumber)).toHaveCount(0);
+  await expect(page.getByText(overdue.orderNumber).first()).toBeVisible();
   await expect(page.getByLabel("Payment filter")).toHaveCount(0);
 
   // The Finance tab lists the two overdue orders with the totals; cancelled and upcoming are absent.

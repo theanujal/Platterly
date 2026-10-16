@@ -6,17 +6,17 @@ import { StatusPanel, type StatusHistoryEntry } from "../../_components/status-p
 import { changeOrderStatusAction } from "../../actions";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
-/** The order's status in the sidebar, with the manual change (reason required) and its history (AJ, 2026-09-30). */
+/** The order's status in the sidebar on every tab but Menu Approval, laid out like Approval Status: the status, what it means and who changed it last, with the manual change (reason required) and the history in a drawer (AJ, 2026-10-16). */
 export function OrderStatusCard({ orderId, status, hint, history, canChange = true }: { orderId: string; status: OrderStatus; hint: string; history: StatusHistoryEntry[]; /** Changing it by hand needs `orders: edit`; the restricted approval view shows the history only. */ canChange?: boolean }) {
   return (
     <StatusPanel
       idPrefix="order-status"
-      requireEdit
+      compact
       title="Order Status"
       icon={ReceiptText}
       currentLabel={ORDER_STATUS_LABEL[status]}
       currentTone={ORDER_STATUS_TONE[status]}
-      hint={hint}
+      summary={hint}
       options={ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }))}
       currentValue={status}
       canChange={canChange && status !== "COMPLETED"}

@@ -84,6 +84,11 @@ export const ORDER_LIKE_RULES: Rules = {
 export function validateOrderLike(input: { mealPlanEntries?: Array<{ price?: unknown }> } & object): void {
   validateInput(input, ORDER_LIKE_RULES);
   for (const entry of input.mealPlanEntries ?? []) checkMoney(entry.price, "meal price");
+  // A percentage Discount or Extra / Service Cost is a rate of the subtotal: 0 to 100.
+  const rates = input as { discountRate?: unknown; otherChargesRate?: unknown; transportationRate?: unknown };
+  checkMoney(rates.discountRate, "discount percentage", { max: 100 });
+  checkMoney(rates.otherChargesRate, "extra / service cost percentage", { max: 100 });
+  checkMoney(rates.transportationRate, "transportation percentage", { max: 100 });
 }
 
 export const RULES = {

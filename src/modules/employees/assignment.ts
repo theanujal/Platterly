@@ -128,8 +128,14 @@ export async function listUpcomingSchedule(organizationId: string, days = 3) {
   });
 }
 
-/** Names the Event Manager box suggests: operational staff and team members with a login. */
+/**
+ * Who can be an event's Event Manager (AJ, 2026-10-16): a team member with access, or a staff member whose usual duty is Event
+ * Manager. Nobody else is offered, and a name outside this list is refused when it is saved.
+ */
 export async function listManagerSuggestions(organizationId: string) {
-  const [staff, members] = await Promise.all([prisma.staffMember.findMany({ where: { organizationId, isActive: true }, select: { name: true } }), listAssignableMembers(organizationId)]);
+  const [staff, members] = await Promise.all([
+    prisma.staffMember.findMany({ where: { organizationId, isActive: true, defaultDuty: "EVENT_MANAGER" }, select: { name: true } }),
+    listAssignableMembers(organizationId),
+  ]);
   return [...new Set([...members.map((m) => m.name), ...staff.map((s) => s.name)])].sort((a, b) => a.localeCompare(b));
 }

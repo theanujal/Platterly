@@ -9,7 +9,7 @@ import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STAFF_DUTIES, STAFF_DUTY_LABEL } from "@/modules/employees/duty";
+import { ALL_STAFF_DUTIES, STAFF_DUTY_LABEL } from "@/modules/employees/duty";
 import { createStaffMemberAction, deleteStaffMemberAction, updateStaffMemberAction, type ActionResult, type StaffMemberPayload } from "../actions";
 
 const EMPTY: StaffMemberPayload = { name: "", phone: "", defaultDuty: "SERVING", notes: "", isActive: true };
@@ -55,7 +55,7 @@ function StaffMemberForm({ initialValues, submitLabel, onSubmit, onSuccess, onCa
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {STAFF_DUTIES.map((d) => (
+            {ALL_STAFF_DUTIES.map((d) => (
               <SelectItem key={d} value={d}>
                 {STAFF_DUTY_LABEL[d]}
               </SelectItem>

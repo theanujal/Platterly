@@ -6,6 +6,7 @@ import { ValidationError } from "@/lib/errors";
 import type { StaffDuty } from "@/generated/prisma/enums";
 import { STAFF_DUTIES, isStaffDuty } from "./duty";
 import { MAX_STAFF_COUNT } from "./staff-count-limits";
+import { listManagerSuggestions } from "./assignment";
 
 export { MAX_STAFF_COUNT };
 
@@ -34,6 +35,8 @@ export async function saveEventManager(organizationId: string, eventId: string, 
   if (next.length > 100) throw new ValidationError("Keep the Event Manager name under 100 characters.");
   const before = await prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { eventManagerName: true } });
   if ((before.eventManagerName ?? "") === next) return;
+  // A new name must be a team member with access or a staff member whose duty is Event Manager (AJ, 2026-10-16); clearing it is always allowed.
+  if (next && !(await listManagerSuggestions(organizationId)).includes(next)) throw new ValidationError("Pick the Event Manager from the list: a team member with access, or a staff member whose duty is Event Manager.");
   await prisma.event.update({ where: { id: eventId }, data: { eventManagerName: next || null } });
   await audit({ organizationId, actorUserId, action: "event.event_manager_updated", recordType: "Event", recordId: eventId, before: { eventManagerName: before.eventManagerName }, after: { eventManagerName: next || null } });
 }

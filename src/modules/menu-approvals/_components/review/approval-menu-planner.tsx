@@ -1,14 +1,12 @@
 "use client";
 
 import { useMemo } from "react";
-import { UtensilsCrossed } from "lucide-react";
 import { MenuPlanningSection, type MealSelection, type MenuOption } from "@/components/catalog/menu-planning-section";
-import { FormSection } from "@/app/(app)/orders/_components/order-form-parts";
 import { compareMealPlans, snapshotToMealSelections } from "@/modules/menu-approvals/snapshot-meals";
 import type { FoodDialogTarget, ReviewActions, VersionView } from "./types";
 
 /**
- * The Menu Planning section: the live planner (editable while the menu is still with the team) or, for a frozen version, the same
+ * The menu planner (two numbered cards: Menu Preference, Event Dates & Meals): the live planner (editable while the menu is still with the team) or, for a frozen version, the same
  * planner read-only with an optional Compare against the current menu.
  */
 export function ApprovalMenuPlanner({
@@ -21,6 +19,7 @@ export function ApprovalMenuPlanner({
   individualPricingEnabled,
   totalGuests,
   days,
+  eventDays,
   entries,
   currentEntries,
   menus,
@@ -41,6 +40,8 @@ export function ApprovalMenuPlanner({
   individualPricingEnabled: boolean;
   totalGuests: number;
   days: string[];
+  /** The order's own event dates; a planned day outside them is flagged. */
+  eventDays: string[];
   /** The planner draft being edited. */
   entries: MealSelection[];
   /** The saved meals the order has now: what a version is compared against. */
@@ -81,20 +82,17 @@ export function ApprovalMenuPlanner({
   // A Custom Menu's dishes come from the open dish list, which the planner's per-menu picker can't edit, so it is shown as is.
   const planReadOnly = !editable || isCustomMenu || !canAct;
 
+  const intro = shownVersion
+    ? `Version ${shownVersion.versionNumber} as it was sent to the customer.`
+    : editable
+      ? isCustomMenu
+        ? "The customer's own dishes. Edit the price above."
+        : null
+      : "The menu on this order. It is locked while it is with the customer or the kitchen.";
+
   return (
-    <FormSection
-      icon={UtensilsCrossed}
-      title="Menu Planning"
-      description={
-        shownVersion
-          ? `Version ${shownVersion.versionNumber} as it was sent to the customer.`
-          : editable
-            ? isCustomMenu
-              ? "The customer's own dishes. Edit the price above."
-              : "Add, change or remove meals and dishes. Changes update the order as soon as you save."
-            : "The menu on this order. It is locked while it is with the customer or the kitchen."
-      }
-    >
+    <div className="flex flex-col gap-4">
+      {intro && <p className="text-sm text-muted-foreground">{intro}</p>}
       {shownVersion ? (
         shownVersion.snapshot && shownVersion.snapshot.meals.length > 0 ? (
           <MenuPlanningSection
@@ -113,6 +111,8 @@ export function ApprovalMenuPlanner({
             onCloseFoodDialog={() => {}}
             readOnly
             compare={compareMarks}
+            sectioned
+            outsideDays={versionDays.filter((d) => !eventDays.includes(d))}
           />
         ) : (
           <p className="text-sm text-muted-foreground">This version has no per-meal details saved.</p>
@@ -133,8 +133,10 @@ export function ApprovalMenuPlanner({
           onOpenFoodDialog={(date, mealType) => onFoodDialogChange({ date, mealType })}
           onCloseFoodDialog={() => onFoodDialogChange(null)}
           readOnly={planReadOnly}
+          sectioned
+          outsideDays={days.filter((d) => !eventDays.includes(d))}
         />
       )}
-    </FormSection>
+    </div>
   );
 }

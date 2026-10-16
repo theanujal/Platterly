@@ -4,6 +4,7 @@ import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_components/review/types";
 import type { OrderStatus } from "@/generated/prisma/enums";
 import type { StatusHistoryEntry } from "../../_components/status-panel";
+import { ApprovalSidebarLayout } from "@/modules/menu-approvals/_components/review/sidebar-slot";
 import { OrderMenuApprovalTab, type NotStartedInfo } from "./order-menu-approval-tab";
 import { OrderStatusCard } from "./order-status-card";
 import { OrderSummaryCard } from "./order-summary-card";
@@ -95,9 +96,9 @@ export function ApprovalOnlyOrderView({ order, approval, notStarted }: { order: 
         <OrderStatusCard orderId={order.orderId} status={order.status} hint={order.statusHint} history={order.statusHistory} canChange={false} />
       </div>
 
-      <div className="flex flex-col gap-6" data-testid="order-approval-tab">
+      <ApprovalSidebarLayout>
         <OrderMenuApprovalTab data={approval} notStarted={notStarted} />
-      </div>
+      </ApprovalSidebarLayout>
     </div>
   );
 }

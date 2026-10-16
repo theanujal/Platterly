@@ -143,6 +143,7 @@ test("calendar page + order-count date picker agree with the Orders/Events table
 
   // --- Group 13.1: Create Order's Event Date picker ---
   await page.goto("/orders/new");
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
   await page.getByLabel("Event Date").click();
   const popover = page.locator('[data-slot="popover-content"]');
   await expect(popover).toBeVisible();

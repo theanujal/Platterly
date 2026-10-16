@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { MealSelection } from "@/components/catalog/menu-planning-section";
 import { priceMeals } from "@/modules/orders/meal-pricing";
+import { reviewTotals } from "@/modules/menu-approvals/review-totals";
 import { snapshotHasDishIds } from "@/modules/menu-approvals/snapshot-meals";
 import type { MenuSelectionStatus } from "@/generated/prisma/enums";
 import { EDITABLE_STATUSES, WITH_CUSTOMER } from "./approval-format";
@@ -40,7 +41,6 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
   const [foodDialogTarget, setFoodDialogTarget] = useState<FoodDialogTarget>(null);
   const [pricePerPlate, setPricePerPlate] = useState(customPricePerPlate === null ? "" : String(customPricePerPlate));
   const [noteDraft, setNoteDraft] = useState("");
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [compareOn, setCompareOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<ApprovalPending>(null);
@@ -55,7 +55,6 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
   const versionHasDishIds = shownVersion?.snapshot ? snapshotHasDishIds(shownVersion.snapshot) : false;
 
   function openVersion(versionNumber: number) {
-    setHistoryOpen(false);
     navigation.openVersion(versionNumber);
   }
   function backToCurrent() {
@@ -82,8 +81,14 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
       ),
     [entries, menus, pricing],
   );
-  const chargesAndDiscount = pricing.transportationCost + pricing.otherCharges + pricing.customCharges - pricing.discount;
-  const total = priced.mealsSubtotal + pricing.childrenCharge + chargesAndDiscount;
+  // Resolved against the draft's subtotal (meals + children) the way the server does it, so a percentage Discount, Extra / Service Cost,
+  // Transportation or team line follows the meals. With no unsaved edits the figures are the order's own, so the card always agrees
+  // with the order's Pricing & Payment tab.
+  const { chargesAndDiscount: liveChargesAndDiscount, total: liveTotal } = reviewTotals(priced.mealsSubtotal, pricing);
+  const showSaved = !dirty;
+  const shownPriced = showSaved ? { menuAmount: pricing.saved.menuAmount, extrasAmount: pricing.saved.extrasAmount } : priced;
+  const chargesAndDiscount = showSaved ? pricing.saved.chargesAndDiscount : liveChargesAndDiscount;
+  const total = showSaved ? pricing.saved.total : liveTotal;
   const lastSent = versions.find((v) => !v.superseded) ?? versions[0] ?? null;
   const lastSentTotal = lastSent?.snapshot?.total ?? null;
   const sinceLastSent = lastSentTotal === null ? null : total - lastSentTotal;
@@ -186,6 +191,7 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
     router.refresh();
   }
 
+  /** Resolves true when the note was saved, so the notes card can close its box. */
   async function handleAddNote() {
     setError(null);
     setPending("note");
@@ -193,10 +199,11 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
     setPending(null);
     if (!result.ok) {
       setError(result.error);
-      return;
+      return false;
     }
     setNoteDraft("");
     router.refresh();
+    return true;
   }
 
   async function handleChangeStatus(value: string, reason: string) {
@@ -213,7 +220,6 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
     foodDialogTarget,
     pricePerPlate,
     noteDraft,
-    historyOpen,
     compareOn,
     error,
     pending,
@@ -223,7 +229,7 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
     liveUrl,
     shownVersion,
     versionHasDishIds,
-    priced,
+    priced: shownPriced,
     chargesAndDiscount,
     total,
     lastSentTotal,
@@ -238,7 +244,6 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
     setFoodDialogTarget,
     setPricePerPlate,
     setNoteDraft,
-    setHistoryOpen,
     toggleCompare: () => setCompareOn((v) => !v),
     // handlers
     openVersion,

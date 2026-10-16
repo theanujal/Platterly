@@ -148,8 +148,9 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByRole("alertdialog").getByRole("button", { name: "Send items" }).click();
   const sentCard = page.getByTestId("inventory-sent-card");
   const sent = sentCard.getByTestId("sent-line").filter({ hasText: ingredient });
-  await expect(sent).toContainText("22 kg sent");
-  await expect(sent).toContainText("18"); // available now
+  await expect(sent.getByTestId("sent-quantity")).toContainText("22");
+  await expect(sent.getByTestId("sent-quantity")).toContainText("kg sent");
+  await expect(sent.getByTestId("sent-available")).toContainText("18 kg available"); // under the item name
   await expect(card.getByRole("button", { name: "Send items to this order" })).toBeDisabled(); // nothing left to send
   await expect(line.getByText("Sent", { exact: true })).toBeVisible();
 

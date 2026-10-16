@@ -423,6 +423,30 @@ export async function orderStockCost(orderId: string): Promise<Map<string, { cos
 }
 
 /**
+ * What the stock sent to each of these orders cost, in total (returns taken off), for the order's food cost (AJ, 2026-10-16).
+ * Same allocations as `orderStockCost`, summed per order; `unknownQuantity` counts stock whose cost was never known.
+ */
+export async function orderStockCostTotals(orderIds: string[]): Promise<Map<string, { cost: number; unknownQuantity: number }>> {
+  const out = new Map<string, { cost: number; unknownQuantity: number }>();
+  if (orderIds.length === 0) return out;
+  const rows = await prisma.stockAllocation.findMany({
+    where: { transaction: { orderId: { in: orderIds } } },
+    select: { quantity: true, unitCost: true, transaction: { select: { orderId: true, type: true } } },
+  });
+  const byOrder = new Map<string, { quantity: number; unitCost: number | null }[]>();
+  for (const r of rows) {
+    const orderId = r.transaction.orderId;
+    if (!orderId) continue;
+    const sign = r.transaction.type === "STOCK_OUT" ? 1 : -1;
+    const list = byOrder.get(orderId) ?? [];
+    list.push({ quantity: sign * Number(r.quantity), unitCost: r.unitCost === null ? null : Number(r.unitCost) });
+    byOrder.set(orderId, list);
+  }
+  for (const [orderId, list] of byOrder) out.set(orderId, allocationCost(list));
+  return out;
+}
+
+/**
  * Confirms the cost of a batch whose cost is unknown (opening stock, a manual Stock In with no price): a cost above zero, or 0
  * with a reason for free goods. A batch with a known cost is never changed, so the cost history stays what it was. It only
  * affects what is consumed from the batch from now on; consumption already recorded as unknown stays unknown.

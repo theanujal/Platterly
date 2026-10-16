@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { ORDER_STATUS_LABEL, MENU_SELECTION_STATUS_LABEL, type Tone } from "@/modules/orders/order-status";
 import { SummaryCard } from "./order-form-parts";
@@ -80,6 +81,10 @@ export function StatusPanel({
   history,
   idPrefix,
   requireEdit = false,
+  compact = false,
+  summary,
+  historyName = "status",
+  historyExtra,
 }: {
   title: string;
   icon: LucideIcon;
@@ -96,6 +101,17 @@ export function StatusPanel({
   idPrefix: string;
   /** The change select stays hidden until Edit is pressed (the Order Details tab, AJ 2026-10-16). */
   requireEdit?: boolean;
+  /**
+   * The sidebar card of the Menu Approval and the order status (AJ, 2026-10-16): a short card (status, `summary` lines, who changed it last) with
+   * "View <historyName> history". The manual change select, the full timeline and `historyExtra` live in that drawer instead of staying open in the sidebar.
+   */
+  compact?: boolean;
+  /** Compact only: lines under the status, e.g. "Not sent to customer yet." */
+  summary?: React.ReactNode;
+  /** Compact only: the link and drawer title, e.g. "approval" -> "View approval history" (default "status"). */
+  historyName?: string;
+  /** Compact only: more for the history dialog (the menu versions); gets a function that closes the dialog. */
+  historyExtra?: (close: () => void) => React.ReactNode;
 }) {
   const router = useRouter();
   const [pendingValue, setPendingValue] = useState<string | null>(null);
@@ -131,6 +147,123 @@ export function StatusPanel({
     setPendingValue(null);
     setReason("");
     setError(null);
+  }
+
+  if (compact) {
+    const last = history[0];
+    return (
+      <SummaryCard icon={icon} title={title}>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={currentTone}>{currentLabel}</Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {extra}
+            {extra && summary ? " · " : ""}
+            {summary}
+          </p>
+        </div>
+        {last && (
+          <div className="flex flex-col gap-0.5 border-t border-border pt-3 text-xs text-muted-foreground" data-testid="status-last-update">
+            <span>Last updated {formatWhen(last.createdAt)}</span>
+            <span>by {(last.source === "MANUAL" ? last.actorName : (last.actorName ?? last.trigger)) ?? "the system"}</span>
+          </div>
+        )}
+        <Button type="button" variant="link" size="sm" className="w-fit px-0 text-info" onClick={() => setHistoryOpen(true)}>
+          View {historyName} history
+          <ArrowRight data-icon="inline-end" />
+        </Button>
+
+      <Dialog open={pendingValue !== null} onOpenChange={(open) => !open && close()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change status to {targetLabel}?</DialogTitle>
+            <DialogDescription>Say why you are changing it by hand. The reason is saved in the status history for the whole team.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor={`${idPrefix}-reason`} required>
+              Reason
+            </Label>
+            <Textarea
+              id={`${idPrefix}-reason`}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Confirmed everything with the customer over a call"
+            />
+          </div>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={close}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={saving} onClick={confirm}>
+              <Pencil data-icon="inline-start" />
+              {saving ? "Saving…" : "Change status"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+        <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+          <SheetContent className="w-full gap-0 p-0 data-[side=right]:sm:max-w-md">
+            <SheetHeader className="gap-1 border-b border-border p-5 pr-14">
+              <SheetTitle className="text-lg capitalize">{historyName} history</SheetTitle>
+              <SheetDescription>Every automatic and manual status change, newest first{historyExtra ? ", and the menu versions sent to the customer" : ""}.</SheetDescription>
+            </SheetHeader>
+            <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
+              {canChange && (
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor={`${idPrefix}-change`} className="text-xs">
+                    Change status manually
+                  </Label>
+                  <Select
+                    items={Object.fromEntries(options.map((o) => [o.value, o.label]))}
+                    value={currentValue}
+                    onValueChange={(value) => {
+                      if (value && value !== currentValue) {
+                        setHistoryOpen(false);
+                        setPendingValue(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id={`${idPrefix}-change`} className="w-full" aria-label="Change status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {options.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <History className="size-4 text-muted-foreground" />
+                  Status history
+                </span>
+                {history.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No changes recorded yet.</p>
+                ) : (
+                  <ul className="flex flex-col gap-2">
+                    {history.map((entry) => (
+                      <HistoryItem key={entry.id} entry={entry} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {historyExtra?.(() => setHistoryOpen(false))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </SummaryCard>
+    );
   }
 
   return (

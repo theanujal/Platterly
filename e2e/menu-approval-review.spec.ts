@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { cleanupOnboardingTestUser, getApprovalState, seedReviewFixture, type ReviewFixtureOptions } from "./db";
 import { selectOption, signUpCaterer } from "./auth-helpers";
+import { openApprovalHistory } from "./approval-helpers";
 
 /**
  * The review, one state at a time (Menu Approvals + Orders merge, Phase 1). Since Phase 4 it is driven on the order's Menu Approval tab
@@ -70,11 +71,11 @@ test("the review page in every state: stage buttons, customer link, venue status
   const seeded: Record<string, { orderId: string; selectionId: string }> = {};
   for (const [key, options] of Object.entries(fixtures)) seeded[key] = await seedReviewFixture(email, options);
   // The tab's own panel: every locator below is scoped to it (the order page keeps its other panels mounted, hidden).
-  const view = page.locator("#order-panel-approval");
+  const view = page.locator("#order-panel-approval, #order-approval-sidebar");
   const open = async (key: string) => {
     await page.goto(`/orders/${seeded[key].orderId}?tab=approval`);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(view.getByTestId("menu-history-card")).toBeVisible();
+    await expect(view.getByRole("button", { name: "View approval history" })).toBeVisible();
   };
   const actions = () => view.getByTestId("menu-approval-actions");
 
@@ -118,14 +119,15 @@ test("the review page in every state: stage buttons, customer link, venue status
   await expect(view.locator("#ma-price")).toHaveValue("250"); // kept on the menu selection
 
   const notes = view.getByTestId("menu-notes-card");
-  await expect(notes).toContainText("No notes yet");
-  await expect(notes.getByRole("button", { name: "Add Note" })).toBeDisabled();
-  await notes.getByPlaceholder("Add a note for the team…").fill("Call the customer about the live counter.");
-  await notes.getByRole("button", { name: "Add Note" }).click();
+  await expect(notes).toContainText("No notes added yet");
+  await view.getByRole("button", { name: "Add Note" }).click(); // the box opens from the card's Add Note
+  await expect(view.getByRole("button", { name: "Save Note" })).toBeDisabled();
+  await view.getByPlaceholder("Add a note for the team…").fill("Call the customer about the live counter.");
+  await view.getByRole("button", { name: "Save Note" }).click();
   await expect(view.getByTestId("menu-note")).toHaveCount(1);
   await expect(view.getByTestId("menu-note")).toContainText("Call the customer about the live counter.");
   await expect(view.getByTestId("menu-note").getByText("Team", { exact: true })).toBeVisible();
-  await expect(notes.getByPlaceholder("Add a note for the team…")).toHaveValue(""); // the box clears
+  await expect(view.getByPlaceholder("Add a note for the team…")).toHaveCount(0); // the box closes once the note is saved
 
   // ---------- Sent to the customer: link bar, Copy link, Recall to Edit ----------
   await open("sent");
@@ -171,12 +173,8 @@ test("the review page in every state: stage buttons, customer link, venue status
 
   // ---------- Several versions: History card, "View All" popup, version view, Compare ----------
   await open("versions");
-  const history = view.getByTestId("menu-history-card");
-  await expect(history.getByTestId("menu-version-summary")).toHaveCount(2); // the card keeps to the latest two
-  await expect(history.getByRole("button", { name: "View All" })).toBeVisible();
   await expect(view.getByTestId("menu-note")).toContainText("Kitchen asks for less oil.");
-  await history.getByRole("button", { name: "View All" }).click();
-  const dialog = page.getByRole("dialog", { name: "Menu version history" });
+  const dialog = await openApprovalHistory(page, view); // the card is short; every version is in the history dialog
   await expect(dialog.getByTestId("menu-version-row")).toHaveCount(3);
   await expect(dialog.getByTestId("menu-version-row").first()).toContainText("Current");
   await dialog.getByTestId("menu-version-row").last().getByRole("button", { name: "View version" }).click();
@@ -188,12 +186,13 @@ test("the review page in every state: stage buttons, customer link, venue status
   await view.getByRole("button", { name: "Back to current" }).click();
   await expect(page).not.toHaveURL(/version=/);
   await expect(view.getByText(/Viewing Version 1/)).toHaveCount(0);
-  await history.getByRole("button", { name: "View version 3" }).click();
+  await (await openApprovalHistory(page, view)).getByTestId("menu-version-row").first().getByRole("button", { name: "View version" }).click();
   await expect(page).toHaveURL(/\?tab=approval&version=3$/);
 
   // ---------- A hand-made status change needs a reason, and moves the order with it ----------
   await open("manual");
-  await selectOption(page, view.getByLabel("Change status"), "Customer Approved");
+  const manualDialog = await openApprovalHistory(page, view);
+  await selectOption(page, manualDialog.getByLabel("Change status"), "Customer Approved");
   const reasonDialog = page.getByRole("dialog", { name: "Change status to Customer Approved?" });
   await reasonDialog.getByRole("button", { name: "Change status" }).click();
   await expect(reasonDialog.getByRole("alert")).toContainText("Write a reason for the change");
@@ -201,6 +200,7 @@ test("the review page in every state: stage buttons, customer link, venue status
   await reasonDialog.getByRole("button", { name: "Change status" }).click();
   await expect(reasonDialog).toBeHidden();
   await expect.poll(() => getApprovalState(seeded.manual.orderId)).toEqual({ selection: "CUSTOMER_APPROVED", order: "APPROVED" });
-  await expect(view.getByTestId("status-history-entry").first()).toContainText("Manual");
-  await expect(view.getByTestId("status-history-entry").first()).toContainText("Agreed with the customer over a call");
+  const afterDialog = await openApprovalHistory(page, view);
+  await expect(afterDialog.getByTestId("status-history-entry").first()).toContainText("Manual");
+  await expect(afterDialog.getByTestId("status-history-entry").first()).toContainText("Agreed with the customer over a call");
 });

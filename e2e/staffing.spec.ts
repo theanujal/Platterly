@@ -3,7 +3,7 @@ import { cleanupOnboardingTestUser, seedOrderWithEvent, setMemberRole } from "./
 import { signUpCaterer } from "./auth-helpers";
 
 /**
- * Staffing (AJ, 2026-10-14): the Event Manager is a typed name with suggestions; Cooking, Serving and Setup are numbers
+ * Staffing (AJ, 2026-10-14): the Event Manager is picked from team members and Event Manager staff (AJ, 2026-10-16); Cooking, Serving and Setup are numbers
  * only (no Delivery or Store). There is no task list, and the staffing and logistics notes live under Additional
  * Details on the order. The Staff page lists the next 3 days and pages after 10 events.
  */
@@ -32,6 +32,14 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   await expect(page.getByRole("row", { name: new RegExp(orderNumber) })).toContainText("Not started");
   // The Staff page keeps its directory of people
   await expect(page.getByRole("button", { name: "Add Staff Member" })).toBeVisible();
+  // The Usual duty list has every duty, Event Manager included (AJ, 2026-10-16); an Event Manager staff member can be picked for an event.
+  await page.getByRole("button", { name: "Add Staff Member" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Asha Rao");
+  await page.getByLabel("Usual duty").click();
+  for (const duty of ["Event Manager", "Cooking", "Serving", "Delivery", "Setup", "Store"]) await expect(page.getByRole("option", { name: duty, exact: true })).toBeVisible();
+  await page.getByRole("option", { name: "Event Manager", exact: true }).click();
+  await page.getByRole("button", { name: "Add staff member" }).click();
+  await expect(page.getByRole("row", { name: /Asha Rao/ })).toBeVisible();
 
   // The order's Staffing & Logistics tab: just numbers, no person picker and no tasks card
   const consoleErrors: string[] = [];
@@ -48,8 +56,11 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   await expect(card.getByLabel("Delivery")).toHaveCount(0);
   await expect(card.getByLabel("Store")).toHaveCount(0);
   await card.getByRole("button", { name: "Event Manager" }).click();
-  await page.getByPlaceholder("Search or type a name…").fill("Asha Rao");
-  await page.getByRole("option", { name: /Use .Asha Rao./ }).click();
+  // Only team members with access and Event Manager staff are offered; a typed name that is neither is not.
+  await page.getByPlaceholder("Search team members and Event Managers…").fill("Nobody Here");
+  await expect(page.getByRole("option", { name: /Nobody Here/ })).toHaveCount(0);
+  await page.getByPlaceholder("Search team members and Event Managers…").fill("Asha Rao");
+  await page.getByRole("option", { name: "Asha Rao", exact: true }).click();
   await card.getByLabel("Serving").fill("10");
   await card.getByRole("button", { name: "Save staffing" }).click();
   await expect(card.getByText("Saved.")).toBeVisible();

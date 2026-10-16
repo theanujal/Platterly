@@ -127,17 +127,18 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   // Event Date is a single range-picker (DateRangePicker), defaulting to the
   // current month — navigate to December 2026 before picking, then click
   // the two end days to commit a two-day range.
-  await page.getByLabel("Event Date").click();
-  const datePopover = page.locator('[data-slot="popover-content"]');
-  await expect(datePopover).toBeVisible();
-  while ((await datePopover.locator("span.font-medium").textContent()) !== "December 2026") {
-    await datePopover.getByRole("button", { name: "Next month" }).click();
-  }
-  await datePopover.getByRole("button", { name: "1", exact: true }).click();
-  await datePopover.getByRole("button", { name: "2", exact: true }).click();
-  // A multi-day range switches the order to Multi Order by itself and says so
-  // (AJ, 2026-09-27). This test isn't about Order Type, so just acknowledge it.
+  await page.getByRole("button", { name: /^Multi Order/ }).click();
+  // Choosing Multi Order says so (AJ, 2026-10-16). This test isn't about Order Type, so just acknowledge it.
   await page.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click();
+  const datePopover = page.locator('[data-slot="popover-content"][data-open]');
+  for (const [label, day] of [["Event start date", "1"], ["Event end date", "2"]] as const) {
+    await page.getByLabel(label, { exact: true }).click();
+    await expect(datePopover).toBeVisible();
+    while ((await datePopover.locator("span.font-medium").textContent()) !== "December 2026") {
+      await datePopover.getByRole("button", { name: "Next month" }).click();
+    }
+    await datePopover.getByRole("button", { name: day, exact: true }).click();
+  }
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
   await page.getByRole("button", { name: "Save Order", exact: true }).click();
   await expect(page).toHaveURL(/\/orders$/);
@@ -156,7 +157,10 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
 
   await page.getByRole("tab", { name: "Inventory" }).click();
   const inventoryCard = page.getByTestId("required-inventory-card");
-  await inventoryCard.getByRole("checkbox", { name: new RegExp(inventoryName) }).check();
+  // Items are found by typing in the search box (AJ, 2026-10-16), then listed with a quantity.
+  await inventoryCard.getByRole("button", { name: "Add an extra item" }).click();
+  await page.getByPlaceholder("Type an item name…").fill(inventoryName);
+  await page.getByRole("option", { name: new RegExp(inventoryName) }).click();
   await expect(inventoryCard.getByText("Saved", { exact: true })).toBeVisible();
   await inventoryCard.getByLabel(new RegExp(`Quantity of ${inventoryName}`)).fill("20");
   await inventoryCard.getByLabel(new RegExp(`Quantity of ${inventoryName}`)).blur();
@@ -164,7 +168,6 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
 
   await page.reload();
   await page.getByRole("tab", { name: "Inventory" }).click();
-  await expect(page.getByTestId("required-inventory-card").getByRole("checkbox", { name: new RegExp(inventoryName) })).toBeChecked();
   await expect(page.getByTestId("required-inventory-card").getByLabel(new RegExp(`Quantity of ${inventoryName}`))).toHaveValue("20");
 
   // --- Profile: the order is under Orders, the tabs replaced the old Events timeline, and delete is refused ---

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, backdateStorefrontDrafts } from "./db";
 import { pickCalendarDate, selectOption, signUpCaterer } from "./auth-helpers";
-import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openApprovalHistory, openOrderApprovalTab, openOrderStatusHistory, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
  * Chunk 11 Group 11.3 + Chunk 12 — the public multi-step order flow and the
@@ -312,6 +312,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await orderCard().getByRole("link").first().click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   // Only the location is known before approval; the detailed venue fields are still empty for the team to fill.
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("Whitefield, Bangalore");
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("");
   await expect(page.getByLabel("Additional Notes")).toHaveValue("Please call before delivery");
@@ -339,7 +341,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.locator("#order-panel-menu").getByTestId("meal-item-counts")).toHaveCount(0);
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.getByRole("tab", { name: "Menu Approval" })).toHaveAttribute("aria-selected", "true");
-  const approvalPanel = page.locator("#order-panel-approval");
+  const approvalPanel = page.locator("#order-panel-approval, #order-approval-sidebar");
   await approvalPanel.getByRole("button", { name: "Edit Items" }).first().click();
   const orderDrawer = page.getByRole("dialog", { name: /Select Menu Items/ });
   await orderDrawer.getByRole("button", { name: "Add-ons" }).click();
@@ -432,14 +434,16 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await resend.getByRole("button", { name: "Send Updated Menu for Approval" }).click();
   await expect(resend.getByText(/Version 2 is with the customer/)).toBeVisible();
   // A re-send after the first is "Customer Reviewing", not another "Awaiting Customer Approval" (AJ, 2026-09-30).
-  await expect(resend.getByTestId("menu-history-card").getByText("Customer Reviewing").first()).toBeVisible();
+  const resendHistory = await openApprovalHistory(page, resend);
+  await expect(resendHistory.getByTestId("menu-history-card").getByText("Customer Reviewing").first()).toBeVisible();
   const linkV2 = new URL((await resend.locator("code").filter({ hasText: "/menu-approval/" }).innerText()).trim()).pathname;
   expect(linkV2).not.toBe(linkV1);
-  await expect(resend.getByText("Superseded")).toBeVisible(); // version history: v1 can no longer be approved
+  await expect(resendHistory.getByText("Replaced")).toBeVisible(); // version history: v1 can no longer be approved
+  await page.keyboard.press("Escape");
 
   // --- Older versions open read-only in the same planner, with Compare, and history stays a small card (AJ, 2026-09-30) ---
   await expect(resend.getByTestId("menu-note")).toContainText("Please swap the starter for something lighter.");
-  await resend.getByRole("button", { name: "View version 1" }).click();
+  await (await openApprovalHistory(page, resend)).getByTestId("menu-version-row").last().getByRole("button", { name: "View version" }).click();
   await expect(resend.getByText(/Viewing Version 1/)).toBeVisible();
   await expect(resend.getByRole("button", { name: "Send Updated Menu for Approval" })).toHaveCount(0);
   await expect(resend.locator('[data-testid^="meal-slot-"]').first()).toBeVisible();
@@ -505,6 +509,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // What the customer sent lands on the order, and the team can see it arrived.
   await orderCard().getByRole("link", { name: customerName }).click();
   await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("12 Green Villa Road");
   const handoff = await openOrderApprovalTab(page, customerName);
@@ -526,33 +531,38 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page).toHaveURL(/\/orders\/.+/);
   // Sent to the kitchen, the order itself is final (AJ, 2026-10-14): fields cannot be edited, no Save, no Delete.
   await expect(page.getByTestId("order-locked-banner")).toContainText("can't be changed any more");
-  await expect(page.getByLabel("Venue / Building Name")).toBeDisabled();
+  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Create & Send WhatsApp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
   await expect(page.getByTestId("order-save-card")).toBeHidden();
-  await page.getByRole("button", { name: "Edit order status" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await openOrderStatusHistory(page);
   await page.getByRole("combobox", { name: "Change status" }).click();
   await page.getByRole("option", { name: "Approved", exact: true }).click();
-  const reasonDialog = page.getByRole("dialog");
+  const reasonDialog = page.getByRole("dialog", { name: "Change status to Approved?" });
   await expect(reasonDialog).toContainText("Change status to Approved?");
   await reasonDialog.getByRole("button", { name: "Change status" }).click();
   await expect(reasonDialog.getByRole("alert")).toContainText("Write a reason"); // no reason, no change
   await reasonDialog.getByLabel("Reason").fill("Customer asked us to hold it back after a call");
   await reasonDialog.getByRole("button", { name: "Change status" }).click();
   await expect(reasonDialog).not.toBeVisible();
-  const history = page.getByTestId("status-history-entry").first();
+  const history = (await openOrderStatusHistory(page)).getByTestId("status-history-entry").first();
   await expect(history).toContainText("Sent to Kitchen");
   await expect(history).toContainText("Manual");
   await expect(history).toContainText("Customer asked us to hold it back after a call");
   await page.reload();
-  await expect(page.getByRole("button", { name: "Edit order status" })).toBeVisible();
-  await expect(page.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+  await expect(page.getByRole("button", { name: "View status history" })).toBeVisible();
+  await expect((await openOrderStatusHistory(page)).getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+  await page.keyboard.press("Escape");
 
   // The menu approval moved with the order (Approved -> Customer Approved), and it goes to the kitchen again in one click.
   const again = await openOrderApprovalTab(page, customerName);
   await expect(again.getByText("Customer Approved").first()).toBeVisible();
-  await expect(again.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+  const againHistory = await openApprovalHistory(page, again);
+  await expect(againHistory.getByTestId("status-history-entry").first()).toContainText("Customer asked us to hold it back after a call");
+  await page.keyboard.press("Escape");
   await again.getByRole("button", { name: "Approve & Send to Kitchen" }).click();
   await expect(again.getByText(/Approved and sent to the kitchen on/)).toBeVisible();
   await page.goto("/orders");

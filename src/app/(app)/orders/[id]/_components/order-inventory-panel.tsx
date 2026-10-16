@@ -228,15 +228,17 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                     </span>
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate text-sm font-medium">{line.name}</span>
+                      <span className={cn("text-xs font-medium", line.inStock > 0 ? "text-success" : "text-destructive")} data-testid="sent-available">
+                        {num(line.inStock)} {line.unit} available
+                      </span>
                       <span className="text-xs text-muted-foreground">
-                        {num(line.sent)} {line.unit} sent
-                        {line.sent > 0 && line.sentCostUnknown < line.sent ? ` · ${formatRupees(line.sentCost)} at batch cost` : ""}
-                        {line.sentCostUnknown > 0 ? ` · cost of ${num(line.sentCostUnknown)} ${line.unit} unknown` : ""}
+                        {line.sent > 0 && line.sentCostUnknown < line.sent ? `${formatRupees(line.sentCost)} at batch cost` : ""}
+                        {line.sentCostUnknown > 0 ? `${line.sent > 0 && line.sentCostUnknown < line.sent ? " · " : ""}cost of ${num(line.sentCostUnknown)} ${line.unit} unknown` : ""}
                       </span>
                     </span>
-                    <span className="flex shrink-0 flex-col items-center rounded-lg bg-muted px-3 py-1.5">
-                      <span className={cn("text-lg font-semibold", line.inStock > 0 ? "text-success" : "text-destructive")}>{num(line.inStock)}</span>
-                      <span className="text-[11px] text-muted-foreground">available</span>
+                    <span className="flex shrink-0 flex-col items-center rounded-lg bg-muted px-3 py-1.5" data-testid="sent-quantity">
+                      <span className="text-lg font-semibold">{num(line.sent)}</span>
+                      <span className="text-[11px] text-muted-foreground">{line.unit} sent</span>
                     </span>
                     {canEdit && data.canReturn && (
                       <Button type="button" variant="ghost" size="icon-sm" aria-label={`Return ${line.name} to stock`} title="Return to stock" disabled={busyId === line.inventoryId} onClick={() => giveBack(line)}>

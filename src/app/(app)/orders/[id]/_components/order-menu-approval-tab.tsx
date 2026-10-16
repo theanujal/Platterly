@@ -6,8 +6,9 @@ import { ClipboardCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
+import { MENU_SELECTION_STATUS_HINT, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import { ApprovalActionBar } from "@/modules/menu-approvals/_components/review/approval-action-bar";
+import type { EventOverviewData } from "@/modules/menu-approvals/_components/review/approval-event-overview-card";
 import { ApprovalReviewBody } from "@/modules/menu-approvals/_components/review/approval-review-body";
 import { useApprovalController } from "@/modules/menu-approvals/_components/review/use-approval-controller";
 import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_components/review/types";
@@ -28,12 +29,13 @@ export interface NotStartedInfo {
  * components and the server actions, with the order page around it. The viewer's capabilities decide which controls show; the server
  * checks every action again. With no approval yet it offers to start one.
  */
-export function OrderMenuApprovalTab({ data, notStarted }: { data: MenuApprovalReviewProps | null; notStarted: NotStartedInfo }) {
+export function OrderMenuApprovalTab({ data, notStarted, eventOverview }: { data: MenuApprovalReviewProps | null; notStarted: NotStartedInfo; eventOverview?: EventOverviewData }) {
   if (!data) return <NotStarted info={notStarted} />;
-  return <Review data={data} />;
+  return <Review data={data} eventOverview={eventOverview} />;
 }
 
-function Review({ data }: { data: MenuApprovalReviewProps }) {
+
+function Review({ data, eventOverview }: { data: MenuApprovalReviewProps; eventOverview?: EventOverviewData }) {
   const router = useRouter();
   const pathname = usePathname();
   const c = useApprovalController({
@@ -47,32 +49,37 @@ function Review({ data }: { data: MenuApprovalReviewProps }) {
   });
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-semibold">Menu Approval</h2>
-          <Badge variant={MENU_SELECTION_STATUS_TONE[data.status]} data-testid="approval-tab-status">
-            {data.statusLabel}
-          </Badge>
-          <span className="text-sm text-muted-foreground">Version {data.currentVersion}</span>
-          {!data.capabilities.canAct && <Badge variant="neutral">View only</Badge>}
+      <Card className="gap-3 px-5 [--card-spacing:--spacing(5)]" data-testid="approval-tab-header">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-semibold">Menu Approval</h2>
+              <Badge variant={MENU_SELECTION_STATUS_TONE[data.status]} data-testid="approval-tab-status">
+                {data.statusLabel}
+              </Badge>
+              <span className="text-sm text-muted-foreground">Version {data.currentVersion}</span>
+              {!data.capabilities.canAct && <Badge variant="neutral">View only</Badge>}
+            </div>
+            <p className="text-sm text-muted-foreground">{MENU_SELECTION_STATUS_HINT[data.status]}</p>
+          </div>
+          {data.capabilities.canAct && (
+            <ApprovalActionBar
+              status={data.status}
+              hasSentVersion={data.versions.length > 0}
+              viewingVersion={c.shownVersion !== null}
+              editable={c.editable}
+              withCustomer={c.withCustomer}
+              pending={c.pending}
+              dirty={c.dirty}
+              onSave={c.handleSave}
+              onSend={c.handleSend}
+              onRecall={c.handleRecall}
+              onApprove={c.handleApprove}
+            />
+          )}
         </div>
-        {data.capabilities.canAct && (
-          <ApprovalActionBar
-            status={data.status}
-            hasSentVersion={data.versions.length > 0}
-            viewingVersion={c.shownVersion !== null}
-            editable={c.editable}
-            withCustomer={c.withCustomer}
-            pending={c.pending}
-            dirty={c.dirty}
-            onSave={c.handleSave}
-            onSend={c.handleSend}
-            onRecall={c.handleRecall}
-            onApprove={c.handleApprove}
-          />
-        )}
-      </div>
-      <ApprovalReviewBody data={data} c={c} actions={reviewActions} />
+      </Card>
+      <ApprovalReviewBody data={data} c={c} actions={reviewActions} cardsInSidebar eventOverview={eventOverview} onViewDetails={eventOverview ? () => router.push(`${pathname}?tab=details`) : undefined} />
     </>
   );
 }

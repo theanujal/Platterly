@@ -32,6 +32,7 @@ import { ExpensesCard } from "./_components/expenses-card";
 import { listOrderExpenses } from "@/modules/expenses/expense";
 import { listSupplierOptions } from "@/modules/suppliers/supplier";
 import { getOrderInventory } from "@/modules/production/production";
+import { orderStockCostTotals } from "@/modules/inventory/batches";
 import { getGstSettings } from "@/modules/payments/payment-settings";
 import { EventOps } from "../../staff/_components/event-ops";
 import { OrderInventoryPanel } from "./_components/order-inventory-panel";
@@ -145,6 +146,8 @@ export default async function OrderDetailPage({ params, searchParams }: { params
     receipt: p.receipt ? { id: p.receipt.id, number: p.receipt.number } : null,
   }));
   const orderTotal = Number(order.total);
+  // The food cost of this order: what the inventory sent to it cost, taken from the batches it came from.
+  const stockCost = (await orderStockCostTotals([id])).get(id) ?? { cost: 0, unknownQuantity: 0 };
 
   const initialValues: OrderFormValues = {
     customerId: order.customerId,
@@ -178,10 +181,13 @@ export default async function OrderDetailPage({ params, searchParams }: { params
     individualChild5To10Rate: order.individualChild5To10Rate?.toString() ?? "",
     individualChild5To10PricingType: order.individualChild5To10PricingType ?? "FIXED",
     individualPricingEnabled: order.individualPricingEnabled,
-    discount: order.discount.toString(),
-    transportationCost: order.transportationCost.toString(),
-    otherCharges: order.otherCharges.toString(),
-    customCharges: parseCustomCharges(order.customCharges).map((c) => ({ label: c.label, amount: c.amount.toString() })),
+    discount: order.discountMode === "PERCENTAGE" ? order.discountRate.toString() : order.discount.toString(),
+    discountMode: order.discountMode,
+    transportationCost: order.transportationMode === "PERCENTAGE" ? order.transportationRate.toString() : order.transportationCost.toString(),
+    transportationMode: order.transportationMode,
+    otherCharges: order.otherChargesMode === "PERCENTAGE" ? order.otherChargesRate.toString() : order.otherCharges.toString(),
+    otherChargesMode: order.otherChargesMode,
+    customCharges: parseCustomCharges(order.customCharges).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
     status: order.status,
     notes: order.notes ?? "",
     kitchenNotes: order.kitchenNotes ?? "",
@@ -219,6 +225,18 @@ export default async function OrderDetailPage({ params, searchParams }: { params
             key="menu-approval-tab"
             data={reviewData ? { ...reviewData, capabilities: approvalCapabilities(can) } : null}
             notStarted={{ orderId: order.id, ...notStartedState(order, can) }}
+            eventOverview={{
+              orderType: ORDER_KIND_LABEL[order.orderKind],
+              eventType: order.eventType?.name ?? null,
+              eventDate: formatEventDates(order.eventStartDate, order.eventEndDate),
+              venue: order.venue,
+              guests: {
+                total: order.totalParticipants ?? 0,
+                adults: order.adultCount ?? 0,
+                below5: order.childBelow5Count ?? 0,
+                from5to10: order.child5To10Count ?? 0,
+              },
+            }}
           />
         }
         locked={isKitchenLocked(order.status, menuApproval ? [menuApproval.status] : [])}
@@ -397,6 +415,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
               profitability={computeProfitability(
                 orderTotal,
                 expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
+                stockCost.cost,
               )}
               expenses={expenses.map((e) => ({
                 id: e.id,
@@ -411,6 +430,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 attachments: e.attachments,
               }))}
               suppliers={supplierOptions}
+              inventoryUnknownQuantity={stockCost.unknownQuantity}
               canCreate={canCreateExpense}
               canEdit={canEditExpense}
               canDelete={canDeleteExpense}

@@ -8,6 +8,7 @@ import { saveRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { createBatch, findStockMismatches, previewConsumption, todayDate, usableQueues } from "@/modules/inventory/batches";
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, sendOrderItems, returnAllOrderItems } from "@/modules/production/production";
+import { getOrderProfitability, listProfitability } from "@/modules/expenses/expense";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -73,6 +74,20 @@ describe("Recipe consumption and costing with batches", () => {
     await sendOrderItems(org.id, order.id, actor.id);
     await batch(50, 400);
     expect((await getOrderInventory(org.id, order.id))?.lines[0]).toMatchObject({ sentCost: 2200 });
+  });
+
+  it("the order's food cost is the cost of the inventory sent to it (AJ, 2026-10-16), and returns take it off again", async () => {
+    const { org, actor, order, batch } = await setup();
+    await batch(15, 100, { receivedDate: day(-5) });
+    await batch(15, 120, { receivedDate: day(-1) });
+    expect((await getOrderProfitability(org.id, order.id)).byCategory.FOOD).toBe(0);
+    await sendOrderItems(org.id, order.id, actor.id);
+    const sent = await getOrderProfitability(org.id, order.id);
+    expect(sent.byCategory.FOOD).toBe(15 * 100 + 7 * 120);
+    expect(sent.inventoryFoodCost).toBe(2340);
+    expect((await listProfitability(org.id)).find((r) => r.orderId === order.id)?.byCategory.FOOD).toBe(2340);
+    await returnAllOrderItems(org.id, order.id, actor.id);
+    expect((await getOrderProfitability(org.id, order.id)).byCategory.FOOD).toBe(0);
   });
 
   it("the recipe cost preview and the real consumption use the same FIFO slices, and the preview deducts nothing", async () => {

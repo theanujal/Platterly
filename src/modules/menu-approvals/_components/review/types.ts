@@ -1,3 +1,4 @@
+import type { CustomCharge } from "@/modules/orders/custom-charges";
 import type { MealSelection, MealTypeValue, MenuOption } from "@/components/catalog/menu-planning-section";
 import type { MenuPickerData } from "@/modules/menus/menu";
 import type { ApprovalSnapshot } from "@/modules/menu-approvals/approval-snapshot";
@@ -46,6 +47,19 @@ export interface ReviewPricing {
   otherCharges: number;
   /** Sum of the team-added label + amount lines. */
   customCharges: number;
+  /**
+   * How Discount, Extra / Service Cost and Transportation are entered (a rupee amount, or a percentage of the subtotal), and the team's
+   * label + amount (or percentage) lines. The live total resolves them against the draft's subtotal exactly as the server does.
+   */
+  discountMode: "FIXED" | "PERCENTAGE";
+  discountRate: number;
+  otherChargesMode: "FIXED" | "PERCENTAGE";
+  otherChargesRate: number;
+  transportationMode: "FIXED" | "PERCENTAGE";
+  transportationRate: number;
+  customChargeLines: CustomCharge[];
+  /** The figures the order itself holds, worked out from the saved meals the way the server does. Shown while the draft has no unsaved edits. */
+  saved: { menuAmount: number; extrasAmount: number; childrenCharge: number; chargesAndDiscount: number; total: number };
 }
 
 /**
@@ -73,7 +87,10 @@ export interface MenuApprovalReviewProps {
   capabilities: ReviewCapabilities;
   pricing: ReviewPricing;
   menuPreference: string;
+  /** Every day the planner offers: the order's event dates, plus any day a meal is planned on. */
   days: string[];
+  /** The order's own event dates; a planned day not in this list is outside the event. */
+  eventDays: string[];
   entries: MealSelection[];
   menus: MenuOption[];
   notes: NoteView[];

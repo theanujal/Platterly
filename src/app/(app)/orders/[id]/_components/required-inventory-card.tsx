@@ -2,22 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Boxes } from "lucide-react";
+import { Boxes, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 import { Input } from "@/components/ui/input";
 import { updateEventOperationsAction } from "../../actions";
 
 interface Row {
   inventoryId: string;
-  checked: boolean;
   quantity: string;
 }
 
 /**
  * Extra items (AJ, 2026-09-27, renamed 2026-10-10): inventory items, and how much of each, this order's event needs on top of
  * its recipes (gas, disposables, crockery). They are added to the "Required for this order" list and sent with the rest.
- * It saves as you tick an item or leave a quantity, with no save button, and the list above refreshes.
+ * A kitchen can have hundreds of inventory items, so items are found by typing in a search box (AJ, 2026-10-16) and the chosen ones are listed below it.
+ * It saves as you add an item, remove one or leave a quantity, with no save button, and the list above refreshes.
  */
 export function RequiredInventoryCard({
   orderId,
@@ -29,14 +30,7 @@ export function RequiredInventoryCard({
   inventoryItems: { id: string; name: string; unit: string }[];
 }) {
   const router = useRouter();
-  const [rows, setRows] = useState<Row[]>(() => {
-    const existing = new Map((event?.requiredInventory ?? []).map((r) => [r.inventoryId, r.quantity]));
-    return inventoryItems.map((item) => ({
-      inventoryId: item.id,
-      checked: existing.has(item.id),
-      quantity: existing.has(item.id) ? String(existing.get(item.id)) : "",
-    }));
-  });
+  const [rows, setRows] = useState<Row[]>(() => (event?.requiredInventory ?? []).map((r) => ({ inventoryId: r.inventoryId, quantity: String(r.quantity) })));
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +39,7 @@ export function RequiredInventoryCard({
     setState("saving");
     setError(null);
     const result = await updateEventOperationsAction(orderId, event.id, {
-      requiredInventory: next.filter((r) => r.checked).map((r) => ({ inventoryId: r.inventoryId, quantity: Number.parseFloat(r.quantity) || 0 })),
+      requiredInventory: next.map((r) => ({ inventoryId: r.inventoryId, quantity: Number.parseFloat(r.quantity) || 0 })),
     });
     if (!result.ok) {
       setState("error");
@@ -56,11 +50,20 @@ export function RequiredInventoryCard({
     router.refresh();
   }
 
-  function update(inventoryId: string, patch: Partial<Row>, saveNow: boolean) {
-    const next = rows.map((r) => (r.inventoryId === inventoryId ? { ...r, ...patch } : r));
+  function add(inventoryId: string) {
+    if (!inventoryId || rows.some((r) => r.inventoryId === inventoryId)) return;
+    const next = [...rows, { inventoryId, quantity: "" }];
     setRows(next);
-    if (saveNow) void save(next);
+    void save(next);
   }
+
+  function remove(inventoryId: string) {
+    const next = rows.filter((r) => r.inventoryId !== inventoryId);
+    setRows(next);
+    void save(next);
+  }
+
+  const available = inventoryItems.filter((i) => !rows.some((r) => r.inventoryId === i.id)).map((i) => ({ value: i.id, label: i.name, hint: i.unit }));
 
   return (
     <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]" data-testid="required-inventory-card">
@@ -87,39 +90,46 @@ export function RequiredInventoryCard({
       ) : inventoryItems.length === 0 ? (
         <p className="text-sm text-muted-foreground">No inventory items yet.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
-          {rows.map((row) => {
-            const item = inventoryItems.find((i) => i.id === row.inventoryId);
-            if (!item) return null;
-            return (
-              <div key={row.inventoryId} className="flex items-center gap-3 rounded-lg border border-border p-3">
-                <label htmlFor={`inv-${row.inventoryId}`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
-                  <Checkbox
-                    id={`inv-${row.inventoryId}`}
-                    checked={row.checked}
-                    onCheckedChange={(checked) => update(row.inventoryId, { checked: checked === true }, true)}
-                  />
-                  <span className="truncate text-sm font-medium">{item.name}</span>
-                </label>
-                {row.checked && (
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Input
-                      type="number"
-                      min="0"
-                      step="any"
-                      aria-label={`Quantity of ${item.name}`}
-                      className="w-24"
-                      value={row.quantity}
-                      onChange={(e) => update(row.inventoryId, { quantity: e.target.value }, false)}
-                      onBlur={() => void save(rows)}
-                    />
-                    <span className="w-10 text-xs text-muted-foreground">{item.unit}</span>
+        <>
+          <SearchableSelect
+            aria-label="Add an extra item"
+            options={available}
+            value=""
+            onValueChange={add}
+            placeholder="Search inventory items to add…"
+            searchPlaceholder="Type an item name…"
+            emptyLabel="No matching inventory item."
+          />
+          {rows.length > 0 && (
+            <div className="grid grid-cols-1 gap-x-6 gap-y-2 md:grid-cols-2">
+              {rows.map((row) => {
+                const item = inventoryItems.find((i) => i.id === row.inventoryId);
+                if (!item) return null;
+                return (
+                  <div key={row.inventoryId} className="flex items-center gap-3 rounded-lg border border-border p-3" data-testid="extra-item-row">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.name}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        aria-label={`Quantity of ${item.name}`}
+                        className="w-24"
+                        value={row.quantity}
+                        onChange={(e) => setRows((prev) => prev.map((r) => (r.inventoryId === row.inventoryId ? { ...r, quantity: e.target.value } : r)))}
+                        onBlur={() => void save(rows)}
+                      />
+                      <span className="w-10 text-xs text-muted-foreground">{item.unit}</span>
+                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${item.name}`} onClick={() => remove(row.inventoryId)}>
+                        <X className="size-4" />
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {error && (

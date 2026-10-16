@@ -29,13 +29,20 @@ type Stored = {
   discount: unknown;
   transportationCost: unknown;
   otherCharges: unknown;
+  discountMode?: string;
+  discountRate?: unknown;
+  otherChargesMode?: string;
+  otherChargesRate?: unknown;
+  transportationMode?: string;
+  transportationRate?: unknown;
   customCharges: unknown;
 };
 
 const num = (value: unknown) => (value === null || value === undefined ? null : Number(value));
 
 function customLines(value: unknown) {
-  return JSON.stringify(parseCustomCharges(value).map((line) => ({ label: line.label, amount: Number(line.amount) })));
+  // A percentage line is compared by its rate: its rupee amount follows the subtotal.
+  return JSON.stringify(parseCustomCharges(value).map((line) => (line.mode === "PERCENTAGE" ? { label: line.label, mode: line.mode, rate: line.rate } : { label: line.label, amount: Number(line.amount) })));
 }
 
 /**
@@ -62,7 +69,26 @@ export function priceFieldChanges(before: Stored, input: OrderInput): string[] {
     if (next === undefined) continue;
     if (Math.abs((num(stored) ?? 0) - (num(next) ?? 0)) > 0.0001) changed.push(name);
   }
+  // A percentage amount is derived from its rate, so then the mode and the rate are what is compared, not the amount.
+  const modes: Record<string, [string, unknown, string | undefined, number | undefined, string | undefined]> = {
+    discount: ["discount", before.discountRate, before.discountMode, input.discountRate, input.discountMode],
+    otherCharges: ["otherCharges", before.otherChargesRate, before.otherChargesMode, input.otherChargesRate, input.otherChargesMode],
+    transportationCost: ["transportationCost", before.transportationRate, before.transportationMode, input.transportationRate, input.transportationMode],
+  };
   for (const [name, stored, next] of amounts) {
+    const mode = modes[name];
+    if (mode) {
+      const [, storedRate, storedMode, nextRate, nextMode] = mode;
+      const effectiveMode = nextMode ?? storedMode ?? "FIXED";
+      if (effectiveMode !== (storedMode ?? "FIXED")) {
+        changed.push(name);
+        continue;
+      }
+      if (effectiveMode === "PERCENTAGE") {
+        if (nextRate !== undefined && Math.abs((num(storedRate) ?? 0) - nextRate) > 0.0001) changed.push(name);
+        continue;
+      }
+    }
     if (next === undefined || next === null) continue;
     if (Math.abs((num(stored) ?? 0) - Number(next)) > 0.0001) changed.push(name);
   }

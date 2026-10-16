@@ -51,7 +51,7 @@ describe("report export sheets (Chunk 24)", () => {
 
   it("exports Profitability with the six expense categories alongside each order", () => {
     const [sheet] = profitabilitySheets([
-      { orderNumber: "ORD-1", customerName: "Asha", eventTypeName: "Wedding", eventStartDate: new Date("2026-10-13"), venue: "Hall", expenseCount: 2, revenue: 20000, totalCost: 10000, profit: 10000, marginPercent: 50, foodCostPercent: 35, byCategory: { FOOD: 7000, LABOUR: 3000, TRANSPORT: 0, EQUIPMENT: 0, VENUE: 0, MISC: 0 } },
+      { orderNumber: "ORD-1", customerName: "Asha", eventTypeName: "Wedding", eventStartDate: new Date("2026-10-13"), venue: "Hall", expenseCount: 2, revenue: 20000, totalCost: 10000, profit: 10000, marginPercent: 50, foodCostPercent: 35, inventoryFoodCost: 0, byCategory: { FOOD: 7000, LABOUR: 3000, TRANSPORT: 0, EQUIPMENT: 0, VENUE: 0, MISC: 0 } },
     ]);
     expect(sheet.columns.slice(-6)).toEqual(["Food (₹)", "Labour (₹)", "Transport (₹)", "Equipment (₹)", "Venue (₹)", "Miscellaneous (₹)"]);
     expect(sheet.rows[0].slice(0, 4)).toEqual(["ORD-1", "Asha", "Wedding", "2026-10-13"]);

@@ -67,7 +67,7 @@ export function SummaryCard({ icon: Icon, title, action, children }: { icon: Luc
 }
 
 /** One label / value line in a summary card. */
-export function SummaryRow({ icon: Icon, label, className, children }: { icon?: LucideIcon; label: string; className?: string; children: React.ReactNode }) {
+export function SummaryRow({ icon: Icon, label, className, labelClassName, children }: { icon?: LucideIcon; label: string; className?: string; labelClassName?: string; children: React.ReactNode }) {
   return (
     <div className={cn("flex items-start gap-3 text-sm", className)}>
       {Icon && (
@@ -75,7 +75,7 @@ export function SummaryRow({ icon: Icon, label, className, children }: { icon?: 
           <Icon className="size-4" />
         </span>
       )}
-      <span className="w-20 shrink-0 pt-1 text-muted-foreground">{label}</span>
+      <span className={cn("w-20 shrink-0 pt-1 text-muted-foreground", labelClassName)}>{label}</span>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 pt-1 font-medium">{children}</div>
     </div>
   );

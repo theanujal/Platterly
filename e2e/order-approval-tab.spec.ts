@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser, countInvoicesForOrder, getApprovalState, getOrderRow, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
 import { signUpCaterer } from "./auth-helpers";
-import { submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openApprovalHistory, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
  * The order's Menu Approval tab and the restricted view for an approval-only person (Menu Approvals + Orders merge, Phase 2).
@@ -16,7 +16,7 @@ test.afterEach(async () => {
   if (email) await cleanupOnboardingTestUser(email);
 });
 
-const tabPanel = (page: Page) => page.locator("#order-panel-approval");
+const tabPanel = (page: Page) => page.locator("#order-panel-approval, #order-approval-sidebar");
 
 async function openOrderTab(page: Page, orderId: string, query = "?tab=approval") {
   await page.goto(`/orders/${orderId}${query}`);
@@ -62,10 +62,11 @@ test("the tab: opens by address, runs the whole approval from the order, keeps t
   expect(linkV2).not.toBe(linkV1);
   await customerPage.goto(linkV1);
   await expect(customerPage.getByRole("heading", { name: "This link is no longer active" })).toBeVisible();
-  await expect(tabPanel(page).getByTestId("menu-version-summary")).toHaveCount(2);
+  const versionsDialog = await openApprovalHistory(page, tabPanel(page));
+  await expect(versionsDialog.getByTestId("menu-version-row")).toHaveCount(2);
 
   // a version opens in the same tab, with Compare, and Back to current keeps the tab
-  await tabPanel(page).getByRole("button", { name: "View version 1" }).click();
+  await versionsDialog.getByTestId("menu-version-row").last().getByRole("button", { name: "View version" }).click();
   await expect(page).toHaveURL(/tab=approval&version=1/);
   await expect(page.getByRole("tab", { name: "Menu Approval" })).toHaveAttribute("aria-selected", "true");
   await expect(tabPanel(page).getByText(/Viewing Version 1/)).toBeVisible();
@@ -141,8 +142,10 @@ test("orders with no menu approval, a Completed order and a Cancelled order", as
   await openOrderTab(page, completed.orderId);
   await expect(tabPanel(page).getByTestId("approval-tab-status")).toHaveText("Approved & Sent to Kitchen");
   await expect(tabPanel(page).getByRole("button", { name: /Send|Recall|Approve|Save Changes/ })).toHaveCount(0);
-  await expect(tabPanel(page).getByLabel("Change status")).toHaveCount(0);
-  await expect(tabPanel(page).getByPlaceholder("Add a note for the team…")).toHaveCount(0);
+  await expect(tabPanel(page).getByRole("button", { name: "Add Note" })).toHaveCount(0);
+  const closedDialog = await openApprovalHistory(page, tabPanel(page));
+  await expect(closedDialog.getByLabel("Change status")).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   // Cancelled with no menu approval: closed, no start button
   await openOrderTab(page, closedNoMenu.orderId);
@@ -167,7 +170,9 @@ test("a person who can approve menus but not edit orders gets the restricted vie
   await expect(page.getByTestId("approval-only-banner")).toContainText("view-only for your role");
   await expect(page.getByRole("tablist", { name: "Sections" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Save changes|Discard changes|Delete Order/ })).toHaveCount(0);
-  await expect(page.getByLabel("Change status")).toHaveCount(1); // only the menu's own status; the order's status control is not offered
+  const restrictedDialog = await openApprovalHistory(page);
+  await expect(restrictedDialog.getByLabel("Change status")).toHaveCount(1); // only the menu's own status; the order's status control is not offered
+  await page.keyboard.press("Escape");
   const html = await page.content();
   expect(html).not.toContain(draft.customerPhone); // the customer's phone never reaches this page
   expect(html).not.toContain("Pricing & Payment");
@@ -207,7 +212,10 @@ test("a person who can edit orders but not approve menus sees the tab read-only;
   await expect(page.getByRole("tab", { name: "Order Details" })).toBeVisible(); // the editable order page
   await expect(tabPanel(page).getByText("View only")).toBeVisible();
   await expect(tabPanel(page).getByTestId("approval-tab-status")).toHaveText("Awaiting Customer Approval");
-  await expect(tabPanel(page).getByTestId("menu-version-summary")).toHaveCount(1); // version history is readable
+  const readOnlyDialog = await openApprovalHistory(page, tabPanel(page));
+  await expect(readOnlyDialog.getByTestId("menu-version-row")).toHaveCount(1); // version history is readable
+  await expect(readOnlyDialog.getByLabel("Change status")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await expect(tabPanel(page).getByTestId("menu-note")).toContainText("Looks fine so far.");
   await expect(tabPanel(page).getByRole("button", { name: /Send|Recall|Approve|Save Changes|Add Note/ })).toHaveCount(0);
   await expect(tabPanel(page).getByLabel("Change status")).toHaveCount(0);
@@ -217,4 +225,27 @@ test("a person who can edit orders but not approve menus sees the tab read-only;
   await setRoleGrants(email, "manager", { orders: ["view"], menus: ["view"], customers: ["view"] });
   const response = await page.goto(`/orders/${sent.orderId}`);
   expect(response?.status()).toBe(403);
+});
+
+test("the Pricing Summary and the Order Status card agree with the rest of the order", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-ordertab-pricing-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  const draft = await seedReviewFixture(email, { ordinal: 61, customer: "Pricing Match", status: "DRAFT", versions: 0 });
+  await openOrderTab(page, draft.orderId);
+  const grandTotal = async (scope: ReturnType<typeof page.locator>) => (await scope.getByText("Grand Total", { exact: true }).filter({ visible: true }).locator("xpath=following-sibling::span").innerText()).replace(/[^0-9.]/g, "");
+  const summaryTotal = await grandTotal(page.locator("#order-approval-sidebar"));
+  // the order's own Pricing Details (Pricing & Payment tab) shows the same total
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  expect(await grandTotal(page.locator("main"))).toBe(summaryTotal);
+  // the Order Status card is in the sidebar on the other tabs and opens its history in a drawer
+  for (const tab of ["Order Details", "Guests & Event Info", "Pricing & Payment"]) {
+    await page.getByRole("tab", { name: tab }).click();
+    await expect(page.locator("aside").getByRole("button", { name: "View status history" })).toBeVisible();
+  }
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await page.getByRole("button", { name: "Edit order status" }).count().then((n) => expect(n).toBe(0)); // no inline Edit any more
+  await page.getByRole("tab", { name: "Menu Approval" }).click();
+  await expect(page.locator("aside").getByRole("button", { name: "View status history" })).toBeHidden(); // Approval Status takes its place here
 });

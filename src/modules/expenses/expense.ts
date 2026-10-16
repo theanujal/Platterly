@@ -6,6 +6,7 @@ import { resolveSupplierFields } from "@/modules/suppliers/supplier";
 import { audit } from "@/lib/audit/audit";
 import { deleteStoredFiles } from "./attachment";
 import { nextOccurrence } from "./recurrence";
+import { orderStockCostTotals } from "@/modules/inventory/batches";
 import { COMPANY_EXPENSE_CATEGORIES, computeProfitability, EXPENSE_CATEGORIES, type ExpenseCategoryValue } from "./profitability";
 import type { PaymentMethod } from "@/generated/prisma/enums";
 
@@ -78,13 +79,15 @@ export function listOrderExpenses(organizationId: string, orderId: string) {
 }
 
 export async function getOrderProfitability(organizationId: string, orderId: string) {
-  const [order, expenses] = await Promise.all([
+  const [order, expenses, stock] = await Promise.all([
     prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } }),
     listOrderExpenses(organizationId, orderId),
+    orderStockCostTotals([orderId]),
   ]);
   return computeProfitability(
     Number(order.total),
     expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
+    stock.get(orderId)?.cost ?? 0,
   );
 }
 
@@ -106,6 +109,7 @@ export async function listProfitability(organizationId: string, range: { from?: 
       expenses: { select: { category: true, amount: true } },
     },
   });
+  const stock = await orderStockCostTotals(orders.map((o) => o.id));
   return orders.map((o) => ({
     orderId: o.id,
     orderNumber: o.orderNumber,
@@ -117,6 +121,7 @@ export async function listProfitability(organizationId: string, range: { from?: 
     ...computeProfitability(
       Number(o.total),
       o.expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
+      stock.get(o.id)?.cost ?? 0,
     ),
   }));
 }

@@ -35,6 +35,7 @@ export function ExpensesCard({
   profitability,
   expenses,
   suppliers,
+  inventoryUnknownQuantity = 0,
   canCreate,
   canEdit,
   canDelete,
@@ -43,6 +44,8 @@ export function ExpensesCard({
   profitability: Profitability;
   expenses: ExpenseRowData[];
   suppliers: { id: string; name: string }[];
+  /** Stock sent to the order whose cost was never known, so the food cost leaves it out. */
+  inventoryUnknownQuantity?: number;
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
@@ -97,6 +100,10 @@ export function ExpensesCard({
             </div>
           ))}
         </dl>
+        <p className="text-xs text-muted-foreground" data-testid="food-from-inventory">
+          Food includes {inr(profitability.inventoryFoodCost)} for the inventory sent to this order (from the batches it was taken from), plus any Food expense recorded below.
+          {inventoryUnknownQuantity > 0 && " Some stock sent has no confirmed cost yet, so it is not counted."}
+        </p>
       </div>
 
       {notice && (

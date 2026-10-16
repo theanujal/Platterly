@@ -168,7 +168,11 @@ describe("Staff members and scheduling (Chunk 19.2)", () => {
     const inFive = await event(5, 5);
     expect((await listUpcomingSchedule(org.id)).map((s) => s.id)).toEqual([inTwo.id]);
     expect((await listUpcomingSchedule(org.id, 7)).map((s) => s.id)).toEqual([inTwo.id, inFive.id]);
+    // Event Manager choices (AJ, 2026-10-16): team members with access, and staff whose usual duty is Event Manager. Other staff are not offered.
     await createStaffMember(org.id, { name: "Ravi", defaultDuty: "SERVING" }, actor.id);
-    expect(await listManagerSuggestions(org.id)).toContain("Ravi");
+    await createStaffMember(org.id, { name: "Meena", defaultDuty: "EVENT_MANAGER" }, actor.id);
+    const choices = await listManagerSuggestions(org.id);
+    expect(choices).toContain("Meena");
+    expect(choices).not.toContain("Ravi");
   });
 });

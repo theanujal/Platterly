@@ -4,7 +4,7 @@ import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createStaffMember, updateStaffMember, deleteStaffMember } from "@/modules/employees/staff-member";
-import { isStaffDuty } from "@/modules/employees/duty";
+import { isAnyStaffDuty } from "@/modules/employees/duty";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -19,7 +19,7 @@ export interface StaffMemberPayload {
 }
 
 function toInput(p: StaffMemberPayload) {
-  if (!isStaffDuty(p.defaultDuty)) throw new Error("Choose a duty.");
+  if (!isAnyStaffDuty(p.defaultDuty)) throw new Error("Choose a duty.");
   return { name: p.name, phone: p.phone, defaultDuty: p.defaultDuty, notes: p.notes, isActive: p.isActive };
 }
 
