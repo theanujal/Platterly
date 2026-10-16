@@ -21,6 +21,8 @@ const tabPanel = (page: Page) => page.locator("#order-panel-approval, #order-app
 async function openOrderTab(page: Page, orderId: string, query = "?tab=approval") {
   await page.goto(`/orders/${orderId}${query}`);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  // The heading is server-rendered, so it shows before the page is interactive; a click in that gap is lost (dev server, heavy order form).
+  await page.waitForLoadState("networkidle");
 }
 
 test("the tab: opens by address, runs the whole approval from the order, keeps the customer link and versions, and the price is frozen outside Needs Review", async ({ page, browser }) => {
@@ -139,6 +141,48 @@ test("when the customer's page is older than the order the tab says so, lists wh
   const after = await getApprovalState(sent.orderId);
   expect(JSON.stringify(after)).not.toBe(JSON.stringify(before)); // a new version exists
   await expect(page.getByText("Version 2").first()).toBeVisible();
+});
+
+test("guests cannot be edited while the menu is with the customer (and the page says why), and sending is refused while the order has unsaved edits", async ({ page }) => {
+  test.setTimeout(150_000);
+  const email = `e2e-ordertab-unsaved-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  const sent = await seedReviewFixture(email, { ordinal: 16, customer: "Frozen Guests", status: "SENT_TO_CUSTOMER", versions: 1, link: true });
+  const draft = await seedReviewFixture(email, { ordinal: 17, customer: "Unsaved Guests", status: "DRAFT", versions: 0 });
+
+  // With the customer: no Edit button, a note instead.
+  await page.goto(`/orders/${sent.orderId}`);
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByTestId("guests-frozen-note")).toContainText("Recall it to change the guests");
+  await expect(page.getByRole("button", { name: "Edit guest information" })).toHaveCount(0);
+  // The Individual / Custom Pricing switch is not a native control, so the locked fieldset alone would not stop it: it is disabled itself.
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.locator("#order-panel-pricing").getByRole("switch", { name: "Individual / Custom Pricing" })).toBeDisabled();
+
+  // Needs Review: change the adults without saving, then try to send: refused with the reason; after saving it sends.
+  await page.goto(`/orders/${draft.orderId}`);
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await page.getByRole("button", { name: "Edit guest information" }).click();
+  await page.getByLabel("Adults", { exact: true }).fill("81");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.getByRole("tab", { name: "Menu Approval" }).click();
+  await tabPanel(page).getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(tabPanel(page).getByRole("alert").filter({ hasText: "unsaved changes" })).toBeVisible();
+  await expect(tabPanel(page).getByTestId("approval-tab-status")).toHaveText("Needs Review");
+
+  // The unsaved edit stays announced on every tab, with a Save button, so it can't be forgotten after switching.
+  const banner = page.getByTestId("unsaved-note");
+  await expect(banner).toContainText("Unsaved changes in the order details");
+  for (const tab of ["Order Details", "Pricing & Payment", "Inventory", "Additional Details", "Menu Approval"]) {
+    await page.getByRole("tab", { name: tab }).click();
+    await expect(banner).toBeVisible();
+  }
+  // Saving from the banner works from the Menu Approval tab, where the page's own Save only knows the meal plan.
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("unsaved-note-save").click()]);
+  await expect(banner).toHaveCount(0);
+  await tabPanel(page).getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(tabPanel(page).getByText(/Version 1 is with the customer/)).toBeVisible();
 });
 
 test("orders with no menu approval, a Completed order and a Cancelled order", async ({ page }) => {

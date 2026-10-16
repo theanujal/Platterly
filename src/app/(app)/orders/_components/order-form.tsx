@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, FileText, Info, Lock, ClipboardList, MapPin, Pencil, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileText, Info, Lock, TriangleAlert, ClipboardList, MapPin, Pencil, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +36,7 @@ import { priceMeals } from "@/modules/orders/meal-pricing";
 import { percentOf } from "@/modules/orders/amount";
 import { moveMealsWithEventDates } from "@/modules/orders/meal-dates";
 import { ApprovalSidebarSlotProvider } from "@/modules/menu-approvals/_components/review/sidebar-slot";
-import { ApprovalSavePublisherProvider, type ApprovalSaveState } from "@/modules/menu-approvals/_components/review/approval-save-slot";
+import { ApprovalSavePublisherProvider, UnsavedOrderEditsProvider, type ApprovalSaveState } from "@/modules/menu-approvals/_components/review/approval-save-slot";
 import { LiveOrderTotalProvider, OrderPriceLinesProvider, type OrderPriceLine } from "@/modules/orders/live-total";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
@@ -1132,7 +1132,11 @@ export function OrderForm({
     {...sec(4, Users)}
     title="Guest Information"
     description="Expected guests, used for every meal."
-    action={locked || priceFrozen ? null : editButton("Edit", "Edit guest information", () => {
+    action={locked ? null : priceFrozen ? (
+      <span className="max-w-44 text-right text-xs text-muted-foreground" data-testid="guests-frozen-note">
+        The menu is with the customer. Recall it to change the guests.
+      </span>
+    ) : editButton("Edit", "Edit guest information", () => {
       setGuestsBeforeEdit({ adultCount: values.adultCount, childBelow5Count: values.childBelow5Count, child5To10Count: values.child5To10Count });
       setEditingGuests(true);
     })}
@@ -1641,8 +1645,8 @@ export function OrderForm({
   const saveButton = (testId: string) =>
     onApprovalTab ? (
       approvalSave ? (
-        <Button type="button" data-testid={testId} disabled={!approvalSave.dirty || approvalSave.saving} onClick={approvalSave.save}>
-          {approvalSave.saving ? "Saving…" : "Save changes"}
+        <Button type="button" data-testid={testId} disabled={!(approvalSave.dirty || (dirty && !locked)) || approvalSave.saving || pending !== null} onClick={() => void saveAllUnsaved()}>
+          {approvalSave.saving || pending === "save" ? "Saving…" : "Save changes"}
         </Button>
       ) : null
     ) : locked ? null : (
@@ -1650,6 +1654,13 @@ export function OrderForm({
         {pending === "save" ? "Saving…" : submitLabel}
       </Button>
     );
+
+  // What is unsaved, for the banner above the tabs: the order's own fields and/or the meal plan on the Menu Approval tab.
+  const unsavedParts = [dirty && !locked ? "the order details" : null, approvalSave?.dirty ? "the meal plan" : null].filter((part): part is string => part !== null);
+  async function saveAllUnsaved() {
+    if (approvalSave?.dirty) await approvalSave.save();
+    if (dirty && !locked) await handleSubmit(false);
+  }
 
   const tabs: FormTab[] = [
     {
@@ -1740,6 +1751,7 @@ export function OrderForm({
     <OrderPriceLinesProvider value={priceLines}>
     <ApprovalSidebarSlotProvider value={approvalSlot}>
     <ApprovalSavePublisherProvider value={setApprovalSave}>
+    <UnsavedOrderEditsProvider value={Boolean(initialValues) && dirty}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1771,12 +1783,6 @@ export function OrderForm({
             {saveButton("order-save-top")}
           </div>
         </div>
-        {((dirty && !locked && !onApprovalTab) || (onApprovalTab && approvalSave?.dirty)) && (
-          <p role="status" className="-mt-3 text-right text-xs font-medium text-warning" data-testid="unsaved-note">
-            Unsaved changes
-          </p>
-        )}
-
         {locked && (
           <div role="status" className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm" data-testid="order-locked-banner">
             <Lock className="mt-0.5 size-4 shrink-0 text-info" />
@@ -1819,8 +1825,24 @@ export function OrderForm({
             {saveButton("order-save-bottom-button")}
           </div>
         )}
+
+        {unsavedParts.length > 0 && (
+          // Stays at the bottom of the screen on every tab and while scrolling (AJ, 2026-10-16): edits made on one tab used to look saved once another tab was open.
+          <div role="status" className="sticky bottom-6 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-x-5 gap-y-2 rounded-xl border border-warning/50 bg-card py-2.5 pr-3 pl-4 shadow-lg ring-4 ring-warning/10" data-testid="unsaved-note">
+            <p className="flex min-w-0 items-start gap-2 text-sm font-medium text-warning">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+              <span>
+                Unsaved changes in {unsavedParts.join(" and ")}. <span className="font-normal">Save them before you leave.</span>
+              </span>
+            </p>
+            <Button type="button" size="md" data-testid="unsaved-note-save" disabled={pending !== null || Boolean(approvalSave?.saving)} onClick={() => void saveAllUnsaved()}>
+              {pending === "save" || approvalSave?.saving ? "Saving…" : initialValues ? "Save changes" : submitLabel}
+            </Button>
+          </div>
+        )}
       </form>
       {guard.dialog}
+    </UnsavedOrderEditsProvider>
     </ApprovalSavePublisherProvider>
     </ApprovalSidebarSlotProvider>
     </OrderPriceLinesProvider>

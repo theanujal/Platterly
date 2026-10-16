@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card";
 import { MENU_SELECTION_STATUS_HINT, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import { ApprovalActionBar } from "@/modules/menu-approvals/_components/review/approval-action-bar";
 import { ApprovalReviewBody } from "@/modules/menu-approvals/_components/review/approval-review-body";
-import { useApprovalSavePublisher } from "@/modules/menu-approvals/_components/review/approval-save-slot";
+import { UNSAVED_ORDER_EDITS_MESSAGE, useApprovalSavePublisher, useUnsavedOrderEdits } from "@/modules/menu-approvals/_components/review/approval-save-slot";
 import { useApprovalController } from "@/modules/menu-approvals/_components/review/use-approval-controller";
 import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_components/review/types";
 import { reviewActions } from "../../../menu-approvals/_components/review-actions";
@@ -40,12 +40,13 @@ export function OrderMenuApprovalTab({ data, notStarted }: { data: MenuApprovalR
  * never reaches it by itself (AJ, 2026-10-16). Say so, say what differs, and offer to send the current order as the next version, which
  * also ends the old link. Nothing changes under the customer silently: they may be about to approve the price they see.
  */
-function StaleLinkNotice({ menuSelectionId, freshness }: { menuSelectionId: string; freshness: NonNullable<MenuApprovalReviewProps["freshness"]> }) {
+function StaleLinkNotice({ menuSelectionId, freshness, unsavedOrderEdits }: { menuSelectionId: string; freshness: NonNullable<MenuApprovalReviewProps["freshness"]>; unsavedOrderEdits: boolean }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const priceDiffers = Math.abs(freshness.sentTotal - freshness.currentTotal) >= 0.005;
   async function resend() {
+    if (unsavedOrderEdits) return setError(UNSAVED_ORDER_EDITS_MESSAGE);
     setPending(true);
     setError(null);
     const result = await sendMenuForApprovalAction({ menuSelectionId }, undefined, true);
@@ -86,9 +87,11 @@ function StaleLinkNotice({ menuSelectionId, freshness }: { menuSelectionId: stri
 function Review({ data }: { data: MenuApprovalReviewProps }) {
   const router = useRouter();
   const pathname = usePathname();
+  const unsavedOrderEdits = useUnsavedOrderEdits();
   const c = useApprovalController({
     data,
-    actions: reviewActions,
+    // Sending uses what is saved: with unsaved edits on the order (guests, price, venue) it would leave them out without a word.
+    actions: { ...reviewActions, send: async (id) => (unsavedOrderEdits ? { ok: false, error: UNSAVED_ORDER_EDITS_MESSAGE } : reviewActions.send(id)) },
     // The tab stays open while a version is viewed (Phase 4's redirects use the same address).
     navigation: {
       openVersion: (versionNumber) => router.push(`${pathname}?tab=approval&version=${versionNumber}`),
@@ -109,7 +112,7 @@ function Review({ data }: { data: MenuApprovalReviewProps }) {
   }, [publisher, canSave, c.dirty, c.pending]);
   return (
     <>
-      {data.freshness?.stale && data.capabilities.canAct && <StaleLinkNotice menuSelectionId={data.menuSelectionId} freshness={data.freshness} />}
+      {data.freshness?.stale && data.capabilities.canAct && <StaleLinkNotice menuSelectionId={data.menuSelectionId} freshness={data.freshness} unsavedOrderEdits={unsavedOrderEdits} />}
       <Card className="gap-3 px-5 [--card-spacing:--spacing(5)]" data-testid="approval-tab-header">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">
