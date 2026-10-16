@@ -555,12 +555,14 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries, tx);
   // Meals the form did not send (the Menu Approval tab owns them) follow the event dates, so none is left on a day the event isn't on.
   if (input.mealPlanEntries === undefined) await moveMealsToEventDates(tx, id, before.eventStartDate, input.eventStartDate, input.eventEndDate);
-  if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && (input.totalParticipants !== before.totalParticipants || !priceFrozen)) {
-    // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity. While the price is still open any save
+  const chargedGuests = input.adultCount ?? input.totalParticipants;
+  const guestsChanged = input.adultCount !== undefined ? input.adultCount !== before.adultCount : input.totalParticipants !== before.totalParticipants;
+  if (input.mealPlanEntries === undefined && chargedGuests !== undefined && (guestsChanged || !priceFrozen)) {
+    // Extras and per-plate add-ons are charged for every adult (the Menu's guests), so a new adult count moves their quantity. While the price is still open any save
     // also brings the quantity into line with the guest count, so an order whose count changed by another route can't keep a stale total.
     await tx.orderItem.updateMany({
       where: { orderId: id, mealPlanEntryId: { not: null }, OR: [{ isExtra: true }, { itemType: "ADD_ON", quantity: { gt: 1 } }] },
-      data: { quantity: Math.max(input.totalParticipants ?? 0, 1) },
+      data: { quantity: Math.max(chargedGuests ?? 0, 1) },
     });
   }
   const withTotals = await recalculateOrderTotals(id, tx);

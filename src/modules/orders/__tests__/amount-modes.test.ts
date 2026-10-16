@@ -124,7 +124,7 @@ describe("custom charges as a percentage (AJ, 2026-10-16)", () => {
   });
 });
 
-describe("Extra dishes and add-ons follow the guest count", () => {
+describe("Extra dishes and add-ons follow the adult count", () => {
   it("an ordinary save brings stale per-guest quantities into line, so the saved total matches the live one", async () => {
     const { org, actor, order } = await makeOrder({ individualPricingEnabled: false, adultCount: 33, childBelow5Count: 3, child5To10Count: 3, totalParticipants: 39 });
     const meal = await prisma.mealPlanEntry.findFirstOrThrow({ where: { orderId: order.id } });
@@ -139,9 +139,9 @@ describe("Extra dishes and add-ons follow the guest count", () => {
     // The order page saves with the meal plan left alone (it belongs to Menu Approval) and the same guest counts.
     await updateOrder(org.id, order.id, { customerId: order.customerId, eventStartDate: order.eventStartDate, eventEndDate: order.eventEndDate, totalParticipants: 39, adultCount: 33, childBelow5Count: 3, child5To10Count: 3, notes: "saved" }, actor.id);
     const items = await prisma.orderItem.findMany({ where: { orderId: order.id }, orderBy: { name: "asc" } });
-    expect(items.map((i) => [i.name, i.quantity])).toEqual([["Dal Makhani", 1], ["Mocktails", 39], ["Plain Rice", 39]]);
+    expect(items.map((i) => [i.name, i.quantity])).toEqual([["Dal Makhani", 1], ["Mocktails", 33], ["Plain Rice", 33]]);
     const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
-    expect(Number(saved.subtotal) - Number(saved.childrenCharge)).toBe(30 * 39 + 70 * 39); // no menu on the meal: only the extras move the price
+    expect(Number(saved.subtotal) - Number(saved.childrenCharge)).toBe(30 * 33 + 70 * 33); // adults only, like the Menu; no menu on the meal: only the extras move the price
   });
 });
 

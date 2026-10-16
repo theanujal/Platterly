@@ -313,6 +313,8 @@ interface OrderFormProps {
    * the server enforces. Recall the menu to change them.
    */
   priceFrozen?: boolean;
+  /** The menu is in front of the customer right now: Customer Details and Event Information lose their Edit too (AJ, 2026-10-16). */
+  withCustomer?: boolean;
   cancelHref?: string;
   /**
    * The frozen total of any whole-order items carried over from an accepted
@@ -355,6 +357,7 @@ export function OrderForm({
   menuApprovalTab,
   initialTab,
   priceFrozen = false,
+  withCustomer = false,
   cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
   onSubmit,
@@ -511,7 +514,8 @@ export function OrderForm({
   }
 
   // One pricing rule everywhere (meal-pricing.ts): a meal costs its Menu's price x guests; only Extra dishes and add-ons move the price.
-  const guestsForPricing = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
+  // Per-guest Extras and add-ons count adults only, like the Menu price (menuGuestCount in meal-pricing.ts); children have their own charges.
+  const guestsForPricing = Number(values.adultCount) || 0;
   const pricedMeals = priceMeals(
     values.mealPlanEntries.map((e) => ({
       price: e.price.trim() === "" ? null : Number.parseFloat(e.price) || 0,
@@ -563,7 +567,7 @@ export function OrderForm({
       : computeChildrenChargePreview(childPricingMenu, below5, to10);
   const childBelow5Charge = childBandCharge(below5Count, 0);
   const child5To10Charge = childBandCharge(0, child5To10Count);
-  const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge + carriedOverItemsSubtotal;
+  const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge; // carried-over Quotation items are informational, not priced (same as the server)
   const eventDaysUntil = daysUntilPreview(values.eventStartDate);
   // No backdated orders (AJ, 2026-09-27). An existing order keeps its own past date untouched.
   const eventDatePast = eventDaysUntil !== null && eventDaysUntil < 0 && values.eventStartDate !== initialValues?.eventStartDate;
@@ -593,7 +597,6 @@ export function OrderForm({
   const priceLines: OrderPriceLine[] = [
     { label: "Meals", amount: mealsSubtotal },
     ...(mealItemsSubtotal > 0 ? [{ label: "Extra dishes & add-ons", amount: mealItemsSubtotal }] : []),
-    ...(carriedOverItemsSubtotal > 0 ? [{ label: "Carried over from Quotation", amount: carriedOverItemsSubtotal }] : []),
     ...(below5Count > 0 ? [{ label: "Children (Under 5)", detail: childBelow5Charge > 0 ? perHead(childBelow5Charge, below5Count) : `${below5Count} · no charge`, amount: childBelow5Charge }] : []),
     ...(child5To10Count > 0 ? [{ label: "Children (5–10)", detail: child5To10Charge > 0 ? perHead(child5To10Charge, child5To10Count) : `${child5To10Count} · no charge`, amount: child5To10Charge }] : []),
     ...(transportationCostNum > 0 ? [{ label: "Transportation Cost", detail: values.transportationMode === "PERCENTAGE" ? `${values.transportationCost}% of subtotal` : undefined, amount: transportationCostNum }] : []),
@@ -755,8 +758,9 @@ export function OrderForm({
   const sec = (_n: number, icon: LucideIcon) => ({ icon });
 
   const detailView = !!initialValues;
-  const editButton = (label: string, ariaLabel: string, onClick: () => void) =>
-    locked ? null : (
+  // No Edit on a locked order, nor while the menu is with the customer (guests and pricing stay read-only until a recall too): one notice above the tabs says why (AJ, 2026-10-16).
+  const editButton = (label: string, ariaLabel: string, onClick: () => void, frozen: boolean = locked || withCustomer) =>
+    frozen ? null : (
       <Button type="button" variant="outline" size="md" aria-label={ariaLabel} onClick={onClick}>
         <Pencil data-icon="inline-start" />
         {label}
@@ -1132,14 +1136,10 @@ export function OrderForm({
     {...sec(4, Users)}
     title="Guest Information"
     description="Expected guests, used for every meal."
-    action={locked ? null : priceFrozen ? (
-      <span className="max-w-44 text-right text-xs text-muted-foreground" data-testid="guests-frozen-note">
-        The menu is with the customer. Recall it to change the guests.
-      </span>
-    ) : editButton("Edit", "Edit guest information", () => {
+    action={editButton("Edit", "Edit guest information", () => {
       setGuestsBeforeEdit({ adultCount: values.adultCount, childBelow5Count: values.childBelow5Count, child5To10Count: values.child5To10Count });
       setEditingGuests(true);
-    })}
+    }, locked || priceFrozen)}
   >
     <dl className="grid grid-cols-2 gap-4 text-sm">
       {[
@@ -1348,7 +1348,7 @@ export function OrderForm({
           {individualOn ? "On: set your own per-plate price for each meal and each child age band." : "Off: prices come from each meal's menu. Turn on to set your own."}
         </p>
       </div>
-      <Switch id="order-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing} />
+      <Switch id="order-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing} disabled={locked || priceFrozen} />
     </div>
 
     <div className="flex flex-col gap-3">
@@ -1437,11 +1437,11 @@ export function OrderForm({
     <div className="flex flex-col gap-2.5 text-sm">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted-foreground">Total Amount</span>
-        <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal)}</span>
+        <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
       </div>
       {carriedOverItemsSubtotal > 0 && (
         <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Carried over from Quotation</span>
+          <span className="text-muted-foreground">Carried over from Quotation (not charged)</span>
           <span>{formatCurrency(carriedOverItemsSubtotal)}</span>
         </div>
       )}
@@ -1610,7 +1610,7 @@ export function OrderForm({
     <SummaryCard icon={Wallet} title="Pricing Details">
       <div className="flex flex-col gap-3 text-sm">
         {[
-          { label: "Total Amount", amount: mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal },
+          { label: "Total Amount", amount: mealItemsSubtotal + mealsSubtotal },
           ...(below5Count + child5To10Count > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
           { label: "Transportation Cost", amount: transportationCostNum },
           { label: "Extra / Service Cost", amount: otherChargesNum },
@@ -1790,6 +1790,18 @@ export function OrderForm({
               <p className="font-semibold">{completed ? "Completed: this order can't be changed any more." : "Sent to the kitchen: this order can't be changed any more."}</p>
               <p className="text-muted-foreground">
                 {completed ? "You can still record payments and send invoices." : "You can still record payments and send invoices. If the send was a mistake, change the status with a reason first."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {priceFrozen && !locked && (
+          <div role="status" className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm" data-testid="order-frozen-banner">
+            <Lock className="mt-0.5 size-4 shrink-0 text-info" />
+            <div>
+              <p className="font-semibold">{withCustomer ? "The menu is with the customer, so the order is read-only." : "The customer has approved the menu, so guests and pricing are read-only."}</p>
+              <p className="text-muted-foreground">
+                {withCustomer ? "Customer details, event information, guests and pricing can't be changed." : "Guests and pricing can't be changed."} Recall the menu in the Menu Approval tab to edit {withCustomer ? "them" : "these"}; the customer then approves the new version.
               </p>
             </div>
           </div>

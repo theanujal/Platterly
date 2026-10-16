@@ -391,10 +391,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByRole("heading", { name: "Review & Approve Your Menu" })).toBeVisible();
   await expect(customerPage.getByText("Guests", { exact: true })).toBeVisible();
   await expect(customerPage.getByText("100 Guests", { exact: true })).toBeVisible();
-  await expect(customerPage.getByText("Whitefield, Bangalore", { exact: true })).toBeVisible(); // the location the customer gave
+  await expect(customerPage.getByText("Whitefield, Bangalore", { exact: true })).toBeVisible(); // the Venue is back in the Event Overview's first row
   await expect(customerPage.getByText(menuName).first()).toBeVisible(); // Proposed Menu
-  await expect(customerPage.getByTestId("selected-dishes")).toContainText(itemName);
-  await expect(customerPage.getByTestId("selected-dishes")).toContainText(categoryName); // dishes are grouped by category
+  await expect(customerPage.getByTestId("selected-dishes")).toContainText(categoryName); // dishes are grouped by category (meals start closed, showing their categories as chips)
+  await expect(customerPage.getByTestId("dish-category")).toHaveCount(0);
   await expect(customerPage.getByTestId("approval-addons")).toContainText(addOnName);
   await expect(customerPage.getByTestId("price-rows")).toContainText("Extra Items");
   await expect(customerPage.getByTestId("approval-total")).toHaveText("₹53,000.00");
@@ -403,13 +403,17 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(customerPage.getByRole("dialog")).toContainText(itemName);
   await customerPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
   // Clicking a category card opens the same read-only list; the customer can't change the selection there.
-  await customerPage.getByTestId("selected-dishes").getByRole("button").first().click();
+  await customerPage.getByTestId("selected-dishes").locator("button[aria-expanded]").first().click(); // open the meal
+  await expect(customerPage.getByTestId("dish-category").first()).not.toContainText(itemName); // a category tile shows its name and count, not the dishes
+  await customerPage.getByTestId("dish-category").first().click();
   await expect(customerPage.getByRole("dialog")).toContainText(itemName);
   await expect(customerPage.getByRole("dialog").getByRole("checkbox")).toHaveCount(0);
   await customerPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
   // The customer never edits: "Edit" and "Change" open the Request Changes box with a prefix for the team.
   await customerPage.getByRole("button", { name: "Edit" }).click();
   await expect(customerPage.getByLabel("What would you like to change?")).toHaveValue("Event details: ");
+  await customerPage.keyboard.type("new date"); // the cursor sits after the prefix, so typing continues it
+  await expect(customerPage.getByLabel("What would you like to change?")).toHaveValue("Event details: new date");
   await customerPage.getByRole("button", { name: "Cancel" }).click();
   await customerPage.getByLabel("What would you like to change?").waitFor({ state: "detached" });
   await customerPage.getByRole("button", { name: "Change", exact: true }).click();

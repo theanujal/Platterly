@@ -114,7 +114,7 @@ export function ApprovalReviewBody({
             canAct={capabilities.canAct}
             isCustomMenu={isCustomMenu}
             individualPricingEnabled={pricing.individualPricingEnabled}
-            totalGuests={pricing.totalGuests}
+            totalGuests={pricing.menuGuests}
             days={data.days}
             eventDays={data.eventDays}
             entries={c.entries}

@@ -54,6 +54,12 @@ export interface ApprovalSnapshot {
     childrenCharge: number;
     /** Whatever else moves the total (discount, transport, other charges); 0 for most orders. */
     adjustments: number;
+    /** From 2026-10-16 versions on: the order's own charge lines, as the Pricing Details card lists them. Absent on older versions, which only carry `adjustments`. */
+    transportation?: number;
+    otherCharges?: number;
+    customCharges?: { label: string; amount: number }[];
+    /** A positive amount taken off the total. */
+    discount?: number;
   };
   childBelow5Count?: number;
   child5To10Count?: number;

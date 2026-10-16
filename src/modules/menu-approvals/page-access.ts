@@ -37,6 +37,11 @@ export function notStartedState(order: { status: OrderStatus; eventTypeId: strin
   return { canStart, reason };
 }
 
+/** The menu is in front of the customer right now (sent, or being reviewed): the order's customer and event details are read-only too, not only the guests and the price. */
+export function menuIsWithCustomer(selectionStatus: MenuSelectionStatus | null): boolean {
+  return selectionStatus === "SENT_TO_CUSTOMER" || selectionStatus === "CUSTOMER_REVIEWING";
+}
+
 /** The order form freezes the guest counts and the pricing editor while the customer or the kitchen holds the price (Decision 14). */
 export function priceIsFrozen(selectionStatus: MenuSelectionStatus | null): boolean {
   return selectionStatus !== null && isPriceFrozenStatus(selectionStatus);

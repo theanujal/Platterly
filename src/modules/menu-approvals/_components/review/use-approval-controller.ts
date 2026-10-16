@@ -72,7 +72,7 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
           items: e.items.map((item) => ({
             itemType: item.itemType,
             unitPrice: item.unitPrice,
-            quantity: item.perGuest ? Math.max(pricing.totalGuests, 1) : 1,
+            quantity: item.perGuest ? Math.max(pricing.menuGuests, 1) : 1,
             isExtra: item.itemType === "MENU_ITEM" && item.perGuest,
           })),
         })),
@@ -102,7 +102,7 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
       items: e.items.map((item) => ({
         itemType: item.itemType,
         catalogId: item.catalogId,
-        quantity: item.perGuest ? Math.max(pricing.totalGuests, 1) : 1,
+        quantity: item.perGuest ? Math.max(pricing.menuGuests, 1) : 1,
         isExtra: item.itemType === "MENU_ITEM" && item.perGuest,
       })),
     }));

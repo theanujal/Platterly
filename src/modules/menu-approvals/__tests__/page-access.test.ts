@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen } from "@/modules/menu-approvals/page-access";
+import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen, menuIsWithCustomer } from "@/modules/menu-approvals/page-access";
 
 // The pure rules behind the order page's Menu Approval tab (Phase 2 of the Menu Approvals + Orders merge).
 
@@ -57,5 +57,16 @@ describe("priceIsFrozen", () => {
     expect(priceIsFrozen("DRAFT")).toBe(false);
     expect(priceIsFrozen("CHANGES_REQUESTED")).toBe(false);
     for (const status of ["SENT_TO_CUSTOMER", "CUSTOMER_REVIEWING", "CUSTOMER_APPROVED", "FINAL_LOCKED"] as const) expect(priceIsFrozen(status), status).toBe(true);
+  });
+});
+
+describe("menuIsWithCustomer", () => {
+  it("is true only while the menu is in front of the customer, not before, after approval or with the kitchen", () => {
+    expect(menuIsWithCustomer(null)).toBe(false);
+    expect(menuIsWithCustomer("DRAFT")).toBe(false);
+    expect(menuIsWithCustomer("CHANGES_REQUESTED")).toBe(false);
+    expect(menuIsWithCustomer("SENT_TO_CUSTOMER")).toBe(true);
+    expect(menuIsWithCustomer("CUSTOMER_REVIEWING")).toBe(true);
+    expect(menuIsWithCustomer("CUSTOMER_APPROVED")).toBe(false);
   });
 });

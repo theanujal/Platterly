@@ -79,6 +79,52 @@ describe("buildApprovalView", () => {
     expect(individual.priceRows[0].detail).toBeUndefined();
   });
 
+  it("lists the order's own charge lines and children, and the rows add up to the Grand Total", () => {
+    const view = buildApprovalView({
+      ...rich,
+      total: 43600,
+      childBelow5Count: 4,
+      child5To10Count: 6,
+      breakdown: {
+        menuAmount: 39600,
+        extrasAmount: 2475,
+        liveCountersAmount: 2000,
+        addOnsAmount: 0,
+        childrenCharge: 1500,
+        adjustments: -1975,
+        transportation: 500,
+        otherCharges: 300,
+        customCharges: [{ label: "Decoration", amount: 1200 }],
+        discount: 3975,
+      },
+    });
+    expect(view.priceRows.map((r) => r.label)).toEqual(["North Indian Menu", "Extra Items", "Live Counters", "Children charges", "Transportation Cost", "Extra / Service Cost", "Decoration", "Discount"]);
+    expect(view.priceRows.find((r) => r.label === "Children charges")).toMatchObject({ detail: "4 under 5 · 6 aged 5–10", amount: 1500 });
+    expect(view.priceRows.find((r) => r.label === "Discount")).toMatchObject({ amount: 3975, negative: true });
+    const sum = view.priceRows.reduce((acc, r) => acc + (r.negative ? -r.amount : r.amount), 0);
+    expect(sum).toBe(view.total);
+    expect(view.childBelow5).toBe(4);
+    expect(view.child5To10).toBe(6);
+  });
+
+  it("keeps whatever the charge lines do not explain as Other adjustments", () => {
+    const view = buildApprovalView({ ...rich, breakdown: { ...rich.breakdown!, adjustments: 250, transportation: 0, otherCharges: 0, customCharges: [], discount: 0 } });
+    expect(view.priceRows.at(-1)).toMatchObject({ label: "Other adjustments", amount: 250 });
+  });
+
+  it("lists every menu once with its price when the order has more than one", () => {
+    const meal = rich.meals[0];
+    const view = buildApprovalView({
+      ...rich,
+      meals: [meal, { ...meal, mealType: "LUNCH", menuName: "South Indian Menu", pricePerPlate: 350 }, { ...meal, mealType: "HITEA", menuName: "South Indian Menu", pricePerPlate: 350 }],
+    });
+    expect(view.menus).toEqual([
+      { name: "North Indian Menu", pricePerPlate: 400 },
+      { name: "South Indian Menu", pricePerPlate: 350 },
+    ]);
+    expect(buildApprovalView(rich).menus).toEqual([{ name: "North Indian Menu", pricePerPlate: 400 }]);
+  });
+
   it("two meals on one day each show their own dishes, and the multiplier covers the meals", () => {
     const meal = rich.meals[0];
     const view = buildApprovalView({ ...rich, meals: [meal, { ...meal, mealType: "LUNCH" }], breakdown: { ...rich.breakdown!, menuAmount: 400 * 99 * 2 } });

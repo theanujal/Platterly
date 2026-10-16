@@ -1,14 +1,14 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ArrowRight, CalendarDays, Check, ChevronRight, CupSoda, Croissant, Flame, IceCreamBowl, Info, MapPin, MessageSquareText, Salad, Soup, Sparkles, UtensilsCrossed, Users, Wheat } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, CalendarDays, Check, ChevronDown, ChevronRight, ConciergeBell, Coffee, Flame, MapPin, MessageSquareText, Moon, Sparkles, Sun, Sunrise, UtensilsCrossed, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FormCard } from "@/components/public/form-section";
-import type { ApprovalAddOnView, ApprovalView } from "@/modules/menu-approvals/approval-view";
+import type { ApprovalAddOnView, ApprovalMealView, ApprovalView } from "@/modules/menu-approvals/approval-view";
 import { formatApprovalDay } from "@/modules/menu-approvals/approval-view";
 import { requestMenuChangesAction } from "../actions";
 import { PriceSummary } from "./price-summary";
@@ -18,44 +18,38 @@ function inr(amount: number) {
   return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-/** A category's icon, picked from its name; anything unrecognised gets the plain dish icon. */
-function categoryIcon(category: string) {
-  const name = category.toLowerCase();
-  if (/starter|appetizer|snack/.test(name)) return Soup;
-  if (/rice|biryani|pulao/.test(name)) return Wheat;
-  if (/bread|roti|naan/.test(name)) return Croissant;
-  if (/dessert|sweet/.test(name)) return IceCreamBowl;
-  if (/beverage|drink|juice|mocktail/.test(name)) return CupSoda;
-  if (/salad|accompaniment|side/.test(name)) return Salad;
-  return UtensilsCrossed;
-}
+const MEAL_ICON = { BREAKFAST: Sunrise, LUNCH: Sun, HITEA: Coffee, DINNER: Moon, OTHER: UtensilsCrossed } as const;
 
-function IconTile({ icon: Icon }: { icon: typeof Flame }) {
+function IconTile({ icon: Icon, small }: { icon: typeof Flame; small?: boolean }) {
   return (
-    <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-      <Icon className="size-6" />
+    <span className={cn("flex shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary", small ? "size-10" : "size-12")}>
+      <Icon className={small ? "size-5" : "size-6"} />
     </span>
   );
 }
 
 const PREFIXES = ["Event details: ", "Menu: "];
 
-function CardTitle({ icon: Icon, title, action }: { icon: typeof CalendarDays; title: string; action?: React.ReactNode }) {
+function CardTitle({ icon: Icon, title, subtitle, action }: { icon: typeof CalendarDays; title: string; subtitle?: string; action?: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
         <Icon className="size-5" />
       </span>
-      <h2 className="flex-1 text-[15px] font-semibold">{title}</h2>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+      </div>
       {action}
     </div>
   );
 }
 
 /**
- * The customer's "Review & Approve Your Menu" screen (REVIEW stage of the approval link). The Event Details "Edit" and the
- * Proposed Menu "Change" links open the same Request Changes box the buttons do, with a short prefix so the team knows
- * what the customer means: customers never edit the menu or the event themselves.
+ * The customer's "Review & Approve Your Menu" screen (REVIEW stage of the approval link): the event, the dishes by meal and the
+ * add-ons on the left; the Price Summary with the Approve / Request Changes actions on the right (AJ, 2026-10-16). The Event
+ * Overview "Edit" and the menu "Change" links open the same Request Changes box the button does, with a short prefix so the team
+ * knows what the customer means: customers never edit the menu or the event themselves.
  */
 export function ReviewScreen({ token, view, onApprove }: { token: string; view: ApprovalView; onApprove: () => void }) {
   const [mode, setMode] = useState<"idle" | "changes">("idle");
@@ -63,19 +57,29 @@ export function ReviewScreen({ token, view, onApprove }: { token: string; view: 
   const [pending, setPending] = useState<"changes" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [dishesOpen, setDishesOpen] = useState(false);
+  // The dishes popup: every meal ("all") or one meal (its key).
+  const [dishesFor, setDishesFor] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(view.meals.map((meal) => meal.key)));
+  const [focusTick, setFocusTick] = useState(0);
   const noteRef = useRef<HTMLTextAreaElement>(null);
-  const actionsRef = useRef<HTMLDivElement>(null);
+  const changesRef = useRef<HTMLDivElement>(null);
 
   function openChanges(prefix?: string) {
     setMode("changes");
     // A prefix only replaces an empty box or another untouched prefix; anything the customer typed stays.
     if (prefix && (note.trim() === "" || PREFIXES.includes(note))) setNote(prefix);
-    requestAnimationFrame(() => {
-      actionsRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
-      noteRef.current?.focus();
-    });
+    setFocusTick((tick) => tick + 1);
   }
+
+  // Once the box shows its (prefixed) text, put the cursor after it so typing continues the sentence instead of starting before it.
+  useEffect(() => {
+    if (focusTick === 0) return;
+    const box = noteRef.current;
+    if (!box) return;
+    changesRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }, [focusTick]);
 
   async function handleRequestChanges() {
     setPending("changes");
@@ -99,203 +103,228 @@ export function ReviewScreen({ token, view, onApprove }: { token: string; view: 
     );
   }
 
-  const menuCount = view.meals.reduce((sum, meal) => sum + meal.groups.reduce((s, g) => s + g.items.length, 0), 0);
-  const hasGroups = view.meals.some((meal) => meal.groups.length > 0);
+  const categoryCount = view.meals.reduce((sum, meal) => sum + meal.groups.length, 0);
+  const itemCount = view.meals.reduce((sum, meal) => sum + mealItemCount(meal), 0);
+  const hasGroups = categoryCount > 0;
+  const allOpen = collapsed.size === 0;
+  const manyDates = new Set(view.meals.map((meal) => meal.date)).size > 1;
+  const mealTitle = (meal: ApprovalMealView) => (manyDates ? `${meal.label} · ${formatApprovalDay(meal.date)}` : meal.label);
+  const dialogMeals = dishesFor === null || dishesFor === "all" ? view.meals : view.meals.filter((meal) => meal.key === dishesFor);
+  const guestParts = [
+    view.adults !== null ? `${view.adults} adult${view.adults === 1 ? "" : "s"}` : null,
+    view.childBelow5 > 0 ? `${view.childBelow5} under 5` : null,
+    view.child5To10 > 0 ? `${view.child5To10} aged 5–10` : null,
+  ].filter(Boolean);
+
+  const actions = (
+    <div className="flex flex-col gap-2">
+      {mode === "idle" ? (
+        <>
+          <Button type="button" size="lg" disabled={pending !== null} onClick={onApprove}>
+            Approve Menu
+            <ArrowRight />
+          </Button>
+          <Button type="button" size="lg" variant="outline" disabled={pending !== null} onClick={() => openChanges()}>
+            <MessageSquareText />
+            Request Changes
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button type="button" size="lg" disabled={pending !== null || note.trim() === ""} onClick={handleRequestChanges}>
+            {pending === "changes" ? "Sending…" : "Submit Request"}
+          </Button>
+          <Button type="button" size="lg" variant="outline" disabled={pending !== null} onClick={() => { setMode("idle"); setError(null); setNote(""); }}>
+            Cancel
+          </Button>
+        </>
+      )}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
-        {/* Column 1: the event and the proposed menu */}
-        <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        {/* Left: the event, the dishes and the add-ons */}
+        <div className="flex min-w-0 flex-col gap-4">
           <FormCard className="gap-4 md:p-5">
             <CardTitle
               icon={CalendarDays}
-              title="Event Details"
+              title="Event Overview"
               action={
                 <Button type="button" variant="link" className="h-auto p-0 font-medium" onClick={() => openChanges("Event details: ")}>
                   Edit
                 </Button>
               }
             />
-            <dl className="flex flex-col gap-3 text-sm">
-              {view.eventType && <Detail icon={<Sparkles className="size-4" />} label="Event Type" value={view.eventType} />}
-              <Detail icon={<CalendarDays className="size-4" />} label="Date" value={view.dateText} />
-              {view.guests !== null && <Detail icon={<Users className="size-4" />} label="Guests" value={`${view.guests} Guests`} />}
-              {view.location && <Detail icon={<MapPin className="size-4" />} label="Location" value={view.location} />}
+            {/* Row 1: the event. Row 2: the menu and the guests. */}
+            <dl className="grid grid-cols-1 text-sm md:auto-cols-fr md:grid-flow-col">
+              {view.eventType && <Detail icon={<Sparkles className="size-5" />} label="Event Type" value={view.eventType} />}
+              <Detail icon={<CalendarDays className="size-5" />} label="Date" value={view.dateText} />
+              {view.location && <Detail icon={<MapPin className="size-5" />} label="Venue" value={view.location} />}
+            </dl>
+            <dl className="grid grid-cols-1 border-t border-border pt-4 text-sm md:auto-cols-fr md:grid-flow-col">
+              <Detail
+                icon={<ConciergeBell className="size-5" />}
+                label={view.menus.length > 1 ? "Selected Menus" : "Selected Menu"}
+                value={view.menus.length > 1 ? undefined : view.isCustomMenu ? "Custom Menu" : (view.menu?.name ?? "Your menu")}
+                sub={view.menus.length > 1 ? undefined : view.menu?.pricePerPlate != null && !view.isCustomMenu ? `${inr(view.menu.pricePerPlate)} / plate` : view.isCustomMenu ? "Priced by our team" : undefined}
+                action={
+                  <>
+                    {view.menus.length > 1 && (
+                      <ul className="mb-1 flex flex-col gap-0.5" data-testid="selected-menus">
+                        {view.menus.map((menu) => (
+                          <li key={menu.name} className="font-semibold">
+                            {menu.name}
+                            {menu.pricePerPlate != null && <span className="font-normal text-muted-foreground"> ({inr(menu.pricePerPlate)} / plate)</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <Button type="button" variant="link" className="h-auto p-0 text-xs font-medium" onClick={() => openChanges("Menu: ")}>
+                      Change
+                    </Button>
+                  </>
+                }
+              />
+              {view.guests !== null && <Detail icon={<Users className="size-5" />} label="Guests" value={`${view.guests} Guests`} sub={guestParts.join(" · ")} />}
             </dl>
           </FormCard>
 
           <FormCard className="gap-4 md:p-5">
             <CardTitle
               icon={UtensilsCrossed}
-              title="Proposed Menu"
+              title="Selected Dishes"
+              subtitle={hasGroups ? `${view.meals.length} meal period${view.meals.length === 1 ? "" : "s"} · ${categoryCount} categor${categoryCount === 1 ? "y" : "ies"} · ${itemCount} item${itemCount === 1 ? "" : "s"}` : "Dishes included in your menu."}
               action={
-                <Button type="button" variant="link" className="h-auto p-0 font-medium" onClick={() => openChanges("Menu: ")}>
-                  Change
-                </Button>
+                hasGroups && (
+                  <Button type="button" variant="link" className="h-auto p-0 font-medium" onClick={() => setCollapsed(allOpen ? new Set(view.meals.map((meal) => meal.key)) : new Set())}>
+                    {allOpen ? "Collapse all" : "Expand all"}
+                  </Button>
+                )
               }
             />
-            <div className="flex gap-3">
-              {view.menu?.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={view.menu.image} alt="" className="size-20 shrink-0 rounded-lg object-cover" />
-              ) : (
-                <span className="flex size-20 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <UtensilsCrossed className="size-7 text-muted-foreground" />
-                </span>
+            {!hasGroups && view.looseItems.length === 0 && <p className="text-sm text-muted-foreground">No dishes listed.</p>}
+            <div className="flex flex-col gap-3" data-testid="selected-dishes">
+              {view.meals.map((meal) => {
+                const open = !collapsed.has(meal.key);
+                const items = mealItemCount(meal);
+                const Icon = MEAL_ICON[meal.mealType];
+                return (
+                  <section key={meal.key} className="rounded-xl border border-border">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      onClick={() => setCollapsed((prev) => { const next = new Set(prev); if (open) next.add(meal.key); else next.delete(meal.key); return next; })}
+                      className="flex w-full items-center gap-3 rounded-xl p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                    >
+                      <IconTile icon={Icon} small />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold">{mealTitle(meal)}</span>
+                        <span className="block text-sm text-muted-foreground">
+                          {meal.groups.length} categor{meal.groups.length === 1 ? "y" : "ies"} · {items} item{items === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-sm text-muted-foreground">{items} items</span>
+                      <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} aria-hidden />
+                    </button>
+                    <div className="flex flex-col gap-3 px-3 pb-3">
+                      {open && (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {meal.groups.map((group) => (
+                            <button
+                              key={group.category}
+                              type="button"
+                              data-testid="dish-category"
+                              onClick={() => setDishesFor(meal.key)}
+                              className="flex w-full items-center gap-2 rounded-lg border border-border px-3 py-2 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                            >
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-semibold">{group.category}</span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {group.items.length} item{group.items.length === 1 ? "" : "s"}
+                                </span>
+                              </span>
+                              <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {/* Closed: the categories as small chips with the button beside them, so a closed meal stays one short row. */}
+                      <div className={cn("flex items-center gap-2", open ? "justify-end" : "justify-between")}>
+                        {!open && (
+                          <div className="flex min-w-0 flex-wrap gap-1.5">
+                            {meal.groups.slice(0, 5).map((group) => (
+                              <span key={group.category} className="rounded-full bg-muted px-2.5 py-0.5 text-xs">
+                                {group.category} ({group.items.length})
+                              </span>
+                            ))}
+                            {meal.groups.length > 5 && <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs">+{meal.groups.length - 5} more</span>}
+                          </div>
+                        )}
+                        <Button type="button" variant="outline" size="md" className="shrink-0 border-primary text-primary" onClick={() => setDishesFor(meal.key)}>
+                          View all {items} items
+                          <ArrowRight />
+                        </Button>
+                      </div>
+                    </div>
+                  </section>
+                );
+              })}
+              {/* Versions sent before dishes were grouped, or dishes outside any meal. */}
+              {view.looseItems.length > 0 && (
+                <ul className="grid grid-cols-1 gap-1.5 text-sm">
+                  {view.looseItems.map((item, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <Check className="mt-0.5 size-4 shrink-0 text-success" />
+                      {item.isExtra ? `${item.name} (extra)` : item.name}
+                    </li>
+                  ))}
+                </ul>
               )}
-              <div className="flex min-w-0 flex-col gap-1">
-                <p className="font-semibold">{view.isCustomMenu ? "Custom Menu" : (view.menu?.name ?? "Your menu")}</p>
-                {view.menu?.pricePerPlate != null && !view.isCustomMenu && (
-                  <p className="text-sm">
-                    <span className="font-semibold">{inr(view.menu.pricePerPlate)}</span> <span className="text-muted-foreground">/ plate</span>
-                  </p>
-                )}
-                {view.menu?.description && <p className="line-clamp-3 text-sm text-muted-foreground">{view.menu.description}</p>}
-                {view.isCustomMenu && <p className="text-sm text-muted-foreground">Hand-picked dishes. Our team confirms the price per plate.</p>}
-                {view.menu && view.menu.extraMenus.length > 0 && <p className="text-xs text-muted-foreground">Also: {view.menu.extraMenus.join(", ")}</p>}
-              </div>
             </div>
           </FormCard>
+
+          <AddOnsCard addOns={view.addOns} />
         </div>
 
-        {/* Column 2: the dishes */}
-        <FormCard className="gap-4 md:p-5" >
-          <CardTitle
-            icon={UtensilsCrossed}
-            title="Selected Dishes"
-            action={
-              hasGroups && (
-                <Button type="button" variant="link" className="h-auto p-0 font-medium" onClick={() => setDishesOpen(true)}>
-                  View all
-                </Button>
-              )
-            }
-          />
-          <p className="-mt-2 text-sm text-muted-foreground">Dishes included in your menu.</p>
-          {!hasGroups && view.looseItems.length === 0 && <p className="text-sm text-muted-foreground">No dishes listed.</p>}
-          <div className="flex flex-col gap-4" data-testid="selected-dishes">
-            {view.meals.map((meal) => (
-              <div key={meal.key} className="flex flex-col gap-2">
-                {view.meals.length > 1 && (
-                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                    {meal.label} · {formatApprovalDay(meal.date)}
+        {/* Right: the final price and the decision, beside the menu on a wide screen */}
+        <div className="flex flex-col gap-4 lg:sticky lg:top-4">
+          <PriceSummary rows={view.priceRows} total={view.total}>
+            {(mode === "changes" || error) && (
+              <div ref={changesRef} className="flex flex-col gap-3">
+                {mode === "changes" && (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="approval-note">What would you like to change?</Label>
+                    <Textarea id="approval-note" ref={noteRef} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Replace Paneer Tikka with Malai Tikka" maxLength={2000} />
+                    <p className="text-xs text-muted-foreground">Please describe the changes you&apos;d like us to make.</p>
+                  </div>
+                )}
+                {error && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {error}
                   </p>
                 )}
-                {meal.groups.map((group) => (
-                  <button
-                    key={group.category}
-                    type="button"
-                    onClick={() => setDishesOpen(true)}
-                    className="flex w-full items-center gap-3 rounded-lg border border-border px-3 py-2.5 text-left outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    <IconTile icon={categoryIcon(group.category)} />
-                    <div className="w-28 shrink-0 sm:w-36">
-                      <p className="text-sm font-semibold">{group.category}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {group.items.length} item{group.items.length === 1 ? "" : "s"}
-                      </p>
-                    </div>
-                    <p className="min-w-0 flex-1 text-sm text-muted-foreground">{group.items.map((i) => i.name).join(", ")}</p>
-                    <ChevronRight className="size-4 shrink-0 text-primary" aria-hidden />
-                  </button>
-                ))}
               </div>
-            ))}
-            {/* Versions sent before dishes were grouped, or dishes outside any meal. */}
-            {view.looseItems.length > 0 && (
-              <ul className="grid grid-cols-1 gap-1.5 text-sm">
-                {view.looseItems.map((item, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <Check className="mt-0.5 size-4 shrink-0 text-success" />
-                    {item.isExtra ? `${item.name} (extra)` : item.name}
-                  </li>
-                ))}
-              </ul>
             )}
-          </div>
-          {menuCount > 0 && <p className="sr-only">{menuCount} dishes in total</p>}
-        </FormCard>
-
-        {/* Column 3: add-ons and the price */}
-        <div className="flex flex-col gap-4">
-          <AddOnsCard addOns={view.addOns} />
-          <PriceSummary rows={view.priceRows} total={view.total} isCustomMenu={view.isCustomMenu} />
+            <p className="text-xs text-muted-foreground">After you approve, you&apos;ll add your venue and delivery details. Your approval is confirmed when you send them.</p>
+            <div className="max-lg:hidden">{actions}</div>
+          </PriceSummary>
         </div>
       </div>
 
-      <div ref={actionsRef} className="flex flex-col gap-4 rounded-xl bg-accent/60 p-4 ring-1 ring-primary/10 md:p-5 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center lg:gap-x-6">
-        <div className="flex items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Info className="size-5" />
-          </span>
-          <div className="text-sm">
-            <p className="font-semibold">What happens next?</p>
-            <p className="text-muted-foreground">After you approve, you&apos;ll add your venue and delivery details. Your approval is confirmed when you send them.</p>
-          </div>
-        </div>
+      {/* On a phone only the actions stay on screen, so the menu above is never hidden behind a tall card. */}
+      <div className="sticky bottom-0 z-10 -mx-4 border-t border-border bg-card/95 p-3 backdrop-blur lg:hidden [&>div]:flex-row-reverse [&_button]:flex-1">{actions}</div>
 
-        {(mode === "changes" || error) && (
-          <div className="flex flex-col gap-4 lg:col-span-2 lg:row-start-2">
-            {mode === "changes" && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="approval-note">What would you like to change?</Label>
-                <Textarea
-                  id="approval-note"
-                  ref={noteRef}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Replace Paneer Tikka with Malai Tikka"
-                  maxLength={2000}
-                />
-                <p className="text-xs text-muted-foreground">Please describe the changes you&apos;d like us to make.</p>
-              </div>
-            )}
-            {error && (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            )}
-          </div>
-        )}
-        {/* On a phone only the buttons stay on screen, so the menu above is never hidden behind a tall card. */}
-        <div className="flex flex-col-reverse gap-2 max-lg:sticky max-lg:bottom-0 max-lg:-mx-4 max-lg:-mb-4 max-lg:rounded-b-xl max-lg:border-t max-lg:border-border max-lg:bg-card/95 max-lg:p-3 max-lg:backdrop-blur sm:flex-row sm:justify-end md:max-lg:-mx-5 md:max-lg:-mb-5 lg:col-start-2 lg:row-start-1">
-          {mode === "idle" ? (
-            <>
-              <Button type="button" variant="outline" disabled={pending !== null} onClick={() => openChanges()}>
-                Request Changes
-              </Button>
-              <Button type="button" disabled={pending !== null} onClick={onApprove}>
-                Approve Menu
-                <ArrowRight />
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button type="button" variant="outline" disabled={pending !== null} onClick={() => { setMode("idle"); setError(null); setNote(""); }}>
-                Cancel
-              </Button>
-              <Button type="button" disabled={pending !== null || note.trim() === ""} onClick={handleRequestChanges}>
-                {pending === "changes" ? "Sending…" : "Submit Request"}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-
-      <Dialog open={dishesOpen} onOpenChange={setDishesOpen}>
+      <Dialog open={dishesFor !== null} onOpenChange={(open) => !open && setDishesFor(null)}>
         <DialogContent className="max-h-[85vh] gap-4 overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">All selected dishes</DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-5">
-            {view.meals.map((meal) => (
+            {dialogMeals.map((meal) => (
               <div key={meal.key} className="flex flex-col gap-3">
-                {view.meals.length > 1 && (
-                  <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                    {meal.label} · {formatApprovalDay(meal.date)}
-                  </p>
-                )}
+                {view.meals.length > 1 && <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">{mealTitle(meal)}</p>}
                 {meal.groups.map((group) => (
                   <div key={group.category} className="flex flex-col gap-1.5">
                     <h3 className="text-sm font-semibold text-primary">
@@ -316,7 +345,7 @@ export function ReviewScreen({ token, view, onApprove }: { token: string; view: 
             ))}
           </div>
           <DialogFooter>
-            <Button type="button" onClick={() => setDishesOpen(false)}>
+            <Button type="button" onClick={() => setDishesFor(null)}>
               Close
             </Button>
           </DialogFooter>
@@ -326,13 +355,21 @@ export function ReviewScreen({ token, view, onApprove }: { token: string; view: 
   );
 }
 
-function Detail({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function mealItemCount(meal: ApprovalMealView) {
+  return meal.groups.reduce((sum, group) => sum + group.items.length, 0);
+}
+
+/** One cell of the Event Overview row; a hairline divides it from the one before (below it on a phone, beside it from md up). */
+function Detail({ icon, label, value, sub, note, action }: { icon: React.ReactNode; label: string; value?: string; sub?: string; note?: string; action?: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-start gap-3 border-t border-border py-3 first:border-t-0 first:pt-0 last:pb-0 md:border-t-0 md:border-l md:px-4 md:py-0 md:first:border-l-0 md:first:pl-0">
       <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <div>
+      <div className="min-w-0">
         <dt className="text-xs text-muted-foreground">{label}</dt>
-        <dd className="font-medium">{value}</dd>
+        {value && <dd className="font-semibold">{value}</dd>}
+        {sub && <dd className="text-xs text-muted-foreground">{sub}</dd>}
+        {note && <dd className="text-xs text-muted-foreground">{note}</dd>}
+        {action && <dd>{action}</dd>}
       </div>
     </div>
   );

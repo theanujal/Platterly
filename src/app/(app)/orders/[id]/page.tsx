@@ -7,7 +7,7 @@ import { getOrder } from "@/modules/orders/order";
 import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
 import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
 import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
-import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen } from "@/modules/menu-approvals/page-access";
+import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen, menuIsWithCustomer } from "@/modules/menu-approvals/page-access";
 import { listStatusChanges } from "@/modules/menu-approvals/status-history";
 import { getOrderStatusHint } from "@/modules/orders/order-status";
 import { listCustomers } from "@/modules/customers/customer";
@@ -219,6 +219,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
         menuPlanReadOnly={menuApproval !== null}
         menuPlanInApprovalTab={menuApproval !== null}
         priceFrozen={priceIsFrozen(menuApproval?.status ?? null)}
+        withCustomer={menuIsWithCustomer(menuApproval?.status ?? null)}
         initialTab={parseOrderTab(tab)}
         menuApprovalTab={
           <OrderMenuApprovalTab

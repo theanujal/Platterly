@@ -147,7 +147,9 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   // ===== Customer: approves through the no-login link =====
   await customerPage.goto(approvalPath);
   await expect(customerPage.getByRole("heading", { name: "Review & Approve Your Menu" })).toBeVisible();
-  await expect(customerPage.getByTestId("selected-dishes")).toContainText(itemName);
+  await customerPage.getByRole("button", { name: /View all/ }).first().click();
+  await expect(customerPage.getByRole("dialog")).toContainText(itemName);
+  await customerPage.keyboard.press("Escape");
   await customerPage.getByRole("button", { name: "Approve Menu" }).click();
   // The venue and delivery details are asked for only now, on the same link.
   await submitVenueDetailsAsCustomer(customerPage, { building: "Journey Villa", address: "7 Journey Road", contact: "Meera", phone: "9000000007" });

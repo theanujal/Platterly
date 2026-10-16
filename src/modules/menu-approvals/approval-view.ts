@@ -1,3 +1,4 @@
+import type { MealType } from "@/generated/prisma/enums";
 import { MEAL_TYPE_LABEL, type ApprovalSnapshot } from "./approval-snapshot";
 
 // Client-safe and pure: turns one frozen ApprovalSnapshot into what the customer's approval page draws (Event Details,
@@ -11,6 +12,7 @@ export interface ApprovalDishGroup {
 
 export interface ApprovalMealView {
   key: string;
+  mealType: MealType;
   label: string;
   date: string;
   menuName: string | null;
@@ -29,6 +31,8 @@ export interface ApprovalPriceRow {
   label: string;
   detail?: string;
   amount: number;
+  /** A discount: shown with a minus sign, not added. */
+  negative?: boolean;
 }
 
 export interface ApprovalView {
@@ -38,8 +42,12 @@ export interface ApprovalView {
   /** Kids are counted on top of the adults: "50 adults + 32 kids (82 guests)". */
   adults: number | null;
   kids: number;
+  childBelow5: number;
+  child5To10: number;
   location: string | null;
   menu: { name: string; description: string | null; image: string | null; pricePerPlate: number | null; extraMenus: string[] } | null;
+  /** Every menu on the order, once each, with its per-plate price: the Event Overview lists them when there is more than one. */
+  menus: { name: string; pricePerPlate: number | null }[];
   isCustomMenu: boolean;
   meals: ApprovalMealView[];
   addOns: ApprovalAddOnView[];
@@ -76,6 +84,7 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
     }
     return {
       key: `${meal.date}-${meal.mealType}`,
+      mealType: meal.mealType,
       label: MEAL_TYPE_LABEL[meal.mealType],
       date: meal.date,
       menuName: meal.menuName,
@@ -138,8 +147,29 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
     if (breakdown.extrasAmount > 0) priceRows.push({ label: "Extra Items", amount: breakdown.extrasAmount });
     if (breakdown.liveCountersAmount > 0) priceRows.push({ label: "Live Counters", amount: breakdown.liveCountersAmount });
     if (breakdown.addOnsAmount > 0) priceRows.push({ label: "Add-ons", amount: breakdown.addOnsAmount });
-    if (breakdown.childrenCharge > 0) priceRows.push({ label: "Kids charges", amount: breakdown.childrenCharge });
-    if (Math.abs(breakdown.adjustments) >= 0.01) priceRows.push({ label: "Discount & other charges", amount: breakdown.adjustments });
+    if (breakdown.childrenCharge > 0) {
+      const bands = [
+        (snapshot.childBelow5Count ?? 0) > 0 ? `${snapshot.childBelow5Count} under 5` : null,
+        (snapshot.child5To10Count ?? 0) > 0 ? `${snapshot.child5To10Count} aged 5–10` : null,
+      ].filter(Boolean);
+      priceRows.push({ label: "Children charges", detail: bands.length > 0 ? bands.join(" · ") : undefined, amount: breakdown.childrenCharge });
+    }
+    if (breakdown.discount === undefined) {
+      // A version sent before the charge lines were frozen: one combined line, as before.
+      if (Math.abs(breakdown.adjustments) >= 0.01) priceRows.push({ label: "Discount & other charges", amount: breakdown.adjustments });
+    } else {
+      const transportation = breakdown.transportation ?? 0;
+      const otherCharges = breakdown.otherCharges ?? 0;
+      const customCharges = breakdown.customCharges ?? [];
+      if (transportation > 0) priceRows.push({ label: "Transportation Cost", amount: transportation });
+      if (otherCharges > 0) priceRows.push({ label: "Extra / Service Cost", amount: otherCharges });
+      for (const charge of customCharges) if (charge.amount > 0) priceRows.push({ label: charge.label, amount: charge.amount });
+      if (breakdown.discount > 0) priceRows.push({ label: "Discount", amount: breakdown.discount, negative: true });
+      // Whatever the lines above do not explain, so the rows always add up to the Grand Total.
+      const explained = transportation + otherCharges + customCharges.reduce((sum, c) => sum + c.amount, 0) - breakdown.discount;
+      const rest = breakdown.adjustments - explained;
+      if (Math.abs(rest) >= 0.01) priceRows.push({ label: "Other adjustments", amount: rest });
+    }
   }
 
   return {
@@ -148,8 +178,11 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
     guests: snapshot.guests,
     adults: snapshot.guests === null ? null : Math.max(snapshot.guests - kids, 0),
     kids,
+    childBelow5: snapshot.childBelow5Count ?? 0,
+    child5To10: snapshot.child5To10Count ?? 0,
     location: snapshot.venue,
     menu,
+    menus: [...new Map(snapshot.meals.filter((meal) => meal.menuName).map((meal) => [meal.menuName!, { name: meal.menuName!, pricePerPlate: meal.pricePerPlate ?? null }])).values()],
     isCustomMenu: snapshot.isCustomMenu,
     meals,
     addOns: [...addOnMap.values()],

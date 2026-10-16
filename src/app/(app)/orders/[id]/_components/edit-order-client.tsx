@@ -26,6 +26,8 @@ interface EditOrderClientProps {
   menuApprovalTab: React.ReactNode;
   initialTab?: string;
   priceFrozen: boolean;
+  /** The menu is in front of the customer right now: customer and event details are read-only too. */
+  withCustomer: boolean;
   /** Sent to the kitchen (or completed): the order is final, so the form is read-only (payments still work). */
   locked: boolean;
   /** Completed: even the inventory, expenses and staffing tabs are read-only. */
@@ -69,6 +71,7 @@ export function EditOrderClient({
   menuApprovalTab,
   initialTab,
   priceFrozen,
+  withCustomer,
   locked,
   completed,
 }: EditOrderClientProps) {
@@ -93,6 +96,7 @@ export function EditOrderClient({
       menuApprovalTab={menuApprovalTab}
       initialTab={initialTab}
       priceFrozen={priceFrozen}
+      withCustomer={withCustomer}
       locked={locked}
       completed={completed}
       menuPlanBanner={menuPlanBanner}

@@ -301,7 +301,8 @@ export function QuotationForm({
   }
 
   // One pricing rule everywhere (meal-pricing.ts): a meal costs its Menu's price x guests; only Extra dishes and add-ons move the price.
-  const guestsForPricing = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
+  // Per-guest Extras and add-ons count adults only, like the Menu price (menuGuestCount in meal-pricing.ts); children have their own charges.
+  const guestsForPricing = Number(values.adultCount) || 0;
   const pricedMeals = priceMeals(
     values.mealPlanEntries.map((e) => ({
       price: e.price.trim() === "" ? null : Number.parseFloat(e.price) || 0,

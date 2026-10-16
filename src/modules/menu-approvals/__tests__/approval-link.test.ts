@@ -444,6 +444,10 @@ describe("snapshot for the redesigned approval page", () => {
         eventEndDate: new Date("2026-12-05"),
         adultCount: 10,
         totalParticipants: 10,
+        transportationCost: 500,
+        otherCharges: 300,
+        discount: 100,
+        customCharges: [{ label: "Decoration", amount: 1200 }],
         mealPlanEntries: [
           {
             date: new Date("2026-12-05"),
@@ -467,6 +471,8 @@ describe("snapshot for the redesigned approval page", () => {
     expect(snapshot.meals[0].items.find((i) => i.name === "Paneer 65")).toMatchObject({ category: "Starters" });
     expect(snapshot.meals[0].items.find((i) => i.name === "Chaat Counter")).toMatchObject({ addOnType: "LIVE_COUNTER", priceType: "FIXED", included: false });
     expect(snapshot.breakdown).toMatchObject({ menuAmount: 4000, liveCountersAmount: 2000, extrasAmount: 0, addOnsAmount: 0 });
-    expect(snapshot.total).toBe(6000);
+    // The order's own charge lines are frozen one by one, so the customer sees the same lines the team does.
+    expect(snapshot.breakdown).toMatchObject({ transportation: 500, otherCharges: 300, discount: 100, customCharges: [{ label: "Decoration", amount: 1200 }] });
+    expect(snapshot.total).toBe(7900);
   });
 });

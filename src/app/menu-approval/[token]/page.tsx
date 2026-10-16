@@ -103,7 +103,7 @@ export default async function MenuApprovalPage({ params }: { params: Promise<{ t
         </div>
         <div className="order-1 flex flex-col gap-4 lg:order-2">
           {owes && !canPay && money && <PaymentInfoCard balance={money.balance} advance={advance} orderNumber={money.orderNumber} contact={link.organizationContact} />}
-          <PriceSummary rows={view.priceRows} total={view.total} isCustomMenu={view.isCustomMenu} />
+          <PriceSummary rows={view.priceRows} total={view.total} />
           <VenueSummary venue={link.venue} />
         </div>
       </div>

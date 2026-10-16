@@ -9,6 +9,7 @@ import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { createEventForOrder, lockOrderRow } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
+import { parseCustomCharges, resolveCustomCharges } from "@/modules/orders/custom-charges";
 import { runWhileOrderOpen } from "@/modules/orders/kitchen-lock";
 import { OrderLockedError } from "@/modules/orders/order-lock";
 import { OrderCompletedError } from "@/modules/orders/order-guard";
@@ -110,6 +111,7 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
   }
   const childrenCharge = Number(order.childrenCharge);
   const total = Number(order.total);
+  const customCharges = resolveCustomCharges(parseCustomCharges(order.customCharges), Number(order.subtotal)).map((c) => ({ label: c.label, amount: c.amount }));
 
   return {
     customerName: order.customer.name,
@@ -155,6 +157,10 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
       addOnsAmount,
       childrenCharge,
       adjustments: total - (pricing.menuAmount + extrasAmount + liveCountersAmount + addOnsAmount + childrenCharge),
+      transportation: Number(order.transportationCost),
+      otherCharges: Number(order.otherCharges),
+      customCharges,
+      discount: Number(order.discount),
     },
     childBelow5Count: order.childBelow5Count ?? 0,
     child5To10Count: order.child5To10Count ?? 0,
