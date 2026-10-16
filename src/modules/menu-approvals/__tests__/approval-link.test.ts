@@ -13,6 +13,7 @@ import {
   getActiveApprovalUrl,
   getOrderMenuApproval,
   submitVenueViaLink,
+  saveVenueViaLink,
   askAboutApprovedMenuViaLink,
   VenueDetailsError,
 } from "@/modules/menu-approvals/approval-link";
@@ -364,6 +365,68 @@ describe("Venue & Delivery on the approved link", () => {
     const note = await prisma.menuApprovalNote.findFirstOrThrow({ where: { organizationId: org.id, authorType: "CUSTOMER" } });
     expect(note.body).toMatch(/venue and delivery details/);
     expect((await getOrderMenuApproval(org.id, order.id))?.venueDetailsSubmittedAt).not.toBeNull();
+  });
+
+  it("a venue that differs by event day is kept per day, with the first day mirrored on the order", async () => {
+    const ctx = await makeAdminOrder();
+    const day2 = new Date("2026-12-06");
+    await prisma.mealPlanEntry.create({ data: { orderId: ctx.order.id, date: day2, mealType: "LUNCH", price: 4000 } });
+    await prisma.order.update({ where: { id: ctx.order.id }, data: { eventEndDate: day2 } });
+    const sent = await sendMenuForApproval(ctx.org.id, { orderId: ctx.order.id }, ctx.actor.id);
+    const token = tokenOf(sent.url);
+    await approveViaLink(token);
+
+    const events = [
+      { key: "2026-12-05-DINNER", details: VENUE },
+      { key: "2026-12-06-LUNCH", details: { ...VENUE, venueBuildingName: "Grand Orchid", completeVenueAddress: "Whitefield, Bangalore", venueContactName: "Meera" } },
+    ];
+    // Every event day is needed, no more and no fewer.
+    await expect(submitVenueViaLink(token, { perEvent: true, events: events.slice(0, 1) })).rejects.toThrow(/every event/);
+    await expect(submitVenueViaLink(token, { perEvent: true, events: [events[0], { ...events[1], key: "2026-12-09-LUNCH" }] })).rejects.toThrow(/every event/);
+    await expect(submitVenueViaLink(token, { perEvent: true, events: [events[0], { ...events[1], details: { ...events[1].details, venueContactName: "" } }] })).rejects.toThrow(/Contact Person \(Event 2\) is required/);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: ctx.order.id } })).venuePerEvent).toBe(false);
+
+    expect(await submitVenueViaLink(token, { perEvent: true, events })).toEqual({ ok: true });
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: ctx.order.id }, include: { eventVenues: { orderBy: { date: "asc" } } } });
+    expect(saved).toMatchObject({ venuePerEvent: true, venue: "Green Villa", venueContactName: "Ravi" });
+    expect(saved.eventVenues.map((row) => [`${row.date.toISOString().slice(0, 10)}-${row.mealType}`, row.venue, row.venueContactName])).toEqual([
+      ["2026-12-05-DINNER", "Green Villa", "Ravi"],
+      ["2026-12-06-LUNCH", "Grand Orchid", "Meera"],
+    ]);
+
+    // The confirmation shows each day's own venue.
+    const link = await resolveApprovalLink(token);
+    expect(link).toMatchObject({ ok: true, stage: "CONFIRMATION", venuePerEvent: true });
+    expect(link.ok && link.eventVenues.map((entry) => [entry.key, entry.venue.venueBuildingName])).toEqual([
+      ["2026-12-05-DINNER", "Green Villa"],
+      ["2026-12-06-LUNCH", "Grand Orchid"],
+    ]);
+  });
+
+  it("two meals on the same day are two events, each with its own venue", async () => {
+    const ctx = await makeAdminOrder();
+    await prisma.mealPlanEntry.create({ data: { orderId: ctx.order.id, date: new Date("2026-12-05"), mealType: "LUNCH", price: 4000 } });
+    const sent = await sendMenuForApproval(ctx.org.id, { orderId: ctx.order.id }, ctx.actor.id);
+    const token = tokenOf(sent.url);
+    await approveViaLink(token);
+    await expect(saveVenueViaLink(token, { perEvent: true, events: [{ key: "2026-12-05-DINNER", details: VENUE }] })).rejects.toThrow(/every event/);
+    await saveVenueViaLink(token, { perEvent: true, events: [{ key: "2026-12-05-LUNCH", details: { ...VENUE, venueBuildingName: "Hall A" } }, { key: "2026-12-05-DINNER", details: { ...VENUE, venueBuildingName: "Hall B" } }] });
+    const rows = await prisma.orderEventVenue.findMany({ where: { orderId: ctx.order.id } });
+    expect(Object.fromEntries(rows.map((row) => [row.mealType, row.venue]))).toEqual({ LUNCH: "Hall A", DINNER: "Hall B" });
+  });
+
+  it("one venue for all events clears any per-day venues saved earlier", async () => {
+    const ctx = await makeAdminOrder();
+    const day2 = new Date("2026-12-06");
+    await prisma.mealPlanEntry.create({ data: { orderId: ctx.order.id, date: day2, mealType: "LUNCH", price: 4000 } });
+    const sent = await sendMenuForApproval(ctx.org.id, { orderId: ctx.order.id }, ctx.actor.id);
+    const token = tokenOf(sent.url);
+    await approveViaLink(token);
+    await saveVenueViaLink(token, { perEvent: true, events: [{ key: "2026-12-05-DINNER", details: VENUE }, { key: "2026-12-06-LUNCH", details: VENUE }] });
+    expect(await prisma.orderEventVenue.count({ where: { orderId: ctx.order.id } })).toBe(2);
+    await saveVenueViaLink(token, VENUE);
+    expect(await prisma.orderEventVenue.count({ where: { orderId: ctx.order.id } })).toBe(0);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: ctx.order.id } })).venuePerEvent).toBe(false);
   });
 
   it("refuses missing required fields and a bad phone number, writing nothing", async () => {

@@ -22,7 +22,7 @@ export async function submitVenueDetailsAsCustomer(page: Page, details: { buildi
   await selectOption(page, page.getByLabel("Venue Type"), "Home");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(page.getByTestId("venue-confirmation")).toBeVisible();
   await expect(page.getByTestId("venue-summary")).toContainText(details.building);
 }
 

@@ -3,9 +3,9 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "cn";
 
 /** The white card a public form's sections sit in. */
-export function FormCard({ children, className }: { children: ReactNode; className?: string }) {
+export function FormCard({ children, className, "data-testid": testId }: { children: ReactNode; className?: string; "data-testid"?: string }) {
   return (
-    <div className={cn("flex flex-col gap-6 rounded-xl bg-card p-5 ring-1 ring-foreground/10 md:p-6", className)}>{children}</div>
+    <div data-testid={testId} className={cn("flex flex-col gap-6 rounded-xl bg-card p-5 ring-1 ring-foreground/10 md:p-6", className)}>{children}</div>
   );
 }
 

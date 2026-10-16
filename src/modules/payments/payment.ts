@@ -32,6 +32,40 @@ export async function orderBalance(organizationId: string, orderId: string) {
   return { total, paid, balance: Math.max(round2(total - paid), 0), orderNumber: order.orderNumber };
 }
 
+export interface CustomerPaymentView {
+  total: number;
+  /** Confirmed by the kitchen. */
+  paid: number;
+  /** Claimed by the customer (a UPI transaction number) and waiting for the kitchen to match it. */
+  awaiting: number;
+  balance: number;
+  payments: { id: string; amount: number; method: PaymentMethod; type: PaymentType; status: "PENDING" | "CONFIRMED" | "FAILED"; at: string; reference: string }[];
+}
+
+/** A reference every payment can be quoted by: what was typed or paid with (UPI transaction number, Razorpay id), else the payment's own short id. */
+export function paymentReference(row: { id: string; reference: string | null; razorpayPaymentId: string | null }): string {
+  return row.reference?.trim() || row.razorpayPaymentId || `PAY-${row.id.slice(-8).toUpperCase()}`;
+}
+
+/** What the customer's link shows about the money on their order: every payment with its state, so a UPI claim is never invisible. */
+export async function getCustomerPaymentView(organizationId: string, orderId: string): Promise<CustomerPaymentView> {
+  const [order, rows] = await Promise.all([
+    prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } }),
+    prisma.payment.findMany({ where: { organizationId, orderId }, orderBy: { receivedAt: "desc" }, take: 20 }),
+  ]);
+  const sum = (status: string) => round2(rows.filter((row) => row.status === status).reduce((acc, row) => acc + Number(row.amount), 0));
+  const total = Number(order.total);
+  const paid = await confirmedPaidForOrder(orderId);
+  const awaiting = sum("PENDING");
+  return {
+    total,
+    paid,
+    awaiting,
+    balance: Math.max(round2(total - paid), 0),
+    payments: rows.map((row) => ({ id: row.id, amount: Number(row.amount), method: row.method, type: row.type, status: row.status, at: (row.confirmedAt ?? row.receivedAt).toISOString(), reference: paymentReference(row) })),
+  };
+}
+
 /**
  * The team may take money, or send a payment link, only once the customer has approved the menu and price. Called by the team's
  * Record Payment and Create Payment Link actions; recordPayment itself is not blocked, because Razorpay and UPI payments arrive

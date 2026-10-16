@@ -1,6 +1,4 @@
 import "server-only";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 /**
  * Zoho ZeptoMail transport (REST API v1.1). Configured by three env vars; with no token set nothing is sent
@@ -10,14 +8,6 @@ import path from "node:path";
  *   ZEPTOMAIL_API_URL   optional; defaults to the India data centre
  */
 const DEFAULT_API_URL = "https://api.zeptomail.in/v1.1/email";
-
-/** The brand logo travels inside the email (a cid inline image), so it shows without any hosted URL. */
-export const LOGO_CID = "platterly-logo";
-let logoBase64: string | null = null;
-function logoInlineImages() {
-  logoBase64 ??= readFileSync(path.join(process.cwd(), "public", "platterly-logo.png")).toString("base64");
-  return [{ mime_type: "image/png", content: logoBase64, cid: LOGO_CID }];
-}
 
 export interface SendEmailParams {
   to: string;
@@ -52,7 +42,6 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         ...(params.replyTo ? { reply_to: [{ address: params.replyTo }] } : {}),
         subject: params.subject,
         htmlbody: params.html,
-        ...(params.html.includes(`cid:${LOGO_CID}`) ? { inline_images: logoInlineImages() } : {}),
       }),
     });
     const body = (await response.json().catch(() => null)) as { request_id?: string; message?: string } | null;

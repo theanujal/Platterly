@@ -5,8 +5,10 @@ import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { resolveToken } from "@/lib/secure-access/token";
 import { generateInvoiceFromOrder, createInvoiceOnKitchenHandoff, InvoiceError } from "@/modules/invoices/invoice";
+import { setChannelMessages } from "@/modules/notifications/channel-settings";
+import type { AfterCommit } from "@/lib/after-commit";
 import { sendInvoiceDocument } from "@/modules/invoices/invoice-send";
-import { confirmPayment, recordPayment, recordInitialAdvance, parseStagedPayments, recordStagedPayments, rejectPayment, PaymentError } from "../payment";
+import { getCustomerPaymentView, confirmPayment, recordPayment, recordInitialAdvance, parseStagedPayments, recordStagedPayments, rejectPayment, PaymentError } from "../payment";
 import { createPaymentLink, resolvePaymentLink } from "../payment-links";
 import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, saveGstSettings, setAutoInvoice, saveRazorpay, saveUpi, setMethodEnabled, buildUpiUri, PaymentSettingsError } from "../payment-settings";
 import { decryptSecret, encryptSecret } from "../secret-box";
@@ -327,6 +329,36 @@ describe("the invoice is created when the order is sent to the kitchen (AJ, 2026
     expect(await createInvoiceOnKitchenHandoff(replaced.org.id, replaced.order.id, replaced.actor.id)).not.toBeNull();
   });
 
+  it("emails the invoice once the hand-off has committed, and marks it Sent", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    const afterCommit: AfterCommit = [];
+    const invoice = await createInvoiceOnKitchenHandoff(org.id, order.id, actor.id, undefined, afterCommit);
+    expect(afterCommit).toHaveLength(1);
+    // Nothing goes out until the queue runs (after the transaction commits).
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "invoice.sent" } })).toBe(0);
+    await afterCommit[0]();
+    expect(await prisma.notification.count({ where: { organizationId: org.id, event: "invoice.sent" } })).toBe(1);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice!.id } })).status).toBe("SENT");
+  });
+
+  it("stays a Draft, unsent, when the customer has no email or the Invoice email is switched off", async () => {
+    const off = await makeOrderWithTotal(10000);
+    await setChannelMessages(off.org.id, "email", { invoice: false });
+    const queue: AfterCommit = [];
+    const offInvoice = await createInvoiceOnKitchenHandoff(off.org.id, off.order.id, off.actor.id, undefined, queue);
+    await queue[0]();
+    expect(await prisma.notification.count({ where: { organizationId: off.org.id, event: "invoice.sent" } })).toBe(0);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: offInvoice!.id } })).status).toBe("DRAFT");
+
+    const noEmail = await makeOrderWithTotal(10000);
+    await prisma.customer.updateMany({ where: { organizationId: noEmail.org.id }, data: { email: null } });
+    const queue2: AfterCommit = [];
+    const invoice = await createInvoiceOnKitchenHandoff(noEmail.org.id, noEmail.order.id, noEmail.actor.id, undefined, queue2);
+    await prisma.invoice.update({ where: { id: invoice!.id }, data: { customerEmail: null } });
+    await queue2[0]();
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice!.id } })).status).toBe("DRAFT");
+  });
+
   it("never throws: a failure is logged and the hand-off carries on", async () => {
     const { org, actor } = await makeOrderWithTotal();
     expect(await createInvoiceOnKitchenHandoff(org.id, "no-such-order", actor.id)).toBeNull();
@@ -405,5 +437,29 @@ describe("the advance is recorded as a real payment (AJ, 2026-10-10)", () => {
     const { org, actor, order } = await makeOrderWithTotal(10000);
     await recordInitialAdvance(org.id, order.id, { amount: 1000, paidInFull: false, method: "BITCOIN" }, actor.id);
     expect((await prisma.payment.findFirstOrThrow({ where: { orderId: order.id } })).method).toBe("CASH");
+  });
+});
+
+describe("what the customer's link shows about payments", () => {
+  it("lists a waiting UPI claim as awaiting (not paid), turns it into received once the kitchen confirms it, and follows the balance", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    const claim = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 3000, type: "ADVANCE", method: "UPI", source: "UPI_QR", status: "PENDING", reference: "UTR1234" });
+
+    const waiting = await getCustomerPaymentView(org.id, order.id);
+    expect(waiting).toMatchObject({ paid: 0, awaiting: 3000, balance: Number(order.total) });
+    expect(waiting.payments).toEqual([expect.objectContaining({ amount: 3000, status: "PENDING", method: "UPI", reference: "UTR1234" })]);
+
+    // Every payment carries a reference: the typed one, else the Razorpay id, else its own short id.
+    await recordPayment({ organizationId: org.id, orderId: order.id, amount: 100, type: "PARTIAL", method: "CASH" });
+    await recordPayment({ organizationId: org.id, orderId: order.id, amount: 100, type: "PARTIAL", method: "CARD", source: "RAZORPAY", razorpayPaymentId: "pay_Abc123" });
+    const refs = (await getCustomerPaymentView(org.id, order.id)).payments.map((p) => p.reference);
+    expect(refs).toContain("UTR1234");
+    expect(refs).toContain("pay_Abc123");
+    expect(refs.filter((r) => /^PAY-[0-9A-Z]{8}$/.test(r))).toHaveLength(1);
+
+    await confirmPayment(org.id, claim.id, actor.id);
+    const received = await getCustomerPaymentView(org.id, order.id);
+    expect(received).toMatchObject({ paid: 3200, awaiting: 0, balance: Number(order.total) - 3200 });
+    expect(received.payments.find((p) => p.reference === "UTR1234")).toMatchObject({ status: "CONFIRMED" });
   });
 });

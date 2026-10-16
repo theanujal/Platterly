@@ -1,6 +1,4 @@
 import "server-only";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 
 /**
  * Zoho ZeptoMail transport (REST API v1.1), the same one catering uses. With no token set nothing is sent and the caller
@@ -8,11 +6,9 @@ import path from "node:path";
  *   ZEPTOMAIL_TOKEN    the Send Mail token (with or without the "Zoho-enczapikey " prefix)
  *   ZEPTOMAIL_FROM     the verified sender address
  *   ZEPTOMAIL_API_URL  optional; defaults to the India data centre
- *   EMAIL_LOGO_URL     optional public address of the logo; without it the logo travels inside the email
+ *   EMAIL_LOGO_URL     optional public address of the logo; the logo is always a link, never an attachment
  */
 const DEFAULT_API_URL = "https://api.zeptomail.in/v1.1/email";
-export const LOGO_CID = "platterly-logo";
-let logoBase64: string | null = null;
 
 export interface SendEmailParams {
   to: string;
@@ -30,7 +26,6 @@ export async function sendEmail(params: SendEmailParams, fetchImpl: typeof fetch
   const from = process.env.ZEPTOMAIL_FROM;
   if (!token || !from) return { status: "skipped", reason: "ZeptoMail is not configured." };
   try {
-    logoBase64 ??= readFileSync(path.join(process.cwd(), "public", "platterly-logo.png")).toString("base64");
     const response = await fetchImpl(process.env.ZEPTOMAIL_API_URL ?? DEFAULT_API_URL, {
       method: "POST",
       headers: { accept: "application/json", "content-type": "application/json", authorization: token.startsWith("Zoho-enczapikey") ? token : `Zoho-enczapikey ${token}` },
@@ -39,7 +34,6 @@ export async function sendEmail(params: SendEmailParams, fetchImpl: typeof fetch
         to: [{ email_address: { address: params.to } }],
         subject: params.subject,
         htmlbody: params.html,
-        ...(params.html.includes(`cid:${LOGO_CID}`) ? { inline_images: [{ mime_type: "image/png", content: logoBase64, cid: LOGO_CID }] } : {}),
       }),
     });
     const body = (await response.json().catch(() => null)) as { request_id?: string; message?: string } | null;

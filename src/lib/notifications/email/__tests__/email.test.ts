@@ -68,7 +68,8 @@ describe("every email template", () => {
     const email = emailForEvent(event, { ...data, daysBefore: 2, title: "Trial ending", message: "Your trial ends soon." });
     expect(email).not.toBeNull();
     expect(email!.subject.length).toBeGreaterThan(5);
-    expect(email!.html).toContain("cid:platterly-logo");
+    expect(email!.html).toContain("/platterly-logo.png");
+    expect(email!.html).not.toContain("cid:");
     expect(email!.html).not.toContain("undefined");
     expect(email!.html).not.toContain("Admin Panel");
   });
@@ -98,13 +99,13 @@ describe("email additions (2026-10-04)", () => {
     expect(html).toContain("Valid for 10 minutes");
   });
 
-  it("the logo is an attachment by default and a plain link when EMAIL_LOGO_URL is set", () => {
+  it("the logo is always a link, never an attachment, and EMAIL_LOGO_URL overrides the address", () => {
     vi.stubEnv("EMAIL_LOGO_URL", "");
-    expect(verificationCodeEmail("111111", 10).html).toContain("cid:platterly-logo");
-    vi.stubEnv("EMAIL_LOGO_URL", "https://catering.platterly.in/platterly-logo.png");
     const html = verificationCodeEmail("111111", 10).html;
-    expect(html).toContain('src="https://catering.platterly.in/platterly-logo.png"');
-    expect(html).not.toContain("cid:platterly-logo");
+    expect(html).toContain("/platterly-logo.png");
+    expect(html).not.toContain("cid:");
+    vi.stubEnv("EMAIL_LOGO_URL", "https://catering.platterly.in/platterly-logo.png");
+    expect(verificationCodeEmail("111111", 10).html).toContain('src="https://catering.platterly.in/platterly-logo.png"');
   });
 
   it("customer emails carry the unsubscribe link, team emails do not", () => {
@@ -164,15 +165,11 @@ describe("email footer and logo (2026-10-11)", () => {
     expect(emailForEvent("logistics.dispatched_customer", {})?.html).toContain("Powered by <a");
   });
 
-  it("the logo travels inside the email in dev, and is the public file on the app's host in production", () => {
+  it("the logo is never a cid attachment in any environment", () => {
     vi.stubEnv("EMAIL_LOGO_URL", "");
-    vi.stubEnv("NODE_ENV", "development");
-    expect(verificationCodeEmail("123456", 10).html).toContain('src="cid:platterly-logo"');
-    vi.stubEnv("NODE_ENV", "production");
-    const html = verificationCodeEmail("123456", 10).html;
-    expect(html).toContain("/platterly-logo.png");
-    expect(html).not.toContain("cid:platterly-logo");
-    vi.stubEnv("EMAIL_LOGO_URL", "https://cdn.example.test/logo.png");
-    expect(verificationCodeEmail("123456", 10).html).toContain('src="https://cdn.example.test/logo.png"');
+    for (const env of ["development", "production", "test"]) {
+      vi.stubEnv("NODE_ENV", env);
+      expect(verificationCodeEmail("123456", 10).html).not.toContain("cid:");
+    }
   });
 });

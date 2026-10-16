@@ -13,7 +13,7 @@ import { parseCustomCharges, resolveCustomCharges } from "@/modules/orders/custo
 import { runWhileOrderOpen } from "@/modules/orders/kitchen-lock";
 import { OrderLockedError } from "@/modules/orders/order-lock";
 import { OrderCompletedError } from "@/modules/orders/order-guard";
-import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { cleanEventVenues, cleanVenue, VenueDetailsError, writeEventVenues, type PerEventVenue, type VenueDetailsInput } from "@/modules/orders/event-venues";
 import {
   addMenuApprovalNote,
   addNoteToOpenOrder,
@@ -426,6 +426,9 @@ export type ResolvedApprovalLink =
       snapshot: ApprovalSnapshot;
       /** What the customer sent on the venue form (Confirmation), or what is already on the order to pre-fill it (Venue). */
       venue: VenueDetails;
+      /** True when the venue differs by event: `eventVenues` then holds one entry per meal slot, keyed "date-MEALTYPE" like ApprovalMealView.key (the `venue` above is the first event's). */
+      venuePerEvent: boolean;
+      eventVenues: { key: string; venue: VenueDetails }[];
       venueDetailsSubmittedAt: Date | null;
     };
 
@@ -500,6 +503,8 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
           gasElectricAvailable: true,
           liveCounterAvailable: true,
           venueDetailsSubmittedAt: true,
+          venuePerEvent: true,
+          eventVenues: { orderBy: { date: "asc" } },
         },
       })
     : null;
@@ -536,6 +541,25 @@ export async function resolveApprovalLink(token: string): Promise<ResolvedApprov
       gasElectricAvailable: order?.gasElectricAvailable ?? false,
       liveCounterAvailable: order?.liveCounterAvailable ?? false,
     },
+    venuePerEvent: order?.venuePerEvent ?? false,
+    eventVenues: (order?.eventVenues ?? []).map((row) => ({
+      key: `${row.date.toISOString().slice(0, 10)}-${row.mealType}`,
+      venue: {
+        venueType: row.venueType,
+        venueBuildingName: row.venue,
+        venueDoorNumber: row.venueDoorNumber ?? "",
+        venueTower: row.venueTower ?? "",
+        venueFloor: row.venueFloor ?? "",
+        completeVenueAddress: row.eventAddress,
+        venueLandmark: row.venueLandmark ?? "",
+        venueContactName: row.venueContactName,
+        venueContactPhone: row.venueContactPhone,
+        venueAccessInstructions: row.venueAccessInstructions ?? "",
+        cookingInstructions: row.cookingInstructions ?? "",
+        gasElectricAvailable: row.gasElectricAvailable,
+        liveCounterAvailable: row.liveCounterAvailable,
+      },
+    })),
     venueDetailsSubmittedAt: submittedAt,
   };
 }
@@ -575,34 +599,7 @@ async function extendApprovedLink(organizationId: string, versionId: string, eve
   });
 }
 
-export interface VenueDetailsInput {
-  venueType: string;
-  venueBuildingName: string;
-  venueDoorNumber?: string;
-  venueTower?: string;
-  venueFloor?: string;
-  completeVenueAddress: string;
-  venueLandmark?: string;
-  venueContactName: string;
-  venueContactPhone: string;
-  venueAccessInstructions?: string;
-  cookingInstructions?: string;
-  gasElectricAvailable?: boolean;
-  liveCounterAvailable?: boolean;
-}
-
-const VENUE_TYPES: VenueType[] = ["CLUBHOUSE", "HOTEL", "BANQUET_HALL", "RESORT", "HOME", "OFFICE", "OTHER"];
-const FIELD_MAX = 1000;
-
-/** A validation message the customer can read as-is. */
-export class VenueDetailsError extends Error {}
-
-function cleanText(value: string | undefined, label: string, required = false): string | null {
-  const trimmed = value?.trim() ?? "";
-  if (required && trimmed.length === 0) throw new VenueDetailsError(`${label} is required.`);
-  if (trimmed.length > FIELD_MAX) throw new VenueDetailsError(`${label} is too long.`);
-  return trimmed.length > 0 ? trimmed : null;
-}
+export { VenueDetailsError, type VenueDetailsInput };
 
 /**
  * The customer's Venue & Delivery form on the approval link. Two steps, so an order is never confirmed before the
@@ -616,33 +613,30 @@ function cleanText(value: string | undefined, label: string, required = false): 
  *
  * `submitVenueViaLink` does both for callers with nothing in between.
  */
-export async function saveVenueViaLink(token: string, input: VenueDetailsInput) {
+/** What the Venue & Delivery step sends: one venue for the whole order, or one per event, i.e. meal slot (the customer said they differ). */
+export type VenueSubmission = VenueDetailsInput | { perEvent: true; events: { key: string; details: VenueDetailsInput }[] };
+
+export async function saveVenueViaLink(token: string, submission: VenueSubmission) {
   const link = await resolveApprovalLink(token);
   if (!link.ok || link.stage === "CONFIRMATION" || !link.orderId) return { ok: false as const };
 
-  if (!VENUE_TYPES.includes(input.venueType as VenueType)) throw new VenueDetailsError("Venue Type is required.");
-  const phone = normalizePhone(input.venueContactPhone?.trim() ?? "");
-  if (!phone) throw new VenueDetailsError("Contact Number is required.");
-  if (!isValidPhone(phone)) throw new VenueDetailsError("Please enter a valid contact number for the selected country.");
-  const data = {
-    venueType: input.venueType as VenueType,
-    venue: cleanText(input.venueBuildingName, "Venue / Building Name", true),
-    venueDoorNumber: cleanText(input.venueDoorNumber, "Door / Flat / House No."),
-    venueTower: cleanText(input.venueTower, "Tower / Block"),
-    venueFloor: cleanText(input.venueFloor, "Floor"),
-    eventAddress: cleanText(input.completeVenueAddress, "Complete Venue Address", true),
-    venueLandmark: cleanText(input.venueLandmark, "Landmark"),
-    venueContactName: cleanText(input.venueContactName, "Contact Person", true),
-    venueContactPhone: phone,
-    venueAccessInstructions: cleanText(input.venueAccessInstructions, "Loading / Access Instructions"),
-    cookingInstructions: cleanText(input.cookingInstructions, "Cooking Instructions"),
-    gasElectricAvailable: input.gasElectricAvailable === true,
-    liveCounterAvailable: input.liveCounterAvailable === true,
-  };
+  const orderId = link.orderId;
+  let mirror: ReturnType<typeof cleanVenue>;
+  let perDay: PerEventVenue[] | null = null;
+  if ("perEvent" in submission) {
+    // One venue for every event (meal slot) of the order, no more and no fewer.
+    perDay = cleanEventVenues(link.snapshot.meals.map((meal) => ({ date: meal.date, mealType: meal.mealType })), submission.events);
+    mirror = perDay[0].data;
+  } else {
+    mirror = cleanVenue(submission);
+  }
   // The venue is an order field: once the order has reached the kitchen the customer's link can't change it (checked in the same
   // transaction as the write, under the menu's lock).
   try {
-    await runWhileOrderOpen(link.organizationId, link.orderId, (tx) => tx.order.updateMany({ where: { id: link.orderId!, organizationId: link.organizationId }, data }));
+    await runWhileOrderOpen(link.organizationId, orderId, async (tx) => {
+      await tx.order.updateMany({ where: { id: orderId, organizationId: link.organizationId }, data: { ...mirror, venuePerEvent: perDay !== null } });
+      await writeEventVenues(tx, orderId, perDay);
+    });
   } catch (error) {
     if (error instanceof OrderLockedError) return { ok: false as const };
     throw error;
@@ -699,7 +693,7 @@ export async function confirmApprovalViaLink(token: string) {
   return { ok: true as const };
 }
 
-export async function submitVenueViaLink(token: string, input: VenueDetailsInput) {
+export async function submitVenueViaLink(token: string, input: VenueSubmission) {
   const saved = await saveVenueViaLink(token, input);
   if (!saved.ok) return saved;
   return confirmApprovalViaLink(token);

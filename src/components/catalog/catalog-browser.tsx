@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { Fragment, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Search, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { ViewToggle } from "@/components/catalog/view-toggle";
@@ -295,7 +295,8 @@ export function CatalogBrowser({
           </Select>
         ))}
 
-        {filters}
+        {/* Elements a server page passes in are flagged by React as list children next to the sibling arrays; a keyed wrapper settles it once, for every page. */}
+        {filters && <Fragment key="catalog-filters">{filters}</Fragment>}
 
         {sortOptions && sortOptions.length > 0 && (
           <div className="flex shrink-0 items-center gap-2">
@@ -327,7 +328,7 @@ export function CatalogBrowser({
 
       {view === "grid" ? (
         <div className={`grid gap-4 ${gridColumnsClassName}`}>
-          {currentPage === 1 && addTile}
+          {currentPage === 1 && addTile && <Fragment key="catalog-add-tile">{addTile}</Fragment>}
           {paged.map((entry) =>
             entry.href && !entry.cardOwnsLink ? (
               <Link key={entry.id} href={entry.href} className="block">

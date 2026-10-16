@@ -1,11 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
-import { cleanupOnboardingTestUser, getApprovalState, getPaymentReferences, seedApprovedOrderForShare } from "./db";
+import { cleanupOnboardingTestUser, getApprovalState, getPaymentReferences, seedApprovedOrderForShare, seedOrderPayment } from "./db";
 import { selectOption, signUpCaterer } from "./auth-helpers";
 
 /**
  * After the venue details, before the confirmation, the customer gets a payment pop-up (AJ, 2026-10-14): the advance or any
  * other amount (no full-payment option), or "Not now". A UPI payment is confirmed with the transaction number. The
- * confirmation page puts Payment, Price Summary and Venue in the wide column, and the guests read "adults + kids (total)".
+ * confirmation page puts Payment, Price Summary and Venue in the wide column, and the guests read "N Guests, the breakdown on the next line".
  */
 const cleanupEmails: string[] = [];
 test.afterEach(async () => {
@@ -54,7 +54,7 @@ test("payment pop-up after the venue details: paid inside it, cannot be closed b
   await expect(popup.getByRole("radio", { name: /Advance/ })).toHaveAttribute("aria-checked", "true");
   await expect(popup.getByRole("radio", { name: /Other amount/ })).toBeVisible();
   await expect(popup.getByRole("radio", { name: /Full amount|Remaining balance/ })).toHaveCount(0);
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toHaveCount(0); // the confirmation waits behind it
+  await expect(customer.getByTestId("venue-confirmation")).toHaveCount(0); // the confirmation waits behind it
 
   // The pop-up cannot be closed by accident: Esc and a click outside leave it open.
   await customer.keyboard.press("Escape");
@@ -83,13 +83,16 @@ test("payment pop-up after the venue details: paid inside it, cannot be closed b
 
   // Continue: the confirmation, with Price Summary then Venue in the wide column, no Payment card, guests as adults + kids.
   await popup.getByRole("button", { name: "Continue" }).click();
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customer.getByTestId("venue-confirmation")).toBeVisible();
   await expect(customer.getByTestId("payment-box")).toHaveCount(0);
   await expect(customer.getByTestId("payment-later")).toHaveCount(0);
   const priceY = (await customer.getByRole("heading", { name: "Price Summary" }).boundingBox())!.y;
   const venueY = (await customer.getByRole("heading", { name: "Your Venue & Delivery Details" }).boundingBox())!.y;
   expect(priceY).toBeLessThan(venueY);
-  await expect(customer.getByTestId("approved-guests")).toHaveText("100 adults + 32 kids (132 guests)");
+  await expect(customer.getByTestId("approved-guests")).toContainText("132 Guests");
+  await expect(customer.getByTestId("approved-guests")).toContainText("100 adults · 10 under 5 · 22 aged 5–10");
+  await expect(customer.getByTestId("order-number-badge")).toContainText("ORD-");
+  await expect(customer).toHaveTitle(/^Order ORD-\d+ – /);
   await expect(customer.getByTestId("contact-links").getByRole("link", { name: /^Call / })).toHaveAttribute("href", /^tel:\+\d+$/);
 });
 
@@ -116,7 +119,7 @@ test("Not now goes straight to the confirmation, and a custom amount is paid in 
   await popup.getByRole("button", { name: "Change amount" }).click();
   await expect(popup.getByRole("radio", { name: /Advance/ })).toBeVisible();
   await popup.getByRole("button", { name: "Not now", exact: true }).click();
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customer.getByTestId("venue-confirmation")).toBeVisible();
   await expect(popup).toHaveCount(0);
 });
 
@@ -150,7 +153,7 @@ test("the order is not confirmed until the customer reaches the confirmation: le
   await expect(customer.getByLabel("Venue / Building Name")).toHaveValue("Green Villa"); // kept from before
   await customer.getByRole("button", { name: "Continue" }).click();
   await customer.getByTestId("payment-dialog").getByRole("button", { name: "Not now", exact: true }).click();
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customer.getByTestId("venue-confirmation")).toBeVisible();
   expect(await getApprovalState(orderId)).toEqual({ selection: "CUSTOMER_APPROVED", order: "APPROVED" });
 });
 
@@ -165,7 +168,29 @@ test("a kitchen with no online payment: Continue goes straight to the confirmati
   await customer.goto(`/menu-approval/${approvalToken}`);
   await customer.getByRole("button", { name: "Approve Menu" }).click();
   await fillVenueAndContinue(customer);
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customer.getByTestId("venue-confirmation")).toBeVisible();
   await expect(customer.getByTestId("payment-dialog")).toHaveCount(0);
   expect(await getApprovalState(orderId)).toEqual({ selection: "CUSTOMER_APPROVED", order: "APPROVED" });
+});
+
+test("Pay the balance on the confirmation offers the remaining balance, not an advance", async ({ page, browser }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-apay-bal-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email, { firstName: "Bal", lastName: "Tester", phone: "9800000084" });
+  await setUpUpi(page);
+  const { approvalToken, orderId } = await seedApprovedOrderForShare(email, { stage: "CONFIRMATION" });
+  await seedOrderPayment(orderId, { amount: 400, status: "CONFIRMED" });
+
+  const customer = await (await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` } })).newPage();
+  await customer.goto(`/menu-approval/${approvalToken}`);
+  await customer.getByRole("button", { name: "Pay the balance" }).click();
+  const popup = customer.getByTestId("payment-dialog");
+  await expect(popup.getByRole("heading", { name: "Pay the balance" })).toBeVisible();
+  await expect(popup).toContainText("Pay what is left of your order in full, or any amount you like. Balance due: ₹600.00");
+  await expect(popup).not.toContainText("venue details are in");
+  await expect(popup.getByRole("radio", { name: /Remaining balance/ })).toHaveAttribute("aria-checked", "true");
+  await expect(popup.getByRole("radio", { name: /Other amount/ })).toBeVisible();
+  await expect(popup.getByRole("radio", { name: /Advance/ })).toHaveCount(0);
+  await expect(popup.getByRole("button", { name: "Pay ₹600.00" })).toBeVisible();
 });

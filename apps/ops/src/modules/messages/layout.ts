@@ -39,7 +39,7 @@ export function renderEmail({ tag, eyebrow, title, greeting, bodyHtml, details, 
     <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="width:100%;max-width:640px;">
       <tr><td style="padding:0 0 24px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-          <td style="vertical-align:middle;"><img src="${process.env.EMAIL_LOGO_URL || (process.env.NODE_ENV === "production" ? "https://platterly.in/platterly-logo.png" : "cid:platterly-logo")}" alt="Platterly" width="140" height="32" style="display:block;border:0;height:32px;width:140px;"></td>
+          <td style="vertical-align:middle;"><img src="${process.env.EMAIL_LOGO_URL || "https://platterly.in/platterly-logo.png"}" alt="Platterly" width="140" height="32" style="display:block;border:0;height:32px;width:140px;"></td>
           <td align="right" style="vertical-align:middle;"><span style="display:inline-block;padding:5px 14px;background:#FDEBD3;color:#B8400E;font-size:12px;font-weight:700;">${escapeHtml(tag)}</span></td>
         </tr></table>
       </td></tr>

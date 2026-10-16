@@ -1,18 +1,12 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_ORDER, ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
+import { ORDER_STATUS_LABEL, ORDER_STATUS_ORDER } from "@/modules/orders/order-status";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const STATUS_OPTIONS = [
   { value: "ALL", label: "All Status" },
   ...ORDER_STATUS_ORDER.map((value) => ({ value, label: ORDER_STATUS_LABEL[value] })),
-];
-
-const APPROVAL_OPTIONS = [
-  { value: "ALL", label: "All Approvals" },
-  { value: "NOT_STARTED", label: "Not Started" },
-  ...MENU_SELECTION_STATUS_ORDER.map((value) => ({ value, label: MENU_SELECTION_STATUS_LABEL[value] })),
 ];
 
 const ORDER_KIND_OPTIONS = [
@@ -47,19 +41,6 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
         </SelectTrigger>
         <SelectContent className="w-auto min-w-(--anchor-width)">
           {STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
-      <Select items={Object.fromEntries(APPROVAL_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("approval") ?? "ALL"} onValueChange={(v) => updateParam("approval", v ?? "ALL")}>
-        <SelectTrigger aria-label="Menu approval filter" className="w-64">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="w-auto min-w-(--anchor-width)">
-          {APPROVAL_OPTIONS.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

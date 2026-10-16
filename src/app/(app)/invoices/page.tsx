@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { User, CalendarDays, MapPin } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
@@ -9,33 +8,28 @@ import { invoiceDisplayStatus } from "@/modules/invoices/invoice-status";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { TableCell } from "@/components/ui/table";
-import { CatalogBrowser, type CatalogEntry, type CatalogSortOption } from "@/components/catalog/catalog-browser";
+import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
 import { InvoiceStatusBadge, InvoiceTypeBadge } from "./_components/invoice-badges";
-import { cn } from "cn";
 
 export const metadata: Metadata = {
   title: "Invoices — Caterly",
   robots: { index: false, follow: false },
 };
 
-const FILTERS = [
-  { label: "All", value: undefined },
-  { label: "Invoices", value: "INVOICE" },
-  { label: "Receipts", value: "RECEIPT" },
-] as const;
-
-export default async function InvoicesPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+export default async function InvoicesPage() {
   const { organizationId, session } = await requireActiveOrganization();
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ invoices: ["view"] }, organizationId);
-  const { type } = await searchParams;
-  const activeType = type === "INVOICE" || type === "RECEIPT" ? type : undefined;
-  const invoices = await listInvoices(organizationId, { type: activeType, locationId });
+  const invoices = await listInvoices(organizationId, { locationId });
 
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "customer", label: "Customer (A–Z)", key: "customer" },
     { value: "amount-high", label: "Amount (High–Low)", key: "amount", direction: "desc" },
+  ];
+
+  const filterOptions: CatalogFilterOption[] = [
+    { key: "type", allLabel: "All", options: [{ value: "INVOICE", label: "Invoices" }, { value: "RECEIPT", label: "Receipts" }] },
   ];
 
   const entries: CatalogEntry[] = invoices.map((invoice) => {
@@ -49,6 +43,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
       id: invoice.id,
       href: `/invoices/${invoice.id}`,
       searchText: `${invoice.number} ${invoice.customerName} ${invoice.order.orderNumber ?? ""}`,
+      filterValues: { type: invoice.type },
       sortValues: { customer: invoice.customerName, amount: total, newest: invoice.createdAt.getTime() },
       card: (
         <div className="flex h-full flex-col gap-4 p-5">
@@ -134,22 +129,12 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
         <p className="text-sm text-muted-foreground">Invoices and receipts for your orders. Create an invoice from an order, then record or collect the payment.</p>
       </div>
       <Separator />
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by type">
-        {FILTERS.map((filter) => (
-          <Link
-            key={filter.label}
-            href={filter.value ? `/invoices?type=${filter.value}` : "/invoices"}
-            className={cn("flex h-9 items-center rounded-lg border px-3 text-sm font-medium", activeType === filter.value ? "border-primary bg-accent text-primary" : "border-border bg-card hover:bg-muted")}
-          >
-            {filter.label}
-          </Link>
-        ))}
-      </div>
       <CatalogBrowser
         entries={entries}
         columns={["Number", "Type", "Customer", "Order", "Amount", "Due", "Status"]}
         searchPlaceholder="Search by number, customer or order…"
         emptyLabel="No invoices yet. Open an order and choose Create Invoice."
+        filterOptions={filterOptions}
         sortOptions={sortOptions}
         richList
         defaultView="list"

@@ -1,3 +1,4 @@
+import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import {
@@ -75,9 +76,9 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
       {
         customerId: customer.id,
         discount: 50,
-        taxes: 20,
-        additionalCharges: 10,
-        deliveryCharges: 5,
+        transportationCost: 20,
+        otherCharges: 10,
+        customCharges: [{ label: "Generator", amount: 5 }],
         mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4, isExtra: true }] }],
       },
       actor.id,
@@ -246,11 +247,36 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     expect((await listQuotations(org.id)).map((q) => q.id).sort()).toEqual([draft.id, sent.id].sort());
   });
 
+  it("a percentage discount, transportation and custom line are a share of the subtotal, like an Order", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menuItem = await createMenuItem(org.id, { name: "Dal", foodType: "VEGETARIAN", price: 1000 }, actor.id);
+    const quotation = await createQuotation(
+      org.id,
+      {
+        customerId: customer.id,
+        discountMode: "PERCENTAGE",
+        discountRate: 10,
+        transportationMode: "PERCENTAGE",
+        transportationRate: 5,
+        customCharges: [{ label: "Service", mode: "PERCENTAGE", rate: 2, amount: 0 }],
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 1, isExtra: true }] }],
+      },
+      actor.id,
+    );
+    // subtotal 1000: -10% (100) +5% (50) +2% (20)
+    expect(Number(quotation.subtotal)).toBe(1000);
+    expect(Number(quotation.discount)).toBe(100);
+    expect(Number(quotation.transportationCost)).toBe(50);
+    expect(Number(quotation.total)).toBe(970);
+  });
+
   it("recalculateQuotationTotals is idempotent when called directly", async () => {
     const org = await makeOrg();
     const actor = await makeActor();
     const customer = await makeCustomer(org.id, actor.id);
-    const quotation = await createQuotation(org.id, { customerId: customer.id, taxes: 30 }, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id, otherCharges: 30 }, actor.id);
 
     const recalculated = await recalculateQuotationTotals(quotation.id);
     expect(Number(recalculated.total)).toBe(30);
@@ -561,9 +587,9 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
         childBelow5Count: 2,
         pricingMethod: "STANDARD",
         discount: 50,
-        taxes: 20,
-        additionalCharges: 10,
-        deliveryCharges: 5,
+        transportationCost: 20,
+        otherCharges: 10,
+        customCharges: [{ label: "Generator", amount: 5 }],
         mealPlanEntries: [
           { date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 4, isExtra: true }] },
           { date: new Date("2026-12-02"), mealType: "DINNER", menuId: menu.id, items: [{ itemType: "MENU_ITEM", catalogId: menuItem.id, quantity: 2, isExtra: true }] },
@@ -604,9 +630,11 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
 
     // Two meals on a 200/plate Menu for 100 adults = 40000, plus the Extras' frozen 150*4 + 150*2 = 900;
     // childrenCharge = 0 (Menu has no child rates set);
-    // total = 40900 - 50 (discount) + 35 (otherCharges = taxes+additional+delivery)
+    // total = 40900 - 50 (discount) + 20 (transportation) + 10 (extra / service) + 5 (custom Generator line)
     expect(Number(order.subtotal)).toBe(40900);
-    expect(Number(order.otherCharges)).toBe(35);
+    expect(Number(order.transportationCost)).toBe(20);
+    expect(Number(order.otherCharges)).toBe(10);
+    expect(parseCustomCharges(order.customCharges)).toEqual([{ label: "Generator", amount: 5 }]);
     expect(Number(order.total)).toBe(40900 - 50 + 35);
     expect(Number(order.balance)).toBe(Number(order.total));
 

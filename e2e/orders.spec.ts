@@ -165,6 +165,8 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByLabel("Adults").fill("80");
   await page.getByLabel("Children (Under 5)").fill("5");
   await page.getByLabel("Children (5–10)").fill("15");
+  // A menu can only be chosen once a Menu Preference is set.
+  await page.getByRole("button", { name: /^Vegetarian/ }).click();
 
   // Meal Planning — a custom per-meal price, plus Menu assignment + the
   // food-item dialog (the section's actual core now). Meal-type checkboxes
@@ -440,6 +442,8 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await expect(sidebar.getByText(formatSidebarDate("2026-12-05"))).toBeVisible();
   await expect(sidebar.getByText(formatSidebarDate("2026-12-06"))).toBeVisible();
 
+  // A menu can only be chosen once a Menu Preference is set.
+  await page.getByRole("button", { name: /^Vegetarian/ }).click();
   // Day 1 (already focused by default) gets Lunch; switching focus to Day 2 for Dinner.
   await page.getByRole("button", { name: "Lunch" }).click();
   const lunchSlot = page.getByTestId("meal-slot-2026-12-05-LUNCH");

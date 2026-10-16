@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { EventVenuesEditor, SameVenueQuestion, eventPlace, eventSlotKey, eventVenueToInput, missingEventVenueField, type EventSlot, type EventVenueValues } from "./event-venues-editor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   AlertDialog,
@@ -127,6 +128,9 @@ export interface OrderFormValues {
   otherChargesMode: "FIXED" | "PERCENTAGE";
   /** Team-added label + amount lines (amount typed as text, like the other money fields). */
   customCharges: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }[];
+  /** The venue differs by event (a Multi Order): one venue per event, keyed "YYYY-MM-DD-MEALTYPE". Otherwise the order's own venue fields above are the venue for all. */
+  venuePerEvent: boolean;
+  eventVenues: Record<string, EventVenueValues>;
   status: string;
   notes: string;
   /** Internal, kitchen-facing — distinct from the customer-facing Notes above. */
@@ -174,6 +178,8 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   otherCharges: "0",
   otherChargesMode: "FIXED",
   customCharges: [],
+  venuePerEvent: false,
+  eventVenues: {},
   status: "PENDING_REVIEW",
   notes: "",
   kitchenNotes: "",
@@ -219,7 +225,7 @@ function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "
 /** The fields the Event Information card edits, kept so Cancel can put them back. */
 const EVENT_FIELDS = [
   "orderKind", "eventTypeId", "eventStartDate", "eventEndDate", "mealPlanEntries", "venueType", "venue", "eventAddress", "venueDoorNumber", "venueTower", "venueFloor",
-  "venueLandmark", "venueContactName", "venueContactPhone", "vehicleAccess", "venueAccessInstructions", "deliveryInstructions", "cookingInstructions",
+  "venueLandmark", "venueContactName", "venueContactPhone", "vehicleAccess", "venueAccessInstructions", "deliveryInstructions", "cookingInstructions", "venuePerEvent", "eventVenues",
   "liveCounterAvailable", "gasElectricAvailable",
 ] as const;
 
@@ -394,6 +400,8 @@ export function OrderForm({
   const [editingGuests, setEditingGuests] = useState(false);
   const [guestsBeforeEdit, setGuestsBeforeEdit] = useState<{ adultCount: string; childBelow5Count: string; child5To10Count: string } | null>(null);
   const [editingEvent, setEditingEvent] = useState(false);
+  // Which event's venue the per-event editor is showing.
+  const [activeVenueKey, setActiveVenueKey] = useState("");
   const [eventBeforeEdit, setEventBeforeEdit] = useState<Pick<OrderFormValues, (typeof EVENT_FIELDS)[number]> | null>(null);
   const [customerBeforeEdit, setCustomerBeforeEdit] = useState<{ customerId: string; customer: SelectedCustomer | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -577,6 +585,48 @@ export function OrderForm({
   const singleLoss = singleOrderLoss();
   // Meals owned by the Menu Approval tab can't be removed here, so Single Order stays off until they are recalled.
   const singleBlocked = menuPlanReadOnly && singleLoss.removedMeals > 0;
+  // The events (a day and a meal) the venue can differ by: the customer's Venue & Delivery step lists the same ones.
+  const slotMeals = [...new Map(values.mealPlanEntries.map((e) => [eventSlotKey(e.date, e.mealType), e])).values()].sort((a, b) => eventSlotKey(a.date, a.mealType).localeCompare(eventSlotKey(b.date, b.mealType)));
+  const slotDates = [...new Set(slotMeals.map((e) => e.date))];
+  const eventSlots: EventSlot[] = slotMeals.map((e) => {
+    const meal = MEAL_TYPES.find((m) => m.value === e.mealType)?.label ?? e.mealType;
+    return { key: eventSlotKey(e.date, e.mealType), date: e.date, title: slotDates.length > 1 ? `Day ${slotDates.indexOf(e.date) + 1} · ${meal}` : meal, menuName: menus.find((m) => m.id === e.menuId)?.name ?? "" };
+  });
+  const canDiffer = eventSlots.length > 1;
+  const perEvent = canDiffer && values.venuePerEvent;
+  const venueFromValues = (v: OrderFormValues): EventVenueValues => ({
+    venueType: v.venueType,
+    venue: v.venue,
+    venueDoorNumber: v.venueDoorNumber,
+    venueTower: v.venueTower,
+    venueFloor: v.venueFloor,
+    eventAddress: v.eventAddress,
+    venueLandmark: v.venueLandmark,
+    venueContactName: v.venueContactName,
+    venueContactPhone: v.venueContactPhone,
+    venueAccessInstructions: v.venueAccessInstructions,
+    cookingInstructions: v.cookingInstructions,
+    gasElectricAvailable: v.gasElectricAvailable,
+    liveCounterAvailable: v.liveCounterAvailable,
+  });
+  // An event not filled in yet starts as a copy of the order's own venue, like on the customer's page.
+  const venueOf = (key: string): EventVenueValues => values.eventVenues[key] ?? venueFromValues(values);
+  const venuesForEditor = Object.fromEntries(eventSlots.map((slot) => [slot.key, venueOf(slot.key)]));
+  function setVenuePerEvent(different: boolean) {
+    setValues((prev) => {
+      if (!different) return { ...prev, venuePerEvent: false };
+      const seeded = { ...prev.eventVenues };
+      for (const slot of eventSlots) seeded[slot.key] ??= venueFromValues(prev);
+      return { ...prev, venuePerEvent: true, eventVenues: seeded };
+    });
+    setActiveVenueKey(eventSlots[0]?.key ?? "");
+  }
+  function setEventVenue<K extends keyof EventVenueValues>(key: string, field: K, value: EventVenueValues[K]) {
+    setValues((prev) => ({ ...prev, eventVenues: { ...prev.eventVenues, [key]: { ...(prev.eventVenues[key] ?? venueFromValues(prev)), [field]: value } } }));
+  }
+  function copyEventVenue(from: string, to: string) {
+    setValues((prev) => ({ ...prev, eventVenues: { ...prev.eventVenues, [to]: { ...(prev.eventVenues[from] ?? venueFromValues(prev)) } } }));
+  }
   // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
   if (autoSwitchedToMulti && !multiRequired) {
     setAutoSwitchedToMulti(false);
@@ -651,6 +701,9 @@ export function OrderForm({
     formData.set("otherChargesMode", values.otherChargesMode);
     formData.set("otherChargesRate", values.otherChargesMode === "PERCENTAGE" ? values.otherCharges || "0" : "0");
     formData.set("customCharges", JSON.stringify(values.customCharges.map((c, i) => ({ ...customChargeInput(c), amount: customChargeLines[i]?.amount ?? 0 }))));
+    // One venue for the whole order, or (a Multi Order that says it differs) one per event.
+    formData.set("venuePerEvent", String(perEvent));
+    if (perEvent) formData.set("eventVenues", JSON.stringify(eventSlots.map((slot) => ({ key: slot.key, details: eventVenueToInput(venueOf(slot.key)) }))));
     // New order only: the payments added on this page, recorded once the order is saved.
     if (!initialValues) formData.set("payments", JSON.stringify(draftPayments.map(({ amount, type, method, receivedAt, reference, sendReceipt }) => ({ amount, type, method, receivedAt, reference, sendReceipt }))));
     formData.set("notes", values.notes);
@@ -697,6 +750,14 @@ export function OrderForm({
     if (eventDatePast) {
       setError("Event Date can't be in the past.");
       return;
+    }
+    if (perEvent) {
+      const index = eventSlots.findIndex((slot) => missingEventVenueField(venueOf(slot.key)) !== null);
+      if (index >= 0) {
+        setActiveVenueKey(eventSlots[index].key);
+        setError(`Event ${index + 1}: ${missingEventVenueField(venueOf(eventSlots[index].key))} is required.`);
+        return;
+      }
     }
     const emptyMeal = menuPlanReadOnly ? undefined : values.mealPlanEntries.find((e) => e.menuId && !e.items.some((i) => i.itemType === "MENU_ITEM"));
     if (emptyMeal) {
@@ -863,6 +924,12 @@ export function OrderForm({
     ["Cooking / live counter facility", values.liveCounterAvailable ? "Available" : "Not available"],
     ["Gas / electric connection at venue", values.gasElectricAvailable ? "Available" : "Not available"],
   ];
+  // When the venue differs by event, each event's venue is listed on its own instead of one set of venue fields.
+  const PER_EVENT_VENUE_LABELS = new Set([
+    "Venue Type", "Venue / Building Name", "Complete Venue Address", "Door / Flat / House No.", "Tower / Block", "Floor", "Landmark", "Venue Contact Person",
+    "Contact Number", "Catering Access / Loading Instructions", "Cooking Instructions", "Cooking / live counter facility", "Gas / electric connection at venue",
+  ]);
+  const shownEventViewFields = perEvent ? eventViewFields.filter(([label]) => !PER_EVENT_VENUE_LABELS.has(label)) : eventViewFields;
   const eventSection = eventReadOnly ? (
   <FormSection
     {...sec(3, CalendarDays)}
@@ -874,13 +941,50 @@ export function OrderForm({
     })}
   >
     <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
-      {eventViewFields.map(([label, value]) => (
+      {shownEventViewFields.map(([label, value]) => (
         <div key={label} className="flex min-w-0 flex-col gap-0.5">
           <dt className="text-muted-foreground">{label}</dt>
           <dd className="break-words font-medium">{value}</dd>
         </div>
       ))}
     </dl>
+    {perEvent && (
+      <div className="mt-4 flex flex-col gap-3" data-testid="event-venues-view">
+        <p className="text-sm font-semibold">Venue by event</p>
+        {eventSlots.map((slot) => {
+          const venue = venueOf(slot.key);
+          const place = eventPlace(venue);
+          const address = [venue.venueDoorNumber, venue.venueTower, venue.venueFloor].filter(Boolean).join(", ");
+          return (
+            <div key={slot.key} className="rounded-lg border border-border p-3 text-sm">
+              <p className="font-semibold">
+                {slot.title}
+                {slot.menuName && <span className="font-normal text-muted-foreground"> · {slot.menuName}</span>}
+              </p>
+              <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+                {(
+                  [
+                    ["Venue", place ? `${place.name} (${optionLabel(VENUE_TYPE_OPTIONS, venue.venueType)})` : "Not set"],
+                    ["Complete Venue Address", venue.eventAddress || "Not set"],
+                    ...(address ? [["Door / Tower / Floor", address]] : []),
+                    ...(venue.venueLandmark ? [["Landmark", venue.venueLandmark]] : []),
+                    ["Venue Contact", [venue.venueContactName, venue.venueContactPhone].filter(Boolean).join(" · ") || "Not set"],
+                    ...(venue.venueAccessInstructions ? [["Loading / Access Instructions", venue.venueAccessInstructions]] : []),
+                    ...(venue.cookingInstructions ? [["Cooking Instructions", venue.cookingInstructions]] : []),
+                    ["Live counter / gas & electric", `${venue.liveCounterAvailable ? "Live counter" : "No live counter"} · ${venue.gasElectricAvailable ? "Gas / electric available" : "No gas / electric"}`],
+                  ] as [string, string][]
+                ).map(([label, value]) => (
+                  <div key={label} className="flex min-w-0 flex-col gap-0.5">
+                    <dt className="text-muted-foreground">{label}</dt>
+                    <dd className="break-words font-medium">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          );
+        })}
+      </div>
+    )}
   </FormSection>
   ) : (
   <FormSection
@@ -1020,6 +1124,19 @@ export function OrderForm({
         )}
       </div>
 
+      {canDiffer && <SameVenueQuestion events={eventSlots.length} sameForAll={!perEvent} onChange={(same) => setVenuePerEvent(!same)} />}
+      {perEvent && (
+        <EventVenuesEditor
+          slots={eventSlots}
+          venues={venuesForEditor}
+          activeKey={eventSlots.some((slot) => slot.key === activeVenueKey) ? activeVenueKey : eventSlots[0].key}
+          onActiveKey={setActiveVenueKey}
+          onChange={setEventVenue}
+          onCopy={copyEventVenue}
+        />
+      )}
+
+      {!perEvent && (<>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-venue-type">Venue Type</Label>
         <Select
@@ -1076,6 +1193,7 @@ export function OrderForm({
         <Label htmlFor="order-venue-contact-phone">Contact Number</Label>
         <PhoneInput id="order-venue-contact-phone" value={values.venueContactPhone} onChange={(v) => setField("venueContactPhone", v)} />
       </div>
+      </>)}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-vehicle-access">Vehicle Access</Label>
@@ -1096,20 +1214,25 @@ export function OrderForm({
           </SelectContent>
         </Select>
       </div>
+      {!perEvent && (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-access-instructions">Catering Access / Loading Instructions</Label>
         <Textarea id="order-access-instructions" value={values.venueAccessInstructions} onChange={(e) => setField("venueAccessInstructions", e.target.value)} />
       </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-delivery-instructions">Delivery Instructions</Label>
         <Textarea id="order-delivery-instructions" value={values.deliveryInstructions} onChange={(e) => setField("deliveryInstructions", e.target.value)} />
       </div>
+      {!perEvent && (
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-cooking-instructions">Cooking Instructions</Label>
         <Textarea id="order-cooking-instructions" value={values.cookingInstructions} onChange={(e) => setField("cookingInstructions", e.target.value)} />
       </div>
+      )}
 
+      {!perEvent && (<>
       <label htmlFor="order-live-counter" className="flex cursor-pointer items-center gap-2 rounded-lg border border-border p-3">
         <Checkbox
           id="order-live-counter"
@@ -1126,6 +1249,7 @@ export function OrderForm({
         />
         <span className="text-sm font-medium">Gas / electric connection available at venue?</span>
       </label>
+      </>)}
     </div>
   </FormSection>
   );
@@ -1279,7 +1403,7 @@ export function OrderForm({
       {startsIn && <span className={cn("text-xs", TONE_TEXT[startsIn.tone])}>{startsIn.caption} {startsIn.label}</span>}
     </SummaryRow>
     <SummaryRow icon={MapPin} label="Venue">
-      <span className="break-words">{values.venue || "Not set"}</span>
+      <span className="break-words">{perEvent ? "Different for each event" : values.venue || "Not set"}</span>
     </SummaryRow>
     <SummaryRow icon={Users} label="Guests">
       <span>{totalGuests}</span>

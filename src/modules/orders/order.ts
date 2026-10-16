@@ -25,6 +25,7 @@ import { returnAllOrderItems, returnAllOrderItemsInTransaction } from "@/modules
 import type { Prisma } from "@/generated/prisma/client";
 import { moveMealsWithEventDates } from "./meal-dates";
 import { percentOf } from "./amount";
+import { applyEventVenues, type EventVenueInput } from "./event-venues";
 import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, AmountMode, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
 export interface OrderItemCatalogInput {
@@ -111,6 +112,9 @@ export interface OrderInput {
   transportationRate?: number;
   /** Team-added label + amount lines, summed into `total`. */
   customCharges?: CustomCharge[];
+  /** The venue differs by event: one venue per event (meal slot). Left out, the order's venue is not touched. */
+  venuePerEvent?: boolean;
+  eventVenues?: EventVenueInput[];
   advance?: number;
   paymentStatus?: OrderPaymentStatus;
   status?: OrderStatus;
@@ -446,6 +450,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
     },
   });
   await replaceMealPlanEntries(organizationId, order.id, input.mealPlanEntries);
+  if (input.venuePerEvent !== undefined) await applyEventVenues(prisma, order.id, { perEvent: input.venuePerEvent, events: input.eventVenues });
   const withTotals = await recalculateOrderTotals(order.id);
 
   await audit({
@@ -555,6 +560,8 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries, tx);
   // Meals the form did not send (the Menu Approval tab owns them) follow the event dates, so none is left on a day the event isn't on.
   if (input.mealPlanEntries === undefined) await moveMealsToEventDates(tx, id, before.eventStartDate, input.eventStartDate, input.eventEndDate);
+  // One venue per event: checked against the meals the order has now (after they were saved or moved), and the order's own venue follows the first event.
+  if (input.venuePerEvent !== undefined) await applyEventVenues(tx, id, { perEvent: input.venuePerEvent, events: input.eventVenues });
   const chargedGuests = input.adultCount ?? input.totalParticipants;
   const guestsChanged = input.adultCount !== undefined ? input.adultCount !== before.adultCount : input.totalParticipants !== before.totalParticipants;
   if (input.mealPlanEntries === undefined && chargedGuests !== undefined && (guestsChanged || !priceFrozen)) {
@@ -783,6 +790,7 @@ export async function getOrder(organizationId: string, id: string) {
         orderBy: [{ date: "asc" }, { mealType: "asc" }],
         include: { menu: { select: { id: true, name: true } }, items: { orderBy: { createdAt: "asc" } } },
       },
+      eventVenues: true,
       events: {
         include: {
           assignedKitchen: true,

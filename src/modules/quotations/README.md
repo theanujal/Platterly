@@ -9,11 +9,15 @@ Built:
   (Draft→Sent→Viewed→Changes Requested→Accepted→Rejected→Expired).
   `recalculateQuotationTotals` mirrors `orders/order.ts`'s own totals
   function (`subtotal` from line items; `total` = subtotal − discount +
-  taxes + additionalCharges + deliveryCharges — the two charge fields have
-  no Order equivalent, matching Order's leaner PRD §21 field list).
+  transportation cost + extra / service cost + custom charge lines). These are
+  the same charge lines as an Order's Pricing Details, each of the first three
+  a rupee amount or a percentage of the subtotal. The old `taxes`,
+  `additionalCharges` and `deliveryCharges` columns are no longer read; their
+  values were moved into the new fields by migration
+  `20261017120000_quotation_order_charges`.
 - `sendQuotation`/`getOrIssueQuotationLink` — issues (or reuses, if still
   live) a `SecureAccessToken` (Chunk 2.4) for the public approval link and
-  sends it via Chunk 2.1's `notify()` driver.
+  sends it via Chunk 2.1's `notify()` driver. It also reports whether an email really went out (customer has an email and Settings -> Email keeps the Quotation message on), which the detail page shows after Send.
 - `markQuotationViewed`/`acceptQuotation`/`rejectQuotation`/
   `requestQuotationChanges` — the customer-facing, token-resolved
   transitions (no `organizationId`/session from the caller, both resolved
@@ -23,9 +27,8 @@ Built:
   already set (`QuotationEventDatesRequiredError` otherwise). Copies each
   `QuotationItem`'s frozen snapshot directly onto new `OrderItem` rows
   (never re-resolved from the live catalog — an accepted quotation's price
-  must never silently drift), and folds `additionalCharges`+
-  `deliveryCharges` into the new Order's `taxes` so the converted total
-  still matches.
+  must never silently drift), and copies the charge lines
+  across as they are (same fields on the Order).
 - `markQuotationExpired` — admin-only escalation, blocked once a Quotation
   is already ACCEPTED/REJECTED/EXPIRED.
 

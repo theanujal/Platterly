@@ -12,7 +12,7 @@ function inr(amount: number) {
  * The menu has been checked by the team before it reaches the customer, so this is the final amount, not an estimate (AJ, 2026-10-16).
  * `children` is the slot under the total (the Approve / Request Changes actions on the review screen).
  */
-export function PriceSummary({ rows, total, children, className }: { rows: ApprovalPriceRow[]; total: number; children?: React.ReactNode; className?: string }) {
+export function PriceSummary({ rows, total, children, className, footnote }: { rows: ApprovalPriceRow[]; total: number; children?: React.ReactNode; className?: string; /** Replaces the "final amount" note; `null` hides it. */ footnote?: React.ReactNode | null }) {
   return (
     <FormCard className={cn("gap-4 md:p-5", className)}>
       <div className="flex items-center gap-3">
@@ -45,10 +45,14 @@ export function PriceSummary({ rows, total, children, className }: { rows: Appro
           {inr(total)}
         </span>
       </div>
-      <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm">
-        <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />
-        <p className="text-muted-foreground">This is your final amount. Our team has reviewed your menu and event requirements.</p>
-      </div>
+      {footnote === undefined ? (
+        <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm">
+          <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" />
+          <p className="text-muted-foreground">This is your final amount. Our team has reviewed your menu and event requirements.</p>
+        </div>
+      ) : (
+        footnote
+      )}
       {children}
     </FormCard>
   );

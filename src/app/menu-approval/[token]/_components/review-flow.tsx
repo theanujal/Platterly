@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { OrderNumberBadge } from "@/components/public/order-number-badge";
 import { ProgressSteps } from "@/components/public/progress-steps";
 import type { VenueDetails } from "@/modules/menu-approvals/approval-link";
 import type { ApprovalView } from "@/modules/menu-approvals/approval-view";
@@ -14,23 +15,24 @@ const STEPS = ["Review & Approve", "Venue & Delivery", "Confirmation"];
  * form here (nothing is saved); the approval is recorded when the venue details are sent, so the order's status changes
  * at confirmation, not at the first click.
  */
-export function ReviewFlow({ token, view, versionNumber, venue, payment }: { token: string; view: ApprovalView; versionNumber: number; venue: VenueDetails; payment: VenuePayment | null }) {
+export function ReviewFlow({ token, view, versionNumber, venue, venuePerEvent, eventVenues, payment, orderNumber }: { token: string; view: ApprovalView; versionNumber: number; venue: VenueDetails; venuePerEvent: boolean; eventVenues: { key: string; venue: VenueDetails }[]; payment: VenuePayment | null; orderNumber: string | null }) {
   const [step, setStep] = useState<"review" | "venue">("review");
   return (
     <>
       <div className="flex flex-col gap-2 text-center">
         <h1 className="text-2xl font-semibold text-foreground">{step === "review" ? "Review & Approve Your Menu" : "Venue & Delivery Details"}</h1>
+        <OrderNumberBadge orderNumber={orderNumber} />
         <p className="text-sm text-muted-foreground">
           {step === "review"
             ? `Version ${versionNumber} · We've prepared this menu based on your event requirements. Please review it carefully before approving or requesting changes.`
-            : "Tell us where and how we should deliver and set up. Your approval is recorded when you send these details."}
+            : `Tell us where and how we should deliver and set up. Your approval is recorded when you send these details.`}
         </p>
       </div>
       <ProgressSteps steps={STEPS} current={step === "review" ? 0 : 1} />
       {step === "review" ? (
-        <ReviewScreen token={token} view={view} onApprove={() => { setStep("venue"); window.scrollTo({ top: 0 }); }} />
+        <ReviewScreen token={token} view={view} onApprove={() => { setStep("venue"); window.scrollTo({ top: 0 }); }} orderNumber={orderNumber} />
       ) : (
-        <VenueScreen token={token} view={view} initial={venue} onBack={() => setStep("review")} payment={payment} />
+        <VenueScreen token={token} view={view} initial={venue} initialPerEvent={venuePerEvent} initialEventVenues={eventVenues} onBack={() => setStep("review")} payment={payment} orderNumber={orderNumber} />
       )}
     </>
   );

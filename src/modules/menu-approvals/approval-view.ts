@@ -47,8 +47,10 @@ export interface ApprovalView {
   location: string | null;
   menu: { name: string; description: string | null; image: string | null; pricePerPlate: number | null; extraMenus: string[] } | null;
   /** Every menu on the order, once each, with its per-plate price: the Event Overview lists them when there is more than one. */
-  menus: { name: string; pricePerPlate: number | null }[];
+  menus: { name: string; pricePerPlate: number | null; image: string | null }[];
   isCustomMenu: boolean;
+  /** One entry per meal slot (date + meal), in date order: what the Venue & Delivery step asks a venue for when the venue differs by event. */
+  events: { key: string; date: string; mealType: MealType; mealLabel: string; dayNumber: number; menus: { name: string; pricePerPlate: number | null }[] }[];
   meals: ApprovalMealView[];
   addOns: ApprovalAddOnView[];
   /** Empty for a snapshot that predates the Price Summary: the page then shows only the total. */
@@ -71,7 +73,8 @@ export function formatApprovalDay(iso: string): string {
 
 export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
   const sameDay = snapshot.eventStartDate === snapshot.eventEndDate;
-  const dateText = sameDay ? formatApprovalDay(snapshot.eventStartDate) : `${formatApprovalDay(snapshot.eventStartDate)} – ${formatApprovalDay(snapshot.eventEndDate)}`;
+  // A quotation can be sent before the date is fixed.
+  const dateText = !snapshot.eventStartDate ? "Date to be confirmed" : sameDay ? formatApprovalDay(snapshot.eventStartDate) : `${formatApprovalDay(snapshot.eventStartDate)} – ${formatApprovalDay(snapshot.eventEndDate)}`;
 
   const meals: ApprovalMealView[] = snapshot.meals.map((meal) => {
     const groups = new Map<string, ApprovalDishGroup>();
@@ -131,6 +134,18 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
       }
     : null;
 
+  const menus = [...new Map(snapshot.meals.filter((meal) => meal.menuName).map((meal) => [meal.menuName!, { name: meal.menuName!, pricePerPlate: meal.pricePerPlate ?? null, image: meal.menuImage ?? null }])).values()];
+  const dates = [...new Set(snapshot.meals.map((meal) => meal.date))].sort();
+  const events = [...snapshot.meals]
+    .sort((x, y) => x.date.localeCompare(y.date))
+    .map((meal) => ({
+      key: `${meal.date}-${meal.mealType}`,
+      date: meal.date,
+      mealType: meal.mealType,
+      mealLabel: MEAL_TYPE_LABEL[meal.mealType],
+      dayNumber: dates.indexOf(meal.date) + 1,
+      menus: meal.menuName ? [{ name: meal.menuName, pricePerPlate: meal.pricePerPlate ?? null }] : [],
+    }));
   const kids = (snapshot.childBelow5Count ?? 0) + (snapshot.child5To10Count ?? 0);
   const priceRows: ApprovalPriceRow[] = [];
   const breakdown = snapshot.breakdown;
@@ -140,9 +155,35 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
       const adults = Math.max((snapshot.guests ?? 0) - (snapshot.childBelow5Count ?? 0) - (snapshot.child5To10Count ?? 0), 0);
       const mealCount = Math.max(snapshot.meals.length, 1);
       const rate = menu?.pricePerPlate ?? null;
-      // Only spell the multiplication out when it adds up, e.g. not under Individual Pricing.
-      const detail = rate !== null && adults > 0 && Math.abs(rate * adults * mealCount - breakdown.menuAmount) < 0.01 ? `${formatInr(rate)} × ${adults} adults${mealCount > 1 ? ` × ${mealCount} meals` : ""}` : undefined;
-      priceRows.push({ label: menu ? menu.name : "Menu", detail, amount: breakdown.menuAmount });
+      if (menus.length > 1) {
+        // Several menus (a multi order): one line per menu, so the customer sees what each costs. Each meal is priced the way the
+        // order's total was built (menu rate x adults, or the meal's own per-plate / flat price); when no model adds up to the
+        // frozen menu amount, one combined line is shown instead of guessing.
+        // `perPlate` models price a meal as a per-plate rate x adults; the flat one has no rate to show.
+        type Meal = ApprovalSnapshot["meals"][number];
+        const models: { amountOf: (meal: Meal) => number; perPlate: boolean }[] = [
+          { amountOf: (meal) => (meal.pricePerPlate ?? 0) * adults, perPlate: true },
+          { amountOf: (meal) => (meal.price ?? meal.pricePerPlate ?? 0) * adults, perPlate: true },
+          { amountOf: (meal) => meal.price ?? (meal.pricePerPlate ?? 0) * adults, perPlate: false },
+        ];
+        const priced = models.find((model) => Math.abs(snapshot.meals.reduce((sum, meal) => sum + model.amountOf(meal), 0) - breakdown.menuAmount) < 0.01);
+        if (priced) {
+          for (const entry of menus) {
+            const own = snapshot.meals.filter((meal) => (meal.menuName ?? "Menu") === entry.name);
+            const amount = own.reduce((sum, meal) => sum + priced.amountOf(meal), 0);
+            // Every menu gets its multiplication, at the rate it was actually charged (an Individual Pricing rate can differ from the menu's list price).
+            const rates = own.map((meal) => (adults > 0 ? priced.amountOf(meal) / adults : 0));
+            const sameRate = priced.perPlate && adults > 0 && rates.every((rate) => Math.abs(rate - rates[0]) < 0.005);
+            priceRows.push({ label: entry.name, detail: sameRate ? `${formatInr(rates[0])} × ${adults} adults${own.length > 1 ? ` × ${own.length} meals` : ""}` : undefined, amount });
+          }
+        } else {
+          priceRows.push({ label: "Menus", detail: menus.map((entry) => entry.name).join(" · "), amount: breakdown.menuAmount });
+        }
+      } else {
+        // Only spell the multiplication out when it adds up, e.g. not under Individual Pricing.
+        const detail = rate !== null && adults > 0 && Math.abs(rate * adults * mealCount - breakdown.menuAmount) < 0.01 ? `${formatInr(rate)} × ${adults} adults${mealCount > 1 ? ` × ${mealCount} meals` : ""}` : undefined;
+        priceRows.push({ label: menu ? menu.name : "Menu", detail, amount: breakdown.menuAmount });
+      }
     }
     if (breakdown.extrasAmount > 0) priceRows.push({ label: "Extra Items", amount: breakdown.extrasAmount });
     if (breakdown.liveCountersAmount > 0) priceRows.push({ label: "Live Counters", amount: breakdown.liveCountersAmount });
@@ -182,8 +223,9 @@ export function buildApprovalView(snapshot: ApprovalSnapshot): ApprovalView {
     child5To10: snapshot.child5To10Count ?? 0,
     location: snapshot.venue,
     menu,
-    menus: [...new Map(snapshot.meals.filter((meal) => meal.menuName).map((meal) => [meal.menuName!, { name: meal.menuName!, pricePerPlate: meal.pricePerPlate ?? null }])).values()],
+    menus,
     isCustomMenu: snapshot.isCustomMenu,
+    events,
     meals,
     addOns: [...addOnMap.values()],
     priceRows,

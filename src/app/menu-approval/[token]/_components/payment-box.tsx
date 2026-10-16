@@ -10,7 +10,10 @@ import { cn } from "cn";
 import type { PayView } from "@/app/pay/[token]/pay-view";
 import { createApprovalPaymentLinkAction } from "../actions";
 
-type Choice = "ADVANCE" | "CUSTOM";
+type Choice = "ADVANCE" | "BALANCE" | "CUSTOM";
+
+/** "advance": the first payment after the venue details. "balance": a customer who has already paid something and pays what is left. */
+export type PaymentMode = "advance" | "balance";
 
 /**
  * The amount choice and Pay button: the advance or any other amount (no "full payment" option, AJ 2026-10-14), then the
@@ -18,15 +21,17 @@ type Choice = "ADVANCE" | "CUSTOM";
  * pop-up shown right after the venue details, which then embeds the kitchen's payment screen. "Not now" is fine: the same
  * payment link is sent to the customer anyway.
  */
-export function PaymentChoice({ token, advance, balance, advancePercent, onPay, onNotNow }: { token: string; advance: number; balance: number; advancePercent: number; onPay: (pay: PayView) => void; onNotNow: () => void }) {
-  const [choice, setChoice] = useState<Choice>("ADVANCE");
+export function PaymentChoice({ token, advance, balance, advancePercent, mode = "advance", onPay, onNotNow }: { token: string; advance: number; balance: number; advancePercent: number; mode?: PaymentMode; onPay: (pay: PayView) => void; onNotNow: () => void }) {
+  const [choice, setChoice] = useState<Choice>(mode === "balance" ? "BALANCE" : "ADVANCE");
   const [custom, setCustom] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  const amount = choice === "ADVANCE" ? advance : Number(custom) || 0;
+  const amount = choice === "ADVANCE" ? advance : choice === "BALANCE" ? balance : Number(custom) || 0;
   const options: { key: Choice; title: string; hint: string; value: string | null }[] = [
-    { key: "ADVANCE", title: "Advance", hint: `${advancePercent}% to confirm your date`, value: inr(advance) },
+    mode === "balance"
+      ? { key: "BALANCE", title: "Remaining balance", hint: "Settle your order in full", value: inr(balance) }
+      : { key: "ADVANCE", title: "Advance", hint: `${advancePercent}% to confirm your date`, value: inr(advance) },
     { key: "CUSTOM", title: "Other amount", hint: `Pay any amount you like, up to ${inr(balance)}`, value: null },
   ];
 
@@ -34,7 +39,8 @@ export function PaymentChoice({ token, advance, balance, advancePercent, onPay, 
     setError(null);
     if (!(amount > 0)) return setError("Enter an amount greater than zero.");
     setPending(true);
-    const result = await createApprovalPaymentLinkAction(token, choice, choice === "CUSTOM" ? amount : undefined);
+    // The remaining balance is sent as an exact amount: money already claimed and waiting for the kitchen is not asked for twice.
+    const result = await createApprovalPaymentLinkAction(token, choice === "ADVANCE" ? "ADVANCE" : "CUSTOM", choice === "ADVANCE" ? undefined : amount);
     if (!result.ok) {
       setPending(false);
       return setError(result.error);
@@ -86,7 +92,7 @@ export function PaymentChoice({ token, advance, balance, advancePercent, onPay, 
         <div className="flex flex-col gap-2">
           <div>
             <p className="font-semibold">Not now? No problem.</p>
-            <p className="text-muted-foreground">We are also sending you a payment link, so you can pay whenever you like.</p>
+            <p className="text-muted-foreground">{mode === "balance" ? "You can come back to this page any time to pay what is left." : "We are also sending you a payment link, so you can pay whenever you like."}</p>
           </div>
           <Button type="button" variant="outline" size="md" className="self-start" onClick={onNotNow}>
             Not now

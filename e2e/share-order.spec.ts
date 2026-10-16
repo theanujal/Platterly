@@ -25,7 +25,7 @@ test("customer shares the order: QR, link and WhatsApp; the page has no prices o
   // The customer, no login, on the Confirmation page of their approval link.
   const customer = await (await browser.newContext({ extraHTTPHeaders: { "x-forwarded-for": `10.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}` } })).newPage();
   await customer.goto(`/menu-approval/${approvalToken}`);
-  await expect(customer.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customer.getByTestId("venue-confirmation")).toBeVisible();
   await expect(customer.getByRole("heading", { name: "Share with family & team" })).toBeVisible();
   // This kitchen has no payment method set up, so instead of the payment card the customer is told what happens next.
   await expect(customer.getByTestId("payment-later")).toContainText("Your caterer will share payment details with you.");

@@ -2,10 +2,12 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit/audit";
+import type { AfterCommit } from "@/lib/after-commit";
 import { getSetting } from "@/lib/settings/settings";
 import { DEFAULT_GST_RATE, getAutoInvoice, getGstSettings } from "@/modules/payments/payment-settings";
 import { menuGuestCount, itemMovesPrice, mealBaseAmount } from "@/modules/orders/meal-pricing";
 import { parseCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
+import { sendInvoiceAutomatically } from "./invoice-send";
 import { computeInvoiceStatus, splitInclusiveGst } from "./invoice-status";
 
 const INVOICE_TERMS_KEY = "communication.invoiceTerms";
@@ -250,7 +252,7 @@ export class KitchenHandoffInvoiceError extends Error {
  * caller reports it and writes `invoice.auto_create_failed` to the audit log. Called on its own (no `db`), it keeps its old
  * behaviour: it never throws, a failure is only audited.
  */
-export async function createInvoiceOnKitchenHandoff(organizationId: string, orderId: string, actorUserId?: string, db?: Prisma.TransactionClient) {
+export async function createInvoiceOnKitchenHandoff(organizationId: string, orderId: string, actorUserId?: string, db?: Prisma.TransactionClient, afterCommit?: AfterCommit) {
   try {
     if (!(await getAutoInvoice(organizationId))) return null;
     const reader = db ?? prisma;
@@ -260,7 +262,10 @@ export async function createInvoiceOnKitchenHandoff(organizationId: string, orde
     const existing = await reader.invoice.findFirst({ where: { organizationId, orderId, type: "INVOICE", status: { not: "CANCELLED" } }, select: { id: true } });
     if (existing) return null;
     try {
-      return await generateInvoiceFromOrder(organizationId, orderId, { actorUserId }, db);
+      const invoice = await generateInvoiceFromOrder(organizationId, orderId, { actorUserId }, db);
+      // The customer is emailed the invoice once the hand-off has committed (a failed email never undoes the hand-off).
+      if (afterCommit) afterCommit.push(() => sendInvoiceAutomatically(organizationId, invoice.id, actorUserId));
+      return invoice;
     } catch (error) {
       // "Already has an invoice" / "no amount" are outcomes, not failures: nothing to create.
       if (error instanceof InvoiceError) return null;

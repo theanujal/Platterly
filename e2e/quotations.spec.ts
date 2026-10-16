@@ -141,6 +141,8 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   // Guest Information
   await page.getByRole("tab", { name: "Guests & Menu Planning" }).click();
   await page.getByLabel("Adults").fill("20");
+  // A menu can only be chosen once a Menu Preference is set.
+  await page.getByRole("button", { name: /^Vegetarian/ }).click();
 
   // Menu Planning — same per-meal drawer flow as Create Order.
   // Meal-type checkboxes became tappable tabs (2026-09-29): clicking Lunch both selects and expands it.
@@ -158,12 +160,11 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
 
   // Charges
   await page.getByRole("tab", { name: "Pricing" }).click();
-  await page.getByLabel("Discount").fill("20");
-  await page.getByLabel("Taxes").fill("10");
-  await page.getByLabel("Additional Charges").fill("5");
-  await page.getByLabel("Delivery Charges").fill("2");
+  await page.getByRole("spinbutton", { name: "Discount" }).fill("20");
+  await page.getByRole("spinbutton", { name: "Transportation Cost" }).fill("10");
+  await page.getByRole("spinbutton", { name: "Extra / Service Cost" }).fill("7");
 
-  // subtotal = 6000 (300/plate Menu x 20 adults; the Biryani is included); total = 6000 - 20 + 10 + 5 + 2 = 5997
+  // subtotal = 6000 (300/plate Menu x 20 adults; the Biryani is included); total = 6000 - 20 + 10 + 7 = 5997
   await expect(page.getByText("₹6000.00").first()).toBeVisible();
   await expect(page.getByText("₹5997.00").first()).toBeVisible();
 
@@ -198,8 +199,11 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   // Items now group by meal (item-picker parity, 2026-09-28) — the meal
   // heading and the item both render, not a flat undifferentiated list.
   await expect(publicPage.getByText("Lunch", { exact: false }).first()).toBeVisible();
+  // The dishes sit in a closed meal card; "View all" lists them (same design as Review & Approve).
+  await publicPage.getByRole("button", { name: /^View all \d+ items?/ }).first().click();
   await expect(publicPage.getByText(itemName, { exact: true })).toBeVisible();
-  await expect(publicPage.getByText("₹5997.00")).toBeVisible();
+  await publicPage.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).first().click();
+  await expect(publicPage.getByTestId("approval-total")).toHaveText("₹5,997.00");
   await expect(publicPage.getByText("Viewed", { exact: true })).toBeVisible();
 
   await publicPage.getByRole("button", { name: "Accept Quotation" }).click();
@@ -215,7 +219,7 @@ test("create a Quotation with Meal Planning, send, have a customer accept it, th
   // The converted Order has a real MealPlanEntry for Lunch, not a flattened whole-order item.
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.locator("#order-panel-approval").getByTestId("meal-slot-2026-12-15-LUNCH").getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
-  // subtotal = 6000 (the meal on its Menu); otherCharges = 10+5+2 = 17; total = 6000-20+17 = 5997
+  // subtotal = 6000 (the meal on its Menu); transportation 10 + extra / service 7 carried across; total = 6000-20+17 = 5997
   // The total now sits in the Pricing & Payment tab, not the sidebar (AJ, 2026-10-04).
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByText("₹5997.00").first()).toBeVisible();

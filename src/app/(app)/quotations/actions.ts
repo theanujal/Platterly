@@ -12,6 +12,7 @@ import {
   convertQuotationToOrder,
   type QuotationInput,
 } from "@/modules/quotations/quotation";
+import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { syncOrderEvent, type OrderItemCatalogInput, type MealPlanEntryInput } from "@/modules/orders/order";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { getMenuPickerData, type MenuPickerData } from "@/modules/menus/menu";
@@ -94,9 +95,15 @@ function buildInput(formData: FormData): QuotationInput {
     terms: stringField(formData, "terms"),
     notes: stringField(formData, "notes"),
     discount: numberField(formData, "discount") ?? 0,
-    taxes: numberField(formData, "taxes") ?? 0,
-    additionalCharges: numberField(formData, "additionalCharges") ?? 0,
-    deliveryCharges: numberField(formData, "deliveryCharges") ?? 0,
+    discountMode: stringField(formData, "discountMode") === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+    discountRate: numberField(formData, "discountRate") ?? 0,
+    transportationCost: numberField(formData, "transportationCost") ?? 0,
+    transportationMode: stringField(formData, "transportationMode") === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+    transportationRate: numberField(formData, "transportationRate") ?? 0,
+    otherCharges: numberField(formData, "otherCharges") ?? 0,
+    otherChargesMode: stringField(formData, "otherChargesMode") === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+    otherChargesRate: numberField(formData, "otherChargesRate") ?? 0,
+    customCharges: parseCustomCharges(stringField(formData, "customCharges")),
     mealPlanEntries: buildMealPlanEntries(formData),
   };
 }
@@ -173,16 +180,22 @@ export async function deleteQuotationAction(id: string): Promise<ActionResult> {
   return { ok: true };
 }
 
-export async function sendQuotationAction(id: string): Promise<ActionResult> {
+export async function sendQuotationAction(id: string): Promise<ActionResult & { notice?: string }> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["edit"] }, organizationId);
+  let notice: string;
   try {
-    await sendQuotation(organizationId, id, session.user.id);
+    const sent = await sendQuotation(organizationId, id, session.user.id);
+    notice = sent.emailed
+      ? `Quotation emailed to ${sent.customerEmail}.`
+      : sent.customerEmail
+        ? "Marked as Sent, but no email went out because the Quotation email is switched off in Settings. Copy the link or send it on WhatsApp."
+        : "Marked as Sent, but this customer has no email address. Copy the link or send it on WhatsApp.";
   } catch (error) {
     return toErrorResult(error);
   }
   revalidatePath(`/quotations/${id}`);
-  return { ok: true };
+  return { ok: true, notice };
 }
 
 export async function markQuotationExpiredAction(id: string): Promise<ActionResult> {

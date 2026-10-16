@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { notFound } from "next/navigation";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getQuotation, getOrIssueQuotationLink } from "@/modules/quotations/quotation";
@@ -7,6 +8,10 @@ import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
+import { Button } from "@/components/ui/button";
+import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
+import { prisma } from "@/lib/db";
+import { whatsappDigits } from "@/lib/phone";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { EditQuotationClient } from "./_components/edit-quotation-client";
 import { QuotationStatusActions } from "./_components/quotation-status-actions";
@@ -57,6 +62,10 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   if (!quotation) notFound();
 
   const shareableLink = quotation.status !== "DRAFT" ? await getOrIssueQuotationLink(organizationId, id) : null;
+  const kitchenName = shareableLink ? (await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } })).name : "";
+  const whatsappHref = shareableLink
+    ? `https://wa.me/${whatsappDigits(quotation.customer.phone)}?text=${encodeURIComponent(`Hi ${quotation.customer.name}, this is ${kitchenName}. Here is your quotation. Please review it and let us know: ${shareableLink}`)}`
+    : null;
 
   const initialValues: QuotationFormValues = {
     customerId: quotation.customerId,
@@ -80,10 +89,13 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
     validUntil: toDateInputValue(quotation.validUntil),
     terms: quotation.terms ?? "",
     notes: quotation.notes ?? "",
-    discount: quotation.discount.toString(),
-    taxes: quotation.taxes.toString(),
-    additionalCharges: quotation.additionalCharges.toString(),
-    deliveryCharges: quotation.deliveryCharges.toString(),
+    discount: quotation.discountMode === "PERCENTAGE" ? quotation.discountRate.toString() : quotation.discount.toString(),
+    discountMode: quotation.discountMode,
+    transportationCost: quotation.transportationMode === "PERCENTAGE" ? quotation.transportationRate.toString() : quotation.transportationCost.toString(),
+    transportationMode: quotation.transportationMode,
+    otherCharges: quotation.otherChargesMode === "PERCENTAGE" ? quotation.otherChargesRate.toString() : quotation.otherCharges.toString(),
+    otherChargesMode: quotation.otherChargesMode,
+    customCharges: parseCustomCharges(quotation.customCharges).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
     mealPlanEntries: quotation.mealPlanEntries.map((entry) => ({
       date: toDateInputValue(entry.date),
       mealType: entry.mealType,
@@ -126,7 +138,12 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
                 <a href={shareableLink} target="_blank" rel="noopener" className="text-sm font-medium text-primary hover:underline">
                   {shareableLink}
                 </a>
-                <CopyButton value={shareableLink} />
+                <CopyButton value={shareableLink} label="Copy link" />
+                {whatsappHref && (
+                  <Button variant="outline" size="sm" render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />} nativeButton={false}>
+                    <WhatsAppIcon className="size-4 text-[#128C4A]" /> Send on WhatsApp
+                  </Button>
+                )}
               </div>
             )}
             {quotation.customerMessage && (

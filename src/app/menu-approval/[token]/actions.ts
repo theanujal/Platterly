@@ -14,7 +14,7 @@ import {
   submitVenueViaLink,
   askAboutApprovedMenuViaLink,
   VenueDetailsError,
-  type VenueDetailsInput,
+  type VenueSubmission,
 } from "@/modules/menu-approvals/approval-link";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -42,7 +42,7 @@ export async function requestMenuChangesAction(token: string, note: string): Pro
 }
 
 /** The Venue & Delivery form, sent after approving. Only a plain validation message (VenueDetailsError) reaches the customer. */
-export async function submitVenueAction(token: string, input: VenueDetailsInput, confirm = true): Promise<ActionResult> {
+export async function submitVenueAction(token: string, input: VenueSubmission, confirm = true): Promise<ActionResult> {
   if (await tooManyRequests()) return { ok: false, error: "Too many attempts. Please try again later." };
   try {
     // `confirm: false` only saves the details: the screen confirms later, once the customer is past the payment pop-up.

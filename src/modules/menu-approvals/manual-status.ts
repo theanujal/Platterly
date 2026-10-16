@@ -83,7 +83,7 @@ export async function changeStatusManually(
       if (input.target.status === "CANCELLED") afterCommit.push(() => returnAllOrderItems(organizationId, orderId, input.actorUserId));
       await recordStatusChange({ organizationId, orderId, subject: "ORDER", fromStatus: order.status, toStatus: input.target.status, source: "MANUAL", reason, actorUserId: input.actorUserId }, { db: tx, afterCommit });
       await audit({ organizationId, actorUserId: input.actorUserId, action: "order.status_changed_manually", recordType: "Order", recordId: orderId, before: { status: order.status }, after: { status: input.target.status, reason } }, tx);
-      if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx);
+      if (input.target.status === "SENT_TO_KITCHEN") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx, afterCommit);
       return { unchanged: false as const };
     }
 
@@ -139,7 +139,7 @@ export async function changeStatusManually(
 
     // The order follows (no separate history row for it: this manual row is the record).
     await syncOrderStatus(organizationId, selectionId, input.actorUserId, { record: false }, { db: tx, afterCommit });
-    if (wanted.menu === "FINAL_LOCKED") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx);
+    if (wanted.menu === "FINAL_LOCKED") await createInvoiceOnKitchenHandoff(organizationId, orderId, input.actorUserId, tx, afterCommit);
     const orderAfter = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
 
     const menuFrom = MENU_SELECTION_STATUS_LABEL[selection.status];

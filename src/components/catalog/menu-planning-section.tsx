@@ -304,9 +304,11 @@ export function MenuPlanningSection({
                 items={Object.fromEntries(menus.map((m) => [m.id, m.name]))}
                 value={entry.menuId}
                 onValueChange={(v) => setMealMenu(date, mealType, v ?? "")}
+                // A menu is picked from the list for the chosen Menu Preference, so choose Vegetarian or Non-Vegetarian first (a meal that already has a menu stays editable).
+                disabled={!menuPreference && !entry.menuId}
               >
                 <SelectTrigger id={`${idPrefix}-meal-menu-${date}-${mealType}`} className="w-full">
-                  <SelectValue placeholder="Select Menu" />
+                  <SelectValue placeholder={!menuPreference && !entry.menuId ? "Choose Menu Preference first" : "Select Menu"} />
                 </SelectTrigger>
                 <SelectContent>
                   {menus

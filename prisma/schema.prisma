@@ -1924,6 +1924,10 @@ model Order {
   cookingInstructions     String?
   // When the customer sent their Venue & Delivery details on the approval link (2026-10-02); null until then.
   venueDetailsSubmittedAt DateTime?
+  // True when the customer said the venue differs by event day (2026-10-17): the details then live in `eventVenues`, one per
+  // day, and the venue columns above mirror the first day so everything that reads the order's venue keeps working.
+  venuePerEvent           Boolean           @default(false)
+  eventVenues             OrderEventVenue[]
 
   // Participant Information (Group 10.3) — lets pricing reflect actual
   // guest composition. `totalParticipants` is a UI-suggested default
@@ -2104,6 +2108,37 @@ model MealPlanEntry {
   @@map("meal_plan_entry")
 }
 
+// One event's (meal slot's) own Venue & Delivery details when an order's venue differs by day (Order.venuePerEvent). No organizationId of
+// its own: it cascades off its order, like MealPlanEntry.
+model OrderEventVenue {
+  id       String   @id @default(cuid())
+  orderId  String
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // The event: a meal slot, the same date (UTC midnight) and meal as its MealPlanEntry.
+  date     DateTime
+  mealType MealType
+
+  venueType               VenueType
+  venue                   String
+  venueDoorNumber         String?
+  venueTower              String?
+  venueFloor              String?
+  eventAddress            String
+  venueLandmark           String?
+  venueContactName        String
+  venueContactPhone       String
+  venueAccessInstructions String?
+  cookingInstructions     String?
+  gasElectricAvailable    Boolean   @default(false)
+  liveCounterAvailable    Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, date, mealType])
+  @@map("order_event_venue")
+}
+
 // Chunk 10 Group 10.1 — Quotation (deferred from the initial Chunk 10 pass,
 // built once Order already existed, so `Order.quotationId` above is a real
 // `@relation` from day one rather than another bare-column-then-migrate).
@@ -2188,9 +2223,23 @@ model Quotation {
   subtotal          Decimal @default(0) @db.Decimal(12, 2)
   childrenCharge    Decimal @default(0) @db.Decimal(12, 2)
   discount          Decimal @default(0) @db.Decimal(12, 2)
+  // Legacy (until 2026-10-17): `taxes`, `additionalCharges` and `deliveryCharges` are no longer edited or counted. Their values were
+  // moved into `otherCharges` (taxes + additional) and `transportationCost` (delivery) so the totals did not change.
   taxes             Decimal @default(0) @db.Decimal(12, 2)
   additionalCharges Decimal @default(0) @db.Decimal(12, 2)
   deliveryCharges   Decimal @default(0) @db.Decimal(12, 2)
+  // The same charge lines as an Order's Pricing Details (AJ, 2026-10-17), so a quotation converts to an order unchanged.
+  // Each amount may be a percentage of the subtotal; `discount`, `transportationCost` and `otherCharges` always hold the rupees.
+  transportationCost Decimal    @default(0) @db.Decimal(12, 2)
+  transportationMode AmountMode @default(FIXED)
+  transportationRate Decimal    @default(0) @db.Decimal(7, 3)
+  otherCharges       Decimal    @default(0) @db.Decimal(12, 2)
+  otherChargesMode   AmountMode @default(FIXED)
+  otherChargesRate   Decimal    @default(0) @db.Decimal(7, 3)
+  discountMode       AmountMode @default(FIXED)
+  discountRate       Decimal    @default(0) @db.Decimal(7, 3)
+  // [{ "label": string, "amount": number, "mode"?: "PERCENTAGE", "rate"?: number }], summed into `total` by recalculateQuotationTotals.
+  customCharges      Json       @default("[]")
   total             Decimal @default(0) @db.Decimal(12, 2)
 
   items           QuotationItem[]

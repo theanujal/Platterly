@@ -34,3 +34,15 @@ export async function sendReceiptForPayment(organizationId: string, paymentId: s
   if (!receipt) return null;
   return sendInvoiceDocument(organizationId, receipt.id, actorUserId);
 }
+
+/**
+ * The automatic send when an order goes to the kitchen: only when the customer has an email and the kitchen's Settings -> Email
+ * keeps the Invoice message on. Otherwise the invoice stays a Draft for the team to send by hand (it is not marked Sent unsent).
+ */
+export async function sendInvoiceAutomatically(organizationId: string, invoiceId: string, actorUserId?: string) {
+  const invoice = await prisma.invoice.findFirst({ where: { id: invoiceId, organizationId, status: "DRAFT" }, select: { customerEmail: true } });
+  if (!invoice?.customerEmail) return null;
+  const email = await getChannelSettings(organizationId, "email");
+  if (!email.active || email.messages.invoice !== true) return null;
+  return sendInvoiceDocument(organizationId, invoiceId, actorUserId);
+}

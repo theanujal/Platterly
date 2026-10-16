@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { UtensilsCrossed } from "lucide-react";
 import { cn } from "cn";
+import { OrderNumberBadge } from "./order-number-badge";
 
 export interface PublicBrand {
   name: string;
@@ -16,12 +17,15 @@ export function PublicShell({
   brand,
   title,
   subtitle,
+  orderNumber = null,
   width = "max-w-5xl",
   children,
 }: {
   brand: PublicBrand;
   title?: string;
   subtitle?: string;
+  /** Shown large under the title when the order has one. */
+  orderNumber?: string | null;
   width?: string;
   children: ReactNode;
 }) {
@@ -33,6 +37,7 @@ export function PublicShell({
           {title && (
             <div className="flex flex-col gap-2">
               <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
+              <OrderNumberBadge orderNumber={orderNumber} />
               {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
             </div>
           )}

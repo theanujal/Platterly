@@ -119,10 +119,10 @@ describe("buildApprovalView", () => {
       meals: [meal, { ...meal, mealType: "LUNCH", menuName: "South Indian Menu", pricePerPlate: 350 }, { ...meal, mealType: "HITEA", menuName: "South Indian Menu", pricePerPlate: 350 }],
     });
     expect(view.menus).toEqual([
-      { name: "North Indian Menu", pricePerPlate: 400 },
-      { name: "South Indian Menu", pricePerPlate: 350 },
+      { name: "North Indian Menu", pricePerPlate: 400, image: "/menu.png" },
+      { name: "South Indian Menu", pricePerPlate: 350, image: "/menu.png" },
     ]);
-    expect(buildApprovalView(rich).menus).toEqual([{ name: "North Indian Menu", pricePerPlate: 400 }]);
+    expect(buildApprovalView(rich).menus).toEqual([{ name: "North Indian Menu", pricePerPlate: 400, image: "/menu.png" }]);
   });
 
   it("two meals on one day each show their own dishes, and the multiplier covers the meals", () => {
@@ -153,5 +153,54 @@ describe("buildApprovalView", () => {
     expect(view.looseItems).toEqual([{ name: "Loose Dish", isExtra: true }]);
     expect(view.menu).toMatchObject({ name: "Classic", image: null, pricePerPlate: null });
     expect(view.addOns[0]).toMatchObject({ name: "Raita", kind: "ADD_ON" });
+  });
+
+  describe("several menus (a multi order)", () => {
+    const meal = (date: string, mealType: "LUNCH" | "DINNER", menuName: string, pricePerPlate: number) => ({ date, mealType, menuName, pricePerPlate, items: [] });
+    const multi: ApprovalSnapshot = {
+      ...base,
+      guests: 100,
+      meals: [meal("2026-09-19", "LUNCH", "North Indian Menu", 400), meal("2026-09-19", "DINNER", "South Indian Menu", 300), meal("2026-09-20", "LUNCH", "North Indian Menu", 400)],
+      breakdown: { menuAmount: 100 * (400 + 300 + 400), extrasAmount: 0, liveCountersAmount: 0, addOnsAmount: 0, childrenCharge: 0, adjustments: 0 },
+      childBelow5Count: 0,
+      child5To10Count: 0,
+    };
+
+    it("prices each menu on its own line instead of naming only the first", () => {
+      const view = buildApprovalView(multi);
+      expect(view.priceRows).toEqual([
+        { label: "North Indian Menu", detail: "₹400.00 × 100 adults × 2 meals", amount: 80000 },
+        { label: "South Indian Menu", detail: "₹300.00 × 100 adults", amount: 30000 },
+      ]);
+    });
+
+    it("spells out every menu at the rate it was charged, also under Individual Pricing (a rate that differs from the list price)", () => {
+      const view = buildApprovalView({
+        ...multi,
+        guests: 90,
+        childBelow5Count: 5,
+        child5To10Count: 20,
+        meals: [{ ...meal("2026-10-31", "LUNCH", "North Indian Menu", 400), price: 1600 }, { ...meal("2026-10-31", "DINNER", "South Indian", 300), price: 300 }],
+        breakdown: { ...multi.breakdown!, menuAmount: 65 * (1600 + 300) },
+      });
+      expect(view.priceRows).toEqual([
+        { label: "North Indian Menu", detail: "₹1,600.00 × 65 adults", amount: 104000 },
+        { label: "South Indian", detail: "₹300.00 × 65 adults", amount: 19500 },
+      ]);
+    });
+
+    it("shows one combined line when the per-menu amounts cannot be reproduced", () => {
+      const view = buildApprovalView({ ...multi, breakdown: { ...multi.breakdown!, menuAmount: 12345 } });
+      expect(view.priceRows).toEqual([{ label: "Menus", detail: "North Indian Menu · South Indian Menu", amount: 12345 }]);
+    });
+
+    it("lists every meal slot as an event, with its day number and menu", () => {
+      const view = buildApprovalView(multi);
+      expect(view.events.map((e) => [e.key, e.dayNumber, e.mealLabel, e.menus.map((m) => m.name)])).toEqual([
+        ["2026-09-19-LUNCH", 1, "Lunch", ["North Indian Menu"]],
+        ["2026-09-19-DINNER", 1, "Dinner", ["South Indian Menu"]],
+        ["2026-09-20-LUNCH", 2, "Lunch", ["North Indian Menu"]],
+      ]);
+    });
   });
 });

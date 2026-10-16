@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ClipboardList, Info, MapPin, Tag, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { CalendarDays, ClipboardList, FileText, Info, MapPin, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
@@ -32,6 +32,9 @@ import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "../../orders/_components/order-form-parts";
 import { FormTabs, type FormTab } from "../../orders/_components/form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
+import { percentOf } from "@/modules/orders/amount";
+import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
+import { IconTip } from "@/components/ui/icon-tip";
 import { TONE_SURFACE, TONE_TEXT } from "../../orders/_components/order-display";
 import { getOrderCountsByDayAction, searchCustomersAction, createCustomerForOrderAction } from "../../orders/actions";
 import { getMenuForQuotationPickerAction, type ActionResult } from "../actions";
@@ -79,13 +82,6 @@ function startsInPreview(days: number | null): {
   };
 }
 
-// Reuses Menu's own ChildPricingType enum (PERCENTAGE | FIXED) — "Per Plate"
-// is this form's label for FIXED, matching Order's own wording.
-const CHILD_PRICING_TYPE_OPTIONS = [
-  { value: "FIXED", label: "Per Plate" },
-  { value: "PERCENTAGE", label: "Percentage" },
-] as const;
-
 export interface QuotationFormValues {
   customerId: string;
   eventTypeId: string;
@@ -111,10 +107,15 @@ export interface QuotationFormValues {
   validUntil: string;
   terms: string;
   notes: string;
+  /** Discount, Transportation and Extra / Service Cost: a rupee amount, or (mode PERCENTAGE) a percentage of the subtotal. Either way the typed number lives in the field. */
   discount: string;
-  taxes: string;
-  additionalCharges: string;
-  deliveryCharges: string;
+  discountMode: "FIXED" | "PERCENTAGE";
+  transportationCost: string;
+  transportationMode: "FIXED" | "PERCENTAGE";
+  otherCharges: string;
+  otherChargesMode: "FIXED" | "PERCENTAGE";
+  /** Team-added label + amount lines (amount typed as text, like the other money fields). */
+  customCharges: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }[];
   mealPlanEntries: MealSelection[];
 }
 
@@ -141,11 +142,20 @@ export const EMPTY_QUOTATION_VALUES: QuotationFormValues = {
   terms: "",
   notes: "",
   discount: "0",
-  taxes: "0",
-  additionalCharges: "0",
-  deliveryCharges: "0",
+  discountMode: "FIXED",
+  transportationCost: "0",
+  transportationMode: "FIXED",
+  otherCharges: "0",
+  otherChargesMode: "FIXED",
+  customCharges: [],
   mealPlanEntries: [],
 };
+
+/** One typed charge line as the shared parser reads it: a percentage line carries its rate, a rupee line its amount. */
+function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }) {
+  const typed = Number.parseFloat(c.amount);
+  return c.mode === "PERCENTAGE" ? { label: c.label, mode: c.mode, rate: typed, amount: 0 } : { label: c.label, amount: typed };
+}
 
 /**
  * Formats a Date's own local calendar date as "YYYY-MM-DD" — deliberately
@@ -349,12 +359,15 @@ export function QuotationForm({
   }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = guestsForPricing;
-  const discountNum = Number.parseFloat(values.discount) || 0;
-  const taxesNum = Number.parseFloat(values.taxes) || 0;
-  const additionalNum = Number.parseFloat(values.additionalCharges) || 0;
-  const deliveryNum = Number.parseFloat(values.deliveryCharges) || 0;
+  // A percentage is of the subtotal (meals + children), to the paisa, like the server (quotation.ts, via percentOf).
+  const transportationCostNum = values.transportationMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.transportationCost) || 0) : Number.parseFloat(values.transportationCost) || 0;
+  const discountNum = values.discountMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.discount) || 0) : Number.parseFloat(values.discount) || 0;
+  const otherChargesNum = values.otherChargesMode === "PERCENTAGE" ? percentOf(subtotal, Number.parseFloat(values.otherCharges) || 0) : Number.parseFloat(values.otherCharges) || 0;
+  // A percentage line is a rate of the subtotal; the server resolves it the same way (resolveCustomCharges).
+  const customChargeLines = resolveCustomCharges(parseCustomCharges(values.customCharges.map(customChargeInput)), subtotal);
+  const customChargesNum = sumCustomCharges(customChargeLines);
   // Mirrors quotation.ts's server-side recalculateQuotationTotals exactly.
-  const total = subtotal - discountNum + taxesNum + additionalNum + deliveryNum;
+  const total = subtotal - discountNum + transportationCostNum + otherChargesNum + customChargesNum;
 
   function buildFormData(): FormData {
     const formData = new FormData();
@@ -379,10 +392,16 @@ export function QuotationForm({
     formData.set("validUntil", values.validUntil);
     formData.set("terms", values.terms);
     formData.set("notes", values.notes);
-    formData.set("discount", values.discount);
-    formData.set("taxes", values.taxes);
-    formData.set("additionalCharges", values.additionalCharges);
-    formData.set("deliveryCharges", values.deliveryCharges);
+    formData.set("discount", String(discountNum));
+    formData.set("discountMode", values.discountMode);
+    formData.set("discountRate", values.discountMode === "PERCENTAGE" ? values.discount || "0" : "0");
+    formData.set("transportationCost", String(transportationCostNum));
+    formData.set("transportationMode", values.transportationMode);
+    formData.set("transportationRate", values.transportationMode === "PERCENTAGE" ? values.transportationCost || "0" : "0");
+    formData.set("otherCharges", String(otherChargesNum));
+    formData.set("otherChargesMode", values.otherChargesMode);
+    formData.set("otherChargesRate", values.otherChargesMode === "PERCENTAGE" ? values.otherCharges || "0" : "0");
+    formData.set("customCharges", JSON.stringify(values.customCharges.map((c, i) => ({ ...customChargeInput(c), amount: customChargeLines[i]?.amount ?? 0 }))));
     for (const entry of values.mealPlanEntries) {
       formData.append("mealDate", entry.date);
       formData.append("mealType", entry.mealType);
@@ -412,6 +431,11 @@ export function QuotationForm({
     }
     if (eventDateRestricted && !canBypassDateRestriction) {
       setError(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`);
+      return;
+    }
+    // Only for a new quotation: older ones saved without a preference stay editable.
+    if (!initialValues && values.mealPlanEntries.length > 0 && !values.menuPreference) {
+      setError("Choose a Menu Preference (Vegetarian or Non-Vegetarian) before saving the meals.");
       return;
     }
     const emptyMeal = values.mealPlanEntries.find((e) => e.menuId && !e.items.some((i) => i.itemType === "MENU_ITEM"));
@@ -708,116 +732,266 @@ export function QuotationForm({
     </SummaryCard>
   );
 
+  /** One row per meal for the Per Plate Pricing list: what it is, its menu, the menu's per-plate price and the meal's own entry. */
+  const pricedMealRows = [...values.mealPlanEntries]
+    .sort((a, b) => a.date.localeCompare(b.date) || MEAL_TYPES.findIndex((m) => m.value === a.mealType) - MEAL_TYPES.findIndex((m) => m.value === b.mealType))
+    .map((entry) => {
+      const menu = menus.find((m) => m.id === entry.menuId);
+      const mealLabel = MEAL_TYPES.find((m) => m.value === entry.mealType)?.label ?? entry.mealType;
+      return {
+        key: `${entry.date}|${entry.mealType}`,
+        entry,
+        title: `${formatDay(entry.date, { weekday: "short", day: "numeric", month: "short" })} · ${mealLabel}`,
+        menuName: menu?.name ?? "No menu",
+        menuPrice: menu?.price ?? 0,
+      };
+    });
+
+  /** A small (i) next to a price label, with the explanation on hover (and for a screen reader). */
+  const hintIcon = (text: string) => (
+    <IconTip label={text}>
+      <button type="button" aria-label={text} className="inline-flex text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Info className="size-4" />
+      </button>
+    </IconTip>
+  );
+  /** The ₹ / % choice joined to its amount box. */
+  const amountGroup = (opts: { label: string; mode: "FIXED" | "PERCENTAGE"; onMode: (mode: "FIXED" | "PERCENTAGE") => void; inputId?: string; inputLabel?: string; value: string; onValue: (value: string) => void }) => (
+    <div className="flex items-center">
+      <Select items={{ FIXED: "₹", PERCENTAGE: "%" }} value={opts.mode} onValueChange={(v) => opts.onMode(v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED")}>
+        <SelectTrigger aria-label={`${opts.label} type`} className="w-16 rounded-r-none border-r-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="FIXED">₹</SelectItem>
+          <SelectItem value="PERCENTAGE">%</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        id={opts.inputId}
+        aria-label={opts.inputLabel}
+        type="number"
+        min="0"
+        max={opts.mode === "PERCENTAGE" ? 100 : undefined}
+        step="0.01"
+        className="w-28 rounded-l-none text-right"
+        value={opts.value}
+        onChange={(e) => opts.onValue(e.target.value)}
+      />
+    </div>
+  );
+
   const pricingEditorCard = (
-    <SummaryCard icon={Wallet} title="Pricing Details">
-      <p className="text-xs text-muted-foreground">
-        {individualOn
-          ? "Individual Pricing is on (switch it in Menu Planning). Each meal's price is set on its own card there; children can be Per Plate or a Percentage of the first assigned Menu's price."
-          : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
-      </p>
-      {individualOn && (
-        <div className="flex flex-col gap-3">
-          {(
-            [
-              {
-                id: "quote-individual-below5",
-                label: "Children (Under 5) price",
-                rate: "individualChildBelow5Rate",
-                type: "individualChildBelow5PricingType",
-              },
-              {
-                id: "quote-individual-5to10",
-                label: "Children (5–10) price",
-                rate: "individualChild5To10Rate",
-                type: "individualChild5To10PricingType",
-              },
-            ] as const
-          ).map((row) => (
-            <div key={row.id} className="flex flex-col gap-1.5">
-              <Label htmlFor={`${row.id}-rate`}>{row.label}</Label>
-              <div className="flex gap-2">
-                <Input
-                  id={`${row.id}-rate`}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="w-28"
-                  value={values[row.rate]}
-                  onChange={(e) => setField(row.rate, e.target.value)}
-                />
-                <Select
-                  items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                  value={values[row.type]}
-                  onValueChange={(v) => setField(row.type, v ?? values[row.type])}
-                >
-                  <SelectTrigger className="min-w-0 flex-1" aria-label={`${row.label} type`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+  <SummaryCard icon={FileText} title="Pricing Details" description="Set per-plate pricing, children charges and additional costs for this event.">
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">Individual / Custom Pricing</p>
+        <p className="text-sm text-muted-foreground">
+          {individualOn ? "On: set your own per-plate price for each meal and each child age band." : "Off: prices come from each meal's menu. Turn on to set your own."}
+        </p>
+      </div>
+      <Switch id="quote-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing}  />
+    </div>
+
+    <div className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-base font-semibold">Per Plate Pricing</h3>
+        <p className="text-sm text-muted-foreground">{individualOn ? "Your price per plate for each meal." : "Each meal's per-plate price from its menu."}</p>
+      </div>
+      {pricedMealRows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No meals yet. Add meals in Menu Planning.</p>
+      ) : (
+        pricedMealRows.map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-3 text-sm" data-testid="per-plate-row">
+            <div className="min-w-0">
+              <p className="font-medium">{row.title}</p>
+              <p className="text-xs text-muted-foreground">{row.menuName} · {Number(values.adultCount) || 0} adults</p>
             </div>
-          ))}
-        </div>
-      )}
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Total Amount</span>
-          <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
-        </div>
-        {childrenCharge > 0 && (
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">Children Charges</span>
-            <span>{formatCurrency(childrenCharge)}</span>
+            {individualOn ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center">
+                  <span className="flex h-10 w-12 items-center justify-center rounded-l-lg border border-r-0 border-input text-sm" aria-hidden>
+                    ₹
+                  </span>
+                  <Input
+                    aria-label={`${row.title} price per plate`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-28 rounded-l-none text-right"
+                    value={row.entry.price}
+                    onChange={(e) => setField("mealPlanEntries", values.mealPlanEntries.map((m) => (m.date === row.entry.date && m.mealType === row.entry.mealType ? { ...m, price: e.target.value } : m)))}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">/ plate</span>
+              </div>
+            ) : (
+              <span className="shrink-0 font-medium">{formatCurrency(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
+            )}
           </div>
-        )}
+        ))
+      )}
+    </div>
+
+    {individualOn && (
+      <div className="flex flex-col gap-4">
+        {/* Each meal's own price is set inline on its card in Menu Planning above, not duplicated here (AJ's reference, 2026-09-29). */}
         {(
           [
-            { id: "quote-taxes", label: "Taxes", key: "taxes" },
-            {
-              id: "quote-additional",
-              label: "Additional Charges",
-              key: "additionalCharges",
-            },
-            {
-              id: "quote-delivery",
-              label: "Delivery Charges",
-              key: "deliveryCharges",
-            },
-            { id: "quote-discount", label: "Discount", key: "discount" },
+            { id: "quote-individual-below5", label: "Children (Under 5) price", hint: "Charge for children below 5 years.", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
+            { id: "quote-individual-5to10", label: "Children (5–10) price", hint: "Charge for children between 5 and 10 years.", rate: "individualChild5To10Rate", type: "individualChild5To10PricingType" },
           ] as const
         ).map((row) => (
-          <div key={row.id} className="flex items-center justify-between gap-3">
-            <Label htmlFor={row.id} className="font-normal text-muted-foreground">
-              {row.label}
-            </Label>
-            <Input
-              id={row.id}
-              type="number"
-              min="0"
-              step="0.01"
-              className="w-32 text-right"
-              value={values[row.key]}
-              onChange={(e) => setField(row.key, e.target.value)}
-            />
+          <div key={row.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor={`${row.id}-rate`} className="font-normal whitespace-nowrap text-muted-foreground">
+                {row.label}
+              </Label>
+              {hintIcon(row.hint)}
+            </div>
+            {amountGroup({
+              label: row.label,
+              mode: values[row.type] === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+              onMode: (mode) => setField(row.type, mode),
+              inputId: `${row.id}-rate`,
+              value: values[row.rate],
+              onValue: (value) => setField(row.rate, value),
+            })}
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
-        <span>Grand Total</span>
-        <span className="text-lg">{formatCurrency(total)}</span>
+    )}
+    {!individualOn && childPricingMenu && (
+      <div className="flex flex-col gap-1.5 text-sm" data-testid="menu-child-rates">
+        <h3 className="text-base font-semibold">Children</h3>
+        <div className="flex justify-between gap-3">
+          <span className="text-muted-foreground">Children (Under 5)</span>
+          <span className="font-medium">{childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-muted-foreground">Children (5–10)</span>
+          <span className="font-medium">
+            {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+          </span>
+        </div>
       </div>
-      <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
+    )}
+    <div className="flex flex-col gap-2.5 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted-foreground">Total Amount</span>
+        <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
+      </div>
+      {(Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0) > 0 && (
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-muted-foreground">Children Charges</span>
+          <span>{formatCurrency(childrenCharge)}</span>
+        </div>
+      )}
+    </div>
+    {(Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0) > 0 && childrenCharge === 0 && (
+      <p className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-sm text-info" data-testid="children-no-rate">
         <Info className="mt-0.5 size-4 shrink-0" />
-        <span>Payment isn&apos;t tracked on a Quotation — once accepted, convert it to an Order to record payment.</span>
+        <span>
+          {childPricingMenu
+            ? individualOn
+              ? "No child rate is set. Enter the child prices above."
+              : `${childPricingMenu.name} has no child rate set, so children are not charged. Set it on the Menu, or turn on Individual Pricing.`
+            : "Children are priced from the first Menu assigned in Menu Planning. Assign a Menu to charge them."}
+        </span>
+      </p>
+    )}
+
+    <div className="flex flex-col gap-4 border-t border-border pt-5">
+      <div>
+        <h3 className="text-base font-semibold">Additional Costs</h3>
+        <p className="text-sm text-muted-foreground">Add transport charges, service costs, discounts or any other charges.</p>
       </div>
-    </SummaryCard>
+      {(
+        [
+          { id: "quote-transportation-cost", label: "Transportation Cost", hint: "Cost of getting the food and crew to the venue.", key: "transportationCost", modeKey: "transportationMode" },
+          { id: "quote-other-charges", label: "Extra / Service Cost", hint: "Any extra service charge on top of the meals.", key: "otherCharges", modeKey: "otherChargesMode" },
+          { id: "quote-discount", label: "Discount", hint: "Taken off the total. A percentage is of the meals and children charges.", key: "discount", modeKey: "discountMode" },
+        ] as const
+      ).map((row) => (
+        <div key={row.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor={row.id} className="font-normal whitespace-nowrap text-muted-foreground">
+              {row.label}
+            </Label>
+            {hintIcon(row.hint)}
+          </div>
+          {amountGroup({
+            label: row.label,
+            mode: values[row.modeKey],
+            onMode: (mode) => setField(row.modeKey, mode),
+            inputId: row.id,
+            value: values[row.key],
+            onValue: (value) => setField(row.key, value),
+          })}
+        </div>
+      ))}
+    </div>
+
+    <div className="flex flex-col gap-3 border-t border-border pt-5">
+      <div>
+        <h3 className="text-base font-semibold">
+          Other Charges <span className="text-sm font-normal text-muted-foreground">(Optional)</span>
+        </h3>
+        <p className="text-sm text-muted-foreground">Add custom charges such as generator, venue service, etc.</p>
+      </div>
+      {values.customCharges.map((row, index) => (
+        <div key={index} className="flex flex-wrap items-center gap-2">
+          <Input
+            aria-label={`Charge ${index + 1} label`}
+            placeholder="Label (e.g. Generator)"
+            maxLength={80}
+            className="min-w-40 flex-1 basis-full sm:basis-0"
+            value={row.label}
+            onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, label: e.target.value } : c)))}
+          />
+          {amountGroup({
+            label: `Charge ${index + 1}`,
+            mode: row.mode,
+            onMode: (mode) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, mode } : c))),
+            inputLabel: `Charge ${index + 1} amount`,
+            value: row.amount,
+            onValue: (value) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, amount: value } : c))),
+          })}
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label={`Remove charge ${index + 1}`}
+            onClick={() => setField("customCharges", values.customCharges.filter((_, i) => i !== index))}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        </div>
+      ))}
+      {values.customCharges.length < MAX_CUSTOM_CHARGES && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setField("customCharges", [...values.customCharges, { label: "", amount: "", mode: "FIXED" }])}
+        >
+          <Plus className="size-4" /> Add charge
+        </Button>
+      )}
+    </div>
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 text-accent-foreground">
+      <span className="flex flex-col">
+        <span className="font-semibold">Grand Total</span>
+        <span className="text-xs font-normal">Including all charges and discounts</span>
+      </span>
+      <span className="text-xl font-semibold">{formatCurrency(total)}</span>
+    </div>
+    <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
+      <Info className="mt-0.5 size-4 shrink-0" />
+      <span>Payment isn&apos;t tracked on a Quotation — once accepted, convert it to an Order to record payment.</span>
+    </div>
+  </SummaryCard>
   );
 
   const pricingSummaryCard = (
@@ -825,20 +999,11 @@ export function QuotationForm({
       <div className="flex flex-col gap-3 text-sm">
         {[
           { label: "Total Amount", amount: mealItemsSubtotal + mealsSubtotal },
-          ...(childrenCharge > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
-          { label: "Taxes", amount: Number.parseFloat(values.taxes) || 0 },
-          {
-            label: "Additional Charges",
-            amount: Number.parseFloat(values.additionalCharges) || 0,
-          },
-          {
-            label: "Delivery Charges",
-            amount: Number.parseFloat(values.deliveryCharges) || 0,
-          },
-          {
-            label: "Discount",
-            amount: Number.parseFloat(values.discount) || 0,
-          },
+          ...((Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0) > 0 ? [{ label: "Children Charges", amount: childrenCharge }] : []),
+          { label: "Transportation Cost", amount: transportationCostNum },
+          { label: "Extra / Service Cost", amount: otherChargesNum },
+          ...customChargeLines,
+          { label: "Discount", amount: discountNum },
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">{row.label}</span>

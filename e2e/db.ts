@@ -338,7 +338,7 @@ export async function seedOrderForBilling(email: string, total: number): Promise
  */
 export async function seedApprovedOrderForShare(
   email: string,
-  options: { stage?: "CONFIRMATION" | "VENUE" | "REVIEW"; kidsBelow5?: number; kids5To10?: number } = {},
+  options: { stage?: "CONFIRMATION" | "VENUE" | "REVIEW"; kidsBelow5?: number; kids5To10?: number; multi?: boolean } = {},
 ): Promise<{ approvalToken: string; orderId: string }> {
   const kidsBelow5 = options.kidsBelow5 ?? 0;
   const kids5To10 = options.kids5To10 ?? 0;
@@ -373,11 +373,16 @@ export async function seedApprovedOrderForShare(
   );
   await pool.query(`INSERT INTO menu_selection (id, "organizationId", "eventId", status, "currentVersion", "updatedAt") VALUES ($1, $2, $3, '${selectionStatus}', 1, now())`, [selectionId, organizationId, eventId]);
   const day = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
+  const day2 = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
+  // "multi": a second event day on another menu, so the Price Summary lists each menu and the venue can differ by day.
+  const secondMeal = options.multi
+    ? [{ date: day2, mealType: "LUNCH", menuName: "Garden Lunch", pricePerPlate: 300, items: [{ name: "Veg Biryani", quantity: 1, itemType: "MENU_ITEM", unitPrice: 100, category: "Mains" }] }]
+    : [];
   const snapshot = {
     customerName: "Share Customer",
     eventTypeName: "Wedding",
     eventStartDate: day,
-    eventEndDate: day,
+    eventEndDate: options.multi ? day2 : day,
     venue: "Grand Hall",
     guests: 100 + kidsBelow5 + kids5To10,
     childBelow5Count: kidsBelow5,
@@ -396,11 +401,13 @@ export async function seedApprovedOrderForShare(
         ],
       },
     ],
+    ...(options.multi ? { breakdown: { menuAmount: 100 * (400 + 300), extrasAmount: 0, liveCountersAmount: 2000, addOnsAmount: 0, childrenCharge: 0, adjustments: 0 } } : {}),
     selectedItems: [],
     isCustomMenu: false,
   };
+  snapshot.meals.push(...secondMeal);
   await pool.query(`INSERT INTO menu_version (id, "menuSelectionId", "versionNumber", status, snapshot, "sentAt") VALUES ($1, $2, 1, '${selectionStatus}', $3, now())`, [versionId, selectionId, JSON.stringify(snapshot)]);
-  await pool.query(`INSERT INTO secure_access_token (id, "organizationId", "resourceType", "resourceId", token) VALUES ($1, $2, 'MENU_APPROVAL', $3, $4)`, [`sat_${suffix}`, organizationId, versionId, approvalToken]);
+  await pool.query(`INSERT INTO secure_access_token (id, "organizationId", "resourceType", "resourceId", token, "expiresAt") VALUES ($1, $2, 'MENU_APPROVAL', $3, $4, now() + interval '30 days')`, [`sat_${suffix}`, organizationId, versionId, approvalToken]);
   return { approvalToken, orderId };
 }
 
@@ -432,6 +439,16 @@ export async function seedCustomers(email: string, count: number, from = 1): Pro
   for (let i = from; i < from + count; i++) {
     await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [`cust_pg_${Date.now()}_${i}`, organizationId, `Paging Customer ${String(i).padStart(2, "0")}`, `+9197000${String(i).padStart(5, "0")}`]);
   }
+}
+
+/** Gives an order real meal slots (a day and a meal each), as a team-built order has, so Order Details can list its events. `date` is "YYYY-MM-DD". */
+export async function seedMealSlots(orderId: string, slots: { date: string; mealType: "BREAKFAST" | "LUNCH" | "HITEA" | "DINNER" | "OTHER" }[]): Promise<void> {
+  for (const [index, slot] of slots.entries()) {
+    await pool.query('INSERT INTO meal_plan_entry (id, "orderId", date, "mealType") VALUES ($1, $2, $3, $4::"MealType")', [`mpe_${Math.random().toString(36).slice(2, 10)}_${index}`, orderId, slot.date, slot.mealType]);
+  }
+  // The event runs from the first to the last slot, so saving the order does not pull a meal back onto the first day.
+  const dates = slots.map((slot) => slot.date).sort();
+  await pool.query('UPDATE "order" SET "eventStartDate" = $2, "eventEndDate" = $3, "orderKind" = $4::"OrderKind" WHERE id = $1', [orderId, dates[0], dates[dates.length - 1], dates[0] === dates[dates.length - 1] && slots.length === 1 ? "SINGLE" : "MULTI"]);
 }
 
 /** Moves an order's event `daysAgo` days into the past (and optionally cancels it), for the Overdue payment specs. */
@@ -842,4 +859,20 @@ export async function setOrderEventDay(orderId: string, isoDay: string): Promise
 export async function getOrderKind(orderId: string): Promise<string> {
   const { rows } = await pool.query('SELECT "orderKind"::text AS kind FROM "order" WHERE id = $1', [orderId]);
   return rows[0].kind;
+}
+
+/** Customer payment-status spec: a payment on the order, as a UPI claim waiting for the kitchen (PENDING) or already confirmed. */
+export async function seedOrderPayment(orderId: string, options: { amount: number; status: "PENDING" | "CONFIRMED"; reference?: string }): Promise<string> {
+  const id = `pay_${Math.random().toString(36).slice(2, 10)}`;
+  await pool.query(
+    `INSERT INTO payment (id, "organizationId", "orderId", amount, type, method, status, source, reference, "confirmedAt", "updatedAt")
+     SELECT $1, "organizationId", id, $2, 'ADVANCE', 'UPI', $3::"PaymentStatus", 'UPI_QR', $4, ${options.status === "CONFIRMED" ? "now()" : "NULL"}, now() FROM "order" WHERE id = $5`,
+    [id, options.amount, options.status, options.reference ?? "UTR123456789", orderId],
+  );
+  return id;
+}
+
+/** The kitchen matches a waiting payment: it becomes CONFIRMED. */
+export async function confirmOrderPayment(paymentId: string): Promise<void> {
+  await pool.query(`UPDATE payment SET status = 'CONFIRMED', "confirmedAt" = now(), "updatedAt" = now() WHERE id = $1`, [paymentId]);
 }

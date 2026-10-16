@@ -4,10 +4,13 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { notifyCustomer, onQuotationResponded } from "@/modules/notifications/triggers";
+import { getChannelSettings } from "@/modules/notifications/channel-settings";
 import { unsubscribeUrl } from "@/lib/notifications/unsubscribe";
 import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
+import { percentOf } from "@/modules/orders/amount";
+import { parseCustomCharges, resolveCustomCharges, sumCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
 import {
   resolveCatalogItem,
   createOrder,
@@ -20,7 +23,7 @@ import {
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
 import type { Prisma } from "@/generated/prisma/client";
-import type { QuotationStatus, FoodType, OrderKind, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
+import type { QuotationStatus, AmountMode, FoodType, OrderKind, PricingMethod, ChildPricingType } from "@/generated/prisma/enums";
 
 export class InvalidQuotationTransitionError extends Error {}
 export class QuotationEventDatesRequiredError extends Error {}
@@ -56,10 +59,18 @@ export interface QuotationInput {
   validUntil?: Date | null;
   terms?: string;
   notes?: string;
+  /** The same charge lines as an Order's Pricing Details. In PERCENTAGE mode the amount is derived from the rate (a percentage of the subtotal). */
   discount?: number;
-  taxes?: number;
-  additionalCharges?: number;
-  deliveryCharges?: number;
+  discountMode?: AmountMode;
+  discountRate?: number;
+  transportationCost?: number;
+  transportationMode?: AmountMode;
+  transportationRate?: number;
+  otherCharges?: number;
+  otherChargesMode?: AmountMode;
+  otherChargesRate?: number;
+  /** Team-added label + amount lines, summed into `total`. */
+  customCharges?: CustomCharge[];
   /** Sync (not blind replace — see replaceQuotationMealPlanEntries) of this Quotation's Meal Planning selections. */
   mealPlanEntries?: MealPlanEntryInput[];
 }
@@ -124,8 +135,7 @@ async function replaceQuotationMealPlanEntries(organizationId: string, quotation
  * The one place `subtotal`/`total` get computed for a Quotation — mirrors
  * order.ts's `recalculateOrderTotals` formula exactly (itemsSubtotal +
  * mealsSubtotal-when-individualPricingEnabled + childrenCharge), except the
- * final charge line reuses Quotation's own 4 fields (discount/taxes/
- * additionalCharges/deliveryCharges) rather than Order's leaner set.
+ * final charge lines are the same as Order's (discount, transportation, extra / service cost, custom charges).
  */
 export async function recalculateQuotationTotals(quotationId: string) {
   const quotation = await prisma.quotation.findUniqueOrThrow({
@@ -148,9 +158,14 @@ export async function recalculateQuotationTotals(quotationId: string) {
       ? computeIndividualChildrenCharge(quotation, referenceMenuPrice, quotation.childBelow5Count, quotation.child5To10Count)
       : computeChildrenCharge(quotation.childPricingMenu, quotation.childBelow5Count, quotation.child5To10Count);
   const subtotal = mealsSubtotal + childrenCharge;
-  const total = subtotal - Number(quotation.discount) + Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges);
+  // A percentage is of the subtotal (meals + children); the rupee amount is stored so every other reader keeps using the plain field. Same as recalculateOrderTotals.
+  const discount = quotation.discountMode === "PERCENTAGE" ? percentOf(subtotal, Number(quotation.discountRate)) : Number(quotation.discount);
+  const otherCharges = quotation.otherChargesMode === "PERCENTAGE" ? percentOf(subtotal, Number(quotation.otherChargesRate)) : Number(quotation.otherCharges);
+  const transportationCost = quotation.transportationMode === "PERCENTAGE" ? percentOf(subtotal, Number(quotation.transportationRate)) : Number(quotation.transportationCost);
+  const customCharges = resolveCustomCharges(parseCustomCharges(quotation.customCharges), subtotal);
+  const total = subtotal - discount + transportationCost + otherCharges + sumCustomCharges(customCharges);
 
-  return prisma.quotation.update({ where: { id: quotationId }, data: { subtotal, childrenCharge, total } });
+  return prisma.quotation.update({ where: { id: quotationId }, data: { subtotal, childrenCharge, discount, otherCharges, transportationCost, customCharges, total } });
 }
 
 export async function createQuotation(organizationId: string, input: QuotationInput, actorUserId: string) {
@@ -186,9 +201,15 @@ export async function createQuotation(organizationId: string, input: QuotationIn
       terms: input.terms,
       notes: input.notes,
       discount: input.discount ?? 0,
-      taxes: input.taxes ?? 0,
-      additionalCharges: input.additionalCharges ?? 0,
-      deliveryCharges: input.deliveryCharges ?? 0,
+      discountMode: input.discountMode ?? "FIXED",
+      discountRate: input.discountRate ?? 0,
+      transportationCost: input.transportationCost ?? 0,
+      transportationMode: input.transportationMode ?? "FIXED",
+      transportationRate: input.transportationRate ?? 0,
+      otherCharges: input.otherCharges ?? 0,
+      otherChargesMode: input.otherChargesMode ?? "FIXED",
+      otherChargesRate: input.otherChargesRate ?? 0,
+      customCharges: parseCustomCharges(input.customCharges),
     },
   });
   await replaceQuotationMealPlanEntries(organizationId, quotation.id, input.mealPlanEntries);
@@ -240,9 +261,15 @@ export async function updateQuotation(organizationId: string, id: string, input:
       terms: input.terms,
       notes: input.notes,
       discount: input.discount ?? before.discount,
-      taxes: input.taxes ?? before.taxes,
-      additionalCharges: input.additionalCharges ?? before.additionalCharges,
-      deliveryCharges: input.deliveryCharges ?? before.deliveryCharges,
+      discountMode: input.discountMode ?? before.discountMode,
+      discountRate: input.discountRate ?? before.discountRate,
+      transportationCost: input.transportationCost ?? before.transportationCost,
+      transportationMode: input.transportationMode ?? before.transportationMode,
+      transportationRate: input.transportationRate ?? before.transportationRate,
+      otherCharges: input.otherCharges ?? before.otherCharges,
+      otherChargesMode: input.otherChargesMode ?? before.otherChargesMode,
+      otherChargesRate: input.otherChargesRate ?? before.otherChargesRate,
+      ...(input.customCharges ? { customCharges: parseCustomCharges(input.customCharges) } : {}),
     },
   });
   await replaceQuotationMealPlanEntries(organizationId, id, input.mealPlanEntries);
@@ -310,7 +337,7 @@ export async function getQuotation(organizationId: string, id: string) {
       eventType: true,
       mealPlanEntries: {
         orderBy: [{ date: "asc" }, { mealType: "asc" }],
-        include: { menu: { select: { id: true, name: true } }, items: { orderBy: { createdAt: "asc" } } },
+        include: { menu: { select: { id: true, name: true, description: true, image: true, pricePerPlate: true } }, items: { orderBy: { createdAt: "asc" } } },
       },
       // Legacy/carried-over only (pre-parity artifacts) — mirrors getOrder's own split.
       items: { where: { mealPlanEntryId: null }, orderBy: { createdAt: "asc" } },
@@ -405,7 +432,11 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
     after: { status: after.status },
   });
 
-  return { quotation: after, url };
+  // Whether the customer really gets an email: they need an address, and the kitchen's Settings -> Email must keep the Quotation message on.
+  const email = await getChannelSettings(organizationId, "email");
+  const emailed = Boolean(quotation.customer.email) && email.active && email.messages.quotation === true;
+
+  return { quotation: after, url, emailed, customerEmail: quotation.customer.email };
 }
 
 /** Admin-only escalation, mirroring the codebase's existing owner-only-lifecycle convention (e.g. Organization's own status transitions). */
@@ -497,10 +528,9 @@ export const requestQuotationChanges = (organizationId: string, id: string, mess
  * per-meal structure a natively-created one would. Every OrderItem copies
  * its QuotationItem's frozen snapshot directly (name/unitPrice/quantity),
  * never through `resolveCatalogItem` — an accepted quotation's price must
- * never silently drift from a later catalog change. Quotation's
- * taxes/additionalCharges/deliveryCharges (no direct Order equivalent since
- * Create Order's 2026-09-20 redesign dropped Order.taxes) are folded into
- * the new Order's `otherCharges` so the converted total still matches.
+ * never silently drift from a later catalog change. The charge lines
+ * (discount, transportation, extra / service cost, custom charges) are the
+ * same as the Order's, so they are copied across as they are.
  */
 export async function convertQuotationToOrder(organizationId: string, quotationId: string, actorUserId: string) {
   const quotation = await prisma.quotation.findFirstOrThrow({
@@ -544,7 +574,15 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
       individualChild5To10PricingType: quotation.individualChild5To10PricingType,
       individualPricingEnabled: quotation.individualPricingEnabled,
       discount: Number(quotation.discount),
-      otherCharges: Number(quotation.taxes) + Number(quotation.additionalCharges) + Number(quotation.deliveryCharges),
+      discountMode: quotation.discountMode,
+      discountRate: Number(quotation.discountRate),
+      transportationCost: Number(quotation.transportationCost),
+      transportationMode: quotation.transportationMode,
+      transportationRate: Number(quotation.transportationRate),
+      otherCharges: Number(quotation.otherCharges),
+      otherChargesMode: quotation.otherChargesMode,
+      otherChargesRate: Number(quotation.otherChargesRate),
+      customCharges: parseCustomCharges(quotation.customCharges),
       notes: quotation.notes ?? undefined,
       // mealPlanEntries deliberately omitted — createOrder's own
       // replaceMealPlanEntries no-ops on undefined, so this just creates the

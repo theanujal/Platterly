@@ -352,7 +352,7 @@ export async function transitionInTransaction(
   }
   await syncOrderStatus(organizationId, id, options?.actorUserId, { trigger: options?.trigger }, { db: tx, afterCommit });
   // Sent to the kitchen: the order's invoice is created for the team (as a Draft), unless they switched that off. Same transaction.
-  if (to === "FINAL_LOCKED" && orderId) await createInvoiceOnKitchenHandoff(organizationId, orderId, options?.actorUserId, tx);
+  if (to === "FINAL_LOCKED" && orderId) await createInvoiceOnKitchenHandoff(organizationId, orderId, options?.actorUserId, tx, afterCommit);
 
   return after;
 }

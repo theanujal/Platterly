@@ -32,11 +32,13 @@ export function QuotationStatusActions({ quotationId, status, hasOrder }: Quotat
   const router = useRouter();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  async function run(name: string, action: () => Promise<{ ok: boolean; error?: string; orderId?: string }>) {
+  async function run(name: string, action: () => Promise<{ ok: boolean; error?: string; orderId?: string; notice?: string }>) {
     setPending(name);
     setError(null);
+    setNotice(null);
     const result = await action();
     setPending(null);
     if (!result.ok) {
@@ -47,6 +49,7 @@ export function QuotationStatusActions({ quotationId, status, hasOrder }: Quotat
       router.push(`/orders/${result.orderId}`);
       return;
     }
+    if (result.notice) setNotice(result.notice);
     router.refresh();
   }
 
@@ -104,6 +107,11 @@ export function QuotationStatusActions({ quotationId, status, hasOrder }: Quotat
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      {notice && (
+        <p role="status" className="max-w-md text-right text-sm text-muted-foreground">
+          {notice}
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

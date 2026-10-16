@@ -478,9 +478,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await submitVenueDetailsAsCustomer(customerPage, { building: "Green Villa", address: "12 Green Villa Road", contact: "Ravi", phone: "9000000002", door: "12" });
   // Reopening the link shows the read-only confirmation, not a dead link.
   await customerPage.goto(linkV2);
-  await expect(customerPage.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(customerPage.getByTestId("venue-confirmation")).toBeVisible();
   await expect(customerPage.getByTestId("venue-summary")).toContainText("12 Green Villa Road");
-  await expect(customerPage.getByText("We're starting the preparation")).toBeVisible();
+  await expect(customerPage.getByRole("heading", { name: "Thank You!" })).toBeVisible();
   await expect(customerPage.getByTestId("payment-box")).toHaveCount(0); // the kitchen has not set up UPI or Razorpay yet
   await expect(customerPage.getByTestId("payment-later")).toContainText("Your caterer will share payment details with you.");
   await customerPage.close();
@@ -500,7 +500,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // after the venue details (see approval-payment.spec.ts), so nothing about paying is left on this page.
   const payerPage = await customerContext.newPage();
   await payerPage.goto(linkV2);
-  await expect(payerPage.getByRole("heading", { name: "Thank You!" })).toBeVisible();
+  await expect(payerPage.getByTestId("venue-confirmation")).toBeVisible();
   await expect(payerPage.getByTestId("payment-box")).toHaveCount(0);
   await expect(payerPage.getByTestId("payment-later")).toHaveCount(0);
   await payerPage.close();

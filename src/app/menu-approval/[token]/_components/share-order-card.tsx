@@ -49,25 +49,25 @@ export function ShareOrderCard({ token, initial }: { token: string; initial: { u
           <p className="w-full min-w-0 truncate rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground" data-testid="share-url">
             {share.url}
           </p>
-          <div className="flex flex-wrap gap-2">
-            <CopyButton value={share.url} label="Copy link" size="md" />
+          <div className="flex flex-col gap-2">
+            <CopyButton value={share.url} label="Copy link" size="md" className="w-full" />
             <Button
-              variant="outline"
               size="md"
+              className="w-full bg-[#25D366] text-white hover:bg-[#1FAD54]"
               render={<a href={`https://wa.me/?text=${encodeURIComponent(`Here are the details for our event, with the menu: ${share.url}`)}`} target="_blank" rel="noopener" />}
               nativeButton={false}
             >
-              <WhatsAppIcon className="size-4 text-emerald-600" />
+              <WhatsAppIcon className="size-4" />
               Share on WhatsApp
             </Button>
           </div>
-          <Button type="button" variant="link" size="md" className="self-start px-0 text-destructive" disabled={pending} onClick={() => change(false)}>
+          <Button type="button" variant="link" size="md" className="w-full text-destructive" disabled={pending} onClick={() => change(false)}>
             {pending ? "Turning off…" : "Turn off sharing"}
           </Button>
           <p className="text-xs text-muted-foreground">The link works until the end of your event day. Turning it off stops it for everyone.</p>
         </div>
       ) : (
-        <Button type="button" variant="outline" size="md" className="self-start" disabled={pending} onClick={() => change(true)}>
+        <Button type="button" variant="outline" size="md" className="w-full" disabled={pending} onClick={() => change(true)}>
           <Share2 className="size-4" />
           {pending ? "Creating link…" : "Create share link"}
         </Button>

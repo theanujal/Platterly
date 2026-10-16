@@ -21,7 +21,7 @@ export interface LogisticsData {
   /** Real moments (ISO), stamped when the dispatch status moved. */
   dispatchedAt: string | null;
   deliveredAt: string | null;
-  address: { venue: string | null; address: string | null; contact: string | null; instructions: string | null } | null;
+  address: { venue: string | null; address: string | null; contact: string | null; instructions: string | null; days: { date: string; meal: string; venue: string | null; address: string | null; contact: string | null; instructions: string | null }[] } | null;
 }
 
 const stamp = (iso: string) => new Date(iso).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
@@ -92,12 +92,28 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
         {data.address && (
           <div className="rounded-lg bg-muted p-3 text-sm" data-testid="delivery-address">
             <p className="font-medium">Delivery address (from the order)</p>
-            <p className="mt-1 flex items-start gap-2">
-              <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <span>{[data.address.venue, data.address.address].filter(Boolean).join(", ") || "No venue details on the order yet."}</span>
-            </p>
-            {data.address.contact && <p className="text-muted-foreground">Contact: {data.address.contact}</p>}
-            {data.address.instructions && <p className="text-muted-foreground">{data.address.instructions}</p>}
+            {data.address.days.length > 0 ? (
+              data.address.days.map((day) => (
+                <div key={`${day.date}-${day.meal}`} className="mt-2" data-testid="delivery-address-day">
+                  <p className="text-xs font-semibold text-muted-foreground">{day.meal} · {new Date(`${day.date}T00:00:00.000Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}</p>
+                  <p className="flex items-start gap-2">
+                    <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <span>{[day.venue, day.address].filter(Boolean).join(", ")}</span>
+                  </p>
+                  {day.contact && <p className="text-muted-foreground">Contact: {day.contact}</p>}
+                  {day.instructions && <p className="text-muted-foreground">{day.instructions}</p>}
+                </div>
+              ))
+            ) : (
+              <>
+                <p className="mt-1 flex items-start gap-2">
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                  <span>{[data.address.venue, data.address.address].filter(Boolean).join(", ") || "No venue details on the order yet."}</span>
+                </p>
+                {data.address.contact && <p className="text-muted-foreground">Contact: {data.address.contact}</p>}
+                {data.address.instructions && <p className="text-muted-foreground">{data.address.instructions}</p>}
+              </>
+            )}
           </div>
         )}
 

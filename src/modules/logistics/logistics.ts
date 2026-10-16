@@ -1,6 +1,7 @@
 import { assertEventOrderNotCompleted } from "@/modules/orders/order-guard";
 import "server-only";
 import { prisma } from "@/lib/db";
+import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
 import { audit } from "@/lib/audit/audit";
 import { RULES, validateInput, checkPhone } from "@/lib/validation";
 import type { DispatchStatus, SetupStatus } from "@/generated/prisma/enums";
@@ -77,19 +78,35 @@ export function getLogistics(organizationId: string, eventId: string) {
   return prisma.eventLogistics.findFirst({ where: { organizationId, eventId } });
 }
 
-/** The delivery address is the order's own venue details; this reads them for the logistics panel. */
-export async function getDeliveryAddress(organizationId: string, orderId: string | null) {
-  if (!orderId) return null;
-  const o = await prisma.order.findFirst({
-    where: { id: orderId, organizationId },
-    select: { venue: true, eventAddress: true, venueDoorNumber: true, venueTower: true, venueFloor: true, venueHallName: true, venueLandmark: true, venueContactName: true, venueContactPhone: true, venueAccessInstructions: true, deliveryInstructions: true },
-  });
-  if (!o) return null;
+type VenueRow = { venue: string | null; eventAddress: string | null; venueDoorNumber: string | null; venueTower: string | null; venueFloor: string | null; venueHallName?: string | null; venueLandmark: string | null; venueContactName: string | null; venueContactPhone: string | null; venueAccessInstructions: string | null; deliveryInstructions?: string | null };
+
+function formatVenue(o: VenueRow) {
   const place = [o.venueHallName, o.venueTower && `Tower ${o.venueTower}`, o.venueFloor && `Floor ${o.venueFloor}`, o.venueDoorNumber && `Door ${o.venueDoorNumber}`].filter(Boolean).join(", ");
   return {
     venue: o.venue,
     address: [o.eventAddress, place, o.venueLandmark && `Near ${o.venueLandmark}`].filter(Boolean).join(", ") || null,
     contact: [o.venueContactName, o.venueContactPhone].filter(Boolean).join(" · ") || null,
     instructions: [o.venueAccessInstructions, o.deliveryInstructions].filter(Boolean).join(" ") || null,
+  };
+}
+
+/**
+ * The delivery address is the order's own venue details; this reads them for the logistics panel. When the customer said the
+ * venue differs by event day, `days` lists each day's venue too (the top-level fields are then the first day's).
+ */
+export async function getDeliveryAddress(organizationId: string, orderId: string | null) {
+  if (!orderId) return null;
+  const o = await prisma.order.findFirst({
+    where: { id: orderId, organizationId },
+    select: {
+      venue: true, eventAddress: true, venueDoorNumber: true, venueTower: true, venueFloor: true, venueHallName: true, venueLandmark: true, venueContactName: true, venueContactPhone: true, venueAccessInstructions: true, deliveryInstructions: true,
+      venuePerEvent: true,
+      eventVenues: { orderBy: [{ date: "asc" }, { mealType: "asc" }] },
+    },
+  });
+  if (!o) return null;
+  return {
+    ...formatVenue(o),
+    days: o.venuePerEvent ? o.eventVenues.map((row) => ({ date: row.date.toISOString().slice(0, 10), meal: MEAL_TYPE_LABEL[row.mealType], ...formatVenue(row) })) : [],
   };
 }

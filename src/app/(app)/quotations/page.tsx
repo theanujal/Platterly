@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus, User, MapPin, CalendarDays, Clock, type LucideProps } from "lucide-react";
@@ -81,7 +81,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
       searchText: `${quotation.customer.name} ${quotation.customer.phone}`,
       sortValues: { customer: quotation.customer.name, total: Number(quotation.total), newest: quotation.createdAt.getTime() },
       card: (
-        <div className="flex h-full flex-col gap-4 p-5">
+        <div key={`card-${quotation.id}`} className="flex h-full flex-col gap-4 p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -136,7 +136,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
       // Rich list — a Customer cell (avatar, name, venue) and an Event cell (date, event type below)
       // merged the same way Orders' own list merges cells, instead of separate Name/Event Type columns.
       listRow: (
-        <>
+        <Fragment key={`row-${quotation.id}`}>
           <TableCell className="px-3 py-3">
             <div className="flex items-center gap-3">
               <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -165,7 +165,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
           <TableCell className="px-3 py-3 font-semibold">{formatCurrency(Number(quotation.total))}</TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{validUntilLabel}</TableCell>
           <TableCell className="px-3 py-3">{statusBadge}</TableCell>
-        </>
+        </Fragment>
       ),
     };
   });
@@ -188,14 +188,14 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
       <CatalogBrowser
         entries={entries}
         addTile={
-          <Link href="/quotations/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+          <Link key="quotations-add-tile" href="/quotations/new" className={CATALOG_ADD_TILE_CLASSNAME}>
             <CatalogAddTileContent label="Create Quotation" description="Send a priced proposal to a customer" />
           </Link>
         }
         columns={["Customer", "Event", "Total", "Valid Until", "Status"]}
         searchPlaceholder="Search quotations by customer or phone…"
         emptyLabel="No quotations yet."
-        filters={<QuotationsFilterBar />}
+        filters={<QuotationsFilterBar key="quotations-filters" />}
         sortOptions={sortOptions}
         richList
         defaultView="list"

@@ -15,6 +15,7 @@ import {
   type MealPlanEntryInput,
 } from "@/modules/orders/order";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
+import type { EventVenueInput } from "@/modules/orders/event-venues";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { saveOrderWithMeals } from "@/modules/menu-approvals/menu-approval";
 import { PaymentError, parseStagedPayments, recordStagedPayments } from "@/modules/payments/payment";
@@ -79,6 +80,17 @@ function buildMealPlanEntries(formData: FormData): MealPlanEntryInput[] {
   });
 }
 
+/** The per-event venues the form sent (a JSON list of { key, details }); anything malformed is ignored and the server then asks for every event's venue. */
+function parseEventVenues(raw: string | undefined): EventVenueInput[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is EventVenueInput => Boolean(entry) && typeof entry.key === "string" && typeof entry.details === "object" && entry.details !== null) : [];
+  } catch {
+    return [];
+  }
+}
+
 function buildInput(formData: FormData): OrderInput {
   const customerId = stringField(formData, "customerId");
   if (!customerId) throw new Error("A Customer is required.");
@@ -134,6 +146,7 @@ function buildInput(formData: FormData): OrderInput {
     transportationMode: stringField(formData, "transportationMode") === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
     transportationRate: numberField(formData, "transportationRate") ?? 0,
     customCharges: parseCustomCharges(stringField(formData, "customCharges")),
+    ...(formData.has("venuePerEvent") ? { venuePerEvent: formData.get("venuePerEvent") === "true", eventVenues: parseEventVenues(stringField(formData, "eventVenues")) } : {}),
     advance: numberField(formData, "advance") ?? 0,
     paymentStatus: stringField(formData, "paymentStatus") as OrderPaymentStatus | undefined,
     status: stringField(formData, "status") as OrderStatus | undefined,

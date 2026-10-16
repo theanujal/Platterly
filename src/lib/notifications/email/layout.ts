@@ -40,14 +40,12 @@ export function p(html: string): string {
 }
 
 /**
- * The logo. With EMAIL_LOGO_URL set (production: the public address of /platterly-logo.png) it is a normal link, so
- * mail apps show it as part of the email. Without it the logo travels inside the email (cid), which works anywhere but
- * Gmail lists as an attachment.
+ * The logo is always a public link (EMAIL_LOGO_URL, else this app's own /platterly-logo.png), never a file inside the email,
+ * so no mail app lists it as an attachment. On a localhost address the picture will not load in a mail app; set EMAIL_LOGO_URL
+ * to a public address to see it while testing.
  */
 function logoSrc(): string {
-  // In production the logo is always the public file on this app's own host, so it shows inline without anyone having to
-  // remember the setting. Dev and tests carry it inside the email (a localhost address would not open in a mail app).
-  return process.env.EMAIL_LOGO_URL || (process.env.NODE_ENV === "production" ? canonicalUrl("/platterly-logo.png") : "cid:platterly-logo");
+  return process.env.EMAIL_LOGO_URL || canonicalUrl("/platterly-logo.png");
 }
 
 export function renderEmail(params: EmailLayoutParams): string {

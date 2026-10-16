@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { CopyButton } from "@/components/ui/copy-button";
+import { IconTip } from "@/components/ui/icon-tip";
 import { WhatsAppIcon } from "@/components/icons/whatsapp-icon";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import { CatalogBrowser, type CatalogEntry, type CatalogFilterOption, type CatalogSortOption } from "@/components/catalog/catalog-browser";
@@ -163,16 +164,18 @@ export default async function AbandonedOrdersPage() {
       <span className="text-xs whitespace-nowrap text-muted-foreground">Link expired</span>
     ) : (
       <div className="flex items-center justify-end gap-1">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Send resume link to ${customer.name} on WhatsApp`}
-          className="text-[#128C4A]"
-          render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />}
-          nativeButton={false}
-        >
-          <WhatsAppIcon className="size-4" />
-        </Button>
+        <IconTip label="Send on WhatsApp">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Send resume link to ${customer.name} on WhatsApp`}
+            className="text-[#128C4A]"
+            render={<a href={whatsappHref} target="_blank" rel="noopener noreferrer" />}
+            nativeButton={false}
+          >
+            <WhatsAppIcon className="size-4" />
+          </Button>
+        </IconTip>
         <CopyButton value={resumeUrl} label="Copy link" iconOnly className="border-transparent" />
       </div>
     );
