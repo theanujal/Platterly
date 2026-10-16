@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { userMessage } from "@/lib/errors";
-import { InvalidKitchenRulesError, setKitchenRules } from "@/modules/kitchen/kitchen-rules";
+import { InvalidKitchenRulesError, setKitchenRules, setKitchenSheetText } from "@/modules/kitchen/kitchen-rules";
 import { addLocation, deleteLocation, makeDefaultLocation, renameLocation, setMultiLocationEnabled } from "@/modules/locations/locations";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -22,6 +22,20 @@ export async function updateKitchenRulesAction(formData: FormData): Promise<Acti
   }
   revalidatePath("/settings/kitchen/kitchen-rules");
   revalidatePath("/kitchen-dashboard", "layout");
+  return { ok: true };
+}
+
+/** The kitchen order PDF's own texts: "Service Also Include" and "Please Note". */
+export async function updateKitchenSheetTextAction(formData: FormData): Promise<ActionResult> {
+  const { organizationId } = await requireActiveOrganization();
+  await requirePermission({ settings: ["edit"] }, organizationId);
+  try {
+    await setKitchenSheetText(organizationId, { serviceIncludes: String(formData.get("serviceIncludes") ?? ""), pleaseNote: String(formData.get("pleaseNote") ?? "") });
+  } catch (error) {
+    if (error instanceof InvalidKitchenRulesError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath("/settings/kitchen/kitchen-rules");
   return { ok: true };
 }
 

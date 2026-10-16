@@ -101,7 +101,7 @@ test("the tab: opens by address, runs the whole approval from the order, keeps t
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.locator("#order-panel-pricing").getByTestId("order-locked-fields")).toBeVisible();
   await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.locator("#order-panel-details").getByTestId("order-locked-fields")).toBeVisible(); // the guest counts
+  await expect(page.locator("#order-panel-details").getByTestId("order-locked-fields").filter({ hasText: "Guest Information" })).toBeVisible(); // the guest counts (the customer and event cards are locked with them)
   // Saving the order with a change that is not a price still works while the price is frozen: the form re-submits every price field unchanged.
   await page.getByRole("tab", { name: "Additional Details" }).click();
   await page.getByLabel("Additional Notes").fill("Gate code 4411");

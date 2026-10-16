@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { getKitchenRules, setKitchenRules, InvalidKitchenRulesError } from "@/modules/kitchen/kitchen-rules";
+import { getKitchenRules, setKitchenRules, getKitchenSheetText, setKitchenSheetText, InvalidKitchenRulesError } from "@/modules/kitchen/kitchen-rules";
+import { DEFAULT_KITCHEN_SHEET_TEXT } from "@/modules/kitchen/sheet-text";
 import { cookQuantity, DEFAULT_KITCHEN_RULES } from "@/modules/menu-approvals/kitchen-production-status";
 
 const cleanupOrgIds: string[] = [];
@@ -42,5 +43,25 @@ describe("kitchen rules", () => {
     expect(cookQuantity(44, 10)).toBe(49); // 48.4 -> 49
     expect(cookQuantity(100, 10)).toBe(110);
     expect(cookQuantity(100, 0)).toBe(100);
+  });
+});
+
+describe("kitchen order sheet texts", () => {
+  it("start as the default wording, are saved per kitchen, and a block saved empty stays empty", async () => {
+    const org = await makeOrg();
+    const other = await makeOrg();
+    expect(await getKitchenSheetText(org.id)).toEqual(DEFAULT_KITCHEN_SHEET_TEXT);
+
+    await setKitchenSheetText(org.id, { serviceIncludes: "  Our staff\nOur plates  ", pleaseNote: "" });
+    expect(await getKitchenSheetText(org.id)).toEqual({ serviceIncludes: "Our staff\nOur plates", pleaseNote: "" });
+    expect(await getKitchenSheetText(other.id)).toEqual(DEFAULT_KITCHEN_SHEET_TEXT);
+    // Saving the rules does not touch the texts.
+    await setKitchenRules(org.id, { extraPercent: 12, daysBeforeEvent: 1 });
+    expect((await getKitchenSheetText(org.id)).serviceIncludes).toBe("Our staff\nOur plates");
+  });
+
+  it("rejects a block that is too long", async () => {
+    const org = await makeOrg();
+    await expect(setKitchenSheetText(org.id, { serviceIncludes: "x".repeat(3001), pleaseNote: "" })).rejects.toThrow(InvalidKitchenRulesError);
   });
 });

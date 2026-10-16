@@ -1,7 +1,7 @@
 import { isKitchenLocked, isOrderLocked, OrderLockedError } from "./order-lock";
 import { lockAndReadOrder } from "./kitchen-lock";
 import { approvalWhere, outstandingApprovalWhere, type ApprovalFilter } from "./approval-list";
-import { PriceFrozenError, priceFieldChanges } from "./price-freeze";
+import { DetailsFrozenError, PriceFrozenError, detailFieldChanges, priceFieldChanges } from "./price-freeze";
 import { isPriceFrozenStatus } from "@/modules/menu-approvals/approval-stages";
 import { runAfterCommit, type AfterCommit } from "@/lib/after-commit";
 import { validateOrderLike } from "@/lib/validation";
@@ -495,6 +495,11 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
   if (input.status !== undefined && input.status !== before.status && isOrderLocked(input.status)) throw new OrderLockedError();
   const priceFrozen = selections.some((selection) => isPriceFrozenStatus(selection.status));
   if (priceFrozen && priceFieldChanges(before, input).length > 0) throw new PriceFrozenError();
+  // The customer, event and venue details are frozen with the price, so the page's read-only cards are enforced here too.
+  if (priceFrozen) {
+    const storedVenues = input.venuePerEvent && input.eventVenues ? await tx.orderEventVenue.findMany({ where: { orderId: id } }) : [];
+    if (detailFieldChanges(before, input, storedVenues).length > 0) throw new DetailsFrozenError();
+  }
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;

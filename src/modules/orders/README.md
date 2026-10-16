@@ -120,3 +120,11 @@ concurrent `createOrder` calls for the same tenant can never collide;
 different tenants' counters are fully independent columns on their own
 `Organization` row. `listOrders`'s `search` filter matches `orderNumber` in
 addition to the customer's name.
+
+## Venue per event (2026-10-17)
+
+`event-venues.ts` holds the venue and delivery checks and writes shared by the customer's Venue & Delivery step and the team's Order Details. A Multi Order can have one venue per event (a meal slot: a day and a meal). `applyEventVenues` runs inside `createOrder` / `updateOrderInTransaction` when the form sends `venuePerEvent`: it checks one venue for every event the order has (at least two), writes `OrderEventVenue` rows, and mirrors the first event onto the order's own venue columns. `venuePerEvent` false removes the rows. A save that does not mention venues leaves them as they are.
+
+## Details frozen with the price (2026-10-17)
+
+While the menu is with the customer, approved or with the kitchen, Customer Details, Event Information (including the venue and per-event venues), Guest Information and Pricing are read-only on the order page, and `updateOrderInTransaction` refuses a real change to them (`DetailsFrozenError`, next to `PriceFrozenError`; both in `price-freeze.ts`). An unchanged value is never a change, so saving notes or other details still works. The customer's own Venue & Delivery step writes through the approval link, not this save.

@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { BookOpenText, Plus, UtensilsCrossed } from "lucide-react";
-import { cn } from "cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/ui/searchable-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
@@ -89,6 +89,8 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
     { key: "INCOMPLETE", label: "Cost Incomplete" },
     { key: "HAS", label: "Has Recipe" },
   ];
+  // The recipe-status filter is a dropdown now, each choice with how many dishes it holds (AJ, 2026-10-17).
+  const statusItems = Object.fromEntries(PILLS.map((p) => [p.key, `${p.label} (${counts[p.key]})`])) as Record<StatusFilter, string>;
   const shown = rows.filter((r) => statusFilter === "ALL" || (statusFilter === "HAS" ? r.hasRecipe : statusFilter === "MISSING" ? !r.hasRecipe : statusFilter === "INCOMPLETE" ? costIncomplete(r) : r.status === statusFilter));
 
   const entries: CatalogEntry[] = shown.map((row) => {
@@ -175,21 +177,18 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
         emptyLabel="No active food items yet. Add dishes in the Menu Catalog first."
         filterOptions={filterOptions}
         filters={
-          <div key="status-pills" role="group" aria-label="Recipe status" className="flex flex-wrap gap-2">
-            {PILLS.map((p) => (
-              <Button
-                key={p.key}
-                type="button"
-                size="md"
-                variant={statusFilter === p.key ? "default" : "outline"}
-                aria-pressed={statusFilter === p.key}
-                onClick={() => setStatusFilter(p.key)}
-              >
-                {p.label}
-                <span className={cn("rounded-full px-1.5 text-xs", statusFilter === p.key ? "bg-primary-foreground/20" : "bg-muted")}>{counts[p.key]}</span>
-              </Button>
-            ))}
-          </div>
+          <Select key="status-filter" items={statusItems} value={statusFilter} onValueChange={(value) => setStatusFilter((value as StatusFilter) ?? "ALL")}>
+            <SelectTrigger aria-label="Filter by recipe status" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PILLS.map((p) => (
+                <SelectItem key={p.key} value={p.key}>
+                  {statusItems[p.key]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         }
         sortOptions={sortOptions}
         defaultView="list"

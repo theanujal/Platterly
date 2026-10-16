@@ -118,3 +118,69 @@ export function priceFieldChanges(before: Stored, input: OrderInput): string[] {
   if (input.customCharges !== undefined && customLines(before.customCharges) !== customLines(input.customCharges)) changed.push("customCharges");
   return changed;
 }
+
+/** The customer, event and venue details are frozen along with the price (AJ, 2026-10-17), with a message that says so. */
+export class DetailsFrozenError extends ValidationError {
+  constructor() {
+    super("The customer has the menu, so the customer, event, guest and pricing details can't be changed here. Recall the menu to edit them; the customer will approve the new version.");
+    this.name = "DetailsFrozenError";
+  }
+}
+
+type StoredDetails = {
+  customerId: string;
+  eventTypeId: string | null;
+  orderKind: string;
+  eventStartDate: Date;
+  eventEndDate: Date;
+  venuePerEvent: boolean;
+  liveCounterAvailable: boolean | null;
+  gasElectricAvailable: boolean | null;
+} & Record<(typeof TEXT_DETAILS)[number], unknown>;
+
+const TEXT_DETAILS = [
+  "venue", "eventAddress", "venueType", "vehicleAccess", "venueAccessInstructions", "venueDoorNumber", "venueTower", "venueFloor", "venueLandmark",
+  "venueContactName", "venueContactPhone", "deliveryInstructions", "cookingInstructions",
+] as const;
+
+const text = (value: unknown) => (typeof value === "string" ? value.trim() : value == null ? "" : String(value));
+const day = (value: Date) => value.toISOString().slice(0, 10);
+
+type StoredEventVenue = { date: Date; mealType: string; venueType: string; venue: string; eventAddress: string; venueDoorNumber: string | null; venueTower: string | null; venueFloor: string | null; venueLandmark: string | null; venueContactName: string; venueContactPhone: string; venueAccessInstructions: string | null; cookingInstructions: string | null; gasElectricAvailable: boolean; liveCounterAvailable: boolean };
+
+/**
+ * The customer, event and venue fields a save would change. Like `priceFieldChanges`: a field left out of the input is not being
+ * changed, and a value equal to the stored one (an empty text and null are the same) is not a change, so saving an unchanged order is
+ * never refused. The per-event venues are compared against the stored rows by event.
+ */
+export function detailFieldChanges(before: StoredDetails, input: OrderInput, storedEventVenues: StoredEventVenue[] = []): string[] {
+  const changed: string[] = [];
+  if (input.customerId !== undefined && input.customerId !== before.customerId) changed.push("customerId");
+  if (input.eventTypeId !== undefined && (input.eventTypeId ?? null) !== before.eventTypeId) changed.push("eventTypeId");
+  if (input.orderKind !== undefined && input.orderKind !== before.orderKind) changed.push("orderKind");
+  if (input.eventStartDate !== undefined && day(input.eventStartDate) !== day(before.eventStartDate)) changed.push("eventStartDate");
+  if (input.eventEndDate !== undefined && day(input.eventEndDate) !== day(before.eventEndDate)) changed.push("eventEndDate");
+  for (const name of TEXT_DETAILS) {
+    const next = (input as unknown as Record<string, unknown>)[name];
+    if (next !== undefined && text(next) !== text(before[name])) changed.push(name);
+  }
+  if (input.liveCounterAvailable !== undefined && (input.liveCounterAvailable ?? false) !== (before.liveCounterAvailable ?? false)) changed.push("liveCounterAvailable");
+  if (input.gasElectricAvailable !== undefined && (input.gasElectricAvailable ?? false) !== (before.gasElectricAvailable ?? false)) changed.push("gasElectricAvailable");
+  if (input.venuePerEvent !== undefined && input.venuePerEvent !== before.venuePerEvent) changed.push("venuePerEvent");
+  if (input.venuePerEvent && input.eventVenues) {
+    const stored = new Map(storedEventVenues.map((row) => [`${day(row.date)}-${row.mealType}`, row]));
+    for (const event of input.eventVenues) {
+      const row = stored.get(event.key);
+      const d = event.details;
+      const same =
+        row &&
+        text(d.venueType) === text(row.venueType) && text(d.venueBuildingName) === text(row.venue) && text(d.completeVenueAddress) === text(row.eventAddress) &&
+        text(d.venueDoorNumber) === text(row.venueDoorNumber) && text(d.venueTower) === text(row.venueTower) && text(d.venueFloor) === text(row.venueFloor) &&
+        text(d.venueLandmark) === text(row.venueLandmark) && text(d.venueContactName) === text(row.venueContactName) && text(d.venueContactPhone).replace(/\s/g, "") === text(row.venueContactPhone).replace(/\s/g, "") &&
+        text(d.venueAccessInstructions) === text(row.venueAccessInstructions) && text(d.cookingInstructions) === text(row.cookingInstructions) &&
+        (d.gasElectricAvailable === true) === row.gasElectricAvailable && (d.liveCounterAvailable === true) === row.liveCounterAvailable;
+      if (!same) changed.push(`eventVenue:${event.key}`);
+    }
+  }
+  return changed;
+}

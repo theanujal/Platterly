@@ -820,7 +820,7 @@ export function OrderForm({
 
   const detailView = !!initialValues;
   // No Edit on a locked order, nor while the menu is with the customer (guests and pricing stay read-only until a recall too): one notice above the tabs says why (AJ, 2026-10-16).
-  const editButton = (label: string, ariaLabel: string, onClick: () => void, frozen: boolean = locked || withCustomer) =>
+  const editButton = (label: string, ariaLabel: string, onClick: () => void, frozen: boolean = locked || priceFrozen) =>
     frozen ? null : (
       <Button type="button" variant="outline" size="md" aria-label={ariaLabel} onClick={onClick}>
         <Pencil data-icon="inline-start" />
@@ -1794,10 +1794,10 @@ export function OrderForm({
       panel: (
         <>
           <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 [&>*]:h-full [&>fieldset>*]:h-full">
-            {freeze(customerSection)}
+            {freeze(customerSection, locked || priceFrozen)}
             {freeze(guestSection, locked || priceFrozen)}
           </div>
-          {freeze(eventSection)}
+          {freeze(eventSection, locked || priceFrozen)}
           {multiDialog}
           {menuPlanInApprovalTab ? null : freeze(menuSection)}
           {detailsExtra}
@@ -1923,9 +1923,9 @@ export function OrderForm({
           <div role="status" className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm" data-testid="order-frozen-banner">
             <Lock className="mt-0.5 size-4 shrink-0 text-info" />
             <div>
-              <p className="font-semibold">{withCustomer ? "The menu is with the customer, so the order is read-only." : "The customer has approved the menu, so guests and pricing are read-only."}</p>
+              <p className="font-semibold">{withCustomer ? "The menu is with the customer, so the order is read-only." : "The customer has approved the menu, so customer details, event information, guests and pricing are read-only."}</p>
               <p className="text-muted-foreground">
-                {withCustomer ? "Customer details, event information, guests and pricing can't be changed." : "Guests and pricing can't be changed."} Recall the menu in the Menu Approval tab to edit {withCustomer ? "them" : "these"}; the customer then approves the new version.
+                Customer details, event information, guests and pricing can&apos;t be changed. Recall the menu in the Menu Approval tab to edit them; the customer then approves the new version.
               </p>
             </div>
           </div>

@@ -1,16 +1,20 @@
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import { kitchenAtMyLocation } from "@/modules/locations/active-location";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { prisma } from "@/lib/db";
 import { getKitchenPrepSheet } from "@/modules/menu-approvals/menu-approval";
 import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
+import { buildKitchenSheetPdf } from "@/modules/menu-approvals/kitchen-sheet-pdf";
+import { getKitchenSheetText } from "@/modules/kitchen/kitchen-rules";
+import { textToPoints } from "@/modules/kitchen/sheet-text";
+import { getLogistics } from "@/modules/logistics/logistics";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const formatDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toLocaleDateString("en-IN", { timeZone: "UTC", ...options });
 
 /**
- * The preparation sheet as a PDF (AJ, 2026-09-30) — `?download=1` sends it as
- * an attachment for "Download PDF"; without it the browser shows it inline,
- * which is what the Print button loads and prints. Same permission as the page.
+ * The kitchen order as a PDF in the kitchen's own sheet format (AJ, 2026-10-17; before that the plain preparation list of 2026-09-30).
+ * `?download=1` sends it as an attachment for "Download PDF"; without it the browser shows it inline, which is what the Print button
+ * loads and prints. Same permission as the page.
  */
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,68 +23,54 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
   if (!sheet || !(await kitchenAtMyLocation(organizationId, session.user.id, sheet.selection.event.assignedKitchenId))) return new Response("Not found", { status: 404 });
-  const { selection, meals, guests, extraPercent, kitchenNotes, kitchenNotesUpdatedAt } = sheet;
+  const { selection, meals, guests, extraPercent, kitchenNotes } = sheet;
   const { event } = selection;
+  const order = event.order;
 
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-  const left = 40;
-  let y = 48;
+  const [organization, sheetText, logistics] = await Promise.all([
+    prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, addressLine1: true, addressLine2: true, city: true, state: true, contactPhone: true } }),
+    getKitchenSheetText(organizationId),
+    getLogistics(organizationId, event.id),
+  ]);
 
-  doc.setFont("helvetica", "bold").setFontSize(16).text("Kitchen Production List", left, y);
-  y += 22;
-  doc.setFontSize(12).text(event.customer.name, left, y);
-  y += 16;
-  doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(90);
-  const facts = [
-    [event.order?.orderNumber, event.eventType.name].filter(Boolean).join(" · "),
-    `${formatDate(event.startDate, { weekday: "short", day: "numeric", month: "short", year: "numeric" })} · ${guests} guests · Kitchen: ${event.assignedKitchen?.name ?? "Not assigned"}`,
-    `Cook for ${Math.ceil((guests * (100 + extraPercent)) / 100)} portions (${extraPercent}% extra)`,
-  ];
-  for (const line of facts) {
-    doc.text(line, left, y);
-    y += 14;
-  }
-  doc.setTextColor(0);
-  if (kitchenNotes?.trim() || event.notes?.trim()) {
-    y += 4;
-    doc.setFont("helvetica", "bold").text("Preparation notes", left, y);
-    if (kitchenNotesUpdatedAt && kitchenNotes?.trim()) {
-      doc.setFont("helvetica", "normal").setFontSize(9).setTextColor(90).text(`Updated ${kitchenNotesUpdatedAt.toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}`, 555, y, { align: "right" }).setTextColor(0).setFontSize(10);
-    }
-    y += 13;
-    doc.setFont("helvetica", "normal");
-    const lines = doc.splitTextToSize([kitchenNotes, event.notes].filter((n) => n?.trim()).join("\n"), 515) as string[];
-    doc.text(lines, left, y);
-    y += lines.length * 12;
-  }
-  y += 10;
+  const adults = order?.adultCount ?? guests;
+  const manyDays = new Set(meals.map((meal) => meal.date.getTime())).size > 1;
+  const days = [...new Set(meals.map((meal) => meal.date.getTime()))].sort();
+  const notes = [kitchenNotes, event.notes].filter((note) => note?.trim()).join("\n");
 
-  for (const meal of meals) {
-    if (y > 730) {
-      doc.addPage();
-      y = 48;
-    }
-    doc.setFont("helvetica", "bold").setFontSize(13).text(`${MEAL_TYPE_LABEL[meal.mealType]} — ${formatDate(meal.date, { weekday: "short", day: "numeric", month: "short" })}`, left, y);
-    if (meal.menuName) doc.setFont("helvetica", "normal").setFontSize(10).setTextColor(90).text(meal.menuName, 555, y, { align: "right" }).setTextColor(0);
-    y += 8;
-    for (const category of meal.categories) {
-      autoTable(doc, {
-        startY: y,
-        margin: { left, right: 40 },
-        head: [[`${category.name} (${category.items.length})`, "Guest Qty", `Cook Qty (${extraPercent}% extra)`]],
-        body: category.items.map((item) => [item.name, String(item.guestQuantity), String(item.cookQuantity)]),
-        styles: { fontSize: 10 },
-        headStyles: { fillColor: [241, 241, 241], textColor: 20 },
-        columnStyles: { 1: { halign: "right", cellWidth: 70 }, 2: { halign: "right", cellWidth: 120 } },
-        theme: "grid",
-      });
-      y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
-    }
-    y += 6;
-  }
+  const doc = buildKitchenSheetPdf({
+    kitchen: {
+      name: organization.name,
+      address: [organization.addressLine1, organization.addressLine2, organization.city, organization.state].filter(Boolean).join(", "),
+      phone: organization.contactPhone ? formatPhoneDisplay(organization.contactPhone) : null,
+    },
+    orderNumber: order?.orderNumber ?? null,
+    bookingDate: formatDate(order?.createdAt ?? selection.createdAt, { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+    customerName: event.customer.name,
+    eventType: event.eventType.name,
+    notes: notes || null,
+    serviceIncludes: textToPoints(sheetText.serviceIncludes),
+    pleaseNote: textToPoints(sheetText.pleaseNote),
+    meals: meals.map((meal) => ({
+      title: MEAL_TYPE_LABEL[meal.mealType],
+      dayLabel: manyDays ? `Day ${days.indexOf(meal.date.getTime()) + 1}` : null,
+      dateText: formatDate(meal.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
+      pickup: logistics?.dispatchPlannedAt ? logistics.dispatchPlannedAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).toUpperCase() : null,
+      totalGuests: guests,
+      adults,
+      under5: order?.childBelow5Count ?? 0,
+      age5to10: order?.child5To10Count ?? 0,
+      cookFor: Math.ceil((guests * (100 + extraPercent)) / 100),
+      extraPercent,
+      menuName: meal.menuName,
+      // Dishes by category; add-ons and live counters go under "Service Also Include" instead.
+      categories: meal.categories.filter((category) => category.name !== "Add-ons").map((category) => ({ name: category.name, items: category.items.map((item) => item.name) })),
+      extras: (meal.categories.find((category) => category.name === "Add-ons")?.items ?? []).map((item) => (item.guestQuantity > 1 ? `${item.name} (x${item.guestQuantity})` : item.name)),
+    })),
+  });
 
   const download = new URL(request.url).searchParams.has("download");
-  const filename = `kitchen-${event.order?.orderNumber ?? selection.id}.pdf`;
+  const filename = `kitchen-${order?.orderNumber ?? selection.id}.pdf`;
   return new Response(doc.output("arraybuffer"), {
     headers: {
       "Content-Type": "application/pdf",

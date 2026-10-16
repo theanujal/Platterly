@@ -876,3 +876,31 @@ export async function seedOrderPayment(orderId: string, options: { amount: numbe
 export async function confirmOrderPayment(paymentId: string): Promise<void> {
   await pool.query(`UPDATE payment SET status = 'CONFIRMED', "confirmedAt" = now(), "updatedAt" = now() WHERE id = $1`, [paymentId]);
 }
+
+/** Kitchen-sheet spec: locks the seeded order's menu selection (the kitchen's list only exists for a final menu) and returns its id. */
+export async function lockSeededSelection(orderId: string): Promise<string> {
+  const { rows } = await pool.query<{ id: string }>(
+    `UPDATE menu_selection SET status = 'FINAL_LOCKED' WHERE "eventId" IN (SELECT id FROM event WHERE "orderId" = $1) RETURNING id`,
+    [orderId],
+  );
+  if (!rows[0]) throw new Error("No menu selection for the order");
+  return rows[0].id;
+}
+
+/** Kitchen-sheet spec: real meal-plan entries (Lunch on day 3, Dinner on day 4) with a dish each, so the kitchen's list has meals to print. */
+export async function seedMealPlan(orderId: string): Promise<void> {
+  const meals = [
+    { id: `mp1_${orderId}`, type: "LUNCH", offset: 3, item: "Paneer Tikka" },
+    { id: `mp2_${orderId}`, type: "DINNER", offset: 4, item: "Dal Makhani" },
+  ];
+  for (const meal of meals) {
+    await pool.query(
+      `INSERT INTO meal_plan_entry (id, "orderId", date, "mealType") VALUES ($1, $2, date_trunc('day', now() at time zone 'UTC') + ($3 || ' days')::interval, $4::"MealType")`,
+      [meal.id, orderId, String(meal.offset), meal.type],
+    );
+    await pool.query(
+      `INSERT INTO order_item (id, "orderId", "mealPlanEntryId", "itemType", name, "unitPrice", quantity) VALUES ($1, $2, $3, 'MENU_ITEM', $4, 100, 1)`,
+      [`oi_${meal.id}`, orderId, meal.id, meal.item],
+    );
+  }
+}

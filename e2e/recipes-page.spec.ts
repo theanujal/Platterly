@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser } from "./db";
 import { stockIn } from "./inventory-helpers";
-import { signUpCaterer } from "./auth-helpers";
+import { selectOption, signUpCaterer } from "./auth-helpers";
 
 /**
  * The Recipes page (AJ, 2026-10-10): its own sidebar entry just below Stock & Supplies, listing every dish as Missing or
@@ -59,7 +59,8 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(page).toHaveURL(/\/recipes$/);
   await expect(page.getByRole("heading", { name: "Recipes", exact: true })).toBeVisible();
   await expect(page.getByRole("row").filter({ hasText: "Missing" })).toHaveCount(2);
-  await expect(page.getByRole("button", { name: /All Dishes/ })).toContainText("2");
+  const statusFilter = page.getByRole("combobox", { name: "Filter by recipe status" });
+  await expect(statusFilter).toContainText("All Dishes (2)");
 
   // A dish without a recipe shows a dash, not a cost.
   const noRecipe = page.getByRole("row").filter({ hasText: dishes[0] });
@@ -113,14 +114,16 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(second).toContainText("₹90.00");
 
   // Filters: nothing is missing any more.
-  await expect(page.getByRole("button", { name: /Missing Recipe/ })).toContainText("0");
-  await page.getByRole("button", { name: /Has Recipe/ }).click();
+  await expect(statusFilter).toContainText("All Dishes (2)");
+  await selectOption(page, statusFilter, /Missing Recipe \(0\)/);
+  await expect(page.getByRole("row").filter({ hasText: "Draft" })).toHaveCount(0);
+  await selectOption(page, statusFilter, /Has Recipe/);
   await expect(page.getByRole("row").filter({ hasText: "Draft" })).toHaveCount(2);
-  await page.getByRole("button", { name: /Missing Recipe/ }).click();
+  await selectOption(page, statusFilter, /Missing Recipe/);
   await expect(page.getByRole("row").filter({ hasText: "Draft" })).toHaveCount(0);
 
   // Draft -> Active is the footer switch, applied on Save; the cost was already verified and the recipe stayed a Draft.
-  await page.getByRole("button", { name: /All Dishes/ }).click();
+  await selectOption(page, statusFilter, /All Dishes/);
   await page.getByRole("button", { name: `Edit recipe for ${dishes[0]}` }).click();
   const statusSwitch = page.getByRole("switch", { name: "Draft" });
   await expect(statusSwitch).toBeVisible();
@@ -129,8 +132,11 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(first.getByText("Active", { exact: true })).toBeVisible();
   await expect(first).toContainText("₹120.00"); // the cost is unchanged by approving it
-  await expect(page.getByRole("button", { name: /^Active/ })).toContainText("1");
-  await expect(page.getByRole("button", { name: /^Draft/ })).toContainText("1");
+  // The dropdown's own counts follow: one Active, one Draft.
+  await statusFilter.click();
+  await expect(page.getByRole("option", { name: "Active (1)" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Draft (1)" })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   // Changing the ingredients and saving with the switch left on keeps it Active; switching it off returns it to Draft.
   await page.getByRole("button", { name: `Edit recipe for ${dishes[0]}` }).click();

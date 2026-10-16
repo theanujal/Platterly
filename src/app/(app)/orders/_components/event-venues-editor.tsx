@@ -162,12 +162,12 @@ export function EventVenuesEditor({
   const id = (name: string) => `event-venue-${active.key}-${name}`;
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 sm:col-span-2 lg:grid-cols-[18rem_minmax(0,1fr)]" data-testid="event-venues">
+    <div className="flex flex-col gap-4 sm:col-span-2" data-testid="event-venues">
       <div className="flex flex-col gap-3" data-testid="event-list">
         <p className="text-sm text-muted-foreground">
           {slots.length} events · {locations} location{locations === 1 ? "" : "s"}
         </p>
-        <nav aria-label="Events" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+        <nav aria-label="Events" className="flex gap-2 overflow-x-auto pb-1">
           {slots.map((slot) => {
             const place = eventPlace(venues[slot.key]);
             const isActive = slot.key === active.key;
@@ -177,7 +177,7 @@ export function EventVenuesEditor({
                 type="button"
                 aria-current={isActive}
                 onClick={() => onActiveKey(slot.key)}
-                className={cn("flex min-w-64 items-start gap-3 rounded-xl border bg-card p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 lg:min-w-0", isActive ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50")}
+                className={cn("flex min-w-64 max-w-80 flex-1 items-start gap-3 rounded-xl border bg-card p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50", isActive ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50")}
               >
                 <DateTile date={slot.date} active={isActive} />
                 <span className="min-w-0 flex-1 text-sm">

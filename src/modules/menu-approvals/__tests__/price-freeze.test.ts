@@ -124,14 +124,35 @@ describe("the price freeze on an ordinary order edit", () => {
     expect(after.notes).toBe(before.notes); // nothing else in the same save was kept either
   });
 
-  it.each(PRE_KITCHEN_FROZEN)("saves an unchanged order and a change to something that is not a price in %s", async (status) => {
+  it.each(PRE_KITCHEN_FROZEN)("saves an unchanged order and a change to something that is not a price or a detail in %s", async (status) => {
     const b = await newBusiness();
     const { order, selection } = await b.makeOrder();
     await setStatus(selection.id, status);
     await updateOrder(b.org.id, order.id, await formInput(order.id), b.owner.user.id); // the form re-submits every field
-    await updateOrder(b.org.id, order.id, await formInput(order.id, { notes: "Gate code 4411", venue: "Hall B" }), b.owner.user.id);
+    await updateOrder(b.org.id, order.id, await formInput(order.id, { notes: "Gate code 4411", kitchenNotes: "Use the side door" }), b.owner.user.id);
     const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
-    expect([saved.notes, saved.venue]).toEqual(["Gate code 4411", "Hall B"]);
+    expect([saved.notes, saved.kitchenNotes]).toEqual(["Gate code 4411", "Use the side door"]);
+  });
+
+  it.each(PRE_KITCHEN_FROZEN)("refuses a change to the customer, event or venue details in %s, and writes nothing (AJ, 2026-10-17)", async (status) => {
+    const b = await newBusiness();
+    const { order, selection } = await b.makeOrder();
+    await setStatus(selection.id, status);
+    const before = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    const other = new Date(before.eventStartDate.getTime() + 86_400_000);
+    for (const patch of [{ venue: "Hall B" }, { eventAddress: "12 MG Road" }, { venueContactName: "Ravi" }, { eventStartDate: other, eventEndDate: other }, { orderKind: before.orderKind === "MULTI" ? "SINGLE" : "MULTI" }] as Partial<OrderInput>[]) {
+      await expect(updateOrder(b.org.id, order.id, await formInput(order.id, patch), b.owner.user.id)).rejects.toThrow(/customer has the menu/);
+    }
+    const after = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect([after.venue, after.eventAddress, after.venueContactName, after.eventStartDate.toISOString(), after.orderKind]).toEqual([before.venue, before.eventAddress, before.venueContactName, before.eventStartDate.toISOString(), before.orderKind]);
+  });
+
+  it.each(EDITABLE)("still allows a venue change in %s", async (status) => {
+    const b = await newBusiness();
+    const { order, selection } = await b.makeOrder();
+    await setStatus(selection.id, status);
+    await updateOrder(b.org.id, order.id, await formInput(order.id, { venue: "Hall B" }), b.owner.user.id);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).venue).toBe("Hall B");
   });
 
   it.each(EDITABLE)("still allows a price change in %s", async (status) => {
