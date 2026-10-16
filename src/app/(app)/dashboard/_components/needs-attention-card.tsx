@@ -21,6 +21,8 @@ interface Item {
   detail?: string;
 }
 
+const MAX_ITEMS = 6;
+
 /** What needs a decision today, each one a direct link to where it is dealt with. */
 export function NeedsAttentionCard({ overdue, pendingReviewOrders, awaitingApprovalOrders, quotationsAwaitingResponse, showMoney, showOrders, showQuotations }: NeedsAttentionCardProps) {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -57,7 +59,8 @@ export function NeedsAttentionCard({ overdue, pendingReviewOrders, awaitingAppro
         title: `${plural(awaitingApprovalOrders, "menu approval")} pending`,
         detail: "Waiting for the customer to approve the menu",
       },
-  ].filter((item): item is Item => Boolean(item));
+  ].filter((item): item is Item => Boolean(item))
+    .slice(0, MAX_ITEMS);
 
   return (
     <Card className="h-full">

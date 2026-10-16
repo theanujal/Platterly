@@ -11,8 +11,6 @@ interface Tile {
   chip: string;
   value: string;
   label: string;
-  /** What the number covers, so a figure the date range does not move never looks like one it does. */
-  scope: string;
   note: string;
   noteVariant: "danger" | "success" | "warning" | "neutral";
 }
@@ -41,7 +39,6 @@ export function KpiTiles(props: KpiTilesProps) {
       chip: "bg-primary/10 text-primary",
       value: String(props.activeOrders),
       label: "Active Orders",
-      scope: "Right now",
       note: props.needAttention > 0 ? `${props.needAttention} need attention` : "All on track",
       noteVariant: props.needAttention > 0 ? "danger" : "success",
     },
@@ -52,7 +49,6 @@ export function KpiTiles(props: KpiTilesProps) {
       chip: "bg-info/10 text-info",
       value: String(props.upcomingEvents),
       label: "Upcoming Events",
-      scope: "Next 7 days",
       note: "Not date-filtered",
       noteVariant: "neutral",
     },
@@ -63,7 +59,6 @@ export function KpiTiles(props: KpiTilesProps) {
       chip: "bg-success/10 text-success",
       value: props.rangeGuests.toLocaleString("en-IN"),
       label: "Total Guests",
-      scope: "Events in the range",
       note: "By event date",
       noteVariant: "success",
     },
@@ -74,7 +69,6 @@ export function KpiTiles(props: KpiTilesProps) {
       chip: "bg-primary/10 text-primary",
       value: formatAmount(props.pendingRevenue),
       label: "Pending Revenue",
-      scope: "Orders placed in the range",
       note: `${props.pendingRevenueOrders} order${props.pendingRevenueOrders === 1 ? "" : "s"}`,
       noteVariant: "warning",
     },
@@ -85,7 +79,6 @@ export function KpiTiles(props: KpiTilesProps) {
       chip: "bg-destructive/10 text-destructive",
       value: String(props.openQuotations),
       label: "Quotations",
-      scope: "Created in the range",
       note: `${props.quotationsAwaiting} awaiting response`,
       noteVariant: "warning",
     },
@@ -109,7 +102,6 @@ export function KpiTiles(props: KpiTilesProps) {
               <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
             </div>
             <span className="text-sm whitespace-nowrap text-muted-foreground">{tile.label}</span>
-            <span className="text-[11px] leading-tight text-muted-foreground" data-testid="kpi-scope">{tile.scope}</span>
             <Badge variant={tile.noteVariant} className="self-start px-2 py-0.5 text-[11px]">
               {tile.note}
             </Badge>
