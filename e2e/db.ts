@@ -838,3 +838,8 @@ export async function setOrderEventDay(orderId: string, isoDay: string): Promise
   await pool.query('UPDATE "order" SET "eventStartDate" = $2::date, "eventEndDate" = $2::date WHERE id = $1', [orderId, isoDay]);
   await pool.query('UPDATE event SET "startDate" = $2::date, "endDate" = $2::date WHERE "orderId" = $1', [orderId, isoDay]);
 }
+
+export async function getOrderKind(orderId: string): Promise<string> {
+  const { rows } = await pool.query('SELECT "orderKind"::text AS kind FROM "order" WHERE id = $1', [orderId]);
+  return rows[0].kind;
+}

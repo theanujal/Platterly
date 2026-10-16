@@ -213,7 +213,7 @@ test("the Edit drawers (Event Type, Menu Type) ask before discarding a change", 
   }
 });
 
-test("an order form with unsaved edits: Back to orders becomes Discard changes and asks, the sidebar asks, Save stays beside the form", async ({ page }) => {
+test("an order form with unsaved edits: Back to orders becomes Discard changes and asks, the sidebar asks, Save is top right and bottom right", async ({ page }) => {
   test.setTimeout(90_000);
   const email = `e2e-discard-order-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -224,18 +224,19 @@ test("an order form with unsaved edits: Back to orders becomes Discard changes a
   // Untouched: the button is "Back to orders" (never "Cancel") and goes straight back.
   await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByTestId("order-save-top")).toBeDisabled(); // Save waits for a change, on every tab
   await page.getByLabel("Adults").fill("40");
+  await expect(page.getByTestId("order-save-top")).toBeEnabled();
 
-  // Edited: the note shows in the Save card, the button now reads Discard changes and asks first.
+  // Edited: the note shows, the button now reads Discard changes and asks first. Save is top right and again bottom right under the cards.
   await expect(page.getByTestId("unsaved-note")).toBeVisible();
-  await expect(page.getByTestId("order-save-card").getByRole("button", { name: "Save Order" })).toBeVisible();
-  // The Save card is the last thing in the summary column and stays in view.
-  const saveCard = page.getByTestId("order-save-card");
-  await expect(saveCard).toBeInViewport();
+  await expect(page.getByTestId("order-save-top")).toBeVisible();
+  const bottomSave = page.getByTestId("order-save-bottom");
+  await expect(bottomSave.getByRole("button", { name: "Save Order" })).toBeVisible();
   const summaryBox = await page.getByRole("heading", { name: "Order Summary" }).boundingBox();
-  const saveBox = await saveCard.boundingBox();
-  expect(saveBox!.y).toBeGreaterThan(summaryBox!.y);
+  const bottomBox = await bottomSave.boundingBox();
+  expect(bottomBox!.y).toBeGreaterThan(summaryBox!.y);
   await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(asking).toBeVisible();
   await asking.getByRole("button", { name: "Keep editing" }).click();

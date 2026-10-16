@@ -98,10 +98,11 @@ test("the review page in every state: stage buttons, customer link, venue status
   // ---------- Needs Review, custom menu: the price quote and Team notes ----------
   await open("custom");
   await expect(view.getByText("Needs Review").first()).toBeVisible();
-  await expect(actions().getByRole("button", { name: "Save Changes" })).toBeDisabled(); // nothing changed yet
+  await expect(page.getByTestId("order-save-top")).toBeDisabled(); // nothing changed yet (the order page's Save buttons save the meal plan on this tab)
   await expect(actions().getByRole("button", { name: "Send Menu for Approval" })).toBeVisible();
   await expect(actions().getByRole("button", { name: "Recall to Edit" })).toHaveCount(0);
-  await expect(view.getByText("Check the dishes and the guest count, then send the menu to the customer for approval.")).toBeVisible();
+  await expect(actions().getByRole("button", { name: /^Send/ })).toBeVisible(); // a Draft: no banner, the team can send
+  await expect(view.getByText("Check the dishes and the guest count")).toHaveCount(0);
   await expect(view.getByText("Customer link:")).toHaveCount(0);
   await expect(view.getByTestId("venue-details-status")).toHaveCount(0);
 
@@ -141,7 +142,8 @@ test("the review page in every state: stage buttons, customer link, venue status
   await expect(linkBar.getByRole("button", { name: "Copied!" })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(linkText);
   await actions().getByRole("button", { name: "Recall to Edit" }).click();
-  await expect(view.getByText("Check the dishes and the guest count, then send the menu to the customer for approval.")).toBeVisible();
+  await expect(actions().getByRole("button", { name: /^Send/ })).toBeVisible(); // a Draft: no banner, the team can send
+  await expect(view.getByText("Check the dishes and the guest count")).toHaveCount(0);
   await expect.poll(async () => (await getApprovalState(seeded.sent.orderId)).selection).toBe("DRAFT");
   await expect(view.getByText("Customer link:")).toHaveCount(0);
 

@@ -8,11 +8,7 @@ import { MENU_SELECTION_STATUS_ORDER } from "@/modules/orders/order-status";
 
 describe("stageBanner", () => {
   it("tells the team what to do next at each stage", () => {
-    expect(stageBanner("DRAFT", 1, "Needs Review")).toEqual({
-      tone: "neutral",
-      text: "Check the dishes and the guest count, then send the menu to the customer for approval.",
-      noteLink: null,
-    });
+    expect(stageBanner("DRAFT", 1, "Needs Review")).toBeNull();
     expect(stageBanner("CHANGES_REQUESTED", 2, "Changes Requested")).toEqual({
       tone: "danger",
       text: "The customer requested changes. Update the menu, then send a new version for approval.",

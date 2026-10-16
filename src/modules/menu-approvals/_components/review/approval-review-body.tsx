@@ -1,7 +1,6 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import { ApprovalEventOverviewCard, type EventOverviewData } from "./approval-event-overview-card";
 import { ApprovalMenuPlanner } from "./approval-menu-planner";
 import { ApprovalNotesCard } from "./approval-notes-card";
 import { ApprovalPricingCard } from "./approval-pricing-card";
@@ -15,7 +14,7 @@ import type { MenuApprovalReviewProps, ReviewActions } from "./types";
 
 /**
  * Everything under the page header: the error line, stage notices, version bar, the planner and quote on the left, and the Approval Status,
- * Pricing Summary, Event Overview and Team Notes cards on the right (the full history and versions open from the status card). Used by the order's Menu Approval tab,
+ * Pricing Summary and Team Notes cards on the right (the full history and versions open from the status card). Used by the order's Menu Approval tab,
  * which puts its own header above it. Renders siblings (a fragment) so each page keeps its own spacing.
  */
 export function ApprovalReviewBody({
@@ -23,16 +22,11 @@ export function ApprovalReviewBody({
   c,
   actions,
   cardsInSidebar = false,
-  eventOverview,
-  onViewDetails,
 }: {
   data: MenuApprovalReviewProps;
   c: ApprovalController;
   actions: ReviewActions;
   cardsInSidebar?: boolean;
-  /** The Event Overview card shows only when the page supplies the values and where "View Details" goes. */
-  eventOverview?: EventOverviewData;
-  onViewDetails?: () => void;
 }) {
   // With `cardsInSidebar` the cards live in the page's sidebar slot and are not drawn here, so nothing flashes inline before the page is ready.
   // Without it they sit in a right-hand column of their own.
@@ -61,7 +55,6 @@ export function ApprovalReviewBody({
         lastSentTotal={c.lastSentTotal}
         dirty={c.dirty}
       />
-      {eventOverview && onViewDetails && <ApprovalEventOverviewCard overview={eventOverview} onViewDetails={onViewDetails} />}
       <ApprovalNotesCard notes={notes} noteDraft={c.noteDraft} onNoteDraftChange={c.setNoteDraft} pending={c.pending} onAdd={c.handleAddNote} canAdd={capabilities.canAct && !orderCompleted} />
     </>
   );

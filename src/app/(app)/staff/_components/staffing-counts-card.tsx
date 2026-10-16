@@ -1,16 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Users } from "lucide-react";
+import { ChefHat, ConciergeBell, Info, Settings, Users, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelect } from "@/components/ui/searchable-select";
 import { STAFF_DUTIES, STAFF_DUTY_LABEL } from "@/modules/employees/duty";
 import { MAX_STAFF_COUNT } from "@/modules/employees/staff-count-limits";
 import type { StaffDuty } from "@/generated/prisma/enums";
+import { SummaryCard } from "../../orders/_components/order-form-parts";
 import { saveStaffCountsAction } from "../event-ops-actions";
+
+/** An icon per duty, so the three numbers read at a glance. */
+const DUTY_ICON: Partial<Record<StaffDuty, LucideIcon>> = { KITCHEN: ChefHat, SERVING: ConciergeBell, SETUP: Settings };
 
 /**
  * Staffing (AJ, 2026-10-14): the Event Manager is picked from team members with access and staff whose duty is Event Manager (AJ, 2026-10-16); Cooking, Serving and Setup are numbers
@@ -37,21 +40,18 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
   }
 
   return (
-    <Card data-testid="staffing-counts-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="size-4 text-muted-foreground" />
-          Staffing ({total} {total === 1 ? "person" : "people"})
-        </CardTitle>
-        <CardDescription>Pick the Event Manager, then enter how many people this event needs for Cooking, Serving and Setup.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+    <div data-testid="staffing-counts-card" className="min-w-0">
+      <SummaryCard
+        icon={Users}
+        title={`Staffing (${total} ${total === 1 ? "person" : "people"})`}
+        description="Assign the event manager and enter the number of people needed for cooking, serving and setup."
+      >
         <div className="flex flex-col gap-1.5">
           <Label>Event Manager</Label>
           <SearchableSelect
             aria-label="Event Manager"
             disabled={!canEdit}
-            placeholder="Pick the Event Manager"
+            placeholder="Select event manager"
             searchPlaceholder="Search team members and Event Managers…"
             emptyLabel="No team member or Event Manager staff found. Add a staff member with the duty Event Manager."
             options={(eventManager && !suggestions.includes(eventManager) ? [eventManager, ...suggestions] : suggestions).map((name) => ({ value: name, label: name }))}
@@ -62,34 +62,54 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
             }}
           />
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          {STAFF_DUTIES.map((duty) => (
-            <div key={duty} className="flex flex-col gap-1.5">
-              <Label htmlFor={`staff-${duty}`}>{STAFF_DUTY_LABEL[duty]}</Label>
-              <Input
-                id={`staff-${duty}`}
-                type="number"
-                inputMode="numeric"
-                min="0"
-                max={MAX_STAFF_COUNT}
-                step="1"
-                placeholder="0"
-                disabled={!canEdit}
-                value={values[duty]}
-                onChange={(e) => {
-                  setValues((previous) => ({ ...previous, [duty]: e.target.value }));
-                  setState("idle");
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (canEdit) void save();
-                  }
-                }}
-              />
-            </div>
-          ))}
+
+        <div className="flex flex-col gap-4 border-t border-border pt-5">
+          <div>
+            <h3 className="text-base font-semibold">Staff Count</h3>
+            <p className="text-sm text-muted-foreground">Enter how many people are needed for each activity.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {STAFF_DUTIES.map((duty) => {
+              const Icon = DUTY_ICON[duty] ?? Users;
+              return (
+                <div key={duty} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <Icon className="size-4" />
+                    </span>
+                    <Label htmlFor={`staff-${duty}`}>{STAFF_DUTY_LABEL[duty]}</Label>
+                  </div>
+                  <Input
+                    id={`staff-${duty}`}
+                    type="number"
+                    inputMode="numeric"
+                    min="0"
+                    max={MAX_STAFF_COUNT}
+                    step="1"
+                    placeholder="0"
+                    disabled={!canEdit}
+                    value={values[duty]}
+                    onChange={(e) => {
+                      setValues((previous) => ({ ...previous, [duty]: e.target.value }));
+                      setState("idle");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        if (canEdit) void save();
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
+
+        <p className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-sm text-info">
+          <Info className="mt-0.5 size-4 shrink-0" />
+          <span>These numbers help with kitchen planning and on-site coordination. You can update them later if needed.</span>
+        </p>
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
@@ -97,7 +117,7 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
         )}
         {canEdit && (
           <div className="flex items-center gap-3">
-            <Button type="button" size="md" onClick={() => void save()} disabled={state === "saving"}>
+            <Button type="button" onClick={() => void save()} disabled={state === "saving"}>
               {state === "saving" ? "Saving…" : "Save staffing"}
             </Button>
             {state === "saved" && (
@@ -107,7 +127,7 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </SummaryCard>
+    </div>
   );
 }

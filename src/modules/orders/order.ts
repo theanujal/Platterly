@@ -23,6 +23,7 @@ import { menuGuestCount, priceMeals } from "./meal-pricing";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { returnAllOrderItems, returnAllOrderItemsInTransaction } from "@/modules/production/production";
 import type { Prisma } from "@/generated/prisma/client";
+import { moveMealsWithEventDates } from "./meal-dates";
 import { percentOf } from "./amount";
 import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, AmountMode, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
 
@@ -206,6 +207,24 @@ export async function replaceMealPlanEntries(organizationId: string, orderId: st
   if (toDelete.length > 0) {
     await db.mealPlanEntry.deleteMany({ where: { id: { in: toDelete.map((e) => e.id) } } });
   }
+}
+
+/** Moves the order's saved meals with its event dates (see meal-dates.ts) and heals any meal already outside them. A no-op when every meal is on an event day. */
+async function moveMealsToEventDates(tx: Db, orderId: string, oldStart: Date, newStart: Date, newEnd: Date) {
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const meals = await tx.mealPlanEntry.findMany({ where: { orderId }, include: { _count: { select: { items: true } } }, orderBy: { date: "asc" } });
+  const { moved, dropped } = moveMealsWithEventDates(
+    meals.map((m) => ({ id: m.id, date: iso(m.date), mealType: m.mealType as string, hasContent: m.menuId !== null || m._count.items > 0 })),
+    iso(oldStart),
+    iso(newStart),
+    iso(newEnd),
+    (m) => m.hasContent,
+  );
+  if (dropped.length > 0) await tx.mealPlanEntry.deleteMany({ where: { id: { in: dropped.map((m) => m.id) } } });
+  // Furthest first in the direction of travel, so a meal never lands on a day another meal is still leaving.
+  const later = iso(newStart) > iso(oldStart);
+  const changes = moved.filter((m) => m.date !== m.fromDate).sort((a, b) => (later ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
+  for (const change of changes) await tx.mealPlanEntry.update({ where: { id: change.id }, data: { date: new Date(change.date) } });
 }
 
 /**
@@ -469,7 +488,8 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
   if (isKitchenLocked(before.status, selections.map((selection) => selection.status))) throw new OrderLockedError();
   // The kitchen hand-off and the kitchen's own progress are the only ways into Sent to Kitchen / Completed. A plain save can't write them.
   if (input.status !== undefined && input.status !== before.status && isOrderLocked(input.status)) throw new OrderLockedError();
-  if (selections.some((selection) => isPriceFrozenStatus(selection.status)) && priceFieldChanges(before, input).length > 0) throw new PriceFrozenError();
+  const priceFrozen = selections.some((selection) => isPriceFrozenStatus(selection.status));
+  if (priceFrozen && priceFieldChanges(before, input).length > 0) throw new PriceFrozenError();
   // orderNumber is intentionally absent here — assigned once at createOrder, never reassigned.
   const orderKind = input.orderKind ?? before.orderKind;
   const pricingMethod = input.pricingMethod ?? before.pricingMethod;
@@ -533,8 +553,11 @@ export async function updateOrderInTransaction(tx: Prisma.TransactionClient, aft
   });
   if (input.status === "CANCELLED" && before.status !== "CANCELLED") afterCommit.push(() => returnAllOrderItems(organizationId, id, actorUserId));
   await replaceMealPlanEntries(organizationId, id, input.mealPlanEntries, tx);
-  if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && input.totalParticipants !== before.totalParticipants) {
-    // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity.
+  // Meals the form did not send (the Menu Approval tab owns them) follow the event dates, so none is left on a day the event isn't on.
+  if (input.mealPlanEntries === undefined) await moveMealsToEventDates(tx, id, before.eventStartDate, input.eventStartDate, input.eventEndDate);
+  if (input.mealPlanEntries === undefined && input.totalParticipants !== undefined && (input.totalParticipants !== before.totalParticipants || !priceFrozen)) {
+    // Extras and per-plate add-ons are charged for every guest, so a new guest count moves their quantity. While the price is still open any save
+    // also brings the quantity into line with the guest count, so an order whose count changed by another route can't keep a stale total.
     await tx.orderItem.updateMany({
       where: { orderId: id, mealPlanEntryId: { not: null }, OR: [{ isExtra: true }, { itemType: "ADD_ON", quantity: { gt: 1 } }] },
       data: { quantity: Math.max(input.totalParticipants ?? 0, 1) },

@@ -26,7 +26,7 @@ test("guest information needs Edit; the payment summary follows the pricing; dis
   await page.goto(`/orders/${orderId}`);
 
   // Guest Information: plain details first (Customer Details and Order Type are single rows), Edit reveals the counts.
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.locator("#order-adults")).toHaveCount(0);
   await expect(page.getByText("Total Guests", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Edit guest information" }).click();
@@ -78,7 +78,7 @@ test("guest information needs Edit; the payment summary follows the pricing; dis
   await expect(page.getByRole("combobox", { name: "Discount type" })).toContainText("%");
 
   // Saved, the percentage mode and rate come back as typed.
-  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-card").getByRole("button", { name: "Save changes" }).click()]);
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);
   await page.reload();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByRole("combobox", { name: "Discount type" })).toContainText("%");
@@ -103,7 +103,7 @@ test("guest information needs Edit; the payment summary follows the pricing; dis
   await chargeType.click();
   await page.locator("[role=option][aria-selected=false]:visible", { hasText: "%" }).click();
   await page.getByLabel("Charge 1 amount").fill("2");
-  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-card").getByRole("button", { name: "Save changes" }).click()]);
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);
   await page.reload();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByRole("combobox", { name: "Transportation Cost type" })).toContainText("%");

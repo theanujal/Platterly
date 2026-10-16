@@ -3,7 +3,7 @@
 import { PAYMENT_BLOCKED_TEXT } from "@/modules/payments/payment-math";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Clock, Copy, CreditCard, FileText, Link2, Send } from "lucide-react";
+import { CalendarDays, Clock, Copy, CreditCard, FileText, Hourglass, Link2, Receipt, Send, Star, Tag, Truck, UtensilsCrossed, Users, Wallet, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { IconInput } from "@/components/ui/icon-input";
@@ -52,24 +52,45 @@ function SelectField({ id, label, value, onChange, options }: { id: string; labe
   );
 }
 
-/** The "Payment summary" card (total, paid, balance, progress), the same on an existing order and on the New Order page. */
+/** A small icon for a priced line, picked from its label (the lines come from the order form as plain text). */
+function lineIcon(label: string): LucideIcon {
+  const text = label.toLowerCase();
+  if (text.startsWith("meals") || text.startsWith("extra dishes")) return UtensilsCrossed;
+  if (text.startsWith("children")) return Users;
+  if (text.startsWith("transport")) return Truck;
+  if (text.startsWith("extra / service")) return Star;
+  if (text.startsWith("discount")) return Tag;
+  return Receipt;
+}
+
+/** The "Payment Summary" card (priced lines, total, paid, balance), the same on an existing order and on the New Order page. */
 export function PaymentSummaryCard({ total, paid, balance, overdue = false, children }: { total: number; paid: number; balance: number; overdue?: boolean; children?: React.ReactNode }) {
-  const percent = total > 0 ? Math.min(Math.round((paid / total) * 1000) / 10, 100) : 0;
   const lines = useOrderPriceLines();
+  const chip = (Icon: LucideIcon) => (
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+      <Icon className="size-4" />
+    </span>
+  );
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-      <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <CreditCard className="size-4" />
+    <div className="flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Wallet className="size-5" />
         </span>
-        Payment summary
-        {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
-      </h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            Payment Summary
+            {overdue && <Badge variant="danger" data-testid="payment-overdue">Overdue</Badge>}
+          </h2>
+          <p className="text-sm text-muted-foreground">Live totals for this order.</p>
+        </div>
+      </div>
       {lines.length > 0 && (
-        <dl className="flex flex-col gap-2 border-b border-border pb-3 text-sm tabular-nums" data-testid="payment-summary-lines">
+        <dl className="flex flex-col divide-y divide-border text-sm tabular-nums" data-testid="payment-summary-lines">
           {lines.map((line, index) => (
-            <div key={`${line.label}-${index}`} className="flex justify-between gap-3">
-              <dt className="min-w-0 text-muted-foreground">
+            <div key={`${line.label}-${index}`} className="flex items-center gap-3 py-2 first:pt-0">
+              {chip(lineIcon(line.label))}
+              <dt className="min-w-0 flex-1 text-muted-foreground">
                 {line.label}
                 {line.detail && <span className="block text-xs">{line.detail}</span>}
               </dt>
@@ -79,26 +100,25 @@ export function PaymentSummaryCard({ total, paid, balance, overdue = false, chil
         </dl>
       )}
       <dl className="flex flex-col gap-2 text-sm tabular-nums">
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Total</dt>
-          <dd className="font-semibold">{inr(total)}</dd>
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 text-accent-foreground">
+          <dt className="font-semibold">Total</dt>
+          <dd className="text-lg font-semibold">{inr(total)}</dd>
         </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Paid</dt>
+        <div className="flex items-center gap-3 py-1">
+          {chip(CreditCard)}
+          <dt className="flex-1 text-muted-foreground">Paid</dt>
           <dd className="font-semibold text-success" data-testid="paid-amount">
             {inr(paid)}
           </dd>
         </div>
-        <div className="flex justify-between gap-3">
-          <dt className="text-muted-foreground">Balance</dt>
+        <div className="flex items-center gap-3 py-1">
+          {chip(Hourglass)}
+          <dt className="flex-1 text-muted-foreground">Balance</dt>
           <dd className="font-semibold" data-testid="balance-amount">
             {inr(balance)}
           </dd>
         </div>
       </dl>
-      <div className="h-2 overflow-hidden rounded-full bg-secondary" aria-hidden>
-        <div className="h-full rounded-full bg-success" style={{ width: `${percent}%` }} />
-      </div>
       {children}
     </div>
   );
@@ -107,14 +127,25 @@ export function PaymentSummaryCard({ total, paid, balance, overdue = false, chil
 /** The "Payments" history card: its rows are `PaymentRowView`s. */
 export function PaymentsListCard({ empty, children }: { empty: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-      <h2 className="flex items-center gap-2.5 text-[15px] font-semibold">
-        <span className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Clock className="size-4" />
+    <div className="flex flex-col gap-4 rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Clock className="size-5" />
         </span>
-        Payments
-      </h2>
-      {empty && <p className="text-sm text-muted-foreground">No payments yet.</p>}
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold">Payments</h2>
+          <p className="text-sm text-muted-foreground">Payments received for this order.</p>
+        </div>
+      </div>
+      {empty && (
+        <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border px-4 py-6 text-center">
+          <span className="mb-1 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <CreditCard className="size-5" />
+          </span>
+          <p className="text-sm font-medium">No payments yet.</p>
+          <p className="text-xs text-muted-foreground">Record a payment or create a payment link to get started.</p>
+        </div>
+      )}
       <ul className="flex flex-col divide-y divide-border">{children}</ul>
     </div>
   );
@@ -162,6 +193,7 @@ export function PaymentsPanel({
   payments,
   canRecord,
   canManage,
+  recordBlocked = false,
   overdue = false,
 }: {
   orderId: string;
@@ -172,6 +204,8 @@ export function PaymentsPanel({
   payments: PaymentRowData[];
   canRecord: boolean;
   canManage: boolean;
+  /** The customer has not approved the order yet: Record Payment and Create Payment Link stay visible but disabled, with the reason. */
+  recordBlocked?: boolean;
   /** The order's event is over and money is still owed (isPaymentOverdue). */
   overdue?: boolean;
 }) {
@@ -193,7 +227,6 @@ export function PaymentsPanel({
     router.refresh();
   }
 
-  recordBlocked = false,
   return (
     <div className="flex flex-col gap-3" data-testid="payments-panel">
       <PaymentSummaryCard total={total} paid={paid} balance={balance} overdue={overdue}>
@@ -204,11 +237,14 @@ export function PaymentsPanel({
               Record Payment
             </Button>
             <Button type="button" variant="outline" size="md" disabled={recordBlocked} onClick={() => setLinkOpen(true)}>
-  /** The customer has not approved the order yet: Record Payment and Create Payment Link stay visible but disabled, with the reason. */
-  recordBlocked?: boolean;
               <Link2 />
               Create Payment Link
             </Button>
+            {recordBlocked && (
+              <p className="text-xs text-muted-foreground" data-testid="payment-blocked-reason">
+                {PAYMENT_BLOCKED_TEXT}
+              </p>
+            )}
           </div>
         )}
       </PaymentSummaryCard>
@@ -240,11 +276,6 @@ export function PaymentsPanel({
                     </Button>
                     <Button type="button" variant="outline" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => rejectPaymentAction(payment.id))}>
                       Reject
-            {recordBlocked && (
-              <p className="text-xs text-muted-foreground" data-testid="payment-blocked-reason">
-                {PAYMENT_BLOCKED_TEXT}
-              </p>
-            )}
                     </Button>
                   </div>
                 )}

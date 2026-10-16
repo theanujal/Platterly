@@ -82,7 +82,7 @@ export function StatusPanel({
   idPrefix,
   requireEdit = false,
   compact = false,
-  summary,
+  description,
   historyName = "status",
   historyExtra,
 }: {
@@ -106,8 +106,8 @@ export function StatusPanel({
    * "View <historyName> history". The manual change select, the full timeline and `historyExtra` live in that drawer instead of staying open in the sidebar.
    */
   compact?: boolean;
-  /** Compact only: lines under the status, e.g. "Not sent to customer yet." */
-  summary?: React.ReactNode;
+  /** Compact only: the line under the card title; defaults to `hint`. */
+  description?: string;
   /** Compact only: the link and drawer title, e.g. "approval" -> "View approval history" (default "status"). */
   historyName?: string;
   /** Compact only: more for the history dialog (the menu versions); gets a function that closes the dialog. */
@@ -152,22 +152,14 @@ export function StatusPanel({
   if (compact) {
     const last = history[0];
     return (
-      <SummaryCard icon={icon} title={title}>
-        <div className="flex flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={currentTone}>{currentLabel}</Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {extra}
-            {extra && summary ? " · " : ""}
-            {summary}
-          </p>
+      <SummaryCard icon={icon} title={title} description={description ?? hint}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={currentTone}>{currentLabel}</Badge>
         </div>
         {last && (
-          <div className="flex flex-col gap-0.5 border-t border-border pt-3 text-xs text-muted-foreground" data-testid="status-last-update">
-            <span>Last updated {formatWhen(last.createdAt)}</span>
-            <span>by {(last.source === "MANUAL" ? last.actorName : (last.actorName ?? last.trigger)) ?? "the system"}</span>
-          </div>
+          <p className="text-xs text-muted-foreground" data-testid="status-last-update">
+            Last updated {formatWhen(last.createdAt)}
+          </p>
         )}
         <Button type="button" variant="link" size="sm" className="w-fit px-0 text-info" onClick={() => setHistoryOpen(true)}>
           View {historyName} history

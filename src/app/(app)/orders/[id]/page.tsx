@@ -225,18 +225,6 @@ export default async function OrderDetailPage({ params, searchParams }: { params
             key="menu-approval-tab"
             data={reviewData ? { ...reviewData, capabilities: approvalCapabilities(can) } : null}
             notStarted={{ orderId: order.id, ...notStartedState(order, can) }}
-            eventOverview={{
-              orderType: ORDER_KIND_LABEL[order.orderKind],
-              eventType: order.eventType?.name ?? null,
-              eventDate: formatEventDates(order.eventStartDate, order.eventEndDate),
-              venue: order.venue,
-              guests: {
-                total: order.totalParticipants ?? 0,
-                adults: order.adultCount ?? 0,
-                below5: order.childBelow5Count ?? 0,
-                from5to10: order.child5To10Count ?? 0,
-              },
-            }}
           />
         }
         locked={isKitchenLocked(order.status, menuApproval ? [menuApproval.status] : [])}
@@ -354,7 +342,6 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 <CreateInvoiceButton orderId={order.id} gstEnabled={billingOrg.gstShowOnInvoices === true} defaultDueDate={toDateInputValue(order.eventStartDate)} defaultGstType={gstDefaults.type} defaultGstRate={gstDefaults.rate} />
               )}
             </div>
-                recordBlocked={!customerHasApproved(order.status)}
           ) : undefined
         }
         billingPanel={
@@ -367,6 +354,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 balance={Math.max(orderTotal - confirmedPaid, 0)}
                 payments={paymentRows}
                 canRecord={canRecordPayment}
+                recordBlocked={!customerHasApproved(order.status)}
                 canManage={canManagePayment}
                 overdue={isPaymentOverdue({ status: order.status, paymentStatus: derivePaymentState(orderTotal, confirmedPaid), eventEndDate: order.eventEndDate }, new Date(), await getTenantTimeZone(organizationId))}
               />

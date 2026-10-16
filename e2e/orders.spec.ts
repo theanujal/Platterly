@@ -154,14 +154,14 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByRole("heading", { name: "Create Order" })).toBeVisible();
 
   await pickCustomer(page, customerName);
-  // Event Type, date and venue live on the Guests & Event Info tab.
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  // Event Type, date and venue live on the Order Details tab.
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
   await pickEventDate(page, "2026-12-01", "2026-12-01");
 
   // Guests Information
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Adults").fill("80");
   await page.getByLabel("Children (Under 5)").fill("5");
   await page.getByLabel("Children (5–10)").fill("15");
@@ -186,12 +186,12 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(lunchSlot.getByTestId("meal-item-counts").getByText("1 Dish", { exact: true })).toBeVisible();
   await expect(lunchSlot.getByText(itemName, { exact: true })).toHaveCount(0);
 
-  // Individual Pricing puts each meal's own price inline on its card (2026-09-29 — no longer a separate Pricing Details list).
-  await lunchSlot.getByLabel("Price").fill("300");
+  // Individual Pricing: the meal card only shows its price (it starts at the menu's 300 per plate); it is edited under Pricing & Payment.
+  await expect(lunchSlot).toContainText("₹300.00");
 
 
   // Venue & Delivery Details
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
 
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
@@ -236,7 +236,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await expect(page.getByText("₹23990.00").first()).toBeVisible();
   await expect(page.getByTestId("balance-amount")).toHaveText("₹23,940.00"); // the Payment summary: total less the payment added above
 
-  await page.getByRole("button", { name: "Save Order", exact: true }).click();
+  await page.getByTestId("order-save-top").click();
   await expect(page).toHaveURL(/\/orders$/);
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   await expect(page.getByText(customerName)).toBeVisible();
@@ -259,7 +259,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByText(customerName).click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   // Guest Information reads as details on an existing order; Edit reveals the fields (AJ, 2026-10-16).
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByLabel("Adults")).toHaveCount(0);
   await expect(page.getByText("Adults", { exact: true }).locator("..")).toContainText("80");
   await page.getByRole("button", { name: "Edit guest information" }).click();
@@ -279,7 +279,7 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator("#order-customer")).toHaveCount(0);
   // Order Type lives in Event Information and reads as plain details until Edit is pressed (AJ, 2026-10-16).
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByRole("button", { name: /^Single Order/ })).toHaveAttribute("aria-pressed", "true");
@@ -315,9 +315,9 @@ test("create an order with guests/meal planning/venue/payment, then create and e
   await page.getByRole("tab", { name: "Order Details" }).click();
   // The detail page splits the order into tabs (AJ, 2026-09-30).
   await expect(page.getByRole("tab", { name: "Order Details" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   // The menu is not planned on this tab (AJ, 2026-10-16): it holds the guest counts and the event information; the meals live in Menu Approval.
-  const guestsPanel = page.locator("#order-panel-menu");
+  const guestsPanel = page.locator("#order-panel-details");
   await expect(guestsPanel.getByTestId("meal-item-counts")).toHaveCount(0);
   // Event Information reads as details until Edit (AJ, 2026-10-16).
   await expect(guestsPanel.getByLabel("Venue / Building Name")).toHaveCount(0);
@@ -428,13 +428,13 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   // --- Create a Multi Order across two days: the Event Dates sidebar focuses one date at a time (2026-09-29) ---
   await page.goto("/orders/new");
   await pickCustomer(page, customerName);
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await pickEventDate(page, "2026-12-05", "2026-12-06");
   // Multi-event (the helper turned it on and acknowledged the popup) made it a Multi Order.
   await expect(page.getByRole("button", { name: /^Multi Order/ })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   const sidebar = page.getByRole("navigation", { name: "Event Dates" });
   await expect(sidebar).toBeVisible();
   await expect(sidebar.getByText(formatSidebarDate("2026-12-05"))).toBeVisible();
@@ -482,7 +482,7 @@ test("Multi Order: different Menus per meal, grouped into separate Event blocks,
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove", exact: true }).click();
   await expect(page.getByTestId("meal-slot-2026-12-05-DINNER")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Save Order", exact: true }).click();
+  await page.getByTestId("order-save-top").click();
   await expect(page).toHaveURL(/\/orders$/);
   await page.getByLabel("Grid view").click(); // Orders opens in List view by default (AJ, 2026-09-30)
   // Orders card (2026-09-26): the customer name is the card's stretched link,
@@ -575,7 +575,7 @@ test("Multi Order is automatic for a second meal type on one day; past dates can
   await signUpCaterer(page, email, { firstName: "Auto", lastName: "Kind", phone: "9800000077" });
 
   await page.goto("/orders/new");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
 
   // No backdated orders: days before today are greyed out and can't be clicked.
   await page.getByLabel("Event Date").click();
@@ -691,12 +691,12 @@ test("the food item drawer: category limits are compulsory, extra items are char
   // --- The order: 10 guests, one Lunch, Vegetarian preference ---
   await page.goto("/orders/new");
   await pickCustomer(page, customerName);
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
   const tomorrow = new Date(Date.now() + 3 * 86_400_000);
   await pickEventDate(page, toLocalIso(tomorrow), toLocalIso(tomorrow));
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Adults").fill("10");
   await page.getByRole("button", { name: /^Vegetarian/ }).click();
   await page.getByRole("button", { name: "Lunch" }).click();

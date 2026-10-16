@@ -50,8 +50,7 @@ export function ApprovalStatusCard({
       icon={ShoppingBasket}
       currentLabel={statusLabel}
       currentTone={MENU_SELECTION_STATUS_TONE[status]}
-      extra={`Version ${currentVersion}`}
-      summary={lastSent ? `Sent to customer ${formatDateTime(lastSent.sentAt ?? lastSent.createdAt)}` : "Not sent to customer yet."}
+      description={`Version ${currentVersion} · ${lastSent ? `Sent to customer ${formatDateTime(lastSent.sentAt ?? lastSent.createdAt)}` : "Not sent to customer yet."}`}
       options={MENU_SELECTION_STATUS_ORDER.map((value) => ({ value, label: MENU_SELECTION_STATUS_LABEL[value] }))}
       currentValue={status}
       canChange={!orderCompleted && canChange}

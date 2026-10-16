@@ -27,7 +27,7 @@ export function ApprovalPricingCard({
   dirty: boolean;
 }) {
   return (
-    <SummaryCard icon={Wallet} title="Pricing Summary">
+    <SummaryCard icon={Wallet} title="Pricing Summary" description="Live totals for this menu.">
       <div className="flex flex-col gap-2.5 text-sm">
         {[
           { label: "Menu Amount", amount: menuAmount },

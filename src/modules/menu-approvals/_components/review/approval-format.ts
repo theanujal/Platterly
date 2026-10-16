@@ -27,8 +27,7 @@ export function stageBanner(status: MenuSelectionStatus, currentVersion: number,
         text: "The customer requested changes. Update the menu, then send a new version for approval.",
         noteLink: "View Customer Note",
       };
-    case "DRAFT":
-      return { tone: "neutral" as const, text: "Check the dishes and the guest count, then send the menu to the customer for approval.", noteLink: null };
+    // A Draft shows no banner: the header already says what the team does (AJ, 2026-10-16).
     case "SENT_TO_CUSTOMER":
     case "CUSTOMER_REVIEWING":
       return { tone: "info" as const, text: `Version ${currentVersion} is with the customer — ${statusLabel}`, noteLink: null };

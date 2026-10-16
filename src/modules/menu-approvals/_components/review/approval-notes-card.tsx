@@ -51,6 +51,7 @@ export function ApprovalNotesCard({
     <SummaryCard
       icon={MessageSquareText}
       title="Team Notes"
+      description="Internal notes"
       action={
         canAdd ? (
           <Button type="button" variant="ghost" size="sm" className="text-primary" aria-expanded={composing} onClick={() => setComposing((on) => !on)}>

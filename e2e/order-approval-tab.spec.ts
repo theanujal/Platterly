@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { cleanupOnboardingTestUser, countInvoicesForOrder, getApprovalState, getOrderRow, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
+import { cleanupOnboardingTestUser, countInvoicesForOrder, getApprovalState, getOrderKind, getOrderRow, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 import { openApprovalHistory, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
@@ -75,7 +75,8 @@ test("the tab: opens by address, runs the whole approval from the order, keeps t
 
   // ---- recall, then edit and resend, then the customer approves the latest version ----
   await tabPanel(page).getByRole("button", { name: "Recall to Edit" }).click();
-  await expect(tabPanel(page).getByText("Check the dishes and the guest count")).toBeVisible();
+  await expect(tabPanel(page).getByRole("button", { name: /^Send/ })).toBeVisible(); // recalled: back with the team, no banner on a Draft
+  await expect(tabPanel(page).getByText("Check the dishes and the guest count")).toHaveCount(0);
   await tabPanel(page).getByRole("button", { name: "Send Updated Menu for Approval" }).click();
   await expect(tabPanel(page).getByText(/Version 3 is with the customer/)).toBeVisible();
   const linkV3 = new URL((await tabPanel(page).locator("code").filter({ hasText: "/menu-approval/" }).first().innerText()).trim()).pathname;
@@ -96,21 +97,22 @@ test("the tab: opens by address, runs the whole approval from the order, keeps t
   await openOrderTab(page, sent.orderId, "");
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.locator("#order-panel-pricing").getByTestId("order-locked-fields")).toBeVisible();
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
-  await expect(page.locator("#order-panel-menu").getByTestId("order-locked-fields")).toBeVisible(); // the guest counts
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.locator("#order-panel-details").getByTestId("order-locked-fields")).toBeVisible(); // the guest counts
   // Saving the order with a change that is not a price still works while the price is frozen: the form re-submits every price field unchanged.
   await page.getByRole("tab", { name: "Additional Details" }).click();
   await page.getByLabel("Additional Notes").fill("Gate code 4411");
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
-    page.getByRole("button", { name: "Save changes" }).first().click(),
+    page.getByTestId("order-save-top").click(),
   ]);
   await expect(page.locator("p[role=alert]"), await page.locator("p[role=alert]").allInnerTexts().then((t) => t.join(" | "))).toHaveCount(0);
   await expect.poll(async () => (await getOrderRow(sent.orderId)).notes).toBe("Gate code 4411");
   // ...and is open again once the menu is recalled
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await tabPanel(page).getByRole("button", { name: "Recall to Edit" }).click();
-  await expect(tabPanel(page).getByText("Check the dishes and the guest count")).toBeVisible();
+  await expect(tabPanel(page).getByRole("button", { name: /^Send/ })).toBeVisible(); // recalled: back with the team, no banner on a Draft
+  await expect(tabPanel(page).getByText("Check the dishes and the guest count")).toHaveCount(0);
   await openOrderTab(page, sent.orderId, "");
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.locator("#order-panel-pricing").getByTestId("order-locked-fields")).toHaveCount(0);
@@ -234,13 +236,13 @@ test("the Pricing Summary and the Order Status card agree with the rest of the o
   await signUpCaterer(page, email);
   const draft = await seedReviewFixture(email, { ordinal: 61, customer: "Pricing Match", status: "DRAFT", versions: 0 });
   await openOrderTab(page, draft.orderId);
-  const grandTotal = async (scope: ReturnType<typeof page.locator>) => (await scope.getByText("Grand Total", { exact: true }).filter({ visible: true }).locator("xpath=following-sibling::span").innerText()).replace(/[^0-9.]/g, "");
+  const grandTotal = async (scope: ReturnType<typeof page.locator>) => (await scope.getByText("Grand Total", { exact: true }).filter({ visible: true }).locator("xpath=ancestor::div[1]").innerText()).replace(/[^0-9.]/g, "");
   const summaryTotal = await grandTotal(page.locator("#order-approval-sidebar"));
   // the order's own Pricing Details (Pricing & Payment tab) shows the same total
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   expect(await grandTotal(page.locator("main"))).toBe(summaryTotal);
   // the Order Status card is in the sidebar on the other tabs and opens its history in a drawer
-  for (const tab of ["Order Details", "Guests & Event Info", "Pricing & Payment"]) {
+  for (const tab of ["Order Details", "Pricing & Payment", "Staffing & Logistics"]) {
     await page.getByRole("tab", { name: tab }).click();
     await expect(page.locator("aside").getByRole("button", { name: "View status history" })).toBeVisible();
   }
@@ -248,4 +250,72 @@ test("the Pricing Summary and the Order Status card agree with the rest of the o
   await page.getByRole("button", { name: "Edit order status" }).count().then((n) => expect(n).toBe(0)); // no inline Edit any more
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.locator("aside").getByRole("button", { name: "View status history" })).toBeHidden(); // Approval Status takes its place here
+});
+
+test("a second meal asks to make it a Multi Order, removing back to one asks for Single, the type follows the save, and one meal always stays", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-ordertab-kind-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  const draft = await seedReviewFixture(email, { ordinal: 62, customer: "Kind Sync", status: "DRAFT", versions: 0 });
+  await openOrderTab(page, draft.orderId);
+  const panel = tabPanel(page);
+  expect(await getOrderKind(draft.orderId)).toBe("SINGLE");
+
+  // the only meal can't be removed
+  await expect(panel.getByRole("button", { name: /^Remove / })).toBeDisabled();
+
+  // a second meal type asks first; Cancel leaves the plan alone
+  await panel.getByRole("button", { name: "Lunch", exact: true }).click();
+  const multi = page.getByRole("alertdialog", { name: "This will be a Multi Order" });
+  await expect(multi).toBeVisible();
+  await multi.getByRole("button", { name: "Cancel" }).click();
+  await expect(panel.getByRole("button", { name: "Remove Lunch" })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Lunch", exact: true }).click();
+  await page.getByRole("alertdialog", { name: "This will be a Multi Order" }).getByRole("button", { name: "Add meal" }).click();
+  await expect(panel.getByRole("button", { name: "Remove Lunch" })).toBeVisible();
+
+  // saving moves the order type with it
+  await page.getByTestId("order-save-top").click();
+  await expect.poll(() => getOrderKind(draft.orderId)).toBe("MULTI");
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByText("Multi Order").first()).toBeVisible();
+
+  // removing it always asks, and says the order goes back to Single
+  await panel.getByRole("button", { name: "Remove Lunch" }).click();
+  const remove = page.getByRole("alertdialog", { name: /Remove Lunch/ });
+  await expect(remove).toContainText("Single Order");
+  await remove.getByRole("button", { name: "Remove" }).click();
+  await page.getByTestId("order-save-top").click();
+  await expect.poll(() => getOrderKind(draft.orderId)).toBe("SINGLE");
+});
+
+test("Pricing Details: per-plate prices follow the menu until Individual / Custom Pricing is on, then they can be edited and saved", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-ordertab-custom-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  const draft = await seedReviewFixture(email, { ordinal: 63, customer: "Custom Price", status: "DRAFT", versions: 0 });
+  await openOrderTab(page, draft.orderId, "");
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  const toggle = page.getByRole("switch", { name: "Individual / Custom Pricing" });
+  const rows = page.getByTestId("per-plate-row");
+
+  // Off: the menu's own per-plate price, read-only
+  await expect(toggle).not.toBeChecked();
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first().getByRole("spinbutton")).toHaveCount(0);
+  await expect(rows.first()).toContainText("/ plate");
+  // On: an editable per-plate price per meal, starting at the menu's price
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect(rows.first().getByRole("spinbutton")).not.toHaveValue("");
+  const price = rows.first().getByRole("spinbutton");
+  await price.fill("500");
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);
+  await expect(page.locator("p[role=alert]")).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByTestId("per-plate-row").first().getByRole("spinbutton")).toHaveValue("500");
 });

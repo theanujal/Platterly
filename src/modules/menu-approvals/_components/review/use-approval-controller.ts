@@ -109,6 +109,10 @@ export function useApprovalController({ data, actions, navigation }: { data: Men
   }
 
   async function savePlan() {
+    if (entries.length === 0) {
+      setError("Select at least one meal.");
+      return false;
+    }
     if (!dirty) return true;
     const emptyMeal = entries.find((e) => e.menuId && !e.items.some((i) => i.itemType === "MENU_ITEM"));
     if (emptyMeal) {

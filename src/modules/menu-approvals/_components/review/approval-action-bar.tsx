@@ -17,6 +17,7 @@ export function ApprovalActionBar({
   withCustomer,
   pending,
   dirty,
+  showSave = true,
   onSave,
   onSend,
   onRecall,
@@ -32,6 +33,8 @@ export function ApprovalActionBar({
   withCustomer: boolean;
   pending: ApprovalPending;
   dirty: boolean;
+  /** Off when the order page's own Save buttons save the meal plan (see approval-save-slot.tsx). */
+  showSave?: boolean;
   onSave: () => void;
   onSend: () => void;
   onRecall: () => void;
@@ -43,9 +46,11 @@ export function ApprovalActionBar({
       {children}
       {!viewingVersion && editable && (
         <>
-          <Button type="button" variant="outline" disabled={pending !== null || !dirty} onClick={onSave}>
-            {pending === "save" ? "Saving…" : "Save Changes"}
-          </Button>
+          {showSave && (
+            <Button type="button" variant="outline" disabled={pending !== null || !dirty} onClick={onSave}>
+              {pending === "save" ? "Saving…" : "Save Changes"}
+            </Button>
+          )}
           <Button type="button" disabled={pending !== null} onClick={onSend}>
             <Send data-icon="inline-start" />
             {pending === "send" ? "Sending…" : hasSentVersion ? "Send Updated Menu for Approval" : "Send Menu for Approval"}

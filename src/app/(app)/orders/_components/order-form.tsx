@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, Lock, ClipboardList, MapPin, Pencil, Plus, Tag, User, UtensilsCrossed, Users, Wallet, X } from "lucide-react";
+import { ArrowLeft, CalendarDays, FileText, Info, Lock, ClipboardList, MapPin, Pencil, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,10 +30,13 @@ import type { StagedPaymentDraft } from "../../invoices/_components/payments-pan
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
+import { IconTip } from "@/components/ui/icon-tip";
 import { FormTabs, type FormTab } from "./form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
 import { percentOf } from "@/modules/orders/amount";
+import { moveMealsWithEventDates } from "@/modules/orders/meal-dates";
 import { ApprovalSidebarSlotProvider } from "@/modules/menu-approvals/_components/review/sidebar-slot";
+import { ApprovalSavePublisherProvider, type ApprovalSaveState } from "@/modules/menu-approvals/_components/review/approval-save-slot";
 import { LiveOrderTotalProvider, OrderPriceLinesProvider, type OrderPriceLine } from "@/modules/orders/live-total";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
@@ -79,11 +82,6 @@ const VENUE_TYPE_OPTIONS = [
 
 // Reuses Menu's own ChildPricingType enum (PERCENTAGE | FIXED) — "Per Plate"
 // is this form's label for FIXED, matching the reference mockup's wording.
-const CHILD_PRICING_TYPE_OPTIONS = [
-  { value: "FIXED", label: "Per Plate" },
-  { value: "PERCENTAGE", label: "Percentage" },
-] as const;
-
 export interface OrderFormValues {
   customerId: string;
   eventTypeId: string;
@@ -364,15 +362,19 @@ export function OrderForm({
   submitLabel,
   onSubmitAndNotify,
 }: OrderFormProps) {
-  const [activeTab, setActiveTab] = useState<string>(initialTab ?? "details");
+  // The old Guests & Event Info tab (`?tab=menu`) is part of Order Details now.
+  const tabFor = (tab: string | undefined) => (tab === "menu" ? "details" : tab);
+  const [activeTab, setActiveTab] = useState<string>(tabFor(initialTab) ?? "details");
   const [approvalSlot, setApprovalSlot] = useState<HTMLElement | null>(null);
   const onApprovalTab = activeTab === "approval" && Boolean(menuApprovalTab);
+  // While the Menu Approval tab is open the Save buttons save its meal plan (the tab publishes its save here).
+  const [approvalSave, setApprovalSave] = useState<ApprovalSaveState | null>(null);
   // A link to ?tab=... on this page (the banner, the sidebar card, a redirect) opens that tab. Adjusted while rendering, the way React
   // recommends for state that follows a prop, not in an effect.
   const [seenInitialTab, setSeenInitialTab] = useState(initialTab);
   if (initialTab !== seenInitialTab) {
     setSeenInitialTab(initialTab);
-    if (initialTab) setActiveTab(initialTab);
+    if (initialTab) setActiveTab(tabFor(initialTab) ?? "details");
   }
   const [values, setValues] = useState<OrderFormValues>({ ...EMPTY_ORDER_VALUES, ...initialValues });
   // Edit mode's already-selected Customer, found once from the full list
@@ -484,15 +486,19 @@ export function OrderForm({
    * DateRangePicker's onChange — replaces separate start/end date inputs.
    */
   function setEventDateRange(startDate: string, endDate: string) {
+    const previousStart = values.eventStartDate;
     setField("eventStartDate", startDate);
     setField("eventEndDate", endDate);
-    // Shrinking (or moving) the date range must drop meal-plan entries for
-    // days no longer in it — otherwise they stay invisible in the UI below
-    // but still ride along in buildFormData and get saved anyway.
-    const newDays = new Set(enumerateDates(startDate, endDate));
+    // Not when the meals belong to the Menu Approval tab: they are saved there, not by this form, so dropping them here would only make the
+    // pricing preview disagree with what is saved (and leave the form reading "unsaved").
+    if (menuPlanReadOnly) return;
+    // The meals follow the dates (AJ, 2026-10-16): moved by the same number of days, or put on the nearest event day, never left on a day
+    // the event isn't on and never silently dropped.
+    if (!previousStart || !startDate || !endDate) return;
+    const { moved } = moveMealsWithEventDates(values.mealPlanEntries, previousStart, startDate, endDate, (e) => Boolean(e.menuId) || e.items.length > 0);
     setField(
       "mealPlanEntries",
-      values.mealPlanEntries.filter((e) => newDays.has(e.date)),
+      moved.map(({ date, mealType, price, menuId, items }) => ({ date, mealType, price, menuId, items })),
     );
   }
 
@@ -648,8 +654,13 @@ export function OrderForm({
     formData.set("kitchenNotes", values.kitchenNotes);
     formData.set("staffingNotes", values.staffingNotes);
     const mealPlanChanged = JSON.stringify(values.mealPlanEntries) !== JSON.stringify(initialValues?.mealPlanEntries ?? []);
-    if (menuPlanReadOnly || (menuPlanOnlyIfChanged && !mealPlanChanged)) formData.set("mealPlanLocked", "true");
-    for (const entry of menuPlanReadOnly ? [] : values.mealPlanEntries) {
+    // The meals belong to the Menu Approval tab once an approval exists, but the per-plate prices are edited here (Individual / Custom Pricing),
+    // so a changed price sends the plan along (saved the same way, and refused once the price is frozen).
+    const savedPrice = new Map((initialValues?.mealPlanEntries ?? []).map((e) => [`${e.date}|${e.mealType}`, e.price]));
+    const mealPricesEdited = menuPlanReadOnly && !priceFrozen && values.mealPlanEntries.some((e) => (savedPrice.get(`${e.date}|${e.mealType}`) ?? "") !== e.price);
+    const sendMeals = !menuPlanReadOnly || mealPricesEdited;
+    if (!sendMeals || (menuPlanOnlyIfChanged && !mealPlanChanged)) formData.set("mealPlanLocked", "true");
+    for (const entry of sendMeals ? values.mealPlanEntries : []) {
       formData.append("mealDate", entry.date);
       formData.append("mealType", entry.mealType);
       formData.append("mealPrice", entry.price || "0");
@@ -725,7 +736,13 @@ export function OrderForm({
 
   /** One switch drives both individual-pricing settings the order stores: the per-meal price and the child rates. */
   function setIndividualPricing(on: boolean) {
-    setValues((prev) => ({ ...prev, individualPricingEnabled: on, pricingMethod: on ? "INDIVIDUAL" : "STANDARD" }));
+    setValues((prev) => ({
+      ...prev,
+      individualPricingEnabled: on,
+      pricingMethod: on ? "INDIVIDUAL" : "STANDARD",
+      // Turning it on starts every meal at its menu's per-plate price, so nothing drops to ₹0 until it is changed.
+      mealPlanEntries: on ? prev.mealPlanEntries.map((e) => (e.price.trim() === "" && e.menuId ? { ...e, price: String(menus.find((m) => m.id === e.menuId)?.price ?? "") } : e)) : prev.mealPlanEntries,
+    }));
   }
 
   const individualToggle = (
@@ -750,6 +767,7 @@ export function OrderForm({
     <FormSection
       {...sec(1, User)}
       title="Customer Details"
+      description="Who this order is for."
       action={editButton("Edit", "Edit customer details", () => {
         setCustomerBeforeEdit({ customerId: values.customerId, customer: selectedCustomer });
         setEditingCustomer(true);
@@ -764,7 +782,7 @@ export function OrderForm({
       <SummaryRow label="Phone">{selectedCustomer?.phone || "Not set"}</SummaryRow>
     </FormSection>
   ) : (
-  <FormSection {...sec(1, User)} title="Customer Details" description="Search for an existing customer or add a new one."
+  <FormSection {...sec(1, User)} title="Customer Details" description="Who this order is for."
     action={
       detailView ? (
         <div className="flex items-center gap-2">
@@ -845,6 +863,7 @@ export function OrderForm({
   <FormSection
     {...sec(3, CalendarDays)}
     title="Event Information"
+    description="The event, its date and where it takes place."
     action={editButton("Edit", "Edit event information", () => {
       setEventBeforeEdit(Object.fromEntries(EVENT_FIELDS.map((key) => [key, values[key]])) as Pick<OrderFormValues, (typeof EVENT_FIELDS)[number]>);
       setEditingEvent(true);
@@ -863,7 +882,7 @@ export function OrderForm({
   <FormSection
     {...sec(3, CalendarDays)}
     title="Event Information"
-    description="Tell us about the event and where it will take place."
+    description="The event, its date and where it takes place."
     action={
       detailView ? (
         <div className="flex items-center gap-2">
@@ -1112,12 +1131,13 @@ export function OrderForm({
   <FormSection
     {...sec(4, Users)}
     title="Guest Information"
+    description="Expected guests, used for every meal."
     action={locked || priceFrozen ? null : editButton("Edit", "Edit guest information", () => {
       setGuestsBeforeEdit({ adultCount: values.adultCount, childBelow5Count: values.childBelow5Count, child5To10Count: values.child5To10Count });
       setEditingGuests(true);
     })}
   >
-    <dl className="grid grid-cols-4 gap-4 text-sm">
+    <dl className="grid grid-cols-2 gap-4 text-sm">
       {[
         ["Adults", values.adultCount || "0"],
         ["Children (Under 5)", values.childBelow5Count || "0"],
@@ -1135,7 +1155,7 @@ export function OrderForm({
   <FormSection
     {...sec(4, Users)}
     title="Guest Information"
-    description="Enter the expected guest count. This will be used for all selected meals."
+    description="Expected guests, used for every meal."
     action={
       detailView ? (
         <div className="flex items-center gap-2">
@@ -1157,7 +1177,7 @@ export function OrderForm({
       ) : undefined
     }
   >
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-4">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="order-adults">Adults</Label>
         <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
@@ -1213,6 +1233,7 @@ export function OrderForm({
       onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
       onCloseFoodDialog={() => setFoodDialogTarget(null)}
       readOnly={menuPlanReadOnly}
+      priceInPricingTab
     />
   </FormSection>
   );
@@ -1265,56 +1286,151 @@ export function OrderForm({
   </SummaryCard>
   );
 
+  /** One row per meal for the Per Plate Pricing list: what it is, its menu, the menu's per-plate price and the meal's own entry. */
+  const pricedMealRows = [...values.mealPlanEntries]
+    .sort((a, b) => a.date.localeCompare(b.date) || MEAL_TYPES.findIndex((m) => m.value === a.mealType) - MEAL_TYPES.findIndex((m) => m.value === b.mealType))
+    .map((entry) => {
+      const menu = menus.find((m) => m.id === entry.menuId);
+      const mealLabel = MEAL_TYPES.find((m) => m.value === entry.mealType)?.label ?? entry.mealType;
+      return {
+        key: `${entry.date}|${entry.mealType}`,
+        entry,
+        title: `${formatDay(entry.date, { weekday: "short", day: "numeric", month: "short" })} · ${mealLabel}`,
+        menuName: menu?.name ?? "No menu",
+        menuPrice: menu?.price ?? 0,
+      };
+    });
+
+  /** A small (i) next to a price label, with the explanation on hover (and for a screen reader). */
+  const hintIcon = (text: string) => (
+    <IconTip label={text}>
+      <button type="button" aria-label={text} className="inline-flex text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
+        <Info className="size-4" />
+      </button>
+    </IconTip>
+  );
+  /** The ₹ / % choice joined to its amount box. */
+  const amountGroup = (opts: { label: string; mode: "FIXED" | "PERCENTAGE"; onMode: (mode: "FIXED" | "PERCENTAGE") => void; inputId?: string; inputLabel?: string; value: string; onValue: (value: string) => void }) => (
+    <div className="flex items-center">
+      <Select items={{ FIXED: "₹", PERCENTAGE: "%" }} value={opts.mode} onValueChange={(v) => opts.onMode(v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED")}>
+        <SelectTrigger aria-label={`${opts.label} type`} className="w-16 rounded-r-none border-r-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="FIXED">₹</SelectItem>
+          <SelectItem value="PERCENTAGE">%</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        id={opts.inputId}
+        aria-label={opts.inputLabel}
+        type="number"
+        min="0"
+        max={opts.mode === "PERCENTAGE" ? 100 : undefined}
+        step="0.01"
+        className="w-28 rounded-l-none text-right"
+        value={opts.value}
+        onChange={(e) => opts.onValue(e.target.value)}
+      />
+    </div>
+  );
+
   const pricingEditorCard = (
-  <SummaryCard icon={Wallet} title="Pricing Details">
-    <p className="text-xs text-muted-foreground">
-      {individualOn
-        ? "Individual Pricing is on (switch it in Menu Planning). Set your own per-plate price for each meal and each child age band. Children can be Per Plate or a Percentage of the first assigned Menu's price."
-        : "Meals use their Menu's rates. Children (Under 5) / (5–10) are charged with the child rates of the first Menu assigned in Menu Planning. Turn on Individual Pricing in Menu Planning to set your own."}
-    </p>
+  <SummaryCard icon={FileText} title="Pricing Details" description="Set per-plate pricing, children charges and additional costs for this event.">
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">Individual / Custom Pricing</p>
+        <p className="text-sm text-muted-foreground">
+          {individualOn ? "On: set your own per-plate price for each meal and each child age band." : "Off: prices come from each meal's menu. Turn on to set your own."}
+        </p>
+      </div>
+      <Switch id="order-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing} />
+    </div>
+
+    <div className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-base font-semibold">Per Plate Pricing</h3>
+        <p className="text-sm text-muted-foreground">{individualOn ? "Your price per plate for each meal." : "Each meal's per-plate price from its menu."}</p>
+      </div>
+      {pricedMealRows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No meals yet. Add meals in Menu Planning.</p>
+      ) : (
+        pricedMealRows.map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-3 text-sm" data-testid="per-plate-row">
+            <div className="min-w-0">
+              <p className="font-medium">{row.title}</p>
+              <p className="text-xs text-muted-foreground">{row.menuName} · {Number(values.adultCount) || 0} adults</p>
+            </div>
+            {individualOn ? (
+              <div className="flex shrink-0 items-center gap-2">
+                <div className="flex items-center">
+                  <span className="flex h-10 w-12 items-center justify-center rounded-l-lg border border-r-0 border-input text-sm" aria-hidden>
+                    ₹
+                  </span>
+                  <Input
+                    aria-label={`${row.title} price per plate`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="w-28 rounded-l-none text-right"
+                    value={row.entry.price}
+                    onChange={(e) => setField("mealPlanEntries", values.mealPlanEntries.map((m) => (m.date === row.entry.date && m.mealType === row.entry.mealType ? { ...m, price: e.target.value } : m)))}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground">/ plate</span>
+              </div>
+            ) : (
+              <span className="shrink-0 font-medium">{formatCurrency(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+
     {individualOn && (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {/* Each meal's own price is set inline on its card in Menu Planning above, not duplicated here (AJ's reference, 2026-09-29). */}
         {(
           [
-            { id: "order-individual-below5", label: "Children (Under 5) price", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
-            { id: "order-individual-5to10", label: "Children (5–10) price", rate: "individualChild5To10Rate", type: "individualChild5To10PricingType" },
+            { id: "order-individual-below5", label: "Children (Under 5) price", hint: "Charge for children below 5 years.", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
+            { id: "order-individual-5to10", label: "Children (5–10) price", hint: "Charge for children between 5 and 10 years.", rate: "individualChild5To10Rate", type: "individualChild5To10PricingType" },
           ] as const
         ).map((row) => (
-          <div key={row.id} className="flex flex-col gap-1.5">
-            <Label htmlFor={`${row.id}-rate`}>{row.label}</Label>
-            <div className="flex gap-2">
-              <Input
-                id={`${row.id}-rate`}
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-28"
-                value={values[row.rate]}
-                onChange={(e) => setField(row.rate, e.target.value)}
-              />
-              <Select
-                items={Object.fromEntries(CHILD_PRICING_TYPE_OPTIONS.map((o) => [o.value, o.label]))}
-                value={values[row.type]}
-                onValueChange={(v) => setField(row.type, v ?? values[row.type])}
-              >
-                <SelectTrigger className="min-w-0 flex-1" aria-label={`${row.label} type`}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CHILD_PRICING_TYPE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div key={row.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor={`${row.id}-rate`} className="font-normal whitespace-nowrap text-muted-foreground">
+                {row.label}
+              </Label>
+              {hintIcon(row.hint)}
             </div>
+            {amountGroup({
+              label: row.label,
+              mode: values[row.type] === "PERCENTAGE" ? "PERCENTAGE" : "FIXED",
+              onMode: (mode) => setField(row.type, mode),
+              inputId: `${row.id}-rate`,
+              value: values[row.rate],
+              onValue: (value) => setField(row.rate, value),
+            })}
           </div>
         ))}
       </div>
     )}
-    <div className="flex flex-col gap-3 text-sm">
+    {!individualOn && childPricingMenu && (
+      <div className="flex flex-col gap-1.5 text-sm" data-testid="menu-child-rates">
+        <h3 className="text-base font-semibold">Children</h3>
+        <div className="flex justify-between gap-3">
+          <span className="text-muted-foreground">Children (Under 5)</span>
+          <span className="font-medium">{childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</span>
+        </div>
+        <div className="flex justify-between gap-3">
+          <span className="text-muted-foreground">Children (5–10)</span>
+          <span className="font-medium">
+            {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+          </span>
+        </div>
+      </div>
+    )}
+    <div className="flex flex-col gap-2.5 text-sm">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted-foreground">Total Amount</span>
         <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal + carriedOverItemsSubtotal)}</span>
@@ -1331,99 +1447,84 @@ export function OrderForm({
           <span>{formatCurrency(childrenCharge)}</span>
         </div>
       )}
-      {below5Count + child5To10Count > 0 && childrenCharge === 0 && (
-        <p className="text-xs text-muted-foreground" data-testid="children-no-rate">
+    </div>
+    {below5Count + child5To10Count > 0 && childrenCharge === 0 && (
+      <p className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-sm text-info" data-testid="children-no-rate">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <span>
           {childPricingMenu
             ? individualOn
               ? "No child rate is set. Enter the child prices above."
               : `${childPricingMenu.name} has no child rate set, so children are not charged. Set it on the Menu, or turn on Individual Pricing.`
             : "Children are priced from the first Menu assigned in Menu Planning. Assign a Menu to charge them."}
-        </p>
-      )}
+        </span>
+      </p>
+    )}
+
+    <div className="flex flex-col gap-4 border-t border-border pt-5">
+      <div>
+        <h3 className="text-base font-semibold">Additional Costs</h3>
+        <p className="text-sm text-muted-foreground">Add transport charges, service costs, discounts or any other charges.</p>
+      </div>
       {(
         [
-          { id: "order-transportation-cost", label: "Transportation Cost", key: "transportationCost", modeKey: "transportationMode" },
-          { id: "order-other-charges", label: "Extra / Service Cost", key: "otherCharges", modeKey: "otherChargesMode" },
-          { id: "order-discount", label: "Discount", key: "discount", modeKey: "discountMode" },
+          { id: "order-transportation-cost", label: "Transportation Cost", hint: "Cost of getting the food and crew to the venue.", key: "transportationCost", modeKey: "transportationMode" },
+          { id: "order-other-charges", label: "Extra / Service Cost", hint: "Any extra service charge on top of the meals.", key: "otherCharges", modeKey: "otherChargesMode" },
+          { id: "order-discount", label: "Discount", hint: "Taken off the total. A percentage is of the meals and children charges.", key: "discount", modeKey: "discountMode" },
         ] as const
-      ).map((row) => {
-        const mode = row.modeKey ? values[row.modeKey] : "FIXED";
-        return (
-          <div key={row.id} className="flex items-center justify-between gap-3">
-            <Label htmlFor={row.id} className="font-normal text-muted-foreground">
+      ).map((row) => (
+        <div key={row.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor={row.id} className="font-normal whitespace-nowrap text-muted-foreground">
               {row.label}
             </Label>
-            <div className="flex items-center gap-2">
-              {row.modeKey && (
-                <Select
-                  items={{ FIXED: "₹", PERCENTAGE: "%" }}
-                  value={mode}
-                  onValueChange={(v) => setField(row.modeKey, v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED")}
-                >
-                  <SelectTrigger aria-label={`${row.label} type`} className="w-16">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="FIXED">₹</SelectItem>
-                    <SelectItem value="PERCENTAGE">%</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
-              <Input
-                id={row.id}
-                type="number"
-                min="0"
-                max={mode === "PERCENTAGE" ? 100 : undefined}
-                step="0.01"
-                className="w-28 text-right"
-                value={values[row.key]}
-                onChange={(e) => setField(row.key, e.target.value)}
-              />
-            </div>
+            {hintIcon(row.hint)}
           </div>
-        );
-      })}
+          {amountGroup({
+            label: row.label,
+            mode: values[row.modeKey],
+            onMode: (mode) => setField(row.modeKey, mode),
+            inputId: row.id,
+            value: values[row.key],
+            onValue: (value) => setField(row.key, value),
+          })}
+        </div>
+      ))}
+    </div>
+
+    <div className="flex flex-col gap-3 border-t border-border pt-5">
+      <div>
+        <h3 className="text-base font-semibold">
+          Other Charges <span className="text-sm font-normal text-muted-foreground">(Optional)</span>
+        </h3>
+        <p className="text-sm text-muted-foreground">Add custom charges such as generator, venue service, etc.</p>
+      </div>
       {values.customCharges.map((row, index) => (
-        <div key={index} className="flex items-center gap-2">
+        <div key={index} className="flex flex-wrap items-center gap-2">
           <Input
             aria-label={`Charge ${index + 1} label`}
             placeholder="Label (e.g. Generator)"
             maxLength={80}
-            className="min-w-0 flex-1"
+            className="min-w-40 flex-1 basis-full sm:basis-0"
             value={row.label}
             onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, label: e.target.value } : c)))}
           />
-          <Select
-            items={{ FIXED: "₹", PERCENTAGE: "%" }}
-            value={row.mode}
-            onValueChange={(v) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, mode: v === "PERCENTAGE" ? "PERCENTAGE" : "FIXED" } : c)))}
-          >
-            <SelectTrigger aria-label={`Charge ${index + 1} type`} className="w-16">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="FIXED">₹</SelectItem>
-              <SelectItem value="PERCENTAGE">%</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input
-            aria-label={`Charge ${index + 1} amount`}
-            type="number"
-            min="0"
-            max={row.mode === "PERCENTAGE" ? 100 : undefined}
-            step="0.01"
-            className="w-28 text-right"
-            value={row.amount}
-            onChange={(e) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, amount: e.target.value } : c)))}
-          />
+          {amountGroup({
+            label: `Charge ${index + 1}`,
+            mode: row.mode,
+            onMode: (mode) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, mode } : c))),
+            inputLabel: `Charge ${index + 1} amount`,
+            value: row.amount,
+            onValue: (value) => setField("customCharges", values.customCharges.map((c, i) => (i === index ? { ...c, amount: value } : c))),
+          })}
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="icon"
             aria-label={`Remove charge ${index + 1}`}
             onClick={() => setField("customCharges", values.customCharges.filter((_, i) => i !== index))}
           >
-            <X className="size-4" />
+            <Trash2 className="size-4" />
           </Button>
         </div>
       ))}
@@ -1439,9 +1540,12 @@ export function OrderForm({
         </Button>
       )}
     </div>
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
-      <span>Grand Total</span>
-      <span className="text-lg">{formatCurrency(total)}</span>
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 text-accent-foreground">
+      <span className="flex flex-col">
+        <span className="font-semibold">Grand Total</span>
+        <span className="text-xs font-normal">Including all charges and discounts</span>
+      </span>
+      <span className="text-xl font-semibold">{formatCurrency(total)}</span>
     </div>
   </SummaryCard>
   );
@@ -1533,31 +1637,35 @@ export function OrderForm({
       node
     );
 
+  /** The Save button (top right and bottom right): saves the order, or the meal plan while the Menu Approval tab is open. Nothing on a locked order. */
+  const saveButton = (testId: string) =>
+    onApprovalTab ? (
+      approvalSave ? (
+        <Button type="button" data-testid={testId} disabled={!approvalSave.dirty || approvalSave.saving} onClick={approvalSave.save}>
+          {approvalSave.saving ? "Saving…" : "Save changes"}
+        </Button>
+      ) : null
+    ) : locked ? null : (
+      <Button type="submit" data-testid={testId} disabled={pending !== null || !dirty}>
+        {pending === "save" ? "Saving…" : submitLabel}
+      </Button>
+    );
+
   const tabs: FormTab[] = [
     {
       id: "details",
       label: "Order Details",
+      // Customer and guests side by side, the event below them, then (before a menu approval exists) the menu planner, which is the only place to enter meals then.
       panel: (
         <>
-          {freeze(
-            <>
-              {customerSection}
-            </>,
-          )}
-          {detailsExtra}
-        </>
-      ),
-    },
-    {
-      id: "menu",
-      label: "Guests & Event Info",
-      panel: (
-        <>
-          {freeze(guestSection, locked || priceFrozen)}
+          <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 [&>*]:h-full [&>fieldset>*]:h-full">
+            {freeze(customerSection)}
+            {freeze(guestSection, locked || priceFrozen)}
+          </div>
           {freeze(eventSection)}
           {multiDialog}
-          {/* Once a menu approval exists the menu is planned in the Menu Approval tab, not here. Before that this is the only place to enter meals. */}
           {menuPlanInApprovalTab ? null : freeze(menuSection)}
+          {detailsExtra}
         </>
       ),
     },
@@ -1581,7 +1689,6 @@ export function OrderForm({
           },
         ]
       : []),
-    { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
     {
       id: "pricing",
       label: "Pricing & Payment",
@@ -1624,12 +1731,15 @@ export function OrderForm({
       : []),
     ...(expensesTab ? [{ id: "expenses", label: "Expenses", panel: freeze(expensesTab, completed) }] : []),
     ...(staffingTab ? [{ id: "staffing", label: "Staffing & Logistics", panel: freeze(staffingTab, completed) }] : []),
+    // Last tab (AJ, 2026-10-16).
+    { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
   ];
 
   return (
     <LiveOrderTotalProvider value={initialValues && dirty ? total : null}>
     <OrderPriceLinesProvider value={priceLines}>
     <ApprovalSidebarSlotProvider value={approvalSlot}>
+    <ApprovalSavePublisherProvider value={setApprovalSave}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1657,14 +1767,12 @@ export function OrderForm({
                 {pending === "whatsapp" ? "Sending…" : "Create & Send WhatsApp"}
               </Button>
             )}
-            {/* On a big screen Save lives in the sticky card beside the form; here for a phone or tablet. */}
-            <Button type="submit" className={cn("lg:hidden", locked && "hidden")} disabled={pending !== null}>
-              {pending === "save" ? "Saving…" : submitLabel}
-            </Button>
+            {/* Save sits top right here and bottom right under the cards (AJ, 2026-10-16); the Menu Approval tab has its own Save Changes. */}
+            {saveButton("order-save-top")}
           </div>
         </div>
-        {dirty && (
-          <p role="status" className="-mt-3 text-xs font-medium text-warning lg:hidden">
+        {((dirty && !locked && !onApprovalTab) || (onApprovalTab && approvalSave?.dirty)) && (
+          <p role="status" className="-mt-3 text-right text-xs font-medium text-warning" data-testid="unsaved-note">
             Unsaved changes
           </p>
         )}
@@ -1703,22 +1811,17 @@ export function OrderForm({
               {statusCard}
               {sidebarTop ?? orderSummaryCard}
               {!sidebarTop && pricingSummaryCard}
-              {/* Save stays at the bottom of the summary column and in view while a long order scrolls (AJ, 2026-10-14). */}
-              <div className="mt-auto hidden flex-col gap-2 rounded-xl bg-card p-3 ring-1 ring-foreground/10 lg:sticky lg:bottom-4 lg:z-10 lg:flex" data-testid="order-save-card" hidden={locked}>
-                {dirty && (
-                  <p role="status" className="text-center text-xs font-medium text-warning" data-testid="unsaved-note">
-                    Unsaved changes
-                  </p>
-                )}
-                <Button type="submit" disabled={pending !== null}>
-                  {pending === "save" ? "Saving…" : submitLabel}
-                </Button>
-              </div>
             </div>
           </aside>
         </div>
+        {(onApprovalTab ? approvalSave : !locked) && (
+          <div className="flex items-center justify-end gap-3" data-testid="order-save-bottom">
+            {saveButton("order-save-bottom-button")}
+          </div>
+        )}
       </form>
       {guard.dialog}
+    </ApprovalSavePublisherProvider>
     </ApprovalSidebarSlotProvider>
     </OrderPriceLinesProvider>
     </LiveOrderTotalProvider>

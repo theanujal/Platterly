@@ -123,6 +123,18 @@ interface MenuPlanningSectionProps {
   sectioned?: boolean;
   /** Days that carry meals but fall outside the order's event dates (e.g. the date was changed after the menu was planned): flagged in the dates list. */
   outsideDays?: string[];
+  /**
+   * Menu Approval tab: says what order type a meal list would give, so adding or removing a meal that flips Single / Multi asks first.
+   * The order type itself is updated by the save (updateMenuApprovalMealPlan).
+   */
+  kindOf?: (entries: MealSelection[]) => "SINGLE" | "MULTI";
+  /** Menu Approval tab: the plan always keeps one meal, so the last one can't be removed. */
+  keepOneMeal?: boolean;
+  /**
+   * Per-plate prices are set in the order's Pricing Details (Individual / Custom Pricing), so a meal card only shows its price as text
+   * instead of a number box. Quotations, which have no such card, leave this off and keep the box.
+   */
+  priceInPricingTab?: boolean;
 }
 
 /** One numbered card of the `sectioned` layout. */
@@ -164,12 +176,17 @@ export function MenuPlanningSection({
   compare,
   sectioned = false,
   outsideDays = [],
+  kindOf,
+  keepOneMeal = false,
+  priceInPricingTab = false,
 }: MenuPlanningSectionProps) {
   const [focusedDate, setFocusedDate] = useState<string | null>(days[0] ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
   const [copyTargets, setCopyTargets] = useState<string[]>([]);
   // A meal with anything in it is only removed after "Are you sure?"; an empty one goes at once.
   const [pendingRemove, setPendingRemove] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
+  // A meal that makes the order a Multi Order is added only after "Are you sure?".
+  const [pendingAdd, setPendingAdd] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
 
   // The focused date drops out of range (e.g. the event date range shrank) — fall back to the first day rather than showing nothing.
   const activeDate = focusedDate && days.includes(focusedDate) ? focusedDate : (days[0] ?? null);
@@ -185,13 +202,23 @@ export function MenuPlanningSection({
       setFocusedDate(date);
       return;
     }
+    const next = [...mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }];
+    if (kindOf && kindOf(next) !== kindOf(mealPlanEntries)) {
+      setPendingAdd({ date, mealType });
+      return;
+    }
+    addMeal(date, mealType);
+  }
+
+  function addMeal(date: string, mealType: MealTypeValue) {
     onChange([...mealPlanEntries, { date, mealType, price: "", menuId: "", items: [] }]);
     setFocusedDate(date);
   }
 
   function requestRemoveMeal(date: string, mealType: MealTypeValue) {
     const entry = mealMap.get(`${date}|${mealType}`);
-    if (entry && (entry.menuId || entry.price.trim() || entry.items.length > 0)) setPendingRemove({ date, mealType });
+    // On the Menu Approval tab every removal asks (it can change the order type); elsewhere an empty meal goes at once.
+    if (entry && (kindOf || entry.menuId || entry.price.trim() || entry.items.length > 0)) setPendingRemove({ date, mealType });
     else removeMeal(date, mealType);
   }
 
@@ -200,7 +227,7 @@ export function MenuPlanningSection({
   }
 
   function setMealMenu(date: string, mealType: MealTypeValue, menuId: string) {
-    onChange(mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, menuId, items: [] } : e)));
+    onChange(mealPlanEntries.map((e) => (e.date === date && e.mealType === mealType ? { ...e, menuId, items: [], ...(priceInPricingTab && individualPricingEnabled ? { price: String(menus.find((m) => m.id === menuId)?.price ?? "") } : {}) } : e)));
   }
 
   function setMealPrice(date: string, mealType: MealTypeValue, price: string) {
@@ -250,7 +277,15 @@ export function MenuPlanningSection({
             {meal.label}
           </span>
           {!readOnly && (
-            <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => requestRemoveMeal(date, mealType)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              disabled={keepOneMeal && mealPlanEntries.length <= 1}
+              title={keepOneMeal && mealPlanEntries.length <= 1 ? "An order needs at least one meal" : undefined}
+              onClick={() => requestRemoveMeal(date, mealType)}
+            >
               <Trash2 className="size-3.5" />
               Remove {meal.label}
             </Button>
@@ -289,7 +324,7 @@ export function MenuPlanningSection({
             <Label htmlFor={`${idPrefix}-meal-price-${date}-${mealType}`} className="text-xs">
               Price
             </Label>
-            {individualPricingEnabled && !readOnly ? (
+            {individualPricingEnabled && !readOnly && !priceInPricingTab ? (
               <div className="flex items-center gap-2">
                 <Input
                   id={`${idPrefix}-meal-price-${date}-${mealType}`}
@@ -410,6 +445,14 @@ export function MenuPlanningSection({
   const removeEntry = pendingRemove ? mealMap.get(`${pendingRemove.date}|${pendingRemove.mealType}`) : undefined;
   const removeLabel = pendingRemove ? (MEAL_TYPES.find((m) => m.value === pendingRemove.mealType)?.label ?? "") : "";
   const removeCount = removeEntry?.items.length ?? 0;
+  const afterRemove = pendingRemove ? mealPlanEntries.filter((e) => !(e.date === pendingRemove.date && e.mealType === pendingRemove.mealType)) : [];
+  const removeKindNote =
+    kindOf && pendingRemove && kindOf(afterRemove) !== kindOf(mealPlanEntries)
+      ? kindOf(afterRemove) === "SINGLE"
+        ? " With only one meal type left, this becomes a Single Order."
+        : " This becomes a Multi Order."
+      : "";
+  const addLabel = pendingAdd ? (MEAL_TYPES.find((m) => m.value === pendingAdd.mealType)?.label ?? "") : "";
 
   const preferenceControl = readOnly ? null : (
 <div className="flex flex-col gap-1.5" role="group" aria-label="Menu Preference">
@@ -549,11 +592,22 @@ export function MenuPlanningSection({
         open={pendingRemove !== null}
         onOpenChange={(open) => !open && setPendingRemove(null)}
         title={pendingRemove ? `Remove ${removeLabel} on ${formatDay(pendingRemove.date, { day: "numeric", month: "short" })}?` : ""}
-        description={`This removes its menu, price${removeCount > 0 ? ` and the ${removeCount} dish${removeCount === 1 ? "" : "es"} picked` : ""}. You can't undo this. It is only saved when you save the order or quotation, so leaving without saving keeps the old meal.`}
+        description={`This removes its menu, price${removeCount > 0 ? ` and the ${removeCount} dish${removeCount === 1 ? "" : "es"} picked` : ""}. You can't undo this. It is only saved when you save the order or quotation, so leaving without saving keeps the old meal.${removeKindNote}`}
         confirmLabel="Remove"
         onConfirm={() => {
           if (pendingRemove) removeMeal(pendingRemove.date, pendingRemove.mealType);
           setPendingRemove(null);
+        }}
+      />
+      <ConfirmDialog
+        open={pendingAdd !== null}
+        onOpenChange={(open) => !open && setPendingAdd(null)}
+        title="This will be a Multi Order"
+        description={`Adding ${addLabel} gives the order more than one meal type, so it becomes a Multi Order. The order type is updated when you save. Add it?`}
+        confirmLabel="Add meal"
+        onConfirm={() => {
+          if (pendingAdd) addMeal(pendingAdd.date, pendingAdd.mealType);
+          setPendingAdd(null);
         }}
       />
       {!sectioned && preferenceControl}
@@ -565,7 +619,7 @@ export function MenuPlanningSection({
               {preferenceControl}
             </PlanSection>
           )}
-          <PlanSection step={preferenceControl ? 2 : 1} icon={CalendarDays} title="Event Dates & Meals" description={readOnly ? "The meals planned for each event date." : "Add or configure meals for each event date. You can copy meals to other dates to save time."}>
+          <PlanSection step={preferenceControl ? 2 : 1} icon={CalendarDays} title="Event Dates & Meals" description={readOnly ? "The meals planned for each event date." : `Add or configure meals for each event date. You can copy meals to other dates to save time.${keepOneMeal ? " At least one meal is required." : ""}`}>
             {datesAndMeals}
           </PlanSection>
         </>

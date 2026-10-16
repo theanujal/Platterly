@@ -121,7 +121,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await customerInput.click();
   await customerInput.fill(leadName);
   await page.getByRole("button", { name: new RegExp(leadName) }).click();
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByLabel("Event Type").click();
   await page.getByRole("option", { name: eventTypeName }).click();
   // Event Date is a single range-picker (DateRangePicker), defaulting to the
@@ -140,7 +140,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
     await datePopover.getByRole("button", { name: day, exact: true }).click();
   }
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
-  await page.getByRole("button", { name: "Save Order", exact: true }).click();
+  await page.getByTestId("order-save-top").click();
   await expect(page).toHaveURL(/\/orders$/);
 
   await page.goto(`/customers/${customerId}`);

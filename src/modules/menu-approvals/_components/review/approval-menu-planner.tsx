@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { MenuPlanningSection, type MealSelection, type MenuOption } from "@/components/catalog/menu-planning-section";
+import { orderKindFor } from "@/modules/orders/order-kind";
 import { compareMealPlans, snapshotToMealSelections } from "@/modules/menu-approvals/snapshot-meals";
 import type { FoodDialogTarget, ReviewActions, VersionView } from "./types";
 
@@ -134,7 +135,10 @@ export function ApprovalMenuPlanner({
           onCloseFoodDialog={() => onFoodDialogChange(null)}
           readOnly={planReadOnly}
           sectioned
+          priceInPricingTab
           outsideDays={days.filter((d) => !eventDays.includes(d))}
+          kindOf={(list) => orderKindFor(eventDays.length, list.map((e) => e.mealType))}
+          keepOneMeal
         />
       )}
     </div>

@@ -98,8 +98,8 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   // Staffing and logistics notes are under Additional Details
   await page.getByRole("tab", { name: "Additional Details" }).click();
   await page.getByLabel("Staffing & Logistics Notes").fill("Two vans, crew meets at 6 am");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);
+  await expect(page.getByTestId("order-save-top")).toBeDisabled(); // saved: nothing left to save
   await expect(page.locator("p[role=alert]")).toHaveCount(0);
   await page.reload();
   await page.getByRole("tab", { name: "Additional Details" }).click();

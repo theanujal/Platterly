@@ -51,14 +51,20 @@ export function FormSection({
 }
 
 /** A card in the right-hand summary column: icon chip + title, then rows. */
-export function SummaryCard({ icon: Icon, title, action, children }: { icon: LucideIcon; title: string; action?: React.ReactNode; children: React.ReactNode }) {
+export function SummaryCard({ icon: Icon, title, titleExtra, description, action, children }: { icon: LucideIcon; title: string; /** Next to the title, e.g. a status badge. */ titleExtra?: React.ReactNode; /** A small line under the title. */ description?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
     <Card className="gap-4 px-5 [--card-spacing:--spacing(5)]">
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <Icon className="size-5" />
         </span>
-        <h2 className="min-w-0 flex-1 text-base font-semibold">{title}</h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold">
+            {title}
+            {titleExtra}
+          </h2>
+          {description && <p className="text-sm text-muted-foreground">{description}</p>}
+        </div>
         {action}
       </div>
       {children}

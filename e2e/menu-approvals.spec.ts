@@ -312,7 +312,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await orderCard().getByRole("link").first().click();
   await expect(page).toHaveURL(/\/orders\/.+/);
   // Only the location is known before approval; the detailed venue fields are still empty for the team to fill.
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("Whitefield, Bangalore");
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("");
@@ -337,8 +337,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await page.goto("/orders");
   await page.getByText(customerName).click();
   // The Guests & Event Info tab no longer holds the menu; the Menu Approval tab is the only planner.
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
-  await expect(page.locator("#order-panel-menu").getByTestId("meal-item-counts")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.locator("#order-panel-details").getByTestId("meal-item-counts")).toHaveCount(0);
   await page.getByRole("tab", { name: "Menu Approval" }).click();
   await expect(page.getByRole("tab", { name: "Menu Approval" })).toHaveAttribute("aria-selected", "true");
   const approvalPanel = page.locator("#order-panel-approval, #order-approval-sidebar");
@@ -350,7 +350,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(approvalPanel.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toHaveCount(0);
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
-    approvalPanel.getByRole("button", { name: "Save Changes" }).click(),
+    page.getByTestId("order-save-top").click(),
   ]);
   await expect(page.getByTestId("unsaved-note")).toHaveCount(0);
   // ...and the tab, opened again by address, shows the same meals.
@@ -364,7 +364,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await reviewDrawer.getByRole("button", { name: "Save Items" }).click();
   await Promise.all([
     page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
-    review.getByRole("button", { name: "Save Changes" }).click(),
+    page.getByTestId("order-save-top").click(),
   ]);
   await page.goto(reviewUrl);
   await expect(review.getByTestId("meal-item-counts").first().getByText("1 Add-on", { exact: true })).toBeVisible();
@@ -508,7 +508,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(orderCard()).toContainText("Approved");
   // What the customer sent lands on the order, and the team can see it arrived.
   await orderCard().getByRole("link", { name: customerName }).click();
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await page.getByRole("button", { name: "Edit event information" }).click();
   await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
   await expect(page.getByLabel("Complete Venue Address")).toHaveValue("12 Green Villa Road");
@@ -531,12 +531,13 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page).toHaveURL(/\/orders\/.+/);
   // Sent to the kitchen, the order itself is final (AJ, 2026-10-14): fields cannot be edited, no Save, no Delete.
   await expect(page.getByTestId("order-locked-banner")).toContainText("can't be changed any more");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Create & Send WhatsApp" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Delete/ })).toHaveCount(0);
-  await expect(page.getByTestId("order-save-card")).toBeHidden();
+  await expect(page.getByTestId("order-save-top")).toBeHidden();
+  await expect(page.getByTestId("order-save-bottom")).toBeHidden();
   await page.getByRole("tab", { name: "Order Details" }).click();
   await openOrderStatusHistory(page);
   await page.getByRole("combobox", { name: "Change status" }).click();
@@ -571,8 +572,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   // --- Kitchen Dashboard: the freshly-approved order starts Pending, in a real board column ---
   await page.goto("/kitchen-dashboard");
-  const pendingColumn = page.locator('[data-stage="PENDING"]');
   await page.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
+  const pendingColumn = page.locator('[data-stage="PENDING"]');
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
   // View Details opens the kitchen's own prep sheet (not Menu Approvals, which the kitchen role can't open).
@@ -605,8 +606,8 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(page.getByText("2 days before the event")).toBeVisible();
 
   await page.goto("/kitchen-dashboard");
-
   await page.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
+
   // Free-choice dropdown (AJ, 2026-09-19) — jumps directly between any of
   // the 5 stages, not a forward-only single-step advance.
   const stageDropdown = pendingColumn.getByRole("combobox", { name: "Kitchen production stage" });

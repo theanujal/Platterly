@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ClipboardCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { MENU_SELECTION_STATUS_HINT, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
 import { ApprovalActionBar } from "@/modules/menu-approvals/_components/review/approval-action-bar";
-import type { EventOverviewData } from "@/modules/menu-approvals/_components/review/approval-event-overview-card";
 import { ApprovalReviewBody } from "@/modules/menu-approvals/_components/review/approval-review-body";
+import { useApprovalSavePublisher } from "@/modules/menu-approvals/_components/review/approval-save-slot";
 import { useApprovalController } from "@/modules/menu-approvals/_components/review/use-approval-controller";
 import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_components/review/types";
 import { reviewActions } from "../../../menu-approvals/_components/review-actions";
@@ -29,13 +29,13 @@ export interface NotStartedInfo {
  * components and the server actions, with the order page around it. The viewer's capabilities decide which controls show; the server
  * checks every action again. With no approval yet it offers to start one.
  */
-export function OrderMenuApprovalTab({ data, notStarted, eventOverview }: { data: MenuApprovalReviewProps | null; notStarted: NotStartedInfo; eventOverview?: EventOverviewData }) {
+export function OrderMenuApprovalTab({ data, notStarted }: { data: MenuApprovalReviewProps | null; notStarted: NotStartedInfo }) {
   if (!data) return <NotStarted info={notStarted} />;
-  return <Review data={data} eventOverview={eventOverview} />;
+  return <Review data={data} />;
 }
 
 
-function Review({ data, eventOverview }: { data: MenuApprovalReviewProps; eventOverview?: EventOverviewData }) {
+function Review({ data }: { data: MenuApprovalReviewProps }) {
   const router = useRouter();
   const pathname = usePathname();
   const c = useApprovalController({
@@ -47,6 +47,18 @@ function Review({ data, eventOverview }: { data: MenuApprovalReviewProps; eventO
       backToCurrent: () => router.push(`${pathname}?tab=approval`),
     },
   });
+  // The order page's Save buttons save the meal plan while this tab is open; the latest save is kept in a ref so they never call a stale one.
+  const publisher = useApprovalSavePublisher();
+  const saveRef = useRef(c.handleSave);
+  useEffect(() => {
+    saveRef.current = c.handleSave;
+  });
+  const canSave = data.capabilities.canAct && c.editable && c.shownVersion === null;
+  useEffect(() => {
+    if (!publisher) return;
+    publisher(canSave ? { save: () => saveRef.current(), dirty: c.dirty, saving: c.pending === "save" } : null);
+    return () => publisher(null);
+  }, [publisher, canSave, c.dirty, c.pending]);
   return (
     <>
       <Card className="gap-3 px-5 [--card-spacing:--spacing(5)]" data-testid="approval-tab-header">
@@ -71,6 +83,7 @@ function Review({ data, eventOverview }: { data: MenuApprovalReviewProps; eventO
               withCustomer={c.withCustomer}
               pending={c.pending}
               dirty={c.dirty}
+              showSave={!publisher}
               onSave={c.handleSave}
               onSend={c.handleSend}
               onRecall={c.handleRecall}
@@ -79,7 +92,7 @@ function Review({ data, eventOverview }: { data: MenuApprovalReviewProps; eventO
           )}
         </div>
       </Card>
-      <ApprovalReviewBody data={data} c={c} actions={reviewActions} cardsInSidebar eventOverview={eventOverview} onViewDetails={eventOverview ? () => router.push(`${pathname}?tab=details`) : undefined} />
+      <ApprovalReviewBody data={data} c={c} actions={reviewActions} cardsInSidebar />
     </>
   );
 }

@@ -24,6 +24,7 @@ import { returnAllOrderItems } from "@/modules/production/production";
 import { assertOrderNotKitchenLocked } from "@/modules/orders/kitchen-lock";
 import { OrderCompletedError } from "@/modules/orders/order-guard";
 import { ValidationError } from "@/lib/errors";
+import { orderKindFor } from "@/modules/orders/order-kind";
 import type { MenuSelectionStatus, KitchenProductionStatus, FoodType, MealType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
 
 import { InvalidMenuSelectionTransitionError, EDITABLE_STATUSES, MEAL_PLAN_FROZEN_MESSAGE, PRICE_FROZEN_MESSAGE } from "./approval-stages";
@@ -862,7 +863,13 @@ export async function updateMenuApprovalMealPlan(organizationId: string, menuSel
     const selection = await tx.menuSelection.findFirstOrThrow({ where: { id: menuSelectionId, organizationId } });
     await assertOrderNotKitchenLocked(tx, organizationId, orderId);
     if (!EDITABLE_STATUSES.includes(selection.status)) throw new InvalidMenuSelectionTransitionError(MEAL_PLAN_FROZEN_MESSAGE);
+    // An order always has a meal. The order type follows the plan: more than one event date or meal type is a Multi Order, otherwise Single.
+    if (entries.length === 0) throw new ValidationError("Select at least one meal.");
     await applyMealPlanInTransaction(tx, organizationId, menuSelectionId, orderId, entries, actorUserId);
+    const order = await tx.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { orderKind: true, eventStartDate: true, eventEndDate: true } });
+    const eventDayCount = Math.round((order.eventEndDate.getTime() - order.eventStartDate.getTime()) / 86_400_000) + 1;
+    const orderKind = orderKindFor(eventDayCount, entries.map((e) => e.mealType));
+    if (orderKind !== order.orderKind) await tx.order.update({ where: { id: orderId }, data: { orderKind } });
   });
 }
 
