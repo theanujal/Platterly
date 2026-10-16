@@ -45,6 +45,16 @@ test("create a menu, a category assigned to it (max selection + reorder), and an
   await page.getByLabel("Menu Name").fill(menuName);
   await page.getByLabel("Price Per Plate").fill("300");
   await expect(page.getByText("No categories yet. Add some from the list below.")).toBeVisible();
+  // Children pricing: each age band is one row with a ₹ / % amount box on the right.
+  const drawer = page.getByRole("dialog");
+  await expect(drawer.getByText("Complimentary")).toBeVisible();
+  await drawer.getByRole("checkbox", { name: "Charge for Below 5 years" }).click();
+  await expect(drawer.getByText("Complimentary")).toHaveCount(0);
+  await drawer.getByLabel("Price per child (under 5)", { exact: true }).fill("100");
+  await drawer.getByLabel("5–10 Years Pricing type").click();
+  await page.getByRole("option", { name: "%" }).click();
+  await drawer.getByLabel("5–10 Years Pricing", { exact: true }).fill("50");
+  await expect(drawer.getByText("A percentage of the Price Per Plate.")).toBeVisible();
   await page.getByRole("button", { name: "Create menu" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(menuName)).toBeVisible();

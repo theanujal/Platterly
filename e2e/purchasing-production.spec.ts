@@ -130,8 +130,8 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   // Activating the recipe is the explicit approval; the order then needs the recipe's stock.
   await page.goto("/menu-catalog/items");
   await page.getByRole("button", { name: `Recipe for ${dish}` }).click();
-  await page.getByRole("button", { name: "Activate recipe" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Activate recipe" }).click();
+  await page.getByRole("switch", { name: "Draft" }).click();
+  await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await page.goto(`/orders/${orderId}`);
   await page.getByRole("tab", { name: "Inventory" }).click();

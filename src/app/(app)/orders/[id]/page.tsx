@@ -46,7 +46,7 @@ import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
-import { derivePaymentState, isPaymentOverdue } from "@/modules/payments/payment-math";
+import { customerHasApproved, derivePaymentState, isPaymentOverdue } from "@/modules/payments/payment-math";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
 
@@ -354,6 +354,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                 <CreateInvoiceButton orderId={order.id} gstEnabled={billingOrg.gstShowOnInvoices === true} defaultDueDate={toDateInputValue(order.eventStartDate)} defaultGstType={gstDefaults.type} defaultGstRate={gstDefaults.rate} />
               )}
             </div>
+                recordBlocked={!customerHasApproved(order.status)}
           ) : undefined
         }
         billingPanel={

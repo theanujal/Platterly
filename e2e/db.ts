@@ -672,7 +672,7 @@ export async function getApprovalState(orderId: string): Promise<{ selection: st
 }
 
 /** Order lock spec: puts an order straight into a status (as the kitchen's hand-off or completion would). */
-export async function setOrderStatus(orderId: string, status: "SENT_TO_KITCHEN" | "COMPLETED"): Promise<void> {
+export async function setOrderStatus(orderId: string, status: "PENDING_REVIEW" | "AWAITING_CUSTOMER_APPROVAL" | "APPROVED" | "SENT_TO_KITCHEN" | "COMPLETED"): Promise<void> {
   await pool.query('UPDATE "order" SET status = $2 WHERE id = $1', [orderId, status]);
 }
 

@@ -119,38 +119,31 @@ test("Recipes is its own sidebar entry under Stock & Supplies; add a recipe and 
   await page.getByRole("button", { name: /Missing Recipe/ }).click();
   await expect(page.getByRole("row").filter({ hasText: "Draft" })).toHaveCount(0);
 
-  // Draft -> Active is an explicit approval, separate from the cost: the cost was already verified and the recipe stayed a Draft.
+  // Draft -> Active is the footer switch, applied on Save; the cost was already verified and the recipe stayed a Draft.
   await page.getByRole("button", { name: /All Dishes/ }).click();
   await page.getByRole("button", { name: `Edit recipe for ${dishes[0]}` }).click();
-  const status = page.getByTestId("recipe-status");
-  await expect(status.getByTestId("recipe-status-badge")).toHaveText("Draft");
-  await expect(status).toContainText("does not verify the cost");
-  await status.getByRole("button", { name: "Activate recipe" }).click();
-  await expect(page.getByRole("alertdialog")).toContainText("approves the recipe for production");
-  await page.getByRole("alertdialog").getByRole("button", { name: "Activate recipe" }).click();
+  const statusSwitch = page.getByRole("switch", { name: "Draft" });
+  await expect(statusSwitch).toBeVisible();
+  await statusSwitch.click();
+  await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(first.getByText("Active", { exact: true })).toBeVisible();
   await expect(first).toContainText("₹120.00"); // the cost is unchanged by approving it
   await expect(page.getByRole("button", { name: /^Active/ })).toContainText("1");
   await expect(page.getByRole("button", { name: /^Draft/ })).toContainText("1");
 
-  // Changing the ingredients of an Active recipe returns it to Draft for re-approval; Return to Draft also works by hand.
+  // Changing the ingredients and saving with the switch left on keeps it Active; switching it off returns it to Draft.
   await page.getByRole("button", { name: `Edit recipe for ${dishes[0]}` }).click();
-  await expect(page.getByTestId("recipe-status")).toContainText("returns it to Draft for re-approval");
+  await expect(page.getByRole("switch", { name: "Active" })).toBeVisible();
   await page.getByLabel("Quantity 1").fill("5");
-  await expect(page.getByTestId("recipe-status").getByRole("button", { name: "Return to Draft" })).toBeDisabled(); // save first
+  await page.getByRole("button", { name: "Save recipe" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(first.getByText("Active", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: `Edit recipe for ${dishes[0]}` }).click();
+  await page.getByRole("switch", { name: "Active" }).click();
   await page.getByRole("button", { name: "Save recipe" }).click();
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(first.getByText("Draft", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: `Edit recipe for ${dishes[1]}` }).click();
-  await page.getByTestId("recipe-status").getByRole("button", { name: "Activate recipe" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Activate recipe" }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await page.getByRole("button", { name: `Edit recipe for ${dishes[1]}` }).click();
-  await page.getByTestId("recipe-status").getByRole("button", { name: "Return to Draft" }).click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Return to Draft" }).click();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  await expect(second.getByText("Draft", { exact: true })).toBeVisible();
 });
 
 test("a recipe whose ingredient has no stock, or stock with no known cost, is Incomplete: no verified cost, and the ingredient is named", async ({ page }) => {

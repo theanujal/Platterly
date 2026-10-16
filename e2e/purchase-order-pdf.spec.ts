@@ -68,10 +68,11 @@ test("Download PDF saves the draft order as a PDF without changing its status or
   for (const needle of ["PO-0001", supplier, rice, "25 kg"]) expect(listPdf, needle).toContain(needle);
   await expect(page).toHaveURL(/\/purchasing$/); // the row click did not also open the order
   await page.getByRole("link", { name: "PO-0001" }).click();
+  await expect(page).toHaveURL(/\/purchasing\/[^/]+$/); // reloading before the navigation lands would reload the list
 
   // Nothing changed: still a draft (not sent to the supplier), and no stock was added
   await page.reload();
-  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-slot=badge]").filter({ hasText: /^Draft$/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Send via WhatsApp" })).toBeVisible();
   await page.goto("/inventory");
   await expect(page.getByRole("row").filter({ hasText: rice })).toContainText("0 kg");

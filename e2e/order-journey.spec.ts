@@ -224,6 +224,12 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   // ===== Kitchen member: runs the Kitchen Dashboard =====
   await kitchenPage.goto("/kitchen-dashboard");
+  // List view: the customer name, the order number and the arrow at the right all open the prep sheet.
+  await expect(kitchenPage.getByRole("link", { name: customerName, exact: true })).toBeVisible();
+  await kitchenPage.getByRole("link", { name: `View details for ${customerName}` }).click();
+  await expect(kitchenPage).toHaveURL(/\/kitchen-dashboard\/.+/);
+  await kitchenPage.goto("/kitchen-dashboard");
+  await kitchenPage.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
   const pendingColumn = kitchenPage.locator('[data-stage="PENDING"]');
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
@@ -232,6 +238,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await expect(kitchenPage.getByRole("heading", { name: customerName })).toBeVisible();
   await expect(kitchenPage.getByText("Cook for 110 portions (10% extra)")).toBeVisible();
   await kitchenPage.goto("/kitchen-dashboard");
+  await kitchenPage.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
 
   const stageDropdown = (column: ReturnType<typeof kitchenPage.locator>) => column.getByRole("combobox", { name: "Kitchen production stage" });
   await stageDropdown(pendingColumn).click();

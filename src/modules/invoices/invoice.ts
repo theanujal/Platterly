@@ -205,6 +205,7 @@ export async function syncInvoiceStatuses(orderId: string, db: Db = prisma) {
 /** What the invoice document needs from its order: event details, guests, and the menu with each dish's category. */
 const DOCUMENT_ORDER_SELECT = {
   id: true,
+  status: true,
   orderNumber: true,
   total: true,
   discount: true,

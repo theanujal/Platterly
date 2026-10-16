@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { InvoiceStatusBadge, InvoiceTypeBadge } from "../_components/invoice-badges";
 import { InvoiceHeaderActions } from "../_components/invoice-actions";
 import { InvoicePaper } from "../_components/invoice-paper";
+import { customerHasApproved } from "@/modules/payments/payment-math";
 import { PaymentsPanel, type PaymentRowData } from "../_components/payments-panel";
 
 export const metadata: Metadata = {
@@ -67,7 +68,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       <Separator />
       <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <InvoicePaper doc={buildInvoiceDocument(invoice, paid)} />
-        <PaymentsPanel orderId={invoice.orderId} invoiceId={invoice.type === "INVOICE" ? invoice.id : undefined} total={orderTotal} paid={paid} balance={Math.max(orderTotal - paid, 0)} payments={rows} canRecord={canRecord} canManage={canManage} />
+        <PaymentsPanel orderId={invoice.orderId} invoiceId={invoice.type === "INVOICE" ? invoice.id : undefined} total={orderTotal} paid={paid} balance={Math.max(orderTotal - paid, 0)} payments={rows} canRecord={canRecord} canManage={canManage} recordBlocked={!customerHasApproved(invoice.order.status)} />
       </div>
     </div>
   );

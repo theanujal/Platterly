@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StageSelect } from "./stage-select";
@@ -21,6 +22,7 @@ export function ProductionList({ menuSelections }: { menuSelections: (Production
             <TableHead className={HEAD}>Date</TableHead>
             <TableHead className={HEAD}>When</TableHead>
             <TableHead className={HEAD}>Stage</TableHead>
+            <TableHead className={`${HEAD} w-12`}><span className="sr-only">View details</span></TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -28,7 +30,11 @@ export function ProductionList({ menuSelections }: { menuSelections: (Production
             const pr = priority(ms.event.startDate);
             return (
               <TableRow key={ms.id}>
-                <TableCell className="px-3 py-3 font-semibold text-primary">{ms.event.order?.orderNumber ?? "—"}</TableCell>
+                <TableCell className="px-3 py-3 font-semibold text-primary">
+                  <Link href={`/kitchen-dashboard/${ms.id}`} className="hover:underline">
+                    {ms.event.order?.orderNumber ?? "—"}
+                  </Link>
+                </TableCell>
                 <TableCell className="px-3 py-3">
                   <Link href={`/kitchen-dashboard/${ms.id}`} className="font-semibold hover:underline">
                     {ms.event.customer.name}
@@ -43,6 +49,16 @@ export function ProductionList({ menuSelections }: { menuSelections: (Production
                 </TableCell>
                 <TableCell className="px-3 py-3">
                   <StageSelect menuSelectionId={ms.id} currentStage={ms.kitchenProductionStatus} />
+                </TableCell>
+                <TableCell className="px-3 py-3 text-right">
+                  <Link
+                    href={`/kitchen-dashboard/${ms.id}`}
+                    aria-label={`View details for ${ms.event.customer.name}`}
+                    title="View details"
+                    className="inline-flex size-9 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <ChevronRight className="size-5" />
+                  </Link>
                 </TableCell>
               </TableRow>
             );

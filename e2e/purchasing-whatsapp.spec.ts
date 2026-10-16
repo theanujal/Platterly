@@ -118,6 +118,14 @@ test("draft order with the supplier's items only, WhatsApp opens without orderin
   await page.reload();
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
 
+  // A draft explains why there is no Receive button, and "Mark as ordered" works without WhatsApp (ordered by phone, in person...)
+  await expect(page.getByRole("button", { name: "Receive stock", exact: true })).toHaveCount(0);
+  await expect(page.getByTestId("draft-receive-hint")).toHaveText("Mark this order as ordered to receive stock against it.");
+  await page.getByRole("button", { name: "Mark as ordered", exact: true }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("You placed this order another way.");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Not yet" }).click();
+  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+
   // Confirming moves it to Ordered; the draft-only actions are gone, Receive and Cancel remain
   await Promise.all([context.waitForEvent("page").then((p) => p.close()), page.getByRole("button", { name: "Send via WhatsApp" }).click()]);
   await page.getByRole("alertdialog").getByRole("button", { name: "Yes, I sent it" }).click();

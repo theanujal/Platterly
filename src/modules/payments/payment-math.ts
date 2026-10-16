@@ -2,6 +2,13 @@
 import { todayStartInZone } from "@/lib/time/timezone";
 export type OrderPaymentState = "UNPAID" | "PARTIALLY_PAID" | "PAID";
 
+/** Order statuses from which the customer has approved the menu and price, so the team may take money against it. */
+const CUSTOMER_APPROVED_STATUSES = ["APPROVED", "SENT_TO_KITCHEN", "COMPLETED"];
+export const PAYMENT_BLOCKED_TEXT = "Payments can be recorded once the customer approves the menu.";
+export function customerHasApproved(orderStatus: string): boolean {
+  return CUSTOMER_APPROVED_STATUSES.includes(orderStatus);
+}
+
 export function derivePaymentState(total: number, confirmedPaid: number): OrderPaymentState {
   if (total > 0 && confirmedPaid + 0.005 >= total) return "PAID";
   return confirmedPaid > 0 ? "PARTIALLY_PAID" : "UNPAID";

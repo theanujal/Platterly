@@ -21,18 +21,27 @@ test("Sent to Kitchen: fields read-only; Completed: closed completely; payments 
   // Approved: editable, and the old Payment Details card is gone from an existing order.
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-locked-banner")).toHaveCount(0);
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: "Edit event information" })).toBeEnabled();
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByRole("heading", { name: "Payment Details" })).toHaveCount(0);
   await expect(page.getByLabel("Advance Received")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Record Payment" })).toBeVisible();
 
+  // Before the customer approves, the payment buttons stay visible but disabled, with the reason.
+  await setOrderStatus(orderId, "AWAITING_CUSTOMER_APPROVAL");
+  await page.goto(`/orders/${orderId}`);
+  await page.getByRole("tab", { name: "Pricing & Payment" }).click();
+  await expect(page.getByRole("button", { name: "Record Payment" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create Payment Link" })).toBeDisabled();
+  await expect(page.getByTestId("payment-blocked-reason")).toHaveText("Payments can be recorded once the customer approves the menu.");
+  await setOrderStatus(orderId, "APPROVED");
+
   // Sent to the kitchen: read-only fields, payments and the status control still there.
   await setOrderStatus(orderId, "SENT_TO_KITCHEN");
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-locked-banner")).toContainText("Sent to the kitchen");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0); // details only once with the kitchen
   await page.getByRole("tab", { name: "Order Details" }).click();
   await openOrderStatusHistory(page); // the status control is in the sidebar card's drawer
@@ -49,7 +58,7 @@ test("Sent to Kitchen: fields read-only; Completed: closed completely; payments 
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-locked-banner")).toContainText("Completed");
   await expect(page.getByTestId("order-locked-banner")).not.toContainText("change the status");
-  await page.getByRole("tab", { name: "Guests & Event Info" }).click();
+  await page.getByRole("tab", { name: "Order Details" }).click();
   await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Change status" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Expenses" }).click();

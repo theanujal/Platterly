@@ -126,6 +126,7 @@ export function DrawerForm({
   submitLabel,
   onCancel,
   active,
+  startSlot,
   className,
   dirty = false,
   children,
@@ -136,6 +137,8 @@ export function DrawerForm({
   submitLabel: string;
   onCancel: () => void;
   active?: { id: string; checked: boolean; onChange: (checked: boolean) => void; onLabel?: string; offLabel?: string };
+  /** Extra control for the bottom-left of the footer, after the status switch (for example a Remove button). */
+  startSlot?: React.ReactNode;
   /** Layout classes for the scrolling body (the default stacks fields with a gap). */
   className?: string;
   /** The form differs from how it started (see `useIsDirty`); closing the drawer then asks before discarding. */
@@ -158,16 +161,17 @@ export function DrawerForm({
         </p>
       )}
       <div className="flex items-center justify-between gap-3 border-t border-border p-4 sm:px-5">
-        {active ? (
-          <div className="flex items-center gap-3">
-            <Label htmlFor={active.id} className="cursor-pointer">
-              {active.checked ? (active.onLabel ?? "Active") : (active.offLabel ?? "Inactive")}
-            </Label>
-            <Switch id={active.id} checked={active.checked} onCheckedChange={active.onChange} />
-          </div>
-        ) : (
-          <span />
-        )}
+        <div className="flex items-center gap-4">
+          {active && (
+            <div className="flex items-center gap-3">
+              <Label htmlFor={active.id} className="cursor-pointer">
+                {active.checked ? (active.onLabel ?? "Active") : (active.offLabel ?? "Inactive")}
+              </Label>
+              <Switch id={active.id} checked={active.checked} onCheckedChange={active.onChange} />
+            </div>
+          )}
+          {startSlot}
+        </div>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" onClick={() => (guard ? guard.confirmDiscard(onCancel) : onCancel())}>
             Cancel

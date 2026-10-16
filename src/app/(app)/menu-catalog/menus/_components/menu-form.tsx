@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUp, ArrowDown, BookOpen, IndianRupee, Plus, X } from "lucide-react";
+import { ArrowUp, ArrowDown, BookOpen, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
+import { AmountInput } from "@/components/ui/amount-input";
 import { Label } from "@/components/ui/label";
 import { DescriptionField, DESCRIPTION_MAX } from "@/components/catalog/description-field";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,11 +17,6 @@ import type { ActionResult } from "../actions";
 const FOOD_TYPE_OPTIONS = [
   { value: "VEGETARIAN", label: "Vegetarian" },
   { value: "NON_VEGETARIAN", label: "Non-Vegetarian" },
-] as const;
-
-const CHILD_5_TO_10_PRICING_OPTIONS = [
-  { value: "PERCENTAGE", label: "Percentage of Price Per Plate" },
-  { value: "FIXED", label: "Fixed Price Per Plate" },
 ] as const;
 
 export interface AssignedCategory {
@@ -172,83 +168,46 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
 
         <div className="flex flex-col gap-4 rounded-md border border-border p-4">
           <span className="text-sm font-semibold">Pricing</span>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Label htmlFor="menu-price">Price Per Plate</Label>
-            <IconInput
-              icon={IndianRupee}
-              id="menu-price"
-              type="number"
-              step="0.01"
-              min="0"
-              required
-              value={values.pricePerPlate}
-              onChange={(e) => setField("pricePerPlate", e.target.value)}
-            />
+            <AmountInput id="menu-price" label="Price Per Plate" required value={values.pricePerPlate} onValue={(v) => setField("pricePerPlate", v)} />
           </div>
 
           <div className="flex flex-col gap-3 border-t border-border pt-4">
             <span className="text-sm font-semibold">Children Guests & Pricing</span>
 
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-foreground">Below 5 years</span>
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Complimentary</span>
+                <Label htmlFor="menu-child-under5-price" className="font-bold">
+                  Below 5 years
+                </Label>
+                {!values.childUnder5Chargeable && <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Complimentary</span>}
               </div>
-              <label htmlFor="menu-child-under5-chargeable" className="flex w-fit cursor-pointer items-center gap-2">
-                <Checkbox
-                  id="menu-child-under5-chargeable"
-                  checked={values.childUnder5Chargeable}
-                  onCheckedChange={(checked) => setField("childUnder5Chargeable", checked === true)}
-                />
-                <span className="text-sm font-medium">Charge for Below 5 years</span>
-              </label>
+              {values.childUnder5Chargeable && (
+                <AmountInput id="menu-child-under5-price" label="Price per child (under 5)" required value={values.childUnder5Price} onValue={(v) => setField("childUnder5Price", v)} />
+              )}
             </div>
-            {values.childUnder5Chargeable && (
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="menu-child-under5-price">Price per child (under 5)</Label>
-                <Input
-                  id="menu-child-under5-price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={values.childUnder5Price}
-                  onChange={(e) => setField("childUnder5Price", e.target.value)}
-                />
-              </div>
-            )}
+            <label htmlFor="menu-child-under5-chargeable" className="flex w-fit cursor-pointer items-center gap-2">
+              <Checkbox
+                id="menu-child-under5-chargeable"
+                checked={values.childUnder5Chargeable}
+                onCheckedChange={(checked) => setField("childUnder5Chargeable", checked === true)}
+              />
+              <span className="text-sm font-medium">Charge for Below 5 years</span>
+            </label>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="menu-child-5to10-type">5–10 Years Pricing</Label>
-              <Select
-                items={Object.fromEntries(CHILD_5_TO_10_PRICING_OPTIONS.map((o) => [o.value, o.label]))}
-                value={values.child5To10PricingType}
-                onValueChange={(v) => setField("child5To10PricingType", v ?? values.child5To10PricingType)}
-              >
-                <SelectTrigger id="menu-child-5to10-type" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CHILD_5_TO_10_PRICING_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="menu-child-5to10-value">{values.child5To10PricingType === "PERCENTAGE" ? "Percentage (%)" : "Fixed Price"}</Label>
-              <Input
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="menu-child-5to10-value">5–10 Years Pricing</Label>
+              <AmountInput
                 id="menu-child-5to10-value"
-                type="number"
-                step="0.01"
-                min="0"
-                max={values.child5To10PricingType === "PERCENTAGE" ? 100 : undefined}
+                label="5–10 Years Pricing"
+                mode={values.child5To10PricingType === "PERCENTAGE" ? "PERCENTAGE" : "FIXED"}
+                onMode={(mode) => setField("child5To10PricingType", mode)}
                 value={values.child5To10PriceValue}
-                onChange={(e) => setField("child5To10PriceValue", e.target.value)}
+                onValue={(v) => setField("child5To10PriceValue", v)}
               />
             </div>
+            <p className="text-xs text-muted-foreground">{values.child5To10PricingType === "PERCENTAGE" ? "A percentage of the Price Per Plate." : "A fixed price for each child."}</p>
           </div>
         </div>
       </div>

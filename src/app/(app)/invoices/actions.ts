@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { InvoiceError, cancelInvoice, generateInvoiceFromOrder } from "@/modules/invoices/invoice";
 import { sendInvoiceDocument, sendReceiptForPayment } from "@/modules/invoices/invoice-send";
-import { PaymentError, confirmPayment, recordPayment, rejectPayment } from "@/modules/payments/payment";
+import { PaymentError, assertCustomerApproved, confirmPayment, recordPayment, rejectPayment } from "@/modules/payments/payment";
 import { createPaymentLink, sendPaymentLink, type PaymentLinkKind } from "@/modules/payments/payment-links";
 import type { GstType, PaymentMethod, PaymentType } from "@/generated/prisma/enums";
 
@@ -89,6 +89,7 @@ export async function recordPaymentAction(input: RecordPaymentFormValues): Promi
   await assertOrderAtMyLocation(organizationId, session.user.id, input.orderId);
   if (!TYPES.includes(input.type as PaymentType) || !METHODS.includes(input.method as PaymentMethod)) return { ok: false, error: "Choose a payment type and method." };
   return guarded(async () => {
+    await assertCustomerApproved(organizationId, input.orderId);
     const payment = await recordPayment({
       organizationId,
       orderId: input.orderId,
@@ -153,6 +154,7 @@ export async function createPaymentLinkAction(input: { orderId: string; invoiceI
   await requirePermission({ payments: ["create"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, input.orderId);
   return guarded(async () => {
+    await assertCustomerApproved(organizationId, input.orderId);
     const { link, url } = await createPaymentLink({ organizationId, orderId: input.orderId, invoiceId: input.invoiceId ?? null, kind: input.kind, amount: input.amount, actorUserId: session.user.id });
     let message = "Payment link ready.";
     if (input.send) {

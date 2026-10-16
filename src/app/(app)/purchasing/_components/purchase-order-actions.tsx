@@ -122,6 +122,9 @@ export function PurchaseOrderActions({
                 <WhatsAppIcon className="size-4" /> Send via WhatsApp
               </Button>
             )}
+            <Button variant="outline" onClick={() => setConfirm(askSent("You placed this order another way."))}>
+              <PackageCheck /> Mark as ordered
+            </Button>
           </>
         )}
         {canEdit && canReceive && (
@@ -168,6 +171,11 @@ export function PurchaseOrderActions({
           </Button>
         )}
       </div>
+      {canEdit && status === "DRAFT" && (
+        <p className="mt-2 text-sm text-muted-foreground" data-testid="draft-receive-hint">
+          Mark this order as ordered to receive stock against it.
+        </p>
+      )}
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>

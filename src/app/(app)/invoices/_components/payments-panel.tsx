@@ -1,5 +1,6 @@
 "use client";
 
+import { PAYMENT_BLOCKED_TEXT } from "@/modules/payments/payment-math";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Clock, Copy, CreditCard, FileText, Link2, Send } from "lucide-react";
@@ -192,16 +193,19 @@ export function PaymentsPanel({
     router.refresh();
   }
 
+  recordBlocked = false,
   return (
     <div className="flex flex-col gap-3" data-testid="payments-panel">
       <PaymentSummaryCard total={total} paid={paid} balance={balance} overdue={overdue}>
         {canRecord && balance > 0 && (
           <div className="flex flex-col gap-2">
-            <Button type="button" size="md" onClick={() => setRecordOpen(true)}>
+            <Button type="button" size="md" disabled={recordBlocked} onClick={() => setRecordOpen(true)}>
               <CreditCard />
               Record Payment
             </Button>
-            <Button type="button" variant="outline" size="md" onClick={() => setLinkOpen(true)}>
+            <Button type="button" variant="outline" size="md" disabled={recordBlocked} onClick={() => setLinkOpen(true)}>
+  /** The customer has not approved the order yet: Record Payment and Create Payment Link stay visible but disabled, with the reason. */
+  recordBlocked?: boolean;
               <Link2 />
               Create Payment Link
             </Button>
@@ -236,6 +240,11 @@ export function PaymentsPanel({
                     </Button>
                     <Button type="button" variant="outline" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => rejectPaymentAction(payment.id))}>
                       Reject
+            {recordBlocked && (
+              <p className="text-xs text-muted-foreground" data-testid="payment-blocked-reason">
+                {PAYMENT_BLOCKED_TEXT}
+              </p>
+            )}
                     </Button>
                   </div>
                 )}

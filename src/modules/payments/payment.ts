@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { confirmedPaidForOrder, nextInvoiceNumber, syncInvoiceStatuses } from "@/modules/invoices/invoice";
-import { derivePaymentState, round2 } from "./payment-math";
+import { PAYMENT_BLOCKED_TEXT, customerHasApproved, derivePaymentState, round2 } from "./payment-math";
 import type { PaymentMethod, PaymentSource, PaymentType } from "@/generated/prisma/enums";
 
 export class PaymentError extends Error {}
@@ -30,6 +30,16 @@ export async function orderBalance(organizationId: string, orderId: string) {
   const paid = await confirmedPaidForOrder(orderId);
   const total = Number(order.total);
   return { total, paid, balance: Math.max(round2(total - paid), 0), orderNumber: order.orderNumber };
+}
+
+/**
+ * The team may take money, or send a payment link, only once the customer has approved the menu and price. Called by the team's
+ * Record Payment and Create Payment Link actions; recordPayment itself is not blocked, because Razorpay and UPI payments arrive
+ * from the customer's own approval page, and refunds and corrections are not affected.
+ */
+export async function assertCustomerApproved(organizationId: string, orderId: string) {
+  const order = await prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { status: true } });
+  if (!customerHasApproved(order.status)) throw new PaymentError(PAYMENT_BLOCKED_TEXT);
 }
 
 export interface RecordPaymentInput {

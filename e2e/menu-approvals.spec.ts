@@ -572,6 +572,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // --- Kitchen Dashboard: the freshly-approved order starts Pending, in a real board column ---
   await page.goto("/kitchen-dashboard");
   const pendingColumn = page.locator('[data-stage="PENDING"]');
+  await page.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
   await expect(pendingColumn.getByText(customerName, { exact: true })).toBeVisible();
 
   // View Details opens the kitchen's own prep sheet (not Menu Approvals, which the kitchen role can't open).
@@ -605,6 +606,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
 
   await page.goto("/kitchen-dashboard");
 
+  await page.getByRole("button", { name: "Grid view" }).click(); // the dashboard opens on List
   // Free-choice dropdown (AJ, 2026-09-19) — jumps directly between any of
   // the 5 stages, not a forward-only single-step advance.
   const stageDropdown = pendingColumn.getByRole("combobox", { name: "Kitchen production stage" });

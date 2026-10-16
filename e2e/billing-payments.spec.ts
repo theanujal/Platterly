@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createHmac } from "node:crypto";
-import { cleanupOnboardingTestUser, getLatestInvoiceLink, getOrderMoney, getPaymentsForOrder, seedOrderForBilling, seedPendingRazorpayPayment } from "./db";
+import { cleanupOnboardingTestUser, getLatestInvoiceLink, getOrderMoney, getPaymentsForOrder, seedOrderForBilling, setOrderStatus, seedPendingRazorpayPayment } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -139,6 +139,12 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   expect(pdf.status()).toBe(200);
   expect(pdf.headers()["content-type"]).toContain("application/pdf");
   expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
+
+  // ===== Until the customer approves, payments cannot be recorded (the buttons are disabled and the server refuses) =====
+  await expect(page.getByRole("button", { name: "Record Payment" })).toBeDisabled();
+  await expect(page.getByTestId("payment-blocked-reason")).toContainText("once the customer approves the menu");
+  await setOrderStatus(orderId, "APPROVED");
+  await page.reload();
 
   // ===== Record a payment: "Record Only" =====
   await page.getByRole("button", { name: "Record Payment" }).click();
