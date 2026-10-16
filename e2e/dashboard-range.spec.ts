@@ -35,13 +35,11 @@ test("pick a range with presets and the calendar: Apply moves the figures that f
   const tile = (label: string) => page.locator("main a[href]").filter({ has: page.getByText(label, { exact: true }) });
   const picker = page.getByTestId("dashboard-range");
 
-  // Default: This Month, and the tiles say what they cover.
+  // Default: This Month. The tiles carry no scope captions any more (the range sits in the picker).
   await page.goto("/dashboard");
   await expect(picker).toContainText("This Month");
-  await expect(tile("Active Orders")).toContainText("Right now");
-  await expect(tile("Total Guests")).toContainText("Events in the range");
-  await expect(tile("Pending Revenue")).toContainText("Orders placed in the range");
-  await expect(tile("Quotations")).toContainText("Created in the range");
+  for (const label of ["Active Orders", "Total Guests", "Pending Revenue", "Quotations"]) await expect(tile(label)).toBeVisible();
+  await expect(page.getByTestId("kpi-scope")).toHaveCount(0);
 
   // Yesterday (preset): nothing was placed or held then; Active Orders and Upcoming Events are not date-filtered.
   await picker.click();

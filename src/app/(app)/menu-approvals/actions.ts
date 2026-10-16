@@ -79,14 +79,14 @@ export async function changeMenuStatusAction(id: string, status: MenuSelectionSt
 
 export type SendMenuResult = { ok: true; url: string; versionNumber: number } | { ok: false; error: string };
 
-/** "Send Menu for Approval" — from the Menu Approvals detail page (by selection) or the Order page (by order, creating the event/selection if needed). */
-export async function sendMenuForApprovalAction(target: { orderId: string } | { menuSelectionId: string }, note?: string): Promise<SendMenuResult> {
+/** "Send Menu for Approval" (`replaceLive`: "Resend updated menu" while the menu is already with the customer) — from the Menu Approvals detail page (by selection) or the Order page (by order, creating the event/selection if needed). */
+export async function sendMenuForApprovalAction(target: { orderId: string } | { menuSelectionId: string }, note?: string, replaceLive = false): Promise<SendMenuResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   if ("orderId" in target) await assertOrderAtMyLocation(organizationId, session.user.id, target.orderId);
   else await assertMenuSelectionAtMyLocation(organizationId, session.user.id, target.menuSelectionId);
   try {
-    const sent = await sendMenuForApproval(organizationId, target, session.user.id, note);
+    const sent = await sendMenuForApproval(organizationId, target, session.user.id, note, { replaceLive });
     revalidate(sent.menuSelectionId);
     revalidatePath("/orders");
     if ("orderId" in target) revalidatePath(`/orders/${target.orderId}`);

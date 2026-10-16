@@ -57,6 +57,8 @@ export interface ApprovalSnapshot {
   };
   childBelow5Count?: number;
   child5To10Count?: number;
+  /** From 2026-10-16 versions on, so a later change to the adults can be told from a change to the children. */
+  adultCount?: number;
 }
 
 export const MEAL_TYPE_LABEL: Record<MealType, string> = {

@@ -102,6 +102,8 @@ export interface MenuApprovalReviewProps {
   venueDetailsSubmittedAt: string | null;
   /** Set from ?version=N: show that frozen version, read-only. */
   viewVersion: number | null;
+  /** While the menu is with the customer: whether their page still matches the order, and what differs. Null otherwise. */
+  freshness: { stale: boolean; reasons: string[]; sentTotal: number; currentTotal: number } | null;
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };

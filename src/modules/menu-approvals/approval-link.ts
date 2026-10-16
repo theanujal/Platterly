@@ -27,6 +27,7 @@ import {
   InvalidMenuSelectionTransitionError,
 } from "./menu-approval";
 import type { ApprovalSnapshot } from "./approval-snapshot";
+import { snapshotChanges } from "./snapshot-diff";
 import type { MenuSelectionStatus, VenueType } from "@/generated/prisma/enums";
 
 /**
@@ -157,6 +158,7 @@ async function buildSnapshot(organizationId: string, orderId: string, menuSelect
     },
     childBelow5Count: order.childBelow5Count ?? 0,
     child5To10Count: order.child5To10Count ?? 0,
+    adultCount: order.adultCount ?? 0,
   };
 }
 
@@ -211,7 +213,14 @@ export async function ensureOrderMenuSelection(organizationId: string, orderId: 
  * only until a provider is wired (Chunk 16), so callers should also show the
  * returned `url` to staff.
  */
-export async function sendMenuForApproval(organizationId: string, target: { orderId: string } | { menuSelectionId: string }, actorUserId: string, note?: string) {
+export async function sendMenuForApproval(
+  organizationId: string,
+  target: { orderId: string } | { menuSelectionId: string },
+  actorUserId: string,
+  note?: string,
+  /** `replaceLive`: the menu is already with the customer; send the current order as the next version and kill the old link (the team's "Resend updated menu"). */
+  options: { replaceLive?: boolean } = {},
+) {
   let selectionId: string;
   let orderId: string;
   if ("menuSelectionId" in target) {
@@ -230,7 +239,8 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
   const sent = await runHandoffTransaction(organizationId, { recordId: orderId, actorUserId }, async (tx, afterCommit) => {
     await lockMenuSelection(tx, organizationId, selectionId);
     const menuSelection = await tx.menuSelection.findFirstOrThrow({ where: { id: selectionId, organizationId } });
-    if (!SENDABLE_STATUSES.includes(menuSelection.status)) {
+    const replacingLive = options.replaceLive === true && AWAITING_CUSTOMER.includes(menuSelection.status);
+    if (!replacingLive && !SENDABLE_STATUSES.includes(menuSelection.status)) {
       throw new InvalidMenuSelectionTransitionError(
         AWAITING_CUSTOMER.includes(menuSelection.status)
           ? "This menu is already with the customer. Recall it first if you need to change it."
@@ -277,10 +287,13 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
 
     await tx.menuSelection.update({ where: { id: menuSelection.id }, data: { currentVersion: versionNumber } });
     const isResend = versionNumber > 1;
-    await transitionInTransaction(tx, afterCommit, organizationId, menuSelection.id, isResend ? "CUSTOMER_REVIEWING" : "SENT_TO_CUSTOMER", "menu_selection.sent_to_customer", {
-      actorUserId,
-      trigger: isResend ? "Updated menu sent to customer" : "Menu sent to customer",
-    });
+    // Replacing a live link leaves a menu that is already Customer Reviewing where it is; one still "Sent" moves to Reviewing like any resend.
+    if (!(replacingLive && menuSelection.status === "CUSTOMER_REVIEWING")) {
+      await transitionInTransaction(tx, afterCommit, organizationId, menuSelection.id, isResend ? "CUSTOMER_REVIEWING" : "SENT_TO_CUSTOMER", "menu_selection.sent_to_customer", {
+        actorUserId,
+        trigger: isResend ? "Updated menu sent to customer" : "Menu sent to customer",
+      });
+    }
 
     if (note?.trim()) {
       const author = await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } });
@@ -312,6 +325,31 @@ export async function sendMenuForApproval(organizationId: string, target: { orde
   });
   await onMenuSentForApproval(organizationId, orderId, sent.versionNumber);
   return sent;
+}
+
+export interface ApprovalFreshness {
+  stale: boolean;
+  /** In words, what the customer's page no longer matches. */
+  reasons: string[];
+  /** The total the customer is looking at, and what the order says now. */
+  sentTotal: number;
+  currentTotal: number;
+}
+
+/**
+ * Whether the page the customer is looking at still matches the order (AJ, 2026-10-16). The customer's page is a frozen copy taken when
+ * the menu was sent, so a later change to the adults, the children, the price, the meals or their dishes only reaches it when the team
+ * sends the menu again. Null unless the menu is with the customer (SENT_TO_CUSTOMER / CUSTOMER_REVIEWING) and its version has a snapshot.
+ */
+export async function getApprovalFreshness(organizationId: string, menuSelectionId: string): Promise<ApprovalFreshness | null> {
+  const selection = await prisma.menuSelection.findFirst({ where: { id: menuSelectionId, organizationId }, select: { status: true, currentVersion: true, event: { select: { orderId: true } } } });
+  if (!selection || !AWAITING_CUSTOMER.includes(selection.status) || !selection.event.orderId) return null;
+  const version = await prisma.menuVersion.findUnique({ where: { menuSelectionId_versionNumber: { menuSelectionId, versionNumber: selection.currentVersion } }, select: { snapshot: true } });
+  const sent = version?.snapshot as ApprovalSnapshot | null | undefined;
+  if (!sent) return null;
+  const live = await buildSnapshot(organizationId, selection.event.orderId, menuSelectionId);
+  const reasons = snapshotChanges(sent, live);
+  return { stale: reasons.length > 0, reasons, sentTotal: sent.total, currentTotal: live.total };
 }
 
 /**

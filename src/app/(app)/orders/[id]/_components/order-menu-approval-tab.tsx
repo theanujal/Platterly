@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { useApprovalSavePublisher } from "@/modules/menu-approvals/_components/r
 import { useApprovalController } from "@/modules/menu-approvals/_components/review/use-approval-controller";
 import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_components/review/types";
 import { reviewActions } from "../../../menu-approvals/_components/review-actions";
-import { startMenuApprovalAction } from "../../../menu-approvals/actions";
+import { sendMenuForApprovalAction, startMenuApprovalAction } from "../../../menu-approvals/actions";
 
 /** What the "not started" state needs: no approval exists for this order yet. */
 export interface NotStartedInfo {
@@ -34,6 +34,54 @@ export function OrderMenuApprovalTab({ data, notStarted }: { data: MenuApprovalR
   return <Review data={data} />;
 }
 
+
+/**
+ * The customer's page is a frozen copy taken when the menu was sent, so a later change to the adults, children, price, meals or dishes
+ * never reaches it by itself (AJ, 2026-10-16). Say so, say what differs, and offer to send the current order as the next version, which
+ * also ends the old link. Nothing changes under the customer silently: they may be about to approve the price they see.
+ */
+function StaleLinkNotice({ menuSelectionId, freshness }: { menuSelectionId: string; freshness: NonNullable<MenuApprovalReviewProps["freshness"]> }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const priceDiffers = Math.abs(freshness.sentTotal - freshness.currentTotal) >= 0.005;
+  async function resend() {
+    setPending(true);
+    setError(null);
+    const result = await sendMenuForApprovalAction({ menuSelectionId }, undefined, true);
+    setPending(false);
+    if (!result.ok) return setError(result.error);
+    router.refresh();
+  }
+  return (
+    <div role="status" className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning" data-testid="approval-stale-notice">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="flex min-w-0 flex-1 items-start gap-2">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {priceDiffers
+              ? `The customer is seeing an older price (₹${freshness.sentTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}). `
+              : "The customer is seeing an older version of this order. "}
+            Send the menu again to update it.
+          </span>
+        </p>
+        <Button type="button" size="md" disabled={pending} onClick={() => void resend()}>
+          {pending ? "Sending…" : "Resend updated menu"}
+        </Button>
+      </div>
+      <ul className="flex list-disc flex-col gap-0.5 pl-9 text-xs">
+        {freshness.reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+      {error && (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function Review({ data }: { data: MenuApprovalReviewProps }) {
   const router = useRouter();
@@ -61,6 +109,7 @@ function Review({ data }: { data: MenuApprovalReviewProps }) {
   }, [publisher, canSave, c.dirty, c.pending]);
   return (
     <>
+      {data.freshness?.stale && data.capabilities.canAct && <StaleLinkNotice menuSelectionId={data.menuSelectionId} freshness={data.freshness} />}
       <Card className="gap-3 px-5 [--card-spacing:--spacing(5)]" data-testid="approval-tab-header">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1.5">

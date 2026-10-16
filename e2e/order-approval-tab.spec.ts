@@ -118,6 +118,29 @@ test("the tab: opens by address, runs the whole approval from the order, keeps t
   await expect(page.locator("#order-panel-pricing").getByTestId("order-locked-fields")).toHaveCount(0);
 });
 
+test("when the customer's page is older than the order the tab says so, lists what differs, and Resend updated menu sends the current order as a new version", async ({ page }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-ordertab-stale-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  // The seeded order and its hand-made version 1 do not match each other: the customer's copy is older than the order.
+  const sent = await seedReviewFixture(email, { ordinal: 14, customer: "Stale Link", status: "SENT_TO_CUSTOMER", versions: 1, link: true });
+  await openOrderTab(page, sent.orderId);
+  const notice = page.getByTestId("approval-stale-notice");
+  await expect(notice).toContainText("Send the menu again to update it.");
+  await expect(notice.getByRole("listitem").first()).toBeVisible();
+  const before = await getApprovalState(sent.orderId);
+
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")),
+    notice.getByRole("button", { name: "Resend updated menu" }).click(),
+  ]);
+  await expect(page.getByTestId("approval-stale-notice")).toHaveCount(0);
+  const after = await getApprovalState(sent.orderId);
+  expect(JSON.stringify(after)).not.toBe(JSON.stringify(before)); // a new version exists
+  await expect(page.getByText("Version 2").first()).toBeVisible();
+});
+
 test("orders with no menu approval, a Completed order and a Cancelled order", async ({ page }) => {
   test.setTimeout(180_000);
   const email = `e2e-ordertab-none-${Date.now()}@example.test`;

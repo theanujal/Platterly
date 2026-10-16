@@ -4,7 +4,7 @@ import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { addMenuApprovalNote, getMenuSelection } from "@/modules/menu-approvals/menu-approval";
-import { ensureOrderMenuSelection, sendMenuForApproval } from "@/modules/menu-approvals/approval-link";
+import { ensureOrderMenuSelection, getActiveApprovalUrl, sendMenuForApproval } from "@/modules/menu-approvals/approval-link";
 import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
 
 /**
@@ -115,5 +115,68 @@ describe("loadMenuApprovalReviewData", () => {
     // Even handed a foreign selection by mistake, the loader reads with the caller's business id and finds no order.
     const foreign = (await getMenuSelection(b.org.id, b.selection.id))!;
     expect(await loadMenuApprovalReviewData(a.org.id, foreign)).toBeNull();
+  });
+
+  // The customer's page is a frozen copy. An ordinary edit is refused while the menu is with the customer (price freeze), but an
+  // order sent before that rule, or changed some other way, can differ from what the customer sees. These edits go straight to the row.
+  describe("freshness: does the customer's page still match the order?", () => {
+    it("is null before the menu is sent, and not stale right after it is", async () => {
+      const { org, actor, selection } = await business("Zeta");
+      const unsent = await loadMenuApprovalReviewData(org.id, (await getMenuSelection(org.id, selection.id))!);
+      expect(unsent!.freshness).toBeNull();
+
+      await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+      const sent = await loadMenuApprovalReviewData(org.id, (await getMenuSelection(org.id, selection.id))!);
+      expect(sent!.freshness).toMatchObject({ stale: false, reasons: [] });
+    });
+
+    it("notices changed adults, children and price, and says what the customer sees", async () => {
+      const { org, actor, order, selection } = await business("Eta");
+      await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+      const sentTotal = Number(order.total);
+      await prisma.order.update({ where: { id: order.id }, data: { adultCount: 80, childBelow5Count: 5, totalParticipants: 105, total: sentTotal - 5000 } });
+
+      const data = await loadMenuApprovalReviewData(org.id, (await getMenuSelection(org.id, selection.id))!);
+      expect(data!.freshness!.stale).toBe(true);
+      expect(data!.freshness!.sentTotal).toBe(sentTotal);
+      expect(data!.freshness!.currentTotal).toBe(sentTotal - 5000);
+      expect(data!.freshness!.reasons).toEqual(expect.arrayContaining(["Adults changed (100 to 80)", "Children under 5 changed (0 to 5)"]));
+      // Viewing a frozen version never nags about the live order.
+      const viewing = await loadMenuApprovalReviewData(org.id, (await getMenuSelection(org.id, selection.id))!, { viewVersion: 1 });
+      expect(viewing!.freshness).toBeNull();
+    });
+
+    it("notices a changed dish or menu in a meal", async () => {
+      const { org, actor, order, selection } = await business("Theta");
+      await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+      const meal = await prisma.mealPlanEntry.findFirstOrThrow({ where: { orderId: order.id } });
+      await prisma.orderItem.create({ data: { orderId: order.id, mealPlanEntryId: meal.id, itemType: "MENU_ITEM", name: "Gulab Jamun", unitPrice: 50, quantity: 1, isExtra: false } });
+      const data = await loadMenuApprovalReviewData(org.id, (await getMenuSelection(org.id, selection.id))!);
+      expect(data!.freshness!.reasons.join(" | ")).toContain("dishes or add-ons changed (Gulab Jamun)");
+    });
+
+    it("Resend updated menu sends the current order as the next version and ends the old link; a plain send is still refused", async () => {
+      const { org, actor, order, selection } = await business("Iota");
+      const first = await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+      await prisma.order.update({ where: { id: order.id }, data: { adultCount: 70, totalParticipants: 70 } });
+
+      await expect(sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id)).rejects.toThrow(/already with the customer/);
+
+      const second = await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id, undefined, { replaceLive: true });
+      expect(second.versionNumber).toBe(first.versionNumber + 1);
+      expect(second.url).not.toBe(first.url);
+      expect(await getActiveApprovalUrl(org.id, selection.id)).toBe(second.url);
+      const oldToken = first.url.split("/").pop()!;
+      expect((await prisma.secureAccessToken.findUniqueOrThrow({ where: { token: oldToken } })).revokedAt).not.toBeNull();
+
+      const loaded = (await getMenuSelection(org.id, selection.id))!;
+      expect(loaded.status).toBe("CUSTOMER_REVIEWING");
+      const data = await loadMenuApprovalReviewData(org.id, loaded);
+      expect(data!.freshness).toMatchObject({ stale: false });
+      expect(data!.versions.map((v) => [v.versionNumber, v.superseded])).toEqual(expect.arrayContaining([[1, true], [2, false]]));
+      // A second resend from Customer Reviewing works too.
+      const third = await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id, undefined, { replaceLive: true });
+      expect(third.versionNumber).toBe(3);
+    });
   });
 });

@@ -1,7 +1,7 @@
 import "server-only";
 import { getMenuSelection, listMenuApprovalNotes } from "./menu-approval";
 import { listStatusChanges } from "./status-history";
-import { getActiveApprovalUrl } from "./approval-link";
+import { getActiveApprovalUrl, getApprovalFreshness } from "./approval-link";
 import type { ApprovalSnapshot } from "./approval-snapshot";
 import { getOrder } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
@@ -39,12 +39,13 @@ export async function loadMenuApprovalReviewData(
 ): Promise<MenuApprovalReviewData | null> {
   const orderId = menuSelection.event.orderId;
   if (!orderId) return null;
-  const [order, menus, notes, statusChanges, approvalUrl] = await Promise.all([
+  const [order, menus, notes, statusChanges, approvalUrl, freshness] = await Promise.all([
     getOrder(organizationId, orderId),
     listMenus(organizationId),
     listMenuApprovalNotes(organizationId, menuSelection.id),
     listStatusChanges(organizationId, orderId, { subject: "MENU_APPROVAL" }),
     getActiveApprovalUrl(organizationId, menuSelection.id),
+    options.viewVersion ? Promise.resolve(null) : getApprovalFreshness(organizationId, menuSelection.id),
   ]);
   if (!order) return null;
 
@@ -172,5 +173,6 @@ export async function loadMenuApprovalReviewData(
     approvalUrl,
     venueDetailsSubmittedAt: order.venueDetailsSubmittedAt?.toISOString() ?? null,
     viewVersion: options.viewVersion ?? null,
+    freshness,
   };
 }
