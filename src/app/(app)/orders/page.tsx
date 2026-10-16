@@ -7,13 +7,14 @@ import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listOrders } from "@/modules/orders/order";
 import { parseApprovalFilter, parseOrdersView } from "@/modules/orders/approval-list";
 import { listEventTypes } from "@/modules/events/event-type";
+import { dayKeyInZone, parseOptionalRange } from "@/lib/time/date-range";
+import { DashboardRangePicker } from "../dashboard/_components/dashboard-range-picker";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
 import {
   CatalogBrowser,
   type CatalogEntry,
-  type CatalogSortOption,
   CATALOG_ADD_TILE_CLASSNAME,
   CatalogAddTileContent,
 } from "@/components/catalog/catalog-browser";
@@ -29,14 +30,16 @@ export const metadata: Metadata = {
 };
 
 interface OrdersPageProps {
-  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string; approval?: string; view?: string }>;
+  searchParams: Promise<{ status?: string; orderKind?: string; eventType?: string; approval?: string; view?: string; from?: string; to?: string }>;
 }
 
 export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
   const activeLocation = await getActiveLocation(organizationId, session.user.id);
-  const { status, orderKind, eventType, approval, view } = await searchParams;
+  const { status, orderKind, eventType, approval, view, from, to } = await searchParams;
+  const range = parseOptionalRange(from, to);
+  const timeZone = await getTenantTimeZone(organizationId);
   const ordersView = parseOrdersView(view);
   const approvalFilter = parseApprovalFilter(approval);
   const validStatus = status && status in STATUS_LABEL ? (status as OrderStatus) : undefined;
@@ -58,21 +61,14 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       orderKind: validOrderKind,
       eventTypeId: validEventTypeId,
       approval: approvalFilter,
+      eventFrom: range?.from,
+      eventTo: range?.to,
     }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
   ]);
   // One timestamp for every card, so their "Starts in" countdowns agree.
   const now = new Date();
-  const timeZone = await getTenantTimeZone(organizationId);
-
-  const sortOptions: CatalogSortOption[] = [
-    { value: "newest", label: "Recent First", key: "newest", direction: "desc" },
-    { value: "customer", label: "Customer (A–Z)", key: "customer" },
-    { value: "total-high", label: "Total (High–Low)", key: "total", direction: "desc" },
-    { value: "total-low", label: "Total (Low–High)", key: "total" },
-    { value: "event-date", label: "Event Date", key: "eventDate" },
-  ];
 
   const entries: CatalogEntry[] = orders.map((order) => {
     return {
@@ -86,8 +82,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         newest: order.createdAt.getTime(),
         eventDate: order.eventStartDate.getTime(),
       },
-      card: <OrderCard order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} />,
-      listRow: <OrderListCells order={order} now={now} timeZone={timeZone} />,
+      card: <OrderCard key={`card-${order.id}`} order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} />,
+      listRow: <OrderListCells key={`row-${order.id}`} order={order} now={now} timeZone={timeZone} />,
     };
   });
 
@@ -99,17 +95,21 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           <h1 className="text-2xl font-semibold">Orders</h1>
           <p className="text-sm text-muted-foreground">The commercial record of every catering sale — pricing, participants, and what&apos;s included.</p>
         </div>
-        <Button render={<Link href="/orders/new" />} nativeButton={false}>
-          <Plus className="size-4" />
-          Create Order
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {/* Filters by the event's dates; with no range every order is listed (AJ, 2026-10-16). */}
+          <DashboardRangePicker range={range} todayIso={dayKeyInZone(now, timeZone)} emptyLabel="All Dates" testId="orders-range" />
+          <Button render={<Link href="/orders/new" />} nativeButton={false}>
+            <Plus className="size-4" />
+            Create Order
+          </Button>
+        </div>
       </div>
       <Separator />
 
       <CatalogBrowser
         entries={entries}
         addTile={
-          <Link href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+          <Link key="orders-add-tile" href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
             <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
           </Link>
         }
@@ -118,8 +118,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         defaultView="list"
         searchPlaceholder="Search orders by customer, phone, or order #…"
         emptyLabel={ordersView === "past" ? "No past orders with menu approval work outstanding." : "No orders yet."}
-        filters={<OrdersFilterBar eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}
-        sortOptions={sortOptions}
+        filters={<OrdersFilterBar key="orders-filters" eventTypes={eventTypes.map((t) => ({ id: t.id, name: t.name }))} />}
         // The design system's Order card (§09) switches from its stacked layout to
         // the wide one (status beside the order number, three stat cells, amount
         // beside payment) once its own inner width reaches 24rem — so every card

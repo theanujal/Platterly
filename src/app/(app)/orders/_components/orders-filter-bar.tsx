@@ -15,11 +15,6 @@ const APPROVAL_OPTIONS = [
   ...MENU_SELECTION_STATUS_ORDER.map((value) => ({ value, label: MENU_SELECTION_STATUS_LABEL[value] })),
 ];
 
-const VIEW_OPTIONS = [
-  { value: "ALL", label: "All Orders" },
-  { value: "past", label: "Past: Approval Pending" },
-];
-
 const ORDER_KIND_OPTIONS = [
   { value: "ALL", label: "All Types" },
   { value: "SINGLE", label: "Single Order" },
@@ -42,20 +37,6 @@ export function OrdersFilterBar({ eventTypes }: { eventTypes: { id: string; name
 
   return (
     <>
-      {/* The default view lists every order; this view lists only past-event orders with approval work still outstanding. */}
-      <Select items={Object.fromEntries(VIEW_OPTIONS.map((o) => [o.value, o.label]))} value={searchParams.get("view") === "past" ? "past" : "ALL"} onValueChange={(v) => updateParam("view", v ?? "ALL")}>
-        <SelectTrigger aria-label="Orders view" className="w-52">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {VIEW_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-
       <Select
         items={Object.fromEntries(STATUS_OPTIONS.map((o) => [o.value, o.label]))}
         value={searchParams.get("status") ?? "ALL"}

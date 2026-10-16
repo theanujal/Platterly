@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,18 +31,22 @@ function monthCells(year: number, month: number): (string | null)[] {
  * with Apply and Cancel; nothing is requested while dates are being picked, only Apply puts the range in the address
  * (`?from=&to=`), which makes the page recompute the figures that follow it. The kitchen's own "today" comes from the
  * server so presets and day boundaries never depend on the browser's time zone.
+ *
+ * The Orders list uses it too (AJ, 2026-10-16) with `range` null for "every order": it keeps the page's other filters in
+ * the address, shows `emptyLabel` until a range is applied, and offers Clear to go back to every order.
  */
-export function DashboardRangePicker({ range, todayIso }: { range: DateRange; todayIso: string }) {
+export function DashboardRangePicker({ range, todayIso, emptyLabel, testId = "dashboard-range" }: { range: DateRange | null; todayIso: string; emptyLabel?: string; testId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   // The draft inside the pop-up: `to` is null while the second day of a custom range is still to be picked.
-  const [draft, setDraft] = useState<{ from: string | null; to: string | null }>(range);
+  const [draft, setDraft] = useState<{ from: string | null; to: string | null }>(range ?? { from: null, to: null });
   const [custom, setCustom] = useState(false);
-  const [view, setView] = useState(() => parse(range.from));
+  const [view, setView] = useState(() => parse(range?.from ?? todayIso));
 
-  const appliedPreset = presetOf(range, todayIso);
+  const appliedPreset = range ? presetOf(range, todayIso) : null;
   const draftPreset = draft.from && draft.to ? presetOf({ from: draft.from, to: draft.to }, todayIso) : null;
   const tooLong = draft.from !== null && draft.to !== null && daysInRange({ from: draft.from, to: draft.to }) > MAX_RANGE_DAYS;
   const canApply = draft.from !== null && draft.to !== null && !tooLong;
@@ -50,9 +54,9 @@ export function DashboardRangePicker({ range, todayIso }: { range: DateRange; to
   function onOpenChange(next: boolean) {
     setOpen(next);
     if (next) {
-      setDraft(range);
-      setCustom(appliedPreset === null);
-      setView(parse(range.from));
+      setDraft(range ?? { from: null, to: null });
+      setCustom(range !== null && appliedPreset === null);
+      setView(parse(range?.from ?? todayIso));
     }
   }
 
@@ -73,9 +77,19 @@ export function DashboardRangePicker({ range, todayIso }: { range: DateRange; to
 
   function apply() {
     if (!draft.from || !draft.to || tooLong) return;
-    const target = `${pathname}?from=${draft.from}&to=${draft.to}`;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("from", draft.from);
+    params.set("to", draft.to);
     setOpen(false);
-    startTransition(() => router.push(target));
+    startTransition(() => router.push(`${pathname}?${params.toString()}`));
+  }
+
+  function clear() {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("from");
+    params.delete("to");
+    setOpen(false);
+    startTransition(() => router.push(params.size > 0 ? `${pathname}?${params.toString()}` : pathname));
   }
 
   const year = view.getFullYear();
@@ -86,19 +100,25 @@ export function DashboardRangePicker({ range, todayIso }: { range: DateRange; to
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
         type="button"
-        data-testid="dashboard-range"
+        data-testid={testId}
         aria-busy={pending}
         className="inline-flex h-10 items-center gap-2 rounded-lg border border-input bg-background px-3 text-sm font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {pending ? <LoaderCircle className="size-4 animate-spin text-primary" aria-hidden /> : <CalendarDays className="size-4 text-primary" aria-hidden />}
         <span className="flex flex-wrap items-baseline gap-x-1.5">
-          {appliedPreset && <span className="text-muted-foreground">{PRESETS.find((p) => p.key === appliedPreset)?.label}:</span>}
-          {!appliedPreset && <span className="text-muted-foreground">Custom Range:</span>}
-          <span data-testid="dashboard-range-text">{rangeText(range)}</span>
+          {range ? (
+            <>
+              {appliedPreset && <span className="text-muted-foreground">{PRESETS.find((p) => p.key === appliedPreset)?.label}:</span>}
+              {!appliedPreset && <span className="text-muted-foreground">Custom Range:</span>}
+              <span data-testid={`${testId}-text`}>{rangeText(range)}</span>
+            </>
+          ) : (
+            <span data-testid={`${testId}-text`}>{emptyLabel ?? "All Dates"}</span>
+          )}
         </span>
         {pending && <span className="sr-only" role="status">Updating the dashboard</span>}
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,34rem)] p-0" data-testid="dashboard-range-popup">
+      <PopoverContent align="end" className="w-[min(92vw,34rem)] p-0" data-testid={`${testId}-popup`}>
         <div className="flex flex-col sm:flex-row">
           <div role="radiogroup" aria-label="Quick ranges" className="flex flex-wrap gap-1.5 border-b border-border p-3 sm:w-40 sm:flex-col sm:flex-nowrap sm:gap-0.5 sm:border-r sm:border-b-0">
             {PRESETS.map((preset) => (
@@ -164,10 +184,15 @@ export function DashboardRangePicker({ range, todayIso }: { range: DateRange; to
                 ),
               )}
             </div>
-            <p className="min-h-5 text-xs text-muted-foreground" role="status" data-testid="dashboard-range-draft">
+            <p className="min-h-5 text-xs text-muted-foreground" role="status" data-testid={`${testId}-draft`}>
               {tooLong ? <span className="text-destructive">Please pick at most {MAX_RANGE_DAYS} days.</span> : draft.from && draft.to ? rangeText({ from: draft.from, to: draft.to }) : draft.from ? `Start ${show(draft.from)}. Now pick the end day.` : "Pick the start day."}
             </p>
             <div className="flex justify-end gap-2 border-t border-border pt-3">
+              {emptyLabel && range && (
+                <Button type="button" variant="ghost" size="md" className="mr-auto" onClick={clear}>
+                  Clear
+                </Button>
+              )}
               <Button type="button" variant="outline" size="md" onClick={() => setOpen(false)}>
                 Cancel
               </Button>

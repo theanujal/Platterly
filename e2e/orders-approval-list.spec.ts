@@ -55,10 +55,24 @@ test("the list shows each order's menu approval, filters on it, and keeps past o
   await expect(page.getByText("Review Guest")).toHaveCount(0); // an upcoming order is not in the Past view
   expect(review.orderId && sent.orderId && none.orderId).toBeTruthy();
 
-  // The view switch is reachable from the list itself.
+  // The date range filters by the event's dates; with none every order is listed. The Orders view dropdown is gone.
   await page.goto("/orders");
-  await page.getByRole("combobox", { name: "Orders view" }).click();
-  await page.getByRole("option", { name: "Past: Approval Pending" }).click();
-  await expect(page).toHaveURL(/view=past/);
+  await expect(page.getByRole("combobox", { name: "Orders view" })).toHaveCount(0);
+  await expect(page.getByTestId("orders-range-text")).toHaveText("All Dates");
+  await page.getByTestId("orders-range").click();
+  await page.getByRole("radio", { name: "Last Month" }).click(); // September 2026: the three past orders are on 1 Sep
+  await page.getByTestId("orders-range-popup").getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/from=2026-09-01&to=2026-09-30/);
   await expect(page.getByText("Late Guest").first()).toBeVisible();
+  await expect(page.getByText("Review Guest")).toHaveCount(0); // an upcoming order is outside the range
+  await expect(page.getByTestId("orders-range-text")).toContainText("Sep");
+  await page.goto("/orders?approval=SENT_TO_CUSTOMER&from=2026-09-01&to=2026-09-30"); // other filters travel with it
+  await expect(page.getByText("Sent Guest")).toHaveCount(0);
+  await page.goto("/orders?from=2026-09-30&to=2026-09-01"); // an invalid range is ignored: every order
+  await expect(page.getByText("Review Guest").first()).toBeVisible();
+  await page.goto("/orders?from=2026-09-01&to=2026-09-30");
+  await page.getByTestId("orders-range").click();
+  await page.getByTestId("orders-range-popup").getByRole("button", { name: "Clear" }).click();
+  await expect(page).not.toHaveURL(/from=/);
+  await expect(page.getByText("Review Guest").first()).toBeVisible();
 });

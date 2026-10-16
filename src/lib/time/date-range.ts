@@ -121,6 +121,12 @@ export function parseDashboardRange(from: string | undefined, to: string | undef
   return { range: { from, to }, error: null };
 }
 
+/** An optional range (the Orders list): none when neither end is given or when it is not valid, so the list shows every order. */
+export function parseOptionalRange(from: string | undefined, to: string | undefined): DateRange | null {
+  if (!isIsoDay(from) || !isIsoDay(to) || to < from || daysInRange({ from, to }) > MAX_RANGE_DAYS) return null;
+  return { from, to };
+}
+
 const dayText = (iso: string, withYear: boolean) => {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });

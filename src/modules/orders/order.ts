@@ -627,6 +627,9 @@ export interface OrderListFilter {
   search?: string;
   /** Menu approval status, or "NOT_STARTED" for an order with no approval (Phase 3 of the Menu Approvals + Orders merge). */
   approval?: ApprovalFilter;
+  /** Event dates, "YYYY-MM-DD" both ends included: orders whose event overlaps these days (the Orders page's date range). */
+  eventFrom?: string;
+  eventTo?: string;
   /** Only open orders with approval work outstanding (Decision 9). Used with `when: "past"` for the Orders page's Past view. */
   outstandingApproval?: boolean;
   /**
@@ -654,7 +657,14 @@ export async function listOrders(organizationId: string, filter?: OrderListFilte
     where: {
       organizationId,
       // In the AND list so these `events` fragments never collide with the location filter's own `events` key below.
-      AND: [whenWhere(filter?.when), approvalWhere(filter?.approval), ...(filter?.outstandingApproval ? [outstandingApprovalWhere()] : [])],
+      AND: [
+        whenWhere(filter?.when),
+        approvalWhere(filter?.approval),
+        ...(filter?.outstandingApproval ? [outstandingApprovalWhere()] : []),
+        // Event dates are stored as UTC midnight of their day, so a day compares as that instant.
+        ...(filter?.eventFrom ? [{ eventEndDate: { gte: new Date(`${filter.eventFrom}T00:00:00.000Z`) } }] : []),
+        ...(filter?.eventTo ? [{ eventStartDate: { lte: new Date(`${filter.eventTo}T00:00:00.000Z`) } }] : []),
+      ],
       ...(filter?.locationId ? { events: { some: { assignedKitchenId: filter.locationId } } } : {}),
       status: filter?.status,
       orderKind: filter?.orderKind,
