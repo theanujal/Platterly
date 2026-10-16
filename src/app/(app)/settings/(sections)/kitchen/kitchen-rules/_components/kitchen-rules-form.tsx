@@ -10,6 +10,7 @@ import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter } from "../../../../_components/settings-ui";
 import { updateKitchenRulesAction } from "../actions";
 import type { KitchenRules } from "@/modules/menu-approvals/kitchen-production-status";
+import { toast } from "@/components/ui/toaster";
 
 export function KitchenRulesForm({ initialValues }: { initialValues: KitchenRules }) {
   const router = useRouter();
@@ -32,6 +33,7 @@ export function KitchenRulesForm({ initialValues }: { initialValues: KitchenRule
       setError(result.error);
       return;
     }
+    toast.success("Kitchen rules saved.");
     router.refresh();
     stopEditing();
   }

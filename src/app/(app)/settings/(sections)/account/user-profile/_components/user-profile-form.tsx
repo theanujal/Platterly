@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter, SettingsSection } from "../../../../_components/settings-ui";
 import { updateUserProfileAction } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 export interface UserProfileFormProps {
   initialFirstName: string;
@@ -41,6 +42,7 @@ export function UserProfileForm({ initialFirstName, initialLastName, email, role
       setError(result.error);
       return;
     }
+    toast.success("Your profile was saved.");
     router.refresh();
     stopEditing();
   }

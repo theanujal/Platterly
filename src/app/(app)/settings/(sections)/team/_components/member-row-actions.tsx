@@ -14,14 +14,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/toaster";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { INVITABLE_ROLE_DEFINITIONS } from "@/lib/auth/role-metadata";
-import { updateMemberRoleAction, disableMemberAction, enableMemberAction, setMemberLocationAction } from "../actions";
+import { INVITABLE_ROLE_DEFINITIONS, roleLabel } from "@/lib/auth/role-metadata";
+import { updateMemberRoleAction, disableMemberAction, enableMemberAction, setMemberLocationAction, removeMemberAction } from "../actions";
 
 const ROLE_OPTIONS = INVITABLE_ROLE_DEFINITIONS.map((r) => ({ value: r.id, label: r.label }));
 
 interface MemberRowActionsProps {
   memberId: string;
+  memberName: string;
   role: string;
   disabled: boolean;
   /** Chunk 23: the member's location, and the locations to pick from. Null locations = the feature is off. */
@@ -31,7 +35,7 @@ interface MemberRowActionsProps {
 
 const ALL_LOCATIONS = "ALL";
 
-export function MemberRowActions({ memberId, role, disabled, locationId, locations }: MemberRowActionsProps) {
+export function MemberRowActions({ memberId, memberName, role, disabled, locationId, locations }: MemberRowActionsProps) {
   const router = useRouter();
   const [pendingRole, setPendingRole] = useState(false);
   const [toggleOpen, setToggleOpen] = useState(false);
@@ -39,30 +43,49 @@ export function MemberRowActions({ memberId, role, disabled, locationId, locatio
 
   const isOwner = role === "owner";
 
-  async function handleRoleChange(newRole: string) {
+  // The picked role waits here until the owner confirms it; nothing changes before that.
+  const [roleToConfirm, setRoleToConfirm] = useState<string | null>(null);
+  async function confirmRoleChange() {
+    if (!roleToConfirm) return;
     setPendingRole(true);
-    await updateMemberRoleAction(memberId, newRole);
+    const result = await updateMemberRoleAction(memberId, roleToConfirm);
     setPendingRole(false);
+    const newRole = roleToConfirm;
+    setRoleToConfirm(null);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`${memberName}'s role is now ${roleLabel(newRole)}.`);
+    router.refresh();
+  }
+
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState(false);
+  async function confirmRemove() {
+    setPendingRemove(true);
+    const result = await removeMemberAction(memberId);
+    setPendingRemove(false);
+    setRemoveOpen(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`${memberName} was removed from the team.`);
     router.refresh();
   }
 
   const [pendingLocation, setPendingLocation] = useState(false);
   async function handleLocationChange(value: string) {
     setPendingLocation(true);
-    await setMemberLocationAction(memberId, value === ALL_LOCATIONS ? null : value);
+    const result = await setMemberLocationAction(memberId, value === ALL_LOCATIONS ? null : value);
     setPendingLocation(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`${memberName}'s location was changed.`);
     router.refresh();
   }
 
   async function handleToggle() {
     setPendingToggle(true);
-    if (disabled) {
-      await enableMemberAction(memberId);
-    } else {
-      await disableMemberAction(memberId);
-    }
+    const result = disabled ? await enableMemberAction(memberId) : await disableMemberAction(memberId);
     setPendingToggle(false);
     setToggleOpen(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(disabled ? `${memberName} can sign in again.` : `${memberName} was disabled.`);
     router.refresh();
   }
 
@@ -75,7 +98,7 @@ export function MemberRowActions({ memberId, role, disabled, locationId, locatio
       <Select
         items={Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]))}
         value={role}
-        onValueChange={(value) => value && handleRoleChange(value)}
+        onValueChange={(value) => value && value !== role && setRoleToConfirm(value)}
         disabled={pendingRole}
       >
         <SelectTrigger size="sm">
@@ -134,6 +157,28 @@ export function MemberRowActions({ memberId, role, disabled, locationId, locatio
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Button variant="outline" size="sm" aria-label={`Remove ${memberName}`} onClick={() => setRemoveOpen(true)}>
+        <Trash2 /> Remove
+      </Button>
+      <ConfirmDialog
+        open={roleToConfirm !== null}
+        onOpenChange={(open) => !open && setRoleToConfirm(null)}
+        title={`Change ${memberName}'s role?`}
+        description={`${memberName} will become ${roleToConfirm ? roleLabel(roleToConfirm) : ""} and get that role's access the next time they open a page.`}
+        confirmLabel="Change role"
+        destructive={false}
+        pending={pendingRole}
+        onConfirm={confirmRoleChange}
+      />
+      <ConfirmDialog
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+        title={`Remove ${memberName} from the team?`}
+        description={`${memberName} will lose access for good and can no longer sign in to this business. Their past orders and history are kept. To block them only for now, use Disable instead.`}
+        confirmLabel="Remove"
+        pending={pendingRemove}
+        onConfirm={confirmRemove}
+      />
     </div>
   );
 }

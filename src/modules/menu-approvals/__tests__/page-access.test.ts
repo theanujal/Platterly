@@ -12,6 +12,14 @@ describe("orderPageMode", () => {
   });
 });
 
+describe("orderPageMode for a role that can only view orders", () => {
+  it("opens the restricted view instead of a 403 (the Kitchen Team)", () => {
+    expect(orderPageMode({ editOrders: false, approveMenus: false, viewOrders: true })).toBe("approval-only");
+    expect(orderPageMode({ editOrders: false, approveMenus: false, viewOrders: false })).toBe("none");
+    expect(orderPageMode({ editOrders: true, approveMenus: false, viewOrders: true })).toBe("edit");
+  });
+});
+
 describe("approvalCapabilities", () => {
   it("lets menus: approve act, and needs orders: edit as well for the price quote (Decision 8)", () => {
     expect(approvalCapabilities({ editOrders: true, approveMenus: true })).toEqual({ canAct: true, canQuotePrice: true });

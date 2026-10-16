@@ -4,12 +4,15 @@ import { isPriceFrozenStatus } from "./approval-stages";
 // Pure rules behind the order page's Menu Approval tab (Menu Approvals + Orders merge, Phase 2). Kept apart from the page so they can be
 // tested without rendering it. None of them grants anything: the server actions and the page's own permission checks decide access.
 
-/** Which order page a person gets: the editable one, the restricted approval view (Decision 6), or none (403 as before). */
+/**
+ * Which order page a person gets: the editable one, the restricted view (Decision 6; also what a role that can only view orders gets,
+ * AJ 2026-10-17: the Kitchen Team opens an order from the Orders list and sees it read-only), or none (403 as before).
+ */
 export type OrderPageMode = "edit" | "approval-only" | "none";
 
-export function orderPageMode(can: { editOrders: boolean; approveMenus: boolean }): OrderPageMode {
+export function orderPageMode(can: { editOrders: boolean; approveMenus: boolean; viewOrders?: boolean }): OrderPageMode {
   if (can.editOrders) return "edit";
-  if (can.approveMenus) return "approval-only";
+  if (can.approveMenus || can.viewOrders) return "approval-only";
   return "none";
 }
 

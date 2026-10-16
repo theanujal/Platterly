@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, RotateCcw } from "lucide-react";
+import { KeyRound, Pencil, RotateCcw } from "lucide-react";
+import { toast } from "@/components/ui/toaster";
+import { useUnsavedChangesGuard } from "@/components/unsaved-changes-guard";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,7 +36,8 @@ const EXTRA_LABEL: Record<string, string> = { approve: "Approve", export: "Expor
 const sameGrants = (a: Grants, b: Grants) => MATRIX_MODULES.every((m) => [...(a[m.key] ?? [])].sort().join() === [...(b[m.key] ?? [])].sort().join());
 
 /**
- * Manage Role Permissions tab. The owner picks a role and ticks View / Create / Edit / Delete (plus Approve, Export or Manage
+ * Manage Role Permissions tab. Like the other Settings pages it opens read-only; Edit unlocks the ticks, Save changes asks
+ * to confirm, Cancel drops the edits. The owner picks a role and ticks View / Create / Edit / Delete (plus Approve, Export or Manage
  * where a module has them) per module, then saves. Ticking anything turns View on; clearing View clears the rest, since you
  * cannot change what you cannot see. The owner role is not listed: it always has full access.
  */
@@ -44,12 +47,19 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
   const [edits, setEdits] = useState<Record<string, Grants>>({});
   const [pending, setPending] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
-  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmSave, setConfirmSave] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const role = roles.find((r) => r.id === roleId) ?? roles[0];
   const grants = edits[role.id] ?? role.current;
   const dirty = !sameGrants(grants, role.current);
   const customised = !sameGrants(role.current, role.defaults);
+  const guard = useUnsavedChangesGuard(editing && dirty, "role's permissions");
+
+  function stopEditing() {
+    setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => id !== role.id)));
+    setEditing(false);
+  }
 
   function toggle(moduleKey: string, action: string, checked: boolean) {
     const mod = MATRIX_MODULES.find((m) => m.key === moduleKey);
@@ -64,28 +74,40 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
       set.delete(action);
     }
     setEdits({ ...edits, [role.id]: { ...grants, [moduleKey]: mod.actions.filter((a) => set.has(a)) } });
-    setMessage(null);
   }
 
-  async function run(action: () => Promise<{ ok: true } | { ok: false; error: string }>, success: string) {
+  async function run(action: () => Promise<{ ok: true } | { ok: false; error: string }>, success: string): Promise<boolean> {
     setPending(true);
-    setMessage(null);
     const result = await action();
     setPending(false);
-    if (!result.ok) return setMessage({ ok: false, text: result.error });
-    setEdits((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => id !== role.id)));
-    setMessage({ ok: true, text: success });
+    if (!result.ok) {
+      toast.error(result.error);
+      return false;
+    }
+    stopEditing();
+    toast.success(success);
     router.refresh();
+    return true;
   }
 
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="flex items-center gap-2 text-xl font-semibold">
-          <KeyRound className="size-5" />
-          Manage Role Permissions
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">Choose what each role can view, create, edit and delete in your business.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-xl font-semibold">
+            <KeyRound className="size-5" />
+            Manage Role Permissions
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {editing ? `Editing ${role.label}. Nothing changes until you save.` : "Choose what each role can view, create, edit and delete in your business. Nothing saves by itself: press Edit, make your changes, then Save."}
+          </p>
+        </div>
+        {!editing && (
+          <Button type="button" variant="outline" size="md" className="shrink-0" onClick={() => setEditing(true)}>
+            <Pencil data-icon="inline-start" />
+            Edit
+          </Button>
+        )}
       </div>
 
       <div className="flex max-w-xs flex-col gap-1.5">
@@ -93,10 +115,8 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
         <Select
           items={Object.fromEntries(roles.map((r) => [r.id, r.label]))}
           value={role.id}
-          onValueChange={(v) => {
-            setRoleId(v ?? role.id);
-            setMessage(null);
-          }}
+          disabled={editing}
+          onValueChange={(v) => setRoleId(v ?? role.id)}
         >
           <SelectTrigger id="role-permissions-role" className="w-full">
             <SelectValue />
@@ -128,14 +148,17 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
               const extras = mod.actions.filter((a) => !COLUMN_ACTIONS.includes(a));
               return (
                 <tr key={mod.key} className="border-t border-border">
-                  <th scope="row" className="px-4 py-2.5 text-left font-medium">{mod.label}</th>
+                  <th scope="row" className="px-4 py-2.5 text-left font-medium">
+                    {mod.label}
+                    <span className="block text-xs font-normal text-muted-foreground">{mod.pages}</span>
+                  </th>
                   {COLUMNS.map((c) => (
                     <td key={c.action} className="px-3 py-2.5 text-center">
                       {(mod.actions as readonly string[]).includes(c.action) ? (
                         <Checkbox
                           aria-label={`${role.label}: ${c.label} ${mod.label}`}
                           checked={granted.includes(c.action)}
-                          disabled={pending}
+                          disabled={pending || !editing}
                           onCheckedChange={(checked) => toggle(mod.key, c.action, checked === true)}
                         />
                       ) : (
@@ -151,7 +174,7 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
                           <Checkbox
                             aria-label={`${role.label}: ${EXTRA_LABEL[a] ?? a} ${mod.label}`}
                             checked={granted.includes(a)}
-                            disabled={pending}
+                            disabled={pending || !editing}
                             onCheckedChange={(checked) => toggle(mod.key, a, checked === true)}
                           />
                           {EXTRA_LABEL[a] ?? a}
@@ -166,28 +189,37 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
         </table>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" size="md" disabled={!dirty || pending} onClick={() => run(() => saveRolePermissionsAction(role.id, grants), `${role.label} permissions saved.`)}>
-          Save changes
-        </Button>
-        <Button
-          type="button"
-          size="md"
-          variant="outline"
-          disabled={(!customised && !dirty) || pending}
-          onClick={() => setConfirmReset(true)}
-        >
-          <RotateCcw className="size-4" /> Reset to defaults
-        </Button>
-        {customised && !dirty && <span className="text-xs text-muted-foreground">Changed from the defaults.</span>}
-        {dirty && <span className="text-xs text-warning">Unsaved changes.</span>}
-      </div>
-      {message && (
-        <p role={message.ok ? "status" : "alert"} className={message.ok ? "text-sm text-success" : "text-sm text-destructive"}>
-          {message.text}
-        </p>
+      {editing ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="button" size="md" disabled={!dirty || pending} onClick={() => setConfirmSave(true)}>
+            Save changes
+          </Button>
+          <Button type="button" size="md" variant="outline" disabled={pending} onClick={stopEditing}>
+            Cancel
+          </Button>
+          <Button type="button" size="md" variant="outline" disabled={(!customised && !dirty) || pending} onClick={() => setConfirmReset(true)}>
+            <RotateCcw className="size-4" /> Reset to defaults
+          </Button>
+          {dirty && <span className="text-xs text-warning">Unsaved changes.</span>}
+        </div>
+      ) : (
+        customised && <p className="text-xs text-muted-foreground">This role has been changed from the defaults.</p>
       )}
+      {guard.dialog}
 
+      <ConfirmDialog
+        open={confirmSave}
+        onOpenChange={setConfirmSave}
+        title={`Save ${role.label} permissions?`}
+        description="Everyone with this role gets this access the next time they open a page."
+        confirmLabel="Save changes"
+        destructive={false}
+        pending={pending}
+        onConfirm={async () => {
+          await run(() => saveRolePermissionsAction(role.id, grants), `${role.label} permissions saved.`);
+          setConfirmSave(false);
+        }}
+      />
       <ConfirmDialog
         open={confirmReset}
         onOpenChange={setConfirmReset}

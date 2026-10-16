@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { enablePush, pushSupported, thisDeviceHasPush } from "@/components/push/push-client";
 import { removePushSubscriptionAction, sendTestPushAction, setPushEnabledAction } from "@/app/push-actions";
 import { InfoBox, PanelHeader, SettingsPanel } from "./settings-ui";
+import { toast } from "@/components/ui/toaster";
 
 /**
  * Settings -> Push Notifications (AJ, 2026-10-03): one master switch for the signed-in person, plus this browser's
@@ -36,6 +37,7 @@ export function PushSettings({ enabled, devices, vapidPublicKey }: { enabled: bo
     setOn(next);
     startTransition(async () => {
       await setPushEnabledAction(next);
+      toast.success(next ? "Push notifications are on for you." : "Push notifications are off for you.");
       router.refresh();
     });
   }
@@ -47,6 +49,8 @@ export function PushSettings({ enabled, devices, vapidPublicKey }: { enabled: bo
       if (result === "enabled") setMessage({ ok: true, text: "Notifications are on for this browser." });
       else if (result === "denied") setMessage({ ok: false, text: "Notifications are blocked in your browser. Allow them for this site in the address bar, then try again." });
       else setMessage({ ok: false, text: "We couldn't turn notifications on in this browser." });
+      if (result === "enabled") toast.success("Notifications are on for this browser.");
+      else toast.error("We couldn't turn notifications on in this browser.");
       setHere(await thisDeviceHasPush());
       router.refresh();
     });
@@ -61,6 +65,7 @@ export function PushSettings({ enabled, devices, vapidPublicKey }: { enabled: bo
         await subscription.unsubscribe();
       }
       setHere(false);
+      toast.success("Notifications are off for this browser.");
       router.refresh();
     });
   }
@@ -70,6 +75,8 @@ export function PushSettings({ enabled, devices, vapidPublicKey }: { enabled: bo
     startTransition(async () => {
       const result = await sendTestPushAction();
       setMessage({ ok: result.ok, text: result.message });
+      if (result.ok) toast.success(result.message);
+      else toast.error(result.message);
     });
   }
 

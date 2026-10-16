@@ -5,6 +5,9 @@ import type { MenuApprovalReviewProps } from "@/modules/menu-approvals/_componen
 import type { OrderStatus } from "@/generated/prisma/enums";
 import type { StatusHistoryEntry } from "../../_components/status-panel";
 import { ApprovalSidebarLayout } from "@/modules/menu-approvals/_components/review/sidebar-slot";
+import { StageActions } from "@/app/(app)/kitchen-dashboard/_components/stage-actions";
+import type { KitchenProductionStatus } from "@/generated/prisma/enums";
+import { KITCHEN_PRODUCTION_STATUS_LABEL } from "@/modules/menu-approvals/kitchen-production-status";
 import { OrderMenuApprovalTab, type NotStartedInfo } from "./order-menu-approval-tab";
 import { OrderStatusCard } from "./order-status-card";
 import { OrderSummaryCard } from "./order-summary-card";
@@ -36,11 +39,12 @@ export interface ApprovalOnlyOrderData {
   statusHistory: StatusHistoryEntry[];
 }
 
-export function ApprovalOnlyOrderView({ order, approval, notStarted }: { order: ApprovalOnlyOrderData; approval: MenuApprovalReviewProps | null; notStarted: NotStartedInfo }) {
+/** `canApprove` false = a person who can only view orders (the Kitchen Team): the banner says so. `kitchenStage` is set when they may move the kitchen stage. */
+export function ApprovalOnlyOrderView({ order, approval, notStarted, canApprove = true, kitchenStage = null }: { order: ApprovalOnlyOrderData; approval: MenuApprovalReviewProps | null; notStarted: NotStartedInfo; canApprove?: boolean; kitchenStage?: { menuSelectionId: string; currentStage: KitchenProductionStatus } | null }) {
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8" data-testid="approval-only-order">
       <div className="flex flex-col gap-4">
-        <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Menu Approvals", href: "/menu-approvals" }, { label: order.orderNumber ?? "Order" }]} />
+        <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, canApprove ? { label: "Menu Approvals", href: "/menu-approvals" } : { label: "Orders", href: "/orders" }, { label: order.orderNumber ?? "Order" }]} />
         <div className="flex flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-semibold">{order.orderNumber ?? "Order"}</h1>
@@ -75,8 +79,24 @@ export function ApprovalOnlyOrderView({ order, approval, notStarted }: { order: 
 
       <div role="status" className="flex items-start gap-3 rounded-xl border border-info/30 bg-info/10 p-4 text-sm" data-testid="approval-only-banner">
         <Info className="mt-0.5 size-4 shrink-0 text-info" />
-        <p>You can review and approve this order&apos;s menu. The rest of the order is view-only for your role.</p>
+        <p>
+          {canApprove
+            ? "You can review and approve this order's menu. The rest of the order is view-only for your role."
+            : kitchenStage
+              ? "This order is view-only for your role. You can change its kitchen status below."
+              : "This order is view-only for your role."}
+        </p>
       </div>
+
+      {kitchenStage && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4" data-testid="kitchen-stage-card">
+          <div>
+            <p className="text-sm font-medium">Kitchen status</p>
+            <p className="text-sm text-muted-foreground">{KITCHEN_PRODUCTION_STATUS_LABEL[kitchenStage.currentStage]}</p>
+          </div>
+          <StageActions menuSelectionId={kitchenStage.menuSelectionId} currentStage={kitchenStage.currentStage} />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <OrderSummaryCard

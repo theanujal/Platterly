@@ -67,6 +67,27 @@ export async function disableMember(organizationId: string, memberId: string, ac
 }
 
 /**
+ * Takes a person off the team for good (AJ, 2026-10-17). Only the membership row goes: the user account, and every order,
+ * payment and audit entry they made, stay. They can be invited again later. The owner cannot be removed.
+ */
+export async function removeMember(organizationId: string, memberId: string, actorUserId: string) {
+  const member = await prisma.member.findFirst({ where: { id: memberId, organizationId } });
+  if (!member) throw new ValidationError("That team member doesn't exist.");
+  if (member.role === "owner") throw new ValidationError("The owner cannot be removed from the team.");
+  if (member.userId === actorUserId) throw new ValidationError("You cannot remove yourself.");
+
+  await prisma.member.delete({ where: { id: memberId } });
+  await audit({
+    organizationId,
+    actorUserId,
+    action: "team.member_remove",
+    recordType: "Member",
+    recordId: memberId,
+    before: { userId: member.userId, role: member.role },
+  });
+}
+
+/**
  * Chunk 23 — the one location a team member works from. Null puts them back on the whole kitchen (open). The owner is
  * always kitchen-wide, and the location must belong to the same kitchen.
  */

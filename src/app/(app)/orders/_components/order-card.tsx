@@ -35,6 +35,8 @@ interface OrderCardProps {
   timeZone?: string;
   canEdit: boolean;
   canDelete: boolean;
+  /** Amount and payment status; hidden from roles without Invoices access (the Kitchen Team). */
+  showMoney?: boolean;
 }
 
 /**
@@ -43,7 +45,7 @@ interface OrderCardProps {
  * card in a `<Link>`, because the 3-dot menu is an interactive control and
  * can't be nested inside an anchor.
  */
-export function OrderCard({ order, now, timeZone, canEdit, canDelete }: OrderCardProps) {
+export function OrderCard({ order, now, timeZone, canEdit, canDelete, showMoney = true }: OrderCardProps) {
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
 
@@ -144,17 +146,21 @@ export function OrderCard({ order, now, timeZone, canEdit, canDelete }: OrderCar
       )}
 
       <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4 @sm:flex-row @sm:items-end @sm:justify-between">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-muted-foreground">Order Amount</span>
-          <span className="text-xl font-bold">{formatAmount(total)}</span>
-        </div>
-        <div className="flex flex-col items-start gap-1.5 @sm:items-end @sm:text-right">
-          <Badge variant={payment.tone}>
-            <CreditCard data-icon="inline-start" />
-            {payment.label}
-          </Badge>
-          <span className="text-xs text-muted-foreground">{payment.summary}</span>
-        </div>
+        {showMoney && (
+          <>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs text-muted-foreground">Order Amount</span>
+              <span className="text-xl font-bold">{formatAmount(total)}</span>
+            </div>
+            <div className="flex flex-col items-start gap-1.5 @sm:items-end @sm:text-right">
+              <Badge variant={payment.tone}>
+                <CreditCard data-icon="inline-start" />
+                {payment.label}
+              </Badge>
+              <span className="text-xs text-muted-foreground">{payment.summary}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

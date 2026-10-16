@@ -272,7 +272,7 @@ test("a person who can approve menus but not edit orders gets the restricted vie
   expect(before.notes).toBeNull();
 });
 
-test("a person who can edit orders but not approve menus sees the tab read-only; someone with neither is refused", async ({ page }) => {
+test("a person who can edit orders but not approve menus sees the tab read-only; someone who can only view sees the read-only order; someone with no orders access is refused", async ({ page }) => {
   test.setTimeout(180_000);
   const email = `e2e-editonly-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -294,8 +294,14 @@ test("a person who can edit orders but not approve menus sees the tab read-only;
   await expect(tabPanel(page).getByLabel("Change status")).toHaveCount(0);
   await expect(tabPanel(page).getByPlaceholder("Add a note for the team…")).toHaveCount(0);
 
-  // neither permission: refused, as before
+  // view only (the Kitchen Team): the read-only order, no 403 (AJ, 2026-10-17)
   await setRoleGrants(email, "manager", { orders: ["view"], menus: ["view"], customers: ["view"] });
+  const viewOnly = await page.goto(`/orders/${sent.orderId}`);
+  expect(viewOnly?.status()).toBe(200);
+  await expect(page.getByTestId("approval-only-banner")).toContainText("view-only for your role");
+
+  // no access to orders at all: refused, as before
+  await setRoleGrants(email, "manager", { orders: [], menus: ["view"], customers: ["view"] });
   const response = await page.goto(`/orders/${sent.orderId}`);
   expect(response?.status()).toBe(403);
 });
@@ -384,7 +390,12 @@ test("Pricing Details: per-plate prices follow the menu until Individual / Custo
   await expect(toggle).toBeChecked();
   await expect(rows.first().getByRole("spinbutton")).not.toHaveValue("");
   const price = rows.first().getByRole("spinbutton");
+  // The menu's own price stays on screen beside it, so the team sees what the price was before (AJ, 2026-10-18).
+  const menuPrice = (await rows.first().innerText()).match(/₹[\d,.]+ \/ plate/)?.[0] ?? "";
+  await expect(rows.first().getByTestId("default-plate-price")).toContainText("Menu price");
+  await expect(rows.first().getByTestId("default-plate-price")).toContainText(menuPrice.replace(" / plate", ""));
   await price.fill("500");
+  await expect(rows.first().getByTestId("default-plate-price")).toContainText("Menu price"); // still shown after the price is changed
   await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);
   await expect(page.locator("p[role=alert]")).toHaveCount(0);
   await page.reload();

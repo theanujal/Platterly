@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { toast } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import { cancelInvitationAction, resendInvitationAction } from "../actions";
 
@@ -30,16 +31,20 @@ export function InvitationRowActions({ invitationId, email, role }: InvitationRo
 
   async function handleResend() {
     setPendingResend(true);
-    await resendInvitationAction(email, role);
+    const result = await resendInvitationAction(email, role);
     setPendingResend(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`Invitation sent again to ${email}.`);
     router.refresh();
   }
 
   async function handleCancel() {
     setPendingCancel(true);
-    await cancelInvitationAction(invitationId);
+    const result = await cancelInvitationAction(invitationId);
     setPendingCancel(false);
     setCancelOpen(false);
+    if (!result.ok) return toast.error(result.error);
+    toast.success(`Invitation to ${email} was cancelled.`);
     router.refresh();
   }
 

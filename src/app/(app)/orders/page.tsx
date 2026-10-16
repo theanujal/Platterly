@@ -49,7 +49,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const eventTypes = await listEventTypes(organizationId);
   const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
 
-  const [orders, canEdit, canDelete] = await Promise.all([
+  const [orders, canEdit, canDelete, canCreate, showMoney] = await Promise.all([
     // The default list shows every order, past events included (AJ, 2026-10-16; it hid past-event orders from 2026-09-30).
     // The Past view narrows to past-event orders whose menu approval is still outstanding (Decision 9).
     // Overdue payments live under Finance now (AJ, 2026-10-12): it is the finance team's job to collect them.
@@ -66,6 +66,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     }),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
+    hasPermission({ orders: ["create"] }, organizationId),
+    hasPermission({ invoices: ["view"] }, organizationId),
   ]);
   // One timestamp for every card, so their "Starts in" countdowns agree.
   const now = new Date();
@@ -82,8 +84,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         newest: order.createdAt.getTime(),
         eventDate: order.eventStartDate.getTime(),
       },
-      card: <OrderCard key={`card-${order.id}`} order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} />,
-      listRow: <OrderListCells key={`row-${order.id}`} order={order} now={now} timeZone={timeZone} />,
+      card: <OrderCard key={`card-${order.id}`} order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} showMoney={showMoney} />,
+      listRow: <OrderListCells key={`row-${order.id}`} order={order} now={now} timeZone={timeZone} showMoney={showMoney} />,
     };
   });
 
@@ -98,10 +100,12 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         <div className="flex flex-wrap items-center justify-end gap-3">
           {/* Filters by the event's dates; with no range every order is listed (AJ, 2026-10-16). */}
           <DashboardRangePicker range={range} todayIso={dayKeyInZone(now, timeZone)} emptyLabel="All Dates" testId="orders-range" />
-          <Button render={<Link href="/orders/new" />} nativeButton={false}>
-            <Plus className="size-4" />
-            Create Order
-          </Button>
+          {canCreate && (
+            <Button render={<Link href="/orders/new" />} nativeButton={false}>
+              <Plus className="size-4" />
+              Create Order
+            </Button>
+          )}
         </div>
       </div>
       <Separator />
@@ -109,11 +113,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       <CatalogBrowser
         entries={entries}
         addTile={
-          <Link key="orders-add-tile" href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
-            <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
-          </Link>
+          canCreate ? (
+            <Link key="orders-add-tile" href="/orders/new" className={CATALOG_ADD_TILE_CLASSNAME}>
+              <CatalogAddTileContent label="Create Order" description="Start a new catering sale" />
+            </Link>
+          ) : undefined
         }
-        columns={["Order #", "Order Type", "Customer", "Event", "Guests", "Amount", "Status", "Menu Approval", "Open"]}
+        columns={["Order #", "Order Type", "Customer", "Event", "Guests", ...(showMoney ? ["Amount"] : []), "Status", "Menu Approval", "Open"]}
         richList
         defaultView="list"
         searchPlaceholder="Search orders by customer, phone, or order #…"

@@ -22,7 +22,7 @@ const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
  * so the two views can't disagree. The row click itself is CatalogBrowser's;
  * the customer name is also a real link so the row is keyboard-reachable.
  */
-export function OrderListCells({ order, now, timeZone }: { order: OrderListItem; now: Date; timeZone?: string }) {
+export function OrderListCells({ order, now, timeZone, showMoney = true }: { order: OrderListItem; now: Date; timeZone?: string; showMoney?: boolean }) {
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
   const total = Number(order.total);
@@ -81,12 +81,14 @@ export function OrderListCells({ order, now, timeZone }: { order: OrderListItem;
         </span>
       </TableCell>
 
-      <TableCell className="px-3 py-3">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-semibold whitespace-nowrap">{formatAmountExact(total)}</span>
-          <span className={`text-xs font-medium ${TONE_TEXT[payment.tone]}`}>{payment.label}</span>
-        </div>
-      </TableCell>
+      {showMoney && (
+        <TableCell className="px-3 py-3">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-sm font-semibold whitespace-nowrap">{formatAmountExact(total)}</span>
+            <span className={`text-xs font-medium ${TONE_TEXT[payment.tone]}`}>{payment.label}</span>
+          </div>
+        </TableCell>
+      )}
 
       <TableCell className="px-3 py-3">
         <Badge variant={STATUS_VARIANT[order.status]}>

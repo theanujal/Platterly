@@ -8,18 +8,18 @@
  * settings would let it raise its own access, and Better Auth's invite endpoints are owner-only regardless.
  */
 export const MATRIX_MODULES = [
-  { key: "customers", label: "Customers", actions: ["view", "create", "edit", "delete"] },
-  { key: "quotations", label: "Quotations", actions: ["view", "create", "edit", "delete"] },
-  { key: "orders", label: "Orders & Events", actions: ["view", "create", "edit", "delete"] },
-  { key: "eventTypes", label: "Event Types", actions: ["view", "create", "edit", "delete"] },
-  { key: "menus", label: "Menu Catalog & Approvals", actions: ["view", "create", "edit", "delete", "approve"] },
-  { key: "inventory", label: "Inventory & Purchasing", actions: ["view", "create", "edit", "delete"] },
-  { key: "invoices", label: "Invoices", actions: ["view", "create", "edit", "delete", "export"] },
-  { key: "payments", label: "Payments", actions: ["view", "create", "manage"] },
-  { key: "expenses", label: "Expenses", actions: ["view", "create", "edit", "delete"] },
-  { key: "reports", label: "Reports", actions: ["view", "export"] },
-  { key: "audit", label: "Audit Log", actions: ["view"] },
-  { key: "staffing", label: "Staff & Logistics", actions: ["view", "create", "edit", "delete"] },
+  { key: "orders", label: "Orders", pages: "Orders, Calendar", actions: ["view", "create", "edit", "delete"] },
+  { key: "quotations", label: "Quotations", pages: "Quotations", actions: ["view", "create", "edit", "delete"] },
+  { key: "invoices", label: "Invoices", pages: "Invoices", actions: ["view", "create", "edit", "delete", "export"] },
+  { key: "customers", label: "Customers", pages: "Customers, Abandoned Orders", actions: ["view", "create", "edit", "delete"] },
+  { key: "menus", label: "Menu Catalog & Approvals", pages: "Menu Catalog, Menu Approvals, Kitchen Dashboard", actions: ["view", "create", "edit", "delete", "approve"] },
+  { key: "eventTypes", label: "Event Types", pages: "Event Types in Menu Catalog", actions: ["view", "create", "edit", "delete"] },
+  { key: "payments", label: "Payments", pages: "Overdue Payments, recording payments", actions: ["view", "create", "manage"] },
+  { key: "expenses", label: "Finance", pages: "Expenses, Profitability", actions: ["view", "create", "edit", "delete"] },
+  { key: "reports", label: "Reports", pages: "Reports & Activity", actions: ["view", "export"] },
+  { key: "audit", label: "Audit Log", pages: "Audit Log", actions: ["view"] },
+  { key: "inventory", label: "Stock & Supplies", pages: "Inventory, Suppliers, Purchasing, Recipes", actions: ["view", "create", "edit", "delete"] },
+  { key: "staffing", label: "Staff", pages: "Staff, event staffing, logistics", actions: ["view", "create", "edit", "delete"] },
 ] as const;
 
 export type MatrixModuleKey = (typeof MATRIX_MODULES)[number]["key"];

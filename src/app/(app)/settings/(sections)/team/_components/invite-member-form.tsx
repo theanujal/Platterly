@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Send } from "lucide-react";
+import { toast } from "@/components/ui/toaster";
 import { Button } from "@/components/ui/button";
 import { IconInput } from "@/components/ui/icon-input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +41,7 @@ export function InviteMemberForm({ roles, seatsFullMessage }: { roles: InviteRol
       setError(result.error);
       return;
     }
+    toast.success(`Invitation sent to ${email.trim()}.`);
     setEmail("");
     router.push("/settings/team?tab=pending");
     router.refresh();

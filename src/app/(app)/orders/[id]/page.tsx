@@ -90,14 +90,18 @@ export default async function OrderDetailPage({ params, searchParams }: { params
   const { tab, version } = await searchParams;
   const viewVersion = version && /^\d+$/.test(version) ? Number(version) : null;
   const { organizationId, session } = await requireActiveOrganization();
-  const [canEditOrders, canApproveMenus] = await Promise.all([hasPermission({ orders: ["edit"] }, organizationId), hasPermission({ menus: ["approve"] }, organizationId)]);
-  const can = { editOrders: canEditOrders, approveMenus: canApproveMenus };
+  const [canEditOrders, canApproveMenus, canViewOrders] = await Promise.all([
+    hasPermission({ orders: ["edit"] }, organizationId),
+    hasPermission({ menus: ["approve"] }, organizationId),
+    hasPermission({ orders: ["view"] }, organizationId),
+  ]);
+  const can = { editOrders: canEditOrders, approveMenus: canApproveMenus, viewOrders: canViewOrders };
   const mode = orderPageMode(can);
   // Someone with neither permission gets the same 403 as before.
   if (mode === "none") await requirePermission({ orders: ["edit"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, id);
   const active = await getActiveLocation(organizationId, session.user.id);
-  if (mode === "approval-only") return approvalOnlyPage({ organizationId, orderId: id, activeEnabled: active.enabled, viewVersion, can });
+  if (mode === "approval-only") return approvalOnlyPage({ organizationId, orderId: id, activeEnabled: active.enabled, viewVersion, can, canMoveKitchenStage: await hasPermission({ menus: ["edit"] }, organizationId) });
   const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
@@ -482,7 +486,7 @@ const ORDER_KIND_LABEL_TEXT: Record<OrderKind, string> = { SINGLE: "Single Order
  * ApprovalOnlyOrderView) and none of the payments, invoice, expense, staffing, inventory or customer-list loads of the full page.
  * The caller has already checked the permission, the business (every read below is scoped by it) and the location.
  */
-async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVersion, can }: { organizationId: string; orderId: string; activeEnabled: boolean; viewVersion: number | null; can: { editOrders: boolean; approveMenus: boolean } }) {
+async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVersion, can, canMoveKitchenStage }: { organizationId: string; orderId: string; activeEnabled: boolean; viewVersion: number | null; can: { editOrders: boolean; approveMenus: boolean }; canMoveKitchenStage: boolean }) {
   const [order, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, orderId),
     getOrderMenuApproval(organizationId, orderId),
@@ -531,6 +535,8 @@ async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVe
       }}
       approval={review ? { ...review, capabilities: approvalCapabilities(can) } : null}
       notStarted={{ orderId: order.id, ...notStartedState(order, can) }}
+      canApprove={can.approveMenus}
+      kitchenStage={canMoveKitchenStage && menuApproval?.status === "FINAL_LOCKED" ? { menuSelectionId: menuApproval.menuSelectionId, currentStage: menuApproval.kitchenProductionStatus } : null}
     />
   );
 }

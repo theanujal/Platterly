@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
-import { listMembers, listPendingInvitations, disableMember, enableMember, CannotDisableOwnerError, getSeatUsage, applyTeamPrivacy, retireExpiredInvitations } from "../team";
+import { listMembers, listPendingInvitations, disableMember, enableMember, CannotDisableOwnerError, getSeatUsage, applyTeamPrivacy, retireExpiredInvitations, removeMember } from "../team";
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -105,6 +105,22 @@ describe("Team Management (Chunk 5 Group 5.2)", () => {
   it("disableMember refuses to disable an owner", async () => {
     const { org, owner } = await seedOrgWithMembers();
     await expect(disableMember(org.id, owner.member.id, owner.user.id)).rejects.toThrow(CannotDisableOwnerError);
+  });
+
+  it("removeMember deletes the membership but keeps the user, and audits it", async () => {
+    const { org, owner, staff } = await seedOrgWithMembers();
+    await removeMember(org.id, staff.member.id, owner.user.id);
+    expect(await prisma.member.findUnique({ where: { id: staff.member.id } })).toBeNull();
+    expect(await prisma.user.findUnique({ where: { id: staff.user.id } })).not.toBeNull();
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "team.member_remove" } })).toBe(1);
+  });
+
+  it("removeMember refuses the owner, yourself and a member of another org", async () => {
+    const { org, owner, staff } = await seedOrgWithMembers();
+    const other = await seedOrgWithMembers();
+    await expect(removeMember(org.id, owner.member.id, staff.user.id)).rejects.toThrow(/owner/i);
+    await expect(removeMember(org.id, staff.member.id, staff.user.id)).rejects.toThrow(/yourself/i);
+    await expect(removeMember(org.id, other.staff.member.id, owner.user.id)).rejects.toThrow(/doesn't exist/i);
   });
 
   it("enableMember clears disabledAt", async () => {

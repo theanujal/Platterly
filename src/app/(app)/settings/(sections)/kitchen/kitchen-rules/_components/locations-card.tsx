@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/settings-ui";
 import { addLocationAction, deleteLocationAction, makeDefaultLocationAction, renameLocationAction, setMultiLocationAction, type ActionResult } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 interface LocationRow {
   id: string;
@@ -27,7 +28,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
   const [editName, setEditName] = useState("");
   const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
 
-  function run(action: () => Promise<ActionResult>, onDone?: () => void) {
+  function run(action: () => Promise<ActionResult>, success: string, onDone?: () => void) {
     setError(null);
     startTransition(async () => {
       const result = await action();
@@ -35,6 +36,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
         setError(result.error);
         return;
       }
+      toast.success(success);
       onDone?.();
       router.refresh();
     });
@@ -49,7 +51,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
         </InfoBox>
       )}
       <label htmlFor="multi-location" className="flex items-start gap-3">
-        <Switch id="multi-location" checked={enabled} disabled={!planAllows || !canEdit || pending} onCheckedChange={(checked) => run(() => setMultiLocationAction(checked === true))} />
+        <Switch id="multi-location" checked={enabled} disabled={!planAllows || !canEdit || pending} onCheckedChange={(checked) => run(() => setMultiLocationAction(checked === true), checked === true ? "Multiple locations switched on." : "Multiple locations switched off.")} />
         <span className="flex flex-col gap-0.5">
           <span className="text-sm font-medium">We operate from more than one location</span>
           <span className="text-xs text-muted-foreground">Adds a location switcher at the top, and a location on events, inventory items and team members. Anything without a location stays open to the whole kitchen.</span>
@@ -64,7 +66,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
                 {editingId === location.id ? (
                   <>
                     <Input aria-label="Location name" className="max-w-64" value={editName} onChange={(e) => setEditName(e.target.value)} />
-                    <Button size="md" disabled={pending} onClick={() => run(() => renameLocationAction(location.id, editName), () => setEditingId(null))}>
+                    <Button size="md" disabled={pending} onClick={() => run(() => renameLocationAction(location.id, editName), "Location renamed.", () => setEditingId(null))}>
                       Save
                     </Button>
                     <Button size="md" variant="outline" onClick={() => setEditingId(null)}>
@@ -78,7 +80,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
                     {canEdit && (
                       <span className="ml-auto flex flex-wrap gap-1">
                         {!location.isDefault && (
-                          <Button size="md" variant="outline" disabled={pending} onClick={() => run(() => makeDefaultLocationAction(location.id))}>
+                          <Button size="md" variant="outline" disabled={pending} onClick={() => run(() => makeDefaultLocationAction(location.id), "Default location changed.")}>
                             Make default
                           </Button>
                         )}
@@ -102,7 +104,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
               className="flex flex-wrap gap-2"
               onSubmit={(event) => {
                 event.preventDefault();
-                run(() => addLocationAction(newName), () => setNewName(""));
+                run(() => addLocationAction(newName), "Location added.", () => setNewName(""));
               }}
             >
               <Input aria-label="New location name" className="max-w-64" placeholder="New location name" value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -127,7 +129,7 @@ export function LocationsCard({ planAllows, enabled, canEdit, locations }: { pla
         onConfirm={() => {
           const id = deleting?.id;
           setDeleting(null);
-          if (id) run(() => deleteLocationAction(id));
+          if (id) run(() => deleteLocationAction(id), "Location deleted.");
         }}
       />
     </SettingsPanel>

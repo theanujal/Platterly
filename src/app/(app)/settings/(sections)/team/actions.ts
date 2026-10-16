@@ -5,7 +5,7 @@ import { headers as nextHeaders } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/lib/auth/auth";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { disableMember, enableMember, getSeatUsage, retireExpiredInvitations, setMemberLocation } from "@/modules/team/team";
+import { disableMember, enableMember, removeMember, getSeatUsage, retireExpiredInvitations, setMemberLocation } from "@/modules/team/team";
 import { isMultiLocationEnabled } from "@/modules/locations/locations";
 import { getSetting, setSetting } from "@/lib/settings/settings";
 import { audit } from "@/lib/audit/audit";
@@ -125,6 +125,20 @@ export async function disableMemberAction(memberId: string): Promise<ActionResul
     await disableMember(organizationId, memberId, session.user.id);
   } catch (error) {
     return { ok: false, error: userMessage(error, "Could not disable this member.") };
+  }
+
+  revalidatePath("/settings/team");
+  return { ok: true };
+}
+
+export async function removeMemberAction(memberId: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ users: ["delete"] }, organizationId);
+
+  try {
+    await removeMember(organizationId, memberId, session.user.id);
+  } catch (error) {
+    return { ok: false, error: userMessage(error, "Could not remove this member.") };
   }
 
   revalidatePath("/settings/team");

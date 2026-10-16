@@ -13,6 +13,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter, SettingsSection } from "../../../../_components/settings-ui";
 import { updateBusinessProfileAction } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 export interface BusinessProfileFormValues {
   businessName: string;
@@ -76,6 +77,7 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
       setError(result.error);
       return;
     }
+    toast.success("Business profile saved.");
     router.refresh();
     stopEditing();
   }

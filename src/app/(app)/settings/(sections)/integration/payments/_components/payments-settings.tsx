@@ -14,6 +14,7 @@ import { InfoBox, PanelHeader, SettingsPanel } from "../../../../_components/set
 import { cn } from "cn";
 import type { PaymentSettingsView } from "@/modules/payments/payment-settings";
 import { disconnectRazorpayAction, saveAdvanceAction, saveGstAction, saveRazorpayAction, saveUpiAction, setAutoInvoiceAction, setMethodEnabledAction, testRazorpayAction, type ActionResult } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 /** A save button + status line shared by the three panels. */
 function useSave(onFail?: () => void) {
@@ -25,7 +26,9 @@ function useSave(onFail?: () => void) {
     setMessage(null);
     const result = await task();
     setPending(false);
-    setMessage(result.ok ? { ok: true, text: result.message ?? success } : { ok: false, text: result.error });
+    // Success is announced by the toast; only a failure stays on the page, next to the form it belongs to.
+    setMessage(result.ok ? null : { ok: false, text: result.error });
+    if (result.ok) toast.success(result.message ?? success);
     if (result.ok) router.refresh();
     else onFail?.();
   }
@@ -55,7 +58,11 @@ function MethodAccordion({ method, icon: Icon, label, description, enabled, conf
     setPending(true);
     const result = await setMethodEnabledAction(method, next);
     setPending(false);
-    if (!result.ok) return setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success(next ? `${label} is now offered to customers.` : `${label} is now hidden from customers.`);
     router.refresh();
   }
   const status = !configured ? `Save your ${label} details first.` : enabled ? `Customers can pay with ${label}.` : "Hidden from customers.";

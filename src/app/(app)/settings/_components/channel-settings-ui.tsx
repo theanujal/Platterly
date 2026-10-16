@@ -16,6 +16,7 @@ import {
 import { saveChannelMessagesAction, setChannelActiveAction } from "../(sections)/communication/actions";
 import { FormFooter, PanelHeader, SettingsPanel } from "./settings-ui";
 import { cn } from "cn";
+import { toast } from "@/components/ui/toaster";
 
 const MESSAGE_ICON: Record<MessageKey, LucideIcon> = {
   orderConfirmation: MessageSquare,
@@ -67,6 +68,7 @@ export function ChannelServiceStatus({ channel, providerConnected, active }: { c
         setError(result.error);
         return;
       }
+      toast.success(next ? `${label} messages are switched on.` : `${label} messages are switched off.`);
       router.refresh();
     });
   }
@@ -125,19 +127,17 @@ export function ChannelPreferences({
   const router = useRouter();
   const [messages, setMessages] = useState(initial);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 
   function save() {
     setError(null);
-    setSaved(false);
     startTransition(async () => {
       const result = await saveChannelMessagesAction(channel, messages);
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      setSaved(true);
+      toast.success("Message settings saved.");
       router.refresh();
     });
   }
@@ -170,7 +170,7 @@ export function ChannelPreferences({
           );
         })}
       </ul>
-      <FormFooter error={error} success={saved ? "Saved." : null}>
+      <FormFooter error={error} success={null}>
         <Button onClick={save} disabled={pending || disabled}>
           {pending ? "Saving…" : saveLabel}
         </Button>

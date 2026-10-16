@@ -9,6 +9,7 @@ import { TIME_ZONE_OPTIONS } from "@/lib/time/timezone";
 import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter } from "../../../../_components/settings-ui";
 import { updateTimeZoneAction } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 export function TimeZoneForm({ initialValue }: { initialValue: string }) {
   const router = useRouter();
@@ -29,6 +30,7 @@ export function TimeZoneForm({ initialValue }: { initialValue: string }) {
       setError(result.error);
       return;
     }
+    toast.success("Time zone saved.");
     router.refresh();
     stopEditing();
   }

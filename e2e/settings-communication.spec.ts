@@ -42,7 +42,7 @@ test("WhatsApp and Email settings: status, email switches, activate once connect
   await expect(page.getByText("Message Templates")).toHaveCount(0);
   await page.getByRole("switch", { name: "Payment Received", exact: true }).click();
   await page.getByRole("button", { name: "Save WhatsApp Settings" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText("Message settings saved.")).toBeVisible({ timeout: 20_000 });
   await page.reload();
   await expect(page.getByRole("switch", { name: "Payment Received", exact: true })).not.toBeChecked();
   await expect(page.getByRole("switch", { name: "New Order", exact: true })).toBeChecked();
@@ -73,7 +73,7 @@ test("WhatsApp and Email settings: status, email switches, activate once connect
   // Switch one off, save, and it stays off after a reload while the rest stay on.
   await page.getByRole("switch", { name: "Food Dispatched", exact: true }).click();
   await page.getByRole("button", { name: "Save Email Settings" }).click();
-  await expect(page.getByText("Saved.")).toBeVisible();
+  await expect(page.getByText("Message settings saved.")).toBeVisible();
   await page.reload();
   await expect(page.getByRole("switch", { name: "Food Dispatched", exact: true })).not.toBeChecked();
   await expect(page.getByRole("switch", { name: "Quotation", exact: true })).toBeChecked();

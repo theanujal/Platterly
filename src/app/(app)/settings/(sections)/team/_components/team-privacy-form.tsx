@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
+import { toast } from "@/components/ui/toaster";
 import { Switch } from "@/components/ui/switch";
 import { updateTeamPrivacyAction } from "../actions";
 import type { TeamPrivacySettings } from "../types";
@@ -41,6 +42,7 @@ export function TeamPrivacyForm({ initialValues, canEdit }: { initialValues: Tea
       setError(result.error);
       return;
     }
+    toast.success("Privacy setting saved.");
     router.refresh();
   }
 

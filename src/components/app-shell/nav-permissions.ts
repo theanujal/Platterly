@@ -10,7 +10,7 @@ type Needs = { [R in keyof typeof statement]?: (typeof statement)[R][number][] }
 export const NAV_PERMISSIONS: Record<string, Needs> = {
   "/orders": { orders: ["view"] },
   "/calendar": { orders: ["view"] },
-  "/abandoned-orders": { orders: ["view"] },
+  "/abandoned-orders": { customers: ["view"] },
   "/quotations": { quotations: ["view"] },
   "/invoices": { invoices: ["view"] },
   "/expenses": { expenses: ["view"] },

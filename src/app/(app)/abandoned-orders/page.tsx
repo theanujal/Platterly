@@ -111,7 +111,7 @@ function timeAgo(date: Date): string {
 // link stops working and the follow-up actions disappear.
 export default async function AbandonedOrdersPage() {
   const { organizationId } = await requireActiveOrganization();
-  await requirePermission({ orders: ["view"] }, organizationId);
+  await requirePermission({ customers: ["view"] }, organizationId);
   const [organization, drafts] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, slug: true } }),
     listAbandonedOrders(organizationId, "ALL"),

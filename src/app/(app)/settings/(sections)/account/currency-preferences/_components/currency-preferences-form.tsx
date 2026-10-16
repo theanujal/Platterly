@@ -10,6 +10,7 @@ import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter, InfoBox } from "../../../../_components/settings-ui";
 import { updateCurrencyPreferencesAction } from "../actions";
 import { ROUNDING_OPTIONS, type CurrencyPreferences } from "../types";
+import { toast } from "@/components/ui/toaster";
 
 export function CurrencyPreferencesForm({ initialValues }: { initialValues: CurrencyPreferences }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export function CurrencyPreferencesForm({ initialValues }: { initialValues: Curr
       setError(result.error);
       return;
     }
+    toast.success("Currency preferences saved.");
     router.refresh();
     stopEditing();
   }

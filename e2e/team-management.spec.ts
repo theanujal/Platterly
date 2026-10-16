@@ -79,7 +79,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await page.getByRole("button", { name: "Send Invitation" }).click();
   // A successful invite lands on the Pending Invitations tab, expiring in 48 hours.
   await expect(page.getByRole("tab", { name: /Pending Invitations/ })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText(staffEmail)).toBeVisible();
+  await expect(page.getByText(staffEmail, { exact: true })).toBeVisible();
   await expect(page.getByText(/Expires in (47|48)h/)).toBeVisible();
 
   // Resend keeps it to one row; Cancel removes only the invitation it's on.
@@ -94,7 +94,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await extraRow.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Cancel invitation" }).click();
   await expect(page.getByText(extraEmail)).toHaveCount(0);
-  await expect(page.getByText(staffEmail)).toBeVisible();
+  await expect(page.getByText(staffEmail, { exact: true })).toBeVisible();
 
   const invitationId = await getPendingInvitationId(staffEmail);
   expect(invitationId).not.toBeNull();
@@ -151,6 +151,23 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   // --- Disabled invitee is locked out on their next request ---
   await inviteePage.reload();
   await expect(inviteePage.getByRole("heading", { name: /Good (morning|afternoon|evening), Staff Person/ })).not.toBeVisible();
+
+  // --- Changing a role asks first; cancelling changes nothing, confirming shows a result alert ---
+  await staffRow.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: "Manager", exact: true }).click();
+  const roleDialog = page.getByRole("alertdialog", { name: "Change Staff Person's role?" });
+  await roleDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(staffRow.getByRole("combobox").first()).toContainText("Staff");
+  await staffRow.getByRole("combobox").first().click();
+  await page.getByRole("option", { name: "Manager", exact: true }).click();
+  await roleDialog.getByRole("button", { name: "Change role" }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "role is now Manager" })).toBeVisible();
+
+  // --- Removing a member asks first, then they are gone from the list ---
+  await staffRow.getByRole("button", { name: "Remove Staff Person" }).click();
+  await page.getByRole("alertdialog", { name: "Remove Staff Person from the team?" }).getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByTestId("toast").filter({ hasText: "was removed from the team" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Staff Person" })).toHaveCount(0);
 
   await inviteeContext.close();
 });

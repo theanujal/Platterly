@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { FormFooter } from "../../../../_components/settings-ui";
+import { toast } from "@/components/ui/toaster";
 
 // Chunk 5 Group 5.1 — thin wrapper on better-auth's own changePassword
 // endpoint (already available via emailAndPassword: {enabled:true} in
@@ -18,7 +19,6 @@ export function ChangePasswordForm() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
 
   function reset() {
@@ -26,13 +26,11 @@ export function ChangePasswordForm() {
     setNewPassword("");
     setConfirmPassword("");
     setError(null);
-    setSuccess(false);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setSuccess(false);
 
     if (newPassword !== confirmPassword) {
       setError("New passwords do not match.");
@@ -46,7 +44,7 @@ export function ChangePasswordForm() {
       setError(changeError.message ?? "Could not change your password.");
       return;
     }
-    setSuccess(true);
+    toast.success("Your password was changed.");
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
@@ -89,7 +87,7 @@ export function ChangePasswordForm() {
           onChange={(e) => setConfirmPassword(e.target.value)}
         />
       </div>
-      <FormFooter error={error} success={success ? "Password changed." : null}>
+      <FormFooter error={error} success={null}>
         <Button type="submit" disabled={pending}>
           {pending ? "Changing…" : "Change Password"}
         </Button>

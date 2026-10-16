@@ -10,6 +10,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shell/nav-permissions";
+import { Toaster } from "@/components/ui/toaster";
 import { UserMenu } from "@/components/app-shell/user-menu";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
@@ -94,6 +95,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>
+        <Toaster />
         <PushPrompt
           show={push.showPrompt}
           vapidPublicKey={vapidPublicKey()}

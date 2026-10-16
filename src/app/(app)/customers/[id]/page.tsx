@@ -109,7 +109,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     hasPermission({ customers: ["delete"] }, organizationId),
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, slug: true, slugChangeCount: true } }),
     prisma.order.findMany({ where: { organizationId, customerId: id }, include: { eventType: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
-    prisma.quotation.findMany({ where: { organizationId, customerId: id }, include: { eventType: { select: { name: true } } }, orderBy: { createdAt: "desc" } }),
+    prisma.quotation.findMany({ where: { organizationId, customerId: id }, include: { eventType: { select: { name: true } }, order: { select: { id: true } } }, orderBy: { createdAt: "desc" } }),
     listAbandonedOrders(organizationId, "ALL"),
     listCustomerNotes(organizationId, id),
   ]);
@@ -165,7 +165,9 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   });
   const orderStatusOptions = [...new Set(orders.map((o) => o.status))].map((value) => ({ value, label: ORDER_STATUS_LABEL[value] }));
 
-  const quotationRows: FilterableRow[] = quotations.map((quotation) => {
+  // Once a quotation becomes an order, the order is the record (AJ, 2026-10-17): the tab lists only quotations still open. The activity timeline keeps the history.
+  const openQuotations = quotations.filter((q) => !q.order);
+  const quotationRows: FilterableRow[] = openQuotations.map((quotation) => {
     const StatusIcon = QUOTE_STATUS_ICON[quotation.status];
     const total = Number(quotation.total);
     return {
@@ -189,7 +191,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       ),
     };
   });
-  const quotationStatusOptions = [...new Set(quotations.map((q) => q.status))].map((value) => ({ value, label: QUOTE_STATUS_LABEL[value] }));
+  const quotationStatusOptions = [...new Set(openQuotations.map((q) => q.status))].map((value) => ({ value, label: QUOTE_STATUS_LABEL[value] }));
 
   const draftRows: FilterableRow[] = drafts.map((draft) => {
     const state = draft.isExpired ? "EXPIRED" : draft.isAbandoned ? "ABANDONED" : "IN_PROGRESS";
@@ -247,7 +249,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     {
       key: "quotations",
       label: "Quotations",
-      count: quotations.length,
+      count: openQuotations.length,
       content: <FilterableRows title="Quotations" rows={quotationRows} statusOptions={quotationStatusOptions} searchPlaceholder="Search quotations…" emptyLabel="No quotations yet for this customer." />,
     },
     {

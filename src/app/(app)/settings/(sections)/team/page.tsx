@@ -130,7 +130,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                       </div>
                     </div>
                     {canManage && !isYou && (
-                      <MemberRowActions memberId={member.id} role={member.role} disabled={!!member.disabledAt} locationId={member.locationId} locations={locationSettings.enabled ? locationList.map((l) => ({ id: l.id, name: l.name })) : null} />
+                      <MemberRowActions memberId={member.id} memberName={member.user.name} role={member.role} disabled={!!member.disabledAt} locationId={member.locationId} locations={locationSettings.enabled ? locationList.map((l) => ({ id: l.id, name: l.name })) : null} />
                     )}
                   </li>
                 );

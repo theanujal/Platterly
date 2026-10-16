@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { SLUG_PATTERN } from "@/modules/tenants/slug-rules";
 import { SlugField } from "@/components/slug-field";
 import { setCustomSlugAction } from "../actions";
+import { toast } from "@/components/ui/toaster";
 
 interface PublicMenuLinkFormProps {
   currentSlug: string;
@@ -24,7 +25,6 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
   const router = useRouter();
   const [slug, setSlug] = useState(slugChangeCount === 0 ? (suggestedSlug ?? "") : currentSlug);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [pending, setPending] = useState(false);
   const [understood, setUnderstood] = useState(false);
   // Only a real change matters: the same link saved again breaks nothing.
@@ -35,7 +35,6 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    setSuccess(false);
     setPending(true);
     const result = await setCustomSlugAction(slug);
     setPending(false);
@@ -43,7 +42,7 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
       setError(result.error);
       return;
     }
-    setSuccess(true);
+    toast.success("Public menu link saved.");
     router.refresh();
   }
 
@@ -70,7 +69,6 @@ export function PublicMenuLinkForm({ currentSlug, slugChangeCount, suggestedSlug
           {error}
         </p>
       )}
-      {success && <p className="text-sm text-emerald-600">Saved.</p>}
       <Button type="submit" disabled={pending || slug.length === 0 || !SLUG_PATTERN.test(slug) || (changing && !understood)} className="self-start">
         {pending ? "Saving…" : "Save link"}
       </Button>

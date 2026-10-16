@@ -9,6 +9,7 @@ import { useStopEditing } from "../../../../_components/editable-panel";
 import { FormFooter } from "../../../../_components/settings-ui";
 import { updateKitchenSheetTextAction } from "../actions";
 import type { KitchenSheetText } from "@/modules/kitchen/sheet-text";
+import { toast } from "@/components/ui/toaster";
 
 /** The two free-text blocks of the kitchen order PDF: one point per line, numbered on the printed sheet. */
 export function KitchenSheetTextForm({ initialValues }: { initialValues: KitchenSheetText }) {
@@ -28,7 +29,11 @@ export function KitchenSheetTextForm({ initialValues }: { initialValues: Kitchen
     formData.set("pleaseNote", pleaseNote);
     const result = await updateKitchenSheetTextAction(formData);
     setPending(false);
-    if (!result.ok) return setError(result.error);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success("Kitchen order sheet text saved.");
     router.refresh();
     stopEditing();
   }
