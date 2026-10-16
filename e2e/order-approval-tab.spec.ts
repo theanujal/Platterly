@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser, countInvoicesForOrder, getApprovalState, getOrderKind, getOrderRow, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
 import { signUpCaterer } from "./auth-helpers";
-import { openApprovalHistory, submitVenueDetailsAsCustomer } from "./approval-helpers";
+import { openApprovalHistory, submitVenueDetailsAsCustomer, waitForHydration } from "./approval-helpers";
 
 /**
  * The order's Menu Approval tab and the restricted view for an approval-only person (Menu Approvals + Orders merge, Phase 2).
@@ -23,6 +23,7 @@ async function openOrderTab(page: Page, orderId: string, query = "?tab=approval"
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   // The heading is server-rendered, so it shows before the page is interactive; a click in that gap is lost (dev server, heavy order form).
   await page.waitForLoadState("networkidle");
+  await waitForHydration(page); // networkidle is only a proxy; this waits for React's own handlers
 }
 
 test("the tab: opens by address, runs the whole approval from the order, keeps the customer link and versions, and the price is frozen outside Needs Review", async ({ page, browser }) => {
@@ -154,7 +155,10 @@ test("guests cannot be edited while the menu is with the customer (and the page 
   // With the customer: no Edit button, a note instead.
   await page.goto(`/orders/${sent.orderId}`);
   await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByTestId("guests-frozen-note")).toContainText("Recall it to change the guests");
+  await expect(page.getByTestId("order-frozen-banner")).toContainText("Recall the menu"); // one notice for the whole page, not one per card
+  await expect(page.getByTestId("guests-frozen-note")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit customer details" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Edit guest information" })).toHaveCount(0);
   // The Individual / Custom Pricing switch is not a native control, so the locked fieldset alone would not stop it: it is disabled itself.
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
@@ -347,6 +351,7 @@ test("a second meal asks to make it a Multi Order, removing back to one asks for
   await expect.poll(() => getOrderKind(draft.orderId)).toBe("MULTI");
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await waitForHydration(page);
   await expect(page.getByText("Multi Order").first()).toBeVisible();
 
   // removing it always asks, and says the order goes back to Single

@@ -59,3 +59,11 @@ export async function openOrderApprovalTab(page: Page, customerName: string) {
   await expect(page.locator("#order-panel-approval")).toBeVisible();
   return panel;
 }
+
+/**
+ * Waits until React has attached its handlers to the page. The server-rendered buttons are visible before that, and a click on one of them
+ * then does nothing (seen on the order page's planner, right after a load or reload). Checks a tab button, which every order page has.
+ */
+export async function waitForHydration(page: import("@playwright/test").Page) {
+  await page.waitForFunction(() => Array.from(document.querySelectorAll("[role=tab]")).some((tab) => Object.keys(tab).some((key) => key.startsWith("__reactProps"))));
+}
