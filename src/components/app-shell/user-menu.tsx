@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CreditCard, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -30,6 +30,7 @@ export function UserMenu({ fullName, email, initials, canOpenSettings }: { fullN
           <span className="text-[11px] text-muted-foreground">{email}</span>
         </div>
         <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{initials}</div>
+        <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
         {canOpenSettings && (
