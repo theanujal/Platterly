@@ -146,7 +146,7 @@ describe("Extra dishes and add-ons follow the adult count", () => {
 });
 
 describe("Meals follow the event dates", () => {
-  const meals = async (orderId: string) => (await prisma.mealPlanEntry.findMany({ where: { orderId }, orderBy: { date: "asc" } })).map((m) => `${m.date.toISOString().slice(0, 10)}|${m.mealType}`);
+  const meals = async (orderId: string) => (await prisma.mealPlanEntry.findMany({ where: { orderId }, orderBy: { date: "asc" } })).map((m) => `${m.date.toISOString().slice(0, 10)}|${m.mealType}`).sort(); // two meals on one date have no database order, so compare them sorted
 
   it("moving the event moves the saved meals with it, and a save heals a meal already off the dates", async () => {
     const { org, actor, order } = await makeOrder({ mealPlanEntries: [{ date: new Date("2026-12-05"), mealType: "DINNER", price: 10000 }, { date: new Date("2026-12-05"), mealType: "LUNCH", price: 8000 }] });
