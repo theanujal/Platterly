@@ -345,6 +345,32 @@ describe("Children Guests & Pricing on Quotation (mirrors Order's formula)", () 
     expect(Number(quotation.childrenCharge)).toBe(2 * 100 + 3 * 120);
   });
 
+  it("typed child rates count when the Individual Pricing switch is on, even with the method left at Standard", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const menu = await createMenu(org.id, { name: "Menu", menuType: "VEGETARIAN", pricePerPlate: 400 }, actor.id);
+
+    const quotation = await createQuotation(
+      org.id,
+      {
+        customerId: customer.id,
+        mealPlanEntries: [{ date: new Date("2026-12-01"), mealType: "LUNCH", menuId: menu.id }],
+        individualPricingEnabled: true,
+        childBelow5Count: 2,
+        individualChildBelow5Rate: 200,
+        individualChildBelow5PricingType: "FIXED",
+        child5To10Count: 3,
+        individualChild5To10Rate: 250,
+        individualChild5To10PricingType: "FIXED",
+      },
+      actor.id,
+    );
+
+    expect(quotation.pricingMethod).toBe("STANDARD");
+    expect(Number(quotation.childrenCharge)).toBe(2 * 200 + 3 * 250);
+  });
+
   it("no meal with an assigned Menu yet charges nothing even with non-zero counts", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

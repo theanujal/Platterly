@@ -320,8 +320,12 @@ export function QuotationForm({
   const mealsSubtotal = pricedMeals.menuAmount;
   const childPricingMenuId = deriveStandardChildPricingMenuIdPreview(values.mealPlanEntries);
   const childPricingMenu = menus.find((m) => m.id === childPricingMenuId);
+  // Same rule as the server (usesIndividualChildRates): the Individual Pricing switch with a typed child price, or the method.
+  const individualChildRates =
+    values.pricingMethod === "INDIVIDUAL" ||
+    (values.individualPricingEnabled && ((Number.parseFloat(values.individualChildBelow5Rate) || 0) > 0 || (Number.parseFloat(values.individualChild5To10Rate) || 0) > 0));
   const childrenCharge =
-    values.pricingMethod === "INDIVIDUAL"
+    individualChildRates
       ? computeIndividualChildrenChargePreview(
           Number.parseFloat(values.individualChildBelow5Rate) || 0,
           values.individualChildBelow5PricingType,

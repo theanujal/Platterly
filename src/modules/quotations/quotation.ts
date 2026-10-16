@@ -14,6 +14,7 @@ import {
   recalculateOrderTotals,
   computeChildrenCharge,
   computeIndividualChildrenCharge,
+  usesIndividualChildRates,
   deriveStandardChildPricingMenuId,
   type OrderItemCatalogInput,
   type MealPlanEntryInput,
@@ -143,7 +144,7 @@ export async function recalculateQuotationTotals(quotationId: string) {
   );
   const referenceMenuPrice = quotation.childPricingMenu ? Number(quotation.childPricingMenu.pricePerPlate) : 0;
   const childrenCharge =
-    quotation.pricingMethod === "INDIVIDUAL"
+    usesIndividualChildRates(quotation)
       ? computeIndividualChildrenCharge(quotation, referenceMenuPrice, quotation.childBelow5Count, quotation.child5To10Count)
       : computeChildrenCharge(quotation.childPricingMenu, quotation.childBelow5Count, quotation.child5To10Count);
   const subtotal = mealsSubtotal + childrenCharge;

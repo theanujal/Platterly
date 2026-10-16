@@ -129,4 +129,15 @@
   html {
     @apply font-sans;
   }
+  /* No up/down arrows on number fields (AJ, 2026-10-16): stepping by 0.01 is useless for amounts and easy to hit by mistake.
+     type="number" stays, so phones keep the number keypad and min/max still apply. */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }
