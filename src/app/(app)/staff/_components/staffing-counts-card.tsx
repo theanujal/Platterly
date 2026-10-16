@@ -40,12 +40,14 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
   }
 
   return (
-    <div data-testid="staffing-counts-card" className="min-w-0">
+    <div data-testid="staffing-counts-card" className="@container min-w-0">
       <SummaryCard
         icon={Users}
         title={`Staffing (${total} ${total === 1 ? "person" : "people"})`}
         description="Assign the event manager and enter the number of people needed for cooking, serving and setup."
       >
+        {/* Full width card: the Event Manager on the left, the staff counts on the right (stacked on a narrow card). */}
+        <div className="grid grid-cols-1 items-start gap-5 @xl:grid-cols-2">
         <div className="flex flex-col gap-1.5">
           <Label>Event Manager</Label>
           <SearchableSelect
@@ -63,12 +65,12 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
           />
         </div>
 
-        <div className="flex flex-col gap-4 border-t border-border pt-5">
+        <div className="flex flex-col gap-4 border-t border-border pt-5 @xl:border-t-0 @xl:pt-0">
           <div>
             <h3 className="text-base font-semibold">Staff Count</h3>
             <p className="text-sm text-muted-foreground">Enter how many people are needed for each activity.</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 @sm:grid-cols-3">
             {STAFF_DUTIES.map((duty) => {
               const Icon = DUTY_ICON[duty] ?? Users;
               return (
@@ -104,6 +106,7 @@ export function StaffingCountsCard({ orderId, eventId, initial, eventManager, su
               );
             })}
           </div>
+        </div>
         </div>
 
         <p className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-sm text-info">

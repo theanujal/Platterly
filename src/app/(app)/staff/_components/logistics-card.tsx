@@ -56,10 +56,11 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
   );
 
   const vehicleOptions = VEHICLE_TYPES.includes(form.vehicleType) || !form.vehicleType ? VEHICLE_TYPES : [form.vehicleType, ...VEHICLE_TYPES];
-  const section = (title: string, children: React.ReactNode) => (
+  // Half-width sections (Vehicle | Driver) stack their fields; the full-width Schedule & Status runs two across.
+  const section = (title: string, children: React.ReactNode, wide = false) => (
     <div className="flex flex-col gap-3 border-t border-border pt-5">
       <h3 className="text-base font-semibold">{title}</h3>
-      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+      <div className={wide ? "grid grid-cols-1 gap-4 @xl:grid-cols-2" : "grid grid-cols-1 gap-4"}>{children}</div>
     </div>
   );
   const status = (id: string, label: string, key: "dispatchStatus" | "setupStatus", labels: Record<string, string>, options: readonly string[]) => (
@@ -81,7 +82,7 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
   );
 
   return (
-    <div data-testid="logistics-card" className="min-w-0" onKeyDown={(e) => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
+    <div data-testid="logistics-card" className="@container min-w-0" onKeyDown={(e) => e.key === "Enter" && e.target instanceof HTMLInputElement && e.preventDefault()}>
       <SummaryCard
         icon={Truck}
         title="Logistics"
@@ -101,6 +102,7 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
         )}
 
         {/* Divs, not a form: this card also sits inside the order page's own form. */}
+        <div className="grid grid-cols-1 gap-x-5 @xl:grid-cols-2">
         {section(
           "Vehicle Details",
           <>
@@ -129,6 +131,7 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
             {field("lg-driver-phone", "Driver phone", "driverPhone", { type: "tel", placeholder: "Enter phone number" })}
           </>,
         )}
+        </div>
         {section(
           "Schedule & Status",
           <>
@@ -137,6 +140,7 @@ export function LogisticsCard({ orderId, eventId, data, canEdit }: { orderId: st
             {status("lg-setup", "Setup status", "setupStatus", SETUP_STATUS_LABEL, SETUP_STATUSES)}
             {field("lg-setup-time", "Setup time", "setupTime", { type: "datetime-local" })}
           </>,
+          true,
         )}
 
         {(data.dispatchedAt || data.deliveredAt) && (

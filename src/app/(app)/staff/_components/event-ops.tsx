@@ -18,7 +18,7 @@ export async function EventOps({ organizationId, eventId, orderId }: { organizat
   const [counts, event, suggestions, logistics, address] = await Promise.all([getStaffCounts(organizationId, eventId), prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { eventManagerName: true } }), listManagerSuggestions(organizationId), getLogistics(organizationId, eventId), getDeliveryAddress(organizationId, orderId)]);
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">
+    <div className="flex flex-col gap-4">
       <StaffingCountsCard orderId={orderId} eventId={eventId} initial={counts} eventManager={event.eventManagerName ?? ""} suggestions={suggestions} canEdit={canEdit} />
       <LogisticsCard
         orderId={orderId}

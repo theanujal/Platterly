@@ -140,7 +140,7 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await expect(card).toContainText("100 guests plus 10% extra");
   const line = card.getByTestId("required-line").filter({ hasText: ingredient });
   await expect(line).toContainText("22 kg");
-  await expect(line).toContainText("40 kg in stock");
+  await expect(line).toContainText("40 kg");
   await expect(page.getByTestId("inventory-sent-card")).toContainText("Nothing has been sent to this order yet.");
 
   // Send the items (AJ, 2026-10-10): the order is with the kitchen, so the menu is approved and the button works.
@@ -148,9 +148,16 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByRole("alertdialog").getByRole("button", { name: "Send items" }).click();
   const sentCard = page.getByTestId("inventory-sent-card");
   const sent = sentCard.getByTestId("sent-line").filter({ hasText: ingredient });
-  await expect(sent.getByTestId("sent-quantity")).toContainText("22");
-  await expect(sent.getByTestId("sent-quantity")).toContainText("kg sent");
+  await expect(sent.getByTestId("sent-quantity")).toContainText("22 kg");
+  await expect(page.getByTestId("sent-total")).toHaveText("22 kg");
   await expect(sent.getByTestId("sent-available")).toContainText("18 kg available"); // under the item name
+  await expect(sentCard.getByRole("columnheader", { name: "Batch cost" })).toBeVisible();
+  await expect(sentCard.getByTestId("sent-cost")).toContainText("Total cost (batch cost)");
+  // Search and filter on the required list
+  const requiredCard = page.getByTestId("inventory-required-card");
+  await requiredCard.getByPlaceholder("Search item or ingredient…").fill("zzz-nothing");
+  await expect(requiredCard).toContainText("No items match.");
+  await requiredCard.getByPlaceholder("Search item or ingredient…").fill("");
   await expect(card.getByRole("button", { name: "Send items to this order" })).toBeDisabled(); // nothing left to send
   await expect(line.getByText("Sent", { exact: true })).toBeVisible();
 
@@ -162,7 +169,7 @@ test("purchase, receive, pay the supplier, then take an order's stock from its r
   await page.getByRole("tab", { name: "Inventory" }).click();
   await page.getByRole("button", { name: `Return ${ingredient} to stock` }).click();
   await expect(page.getByTestId("inventory-sent-card")).toContainText("Nothing has been sent to this order yet.");
-  await expect(page.getByTestId("inventory-required-card").getByTestId("required-line").filter({ hasText: ingredient })).toContainText("40 kg in stock");
+  await expect(page.getByTestId("inventory-required-card").getByTestId("required-line").filter({ hasText: ingredient })).toContainText("40 kg");
   await page.getByTestId("inventory-required-card").getByRole("button", { name: "Send items to this order" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Send items" }).click();
   await expect(page.getByTestId("inventory-sent-card").getByTestId("sent-line")).toHaveCount(1);

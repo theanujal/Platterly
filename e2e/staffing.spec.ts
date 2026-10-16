@@ -85,10 +85,16 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   const logistics = page.getByTestId("logistics-card");
   await expect(logistics.getByTestId("delivery-address")).toBeVisible();
   await expect(logistics.getByLabel("Setup notes")).toHaveCount(0);
-  // Staffing and Logistics sit side by side on a wide screen
+  // Staffing is full width with Logistics underneath; inside Staffing the manager sits left of the counts, and in Logistics Vehicle sits left of Driver
   const [sb, lb] = [await card.boundingBox(), await logistics.boundingBox()];
-  expect(Math.abs((sb?.y ?? 0) - (lb?.y ?? 999))).toBeLessThan(20);
-  expect((lb?.x ?? 0) - (sb?.x ?? 0)).toBeGreaterThan(300);
+  expect((lb?.y ?? 0) - ((sb?.y ?? 0) + (sb?.height ?? 0))).toBeGreaterThan(0);
+  expect(Math.abs((lb?.width ?? 0) - (sb?.width ?? 1))).toBeLessThan(4);
+  const [mb, cb] = [await card.getByRole("button", { name: "Event Manager" }).boundingBox(), await card.getByLabel("Cooking").boundingBox()];
+  expect((cb?.x ?? 0) - (mb?.x ?? 0)).toBeGreaterThan(150);
+  const [vb, db] = [await logistics.getByLabel("Vehicle number").boundingBox(), await logistics.getByLabel("Driver name").boundingBox()];
+  expect(Math.abs((vb?.y ?? 0) - (db?.y ?? 999))).toBeLessThan(80);
+  expect((db?.x ?? 0) - (vb?.x ?? 0)).toBeGreaterThan(150);
+  await expect(logistics.getByRole("heading", { name: "Schedule & Status" })).toBeVisible();
   await logistics.getByLabel("Vehicle number").fill("ka01ab1234");
   await logistics.getByLabel("Dispatch status").click();
   await page.getByRole("option", { name: "On the way" }).click();
