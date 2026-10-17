@@ -50,7 +50,7 @@ export function ModuleAccessPanel({ roleLabel, grants, defaults, disabled, onCha
       {MODULE_GROUPS.map((group) => (
         <section key={group.id} aria-label={group.label} className="flex flex-col gap-2">
           <GroupHeading>{group.label}</GroupHeading>
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid gap-2 xl:grid-cols-2">
             {group.keys.map((key) => {
               const mod = moduleOf(key);
               return (

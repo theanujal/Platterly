@@ -102,8 +102,8 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
         )}
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <nav aria-label="Roles" className="grid content-start gap-2 sm:grid-cols-2 lg:grid-cols-1">
+      <div className="flex flex-col gap-5">
+        <nav aria-label="Roles" className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
           {roles.map((r) => {
             const selected = r.id === role.id;
             const changed = !sameGrants(r.current, r.defaults);
@@ -130,7 +130,7 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
           })}
         </nav>
 
-        <section aria-label={`${role.label} permissions`} className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-4 sm:p-5">
+        <section aria-label={`${role.label} permissions`} className="flex min-w-0 flex-col gap-4 rounded-lg border border-border p-3 sm:p-5">
           <div>
             <h3 className="text-lg font-semibold">{role.label}</h3>
             <p className="text-sm text-muted-foreground">{role.description}</p>
@@ -150,17 +150,20 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
                 type="button"
                 role="tab"
                 aria-selected={tab === id}
+                aria-label={label}
+                title={label}
                 aria-controls={`role-panel-${id}`}
                 tabIndex={tab === id ? 0 : -1}
                 onClick={() => setTab(id)}
                 onKeyDown={(e) => onTabKey(e, index)}
                 className={cn(
-                  "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:px-4",
+                  "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:gap-2 sm:px-4",
                   tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" />
-                {label}
+                {/* On a phone only the active tab shows its name, so the three fit without sideways scrolling (as the Team tabs do). */}
+                <span className={tab === id ? undefined : "hidden sm:inline"}>{label}</span>
               </button>
             ))}
           </div>

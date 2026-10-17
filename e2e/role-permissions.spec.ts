@@ -191,5 +191,8 @@ test("the editor fits a phone: no sideways page scroll on any tab", async ({ pag
     await expect(page.getByRole("tabpanel")).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${name} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+    // The three tabs fit their own row (only the active one shows its name), so none is scrolled out of sight.
+    const fits = await tabs(page).evaluate((el) => el.scrollWidth <= el.clientWidth);
+    expect(fits, `the tab row overflows when "${name}" is active`).toBe(true);
   }
 });
