@@ -9,7 +9,8 @@ import { Voices } from "@/components/proof";
 import { Reveal } from "@/components/reveal";
 import { ClosingBand } from "@/components/closing-band";
 import { Badge, ButtonLink, Panel } from "@/components/ui";
-import { CATERING, PRICING } from "@/content/catering";
+import { CATERING } from "@/content/catering";
+import { getPricing } from "@/lib/content";
 import { CATERING_PRODUCT, productVars } from "@/content/products";
 import { SITE, TESTIMONIALS } from "@/content/site";
 
@@ -19,7 +20,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/catering/" },
 };
 
-export default function CateringPage() {
+export default async function CateringPage() {
+  const PRICING = await getPricing();
   const faqLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -33,10 +35,7 @@ export default function CateringPage() {
     operatingSystem: "Web",
     url: `${SITE.url}/catering/`,
     description: CATERING.hero.copy,
-    offers: [
-      { "@type": "Offer", name: "Free Trial", price: "0", priceCurrency: "INR" },
-      { "@type": "Offer", name: "Premium (monthly)", price: "3000", priceCurrency: "INR" },
-    ],
+    offers: PRICING.plans.map((plan) => ({ "@type": "Offer", name: plan.per.startsWith("per month") ? `${plan.name} (monthly)` : plan.name, price: plan.price.replace(/[^\d]/g, ""), priceCurrency: "INR" })),
   };
 
   const d = (n: number) => ({ "--d": `${n}ms` }) as React.CSSProperties;
@@ -128,7 +127,7 @@ export default function CateringPage() {
             </h2>
             <p className="text-lg text-slate-gray">{PRICING.note}</p>
           </Reveal>
-          <div className="mx-auto mt-14 grid max-w-4xl gap-4 md:grid-cols-2">
+          <div className={`mx-auto mt-14 grid gap-4 md:grid-cols-2 ${PRICING.plans.length > 2 ? "max-w-6xl lg:grid-cols-3" : "max-w-4xl"}`}>
             {PRICING.plans.map((plan, index) => (
               <Reveal key={plan.name} delay={index * 120} className="flex">
                 <div className={`lift flex w-full flex-col gap-5 rounded-[28px] bg-paper p-8 hover:shadow-product ${plan.featured ? "ring-2 ring-brand" : ""}`}>
@@ -141,7 +140,7 @@ export default function CateringPage() {
                       <span className="h-display !text-5xl">{plan.price}</span>
                       <span className="text-base text-slate-gray">{plan.per}</span>
                     </p>
-                    {"yearly" in plan && <p className="mt-2 text-sm font-medium">{plan.yearly}</p>}
+                    {plan.yearly && <p className="mt-2 text-sm font-medium">{plan.yearly}</p>}
                   </div>
                   <p className="text-slate-gray">{plan.blurb}</p>
                   <ul className="flex flex-col gap-3">

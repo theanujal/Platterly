@@ -90,6 +90,25 @@ describe("saving and the bundle", () => {
     expect(bundle.posts[0].tags).toEqual(["Kitchen", "Planning"]);
     expect(bundle.pages.map((p) => p.slug)).toEqual(["privacy"]);
   });
+
+  it("sends the active catering plans with a price (and the trial), never a plan without a monthly price or an inactive one", async () => {
+    const base = { productKey: "catering", gstPercent: 18, highlights: ["Everything"] };
+    const made = await Promise.all([
+      prisma.plan.create({ data: { ...base, code: "sitetest-paid", name: "Site Test Paid", priceMonthly: 4999, priceAnnual: 39999 } }),
+      prisma.plan.create({ data: { ...base, code: "sitetest-free", name: "Site Test No Price" } }),
+      prisma.plan.create({ data: { ...base, code: "sitetest-off", name: "Site Test Off", priceMonthly: 100, isActive: false } }),
+    ]);
+    try {
+      const codes = (await buildBundle()).plans.map((p) => p.code);
+      expect(codes).toContain("sitetest-paid");
+      expect(codes).not.toContain("sitetest-free");
+      expect(codes).not.toContain("sitetest-off");
+      const paid = (await buildBundle()).plans.find((p) => p.code === "sitetest-paid");
+      expect(paid).toMatchObject({ priceMonthly: 4999, priceAnnual: 39999, gstPercent: 18, highlights: ["Everything"] });
+    } finally {
+      await prisma.plan.deleteMany({ where: { id: { in: made.map((p) => p.id) } } });
+    }
+  });
   it("renames and removes categories across posts and writes audit rows", async () => {
     await saveSitePost(post, "staff1").catch(() => undefined);
     await saveSitePost({ ...post, slug: "sitetest-two", tags: "Planning, Payments" }, null);

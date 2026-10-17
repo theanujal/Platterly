@@ -6,6 +6,7 @@ import { CONTACT } from "@/content/site";
 import type { Colourway, Notice, PageDoc, PostDoc, Release, UpcomingItem } from "@/content/types";
 import { UPCOMING } from "@/content/upcoming";
 import { parseFrontMatter, readingMinutes } from "@/lib/markdown-meta";
+import { type OpsPlan, type PricingData, pricingFromPlans } from "@/lib/pricing";
 
 /**
  * The one place pages read their content from. The notice bar, contact details, What's new, the blog and the legal pages
@@ -24,6 +25,8 @@ interface OpsBundle {
   releases: Release[];
   posts: Omit<PostDoc, "readingMinutes">[];
   pages: PageDoc[];
+  /** Absent when Ops predates plans on the site. */
+  plans?: OpsPlan[];
 }
 export type Contact = typeof CONTACT;
 
@@ -42,6 +45,11 @@ export async function getNotice(): Promise<Notice | null> {
   const ops = (await fromOps())?.notice;
   if (ops) return ops.enabled && ops.text ? { enabled: true, text: ops.text, linkLabel: ops.linkLabel || undefined, linkHref: ops.linkHref || undefined } : null;
   return NOTICE.enabled ? NOTICE : null;
+}
+
+/** The pricing cards: Ops' catering plans, or the typed-in cards when Ops sends none. */
+export async function getPricing(): Promise<PricingData> {
+  return pricingFromPlans((await fromOps())?.plans);
 }
 
 export async function getContact(): Promise<Contact> {
