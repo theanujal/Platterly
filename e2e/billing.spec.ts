@@ -25,6 +25,11 @@ test("an ended trial lands on the payment page only; paying opens the account ag
   await page.goto("/dashboard");
   await expect(page).toHaveURL(/\/dashboard/);
 
+  // An open account can leave the plans page again.
+  await page.goto("/subscribe");
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page).toHaveURL(/\/dashboard/);
+
   await expireSubscription(email);
   for (const path of ["/dashboard", "/orders", "/settings/subscription", "/inventory"]) {
     await page.goto(path);
@@ -32,9 +37,16 @@ test("an ended trial lands on the payment page only; paying opens the account ag
   }
   await expect(page.getByTestId("subscribe-title")).toHaveText("Your free trial has ended");
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  // A locked account has nowhere else to go, so there is no Back.
+  await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
 
   // The Premium plan's price comes from the Super Admin's plan: monthly first, then yearly, GST on top.
   const breakdown = page.getByTestId("price-breakdown");
+  await expect(breakdown).toBeVisible();
+  // More than one plan can be for sale (a local database may also hold the dev "Standard" plan from `npm run db:seed-dev-plan`);
+  // the page preselects the cheapest, so Premium is chosen explicitly. With a single plan there is no selector.
+  const planSelector = page.getByRole("radiogroup", { name: "Plan" });
+  if (await planSelector.count()) await planSelector.getByRole("radio", { name: /^Premium/ }).click();
   await expect(breakdown).toContainText("₹3,000");
   await expect(breakdown).toContainText("GST (18%)");
   await expect(breakdown).toContainText("₹540");
