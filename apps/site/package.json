@@ -14,7 +14,8 @@
     "test:e2e": "cd ../.. && npx playwright test -c apps/site/e2e/playwright.config.ts",
     "test:e2e:ops-fed": "node scripts/test-ops-fed.mjs",
     "capture": "cd ../.. && npx playwright test -c apps/site/capture/capture.config.ts && cd apps/site && node scripts/optimize-media.mjs",
-    "optimize:media": "node scripts/optimize-media.mjs"
+    "optimize:media": "node scripts/optimize-media.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "lucide-react": "^1.52.0",
@@ -26,13 +27,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.13.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "sharp": "^0.34.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.0"
   }
 }
