@@ -42,7 +42,8 @@ function link(value: string, label: string): string {
   return text;
 }
 
-async function touch(): Promise<void> {
+/** Marks the website content as changed since the last publish (the Unpublished changes badge). Called by every save that shows on the site. */
+export async function markSiteChanged(): Promise<void> {
   const now = new Date().toISOString();
   await prisma.siteSetting.upsert({ where: { key: "changed" }, create: { key: "changed", value: { at: now } }, update: { value: { at: now } } });
 }
@@ -72,7 +73,7 @@ export async function getSiteNotice(): Promise<SiteNotice> {
 export async function saveSiteNotice(input: SiteNotice, staffId: string | null): Promise<SiteNotice> {
   const value = cleanNotice(input);
   await prisma.siteSetting.upsert({ where: { key: "notice" }, create: { key: "notice", value: { ...value } }, update: { value: { ...value } } });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.notice.saved", subject: "notice", detail: { enabled: value.enabled, text: value.text } });
   return value;
 }
@@ -112,7 +113,7 @@ export async function getSiteContact(): Promise<SiteContact> {
 export async function saveSiteContact(input: Parameters<typeof cleanContact>[0], staffId: string | null): Promise<SiteContact> {
   const value = cleanContact(input);
   await prisma.siteSetting.upsert({ where: { key: "contact" }, create: { key: "contact", value: { ...value } }, update: { value: { ...value } } });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.contact.saved", subject: "contact" });
   return value;
 }
@@ -135,13 +136,13 @@ export async function saveSiteRelease(input: ReleaseInput, staffId: string | nul
   const data = cleanRelease(input);
   const { id, ...rest } = data;
   const row = await prisma.siteRelease.upsert({ where: { id }, create: data, update: rest });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.release.saved", subject: id, detail: { title: data.title } });
   return row;
 }
 export async function deleteSiteRelease(id: string, staffId: string | null) {
   await prisma.siteRelease.deleteMany({ where: { id } });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.release.deleted", subject: id });
 }
 
@@ -201,13 +202,13 @@ export async function saveSitePost(input: PostInput, staffId: string | null) {
   const data = cleanPost(input);
   const { slug: key, ...rest } = data;
   const row = await prisma.sitePost.upsert({ where: { slug: key }, create: data, update: rest });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.post.saved", subject: key, detail: { title: data.title } });
   return row;
 }
 export async function deleteSitePost(postSlug: string, staffId: string | null) {
   await prisma.sitePost.deleteMany({ where: { slug: postSlug } });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.post.deleted", subject: postSlug });
 }
 /** Every category in use, with how many posts carry it. */
@@ -224,7 +225,7 @@ export async function renameCategory(from: string, to: string, staffId: string |
     const tags = [...new Set(post.tags.map((t) => (t === from ? target : t)).filter(Boolean))];
     await prisma.sitePost.update({ where: { slug: post.slug }, data: { tags } });
   }
-  if (posts.length) await touch();
+  if (posts.length) await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.category.renamed", subject: from, detail: { to: target, posts: posts.length } });
   return posts.length;
 }
@@ -248,7 +249,7 @@ export async function saveLegalPage(input: LegalInput, staffId: string | null) {
   const data = cleanLegal(input);
   const { slug: key, ...rest } = data;
   const row = await prisma.siteLegalPage.upsert({ where: { slug: key }, create: data, update: rest });
-  await touch();
+  await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.page.saved", subject: key, detail: { title: data.title, updated: data.updated } });
   return row;
 }

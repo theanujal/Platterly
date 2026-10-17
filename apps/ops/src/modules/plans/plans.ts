@@ -1,9 +1,10 @@
 import "server-only";
 import { validateEntitlements, type EntitlementValues, type ProductManifest } from "@platterly/contract";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type Plan } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { reissueForPlan } from "@/modules/snapshots/issue";
+import { markSiteChanged } from "@/modules/site-content/site-content";
 
 export class PlanError extends Error {}
 
@@ -55,10 +56,24 @@ const data = (input: PlanInput, clean: { code: string; name: string; entitlement
   entitlements: clean.entitlements as Prisma.InputJsonValue,
 });
 
+/** What the marketing site shows of a plan (apps/site pricing cards, via the content bundle). Limits (entitlements) are not shown. */
+type SitePlan = Pick<Plan, "productKey" | "name" | "description" | "isTrial" | "trialDurationDays" | "priceMonthly" | "priceAnnual" | "gstPercent" | "highlights" | "isActive">;
+const siteView = (plan: SitePlan) => JSON.stringify([plan.name, plan.description, plan.isTrial, plan.trialDurationDays, plan.priceMonthly === null ? null : Number(plan.priceMonthly), plan.priceAnnual === null ? null : Number(plan.priceAnnual), Number(plan.gstPercent), plan.highlights, plan.isActive]);
+/** A plan is on the site while it is active and either the trial or has a monthly price (see buildBundle). */
+const onSite = (plan: SitePlan) => plan.productKey === "catering" && plan.isActive && (plan.isTrial || plan.priceMonthly !== null);
+
+/** The Unpublished changes badge: only a catering plan the site shows (before or after the save) whose site-visible fields changed. */
+async function markSiteIfPlanChanged(before: SitePlan | null, after: SitePlan) {
+  if (!(before && onSite(before)) && !onSite(after)) return;
+  if (before && siteView(before) === siteView(after)) return;
+  await markSiteChanged();
+}
+
 export async function createPlan(input: PlanInput, actorUserId: string | null) {
   const clean = await validate(input);
   const plan = await prisma.plan.create({ data: { productKey: input.productKey, ...data(input, clean) } });
   await audit({ actorUserId, action: "plan.created", subject: plan.id, detail: { productKey: plan.productKey, code: plan.code } });
+  await markSiteIfPlanChanged(null, plan);
   return plan;
 }
 
@@ -70,13 +85,16 @@ export async function updatePlan(id: string, input: PlanInput, actorUserId: stri
   const clean = await validate(input, id);
   const plan = await prisma.plan.update({ where: { id }, data: data(input, clean) });
   await audit({ actorUserId, action: "plan.updated", subject: id, detail: { productKey: plan.productKey, code: plan.code } });
+  await markSiteIfPlanChanged(existing, plan);
   const reissued = await reissueForPlan(id);
   return { plan, reissued };
 }
 
 export async function setPlanActive(id: string, isActive: boolean, actorUserId: string | null) {
-  await prisma.plan.update({ where: { id }, data: { isActive } });
+  const existing = await prisma.plan.findUnique({ where: { id } });
+  const plan = await prisma.plan.update({ where: { id }, data: { isActive } });
   await audit({ actorUserId, action: isActive ? "plan.activated" : "plan.retired", subject: id });
+  await markSiteIfPlanChanged(existing, plan);
 }
 
 export async function listPlans(productKey?: string) {
