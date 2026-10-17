@@ -118,7 +118,7 @@ describe("notification triggers (Chunk 16)", () => {
     expect(await prisma.notification.count({ where: { organizationId: t.org.id, event: "payment.overdue_digest" } })).toBe(1); // none added on a Tuesday
   });
 
-  it("overdue payment: Owner, Manager and Accounts get one in-app alert the day after the event, cancelled orders none (AJ, 2026-10-12)", async () => {
+  it("overdue payment: the Owner and Accounts get one in-app alert the day after the event; a Manager only once the Admin grants payment details; cancelled orders none (AJ, 2026-10-12, 2026-10-17)", async () => {
     const t = await makeTeam();
     const manager = await t.addMember("manager");
     const event = new Date("2026-12-01T00:00:00Z");
@@ -131,8 +131,10 @@ describe("notification triggers (Chunk 16)", () => {
     await runDueNotifications(now);
     await runDueNotifications(now);
     const alerts = (await rows(t.org.id, "payment.overdue_team")).filter((n) => n.channel === "IN_APP");
-    // Only the people who collect the money: Owner, Manager and Accounts (AJ, 2026-10-12).
-    expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, manager.id, t.accounts.id].sort());
+    // Only the people who collect the money and may see payment figures: Owner and Accounts. The message carries the unpaid amount, so a Manager
+    // (who holds no payment-details right by default) is not told (Roles & Permissions redesign, AJ 2026-10-17).
+    expect(alerts.map((n) => n.recipientUserId).sort()).toEqual([t.owner.id, t.accounts.id].sort());
+    expect(alerts.some((n) => n.recipientUserId === manager.id)).toBe(false);
     expect(JSON.stringify(alerts[0].payload)).toContain(order.id);
     expect(alerts.some((n) => JSON.stringify(n.payload).includes(cancelled.id))).toBe(false);
   });

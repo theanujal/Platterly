@@ -73,7 +73,7 @@ const status = async (orgId: string, dishId: string) => (await getRecipeForItem(
 const auditCount = (orgId: string) => prisma.auditLog.count({ where: { organizationId: orgId, action: { in: ["recipe.activate", "recipe.return_to_draft"] } } });
 const isForbidden = (error: unknown) => String((error as { digest?: string }).digest ?? error).includes("403");
 
-describe("changing a recipe's status needs menus: edit", () => {
+describe("changing a recipe's status needs recipes: edit", () => {
   it.each(["staff", "inventoryTeam", "accounts", "salesEvents"])("a %s (no menu edit) cannot activate or return a recipe to Draft, and nothing changes", async (role) => {
     const k = await newKitchen("Perm Org");
     const user = await k.person(role);
@@ -104,12 +104,12 @@ describe("changing a recipe's status needs menus: edit", () => {
     expect(await status(k.org.id, k.dish.id)).toBe("DRAFT");
   });
 
-  it("the business's own role settings apply: once the owner takes menu editing away from managers, a manager is refused", async () => {
+  it("the business's own role settings apply: once the owner takes recipe editing away from managers, a manager is refused", async () => {
     const k = await newKitchen("Perm Org");
     const manager = await k.person("manager");
     signedInAs(manager, k.org.id);
     expect(await setRecipeStatusAction(k.dish.id, "ACTIVE")).toEqual({ ok: true });
-    await saveRoleGrants(k.org.id, "manager", { ...defaultGrants("manager"), menus: ["view"] }, k.owner.id);
+    await saveRoleGrants(k.org.id, "manager", { ...defaultGrants("manager"), recipes: ["view"] }, k.owner.id);
     const refused = await setRecipeStatusAction(k.dish.id, "DRAFT").catch((e) => e);
     expect(isForbidden(refused)).toBe(true);
     expect(await status(k.org.id, k.dish.id)).toBe("ACTIVE");
