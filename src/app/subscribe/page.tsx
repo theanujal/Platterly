@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { getSubscribeData } from "@/modules/subscriptions/billing-source";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
@@ -23,6 +26,14 @@ export default async function SubscribePage() {
 
   return (
     <div className="relative min-h-svh bg-accent/60">
+      {/* A locked kitchen can reach nothing else, so Back is only offered once the account is open. */}
+      {!data.locked && (
+        <div className="absolute top-4 left-4 sm:top-5 sm:left-6">
+          <Button variant="outline" size="md" render={<Link href="/dashboard" />} nativeButton={false}>
+            <ArrowLeft /> Back
+          </Button>
+        </div>
+      )}
       <div className="absolute top-4 right-4 sm:top-5 sm:right-6">
         <SignOutButton variant="outline" size="md" />
       </div>
