@@ -198,10 +198,11 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
 
   // The sidebar and Dashboard show the kitchen role only what it can use.
   const sidebar = kitchenPage.locator("[data-sidebar='sidebar']").first();
-  for (const name of ["Orders", "Calendar", "Menu Catalog", "Kitchen Dashboard"]) {
+  // The Kitchen Team has its own Kitchen module, Recipes and Staff; no general Orders, Calendar or Menu Catalog (Roles & Permissions, 2026-10-17).
+  for (const name of ["Kitchen Dashboard", "Recipes", "Staff"]) {
     await expect(sidebar.getByRole("link", { name, exact: true })).toBeVisible();
   }
-  for (const name of ["Quotations", "Customers", "Stock & Supplies", "Menu Approvals", "Settings"]) {
+  for (const name of ["Orders", "Calendar", "Menu Catalog", "Quotations", "Customers", "Stock & Supplies", "Menu Approvals", "Settings"]) {
     await expect(sidebar.getByRole("link", { name, exact: true })).toHaveCount(0);
   }
   await expect(kitchenPage.getByText("Pending Revenue")).toHaveCount(0);
@@ -217,12 +218,10 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   await expect(kitchenPage.getByRole("button", { name: "Review" })).toHaveCount(0);
   await expect(kitchenPage.getByText(customerName, { exact: true })).toHaveCount(0);
 
-  // Orders is view-only for the kitchen role: it can open the order but not change its status.
+  // The kitchen role has no Orders access: the list and an order's page are refused (its work is on the Kitchen Dashboard).
   await kitchenPage.goto("/orders");
-  await kitchenPage.getByLabel("Grid view").click();
-  await kitchenPage.getByTestId("order-card").filter({ hasText: customerName }).getByRole("link", { name: customerName }).click();
-  await expect(kitchenPage).toHaveURL(/\/orders\/.+/);
-  await expect(kitchenPage.getByRole("combobox", { name: "Change status" })).toHaveCount(0);
+  await expect(kitchenPage.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
+  await expect(kitchenPage.getByText(customerName, { exact: true })).toHaveCount(0);
 
   // ===== Kitchen member: runs the Kitchen Dashboard =====
   await kitchenPage.goto("/kitchen-dashboard");

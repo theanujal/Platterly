@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { cleanupOnboardingTestUser, seedOrderForBilling, setMemberRole } from "./db";
+import { cleanupOnboardingTestUser, seedOrderForBilling, setMemberRole, setSensitiveGrants } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -58,21 +58,28 @@ test("the owner exports a report as CSV and Excel; every role that can read repo
   expect(profit).toContain("Revenue (₹)");
   expect(profit).toContain("50000");
 
-  // Anyone who can read reports can download them: a manager gets the button and the files.
+  // A manager can download the reports and audit files, but expenses and profitability are sensitive data they do not hold
+  // (financialReports, profitability; AJ, 2026-10-17) until the owner grants them.
   await setMemberRole(email, "manager");
   await page.goto("/reports");
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
-  for (const path of ["/reports/export?tab=sales", "/profitability/export", "/expenses/export", "/audit-log/export"]) {
+  for (const path of ["/reports/export?tab=sales", "/audit-log/export"]) {
     expect((await page.request.get(path)).status(), path).toBe(200);
   }
+  for (const path of ["/profitability/export", "/expenses/export"]) {
+    expect((await page.request.get(path)).status(), path).toBe(403);
+  }
+  await setSensitiveGrants(email, "manager", ["financialReports", "profitability"]);
+  for (const path of ["/profitability/export", "/expenses/export"]) {
+    expect((await page.request.get(path)).status(), path).toBe(200);
+  }
+  await setSensitiveGrants(email, "manager", []);
 
-  // The Staff role is read-only but can read reports, so it can download them too; a tab it cannot read stays closed.
+  // The Staff role has no reports in its preset, so every file is refused.
   await setMemberRole(email, "staff");
-  expect((await page.request.get("/reports/export?tab=sales")).status()).toBe(200);
-  expect((await page.request.get("/profitability/export")).status()).toBe(403); // no expenses access
-  expect((await page.request.get("/audit-log/export")).status()).toBe(403); // no audit access
-  const finance = await (await page.request.get("/reports/export?tab=finance&format=csv")).text();
-  expect(finance).toContain("Sales report"); // falls back to Sales: no expenses access, so no Finance tab
+  for (const path of ["/reports/export?tab=sales", "/profitability/export", "/expenses/export", "/audit-log/export"]) {
+    expect((await page.request.get(path)).status(), path).toBe(403);
+  }
 
   // The Kitchen role has no reports at all: no button and every file is refused.
   await setMemberRole(email, "kitchen");

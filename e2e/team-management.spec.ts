@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser } from "./db";
+import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser, setPushPromptState } from "./db";
 import { verifyEmailViaOtp } from "./auth-helpers";
 
 /**
@@ -43,6 +43,8 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
   await page.getByRole("button", { name: "Create Platterly Account" }).click();
   await verifyEmailViaOtp(page, ownerEmail);
+  // The "Stay updated" popup would sit over the page under test (as signUpCaterer does).
+  await setPushPromptState(ownerEmail, "NEVER");
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
 
   await page.getByLabel("Company / business name").fill(businessName);

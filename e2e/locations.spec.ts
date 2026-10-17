@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, setRoleGrants, seedPurchaseOrder, seedReviewFixture } from "./db";
+import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, setRoleGrants, setSensitiveGrants, seedPurchaseOrder, seedReviewFixture } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -120,6 +120,8 @@ test("a person held to a location cannot open another location's order or sheets
   await expect(page.getByText("PO-").filter({ hasText: poNorth.slice(3) })).toHaveCount(1);
   await expect(page.getByText(poMain.slice(3))).toHaveCount(0);
   // Reports and the Dashboard say or show which location they are for.
+  // The Sales tab shows revenue, so a Manager sees it only with the financial reports key (Roles & Permissions); granted here to check the location scope.
+  await setSensitiveGrants(email, "manager", ["financialReports"]);
   await page.goto("/reports");
   await expect(page.getByTestId("report-location")).toContainText("North Branch");
   await expect(page.getByTestId("sales-orders")).toContainText("1");

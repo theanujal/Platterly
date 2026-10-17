@@ -234,7 +234,8 @@ test("a person who can approve menus but not edit orders gets the restricted vie
   const draft = await seedReviewFixture(email, { ordinal: 31, customer: "Only Draft", status: "DRAFT" });
   const custom = await seedReviewFixture(email, { ordinal: 32, customer: "Only Custom", status: "DRAFT", customMenu: true });
   const sent = await seedReviewFixture(email, { ordinal: 33, customer: "Only Sent", status: "SENT_TO_CUSTOMER", versions: 1, link: true });
-  await setRoleGrants(email, "salesEvents", { orders: ["view"], menus: ["view", "approve"], customers: ["view"] });
+  // This role sees order prices (orderPrices) but cannot edit orders, so the quote is shown to it and not editable.
+  await setRoleGrants(email, "salesEvents", { orders: ["view"], menus: ["view", "approve"], customers: ["view"], sensitive: ["orderPrices"] });
   await setMemberRole(email, "salesEvents");
 
   // the restricted view: header, summary, status history and the tab; no order form, none of the private fields
@@ -257,6 +258,15 @@ test("a person who can approve menus but not edit orders gets the restricted vie
   // a custom menu: the quote is not theirs to enter, and sending is blocked with the reason
   await page.goto(`/orders/${custom.orderId}`);
   await expect(page.getByTestId("custom-price-readonly")).toContainText("No price has been quoted yet");
+  await expect(page.locator("#ma-price")).toHaveCount(0);
+  await page.getByRole("button", { name: "Send Menu for Approval" }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("no price yet");
+  expect((await getApprovalState(custom.orderId)).selection).toBe("DRAFT");
+
+  // without the price right the quote card is not shown at all (no price reaches the page), and sending is still blocked with the reason
+  await setRoleGrants(email, "salesEvents", { orders: ["view"], menus: ["view", "approve"], customers: ["view"], sensitive: [] });
+  await page.goto(`/orders/${custom.orderId}`);
+  await expect(page.getByTestId("custom-price-readonly")).toHaveCount(0);
   await expect(page.locator("#ma-price")).toHaveCount(0);
   await page.getByRole("button", { name: "Send Menu for Approval" }).click();
   await expect(page.locator("p[role=alert]")).toContainText("no price yet");

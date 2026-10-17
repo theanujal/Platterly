@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { Pool } from "pg";
 import { DEFAULT_TIME_ZONE } from "../src/lib/time/timezone";
+import { MATRIX_MODULES } from "../src/lib/auth/role-matrix";
 
 /**
  * Chunk 4 — Playwright's default TS loader compiles everything as CommonJS
@@ -836,10 +837,22 @@ export async function seedReviewFixture(email: string, options: ReviewFixtureOpt
 }
 
 /**
- * Replaces what a role may do in the user's business (the owner's Manage Role Permissions): `grants` maps a module to its actions, e.g.
- * { orders: ["view"], menus: ["view", "approve"] }. Used to make a role that can approve menus but cannot edit orders.
+ * Replaces what a role may do in the user's business, the way the owner's Manage Role Permissions saves it: a full matrix, so a module
+ * not named in `grants` is switched off (e.g. { orders: ["view"], menus: ["view", "approve"] } makes a role that approves menus but
+ * cannot edit orders, and cannot open Kitchen, Recipes or Stock either). A partial override that leaves a module unlisted keeps its
+ * preset instead; use `setSensitiveGrants` for that.
  */
 export async function setRoleGrants(email: string, role: string, grants: Record<string, string[]>): Promise<void> {
+  const full: Record<string, string[]> = Object.fromEntries(MATRIX_MODULES.map((mod) => [mod.key, []]));
+  await saveRoleOverride(email, role, { ...full, ...grants });
+}
+
+/** Grants a role only the named sensitive-data keys; every module keeps its preset. An empty list takes them all away. */
+export async function setSensitiveGrants(email: string, role: string, keys: string[]): Promise<void> {
+  await saveRoleOverride(email, role, { sensitive: keys });
+}
+
+async function saveRoleOverride(email: string, role: string, grants: Record<string, string[]>): Promise<void> {
   const { rows } = await pool.query<{ organizationId: string }>('SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1', [email]);
   const organizationId = rows[0]?.organizationId;
   if (!organizationId) throw new Error(`No organization for ${email}`);

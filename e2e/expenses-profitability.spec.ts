@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { cleanupInviteeUser, cleanupOnboardingTestUser, getPendingInvitationId, seedOrderForBilling, setMemberRole } from "./db";
+import { cleanupInviteeUser, cleanupOnboardingTestUser, getPendingInvitationId, seedOrderForBilling, setMemberRole, setSensitiveGrants } from "./db";
 import { signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
 
 /**
@@ -175,7 +175,9 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
 
   await accounts.goto("/dashboard");
   await expect(accounts.getByRole("link", { name: "Finance", exact: true })).toBeVisible();
-  await expect(accounts.getByRole("link", { name: "Orders", exact: true })).toHaveCount(0);
+  // Accounts sees the orders it bills (view only, Roles & Permissions D3, 2026-10-17) but not the sales side.
+  await expect(accounts.getByRole("link", { name: "Orders", exact: true })).toHaveCount(1);
+  await expect(accounts.getByRole("link", { name: "Quotations", exact: true })).toHaveCount(0);
   await accounts.getByRole("link", { name: "Finance", exact: true }).click();
   await expect(accounts.getByRole("heading", { name: "Finance", exact: true })).toBeVisible();
   await expect(accounts.getByRole("navigation", { name: "Finance" }).getByRole("link", { name: "Profitability" })).toBeVisible();
@@ -198,7 +200,11 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
   await expect(accounts.getByTestId("exp-total-order")).toHaveText("₹5,000.00");
   await expect(accounts.getByRole("button", { name: /^Delete .* expense$/ })).toHaveCount(0);
 
-  // Profitability opens for Accounts, with no link into the order page they cannot open
+  // Profitability is sensitive data Accounts does not hold by default (Roles & Permissions D3)...
+  await accounts.goto("/profitability");
+  await expect(accounts.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
+  // ...and opens once the Admin grants it, with no link into the order page they cannot edit.
+  await setSensitiveGrants(accountsEmail, "accounts", ["orderPrices", "paymentDetails", "financialReports", "commercialDocuments", "profitability"]);
   await accounts.goto("/profitability");
   await expect(accounts.getByTestId("total-cost")).toHaveText("₹5,000.00");
   await expect(accounts.getByRole("link", { name: /ORD-/ })).toHaveCount(0);

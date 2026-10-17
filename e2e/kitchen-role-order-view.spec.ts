@@ -3,8 +3,9 @@ import { cleanupOnboardingTestUser, seedOrderWithEvent, setMemberRole } from "./
 import { signUpCaterer } from "./auth-helpers";
 
 /**
- * The Kitchen Team (AJ, 2026-10-17): sees the Kitchen Dashboard and the orders, opens an order's details read-only, and
- * has no way to create or edit one. (Moving the kitchen stage is covered by the kitchen dashboard specs.)
+ * A role that can view orders but not edit them (Staff, AJ, 2026-10-17) opens an order's details read-only and has no way to
+ * create or edit one. The Kitchen Team no longer has Orders at all (its own Kitchen module); moving the kitchen stage is covered
+ * by the kitchen dashboard specs.
  */
 const emails: string[] = [];
 test.afterEach(async () => {
@@ -12,13 +13,13 @@ test.afterEach(async () => {
   if (email) await cleanupOnboardingTestUser(email);
 });
 
-test("the kitchen role opens an order's details read-only instead of a 403", async ({ page }) => {
+test("a view-only role opens an order's details read-only instead of a 403", async ({ page }) => {
   test.setTimeout(90_000);
   const email = `e2e-kitchenview-${Date.now()}@example.test`;
   emails.push(email);
   await signUpCaterer(page, email);
   const { orderId, orderNumber } = await seedOrderWithEvent(email);
-  await setMemberRole(email, "kitchen");
+  await setMemberRole(email, "staff");
 
   await page.goto("/orders");
   await expect(page.getByRole("link", { name: "Create Order" })).toHaveCount(0);
@@ -26,7 +27,7 @@ test("the kitchen role opens an order's details read-only instead of a 403", asy
   await expect(page.getByText(/Order Amount/)).toHaveCount(0);
   await expect(page.getByRole("columnheader", { name: "Amount" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Abandoned Orders" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Kitchen Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Kitchen Dashboard" })).toHaveCount(0);
 
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("approval-only-order")).toBeVisible();
@@ -37,4 +38,19 @@ test("the kitchen role opens an order's details read-only instead of a 403", asy
   // Still no way into the pages the role does not have.
   await page.goto("/customers");
   await expect(page.getByRole("heading", { name: "Customers" })).toHaveCount(0);
+});
+
+test("the kitchen role has the Kitchen Dashboard and no general Orders access", async ({ page }) => {
+  test.setTimeout(90_000);
+  const email = `e2e-kitchenonly-${Date.now()}@example.test`;
+  emails.push(email);
+  await signUpCaterer(page, email);
+  const { orderId } = await seedOrderWithEvent(email);
+  await setMemberRole(email, "kitchen");
+
+  await page.goto("/kitchen-dashboard");
+  await expect(page.getByRole("link", { name: "Kitchen Dashboard" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Orders", exact: true })).toHaveCount(0);
+  await page.goto(`/orders/${orderId}`);
+  await expect(page.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
 });

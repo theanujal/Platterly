@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, seedOrderForBilling, setOrderEventPast } from "./db";
+import { cleanupOnboardingTestUser, seedOrderForBilling, setOrderEventPast, setOrderStatus } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -25,6 +25,9 @@ test("Finance -> Overdue Payments lists overdue orders, record payment from the 
   const second = await seedOrderForBilling(email, 8000);
   const cancelled = await seedOrderForBilling(email, 10000);
   const upcoming = await seedOrderForBilling(email, 5000);
+  // Money can only be recorded against an order the customer has approved (payment-math `customerHasApproved`).
+  await setOrderStatus(overdue.orderId, "APPROVED");
+  await setOrderStatus(second.orderId, "APPROVED");
   await setOrderEventPast(overdue.orderId, 3);
   await setOrderEventPast(second.orderId, 1);
   await setOrderEventPast(cancelled.orderId, 3, "CANCELLED");

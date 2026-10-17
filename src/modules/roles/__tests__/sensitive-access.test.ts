@@ -114,3 +114,67 @@ describe("older saved changes", () => {
     expect(await heldBy(org, "accounts")).toEqual(["commercialDocuments", "financialReports", "orderPrices", "paymentDetails"]);
   });
 });
+
+describe("partial overrides: unlisted modules keep the preset, explicit denials hold", () => {
+  const OLD_MODULES = ["orders", "quotations", "invoices", "payments", "customers", "eventTypes", "menus", "inventory", "expenses", "reports", "audit", "staffing"];
+  // What the old editor saved: only the twelve old modules, with Orders view-only and everything else switched off.
+  const legacyOverride = () => Object.fromEntries(OLD_MODULES.map((key) => [key, key === "orders" ? ["view"] : []]));
+
+  it("an unlisted module falls back to the role's preset", async () => {
+    const org = await makeOrg();
+    await prisma.rolePermissionOverride.create({ data: { organizationId: org, role: "manager", grants: { orders: ["view"] } } });
+    expect(await roleAllows(org, "manager", { orders: ["view"] })).toBe(true);
+    // Customers is not listed, so the Manager keeps the preset create/edit there.
+    expect(await roleAllows(org, "manager", { customers: ["view", "create", "edit"] })).toBe(true);
+    expect(await roleAllows(org, "manager", { recipes: ["view", "create", "edit"] })).toBe(true);
+  });
+
+  it("an explicit denial overrides an enabled preset, for a module action and for a sensitive key", async () => {
+    const org = await makeOrg();
+    // The Manager's preset has orders create/edit; the override lists orders as view only, so they are denied.
+    await saveRoleGrants(org, "manager", { ...(await effectiveMatrixGrants(org, "manager")), orders: ["view"] });
+    expect(await roleAllows(org, "manager", { orders: ["view"] })).toBe(true);
+    expect(await roleAllows(org, "manager", { orders: ["create"] })).toBe(false);
+    expect(await roleAllows(org, "manager", { orders: ["edit"] })).toBe(false);
+    // Accounts holds four keys by preset; an explicit empty list takes every one away, and a short list keeps only what it names.
+    await saveRoleGrants(org, "accounts", { ...(await effectiveMatrixGrants(org, "accounts")), sensitive: [] });
+    expect(await heldBy(org, "accounts")).toEqual([]);
+    await saveRoleGrants(org, "accounts", { ...(await effectiveMatrixGrants(org, "accounts")), sensitive: ["paymentDetails"] });
+    expect(await heldBy(org, "accounts")).toEqual(["paymentDetails"]);
+  });
+
+  it.each(["staff", "manager", "kitchen"])("a legacy partial override for %s applies what it lists and grants no sensitive key", async (role) => {
+    const org = await makeOrg();
+    const presetKitchen = await grantedActions(org, role, "kitchen");
+    const presetRecipes = await grantedActions(org, role, "recipes");
+    await prisma.rolePermissionOverride.create({ data: { organizationId: org, role, grants: legacyOverride() } });
+    // The listed modules follow the override: Orders is view-only, everything else listed is off.
+    expect(await grantedActions(org, role, "orders")).toEqual(["view"]);
+    for (const key of OLD_MODULES.filter((k) => k !== "orders")) expect(await grantedActions(org, role, key), key).toEqual([]);
+    // The modules the legacy override never knew about keep the preset, and no sensitive key appears.
+    expect(await grantedActions(org, role, "kitchen")).toEqual(presetKitchen);
+    expect(await grantedActions(org, role, "recipes")).toEqual(presetRecipes);
+    expect(await heldBy(org, role)).toEqual([]);
+  });
+
+  it("a sensitive key written into another module's list, or a key only the preset names, is not honoured as a grant", async () => {
+    const org = await makeOrg();
+    await prisma.rolePermissionOverride.create({ data: { organizationId: org, role: "staff", grants: { orders: ["view", "orderPrices", "menuPrices"], quotations: ["view", "financialReports"] } } });
+    expect(await heldBy(org, "staff")).toEqual([]);
+    expect(await roleAllows(org, "staff", { sensitive: ["orderPrices"] })).toBe(false);
+    // The effective view is cleaned the same way: only real actions of the module survive.
+    expect((await effectiveMatrixGrants(org, "staff")).orders).toEqual(["view"]);
+  });
+
+  it("Kitchen access never implies Orders or Menu Catalog, by preset or after a legacy override", async () => {
+    const org = await makeOrg();
+    for (const wanted of [{ orders: ["view"] }, { menus: ["view"] }, { quotations: ["view"] }, { customers: ["view"] }]) {
+      expect(await roleAllows(org, "kitchen", wanted), JSON.stringify(wanted)).toBe(false);
+    }
+    // A legacy override that lists nothing for Orders or Menus does not open them, and the kitchen work stays available.
+    await prisma.rolePermissionOverride.create({ data: { organizationId: org, role: "kitchen", grants: { customers: [], staffing: ["view"] } } });
+    for (const wanted of [{ orders: ["view"] }, { menus: ["view"] }]) expect(await roleAllows(org, "kitchen", wanted), JSON.stringify(wanted)).toBe(false);
+    expect(await roleAllows(org, "kitchen", { kitchen: ["view", "updateStatus", "viewPdf"] })).toBe(true);
+    expect(await heldBy(org, "kitchen")).toEqual([]);
+  });
+});

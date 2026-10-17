@@ -27,6 +27,15 @@ describe("Access control (PRD §15 module/action RBAC)", () => {
     expect(roles.manager.authorize({ orders: ["create"] }).success).toBe(true);
     expect(roles.manager.authorize({ orders: ["delete"] }).success).toBe(false);
   });
+
+  it("the Manager's only delete is the Staff page's staff records (staffing:delete); nothing else, including team accounts", () => {
+    const statements = roles.manager.statements as Record<string, readonly string[] | undefined>;
+    const withDelete = Object.entries(statements).filter(([, actions]) => actions?.includes("delete")).map(([resource]) => resource);
+    expect(withDelete).toEqual(["staffing"]);
+    for (const denied of [{ users: ["delete"] }, { orders: ["delete"] }, { quotations: ["delete"] }, { customers: ["delete"] }, { invoices: ["delete"] }, { expenses: ["delete"] }, { inventory: ["delete"] }, { menus: ["delete"] }, { recipes: ["delete"] }, { tenant: ["delete"] }]) {
+      expect(roles.manager.authorize(denied as never).success).toBe(false);
+    }
+  });
 });
 
 describe("Owner is the only top-tier role; Staff stays read-only (Team Admin removed, 2026-09-20)", () => {
