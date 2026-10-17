@@ -513,9 +513,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // What the customer sent lands on the order, and the team can see it arrived.
   await orderCard().getByRole("link", { name: customerName }).click();
   await page.getByRole("tab", { name: "Order Details" }).click();
-  await page.getByRole("button", { name: "Edit event information" }).click();
-  await expect(page.getByLabel("Door / Flat / House No.")).toHaveValue("12");
-  await expect(page.getByLabel("Complete Venue Address")).toHaveValue("12 Green Villa Road");
+  // Once the customer has approved, the order is locked: the venue details they sent are shown view-only and there is no way to edit the event.
+  await expect(page.locator('dt:text-is("Door / Flat / House No.") + dd')).toHaveText("12");
+  await expect(page.locator('dt:text-is("Complete Venue Address") + dd')).toHaveText("12 Green Villa Road");
+  await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
+  await expect(page.getByLabel("Complete Venue Address")).toHaveCount(0); // no editable field either
   const handoff = await openOrderApprovalTab(page, customerName);
   await expect(handoff.getByText("Customer Approved").first()).toBeVisible();
   await expect(handoff.getByTestId("venue-details-status")).toContainText("Received");
