@@ -2,15 +2,18 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { buildBundle } from "@/modules/site-content/site-content";
 import { PlanError, createPlan, setPlanActive, updatePlan, type PlanInput } from "../plans";
+import { ensureCateringProduct } from "./catering-product";
 
 /**
  * The featured plan ("Most popular" on the website): at most one per product, only an active, non-trial plan with a monthly
  * price, cleared when it stops being one. The tests share the dev database, so a real featured plan and the real "changed"
- * marker are put back afterwards and every row made here is removed.
+ * marker are put back afterwards and every row made here is removed. On an empty migrated database (CI) the "catering" product
+ * is added first and removed again afterwards (see catering-product.ts); a real one is never touched.
  */
 const CODES = ["sitetest-feat-a", "sitetest-feat-b", "sitetest-feat-t"];
 const input = (code: string, over: Partial<PlanInput> = {}): PlanInput => ({ productKey: "catering", code, name: `Feat ${code}`, description: "d", isTrial: false, priceMonthly: 500, priceAnnual: 5000, gstPercent: 18, highlights: ["One"], entitlements: {}, ...over });
 
+let releaseProduct: () => Promise<void>;
 let realFeatured: string[] = [];
 let savedMarker: Awaited<ReturnType<typeof prisma.siteSetting.findUnique>>;
 const featuredOf = async (code: string) => (await prisma.plan.findFirstOrThrow({ where: { productKey: "catering", code } })).isFeatured;
@@ -24,6 +27,7 @@ async function removePlans() {
 }
 
 beforeAll(async () => {
+  releaseProduct = await ensureCateringProduct();
   savedMarker = await prisma.siteSetting.findUnique({ where: { key: "changed" } });
   await removePlans();
   realFeatured = (await prisma.plan.findMany({ where: { productKey: "catering", isFeatured: true }, select: { id: true } })).map((p) => p.id);
@@ -38,6 +42,7 @@ afterAll(async () => {
   await prisma.plan.updateMany({ where: { id: { in: realFeatured } }, data: { isFeatured: true } });
   if (savedMarker) await prisma.siteSetting.upsert({ where: { key: "changed" }, create: { key: "changed", value: savedMarker.value as object }, update: { value: savedMarker.value as object } });
   else await resetMarker();
+  await releaseProduct();
 });
 
 describe("featured plan", () => {

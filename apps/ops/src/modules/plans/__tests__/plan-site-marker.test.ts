@@ -1,15 +1,19 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { createPlan, setPlanActive, updatePlan, type PlanInput } from "../plans";
+import { ensureCateringProduct } from "./catering-product";
 
 /**
  * The Unpublished changes badge: a catering plan the website shows (active, and the trial or priced) marks the site content
  * "changed" when a field the site shows changes; limits (entitlements), no-op saves and plans the site does not show never do.
- * The tests share the dev database, so the real marker is put back afterwards and every row made here is removed.
+ * The tests share the dev database, so the real marker is put back afterwards and every row made here is removed. On an empty
+ * migrated database (CI) the "catering" product is added first and removed again afterwards (see catering-product.ts); a real one
+ * is never touched.
  */
 const CODES = ["sitetest-mark-a", "sitetest-mark-b", "sitetest-mark-c"];
 const base: PlanInput = { productKey: "catering", code: "sitetest-mark-a", name: "Mark Plan", description: "Desc", isTrial: false, priceMonthly: 500, priceAnnual: 5000, gstPercent: 18, highlights: ["One"], entitlements: {} };
 
+let releaseProduct: () => Promise<void>;
 let saved: Awaited<ReturnType<typeof prisma.siteSetting.findUnique>>;
 const marker = async () => (await prisma.siteSetting.findUnique({ where: { key: "changed" } }))?.value as { at: string } | undefined;
 const reset = () => prisma.siteSetting.deleteMany({ where: { key: "changed" } });
@@ -22,6 +26,7 @@ async function removePlans() {
 }
 
 beforeAll(async () => {
+  releaseProduct = await ensureCateringProduct();
   saved = await prisma.siteSetting.findUnique({ where: { key: "changed" } });
   await removePlans();
 });
@@ -33,6 +38,7 @@ afterAll(async () => {
   await removePlans();
   if (saved) await prisma.siteSetting.upsert({ where: { key: "changed" }, create: { key: "changed", value: saved.value as object }, update: { value: saved.value as object } });
   else await reset();
+  await releaseProduct();
 });
 
 describe("plan edits and the Unpublished changes marker", () => {

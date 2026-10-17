@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { signedHeaders, verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
+import { ensureCateringProduct } from "@/modules/plans/__tests__/catering-product";
 import { GET as getContent } from "@/app/api/site/content/route";
 import { POST as postResult } from "@/app/api/site/publish-result/route";
 import {
@@ -92,13 +93,15 @@ describe("saving and the bundle", () => {
   });
 
   it("sends the active catering plans with a price (and the trial), never a plan without a monthly price or an inactive one", async () => {
+    // An empty migrated database (CI) has no catering product for the plans to belong to; a real one is left alone.
+    const releaseProduct = await ensureCateringProduct();
     const base = { productKey: "catering", gstPercent: 18, highlights: ["Everything"] };
-    const made = await Promise.all([
-      prisma.plan.create({ data: { ...base, code: "sitetest-paid", name: "Site Test Paid", priceMonthly: 4999, priceAnnual: 39999 } }),
-      prisma.plan.create({ data: { ...base, code: "sitetest-free", name: "Site Test No Price" } }),
-      prisma.plan.create({ data: { ...base, code: "sitetest-off", name: "Site Test Off", priceMonthly: 100, isActive: false } }),
-    ]);
     try {
+      await Promise.all([
+        prisma.plan.create({ data: { ...base, code: "sitetest-paid", name: "Site Test Paid", priceMonthly: 4999, priceAnnual: 39999 } }),
+        prisma.plan.create({ data: { ...base, code: "sitetest-free", name: "Site Test No Price" } }),
+        prisma.plan.create({ data: { ...base, code: "sitetest-off", name: "Site Test Off", priceMonthly: 100, isActive: false } }),
+      ]);
       const codes = (await buildBundle()).plans.map((p) => p.code);
       expect(codes).toContain("sitetest-paid");
       expect(codes).not.toContain("sitetest-free");
@@ -106,7 +109,8 @@ describe("saving and the bundle", () => {
       const paid = (await buildBundle()).plans.find((p) => p.code === "sitetest-paid");
       expect(paid).toMatchObject({ priceMonthly: 4999, priceAnnual: 39999, gstPercent: 18, highlights: ["Everything"] });
     } finally {
-      await prisma.plan.deleteMany({ where: { id: { in: made.map((p) => p.id) } } });
+      await prisma.plan.deleteMany({ where: { productKey: "catering", code: { in: ["sitetest-paid", "sitetest-free", "sitetest-off"] } } });
+      await releaseProduct();
     }
   });
   it("renames and removes categories across posts and writes audit rows", async () => {
