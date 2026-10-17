@@ -28,8 +28,8 @@ describe("describeRolePermissions (derived from the real grants)", () => {
     expect(describeRolePermissions("kitchen").included.join(" ")).not.toMatch(/approve/);
   });
 
-  it("accounts gets invoices and payments, no customers", () => {
-    const { included, excluded } = describeRolePermissions("accounts");
+  it("accounts gets invoices and payments, reads customers and orders to bill them, and sees the prices that needs", () => {
+    const { included } = describeRolePermissions("accounts");
     expect(included).toContain("View, create, edit and export invoices");
     expect(included).toContain("View, create and manage payments");
     expect(describeRolePermissions("accounts").data).toBe("See order and quotation prices, payment details, financial reports and customer-facing documents");

@@ -3,7 +3,7 @@
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { duplicateAddOn, setAddOnActive, createAddOn, updateAddOn, deleteAddOn, type AddOnInput } from "@/modules/addons/addon";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { AddOnType, AddOnPriceType } from "@/generated/prisma/enums";

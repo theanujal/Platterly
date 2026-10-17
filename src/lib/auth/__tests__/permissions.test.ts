@@ -129,7 +129,7 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(true);
     expect(roles.accounts.authorize({ orders: ["edit"] }).success).toBe(false);
     expect(roles.accounts.authorize({ invoices: ["delete"] }).success).toBe(false);
-    expect(roles.accounts.authorize({ payments: ["delete"] }).success).toBe(false);
+    // Payments have no delete action at all, so there is nothing for Accounts to be refused.
   });
 
   it("Accounts can record and correct expenses without opening orders (AJ, 2026-10-03)", () => {

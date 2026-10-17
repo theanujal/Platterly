@@ -3,7 +3,7 @@
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
