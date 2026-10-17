@@ -180,19 +180,21 @@ test("what the editor saves is enforced: Staff given order prices sees the Amoun
   await expect(page.getByRole("columnheader", { name: "Amount" })).toBeVisible();
 });
 
-test("the editor fits a phone: no sideways page scroll on any tab", async ({ page }) => {
-  test.setTimeout(90_000);
+test("the editor fits a phone and a tablet: no sideways page scroll, and all three tabs stay in their row", async ({ page }) => {
+  test.setTimeout(120_000);
   await open(page, `e2e-rolephone-${Date.now()}@example.test`);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.reload();
-  await pickRole(page, /^Kitchen Team/);
-  for (const name of ["Module Access", "Actions & Operations", "Sensitive Data Access"]) {
-    await tab(page, name).click();
-    await expect(page.getByRole("tabpanel")).toBeVisible();
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-    expect(overflow, `${name} scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
-    // The three tabs fit their own row (only the active one shows its name), so none is scrolled out of sight.
-    const fits = await tabs(page).evaluate((el) => el.scrollWidth <= el.clientWidth);
-    expect(fits, `the tab row overflows when "${name}" is active`).toBe(true);
+  for (const [width, height] of [[390, 844], [768, 1024], [1024, 768]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/settings/team?tab=permissions");
+    await pickRole(page, /^Kitchen Team/);
+    for (const name of ["Module Access", "Actions & Operations", "Sensitive Data Access"]) {
+      await tab(page, name).click();
+      await expect(page.getByRole("tabpanel")).toBeVisible();
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow, `${name} at ${width}px scrolls sideways by ${overflow}px`).toBeLessThanOrEqual(0);
+      // Only the active tab shows its name below 1280px, so the three fit their row and none is scrolled out of sight.
+      const fits = await tabs(page).evaluate((el) => el.scrollWidth <= el.clientWidth);
+      expect(fits, `the tab row overflows at ${width}px when "${name}" is active`).toBe(true);
+    }
   }
 });

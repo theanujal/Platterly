@@ -157,13 +157,13 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
                 onClick={() => setTab(id)}
                 onKeyDown={(e) => onTabKey(e, index)}
                 className={cn(
-                  "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:gap-2 sm:px-4",
+                  "-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-2 py-3 text-sm font-medium whitespace-nowrap outline-none focus-visible:ring-3 focus-visible:ring-ring/50 xl:gap-2 xl:px-4",
                   tab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" />
-                {/* On a phone only the active tab shows its name, so the three fit without sideways scrolling (as the Team tabs do). */}
-                <span className={tab === id ? undefined : "hidden sm:inline"}>{label}</span>
+                {/* The three names need about 560px, and the content area is narrower than that below a 1280px window (two sidebars), so until then only the active tab shows its name and all three stay in view (as the Team tabs do on a phone). */}
+                <span className={tab === id ? undefined : "hidden xl:inline"}>{label}</span>
               </button>
             ))}
           </div>
