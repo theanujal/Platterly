@@ -52,3 +52,7 @@ The flag, the old catering plan and payment tables, the seller-profile row and `
 - Catering's own trial-ending and plan-ending emails stop when the flag is on; ops sends them.
 - A kitchen created from ops has no owner login until the owner signs up normally.
 - A deleted business is only suspended for 30 days; nothing removes its data afterwards. That is decided: removal is manual only, never automatic (AJ, 2026-10-12).
+
+## Local setup note
+
+With `OPS_BILLING` empty (the default), `/subscribe` reads catering's own `subscription_plan` rows and shows "No plans are open for sale yet" until one paid plan exists (active, not a trial, monthly price set). For a local database run `npm run db:seed-dev-plan` (adds a "Standard" plan, safe to repeat). To test the real Ops flow instead, run `apps/ops`, create the plans there, set `OPS_BASE_URL` and `OPS_BILLING=1` in catering's `.env` and restart catering.

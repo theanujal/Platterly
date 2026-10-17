@@ -127,7 +127,8 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
       )}
 
       {plans.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No plans are open for sale yet. Please contact Platterly and we will get you set up.</p>
+        <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">No plans are open for sale yet. Please contact Platterly at{" "}
+          <a className="font-medium text-foreground underline" href="mailto:hello@platterly.in">hello@platterly.in</a> and we will get you set up.</p>
       ) : (
         <>
           <section className="flex flex-col gap-3">
