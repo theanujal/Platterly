@@ -31,7 +31,21 @@ const COLUMNS = [
   { action: "delete", label: "Delete" },
 ] as const;
 const COLUMN_ACTIONS: readonly string[] = COLUMNS.map((c) => c.action);
-const EXTRA_LABEL: Record<string, string> = { approve: "Approve", export: "Export", manage: "Manage" };
+const EXTRA_LABEL: Record<string, string> = {
+  approve: "Approve",
+  export: "Export",
+  manage: "Manage",
+  updateStatus: "Update cooking status",
+  viewPdf: "Kitchen PDF",
+  menuPrices: "Menu & dish prices",
+  orderPrices: "Order & quotation prices",
+  paymentDetails: "Payment details",
+  supplierCosts: "Supplier costs",
+  recipeCosts: "Recipe costs",
+  profitability: "Profitability",
+  financialReports: "Financial reports",
+  commercialDocuments: "Commercial PDFs",
+};
 
 const sameGrants = (a: Grants, b: Grants) => MATRIX_MODULES.every((m) => [...(a[m.key] ?? [])].sort().join() === [...(b[m.key] ?? [])].sort().join());
 

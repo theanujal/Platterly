@@ -51,6 +51,8 @@ export interface RolePermissionSummary {
   included: string[];
   /** Areas the role has no access to at all, e.g. ["Inventory", "Invoices"] */
   excluded: string[];
+  /** What prices and figures the role sees, separate from the modules: "No prices or costs" or "See order prices and payment details". */
+  data: string;
 }
 
 export function describeRolePermissions(roleId: keyof typeof roles, override?: Record<string, readonly string[]>): RolePermissionSummary {
@@ -61,6 +63,12 @@ export function describeRolePermissions(roleId: keyof typeof roles, override?: R
 
   for (const [key, noun] of AREAS) {
     const granted = grants[key] ?? [];
+    if (key === "kitchen") {
+      // The kitchen's three actions read better as what the person does than as "view, updateStatus and viewPdf".
+      if (granted.length === 0) excluded.push("Kitchen dashboard");
+      else included.push(["Work the kitchen dashboard", granted.includes("updateStatus") ? "update cooking status" : null, granted.includes("viewPdf") ? "download the kitchen order PDF" : null].filter(Boolean).join(", "));
+      continue;
+    }
     const actions = ACTION_ORDER.filter((action) => granted.includes(action));
     if (actions.length === 0) {
       excluded.push(noun.charAt(0).toUpperCase() + noun.slice(1));
@@ -71,8 +79,7 @@ export function describeRolePermissions(roleId: keyof typeof roles, override?: R
   }
 
   const seen = (grants.sensitive ?? []).map((key) => SENSITIVE_LABEL[key]).filter(Boolean);
-  if (seen.length > 0) included.push(`See ${joinActions(seen)}`);
-  else included.push("No prices or costs");
+  const data = seen.length > 0 ? `See ${joinActions(seen)}` : "No prices or costs";
 
-  return { included, excluded };
+  return { included, excluded, data };
 }

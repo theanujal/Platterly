@@ -19,6 +19,7 @@ export interface InviteRoleOption {
   description: string;
   included: string[];
   excluded: string[];
+  data: string;
 }
 
 /** The Invite Member tab: email + role, and a card that spells out exactly what the chosen role can do. */
@@ -119,6 +120,10 @@ export function InviteMemberForm({ roles, seatsFullMessage }: { roles: InviteRol
               <li key={line}>{line}</li>
             ))}
           </ul>
+        </div>
+        <div>
+          <h4 className="text-sm font-semibold">Prices and figures:</h4>
+          <p className="mt-1 text-sm text-muted-foreground">{role.data}</p>
         </div>
         {role.excluded.length > 0 && (
           <div>

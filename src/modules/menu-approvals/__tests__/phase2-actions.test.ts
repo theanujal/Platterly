@@ -66,6 +66,12 @@ async function approvalOnlyPerson(b: Awaited<ReturnType<typeof newBusiness>>) {
   return b.person("salesEvents");
 }
 
+/** A manager whose business has taken menu approval away (the Manager preset approves menus since the 2026-10-17 redesign). */
+async function managerWithoutApproval(b: Awaited<ReturnType<typeof newBusiness>>) {
+  await saveRoleGrants(b.org.id, "manager", { ...defaultGrants("manager"), menus: ["view", "create", "edit"] }, b.owner.user.id);
+  return b.person("manager");
+}
+
 async function customMenuOrder(b: Awaited<ReturnType<typeof newBusiness>>) {
   const made = await b.makeOrder();
   await prisma.menuSelection.update({ where: { id: made.selection.id }, data: { isCustomMenu: true } });
@@ -75,16 +81,23 @@ async function customMenuOrder(b: Awaited<ReturnType<typeof newBusiness>>) {
 }
 
 describe("custom-menu quote: menus: approve AND orders: edit", () => {
-  it("an owner and a sales & event team member (both permissions) can quote", async () => {
+  it("an owner, and a sales & event team member once the Admin has granted order prices, can quote", async () => {
     const b = await newBusiness();
     const { selection } = await customMenuOrder(b);
     signedInAs(b.owner.user, b.org.id);
     expect(await setCustomMenuPriceAction(selection.id, 250)).toEqual({ ok: true });
     const sales = await b.person("salesEvents");
     expect(defaultGrants("salesEvents")).toMatchObject({ orders: expect.arrayContaining(["edit"]), menus: expect.arrayContaining(["approve"]) });
+    // Both module permissions are not enough: quoting sets an order price, so it needs that right too (Roles & Permissions redesign, 2026-10-17).
     signedInAs(sales.user, b.org.id);
+    expect(isForbidden(await setCustomMenuPriceAction(selection.id, 260).catch((e) => e))).toBe(true);
+    expect((await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } })).customPricePerPlate?.toString()).toBe("250");
+    await saveRoleGrants(b.org.id, "salesEvents", { ...defaultGrants("salesEvents"), sensitive: ["orderPrices"] }, b.owner.user.id);
     expect(await setCustomMenuPriceAction(selection.id, 260)).toEqual({ ok: true });
     expect((await prisma.menuSelection.findUniqueOrThrow({ where: { id: selection.id } })).customPricePerPlate?.toString()).toBe("260");
+    // Taking the right away again stops it at once.
+    await saveRoleGrants(b.org.id, "salesEvents", { ...defaultGrants("salesEvents"), sensitive: [] }, b.owner.user.id);
+    expect(isForbidden(await setCustomMenuPriceAction(selection.id, 270).catch((e) => e))).toBe(true);
   });
 
   it("an approval-only user is refused on the server, and nothing is written or audited", async () => {
@@ -102,8 +115,7 @@ describe("custom-menu quote: menus: approve AND orders: edit", () => {
   it("someone who can edit orders but not approve menus is refused too", async () => {
     const b = await newBusiness();
     const { selection } = await customMenuOrder(b);
-    const manager = await b.person("manager");
-    expect(defaultGrants("manager").menus).not.toContain("approve");
+    const manager = await managerWithoutApproval(b);
     signedInAs(manager.user, b.org.id);
     expect(isForbidden(await setCustomMenuPriceAction(selection.id, 250).catch((e) => e))).toBe(true);
   });
@@ -200,7 +212,7 @@ describe("start menu approval", () => {
     const b = await newBusiness();
     const { order, selection } = await b.makeOrder();
     await prisma.menuSelection.delete({ where: { id: selection.id } });
-    const manager = await b.person("manager");
+    const manager = await managerWithoutApproval(b);
     signedInAs(manager.user, b.org.id);
     expect(isForbidden(await startMenuApprovalAction(order.id).catch((e) => e))).toBe(true);
 

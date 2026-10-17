@@ -5,7 +5,10 @@ import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { addMenuApprovalNote, getMenuSelection } from "@/modules/menu-approvals/menu-approval";
 import { ensureOrderMenuSelection, getActiveApprovalUrl, sendMenuForApproval } from "@/modules/menu-approvals/approval-link";
-import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
+import { loadMenuApprovalReviewData as loadReview } from "@/modules/menu-approvals/review-data";
+
+/** The caller says whether the viewer may see prices; these tests are the Admin's view unless they say otherwise. */
+const loadMenuApprovalReviewData = (organizationId: string, selection: Parameters<typeof loadReview>[1], options: Parameters<typeof loadReview>[2] = {}) => loadReview(organizationId, selection, { showPrices: true, ...options });
 
 /**
  * `loadMenuApprovalReviewData` is the data half of the Menu Approvals review page, moved out of `/menu-approvals/[id]/page.tsx`
@@ -99,6 +102,29 @@ describe("loadMenuApprovalReviewData", () => {
     expect(data.notes.map((n) => [n.authorType, n.body, n.versionNumber])).toEqual([["TEAM", "Call the customer", 1]]);
     expect(data.statusHistory.length).toBeGreaterThan(0);
     expect(data.viewVersion).toBe(1);
+  });
+
+  it("builds no price, total, charge or per-plate figure when the viewer lacks the order-prices right", async () => {
+    const { org, actor, selection } = await business("Prices");
+    await sendMenuForApproval(org.id, { menuSelectionId: selection.id }, actor.id);
+    const loaded = (await getMenuSelection(org.id, selection.id))!;
+    const shown = (await loadMenuApprovalReviewData(org.id, loaded))!;
+    const hidden = (await loadReview(org.id, loaded))!; // the default is the safe one: no prices
+    expect(shown.showPrices).toBe(true);
+    expect(shown.pricing.saved.total).toBeGreaterThan(0);
+
+    expect(hidden.showPrices).toBe(false);
+    expect(hidden.customPricePerPlate).toBeNull();
+    expect(hidden.pricing.saved).toEqual({ menuAmount: 0, extrasAmount: 0, childrenCharge: 0, chargesAndDiscount: 0, total: 0 });
+    expect(hidden.pricing.customChargeLines).toEqual([]);
+    expect(hidden.entries.every((e) => e.price === "" && e.items.every((i) => i.unitPrice === 0))).toBe(true);
+    expect(hidden.menus.every((m) => m.price === 0 && m.childUnder5Price === null && m.child5To10PriceValue === null)).toBe(true);
+    // The frozen versions that were sent carry no total or price either.
+    expect(hidden.versions[0].snapshot?.total).toBe(0);
+    expect(hidden.versions[0].snapshot?.meals.every((m) => m.price == null && m.items.every((i) => !("unitPrice" in i)))).toBe(true);
+    // Everything else is unchanged.
+    expect(hidden.header).toEqual(shown.header);
+    expect(hidden.status).toBe(shown.status);
   });
 
   it("returns nothing for a selection with no order", async () => {

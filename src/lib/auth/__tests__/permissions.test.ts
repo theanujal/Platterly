@@ -65,13 +65,13 @@ describe("Owner is the only top-tier role; Staff stays read-only (Team Admin rem
         expect(roles.staff.authorize({ [resource]: [action] }).success, `staff:${resource}:${action}`).toBe(false);
       }
     }
-    // Staff still gets its granted read-only views.
-    expect(roles.staff.authorize({ customers: ["view"] }).success).toBe(true);
+    // Staff keeps its two read-only views: Orders and Quotations (AJ, 2026-10-17); nothing else.
     expect(roles.staff.authorize({ orders: ["view"] }).success).toBe(true);
-    expect(roles.staff.authorize({ reports: ["view"] }).success).toBe(true);
-    // Anyone who can read reports can also download them (Chunk 24, AJ 2026-10-04); the kitchen role has no reports at all.
-    for (const role of ["manager", "staff", "inventoryTeam", "salesEvents"] as const) expect(roles[role].authorize({ reports: ["export"] }).success, role).toBe(true);
-    expect(roles.kitchen.authorize({ reports: ["export"] }).success).toBe(false);
+    expect(roles.staff.authorize({ quotations: ["view"] }).success).toBe(true);
+    for (const resource of ["customers", "menus", "inventory", "reports", "staffing", "eventTypes"] as const) expect(roles.staff.authorize({ [resource]: ["view"] }).success, `staff:${resource}`).toBe(false);
+    // A role that can export reports can also read them; exporting needs a financial or stock right on top (see reports/tabs.ts).
+    for (const role of ["manager", "inventoryTeam", "accounts"] as const) expect(roles[role].authorize({ reports: ["export"] }).success, role).toBe(true);
+    for (const role of ["staff", "kitchen", "salesEvents"] as const) expect(roles[role].authorize({ reports: ["export"] }).success, role).toBe(false);
   });
 });
 
@@ -100,12 +100,19 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.salesEvents.authorize({ invoices: ["view"] }).success).toBe(false);
   });
 
-  it("Kitchen Team can view/edit menus for production but cannot approve them or reach the sales/finance modules", () => {
-    expect(roles.kitchen.authorize({ menus: ["view", "edit"] }).success).toBe(true);
+  it("Kitchen Team runs on its own permissions and cannot touch the Menu Catalog, approvals or the sales and finance modules", () => {
+    expect(roles.kitchen.authorize({ kitchen: ["view", "updateStatus", "viewPdf"] }).success).toBe(true);
+    expect(roles.kitchen.authorize({ recipes: ["view", "create", "edit"] }).success).toBe(true);
+    expect(roles.kitchen.authorize({ menus: ["view"] }).success).toBe(false);
+    expect(roles.kitchen.authorize({ menus: ["edit"] }).success).toBe(false);
     expect(roles.kitchen.authorize({ menus: ["approve"] }).success).toBe(false);
-    expect(roles.kitchen.authorize({ menus: ["create", "delete"] }).success).toBe(false);
+    expect(roles.kitchen.authorize({ orders: ["view"] }).success).toBe(false);
     expect(roles.kitchen.authorize({ customers: ["view"] }).success).toBe(false);
     expect(roles.kitchen.authorize({ invoices: ["view"] }).success).toBe(false);
+    expect(roles.kitchen.authorize({ recipes: ["delete"] }).success).toBe(false);
+    for (const key of ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const) {
+      expect(roles.kitchen.authorize({ sensitive: [key] }).success, `kitchen:sensitive:${key}`).toBe(false);
+    }
   });
 
   it("Store/Inventory Team has full control of inventory only", () => {
@@ -114,12 +121,15 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.inventoryTeam.authorize({ menus: ["view"] }).success).toBe(false);
   });
 
-  it("Accounts Team manages invoices/payments/reports only", () => {
+  it("Accounts Team manages invoices, payments and reports, and reads orders and customers to bill them", () => {
     expect(roles.accounts.authorize({ invoices: ["view", "create", "edit", "export"] }).success).toBe(true);
     expect(roles.accounts.authorize({ payments: ["view", "create", "manage"] }).success).toBe(true);
     expect(roles.accounts.authorize({ reports: ["view", "export"] }).success).toBe(true);
-    expect(roles.accounts.authorize({ orders: ["view"] }).success).toBe(false);
-    expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(false);
+    expect(roles.accounts.authorize({ orders: ["view"] }).success).toBe(true);
+    expect(roles.accounts.authorize({ customers: ["view"] }).success).toBe(true);
+    expect(roles.accounts.authorize({ orders: ["edit"] }).success).toBe(false);
+    expect(roles.accounts.authorize({ invoices: ["delete"] }).success).toBe(false);
+    expect(roles.accounts.authorize({ payments: ["delete"] }).success).toBe(false);
   });
 
   it("Accounts can record and correct expenses without opening orders (AJ, 2026-10-03)", () => {
@@ -147,15 +157,13 @@ describe("expenses permission (Chunk 15)", () => {
   }
 });
 
-describe("eventTypes permission (renamed from `events`, 2026-09-30)", () => {
-  // The rename must not change who can do what: these are the exact grants
-  // the `events` permission had before.
+describe("eventTypes permission (renamed from `events`, 2026-09-30; Staff and Kitchen lost their view in the 2026-10-17 redesign)", () => {
   const expected: Record<string, string[]> = {
     owner: ["view", "create", "edit", "delete"],
     manager: ["view", "create", "edit"],
-    staff: ["view"],
+    staff: [],
     salesEvents: ["view", "create", "edit"],
-    kitchen: ["view"],
+    kitchen: [],
     inventoryTeam: [],
     accounts: [],
   };
