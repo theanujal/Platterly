@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ClipboardList, Download, Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { listPurchaseOrders } from "@/modules/purchasing/purchase-order";
 import { isPriced, orderedValue, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ inventory: ["view"] }, organizationId);
   const filter = STATUSES.includes(status as PurchaseOrderStatus) ? (status as PurchaseOrderStatus) : undefined;
-  const [orders, canCreate] = await Promise.all([listPurchaseOrders(organizationId, filter, undefined, locationId), hasPermission({ inventory: ["create"] }, organizationId)]);
+  const [orders, canCreate, showCosts] = await Promise.all([listPurchaseOrders(organizationId, filter, undefined, locationId), hasPermission({ inventory: ["create"] }, organizationId), canSee("supplierCosts", organizationId)]);
 
   // Orders raised without prices have no value yet (₹0.00 would read as a real total); received stock is valued at the price actually paid on each receipt.
   function totalOf(po: (typeof orders)[number]) {
@@ -51,14 +51,14 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
       id: po.id,
       href: `/purchasing/${po.id}`,
       searchText: `${po.number} ${po.supplier.name} ${PO_STATUS_LABEL[po.status]}`,
-      sortValues: { newest: po.createdAt.getTime(), number: po.number, total: total.sort },
+      sortValues: { newest: po.createdAt.getTime(), number: po.number, ...(showCosts ? { total: total.sort } : {}) },
       card: (
         <CatalogCardBody
           title={po.number}
           titleIcon={ClipboardList}
           titleHref={`/purchasing/${po.id}`}
           description={po.supplier.name}
-          footer={<span className={total.text === "Not yet priced" ? "text-sm font-normal text-muted-foreground" : "text-base font-semibold"}>{total.text}</span>}
+          footer={showCosts ? <span className={total.text === "Not yet priced" ? "text-sm font-normal text-muted-foreground" : "text-base font-semibold"}>{total.text}</span> : undefined}
           statusBadge={status}
         />
       ),
@@ -72,7 +72,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
           <TableCell className="px-3 py-3 text-sm">{po.supplier.name}</TableCell>
           <TableCell className="px-3 py-3">{status}</TableCell>
           <TableCell className="px-3 py-3 text-sm">{po.items.length}</TableCell>
-          <TableCell className={`px-3 py-3 text-sm ${total.text === "Not yet priced" ? "text-muted-foreground" : "font-semibold"}`}>{total.text}</TableCell>
+          {showCosts && <TableCell className={`px-3 py-3 text-sm ${total.text === "Not yet priced" ? "text-muted-foreground" : "font-semibold"}`}>{total.text}</TableCell>}
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
               <IconTip label="Download PDF">
@@ -89,7 +89,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "number", label: "Order number", key: "number" },
-    { value: "total", label: "Total (High–Low)", key: "total", direction: "desc" },
+    ...(showCosts ? [{ value: "total", label: "Total (High–Low)", key: "total", direction: "desc" as const }] : []),
   ];
 
   return (
@@ -115,7 +115,7 @@ export default async function PurchasingPage({ searchParams }: { searchParams: P
 
       <CatalogBrowser
         entries={entries}
-        columns={["Order", "Supplier", "Status", "Items", "Total", "Actions"]}
+        columns={["Order", "Supplier", "Status", "Items", ...(showCosts ? ["Total"] : []), "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search orders or suppliers…"

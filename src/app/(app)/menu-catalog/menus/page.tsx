@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { BookOpen } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, canSee } from "@/lib/auth/require-session";
 import { listMenus } from "@/modules/menus/menu";
 import { listCategories } from "@/modules/menus/category";
 import { TableCell } from "@/components/ui/table";
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
 
 export default async function MenusPage() {
   const { organizationId } = await requireActiveOrganization();
-  const [menus, categories] = await Promise.all([listMenus(organizationId), listCategories(organizationId)]);
+  const [menus, categories, showPrices] = await Promise.all([listMenus(organizationId), listCategories(organizationId), canSee("menuPrices", organizationId)]);
 
   const categoryOptions = categories.map((c) => ({ id: c.id, name: c.name }));
   // The order customers see the menus in on the storefront (listMenus is already sorted by it).
@@ -44,19 +44,19 @@ export default async function MenusPage() {
       description: menu.description ?? "",
       imageUrl: menu.image,
       menuType: menu.menuType,
-      pricePerPlate: menu.pricePerPlate.toString(),
+      pricePerPlate: showPrices ? menu.pricePerPlate.toString() : "",
       isActive: menu.isActive,
       childUnder5Chargeable: menu.childUnder5Chargeable,
-      childUnder5Price: menu.childUnder5Price?.toString() ?? "",
+      childUnder5Price: showPrices ? menu.childUnder5Price?.toString() ?? "" : "",
       child5To10PricingType: menu.child5To10PricingType,
-      child5To10PriceValue: menu.child5To10PriceValue?.toString() ?? "",
+      child5To10PriceValue: showPrices ? menu.child5To10PriceValue?.toString() ?? "" : "",
     };
 
     return {
       id: menu.id,
       searchText: `${menu.name} ${menu.description ?? ""}`,
       filterValues: { type: menu.menuType, status: menu.isActive ? "ACTIVE" : "INACTIVE" },
-      sortValues: { order: menu.sortOrder, name: menu.name, price: Number(menu.pricePerPlate), newest: menu.createdAt.getTime() },
+      sortValues: { order: menu.sortOrder, name: menu.name, ...(showPrices ? { price: Number(menu.pricePerPlate) } : {}), newest: menu.createdAt.getTime() },
       card: (
         <>
           <CatalogCardMedia
@@ -73,10 +73,12 @@ export default async function MenusPage() {
             title={menu.name}
             description={menu.description}
             footer={
-              <>
-                <span className="text-base font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
-                <span className="text-xs text-muted-foreground">per plate</span>
-              </>
+              showPrices ? (
+                <>
+                  <span className="text-base font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
+                  <span className="text-xs text-muted-foreground">per plate</span>
+                </>
+              ) : undefined
             }
             active={menu.isActive}
           />
@@ -90,12 +92,14 @@ export default async function MenusPage() {
           <TableCell className="px-3 py-3">
             <FoodTypeTag nonVeg={menu.menuType === "NON_VEGETARIAN"} />
           </TableCell>
-          <TableCell className="px-3 py-3">
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
-              <span className="text-xs text-muted-foreground">per plate</span>
-            </div>
-          </TableCell>
+          {showPrices && (
+            <TableCell className="px-3 py-3">
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold">{formatRupees(Number(menu.pricePerPlate))}</span>
+                <span className="text-xs text-muted-foreground">per plate</span>
+              </div>
+            </TableCell>
+          )}
           <TableCell className="px-3 py-3">
             <ActiveBadge active={menu.isActive} />
           </TableCell>
@@ -133,8 +137,12 @@ export default async function MenusPage() {
     { value: "order", label: "Display Order", key: "order" },
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "name", label: "Name (A–Z)", key: "name" },
-    { value: "price-low", label: "Price (Low–High)", key: "price" },
-    { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" },
+    ...(showPrices
+      ? [
+          { value: "price-low", label: "Price (Low–High)", key: "price" },
+          { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" as const },
+        ]
+      : []),
   ];
 
   return (
@@ -155,7 +163,7 @@ export default async function MenusPage() {
         entries={entries}
         defaultView="list"
         addTile={<AddMenuDialog categories={categoryOptions} variant="tile" />}
-        columns={["Menu Type", "Diet", "Price", "Status", ""]}
+        columns={["Menu Type", "Diet", ...(showPrices ? ["Price"] : []), "Status", ""]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search menu types…"

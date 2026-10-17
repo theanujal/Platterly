@@ -451,6 +451,11 @@ export async function seedMealSlots(orderId: string, slots: { date: string; meal
   await pool.query('UPDATE "order" SET "eventStartDate" = $2, "eventEndDate" = $3, "orderKind" = $4::"OrderKind" WHERE id = $1', [orderId, dates[0], dates[dates.length - 1], dates[0] === dates[dates.length - 1] && slots.length === 1 ? "SINGLE" : "MULTI"]);
 }
 
+/** Puts the order's menu approval back in a stage (for example DRAFT, where the order's customer, event and pricing can still be edited). */
+export async function setMenuSelectionStatus(orderId: string, status: "DRAFT" | "SENT_TO_CUSTOMER" | "CUSTOMER_APPROVED" | "CHANGES_REQUESTED" | "FINAL_LOCKED"): Promise<void> {
+  await pool.query('UPDATE menu_selection SET status = $2::"MenuSelectionStatus" WHERE "eventId" IN (SELECT id FROM event WHERE "orderId" = $1)', [orderId, status]);
+}
+
 /** Says whether the order's venue differs by event (Order Details), which is what gives logistics a record per event. */
 export async function setOrderVenuePerEvent(orderId: string, perEvent: boolean): Promise<void> {
   await pool.query('UPDATE "order" SET "venuePerEvent" = $2 WHERE id = $1', [orderId, perEvent]);

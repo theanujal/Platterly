@@ -1,4 +1,4 @@
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSensitive } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { exportResponse, parseFormat } from "@/lib/export/tabular";
 import { resolveRange } from "@/modules/expenses/date-range";
@@ -10,6 +10,8 @@ export async function GET(request: Request) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ expenses: ["view"] }, organizationId);
   await requirePermission({ reports: ["export"] }, organizationId);
+  // profitability is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("profitability", organizationId);
   const url = new URL(request.url);
   const range = resolveRange({ range: url.searchParams.get("range") ?? undefined, from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined });
   const [organization, rows] = await Promise.all([prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } }), listProfitability(organizationId, range)]);

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { listAuditLog } from "@/modules/audit/audit-log";
+import { hasPermission, requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
+import { listAuditLog, withoutMoneyFigures } from "@/modules/audit/audit-log";
 import { parseIsoDate } from "@/modules/expenses/date-range";
 import { ExportMenu } from "@/components/reports/export-menu";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
@@ -27,6 +27,8 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
   const canExport = await hasPermission({ reports: ["export"] }, organizationId);
   const query = await searchParams;
 
+  // The history shows who changed a price, total or payment, and when, but the figures only to someone who may see financial data (AJ, 2026-10-17).
+  const showMoney = await canSee("financialReports", organizationId);
   const log = await listAuditLog(organizationId, {
     search: query.q,
     recordType: query.type,
@@ -60,7 +62,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
         actors={log.actors}
       />
       <AuditTable
-        rows={log.entries.map((e) => ({
+        rows={(showMoney ? log.entries : withoutMoneyFigures(log.entries)).map((e) => ({
           id: e.id,
           when: WHEN.format(e.createdAt),
           who: e.who,

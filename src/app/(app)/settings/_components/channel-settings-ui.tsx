@@ -24,6 +24,7 @@ const MESSAGE_ICON: Record<MessageKey, LucideIcon> = {
   eventReminders: CalendarDays,
   systemAlerts: Bell,
   orderReceived: MessageSquare,
+  orderAccepted: CheckCircle2,
   orderConfirmed: CheckCircle2,
   orderUpdate: Info,
   orderCompleted: CheckCheck,

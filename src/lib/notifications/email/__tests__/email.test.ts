@@ -60,7 +60,7 @@ describe("every email template", () => {
     amount: 12500, balance: 2500, number: "INV-1", url: "https://catering.platterly.in/x", versionNumber: 2, status: "APPROVED",
   };
   const events = [
-    "order.created", "order.new_alert", "order.status_changed", "quotation.sent", "menu_approval.sent", "invoice.sent", "receipt.sent",
+    "order.created", "order.new_alert", "order.status_changed", "quotation.sent", "quotation.converted", "menu_approval.sent", "invoice.sent", "receipt.sent",
     "payment.link_sent", "payment.received", "payment.upi_claimed", "payment.due", "payment.overdue", "event.reminder", "system.alert",
   ];
 
@@ -147,6 +147,7 @@ describe("kitchen -> customer email list (2026-10-11)", () => {
 
   it("each customer email maps to exactly one switch; team emails and account mails to none", () => {
     expect(emailMessageFor("order.created")).toBe("orderReceived");
+    expect(emailMessageFor("quotation.converted")).toBe("orderAccepted");
     expect(emailMessageFor("order.status_changed", { status: "APPROVED" })).toBe("orderConfirmed");
     expect(emailMessageFor("order.status_changed", { status: "COMPLETED" })).toBe("orderCompleted");
     expect(emailMessageFor("order.status_changed", { status: "SENT_TO_KITCHEN" })).toBe("orderUpdate");
@@ -171,5 +172,25 @@ describe("email footer and logo (2026-10-11)", () => {
       vi.stubEnv("NODE_ENV", env);
       expect(verificationCodeEmail("123456", 10).html).not.toContain("cid:");
     }
+  });
+});
+
+describe("the email when an accepted quotation becomes an order (AJ, 2026-10-18)", () => {
+  it("thanks the customer, gives the order number and says what happens next", () => {
+    const mail = emailForEvent("quotation.converted", { kitchenName: "Spice Kitchen", customerName: "Asha", orderNumber: "ORD-0042", eventType: "Wedding", eventDate: "5 Dec 2026", amount: 120000 });
+    expect(mail?.subject).toBe("Thank you for accepting our quotation — order ORD-0042");
+    expect(mail?.html).toContain("Thank you for accepting our quotation");
+    expect(mail?.html).toContain("ORD-0042");
+    expect(mail?.html).toContain("We will email you all the details of your order shortly");
+    expect(mail?.html).toContain("Once you review and approve them, we will start preparing for your event");
+    expect(mail?.html).toContain("Spice Kitchen");
+    expect(mail?.html).not.toContain("cid:");
+    expect(mail?.html).not.toContain("undefined");
+  });
+
+  it("copes with no order number", () => {
+    const mail = emailForEvent("quotation.converted", {});
+    expect(mail?.subject).toBe("Thank you for accepting our quotation");
+    expect(mail?.html).not.toContain("undefined");
   });
 });

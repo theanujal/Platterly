@@ -117,3 +117,17 @@ export async function exportAuditLog(organizationId: string, filter: AuditFilter
     changes: diffAudit(r.before, r.after),
   }));
 }
+
+/** Field names that carry money. A change to one of them shows who changed what and when, but not the figures. */
+const MONEY_FIELD = /total|price|amount|cost|discount|balance|advance|rate|charge|revenue|paid|payment|fee|tax|gst|refund|value|spend/i;
+
+/**
+ * The log for a person without the financial-reports right (AJ, 2026-10-17): every entry stays, but the before and after of a money
+ * field is replaced by "hidden" so an order's total, a discount or a payment amount cannot be read from the history.
+ */
+export function withoutMoneyFigures(entries: AuditEntry[]): AuditEntry[] {
+  return entries.map((entry) => ({
+    ...entry,
+    changes: entry.changes.map((change) => (MONEY_FIELD.test(change.field) ? { ...change, before: "hidden", after: "hidden" } : change)),
+  }));
+}

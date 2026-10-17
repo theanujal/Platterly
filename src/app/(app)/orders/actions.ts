@@ -3,7 +3,9 @@
 import { assertEventAtMyLocationById, assertMayMoveEventTo, assertOrderAtMyLocation, myHeldLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
+import { DEFAULT_PRICING, savedMealPrices, savedPricing, withSavedMealPrices } from "@/modules/roles/keep-pricing";
+import { pickerWithoutPrices } from "@/modules/roles/redact";
 import {
   createOrder,
   deleteOrder,
@@ -16,6 +18,7 @@ import {
 } from "@/modules/orders/order";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import type { EventVenueInput } from "@/modules/orders/event-venues";
+import { orderBlockingField, orderMissingMessage } from "@/modules/orders/required-fields";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
 import { saveOrderWithMeals } from "@/modules/menu-approvals/menu-approval";
 import { PaymentError, parseStagedPayments, recordStagedPayments } from "@/modules/payments/payment";
@@ -89,6 +92,12 @@ function parseEventVenues(raw: string | undefined): EventVenueInput[] {
   } catch {
     return [];
   }
+}
+
+/** A new order needs its event type, venue location and guests; a saved one can't have them cleared (AJ, 2026-10-18). */
+function assertRequiredFields(input: OrderInput, saved?: { eventTypeId: string | null; eventStartDate: Date; eventEndDate: Date; venue: string | null; adultCount: number | null } | null) {
+  const field = orderBlockingField(input, saved);
+  if (field) throw new Error(orderMissingMessage(field));
 }
 
 function buildInput(formData: FormData): OrderInput {
@@ -167,7 +176,21 @@ function assertEventDateAllowed(eventStartDate: Date, unchangedFrom?: Date) {
  * The payments added on the New Order page (the same Record Payment as on an existing order, held until the order exists),
  * recorded now as real payments with their receipts. Returns a message when one could not be.
  */
+/**
+ * Without the order-prices right (Sensitive data), nothing the form sends can set a price (AJ, 2026-10-17, D7): a new order starts on
+ * the menus' own prices with no discount or extra charges, and an edit keeps the pricing the order already has. The total is still
+ * worked out by the server from the catalog; it is just not shown to this person.
+ */
+async function withAuthorizedPricing(organizationId: string, input: OrderInput, orderId?: string): Promise<OrderInput> {
+  if (await canSee("orderPrices", organizationId)) return input;
+  const pricing = orderId ? await savedPricing(organizationId, orderId) : DEFAULT_PRICING;
+  const saved = orderId ? await savedMealPrices(organizationId, orderId) : new Map<string, number | undefined>();
+  return { ...input, ...pricing, mealPlanEntries: input.mealPlanEntries ? withSavedMealPrices(input.mealPlanEntries, saved) : undefined };
+}
+
 async function recordPaymentsFromForm(organizationId: string, orderId: string, formData: FormData, actorUserId: string): Promise<string | null> {
+  // Payments typed on the new-order form need the payment-details right; without it nothing is recorded (the form does not show the section).
+  if (!(await canSee("paymentDetails", organizationId))) return null;
   try {
     const staged = parseStagedPayments(stringField(formData, "payments"));
     const recorded = await recordStagedPayments(organizationId, orderId, staged, actorUserId);
@@ -182,7 +205,8 @@ export async function createOrderAction(formData: FormData): Promise<ActionResul
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["create"] }, organizationId);
   try {
-    const input = buildInput(formData);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData));
+    assertRequiredFields(input);
     assertEventDateAllowed(input.eventStartDate);
     // Payments are recorded below as real payments, not stored as a bare number.
     const order = await createOrder(organizationId, { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
@@ -204,7 +228,8 @@ export async function createOrderAndNotifyAction(formData: FormData): Promise<Ac
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["create"] }, organizationId);
   try {
-    const input = buildInput(formData);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData));
+    assertRequiredFields(input);
     assertEventDateAllowed(input.eventStartDate);
     const order = await createOrder(organizationId, { ...input, advance: 0, paymentStatus: "UNPAID" }, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id, await myHeldLocation(organizationId, session.user.id));
@@ -227,8 +252,10 @@ export async function updateOrderAction(id: string, formData: FormData): Promise
   await requirePermission({ orders: ["edit"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, id);
   try {
-    const input = buildInput(formData);
-    assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData), id);
+    const saved = await getOrder(organizationId, id);
+    assertRequiredFields(input, saved);
+    assertEventDateAllowed(input.eventStartDate, saved?.eventStartDate);
     // The money is owned by the Payment summary (Record Payment); saving the order never touches it.
     await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined, status: undefined }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
@@ -246,8 +273,10 @@ export async function updateOrderAndNotifyAction(id: string, formData: FormData)
   await requirePermission({ orders: ["edit"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, id);
   try {
-    const input = buildInput(formData);
-    assertEventDateAllowed(input.eventStartDate, (await getOrder(organizationId, id))?.eventStartDate);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData), id);
+    const saved = await getOrder(organizationId, id);
+    assertRequiredFields(input, saved);
+    assertEventDateAllowed(input.eventStartDate, saved?.eventStartDate);
     // The money is owned by the Payment summary (Record Payment); saving the order never touches it.
     await saveOrderWithMeals(organizationId, id, { ...input, advance: undefined, paymentStatus: undefined, status: undefined }, session.user.id);
     await syncOrderEvent(organizationId, id, session.user.id, await myHeldLocation(organizationId, session.user.id));
@@ -364,7 +393,8 @@ export type OrderPickerData = MenuPickerData;
 export async function getMenuForOrderPickerAction(menuId: string): Promise<OrderPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["view"] }, organizationId);
-  return getMenuPickerData(organizationId, menuId);
+  const picker = await getMenuPickerData(organizationId, menuId);
+  return picker && !(await canSee("orderPrices", organizationId)) ? pickerWithoutPrices(picker) : picker;
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;

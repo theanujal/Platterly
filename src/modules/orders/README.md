@@ -128,3 +128,11 @@ addition to the customer's name.
 ## Details frozen with the price (2026-10-17)
 
 While the menu is with the customer, approved or with the kitchen, Customer Details, Event Information (including the venue and per-event venues), Guest Information and Pricing are read-only on the order page, and `updateOrderInTransaction` refuses a real change to them (`DetailsFrozenError`, next to `PriceFrozenError`; both in `price-freeze.ts`). An unchanged value is never a change, so saving notes or other details still works. The customer's own Venue & Delivery step writes through the approval link, not this save.
+
+## Missing event details (2026-10-18)
+
+On a saved order the Event Information card lists what it still needs: the event type, and the venue details the customer gives on the final confirmation (venue type, venue / building name, complete address, contact person and number; for a venue per event, each event's). The card shows one notice ("N event details are still needed") and marks each missing value "Not set · needed". A new order's blank form is not flagged. An order converted from a quotation starts with the venue location only, so it shows these until the customer's confirmation (or the team) fills them in. Every tab (Menu Approval, Pricing & Payment, Inventory, Expenses, Staffing & Logistics, Additional Details) shows on a converted order, because Convert to Order creates its event and menu approval.
+
+## Required fields, and no Menu Planning card on an order (2026-10-18)
+
+A new order needs its event type, event date, venue location (the Venue / Building Name) and at least one adult (`required-fields.ts`, shared by the form and `orders/actions.ts`); a saved order can't have one of them cleared, but an older order that never had a venue can still be saved (its Event Information card says what it needs). The order form has no Menu Planning card any more: meals, dishes and the menu preference are built only in the order's Menu Approval tab (the approval starts when the order is saved with an event type), so a new order starts with no meals and its total is the charges until the menu is built. A quotation's Build Menu tab is the one place a menu is planned before an order exists, and Convert to Order moves it here.

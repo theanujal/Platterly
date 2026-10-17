@@ -1,5 +1,6 @@
 "use client";
 
+import { useMenuPricesVisible } from "../../_components/menu-prices-context";
 import { useState } from "react";
 import { UtensilsCrossed, IndianRupee } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -156,6 +157,7 @@ interface ItemFormProps {
 }
 
 export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess, submitLabel, onCancel }: ItemFormProps) {
+  const showPrice = useMenuPricesVisible();
   const [values, setValues] = useState<ItemFormValues>({ ...EMPTY_ITEM_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -252,19 +254,21 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="item-price">Item Price Per Plate</Label>
-          <IconInput
-            icon={IndianRupee}
-            id="item-price"
-            type="number"
-            step="0.01"
-            min="0"
-            required
-            value={values.price}
-            onChange={(e) => setField("price", e.target.value)}
-          />
-        </div>
+        {showPrice && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="item-price">Item Price Per Plate</Label>
+            <IconInput
+              icon={IndianRupee}
+              id="item-price"
+              type="number"
+              step="0.01"
+              min="0"
+              required
+              value={values.price}
+              onChange={(e) => setField("price", e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="flex flex-col gap-2">
           <Label>Highlights</Label>

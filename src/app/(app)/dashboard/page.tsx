@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/modules/tenants/slug";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { getDashboardSnapshot } from "./_data";
+import { getDashboardSnapshot, redactDashboardSnapshot } from "./_data";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { dayKeyInZone, describeRange, parseDashboardRange } from "@/lib/time/date-range";
 import { OnboardingNudgeBanner } from "./_components/onboarding-nudge-banner";
@@ -37,11 +37,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { from, to } = await searchParams;
   const todayIso = dayKeyInZone(new Date(), await getTenantTimeZone(organizationId));
   const { range, error: rangeError } = parseDashboardRange(from, to, todayIso);
-  const snapshot = await getDashboardSnapshot(organizationId, locationId, range);
+  // Revenue, totals and what is owed are sensitive data, separate from seeing the dashboard (AJ, 2026-10-17): they are removed here, on the server, for a role without them.
+  const prices = await sensitiveAccess(organizationId);
+  const snapshot = redactDashboardSnapshot(await getDashboardSnapshot(organizationId, locationId, range), prices);
   // Only the person who can actually save a slug change should see the
   // popup nudging them to (AJ, 2026-09-19) — it was showing to every role,
   // including staff who'd just hit a permission error trying to use it.
-  const [canClaimLink, canViewOrders, canSell, canViewPayments, canViewInventory, canCreateQuotation, canViewQuotations, canViewCustomers, canViewMenus] =
+  const [canClaimLink, canViewOrders, canSell, canViewPayments, canViewInventory, canCreateQuotation, canViewQuotations, canViewCustomers, canViewMenus, canViewKitchen] =
     await Promise.all([
       hasPermission({ tenant: ["edit"] }, organizationId),
       hasPermission({ orders: ["view"] }, organizationId),
@@ -52,10 +54,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       hasPermission({ quotations: ["view"] }, organizationId),
       hasPermission({ customers: ["view"] }, organizationId),
       hasPermission({ menus: ["view"] }, organizationId),
+      hasPermission({ kitchen: ["view"] }, organizationId),
     ]);
   // Each card shows only what the role can use (e.g. the kitchen role sees order counts and
   // upcoming events, but no revenue, no "create" shortcuts and no setup banner).
-  const canSeeMoney = canSell || canViewPayments;
+  const canSeeMoney = prices.orderPrices || prices.paymentDetails;
 
   const firstName = session.user.firstName ?? session.user.name.split(" ")[0];
   const lastName = session.user.lastName ?? "";
@@ -142,9 +145,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
       )}
 
-      {(canViewOrders || canViewInventory) && (
+      {(canViewOrders || canViewInventory || canViewKitchen) && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {canViewOrders && <KitchenWorkloadCard rows={snapshot.kitchenWorkload} total={snapshot.kitchenGuestsToday} />}
+          {(canViewOrders || canViewKitchen) && <KitchenWorkloadCard rows={snapshot.kitchenWorkload} total={snapshot.kitchenGuestsToday} />}
           {canViewInventory && (
             <InventoryOverviewCard
               lowStock={snapshot.inventory.lowStock}

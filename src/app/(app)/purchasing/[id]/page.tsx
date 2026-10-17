@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download } from "lucide-react";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { assertSharedOrAtMyLocation } from "@/modules/locations/active-location";
 import { getPurchaseOrder, listReceipts, receivedValueOf } from "@/modules/purchasing/purchase-order";
 import { isPriced, orderedValue, remainingQuantity, PO_STATUS_LABEL, PO_STATUS_TONE } from "@/modules/purchasing/po-math";
@@ -27,12 +27,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
-  const [po, canEdit, canDelete] = await Promise.all([getPurchaseOrder(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId), hasPermission({ inventory: ["delete"] }, organizationId)]);
+  const [po, canEdit, canDelete, showCosts] = await Promise.all([getPurchaseOrder(organizationId, id), hasPermission({ inventory: ["edit"] }, organizationId), hasPermission({ inventory: ["delete"] }, organizationId), canSee("supplierCosts", organizationId)]);
   if (!po) notFound();
   const [receipts, received] = await Promise.all([listReceipts(organizationId, po.id), receivedValueOf(po.id)]);
   await assertSharedOrAtMyLocation(organizationId, session.user.id, po.kitchenId);
 
-  const lines = po.items.map((i) => ({ id: i.id, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }));
+  const lines = po.items.map((i) => ({ id: i.id, name: i.inventory.name, unit: i.inventory.unit, quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: showCosts ? Number(i.unitCost) : 0 }));
 
   const priced = isPriced(lines);
   // Click-to-chat for a draft: no prices, and the order only becomes "Ordered" once the person confirms they sent it.
@@ -71,7 +71,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
             waLink={waLink}
             hasReceipts={receipts.length > 0 || received.legacyQuantity > 0}
             orderPlacedOn={`${po.createdAt.getFullYear()}-${String(po.createdAt.getMonth() + 1).padStart(2, "0")}-${String(po.createdAt.getDate()).padStart(2, "0")}`}
-            receiveLines={lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l), expiryRequired: po.items[index].inventory.tracksExpiry, lastCost: po.items[index].inventory.costPerUnit === null ? null : Number(po.items[index].inventory.costPerUnit) }))}
+            receiveLines={!showCosts ? [] : lines.map((l, index) => ({ itemId: po.items[index].id, name: l.name, unit: l.unit, remaining: remainingQuantity(l), expiryRequired: po.items[index].inventory.tracksExpiry, lastCost: po.items[index].inventory.costPerUnit === null ? null : Number(po.items[index].inventory.costPerUnit) }))}
           />
         </div>
       </div>
@@ -115,8 +115,8 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
               </p>
             </div>
           )}
-          {!priced && <p className="mt-4 text-sm text-muted-foreground">Not yet priced. The actual cost is entered when the stock is received.</p>}
-          {received.value > 0 && (
+          {!priced && <p className="mt-4 text-sm text-muted-foreground">{showCosts ? "Not yet priced. The actual cost is entered when the stock is received." : "Costs are not shown for your role."}</p>}
+          {showCosts && received.value > 0 && (
             <p className="mt-2 text-right text-sm text-muted-foreground">
               Received so far, at the prices paid: <span className="font-semibold text-foreground">{formatRupees(received.value)}</span>
             </p>
@@ -136,7 +136,7 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                   <TableHead>Received on</TableHead>
                   <TableHead>Item</TableHead>
                   <TableHead>Quantity</TableHead>
-                  <TableHead>Unit cost</TableHead>
+                  {showCosts && <TableHead>Unit cost</TableHead>}
                   <TableHead>Expiry</TableHead>
                   <TableHead>Lot</TableHead>
                   <TableHead>Invoice</TableHead>
@@ -152,12 +152,12 @@ export default async function PurchaseOrderPage({ params }: { params: Promise<{ 
                       <TableCell>
                         {l.quantity} {l.unit}
                       </TableCell>
-                      <TableCell>{formatRupees(l.unitCost)}</TableCell>
+                      {showCosts && <TableCell>{formatRupees(l.unitCost)}</TableCell>}
                       <TableCell>{formatDate(l.expiryDate)}</TableCell>
                       <TableCell>{l.lotNumber ?? "—"}</TableCell>
                       <TableCell>{index === 0 ? (r.invoiceNumber ?? "—") : ""}</TableCell>
                       <TableCell className="max-w-64 text-xs whitespace-normal text-muted-foreground">
-                        {[l.costNote ? `Free: ${l.costNote}` : null, l.extraQuantity > 0 ? `${l.extraQuantity} ${l.unit} above the order, authorised: ${l.extraReason ?? ""}` : null].filter(Boolean).join(" · ") || "—"}
+                        {[showCosts && l.costNote ? `Free: ${l.costNote}` : null, l.extraQuantity > 0 ? `${l.extraQuantity} ${l.unit} above the order, authorised: ${l.extraReason ?? ""}` : null].filter(Boolean).join(" · ") || "—"}
                       </TableCell>
                     </TableRow>
                   )),

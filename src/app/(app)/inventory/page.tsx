@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Boxes } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { listLocations } from "@/modules/locations/locations";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { listInventoryItems } from "@/modules/inventory/inventory";
 import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
@@ -47,6 +47,8 @@ const formatRupeesPlain = (n: number) => `₹${n.toLocaleString("en-IN", { minim
 export default async function InventoryPage() {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
+  // Unit costs and stock value are supplier costs (Sensitive data), separate from opening Stock & Supplies (AJ, 2026-10-17).
+  const showCosts = await canSee("supplierCosts", organizationId);
   const active = await getActiveLocation(organizationId, session.user.id);
   const [items, supplierOptions, allLocations, catalog] = await Promise.all([
     listInventoryItems(organizationId, active.locationId),
@@ -70,7 +72,7 @@ export default async function InventoryPage() {
       description: item.description ?? "",
       unit: item.unit,
       lowStockThreshold: item.lowStockThreshold?.toString() ?? "",
-      costPerUnit: item.costPerUnit?.toString() ?? "",
+      costPerUnit: showCosts ? item.costPerUnit?.toString() ?? "" : "",
       storageLocation: item.storageLocation ?? "",
       supplierId: item.supplierId ?? "",
       kitchenId: item.kitchenId ?? "",
@@ -121,7 +123,7 @@ export default async function InventoryPage() {
           <TableCell className="px-3 py-3 text-sm font-semibold">
             {stock} {item.unit}
           </TableCell>
-          <TableCell className="px-3 py-3 text-sm">{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
+          {showCosts && <TableCell className="px-3 py-3 text-sm">{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>}
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{[item.kitchenId ? locationName.get(item.kitchenId) : null, item.storageLocation].filter(Boolean).join(" · ") || "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{expiry.get(item.id)?.earliest ? formatDate(expiry.get(item.id)!.earliest!) : "—"}</TableCell>
           <TableCell className="px-3 py-3">
@@ -176,10 +178,12 @@ export default async function InventoryPage() {
       </div>
       <SectionTabs group="stock" active="/inventory" organizationId={organizationId} />
 
+      {showCosts && (
       <p data-testid="stock-value" className="text-sm text-muted-foreground">
         Stock value: <span className="font-semibold text-foreground">{formatRupeesPlain(valuation.totalValue)}</span> (batch cost x quantity left)
         {valuation.incomplete ? ` · incomplete: ${valuation.itemsWithUnknownCost} ${valuation.itemsWithUnknownCost === 1 ? "item has" : "items have"} stock with no known cost, which is not valued` : ""}
       </p>
+      )}
 
       {(expiredItems.length > 0 || soonItems.length > 0) && (
         <div role="status" data-testid="expiry-banner" className="flex flex-col gap-1 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
@@ -199,7 +203,7 @@ export default async function InventoryPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddInventoryDialog variant="tile" suppliers={supplierOptions} locations={locations} />}
-        columns={["Item", "Category", "Stock", "Cost / Unit", "Storage", "Expiry", "Status", "Actions"]}
+        columns={["Item", "Category", "Stock", ...(showCosts ? ["Cost / Unit"] : []), "Storage", "Expiry", "Status", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search inventory…"

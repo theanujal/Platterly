@@ -13,6 +13,7 @@ import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
+import { useMenuPricesVisible } from "../../_components/menu-prices-context";
 
 const FOOD_TYPE_OPTIONS = [
   { value: "VEGETARIAN", label: "Vegetarian" },
@@ -71,6 +72,7 @@ interface MenuFormProps {
 }
 
 export function MenuForm({ initialValues, categories, assignedCategories, onSubmit, onSuccess, submitLabel, onCancel }: MenuFormProps) {
+  const showPrice = useMenuPricesVisible();
   const [values, setValues] = useState<MenuFormValues>({ ...EMPTY_MENU_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +168,7 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
           </Select>
         </div>
 
+        {showPrice && (
         <div className="flex flex-col gap-4 rounded-md border border-border p-4">
           <span className="text-sm font-semibold">Pricing</span>
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -210,6 +213,7 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
             <p className="text-xs text-muted-foreground">{values.child5To10PricingType === "PERCENTAGE" ? "A percentage of the Price Per Plate." : "A fixed price for each child."}</p>
           </div>
         </div>
+        )}
       </div>
 
       {/* Right: pick the categories, how many a guest may choose from each, and their order */}

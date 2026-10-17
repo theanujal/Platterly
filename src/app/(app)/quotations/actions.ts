@@ -1,9 +1,12 @@
 "use server";
 
 import { userMessage } from "@/lib/errors";
+import { onQuotationConverted } from "@/modules/notifications/triggers";
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
+import { DEFAULT_PRICING, savedQuotationMealPrices, savedQuotationPricing, withSavedMealPrices } from "@/modules/roles/keep-pricing";
+import { pickerWithoutPrices } from "@/modules/roles/redact";
 import {
   createQuotation,
   updateQuotation,
@@ -116,7 +119,8 @@ function buildInput(formData: FormData): QuotationInput {
 export async function getMenuForQuotationPickerAction(menuId: string): Promise<MenuPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["view"] }, organizationId);
-  return getMenuPickerData(organizationId, menuId);
+  const picker = await getMenuPickerData(organizationId, menuId);
+  return picker && !(await canSee("orderPrices", organizationId)) ? pickerWithoutPrices(picker) : picker;
 }
 
 // Same rule as Create Order's own (orders/actions.ts) — applied consistently
@@ -154,11 +158,19 @@ async function assertStoredQuotationComplete(organizationId: string, id: string)
   if (stored) assertQuotationComplete(stored);
 }
 
+/** Without the order-prices right, a submitted price never sets one: a new quotation starts on the menus' own prices, an edit keeps the pricing it has (AJ, 2026-10-17, D7). */
+async function withAuthorizedPricing(organizationId: string, input: QuotationInput, quotationId?: string): Promise<QuotationInput> {
+  if (await canSee("orderPrices", organizationId)) return input;
+  const pricing = quotationId ? await savedQuotationPricing(organizationId, quotationId) : DEFAULT_PRICING;
+  const saved = quotationId ? await savedQuotationMealPrices(organizationId, quotationId) : new Map<string, number | undefined>();
+  return { ...input, ...pricing, mealPlanEntries: input.mealPlanEntries ? withSavedMealPrices(input.mealPlanEntries, saved) : undefined };
+}
+
 export async function createQuotationAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["create"] }, organizationId);
   try {
-    const input = buildInput(formData);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData));
     assertQuotationComplete(input);
     await assertEventDateAllowed(organizationId, input.eventStartDate);
     await createQuotation(organizationId, input, session.user.id);
@@ -173,7 +185,7 @@ export async function updateQuotationAction(id: string, formData: FormData): Pro
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["edit"] }, organizationId);
   try {
-    const input = buildInput(formData);
+    const input = await withAuthorizedPricing(organizationId, buildInput(formData), id);
     // A sent quotation is locked: what the customer sees is what is on file. Recall it to edit.
     const stored = await prisma.quotation.findFirst({ where: { id, organizationId }, select: { status: true } });
     if (stored && !isQuotationEditable(stored.status)) throw new Error(QUOTATION_LOCKED_MESSAGE);
@@ -252,6 +264,8 @@ export async function convertQuotationToOrderAction(id: string): Promise<ActionR
     const order = await convertQuotationToOrder(organizationId, id, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id);
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);
+    // The customer accepted the quotation: thank them and give them the order number.
+    await onQuotationConverted(organizationId, order.id);
     revalidatePath(`/quotations/${id}`);
     revalidatePath("/orders");
     return { ok: true, orderId: order.id };

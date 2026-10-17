@@ -27,44 +27,45 @@ type RoleDefinition = {
 export const ROLE_DEFINITIONS = [
   {
     id: "owner",
-    label: "Owner",
-    description: "Full access to everything, including the team, settings and deleting business data.",
+    // The id stays `owner` (AJ, 2026-10-17); the UI calls the role Admin. It is the business's one top role, not the Platterly Ops admin.
+    label: "Admin",
+    description: "Full access to everything, including the team, roles and permissions, prices, settings and deleting business data.",
     invitable: false,
   },
   {
     id: "manager",
     label: "Manager",
-    description: "Runs day-to-day operations: creates and edits most records, but can't delete, manage the team or change settings.",
+    description: "Runs day-to-day operations: creates and edits most records and approves menus. Can delete Staff page records only, sees no prices unless the Admin allows it, and can't manage the team, roles or settings.",
     invitable: true,
   },
   {
     id: "staff",
     label: "Staff",
-    description: "Read-only access to view orders, inventory and basic information.",
+    description: "Views orders and quotations only, without prices. The Admin can allow more.",
     invitable: true,
   },
   {
     id: "kitchen",
     label: "Kitchen Team",
-    description: "Works the Kitchen Dashboard and updates production status on approved menus.",
+    description: "Works the Kitchen Dashboard: sees the kitchen's orders, moves the cooking status, downloads the kitchen order PDF and manages recipes. No prices.",
     invitable: true,
   },
   {
     id: "inventoryTeam",
     label: "Store / Inventory Team",
-    description: "Owns stock, ingredients and purchases.",
+    description: "Owns stock, ingredients, suppliers and purchases, with the supplier costs that work needs. No customer prices.",
     invitable: true,
   },
   {
     id: "accounts",
     label: "Accounts Team (Finance)",
-    description: "Owns invoices, payments and financial reports.",
+    description: "Owns invoices, payments, expenses and financial reports, with order prices and payment details. No deleting.",
     invitable: true,
   },
   {
     id: "salesEvents",
     label: "Sales & Event Team",
-    description: "Handles enquiries, customers, quotations, orders and events, and runs the menu approval workflow from sending a menu to the customer through kitchen approval.",
+    description: "Handles customers, quotations, orders and events, and runs the menu approval workflow from sending a menu to the customer through kitchen approval. No prices unless the Admin allows it.",
     invitable: true,
   },
 ] as const satisfies readonly RoleDefinition[];

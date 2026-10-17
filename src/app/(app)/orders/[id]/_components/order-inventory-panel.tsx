@@ -57,7 +57,8 @@ const num = (n: number) => String(Math.round(n * 1000) / 1000);
  * the stock now available, and an undo arrow that returns an item to the shelf. Extra items (no recipe) are added below
  * the list. Sending can only happen once the customer has approved the menu, and re-sending sends only the difference.
  */
-export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { orderId: string; data: OrderInventoryData; canEdit: boolean; extrasSlot: React.ReactNode }) {
+/** `showCosts`: the viewer holds the supplier-costs right. Without it the server sends zero costs and the cost tile and columns are not drawn. */
+export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot, showCosts = true }: { orderId: string; data: OrderInventoryData; canEdit: boolean; extrasSlot: React.ReactNode; showCosts?: boolean }) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -284,16 +285,18 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                 {notice.text}
               </p>
             )}
-            <div className="grid grid-cols-2 divide-x divide-border rounded-lg bg-muted p-4" data-testid="sent-summary">
+            <div className={cn("grid divide-x divide-border rounded-lg bg-muted p-4", showCosts ? "grid-cols-2" : "grid-cols-1")} data-testid="sent-summary">
               <div className="flex flex-col gap-1 pr-4">
                 <span className="text-xs text-muted-foreground">Total items sent</span>
                 <span className="text-2xl font-semibold" data-testid="sent-total">{sentLines.length === 0 ? "—" : sentTotalText}</span>
               </div>
+              {showCosts && (
               <div className="flex flex-col gap-1 pl-4" data-testid="sent-cost">
                 <span className="text-xs text-muted-foreground">Total cost (batch cost)</span>
                 <span className="text-2xl font-semibold">{sentLines.length === 0 ? "—" : formatRupees(sentLines.reduce((sum, l) => sum + l.sentCost, 0))}</span>
                 {sentLines.some((l) => l.sentCostUnknown > 0) && <span className="text-xs text-muted-foreground">Leaves out stock whose cost is not known.</span>}
               </div>
+              )}
             </div>
             {sentLines.length > 0 && (
               <div className="overflow-hidden rounded-lg border border-border">
@@ -302,8 +305,8 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                     <TableRow>
                       <TableHead className={HEAD}>Item</TableHead>
                       <TableHead className={HEAD}>Qty sent</TableHead>
-                      <TableHead className={HEAD}>Batch cost</TableHead>
-                      <TableHead className={HEAD}>Total cost</TableHead>
+                      {showCosts && <TableHead className={HEAD}>Batch cost</TableHead>}
+                      {showCosts && <TableHead className={HEAD}>Total cost</TableHead>}
                       <TableHead className={`${HEAD} w-12`}><span className="sr-only">Return to stock</span></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -327,11 +330,13 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot }: { or
                             </span>
                           </TableCell>
                           <TableCell className="px-2.5 py-3 text-sm whitespace-nowrap" data-testid="sent-quantity">{num(line.sent)} {line.unit}</TableCell>
-                          <TableCell className="px-2.5 py-3 text-sm whitespace-nowrap">{costed > 0 ? `${formatRupees(line.sentCost / costed)} / ${line.unit}` : "—"}</TableCell>
-                          <TableCell className="px-2.5 py-3 text-sm font-semibold whitespace-nowrap">
-                            {costed > 0 ? formatRupees(line.sentCost) : "—"}
-                            {line.sentCostUnknown > 0 && <span className="block text-xs font-normal text-muted-foreground">cost of {num(line.sentCostUnknown)} {line.unit} unknown</span>}
-                          </TableCell>
+                          {showCosts && <TableCell className="px-2.5 py-3 text-sm whitespace-nowrap">{costed > 0 ? `${formatRupees(line.sentCost / costed)} / ${line.unit}` : "—"}</TableCell>}
+                          {showCosts && (
+                            <TableCell className="px-2.5 py-3 text-sm font-semibold whitespace-nowrap">
+                              {costed > 0 ? formatRupees(line.sentCost) : "—"}
+                              {line.sentCostUnknown > 0 && <span className="block text-xs font-normal text-muted-foreground">cost of {num(line.sentCostUnknown)} {line.unit} unknown</span>}
+                            </TableCell>
+                          )}
                           <TableCell className="px-2.5 py-3 text-right">
                             {canEdit && data.canReturn && (
                               <Button type="button" variant="ghost" size="icon-sm" aria-label={`Return ${line.name} to stock`} title="Return to stock" disabled={busyId === line.inventoryId} onClick={() => giveBack(line)}>

@@ -58,3 +58,7 @@ Only a Draft, or a quotation the customer sent back (Changes Requested), can be 
 ## What the customer sees while the team edits (2026-10-18)
 
 The customer's page reads the live quotation, which is safe because it can't change while they can act on it (Sent and Viewed are locked; Recall switches the link off). While a quotation is in Changes Requested, the customer's link stays on but shows only "We're updating your quotation" with their own note, no menu, prices or buttons, so half-finished edits stay private. Sending it again brings the quotation back on the same link.
+
+## The email when a quotation becomes an order (2026-10-18)
+
+`convertQuotationToOrderAction` calls `onQuotationConverted` once the order, its event and its menu approval exist: the customer gets "Thank you for accepting our quotation" with their order number, and that the order details follow by email and the work starts once they approve (`quotationConvertedEmail`, event `quotation.converted`, switch Settings -> Email -> **Order Accepted**, on by default). The order is created with `skipCustomerNotice`, so the generic "order received" email is not also sent; the team's new-order alert still goes out as for any order.

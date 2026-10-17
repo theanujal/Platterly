@@ -44,7 +44,9 @@ export function ApprovalReviewBody({
         versions={versions}
         onOpenVersion={c.openVersion}
         onChange={c.handleChangeStatus}
+        showPrices={data.showPrices}
       />
+      {data.showPrices && (
       <ApprovalPricingCard
         menuAmount={c.priced.menuAmount}
         extrasAmount={c.priced.extrasAmount}
@@ -55,6 +57,7 @@ export function ApprovalReviewBody({
         lastSentTotal={c.lastSentTotal}
         dirty={c.dirty}
       />
+      )}
       <ApprovalNotesCard notes={notes} noteDraft={c.noteDraft} onNoteDraftChange={c.setNoteDraft} pending={c.pending} onAdd={c.handleAddNote} canAdd={capabilities.canAct && !orderCompleted} />
     </>
   );
@@ -92,7 +95,7 @@ export function ApprovalReviewBody({
       <div className={cardsInSidebar ? "flex flex-col gap-6" : "grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]"}>
         {/* ---------------- Main column: the same Menu Planning as the order ---------------- */}
         <div className="flex min-w-0 flex-col gap-4">
-          {isCustomMenu && !c.shownVersion && (
+          {isCustomMenu && !c.shownVersion && data.showPrices && (
             <CustomMenuPriceCard
               pricePerPlate={c.pricePerPlate}
               onPriceChange={c.setPricePerPlate}
@@ -126,6 +129,7 @@ export function ApprovalReviewBody({
             onEntriesChange={c.setEntries}
             onMenuPreferenceChange={c.setMenuPreference}
             onFoodDialogChange={c.setFoodDialogTarget}
+            hidePrices={!data.showPrices}
           />
         </div>
 

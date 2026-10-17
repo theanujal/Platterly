@@ -161,6 +161,29 @@ export function orderConfirmationEmail(d: EmailData): RenderedEmail {
   };
 }
 
+/**
+ * To the customer when the quotation they accepted becomes an order (AJ, 2026-10-18): thanks, the order number, and what happens next.
+ * It replaces the generic "order received" email for a converted order, so the customer gets one message, not two.
+ */
+export function quotationConvertedEmail(d: EmailData): RenderedEmail {
+  const number = d.orderNumber ? ` Your order number is <strong>${escapeHtml(d.orderNumber)}</strong>.` : "";
+  return {
+    subject: `Thank you for accepting our quotation${d.orderNumber ? ` — order ${d.orderNumber}` : ""}`,
+    html: renderEmail({
+      tag: "Order Accepted",
+      eyebrow: "Quotation accepted",
+      title: "Thank you for accepting our quotation",
+      greeting: customerGreeting(d),
+      bodyHtml:
+        p(`Thank you for accepting our quotation. We have accepted your order.${number}`) +
+        p("We will email you all the details of your order shortly. Once you review and approve them, we will start preparing for your event."),
+      details: rows([["Order", d.orderNumber], ["Event", d.eventType], ["Event date", d.eventDate], ["Venue", d.eventAddress], ["Order total", money(d.amount)]]),
+      signOff: kitchenSignOff(d),
+      unsubscribeUrl: d.unsubscribeUrl,
+    }),
+  };
+}
+
 /** To the kitchen owner / Sales when a new order comes in. */
 export function newOrderAlertEmail(d: EmailData): RenderedEmail {
   return {
@@ -445,6 +468,8 @@ export function emailForEvent(event: string, payload: unknown): RenderedEmail | 
       return orderStatusEmail(d);
     case "quotation.sent":
       return quotationSentEmail(d);
+    case "quotation.converted":
+      return quotationConvertedEmail(d);
     case "menu_approval.sent":
       return menuApprovalEmail(d);
     case "invoice.sent":

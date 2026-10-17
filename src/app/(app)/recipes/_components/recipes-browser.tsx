@@ -65,7 +65,7 @@ function StatusBadge({ row }: { row: RecipeRow }) {
 }
 
 /** Every active dish with its recipe status, in the shared catalog list (search, category, status, sort, paging). Add or edit a recipe in the drawer, which can start from another dish's recipe. */
-export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: RecipeRow[]; ingredientOptions: IngredientOption[]; canEdit: boolean }) {
+export function RecipesBrowser({ rows, ingredientOptions, canEdit, showCost = true }: { rows: RecipeRow[]; ingredientOptions: IngredientOption[]; canEdit: boolean; showCost?: boolean }) {
   const [editing, setEditing] = useState<RecipeRow | null>(null);
   const [picking, setPicking] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
@@ -86,7 +86,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
     { key: "MISSING", label: "Missing Recipe" },
     { key: "DRAFT", label: "Draft" },
     { key: "ACTIVE", label: "Active" },
-    { key: "INCOMPLETE", label: "Cost Incomplete" },
+    ...(showCost ? [{ key: "INCOMPLETE" as const, label: "Cost Incomplete" }] : []),
     { key: "HAS", label: "Has Recipe" },
   ];
   // The recipe-status filter is a dropdown now, each choice with how many dishes it holds (AJ, 2026-10-17).
@@ -110,7 +110,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
       id: row.id,
       searchText: `${row.name} ${row.category ?? ""}`,
       filterValues: { category: row.category ?? undefined },
-      sortValues: { name: row.name, cost: row.cost?.verified ?? Number.MAX_SAFE_INTEGER },
+      sortValues: { name: row.name, ...(showCost ? { cost: row.cost?.verified ?? Number.MAX_SAFE_INTEGER } : {}) },
       card: (
         <>
           <CatalogCardMedia src={row.image} icon={UtensilsCrossed} />
@@ -119,9 +119,11 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
             description={row.category}
             tags={action}
             footer={
-              <span className="text-base font-semibold">
-                <CostCell row={row} />
-              </span>
+              showCost ? (
+                <span className="text-base font-semibold">
+                  <CostCell row={row} />
+                </span>
+              ) : undefined
             }
             statusBadge={status}
           />
@@ -136,9 +138,11 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
           <TableCell className="px-3 py-3">{status}</TableCell>
           <TableCell className="px-3 py-3 text-sm">{row.hasRecipe ? `${row.ingredientCount} ${row.ingredientCount === 1 ? "item" : "items"}` : "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm">{row.yieldServings !== null ? `${row.yieldServings} servings` : "—"}</TableCell>
-          <TableCell className="px-3 py-3 text-sm font-semibold">
-            <CostCell row={row} />
-          </TableCell>
+          {showCost && (
+            <TableCell className="px-3 py-3 text-sm font-semibold">
+              <CostCell row={row} />
+            </TableCell>
+          )}
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">{action}</div>
           </TableCell>
@@ -151,8 +155,12 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
   const filterOptions: CatalogFilterOption[] = [{ key: "category", allLabel: "All Categories", options: categories.map((c) => ({ value: c, label: c })), className: "w-48" }];
   const sortOptions: CatalogSortOption[] = [
     { value: "name", label: "Name (A–Z)", key: "name" },
-    { value: "cost-low", label: "Cost (Low–High)", key: "cost" },
-    { value: "cost-high", label: "Cost (High–Low)", key: "cost", direction: "desc" },
+    ...(showCost
+      ? [
+          { value: "cost-low", label: "Cost (Low–High)", key: "cost" },
+          { value: "cost-high", label: "Cost (High–Low)", key: "cost", direction: "desc" as const },
+        ]
+      : []),
   ];
 
   return (
@@ -160,7 +168,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Recipes</h1>
-          <p className="text-sm text-muted-foreground">Manage dish recipes, ingredient quantities, and cost per serving to support accurate stock planning.</p>
+          <p className="text-sm text-muted-foreground">Manage dish recipes and ingredient quantities to support accurate stock planning.{showCost ? " Cost per serving is shown for each recipe." : ""}</p>
         </div>
         {canEdit && (
           <Button type="button" onClick={() => setPicking(true)}>
@@ -170,7 +178,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
       </div>
       <CatalogBrowser
         entries={entries}
-        columns={["Dish", "Category", "Recipe Status", "Ingredients", "Recipe Yield", "Cost / Serving", "Actions"]}
+        columns={["Dish", "Category", "Recipe Status", "Ingredients", "Recipe Yield", ...(showCost ? ["Cost / Serving"] : []), "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search dishes, categories…"
@@ -193,7 +201,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
         sortOptions={sortOptions}
         defaultView="list"
       />
-      {!canEdit && <p className="text-sm text-muted-foreground">You can see recipes here. Editing them needs permission to edit the menu.</p>}
+      {!canEdit && <p className="text-sm text-muted-foreground">You can see recipes here. Editing them needs permission to edit recipes.</p>}
 
       {editing && (
         <RecipeDialog
@@ -205,6 +213,7 @@ export function RecipesBrowser({ rows, ingredientOptions, canEdit }: { rows: Rec
           initialValues={editing.recipe}
           options={ingredientOptions}
           copySources={copySources}
+          showCost={showCost}
         />
       )}
 

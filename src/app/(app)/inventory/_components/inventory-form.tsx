@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSensitive } from "@/components/sensitive-access";
 import { Boxes, IndianRupee, BellRing, CalendarDays, MapPin } from "lucide-react";
 import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { IconInput } from "@/components/ui/icon-input";
@@ -61,6 +62,7 @@ interface InventoryFormProps {
 }
 
 export function InventoryForm({ initialValues, creating, suppliers, locations, onSubmit, onSuccess, submitLabel, onCancel }: InventoryFormProps) {
+  const showCost = useSensitive().supplierCosts;
   const [values, setValues] = useState<InventoryFormValues>({ ...EMPTY_INVENTORY_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   // Until the person flips the switch themselves, it follows the category (the category only supplies a default).
@@ -209,18 +211,20 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
           <IconInput icon={CalendarDays} id="inv-expiry" type="date" value={values.expiryDate} onChange={(e) => setField("expiryDate", e.target.value)} />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-cost">Cost Per Unit</Label>
-          <IconInput
-            icon={IndianRupee}
-            id="inv-cost"
-            type="number"
-            step="0.01"
-            min="0"
-            value={values.costPerUnit}
-            onChange={(e) => setField("costPerUnit", e.target.value)}
-          />
-        </div>
+        {showCost && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="inv-cost">Cost Per Unit</Label>
+            <IconInput
+              icon={IndianRupee}
+              id="inv-cost"
+              type="number"
+              step="0.01"
+              min="0"
+              value={values.costPerUnit}
+              onChange={(e) => setField("costPerUnit", e.target.value)}
+            />
+          </div>
+        )}
           </>
         )}
         <div className="flex flex-col gap-1.5">

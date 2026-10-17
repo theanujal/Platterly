@@ -140,6 +140,7 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
     await datePopover.getByRole("button", { name: day, exact: true }).click();
   }
   await page.getByLabel("Venue / Building Name").fill("Taj Hall");
+  await page.getByLabel("Adults").fill("50"); // the guests can't be skipped (AJ, 2026-10-18)
   await page.getByTestId("order-save-top").click();
   await expect(page).toHaveURL(/\/orders$/);
 

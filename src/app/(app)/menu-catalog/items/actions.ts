@@ -2,7 +2,8 @@
 
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { prisma } from "@/lib/db";
+import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
 import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import { importFoodItems } from "@/modules/menus/import/import";
@@ -32,16 +33,22 @@ function stringField(formData: FormData, name: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string): Promise<MenuItemInput> {
+async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<MenuItemInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
   const foodType = stringField(formData, "foodType") as FoodType | undefined;
   if (foodType !== "VEGETARIAN" && foodType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
 
-  const priceRaw = formData.get("price");
-  const price = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
-  if (Number.isNaN(price) || price < 0) throw new Error("A valid, non-negative price is required.");
+  // Menu and dish prices are sensitive data (AJ, 2026-10-17): without the right a submitted price is ignored, an edit keeps the saved one and a new dish starts at 0.
+  let price: number;
+  if (await canSee("menuPrices", organizationId)) {
+    const priceRaw = formData.get("price");
+    price = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
+    if (Number.isNaN(price) || price < 0) throw new Error("A valid, non-negative price is required.");
+  } else {
+    price = existingId ? Number((await prisma.menuItem.findFirstOrThrow({ where: { id: existingId, organizationId }, select: { price: true } })).price) : 0;
+  }
 
   let image = existingImage;
   const file = formData.get("image");
@@ -95,7 +102,7 @@ export async function updateMenuItemAction(
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage);
+    const input = await buildInput(organizationId, formData, existingImage, id);
     await updateMenuItem(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);
@@ -149,7 +156,9 @@ export interface RecipePayload {
 
 export async function saveRecipeAction(menuItemId: string, payload: RecipePayload): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ menus: ["edit"] }, organizationId);
+  // Recipes have their own permission (AJ, 2026-10-17): a first recipe for a dish needs "create", changing one needs "edit".
+  const existing = await prisma.recipe.findFirst({ where: { organizationId, menuItemId }, select: { id: true } });
+  await requirePermission({ recipes: [existing ? "edit" : "create"] }, organizationId);
   try {
     await saveRecipe(organizationId, menuItemId, payload, session.user.id);
   } catch (error) {
@@ -163,7 +172,7 @@ export async function saveRecipeAction(menuItemId: string, payload: RecipePayloa
 /** Approves a recipe for production (Active) or returns it to Draft. Same permission as editing the recipe; the module re-checks the recipe on the server. */
 export async function setRecipeStatusAction(menuItemId: string, status: "ACTIVE" | "DRAFT"): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ menus: ["edit"] }, organizationId);
+  await requirePermission({ recipes: ["edit"] }, organizationId);
   try {
     await setRecipeStatus(organizationId, menuItemId, status === "ACTIVE" ? "ACTIVE" : "DRAFT", session.user.id);
   } catch (error) {
@@ -181,7 +190,8 @@ export async function createRecipeIngredientAction(
   unit: string,
 ): Promise<{ ok: true; id: string; name: string; unit: string } | { ok: false; error: string }> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ inventory: ["create"] }, organizationId);
+  // Writing a recipe may need an ingredient the store has not listed yet; adding it (zero stock) belongs to writing the recipe.
+  await requirePermission({ recipes: ["create"] }, organizationId);
   try {
     const kitchenId = await myHeldLocation(organizationId, session.user.id);
     const item = await createInventoryItem(organizationId, { name: name.trim(), category: "Other", unit, kitchenId }, session.user.id);
@@ -194,7 +204,7 @@ export async function createRecipeIngredientAction(
 
 export async function deleteRecipeAction(menuItemId: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ menus: ["edit"] }, organizationId);
+  await requirePermission({ recipes: ["delete"] }, organizationId);
   try {
     await deleteRecipe(organizationId, menuItemId, session.user.id);
   } catch (error) {
@@ -212,6 +222,8 @@ export type BulkActionResult =
 export async function importFoodItemsAction(formData: FormData): Promise<BulkActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["create"] }, organizationId);
+  // The sheet carries a price column, so importing needs the right to set dish prices.
+  await requireSensitive("menuPrices", organizationId);
   try {
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel or CSV file." };

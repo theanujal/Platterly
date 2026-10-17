@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FormDrawer } from "@/components/catalog/form-drawer";
 import { formatRupees } from "@/components/catalog/catalog-display";
+import { useSensitive } from "@/components/sensitive-access";
 import { Input } from "@/components/ui/input";
 import { confirmBatchCostAction, listBatchesAction, setBatchStatusAction, type BatchRow, type BatchesResult } from "../actions";
 
@@ -56,6 +57,7 @@ export function BatchesDrawer({
 
 // Inside the drawer, so it loads fresh every time the drawer opens.
 function BatchesBody({ itemId, unit, canEdit }: { itemId: string; unit: string; canEdit: boolean }) {
+  const showCost = useSensitive().supplierCosts;
   const router = useRouter();
   const [data, setData] = useState<BatchesResult | null>(null);
   const [reload, setReload] = useState(0);
@@ -153,7 +155,7 @@ function BatchesBody({ itemId, unit, canEdit }: { itemId: string; unit: string; 
                     <th className="px-3 py-3">Received</th>
                     <th className="px-3 py-3">Lot</th>
                     <th className="px-3 py-3">Expiry</th>
-                    <th className="px-3 py-3">Unit cost</th>
+                    {showCost && <th className="px-3 py-3">Unit cost</th>}
                     <th className="px-3 py-3">Left</th>
                     <th className="px-3 py-3">Status</th>
                     <th className="px-3 py-3">
@@ -171,6 +173,7 @@ function BatchesBody({ itemId, unit, canEdit }: { itemId: string; unit: string; 
                       </td>
                       <td className="px-3 py-3">{b.lotNumber ?? "—"}</td>
                       <td className="px-3 py-3">{b.expiryMissing ? <Badge variant="warning">Not recorded</Badge> : fmt(b.expiryDate)}</td>
+                      {showCost && (
                       <td className="px-3 py-3">
                         {b.unitCost !== null ? (
                           <>
@@ -223,6 +226,7 @@ function BatchesBody({ itemId, unit, canEdit }: { itemId: string; unit: string; 
                           </span>
                         )}
                       </td>
+                      )}
                       <td className="px-3 py-3">
                         {b.remainingQuantity}{" "}
                         <span className="text-muted-foreground">

@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowLeft, CalendarDays, FileText, Info, Lock, TriangleAlert, ClipboardList, MapPin, Pencil, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, CalendarDays, FileText, Info, Lock, TriangleAlert, ClipboardList, MapPin, Pencil, Plus, Tag, Trash2, User, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { CustomerCombobox, type SelectedCustomer } from "@/components/customers/customer-combobox";
-import { MenuPlanningSection, MEAL_TYPES, type MealSelection, type MenuOption, type MealTypeValue } from "@/components/catalog/menu-planning-section";
+import { MEAL_TYPES, type MealSelection, type MenuOption } from "@/components/catalog/menu-planning-section";
 import { DraftPaymentsPanel } from "./draft-payments-panel";
 import type { StagedPaymentDraft } from "../../invoices/_components/payments-panel";
 import { useUnsavedChangesGuard } from "@/components/unsaved-changes-guard";
@@ -35,13 +35,13 @@ import { IconTip } from "@/components/ui/icon-tip";
 import { FormTabs, type FormTab } from "./form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
 import { percentOf } from "@/modules/orders/amount";
-import { moveMealsWithEventDates } from "@/modules/orders/meal-dates";
+import { orderBlockingField, orderMissingMessage } from "@/modules/orders/required-fields";
 import { ApprovalSidebarSlotProvider } from "@/modules/menu-approvals/_components/review/sidebar-slot";
 import { ApprovalSavePublisherProvider, UnsavedOrderEditsProvider, type ApprovalSaveState } from "@/modules/menu-approvals/_components/review/approval-save-slot";
 import { LiveOrderTotalProvider, OrderPriceLinesProvider, type OrderPriceLine } from "@/modules/orders/live-total";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
-import { getOrderCountsByDayAction, getMenuForOrderPickerAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
+import { getOrderCountsByDayAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
 
 // Mirrors actions.ts's own past-date check — a live client-side preview of the
 // same server-enforced rule, never the only place it's checked. The team may
@@ -290,11 +290,6 @@ interface OrderFormProps {
   /** Order detail only: the Create / Open Invoice button, shown in the sidebar above Order Status while the Pricing & Payment tab is open (AJ, 2026-10-10). */
   sidebarInvoiceAction?: React.ReactNode;
   /**
-   * Edit page only (AJ, 2026-09-30): the menu is planned in Menu Approvals, so here it is shown read-only and the
-   * form sends no meals (the server leaves the meal plan alone). The banner carries the "Edit Menu" link.
-   */
-  menuPlanReadOnly?: boolean;
-  /**
    * Edit page: when the planner is editable (the menu is still a draft, 2026-10-10) the meals are sent only if they
    * were changed, so saving other fields never rewrites the plan or logs a menu edit.
    */
@@ -303,13 +298,6 @@ interface OrderFormProps {
   locked?: boolean;
   /** Completed: closed completely, so the inventory, expenses and staffing tabs are read-only too (payments still work). */
   completed?: boolean;
-  /** Shown above the planner: the menu approval status and what the team can do with it (edit, recall, view only). */
-  menuPlanBanner?: React.ReactNode;
-  /**
-   * Edit page, once the order has a menu approval (Menu Approvals + Orders merge, Decision 11): the meals are edited in the Menu Approval
-   * tab only. The planner here is read-only and always shows the saved meal plan (the same stored data the tab edits), never a draft of its own.
-   */
-  menuPlanInApprovalTab?: boolean;
   /** Order detail only: the Menu Approval tab's content. */
   menuApprovalTab?: React.ReactNode;
   /** Order detail only: the tab to open first (from `?tab=`). */
@@ -331,6 +319,12 @@ interface OrderFormProps {
    * persisted order. Zero/omitted for every Order created directly.
    */
   carriedOverItemsSubtotal?: number;
+  /**
+   * Whether the viewer may see prices (Sensitive data: orderPrices). When false the server also sent no price (menus at 0, items at 0,
+   * charges blank), the Pricing & Payment tab and the price summary are not drawn, and the server keeps the saved pricing whatever the
+   * form sends (updateOrderAction), so the total is still worked out, on the server only.
+   */
+  showPrices?: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
@@ -354,18 +348,16 @@ export function OrderForm({
   pricingExtra,
   billingPanel,
   sidebarInvoiceAction,
-  menuPlanReadOnly = false,
   menuPlanOnlyIfChanged = false,
   locked = false,
   completed = false,
-  menuPlanBanner = null,
-  menuPlanInApprovalTab = false,
   menuApprovalTab,
   initialTab,
   priceFrozen = false,
   withCustomer = false,
   cancelHref = "/orders",
   carriedOverItemsSubtotal = 0,
+  showPrices = true,
   onSubmit,
   onSuccess,
   submitLabel,
@@ -418,7 +410,7 @@ export function OrderForm({
   const [seenMealsKey, setSeenMealsKey] = useState(savedMealsKey);
   if (seenMealsKey !== savedMealsKey) {
     setSeenMealsKey(savedMealsKey);
-    if (menuPlanReadOnly && initialValues) {
+    if (initialValues) {
       const entries = initialValues.mealPlanEntries ?? [];
       setValues((prev) => ({ ...prev, mealPlanEntries: entries }));
       setSavedSnapshot((snapshot) => JSON.stringify({ ...JSON.parse(snapshot), mealPlanEntries: entries }));
@@ -426,14 +418,8 @@ export function OrderForm({
   }
   // Set when the form itself switched the Order Type to Multi Order, so a popup
   // can say why (AJ, 2026-09-27): a date range, or more than one meal type.
-  const [multiNotice, setMultiNotice] = useState<"meals" | "multiOn" | "multiOff" | null>(null);
-  // Which meal's "Select/Edit Food Items" drawer is open — lifted here (not
-  // internal to MenuPlanningSection) so the "Selected Meals" summary card
-  // can also open it directly for any date, not just the sidebar-focused one.
-  const [foodDialogTarget, setFoodDialogTarget] = useState<{ date: string; mealType: MealTypeValue } | null>(null);
+  const [multiNotice, setMultiNotice] = useState<"multiOn" | "multiOff" | null>(null);
 
-  // True while Multi was chosen by the form itself (not clicked), so it can flip back to Single on its own.
-  const [autoSwitchedToMulti, setAutoSwitchedToMulti] = useState(false);
 
   function setField<K extends keyof OrderFormValues>(key: K, value: OrderFormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -470,7 +456,6 @@ export function OrderForm({
   }
 
   function applyOrderKind(kind: string) {
-    setAutoSwitchedToMulti(false);
     if (kind === "SINGLE") {
       const { kept } = singleOrderLoss();
       setValues((prev) => ({ ...prev, orderKind: "SINGLE", eventEndDate: prev.eventStartDate, mealPlanEntries: kept }));
@@ -480,45 +465,11 @@ export function OrderForm({
   }
 
   /**
-   * Multi Order is automatic (AJ, 2026-09-27): a date range, or more than one
-   * meal type even on a single day, makes it one. The form switches and says
-   * why in a popup. A Multi Order can't be turned back to Single while either
-   * still holds (see `multiRequired`).
-   */
-  function autoMulti(reason: "meals") {
-    setValues((prev) => (prev.orderKind === "MULTI" ? prev : { ...prev, orderKind: "MULTI" }));
-    if (values.orderKind !== "MULTI") {
-      setMultiNotice(reason);
-      setAutoSwitchedToMulti(true);
-    }
-  }
-
-  /**
    * DateRangePicker's onChange — replaces separate start/end date inputs.
    */
   function setEventDateRange(startDate: string, endDate: string) {
-    const previousStart = values.eventStartDate;
     setField("eventStartDate", startDate);
     setField("eventEndDate", endDate);
-    // Not when the meals belong to the Menu Approval tab: they are saved there, not by this form, so dropping them here would only make the
-    // pricing preview disagree with what is saved (and leave the form reading "unsaved").
-    if (menuPlanReadOnly) return;
-    // The meals follow the dates (AJ, 2026-10-16): moved by the same number of days, or put on the nearest event day, never left on a day
-    // the event isn't on and never silently dropped.
-    if (!previousStart || !startDate || !endDate) return;
-    const { moved } = moveMealsWithEventDates(values.mealPlanEntries, previousStart, startDate, endDate, (e) => Boolean(e.menuId) || e.items.length > 0);
-    setField(
-      "mealPlanEntries",
-      moved.map(({ date, mealType, price, menuId, items }) => ({ date, mealType, price, menuId, items })),
-    );
-  }
-
-  const days = useMemo(() => enumerateDates(values.eventStartDate, values.eventEndDate), [values.eventStartDate, values.eventEndDate]);
-
-  /** Applies a new meal plan and, if it now spans more than one meal type, makes the order a Multi Order. Passed straight into MenuPlanningSection as its onChange. */
-  function setMealPlan(entries: MealSelection[]) {
-    setField("mealPlanEntries", entries);
-    if (new Set(entries.map((e) => e.mealType)).size > 1) autoMulti("meals");
   }
 
   // One pricing rule everywhere (meal-pricing.ts): a meal costs its Menu's price x guests; only Extra dishes and add-ons move the price.
@@ -579,12 +530,10 @@ export function OrderForm({
   const eventDaysUntil = daysUntilPreview(values.eventStartDate);
   // No backdated orders (AJ, 2026-09-27). An existing order keeps its own past date untouched.
   const eventDatePast = eventDaysUntil !== null && eventDaysUntil < 0 && values.eventStartDate !== initialValues?.eventStartDate;
-  const distinctMealTypes = new Set(values.mealPlanEntries.map((e) => e.mealType)).size;
-  const multiRequired = days.length > 1 || distinctMealTypes > 1;
   const isMulti = values.orderKind === "MULTI";
   const singleLoss = singleOrderLoss();
   // Meals owned by the Menu Approval tab can't be removed here, so Single Order stays off until they are recalled.
-  const singleBlocked = menuPlanReadOnly && singleLoss.removedMeals > 0;
+  const singleBlocked = singleLoss.removedMeals > 0;
   // The events (a day and a meal) the venue can differ by: the customer's Venue & Delivery step lists the same ones.
   const slotMeals = [...new Map(values.mealPlanEntries.map((e) => [eventSlotKey(e.date, e.mealType), e])).values()].sort((a, b) => eventSlotKey(a.date, a.mealType).localeCompare(eventSlotKey(b.date, b.mealType)));
   const slotDates = [...new Set(slotMeals.map((e) => e.date))];
@@ -651,11 +600,6 @@ export function OrderForm({
   }
   function copyEventVenue(from: string, to: string) {
     setValues((prev) => ({ ...prev, eventVenues: { ...prev.eventVenues, [to]: { ...(prev.eventVenues[from] ?? venueFromValues(prev)) } } }));
-  }
-  // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
-  if (autoSwitchedToMulti && !multiRequired) {
-    setAutoSwitchedToMulti(false);
-    if (values.orderKind === "MULTI") setField("orderKind", "SINGLE");
   }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = (Number(values.adultCount) || 0) + (Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0);
@@ -738,8 +682,9 @@ export function OrderForm({
     // The meals belong to the Menu Approval tab once an approval exists, but the per-plate prices are edited here (Individual / Custom Pricing),
     // so a changed price sends the plan along (saved the same way, and refused once the price is frozen).
     const savedPrice = new Map((initialValues?.mealPlanEntries ?? []).map((e) => [`${e.date}|${e.mealType}`, e.price]));
-    const mealPricesEdited = menuPlanReadOnly && !priceFrozen && values.mealPlanEntries.some((e) => (savedPrice.get(`${e.date}|${e.mealType}`) ?? "") !== e.price);
-    const sendMeals = !menuPlanReadOnly || mealPricesEdited;
+    const mealPricesEdited = !priceFrozen && values.mealPlanEntries.some((e) => (savedPrice.get(`${e.date}|${e.mealType}`) ?? "") !== e.price);
+    // The meals are built in the Menu Approval tab; only a changed per-plate price (Individual / Custom Pricing) sends the plan along.
+    const sendMeals = mealPricesEdited;
     if (!sendMeals || (menuPlanOnlyIfChanged && !mealPlanChanged)) formData.set("mealPlanLocked", "true");
     for (const entry of sendMeals ? values.mealPlanEntries : []) {
       formData.append("mealDate", entry.date);
@@ -772,6 +717,15 @@ export function OrderForm({
       setError("Event Date is required.");
       return;
     }
+    // The event type, venue location and guests can't be skipped on a new order, nor cleared on a saved one (the server checks them too).
+    const blocking = orderBlockingField(
+      { eventTypeId: values.eventTypeId, eventStartDate: values.eventStartDate, eventEndDate: values.eventEndDate, venue: values.venue, adultCount: values.adultCount },
+      initialValues ? { eventTypeId: initialValues.eventTypeId, eventStartDate: initialValues.eventStartDate, eventEndDate: initialValues.eventEndDate, venue: initialValues.venue, adultCount: initialValues.adultCount } : null,
+    );
+    if (blocking) {
+      setError(orderMissingMessage(blocking));
+      return;
+    }
     if (eventDatePast) {
       setError("Event Date can't be in the past.");
       return;
@@ -783,12 +737,6 @@ export function OrderForm({
         setError(`Event ${index + 1}: ${missingEventVenueField(venueOf(eventSlots[index].key))} is required.`);
         return;
       }
-    }
-    const emptyMeal = menuPlanReadOnly ? undefined : values.mealPlanEntries.find((e) => e.menuId && !e.items.some((i) => i.itemType === "MENU_ITEM"));
-    if (emptyMeal) {
-      const label = MEAL_TYPES.find((m) => m.value === emptyMeal.mealType)?.label ?? "a meal";
-      setError(`Select food items for ${label}${days.length > 1 ? ` on ${emptyMeal.date}` : ""}, or remove the meal.`);
-      return;
     }
     if (!initialValues && draftPayments.reduce((sum, p) => sum + p.amount, 0) > total + 0.005) {
       setError("The payments added are more than the order total. Remove one, or raise the total.");
@@ -833,13 +781,6 @@ export function OrderForm({
       mealPlanEntries: on ? prev.mealPlanEntries.map((e) => (e.price.trim() === "" && e.menuId ? { ...e, price: String(menus.find((m) => m.id === e.menuId)?.price ?? "") } : e)) : prev.mealPlanEntries,
     }));
   }
-
-  const individualToggle = (
-    <label htmlFor="order-individual-pricing" className="flex cursor-pointer items-center gap-2">
-      <Switch id="order-individual-pricing" checked={individualOn} onCheckedChange={setIndividualPricing} />
-      <span className="text-sm font-medium">Individual Pricing {individualOn ? "On" : "Off"}</span>
-    </label>
-  );
 
   const sec = (_n: number, icon: LucideIcon) => ({ icon });
 
@@ -1082,7 +1023,7 @@ export function OrderForm({
         {singleBlocked && <p className="text-xs text-muted-foreground">The meals are with the customer or the kitchen. Recall the menu to switch to a Single Order.</p>}
       </div>
       <div className={cn("flex flex-col gap-1.5", isMulti && "sm:col-span-2")}>
-        <Label htmlFor="order-event-type">Event Type</Label>
+        <Label htmlFor="order-event-type" required>Event Type</Label>
         <Select
           items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
           value={values.eventTypeId}
@@ -1192,7 +1133,7 @@ export function OrderForm({
         </Select>
       </div>
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="order-venue">Venue / Building Name</Label>
+        <Label htmlFor="order-venue" required>Venue / Building Name</Label>
         <IconInput icon={MapPin} id="order-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
       </div>
 
@@ -1342,7 +1283,7 @@ export function OrderForm({
   >
     <div className="grid grid-cols-2 gap-4">
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="order-adults">Adults</Label>
+        <Label htmlFor="order-adults" required>Adults</Label>
         <Input id="order-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
       </div>
       <div className="flex flex-col gap-1.5">
@@ -1370,34 +1311,6 @@ export function OrderForm({
         <Input id="order-total-guests" readOnly tabIndex={-1} className="bg-muted" value={String(guestsComputed)} />
       </div>
     </div>
-  </FormSection>
-  );
-
-  const menuSection = (
-  <FormSection
-    {...sec(5, UtensilsCrossed)}
-    title="Menu Planning"
-    description={menuPlanInApprovalTab ? "The menu is planned in the Menu Approval tab, so it is shown here as read-only. Edit meals and dishes there." : menuPlanReadOnly ? "The menu is with the customer or the kitchen. Recall it to change it; changes are approved again before they reach the kitchen." : "Select meals and assign menu items for this event."}
-    action={menuPlanReadOnly ? null : individualToggle}
-  >
-    {menuPlanBanner}
-    <MenuPlanningSection
-      idPrefix="order"
-      days={days}
-      mealPlanEntries={values.mealPlanEntries}
-      onChange={setMealPlan}
-      menus={menus}
-      menuPreference={values.menuPreference}
-      onMenuPreferenceChange={(v) => setField("menuPreference", v)}
-      individualPricingEnabled={individualOn}
-      guestsForPricing={guestsForPricing}
-      loadPickerData={getMenuForOrderPickerAction}
-      foodDialogTarget={foodDialogTarget}
-      onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
-      onCloseFoodDialog={() => setFoodDialogTarget(null)}
-      readOnly={menuPlanReadOnly}
-      priceInPricingTab
-    />
   </FormSection>
   );
 
@@ -1516,7 +1429,7 @@ export function OrderForm({
         <p className="text-sm text-muted-foreground">{individualOn ? "Your price per plate for each meal." : "Each meal's per-plate price from its menu."}</p>
       </div>
       {pricedMealRows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No meals yet. Add meals in Menu Planning.</p>
+        <p className="text-sm text-muted-foreground">No meals yet. Build the menu in the Menu Approval tab, once the order is saved.</p>
       ) : (
         pricedMealRows.map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3 text-sm" data-testid="per-plate-row">
@@ -1560,7 +1473,6 @@ export function OrderForm({
 
     {individualOn && (
       <div className="flex flex-col gap-4">
-        {/* Each meal's own price is set inline on its card in Menu Planning above, not duplicated here (AJ's reference, 2026-09-29). */}
         {(
           [
             { id: "order-individual-below5", label: "Children (Under 5) price", hint: "Charge for children below 5 years.", rate: "individualChildBelow5Rate", type: "individualChildBelow5PricingType" },
@@ -1637,7 +1549,7 @@ export function OrderForm({
             ? individualOn
               ? "No child rate is set. Enter the child prices above."
               : `${childPricingMenu.name} has no child rate set, so children are not charged. Set it on the Menu, or turn on Individual Pricing.`
-            : "Children are priced from the first Menu assigned in Menu Planning. Assign a Menu to charge them."}
+            : "Children are priced from the first Menu in the order's menu. Build the menu in the Menu Approval tab to charge them."}
         </span>
       </p>
     )}
@@ -1768,10 +1680,10 @@ export function OrderForm({
         <AlertDialogTitle>{multiNotice === "multiOff" ? "Order Type changed to Single Order" : "Order Type changed to Multi Order"}</AlertDialogTitle>
         <AlertDialogDescription>
           {multiNotice === "multiOn"
-            ? "This is now a Multi Order. Pick a start and end date (the same day for several meals on one day); Menu Planning groups each date into its own event."
+            ? "This is now a Multi Order. Pick a start and end date (the same day for several meals on one day); The Menu Approval tab groups each date into its own event."
             : multiNotice === "multiOff"
               ? "This is now a Single Order: one date and one meal type."
-              : "You picked more than one meal type, so this is now a Multi Order, even on a single day. Menu Planning groups the meals into their own events."}{" "}
+              : "You picked more than one meal type, so this is now a Multi Order, even on a single day. The Menu Approval tab groups the meals into their own events."}{" "}
           {multiNotice === "multiOff" ? "" : "Your meals, menus and food items are kept."}
         </AlertDialogDescription>
       </AlertDialogHeader>
@@ -1852,7 +1764,6 @@ export function OrderForm({
           </div>
           {freeze(eventSection, locked || priceFrozen)}
           {multiDialog}
-          {menuPlanInApprovalTab ? null : freeze(menuSection)}
           {detailsExtra}
         </>
       ),
@@ -1877,7 +1788,7 @@ export function OrderForm({
           },
         ]
       : []),
-    {
+    ...(!showPrices ? [] : [{
       id: "pricing",
       label: "Pricing & Payment",
       // Two columns on a wide screen: what the order costs on the left, what has been paid on the right.
@@ -1895,7 +1806,7 @@ export function OrderForm({
           </div>
         </div>
       ),
-    },
+    }]),
     ...(inventoryTab
       ? [
     {
@@ -1998,14 +1909,14 @@ export function OrderForm({
 
           {/* ---------------- Summary column ---------------- */}
           <aside className={cn("flex min-w-0 flex-col gap-4", onApprovalTab ? "lg:self-start" : "lg:self-stretch")}>
-            {activeTab === "pricing" && sidebarInvoiceAction}
+            {showPrices && activeTab === "pricing" && sidebarInvoiceAction}
             {/* The Menu Approval tab puts its Menu Status, Notes, history and pricing cards here (order-menu-approval-tab.tsx). */}
             {menuApprovalTab && <div ref={setApprovalSlot} id="order-approval-sidebar" className={activeTab === "approval" ? "flex min-w-0 flex-col gap-4" : "hidden"} />}
             {/* The Menu Approval tab has its own four cards and its own Save Changes, so the order's summary, pricing and Save card step aside there. */}
             <div className={onApprovalTab ? "hidden" : "contents"}>
               {statusCard}
               {sidebarTop ?? orderSummaryCard}
-              {!sidebarTop && pricingSummaryCard}
+              {!sidebarTop && showPrices && pricingSummaryCard}
             </div>
           </aside>
         </div>

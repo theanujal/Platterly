@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { User, CalendarDays, MapPin, Phone } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, requireSensitive } from "@/lib/auth/require-session";
 import { listOverdueOrders } from "@/modules/orders/order";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
@@ -22,6 +22,8 @@ const overdueFor = (days: number) => `${days} ${days === 1 ? "day" : "days"} ove
 export default async function OverduePaymentsPage() {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ payments: ["view"] }, organizationId);
+  // paymentDetails is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("paymentDetails", organizationId);
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   const [rows, canRecord, canOpenOrders] = await Promise.all([
     listOverdueOrders(organizationId, locationId),

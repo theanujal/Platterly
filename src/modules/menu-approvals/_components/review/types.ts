@@ -83,6 +83,8 @@ export interface MenuApprovalReviewProps {
   lockedAt: Date | null;
   isCustomMenu: boolean;
   customPricePerPlate: number | null;
+  /** Whether the viewer may see prices (Sensitive data: orderPrices). When false the server sent none: no price, total or charge. */
+  showPrices: boolean;
   header: ReviewHeaderData;
   capabilities: ReviewCapabilities;
   pricing: ReviewPricing;

@@ -22,7 +22,7 @@ const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
  * so the two views can't disagree. The row click itself is CatalogBrowser's;
  * the customer name is also a real link so the row is keyboard-reachable.
  */
-export function OrderListCells({ order, now, timeZone, showMoney = true }: { order: OrderListItem; now: Date; timeZone?: string; showMoney?: boolean }) {
+export function OrderListCells({ order, now, timeZone, showMoney = true, showPayment = true }: { order: OrderListItem; now: Date; timeZone?: string; showMoney?: boolean; showPayment?: boolean }) {
   const StatusIcon = STATUS_ICON[order.status];
   const OrderKindIcon = ORDER_KIND_ICON[order.orderKind];
   const total = Number(order.total);
@@ -85,7 +85,7 @@ export function OrderListCells({ order, now, timeZone, showMoney = true }: { ord
         <TableCell className="px-3 py-3">
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-semibold whitespace-nowrap">{formatAmountExact(total)}</span>
-            <span className={`text-xs font-medium ${TONE_TEXT[payment.tone]}`}>{payment.label}</span>
+            {showPayment && <span className={`text-xs font-medium ${TONE_TEXT[payment.tone]}`}>{payment.label}</span>}
           </div>
         </TableCell>
       )}

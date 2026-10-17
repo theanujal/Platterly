@@ -1,4 +1,5 @@
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
+import { allowedReportTabs } from "@/modules/reports/tabs";
 import { prisma } from "@/lib/db";
 import { exportResponse, parseFormat } from "@/lib/export/tabular";
 import { getActiveLocation } from "@/modules/locations/active-location";
@@ -19,9 +20,10 @@ export async function GET(request: Request) {
   const format = parseFormat(url.searchParams.get("format"));
   const query = { tab: url.searchParams.get("tab") ?? "", range: url.searchParams.get("range") ?? undefined, from: url.searchParams.get("from") ?? undefined, to: url.searchParams.get("to") ?? undefined };
 
-  const [canInventory, canFinance] = await Promise.all([hasPermission({ inventory: ["view"] }, organizationId), hasPermission({ expenses: ["view"] }, organizationId)]);
-  const allowed = ["sales", "events", "menu", ...(canInventory ? ["inventory"] : []), ...(canFinance ? ["finance"] : []), "storefront"];
-  const tab = allowed.includes(query.tab) ? query.tab : "sales";
+  const [canInventory, canFinance, prices] = await Promise.all([hasPermission({ inventory: ["view"] }, organizationId), hasPermission({ expenses: ["view"] }, organizationId), sensitiveAccess(organizationId)]);
+  // A tab with revenue, order values, finance or stock costs is exported only to someone who may see it on the page (AJ, 2026-10-17).
+  const allowed = allowedReportTabs({ inventory: canInventory, expenses: canFinance, financialReports: prices.financialReports, supplierCosts: prices.supplierCosts });
+  const tab = allowed.includes(query.tab) ? query.tab : allowed[0];
   const range = resolveRange(query);
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   const scope = { organizationId, locationId };

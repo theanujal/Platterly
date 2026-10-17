@@ -18,9 +18,11 @@ interface NewOrderClientProps {
     child5To10PriceValue: number | null;
   }[];
   header: React.ReactNode;
+  /** The viewer may see prices (Sensitive data: orderPrices). See OrderForm. */
+  showPrices: boolean;
 }
 
-export function NewOrderClient({ customers, eventTypes, menus, header }: NewOrderClientProps) {
+export function NewOrderClient({ customers, eventTypes, menus, header, showPrices }: NewOrderClientProps) {
   const router = useRouter();
 
   return (
@@ -29,6 +31,7 @@ export function NewOrderClient({ customers, eventTypes, menus, header }: NewOrde
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
+      showPrices={showPrices}
       submitLabel="Save Order"
       onSubmit={createOrderAction}
       onSubmitAndNotify={createOrderAndNotifyAction}

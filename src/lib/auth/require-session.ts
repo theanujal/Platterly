@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { isLocked } from "@/modules/ops-link/entitlements";
 import type { statement } from "./permissions";
-import { roleAllows } from "@/modules/roles/role-grants";
+import { roleAllows, sensitiveKeysFor } from "@/modules/roles/role-grants";
+import type { SensitiveKey } from "./role-matrix";
 
 
 /**
@@ -176,4 +177,30 @@ async function sessionAllows(
   const member = await prisma.member.findFirst({ where: { userId: session.user.id, organizationId: orgId }, select: { role: true } });
   if (!member) return false;
   return roleAllows(orgId, member.role, permissions);
+}
+
+/**
+ * Sensitive-data access (Roles & Permissions redesign, AJ 2026-10-17): which kinds of price, cost, payment or financial figure
+ * the signed-in person may see. Independent of module access: opening Orders never shows an order price. A person with no
+ * membership sees nothing. Call it on the server before building any record that carries protected fields, and hand the
+ * browser only what this allows.
+ */
+export async function sensitiveAccess(organizationId?: string): Promise<Record<SensitiveKey, boolean>> {
+  const session = await requireSession();
+  const orgId = organizationId ?? session.session.activeOrganizationId;
+  const none = Object.fromEntries((["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const).map((k) => [k, false])) as Record<SensitiveKey, boolean>;
+  if (!orgId) return none;
+  const member = await prisma.member.findFirst({ where: { userId: session.user.id, organizationId: orgId }, select: { role: true, disabledAt: true } });
+  if (!member || member.disabledAt) return none;
+  return sensitiveKeysFor(orgId, member.role);
+}
+
+/** One sensitive key as a yes/no. */
+export async function canSee(key: SensitiveKey, organizationId?: string): Promise<boolean> {
+  return (await sensitiveAccess(organizationId))[key];
+}
+
+/** Refuses (the 403 page) unless the person holds the key: for pages and downloads that are nothing but that data. */
+export async function requireSensitive(key: SensitiveKey, organizationId?: string) {
+  if (!(await canSee(key, organizationId))) forbidden();
 }

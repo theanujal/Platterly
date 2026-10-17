@@ -12,6 +12,7 @@ export type MessageKey =
   | "systemAlerts"
   // Kitchen -> customer emails (Settings -> Email): one switch each, all on until the kitchen turns one off.
   | "orderReceived"
+  | "orderAccepted"
   | "orderConfirmed"
   | "orderUpdate"
   | "orderCompleted"
@@ -67,6 +68,7 @@ export const CHANNEL_CONFIG: Record<SettingsChannel, ChannelConfig> = {
     hasService: true,
     messages: [
       { key: "orderReceived", label: "Order Received", description: "Tell the customer their order request has reached you", available: true },
+      { key: "orderAccepted", label: "Order Accepted", description: "Thank the customer for accepting a quotation and give them their order number", available: true },
       { key: "orderConfirmed", label: "Order Confirmed", description: "Tell the customer their order is confirmed", available: true },
       { key: "orderUpdate", label: "Order Update", description: "Update on the order request, for example when it is sent to the kitchen or cancelled", available: true },
       { key: "orderCompleted", label: "Order Completed", description: "Tell the customer their order has been completed", available: true },
@@ -107,6 +109,8 @@ export function emailMessageFor(event: string, payload?: unknown): MessageKey | 
     }
     case "quotation.sent":
       return "quotation";
+    case "quotation.converted":
+      return "orderAccepted";
     case "menu_approval.sent":
       return "menuReview";
     case "logistics.dispatched_customer":

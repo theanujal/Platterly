@@ -90,7 +90,7 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
   }
 
   if (isOwner) {
-    return <span className="text-xs text-muted-foreground">Owner</span>;
+    return <span className="text-xs text-muted-foreground">Admin</span>;
   }
 
   return (

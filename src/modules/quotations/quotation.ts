@@ -602,6 +602,7 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
       otherChargesMode: quotation.otherChargesMode,
       otherChargesRate: Number(quotation.otherChargesRate),
       customCharges: parseCustomCharges(quotation.customCharges),
+      skipCustomerNotice: true,
       notes: quotation.notes ?? undefined,
       // mealPlanEntries deliberately omitted — createOrder's own
       // replaceMealPlanEntries no-ops on undefined, so this just creates the

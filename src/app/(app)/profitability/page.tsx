@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { User, CalendarDays, MapPin, ChevronRight } from "lucide-react";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, requireSensitive } from "@/lib/auth/require-session";
 import { listProfitability } from "@/modules/expenses/expense";
 import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
 import { RangeFilter } from "./_components/range-filter";
@@ -23,6 +23,8 @@ const profitTone = (profit: number) => (profit < 0 ? "text-destructive" : "text-
 export default async function ProfitabilityPage({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string }> }) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ expenses: ["view"] }, organizationId);
+  // profitability is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("profitability", organizationId);
   const range = resolveRange(await searchParams);
   const query = await searchParams;
   const [rows, canOpenOrders, canExport] = await Promise.all([listProfitability(organizationId, range), hasPermission({ orders: ["edit"] }, organizationId), hasPermission({ reports: ["export"] }, organizationId)]);

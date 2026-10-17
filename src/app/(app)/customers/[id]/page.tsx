@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, CalendarDays, ChevronRight, Leaf, Drumstick, Mail, Phone, ShoppingBag, User } from "lucide-react";
 import { cn } from "cn";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { getCustomer } from "@/modules/customers/customer";
@@ -102,6 +102,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ customers: ["view"] }, organizationId);
   const canSeeIp = await hasPermission({ tenant: ["view"] }, organizationId);
+  // Order and quotation totals are order prices (Sensitive data): opening a customer shows none without that right (AJ, 2026-10-17).
+  const showPrices = await canSee("orderPrices", organizationId);
   const arrival = await loadArrival(organizationId, id, canSeeIp);
   const [customer, canEdit, canDelete, organization, orders, quotations, allDrafts, customerNotes] = await Promise.all([
     getCustomer(organizationId, id),
@@ -146,7 +148,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
           <Stat caption="Event Type">{order.eventType?.name ?? "—"}</Stat>
           <Stat caption="Guests">{guests ?? "—"}</Stat>
-          <Stat caption="Total">{total > 0 ? formatAmountExact(total) : "—"}</Stat>
+          {showPrices && <Stat caption="Total">{total > 0 ? formatAmountExact(total) : "—"}</Stat>}
           <div className="flex flex-wrap items-center gap-2">
             {order.menuPreference && (
               <span className={cn("flex items-center gap-1 text-xs font-medium", isVeg ? "text-success" : "text-destructive")}>
@@ -182,7 +184,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
           </div>
           <Stat caption="Event Type">{quotation.eventType?.name ?? "—"}</Stat>
           <Stat caption="Event Date">{formatDay(quotation.eventStartDate)}</Stat>
-          <Stat caption="Total">{total > 0 ? formatAmountExact(total) : "—"}</Stat>
+          {showPrices && <Stat caption="Total">{total > 0 ? formatAmountExact(total) : "—"}</Stat>}
           <Badge variant={QUOTE_STATUS_VARIANT[quotation.status]}>
             <StatusIcon data-icon="inline-start" />
             {QUOTE_STATUS_LABEL[quotation.status]}

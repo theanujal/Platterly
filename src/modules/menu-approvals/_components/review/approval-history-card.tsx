@@ -19,7 +19,9 @@ export function ApprovalVersionRows({
   statusLabel,
   onOpenVersion,
   onOpened,
+  showPrices = true,
 }: {
+  showPrices?: boolean;
   versions: VersionView[];
   currentVersion: number;
   status: MenuSelectionStatus;
@@ -44,7 +46,7 @@ export function ApprovalVersionRows({
             </div>
             <p className="text-xs text-muted-foreground">
               Sent {formatDateTime(version.sentAt ?? version.createdAt)}
-              {version.snapshot ? ` · ${formatCurrency(version.snapshot.total)}` : ""}
+              {version.snapshot && showPrices ? ` · ${formatCurrency(version.snapshot.total)}` : ""}
             </p>
             <Button
               type="button"

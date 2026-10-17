@@ -234,8 +234,8 @@ export function RolePermissionsForm({ roles }: { roles: EditableRole[] }) {
       />
 
       <TeamNote>
-        Changes apply to everyone with that role, the next time they open a page. Owners always have full access. Team management,
-        settings and deleting business data stay with the Owner and cannot be handed to another role.
+        Changes apply to everyone with that role, the next time they open a page. The Admin always has full access. Team management,
+        settings and deleting business data stay with the Admin and cannot be handed to another role.
       </TeamNote>
     </div>
   );

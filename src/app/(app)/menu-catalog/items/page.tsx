@@ -1,7 +1,7 @@
 import { ItemHighlightBadges } from "@/components/catalog/item-highlights";
 import type { Metadata } from "next";
 import { UtensilsCrossed } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, sensitiveAccess } from "@/lib/auth/require-session";
 import { listMenuItems } from "@/modules/menus/item";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
@@ -27,6 +27,8 @@ export const metadata: Metadata = {
 
 export default async function ItemsPage() {
   const { organizationId } = await requireActiveOrganization();
+  // Dish prices and recipe costs are sensitive data, separate from opening the catalog (AJ, 2026-10-17).
+  const prices = await sensitiveAccess(organizationId);
   const [items, categories, menus, inventory, recipes, catalog] = await Promise.all([
     listMenuItems(organizationId),
     listCategories(organizationId),
@@ -35,8 +37,8 @@ export default async function ItemsPage() {
     listRecipes(organizationId),
     listCatalog(organizationId),
   ]);
-  const queues = await usableQueues(organizationId, inventory.map((i) => i.id));
-  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: i.costPerUnit === null ? null : Number(i.costPerUnit), queue: queues.get(i.id) ?? [] }));
+  const queues = prices.recipeCosts ? await usableQueues(organizationId, inventory.map((i) => i.id)) : new Map<string, never[]>();
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: prices.recipeCosts && i.costPerUnit !== null ? Number(i.costPerUnit) : null, queue: queues.get(i.id) ?? [] }));
   const recipeByItem = new Map(
     recipes.map((r) => [
       r.menuItemId,
@@ -52,7 +54,7 @@ export default async function ItemsPage() {
       name: item.name,
       description: item.description ?? "",
       foodType: item.foodType,
-      price: item.price.toString(),
+      price: prices.menuPrices ? item.price.toString() : "",
       imageUrl: item.image,
       isActive: item.isActive,
       isPopular: item.isPopular,
@@ -79,7 +81,7 @@ export default async function ItemsPage() {
         menuId: item.menus.map((m) => m.menuId),
         categoryId: item.categories.map((c) => c.categoryId),
       },
-      sortValues: { name: item.name, price: Number(item.price), newest: item.createdAt.getTime() },
+      sortValues: { name: item.name, ...(prices.menuPrices ? { price: Number(item.price) } : {}), newest: item.createdAt.getTime() },
       card: (
         <>
           <CatalogCardMedia
@@ -88,7 +90,7 @@ export default async function ItemsPage() {
             overlay={
               <>
                 <FoodTypeTag nonVeg={item.foodType === "NON_VEGETARIAN"} onImage />
-                <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} />
+                <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} showRecipeCost={prices.recipeCosts} />
               </>
             }
           />
@@ -107,7 +109,7 @@ export default async function ItemsPage() {
                 {recipeByItem.has(item.id) && <Badge variant={recipeByItem.get(item.id)?.status === "DRAFT" ? "warning" : "info"}>{recipeByItem.get(item.id)?.status === "DRAFT" ? "Draft recipe" : "Recipe"}</Badge>}
               </>
             }
-            footer={<span className="text-base font-semibold">{formatRupees(Number(item.price))}</span>}
+            footer={prices.menuPrices ? <span className="text-base font-semibold">{formatRupees(Number(item.price))}</span> : undefined}
             active={item.isActive}
           />
         </>
@@ -125,13 +127,13 @@ export default async function ItemsPage() {
               {recipeByItem.has(item.id) && <Badge variant={recipeByItem.get(item.id)?.status === "DRAFT" ? "warning" : "info"}>{recipeByItem.get(item.id)?.status === "DRAFT" ? "Draft recipe" : "Recipe"}</Badge>}
             </div>
           </TableCell>
-          <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(Number(item.price))}</TableCell>
+          {prices.menuPrices && <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(Number(item.price))}</TableCell>}
           <TableCell className="px-3 py-3">
             <ActiveBadge active={item.isActive} />
           </TableCell>
           <TableCell className="px-3 py-3">
             <div className="flex justify-end">
-              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} variant="plain" />
+              <ItemCardActions itemId={item.id} name={item.name} initialValues={initialValues} categories={categoryOptions} menus={menuOptions} recipe={recipeByItem.get(item.id) ?? null} ingredientOptions={ingredientOptions} showRecipeCost={prices.recipeCosts} variant="plain" />
             </div>
           </TableCell>
         </>
@@ -147,8 +149,12 @@ export default async function ItemsPage() {
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "name", label: "Name (A–Z)", key: "name" },
-    { value: "price-low", label: "Price (Low–High)", key: "price" },
-    { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" },
+    ...(prices.menuPrices
+      ? [
+          { value: "price-low", label: "Price (Low–High)", key: "price" },
+          { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" as const },
+        ]
+      : []),
   ];
 
   return (
@@ -169,7 +175,7 @@ export default async function ItemsPage() {
         entries={entries}
         defaultView="list"
         addTile={<AddItemDialog categories={categoryOptions} menus={menuOptions} variant="tile" />}
-        columns={["Food Item", "Category", "Type", "Price", "Status", ""]}
+        columns={["Food Item", "Category", "Type", ...(prices.menuPrices ? ["Price"] : []), "Status", ""]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search food items…"

@@ -4,7 +4,7 @@ import { assertInventoryItemAtMyLocation, getActiveLocation, myHeldLocation } fr
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
 import {
   createInventoryItem,
   updateInventoryItem,
@@ -113,6 +113,8 @@ export async function updateInventoryItemAction(
   await assertInventoryItemAtMyLocation(organizationId, session.user.id, id);
   try {
     const input = await buildInput(organizationId, formData, existingImage);
+    // The item's cost per unit is a supplier cost (Sensitive data, AJ 2026-10-17): without that right a submitted cost is ignored and the saved one stays.
+    if (!(await canSee("supplierCosts", organizationId))) input.costPerUnit = (await prisma.inventory.findFirstOrThrow({ where: { id, organizationId }, select: { costPerUnit: true } })).costPerUnit?.toNumber() ?? undefined;
     // ...and cannot move an item to another location or make it shared.
     if (await myHeldLocation(organizationId, session.user.id)) input.kitchenId = undefined;
     await updateInventoryItem(organizationId, id, input, session.user.id);
@@ -154,6 +156,8 @@ export async function recordStockTransactionAction(
     }
     const quantity = numberField(formData, "quantity");
     if (quantity === undefined) throw new Error("A quantity is required.");
+    // Without the supplier-costs right the person cannot state a cost: the batch is booked with an unknown cost, which the store confirms later from the item's Batches.
+    const mayCost = await canSee("supplierCosts", organizationId);
     await recordStockTransaction(
       organizationId,
       inventoryId,
@@ -162,9 +166,9 @@ export async function recordStockTransactionAction(
         quantity,
         note: stringField(formData, "note"),
         // Stock In says what it cost, or that the cost is unknown; the item's own cost is never copied in.
-        unitCost: numberField(formData, "unitCost"),
-        costUnknown: formData.get("costUnknown") === "true",
-        costNote: stringField(formData, "costNote"),
+        unitCost: mayCost ? numberField(formData, "unitCost") : undefined,
+        costUnknown: mayCost ? formData.get("costUnknown") === "true" : true,
+        costNote: mayCost ? stringField(formData, "costNote") : undefined,
         expiryDate: dateField(formData, "expiryDate") ?? null,
         lotNumber: stringField(formData, "lotNumber"),
       },
@@ -186,6 +190,8 @@ export type BulkActionResult =
 export async function importInventoryItemsAction(formData: FormData): Promise<BulkActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["create"] }, organizationId);
+  // The sheet carries a cost column, so importing needs the right to set supplier costs.
+  await requireSensitive("supplierCosts", organizationId);
   try {
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose an Excel or CSV file." };
@@ -246,12 +252,12 @@ export async function listBatchesAction(inventoryId: string): Promise<BatchesRes
   await requirePermission({ inventory: ["view"] }, organizationId);
   await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
   try {
-    const [{ batches, recommendedBatchId }, position] = await Promise.all([listBatches(organizationId, inventoryId), stockPosition(prisma, inventoryId)]);
+    const [{ batches, recommendedBatchId }, position, mayCost] = await Promise.all([listBatches(organizationId, inventoryId), stockPosition(prisma, inventoryId), canSee("supplierCosts", organizationId)]);
     return {
       ok: true,
       recommendedBatchId,
       position,
-      batches: batches.map((b) => ({ id: b.id, source: b.source, state: b.state, expiringSoon: b.expiringSoon, fifoRank: b.fifoRank, originalQuantity: b.originalQuantity, remainingQuantity: b.remainingQuantity, unitCost: b.unitCost, receivedDate: isoDay(b.receivedDate), expiryDate: isoDay(b.expiryDate), lotNumber: b.lotNumber, costNote: b.costNote, expiryMissing: b.expiryMissing })),
+      batches: batches.map((b) => ({ id: b.id, source: b.source, state: b.state, expiringSoon: b.expiringSoon, fifoRank: b.fifoRank, originalQuantity: b.originalQuantity, remainingQuantity: b.remainingQuantity, unitCost: mayCost ? b.unitCost : null, receivedDate: isoDay(b.receivedDate), expiryDate: isoDay(b.expiryDate), lotNumber: b.lotNumber, costNote: mayCost ? b.costNote : null, expiryMissing: b.expiryMissing })),
     };
   } catch (error) {
     return { ok: false, error: userMessage(error, "Something went wrong.") };
@@ -278,6 +284,7 @@ export async function setBatchStatusAction(inventoryId: string, batchId: string,
 export async function confirmBatchCostAction(inventoryId: string, batchId: string, unitCost: number, costNote: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await requireSensitive("supplierCosts", organizationId);
   await assertInventoryItemAtMyLocation(organizationId, session.user.id, inventoryId);
   try {
     await confirmBatchCost(organizationId, batchId, { unitCost, costNote }, session.user.id);

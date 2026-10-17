@@ -26,7 +26,9 @@ export function ApprovalStatusCard({
   versions,
   onOpenVersion,
   onChange,
+  showPrices = true,
 }: {
+  showPrices?: boolean;
   status: MenuSelectionStatus;
   statusLabel: string;
   currentVersion: number;
@@ -57,7 +59,7 @@ export function ApprovalStatusCard({
       onChange={onChange}
       history={history}
       historyExtra={(close) => (
-        <ApprovalVersionRows versions={versions} currentVersion={currentVersion} status={status} statusLabel={statusLabel} onOpenVersion={onOpenVersion} onOpened={close} />
+        <ApprovalVersionRows versions={versions} currentVersion={currentVersion} status={status} statusLabel={statusLabel} onOpenVersion={onOpenVersion} onOpened={close} showPrices={showPrices} />
       )}
     />
   );

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Truck } from "lucide-react";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { listLocations } from "@/modules/locations/locations";
 import { listProductOptions, listSuppliers } from "@/modules/suppliers/supplier";
@@ -23,6 +23,8 @@ export default async function SuppliersPage() {
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
   const active = await getActiveLocation(organizationId, session.user.id);
+  // Spend with a supplier is a supplier cost (Sensitive data, AJ 2026-10-17).
+  const showCosts = await canSee("supplierCosts", organizationId);
   const [suppliers, productOptions, allLocations] = await Promise.all([listSuppliers(organizationId), listProductOptions(organizationId), active.enabled ? listLocations(organizationId) : Promise.resolve([])]);
   // For the New Inventory Item form opened from Products Supplied; null while multiple locations are off.
   const locations = active.enabled ? allLocations.map((l) => ({ id: l.id, name: l.name })) : null;
@@ -44,7 +46,7 @@ export default async function SuppliersPage() {
       id: s.id,
       searchText: `${s.name} ${s.contactPerson ?? ""} ${s.phone ?? ""} ${s.email ?? ""}`,
       filterValues: { status: s.isActive ? "Active" : "Inactive" },
-      sortValues: { name: s.name, spend: s.totalSpend, newest: s.createdAt.getTime() },
+      sortValues: { name: s.name, ...(showCosts ? { spend: s.totalSpend } : {}), newest: s.createdAt.getTime() },
       card: (
         <>
           <CatalogCardMedia src={null} icon={Truck} overlay={<SupplierCardActions id={s.id} name={s.name} initialValues={initialValues} productOptions={productOptions} locations={locations} />} />
@@ -53,7 +55,7 @@ export default async function SuppliersPage() {
             titleHref={`/suppliers/${s.id}`}
             description={[s.contactPerson, s.phone].filter(Boolean).join(" · ") || null}
             tags={<Badge variant="outline">Supplies: {supplies}</Badge>}
-            footer={<span className="text-base font-semibold">{formatRupees(s.totalSpend)} spent</span>}
+            footer={showCosts ? <span className="text-base font-semibold">{formatRupees(s.totalSpend)} spent</span> : undefined}
             active={s.isActive}
           />
         </>
@@ -68,7 +70,7 @@ export default async function SuppliersPage() {
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{s.contactPerson ?? "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{s.phone ?? "—"}</TableCell>
           <TableCell className="px-3 py-3 text-sm">{supplies}</TableCell>
-          <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(s.totalSpend)}</TableCell>
+          {showCosts && <TableCell className="px-3 py-3 text-sm font-semibold">{formatRupees(s.totalSpend)}</TableCell>}
           <TableCell className="px-3 py-3">
             <ActiveBadge active={s.isActive} />
           </TableCell>
@@ -88,7 +90,7 @@ export default async function SuppliersPage() {
   const sortOptions: CatalogSortOption[] = [
     { value: "name", label: "Name (A–Z)", key: "name" },
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
-    { value: "spend", label: "Spend (High–Low)", key: "spend", direction: "desc" },
+    ...(showCosts ? [{ value: "spend", label: "Spend (High–Low)", key: "spend", direction: "desc" as const }] : []),
   ];
 
   return (
@@ -105,7 +107,7 @@ export default async function SuppliersPage() {
       <CatalogBrowser
         entries={entries}
         addTile={<AddSupplierDialog variant="tile" productOptions={productOptions} locations={locations} />}
-        columns={["Supplier", "Contact", "Phone", "Supplies", "Spend", "Status", "Actions"]}
+        columns={["Supplier", "Contact", "Phone", "Supplies", ...(showCosts ? ["Spend"] : []), "Status", "Actions"]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search suppliers…"

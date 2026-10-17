@@ -100,10 +100,10 @@ export function TeamPrivacyForm({ initialValues, canEdit }: { initialValues: Tea
           {error}
         </p>
       )}
-      {!canEdit && <p className="text-sm text-muted-foreground">Only an Owner can change these settings.</p>}
+      {!canEdit && <p className="text-sm text-muted-foreground">Only the Admin can change these settings.</p>}
 
       <TeamNote>
-        These settings apply to the whole team and only control what team members see of each other. Owners always see everyone in
+        These settings apply to the whole team and only control what team members see of each other. The Admin always sees everyone in
         full.
       </TeamNote>
     </div>

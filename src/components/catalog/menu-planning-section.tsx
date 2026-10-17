@@ -135,6 +135,8 @@ interface MenuPlanningSectionProps {
    * instead of a number box. Quotations, which have no such card, leave this off and keep the box.
    */
   priceInPricingTab?: boolean;
+  /** The viewer may not see prices (Sensitive data: orderPrices): no price box, no amounts in the dish drawer. The server also sends none. */
+  hidePrices?: boolean;
 }
 
 /** One numbered card of the `sectioned` layout. */
@@ -179,6 +181,7 @@ export function MenuPlanningSection({
   kindOf,
   keepOneMeal = false,
   priceInPricingTab = false,
+  hidePrices = false,
 }: MenuPlanningSectionProps) {
   const [focusedDate, setFocusedDate] = useState<string | null>(days[0] ?? null);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -322,6 +325,7 @@ export function MenuPlanningSection({
               </Select>
             )}
           </div>
+          {!hidePrices && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={`${idPrefix}-meal-price-${date}-${mealType}`} className="text-xs">
               Price
@@ -353,6 +357,7 @@ export function MenuPlanningSection({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {(entry.menuId || (readOnly && entry.items.length > 0)) && (
@@ -640,6 +645,7 @@ export function MenuPlanningSection({
           initialItems={foodDialogEntry.items}
           onSave={(items) => setMealItems(foodDialogTarget.date, foodDialogTarget.mealType, items)}
           loadPickerData={loadPickerData}
+          hidePrices={hidePrices}
         />
       )}
     </div>

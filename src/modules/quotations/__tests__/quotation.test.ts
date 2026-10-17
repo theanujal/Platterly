@@ -22,6 +22,7 @@ import {
   InvalidQuotationTransitionError,
   QuotationEventDatesRequiredError,
 } from "@/modules/quotations/quotation";
+import { onQuotationConverted } from "@/modules/notifications/triggers";
 import { isQuotationEditable, isQuotationRecallable } from "@/modules/quotations/quotation-lock";
 import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
@@ -299,6 +300,24 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     await prisma.quotation.update({ where: { id: quotation.id }, data: { status: "ACCEPTED" } });
     expect(isQuotationRecallable("ACCEPTED")).toBe(false);
     await expect(recallQuotation(org.id, quotation.id, actor.id)).rejects.toThrow(InvalidQuotationTransitionError);
+  });
+
+  it("converting does not send the generic order-received email; the conversion email goes out once, from onQuotationConverted", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await createCustomer(org.id, { name: "Asha Rao", phone: "9876543210", email: "asha@example.test" }, actor.id);
+    const eventType = await createEventType(org.id, { name: "Wedding" }, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id, eventTypeId: eventType.id, eventStartDate: new Date("2026-12-05"), eventEndDate: new Date("2026-12-05"), venue: "Taj Hall", adultCount: 50 }, actor.id);
+    const { url } = await sendQuotation(org.id, quotation.id, actor.id);
+    const resolved = (await resolveQuotationToken(url.split("/quote/")[1]))!;
+    await acceptQuotation(resolved.organizationId, resolved.quotationId);
+    const emails = (event: string) => prisma.notification.count({ where: { organizationId: org.id, event, channel: "EMAIL", recipientEmail: "asha@example.test" } });
+
+    const order = await convertQuotationToOrder(org.id, quotation.id, actor.id);
+    expect(await emails("order.created")).toBe(0); // the customer is not told twice
+    expect(await emails("quotation.converted")).toBe(0); // the action sends it, once everything else is set up
+    await onQuotationConverted(org.id, order.id);
+    expect(await emails("quotation.converted")).toBe(1);
   });
 
   it("recalculateQuotationTotals is idempotent when called directly", async () => {

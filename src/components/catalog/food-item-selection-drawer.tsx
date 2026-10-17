@@ -34,6 +34,8 @@ interface FoodItemSelectionDrawerProps {
   menuPreference: string;
   initialItems: PickedItem[];
   onSave: (items: PickedItem[]) => void;
+  /** No amounts anywhere in the drawer (the viewer lacks the price right; the picker data carries none either). */
+  hidePrices?: boolean;
   /**
    * Item-picker parity with Order (2026-09-28) — the drawer itself has no
    * Order/Quotation-specific logic; each feature passes its own server
@@ -100,6 +102,7 @@ export function FoodItemSelectionDrawer({
   initialItems,
   onSave,
   loadPickerData,
+  hidePrices = false,
 }: FoodItemSelectionDrawerProps) {
   const [data, setData] = useState<MenuPickerData | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -366,7 +369,7 @@ export function FoodItemSelectionDrawer({
                                   <span className="truncate text-sm font-medium">{item.name}</span>
                                   {isExtra && (
                                     <span>
-                                      <Badge variant="warning">Extra · {formatInr(item.price * guestCount)}</Badge>
+                                      <Badge variant="warning">{hidePrices ? "Extra" : `Extra · ${formatInr(item.price * guestCount)}`}</Badge>
                                     </span>
                                   )}
                                 </span>
@@ -412,7 +415,7 @@ export function FoodItemSelectionDrawer({
                               <span className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium">{addOn.name}</span>
                                 <span className="text-xs text-muted-foreground">
-                                  {addOn.included ? "Included in package" : addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
+                                  {addOn.included ? "Included in package" : hidePrices ? (addOn.priceType === "PER_PLATE" ? "Charged per plate" : "Charged once") : addOn.priceType === "PER_PLATE" ? `${formatInr(addOn.price)} / plate · ${formatInr(addOn.price * guestCount)} for ${guestCount} guests` : `${formatInr(addOn.price)} flat`}
                                 </span>
                               </span>
                             </TableCell>
@@ -460,8 +463,8 @@ export function FoodItemSelectionDrawer({
                   </DialogDescription>
                 </DialogHeader>
                 <p className="text-sm">
-                  <span className="font-semibold">{extraPrompt.name}</span> will be added as an extra item, charged for every guest: {formatInr(extraPrompt.price)} × {guestCount} guests ={" "}
-                  <span className="font-semibold">{formatInr(extraPrompt.price * guestCount)}</span>.
+                  <span className="font-semibold">{extraPrompt.name}</span> will be added as an extra item, charged for every guest{hidePrices ? "." : <>: {formatInr(extraPrompt.price)} × {guestCount} guests ={" "}
+                  <span className="font-semibold">{formatInr(extraPrompt.price * guestCount)}</span>.</>}
                 </p>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setExtraPrompt(null)}>

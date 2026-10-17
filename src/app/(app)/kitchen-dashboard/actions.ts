@@ -11,7 +11,7 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 
 export async function setKitchenProductionStatusAction(id: string, status: KitchenProductionStatus): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
-  await requirePermission({ menus: ["edit"] }, organizationId);
+  await requirePermission({ kitchen: ["updateStatus"] }, organizationId);
   await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await setKitchenProductionStatus(organizationId, id, status, session.user.id);

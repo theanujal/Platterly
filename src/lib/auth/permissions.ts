@@ -48,6 +48,27 @@ export const statement = {
   // the one place besides inventory where a non-owner role may delete (floor staff records); a manager can view, create and edit.
   staffing: ["view", "create", "edit", "delete"],
   settings: ["view", "edit"],
+  // Roles & Permissions redesign, Phase A (AJ, 2026-10-17). Kitchen work no longer borrows `menus` or `orders`:
+  // "view" opens the Kitchen Dashboard, its orders and the prep sheet; "updateStatus" moves the cooking stage; "viewPdf"
+  // downloads the kitchen order PDF (which carries no prices).
+  kitchen: ["view", "updateStatus", "viewPdf"],
+  // Recipes used to borrow `inventory`; the kitchen writes recipes without touching stock.
+  recipes: ["view", "create", "edit", "delete"],
+  // Sensitive data, independent of every module: opening Orders or Quotations never shows a price. Each key is one kind of
+  // protected field or document (see docs/roles-permissions-redesign-plan.md, section 2).
+  sensitive: [
+    "menuPrices", // menu, dish and add-on prices
+    "orderPrices", // order and quotation prices, totals, discounts and charges
+    "paymentDetails", // payments, advance, balances, overdue payments
+    "supplierCosts", // supplier purchase prices, inventory unit cost, purchase order amounts
+    "recipeCosts", // ingredient and recipe cost
+    "profitability", // profitability, margins, event costs
+    "financialReports", // revenue and finance report tabs and their exports
+    "commercialDocuments", // customer-facing PDFs: invoices, receipts, quotations
+  ],
+  // Reserved identifiers only (AJ, 2026-10-17, D4): stock requests and stock receiving are not built. Nothing enforces
+  // these and the editor shows them as "Coming soon".
+  stockRequests: ["request", "fulfil", "receive"],
 } as const;
 
 export const ac = createAccessControl(statement);
@@ -85,7 +106,16 @@ export const roles = {
     audit: ["view"],
     staffing: ["view", "create", "edit", "delete"],
     settings: ["view", "edit"],
+    kitchen: ["view", "updateStatus", "viewPdf"],
+    recipes: ["view", "create", "edit", "delete"],
+    sensitive: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"],
+    stockRequests: ["request", "fulfil", "receive"],
   }),
+  /**
+   * Broad operations, no prices (AJ, 2026-10-17): creates and edits most records and approves menus, but deletes only Staff
+   * page records (`staffing: delete`), sees no prices or costs until the Admin grants them, and does not manage the team,
+   * roles or settings.
+   */
   manager: ac.newRole({
     ...memberAc.statements,
     tenant: ["view"],
@@ -94,53 +124,54 @@ export const roles = {
     eventTypes: ["view", "create", "edit"],
     orders: ["view", "create", "edit"],
     quotations: ["view", "create", "edit"],
-    menus: ["view", "create", "edit"],
+    menus: ["view", "create", "edit", "approve"],
     inventory: ["view", "create", "edit"],
     invoices: ["view", "create"],
     payments: ["view", "create"],
     expenses: ["view", "create", "edit"],
     reports: ["view", "export"],
     audit: ["view"],
-    staffing: ["view", "create", "edit"],
+    staffing: ["view", "create", "edit", "delete"],
     settings: ["view"],
+    kitchen: ["view", "updateStatus", "viewPdf"],
+    recipes: ["view", "create", "edit"],
+    sensitive: [],
   }),
+  /** Orders and Quotations only, view-only until the Admin grants more; no prices (AJ, 2026-10-17). */
   staff: ac.newRole({
     ...memberAc.statements,
     tenant: [],
     users: [],
-    customers: ["view"],
-    eventTypes: ["view"],
+    customers: [],
+    eventTypes: [],
     orders: ["view"],
     quotations: ["view"],
-    menus: ["view"],
-    inventory: ["view"],
+    menus: [],
+    inventory: [],
     invoices: [],
     payments: [],
     expenses: [],
-    reports: ["view", "export"],
-    staffing: ["view"],
+    reports: [],
+    staffing: [],
     settings: [],
+    kitchen: [],
+    recipes: [],
+    sensitive: [],
   }),
   /**
-   * PRD §5 "Kitchen Team" — Approved menus/Kitchen production/Preparation/
-   * Kitchen status. Gets `menus:edit` (Kitchen Dashboard's own status-update
-   * actions, kitchen-dashboard/actions.ts) and `menus:view` (both the
-   * dashboard and its own query already scope to orders that reached the
-   * Kitchen Reviewing/Approved stage). Deliberately NO `menus:approve` — AJ,
-   * 2026-09-20: Kitchen Team executes production against already-approved
-   * menus, they don't run the approval pipeline itself (that's `salesEvents`
-   * below), so `/menu-approvals` (gated on `menus:["approve"]`) stays closed
-   * to this role.
+   * PRD §5 "Kitchen Team", rebuilt on its own permissions (AJ, 2026-10-17): the Kitchen Dashboard, its orders and prep sheet,
+   * the cooking stage, the kitchen PDF, recipes and floor staffing, with no general Orders, Menus or Inventory access and no
+   * prices. Deliberately NO `menus:approve` (AJ, 2026-09-20): it executes production against already-approved menus.
    */
   kitchen: ac.newRole({
     ...memberAc.statements,
     tenant: [],
     users: [],
     customers: [],
-    eventTypes: ["view"],
-    orders: ["view"],
+    eventTypes: [],
+    orders: [],
     quotations: [],
-    menus: ["view", "edit"],
+    menus: [],
     inventory: [],
     invoices: [],
     payments: [],
@@ -148,11 +179,14 @@ export const roles = {
     reports: [],
     staffing: ["view", "create", "edit", "delete"],
     settings: [],
+    kitchen: ["view", "updateStatus", "viewPdf"],
+    recipes: ["view", "create", "edit"],
+    sensitive: [],
+    stockRequests: ["request"],
   }),
   /**
-   * PRD §5 "Store / Inventory Team" — Stock/Ingredients/Purchases/Suppliers.
-   * `inventory` is this role's entire domain, so unlike every other
-   * non-owner role it gets `delete` there too.
+   * PRD §5 "Store / Inventory Team": stock, ingredients, suppliers and purchases, with the supplier purchase costs its work
+   * needs. `inventory` is this role's entire domain, so unlike every other non-owner role it gets `delete` there too.
    */
   inventoryTeam: ac.newRole({
     ...memberAc.statements,
@@ -169,19 +203,23 @@ export const roles = {
     expenses: [],
     reports: ["view", "export"],
     settings: [],
+    kitchen: [],
+    recipes: ["view"],
+    sensitive: ["supplierCosts"],
+    stockRequests: ["fulfil", "receive"],
   }),
   /**
-   * PRD §5 "Accounts Team" (Finance) — Invoices/Payments/Expenses/Financial
-   * reports. `reports:export` mirrors owner's grant since financial
-   * reporting is this role's core job.
+   * PRD §5 "Accounts Team" (Finance): invoices, payments, expenses and financial reports, and the orders and customers they
+   * bill (view only). Prices it needs for that work are granted below; menu prices, supplier and recipe costs and
+   * profitability are not (AJ, 2026-10-17, D3). No deletes.
    */
   accounts: ac.newRole({
     ...memberAc.statements,
     tenant: [],
     users: [],
-    customers: [],
+    customers: ["view"],
     eventTypes: [],
-    orders: [],
+    orders: ["view"],
     quotations: [],
     menus: [],
     inventory: [],
@@ -190,15 +228,15 @@ export const roles = {
     expenses: ["view", "create", "edit"],
     reports: ["view", "export"],
     settings: [],
+    kitchen: [],
+    recipes: [],
+    sensitive: ["orderPrices", "paymentDetails", "financialReports", "commercialDocuments"],
   }),
   /**
-   * PRD §5 "Sales Team" + "Event Team", merged into one role (AJ, 2026-09-30):
-   * the same people sell an order and run its event. Enquiries/Customers/
-   * Quotations/Orders/Follow-ups plus Event requirements, **and menu-approval
-   * ownership** (AJ, 2026-09-20): `menu-approvals/actions.ts`'s entire
-   * Draft→...→Final/Locked pipeline is uniformly gated on `menus:["approve"]`,
-   * so granting it here gives this role the full customer-approval-through-
-   * lock flow end to end. No menu create/edit/delete, no deletes anywhere.
+   * PRD §5 "Sales Team" + "Event Team", merged into one role (AJ, 2026-09-30): the same people sell an order and run its event.
+   * Customers, quotations, orders and event details, plus **menu-approval ownership** (AJ, 2026-09-20): the whole
+   * Draft -> ... -> Final/Locked pipeline is gated on `menus:["approve"]`. No prices until the Admin grants them (AJ, 2026-10-17),
+   * no deletes, no inventory, kitchen or accounting.
    */
   salesEvents: ac.newRole({
     ...memberAc.statements,
@@ -213,8 +251,11 @@ export const roles = {
     invoices: [],
     payments: [],
     expenses: [],
-    reports: ["view", "export"],
+    reports: ["view"],
     staffing: ["view"],
     settings: [],
+    kitchen: [],
+    recipes: [],
+    sensitive: [],
   }),
 };

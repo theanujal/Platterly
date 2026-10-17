@@ -2,7 +2,7 @@ import { createElement, Fragment } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus, User, MapPin, CalendarDays, Clock, type LucideProps } from "lucide-react";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listQuotations } from "@/modules/quotations/quotation";
 import { getEventTypeIcon } from "@/lib/event-type-icons";
@@ -49,6 +49,8 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
   const { status } = await searchParams;
   const validStatus = status && status in STATUS_LABEL ? (status as QuotationStatus) : undefined;
 
+  // Totals are order prices (Sensitive data), separate from opening Quotations (AJ, 2026-10-17).
+  const showMoney = await canSee("orderPrices", organizationId);
   const quotations = await listQuotations(organizationId, { status: validStatus, when: "upcoming", excludeConverted: true });
   const now = new Date();
   const timeZone = await getTenantTimeZone(organizationId);
@@ -56,8 +58,12 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "customer", label: "Customer (A–Z)", key: "customer" },
-    { value: "total-high", label: "Total (High–Low)", key: "total", direction: "desc" },
-    { value: "total-low", label: "Total (Low–High)", key: "total" },
+    ...(showMoney
+      ? [
+          { value: "total-high", label: "Total (High–Low)", key: "total", direction: "desc" as const },
+          { value: "total-low", label: "Total (Low–High)", key: "total" },
+        ]
+      : []),
   ];
 
   // Card/list built to match the Order Card's design language (avatar, divided stat row, footer amount)
@@ -79,7 +85,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
       id: quotation.id,
       href: `/quotations/${quotation.id}`,
       searchText: `${quotation.customer.name} ${quotation.customer.phone}`,
-      sortValues: { customer: quotation.customer.name, total: Number(quotation.total), newest: quotation.createdAt.getTime() },
+      sortValues: { customer: quotation.customer.name, ...(showMoney ? { total: Number(quotation.total) } : {}), newest: quotation.createdAt.getTime() },
       card: (
         <div key={`card-${quotation.id}`} className="flex h-full flex-col gap-4 p-5">
           <div className="flex items-start justify-between gap-3">
@@ -127,10 +133,12 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
             </div>
           </div>
 
-          <div className="mt-auto flex flex-col gap-0.5 border-t border-border pt-4">
-            <span className="text-xs text-muted-foreground">Total Amount</span>
-            <span className="text-xl font-bold">{formatCurrency(Number(quotation.total))}</span>
-          </div>
+          {showMoney && (
+            <div className="mt-auto flex flex-col gap-0.5 border-t border-border pt-4">
+              <span className="text-xs text-muted-foreground">Total Amount</span>
+              <span className="text-xl font-bold">{formatCurrency(Number(quotation.total))}</span>
+            </div>
+          )}
         </div>
       ),
       // Rich list — a Customer cell (avatar, name, venue) and an Event cell (date, event type below)
@@ -162,7 +170,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
               </div>
             </div>
           </TableCell>
-          <TableCell className="px-3 py-3 font-semibold">{formatCurrency(Number(quotation.total))}</TableCell>
+          {showMoney && <TableCell className="px-3 py-3 font-semibold">{formatCurrency(Number(quotation.total))}</TableCell>}
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{validUntilLabel}</TableCell>
           <TableCell className="px-3 py-3">{statusBadge}</TableCell>
         </Fragment>
@@ -192,7 +200,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
             <CatalogAddTileContent label="Create Quotation" description="Send a priced proposal to a customer" />
           </Link>
         }
-        columns={["Customer", "Event", "Total", "Valid Until", "Status"]}
+        columns={["Customer", "Event", ...(showMoney ? ["Total"] : []), "Valid Until", "Status"]}
         searchPlaceholder="Search quotations by customer or phone…"
         emptyLabel="No quotations yet."
         filters={<QuotationsFilterBar key="quotations-filters" />}

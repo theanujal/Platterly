@@ -19,7 +19,7 @@ const formatDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toL
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId, session } = await requireActiveOrganization();
-  await requirePermission({ menus: ["view"] }, organizationId);
+  await requirePermission({ kitchen: ["viewPdf"] }, organizationId);
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
   if (!sheet || !(await kitchenAtMyLocation(organizationId, session.user.id, sheet.selection.event.assignedKitchenId))) return new Response("Not found", { status: 404 });

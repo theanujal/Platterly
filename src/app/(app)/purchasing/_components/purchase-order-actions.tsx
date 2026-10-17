@@ -86,7 +86,8 @@ export function PurchaseOrderActions({
     router.refresh();
   }
 
-  const canReceive = status === "ORDERED" || status === "PARTIALLY_RECEIVED";
+  // A receipt books prices, so it is offered only to a viewer the page gave receipt lines (the supplier-costs right).
+  const canReceive = (status === "ORDERED" || status === "PARTIALLY_RECEIVED") && receiveLines.length > 0;
 
   // Opening WhatsApp is not sending. The order stays a draft until the person says they sent it.
   const askSent = (why: string): Confirm => ({

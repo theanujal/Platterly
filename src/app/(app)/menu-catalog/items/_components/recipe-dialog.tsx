@@ -52,21 +52,23 @@ interface RecipeDialogProps {
   options: IngredientOption[];
   /** Dishes that already have a recipe. When given, "Copy from another dish" fills the form from one of them. */
   copySources?: CopySource[];
+  /** The cost preview, only for a person who may see recipe costs. */
+  showCost?: boolean;
 }
 
 const EMPTY: RecipeFormValues = { yieldServings: "10", notes: "", ingredients: [{ inventoryId: "", quantity: "" }] };
 
 /** The recipe (ingredient list) for one Food Item: quantities for a stated number of servings. */
-export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, options, copySources = [] }: RecipeDialogProps) {
+export function RecipeDialog({ open, onOpenChange, itemId, name, initialValues, options, copySources = [], showCost = true }: RecipeDialogProps) {
   return (
     <FormDrawer open={open} onOpenChange={onOpenChange} title={`Recipe — ${name}`} description="What goes into this dish. Quantities are for the number of servings below." size="lg">
-      <RecipeForm onOpenChange={onOpenChange} itemId={itemId} initialValues={initialValues} options={options} copySources={copySources} />
+      <RecipeForm onOpenChange={onOpenChange} itemId={itemId} initialValues={initialValues} options={options} copySources={copySources} showCost={showCost} />
     </FormDrawer>
   );
 }
 
 // The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
-function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources }: Pick<RecipeDialogProps, "onOpenChange" | "itemId" | "initialValues" | "options"> & { copySources: CopySource[] }) {
+function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources, showCost }: Pick<RecipeDialogProps, "onOpenChange" | "itemId" | "initialValues" | "options"> & { copySources: CopySource[]; showCost: boolean }) {
   const router = useRouter();
   const [extraOptions, setExtraOptions] = useState<IngredientOption[]>([]);
   const allOptions = [...options, ...extraOptions];
@@ -306,7 +308,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
               <Textarea id="recipe-notes" value={values.notes} onChange={(e) => setValues((v) => ({ ...v, notes: e.target.value }))} />
             </div>
 
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4" data-testid="recipe-cost">
+            {showCost && <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted p-4" data-testid="recipe-cost">
               {cost.state === "VERIFIED" ? (
                 <p className="text-sm text-muted-foreground">
                   Ingredient cost per serving: <span className="font-medium text-foreground">₹{cost.verifiedCostPerServing!.toFixed(2)}</span> <span className="text-xs">(verified from batch costs)</span>
@@ -339,7 +341,7 @@ function RecipeForm({ onOpenChange, itemId, initialValues, options, copySources 
                 </>
               )}
               <p className="text-xs text-muted-foreground">A preview against the stock as it is now: nothing is reserved or deducted, and each recipe is previewed on its own.</p>
-            </div>
+            </div>}
 
         </>
       </DrawerForm>

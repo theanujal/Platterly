@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { listOrders } from "@/modules/orders/order";
 import { parseApprovalFilter, parseOrdersView } from "@/modules/orders/approval-list";
@@ -49,7 +49,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const eventTypes = await listEventTypes(organizationId);
   const validEventTypeId = eventTypes.find((t) => t.id === eventType)?.id;
 
-  const [orders, canEdit, canDelete, canCreate, showMoney] = await Promise.all([
+  const [orders, canEdit, canDelete, canCreate, prices] = await Promise.all([
     // The default list shows every order, past events included (AJ, 2026-10-16; it hid past-event orders from 2026-09-30).
     // The Past view narrows to past-event orders whose menu approval is still outstanding (Decision 9).
     // Overdue payments live under Finance now (AJ, 2026-10-12): it is the finance team's job to collect them.
@@ -67,8 +67,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ orders: ["delete"] }, organizationId),
     hasPermission({ orders: ["create"] }, organizationId),
-    hasPermission({ invoices: ["view"] }, organizationId),
+    sensitiveAccess(organizationId),
   ]);
+  // Amounts and payment status are sensitive data, separate from opening Orders (AJ, 2026-10-17).
+  const showMoney = prices.orderPrices;
+  const showPayment = prices.paymentDetails;
   // One timestamp for every card, so their "Starts in" countdowns agree.
   const now = new Date();
 
@@ -80,12 +83,12 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
       searchText: `${order.customer.name} ${order.customer.phone} ${order.orderNumber ?? ""}`,
       sortValues: {
         customer: order.customer.name,
-        total: Number(order.total),
+        ...(showMoney ? { total: Number(order.total) } : {}),
         newest: order.createdAt.getTime(),
         eventDate: order.eventStartDate.getTime(),
       },
-      card: <OrderCard key={`card-${order.id}`} order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} showMoney={showMoney} />,
-      listRow: <OrderListCells key={`row-${order.id}`} order={order} now={now} timeZone={timeZone} showMoney={showMoney} />,
+      card: <OrderCard key={`card-${order.id}`} order={order} now={now} timeZone={timeZone} canEdit={canEdit} canDelete={canDelete} showMoney={showMoney} showPayment={showPayment} />,
+      listRow: <OrderListCells key={`row-${order.id}`} order={order} now={now} timeZone={timeZone} showMoney={showMoney} showPayment={showPayment} />,
     };
   });
 

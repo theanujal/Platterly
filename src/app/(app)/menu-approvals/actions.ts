@@ -3,7 +3,9 @@
 import { assertMenuSelectionAtMyLocation, assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSensitive, canSee } from "@/lib/auth/require-session";
+import { savedMealPrices } from "@/modules/roles/keep-pricing";
+import { pickerWithoutPrices } from "@/modules/roles/redact";
 import {
   setMenuSelectionItems,
   setCustomMenuPricePerPlate,
@@ -120,6 +122,8 @@ export async function setCustomMenuPriceAction(id: string, pricePerPlate: number
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   await requirePermission({ orders: ["edit"] }, organizationId);
+  // Quoting a price is setting an order price: it needs the order-prices right as well (AJ, 2026-10-17).
+  await requireSensitive("orderPrices", organizationId);
   await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
   try {
     await setCustomMenuPricePerPlate(organizationId, id, pricePerPlate, session.user.id);
@@ -145,6 +149,10 @@ export async function updateMenuApprovalMealPlanAction(id: string, entries: Meal
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
   await assertMenuSelectionAtMyLocation(organizationId, session.user.id, id);
+  // Without the order-prices right a submitted per-plate price is ignored: each meal keeps the price it already has.
+  const mayPrice = await canSee("orderPrices", organizationId);
+  const located = mayPrice ? null : await prisma.menuSelection.findFirst({ where: { id, organizationId }, select: { event: { select: { orderId: true } } } });
+  const keptPrices = located?.event.orderId ? await savedMealPrices(organizationId, located.event.orderId) : new Map<string, number | undefined>();
   try {
     await updateMenuApprovalMealPlan(
       organizationId,
@@ -152,7 +160,7 @@ export async function updateMenuApprovalMealPlanAction(id: string, entries: Meal
       entries.map((entry) => ({
         date: new Date(entry.date),
         mealType: entry.mealType,
-        price: entry.price ?? undefined,
+        price: mayPrice ? entry.price ?? undefined : keptPrices.get(`${entry.date.slice(0, 10)}|${entry.mealType}`),
         menuId: entry.menuId,
         items: entry.items.map((item) => ({ itemType: item.itemType, catalogId: item.catalogId, quantity: Math.max(1, Math.floor(item.quantity)), isExtra: item.isExtra === true })),
       })),
@@ -170,7 +178,8 @@ export async function updateMenuApprovalMealPlanAction(id: string, entries: Meal
 export async function getMenuForApprovalPickerAction(menuId: string): Promise<MenuPickerData | null> {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["approve"] }, organizationId);
-  return getMenuPickerData(organizationId, menuId);
+  const picker = await getMenuPickerData(organizationId, menuId);
+  return picker && !(await canSee("orderPrices", organizationId)) ? pickerWithoutPrices(picker) : picker;
 }
 
 /** A team note on the approval, kept in the note history next to the customer's and the kitchen's. */

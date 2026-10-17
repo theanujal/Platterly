@@ -31,7 +31,7 @@ const COLUMNS: { key: KitchenProductionStatus; label: string; icon: LucideIcon; 
 export default async function KitchenDashboardPage() {
   const { organizationId, session } = await requireActiveOrganization();
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
-  await requirePermission({ menus: ["view"] }, organizationId);
+  await requirePermission({ kitchen: ["view"] }, organizationId);
 
   const [menuSelections, { daysBeforeEvent }] = await Promise.all([listKitchenProductionBoard(organizationId, locationId), getKitchenRules(organizationId)]);
   const windowText = daysBeforeEvent === 0 ? "today" : `today through the next ${daysBeforeEvent} ${daysBeforeEvent === 1 ? "day" : "days"}`;

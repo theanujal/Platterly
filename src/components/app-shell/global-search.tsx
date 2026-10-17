@@ -98,7 +98,7 @@ export function GlobalSearch() {
                       </span>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-0.5">
-                      <span className="text-xs font-semibold">{formatCurrency(result.total)}</span>
+                      {result.total !== null && <span className="text-xs font-semibold">{formatCurrency(result.total)}</span>}
                       <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[result.status]}</span>
                     </div>
                   </button>

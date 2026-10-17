@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
+import { menuOptionsFor } from "@/modules/roles/redact";
 import { assertOrderAtMyLocation, getActiveLocation } from "@/modules/locations/active-location";
 import { getOrder } from "@/modules/orders/order";
 import { getOrderMenuApproval } from "@/modules/menu-approvals/approval-link";
@@ -42,7 +43,6 @@ import { OrderMenuApprovalTab } from "./_components/order-menu-approval-tab";
 import { ApprovalOnlyOrderView } from "./_components/approval-only-order-view";
 import { isKitchenLocked } from "@/modules/orders/order-lock";
 import { isOrderLocked } from "@/modules/orders/order-lock";
-import { MenuStatusBanner } from "./_components/menu-status-banner";
 import type { OrderFormValues } from "../_components/order-form";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
@@ -97,12 +97,14 @@ export default async function OrderDetailPage({ params, searchParams }: { params
   ]);
   const can = { editOrders: canEditOrders, approveMenus: canApproveMenus, viewOrders: canViewOrders };
   const mode = orderPageMode(can);
+  // Sensitive data is separate from module access (AJ, 2026-10-17): opening an order shows no price, payment or cost without its own key.
+  const prices = await sensitiveAccess(organizationId);
   // Someone with neither permission gets the same 403 as before.
   if (mode === "none") await requirePermission({ orders: ["edit"] }, organizationId);
   await assertOrderAtMyLocation(organizationId, session.user.id, id);
   const active = await getActiveLocation(organizationId, session.user.id);
-  if (mode === "approval-only") return approvalOnlyPage({ organizationId, orderId: id, activeEnabled: active.enabled, viewVersion, can, canMoveKitchenStage: await hasPermission({ menus: ["edit"] }, organizationId) });
-  const [order, customers, eventTypes, menus, kitchens, inventoryItems, canManageApproval, menuApproval, statusHistory] = await Promise.all([
+  if (mode === "approval-only") return approvalOnlyPage({ organizationId, orderId: id, activeEnabled: active.enabled, viewVersion, can, showPrices: prices.orderPrices, canMoveKitchenStage: await hasPermission({ kitchen: ["updateStatus"] }, organizationId) });
+  const [order, customers, eventTypes, menus, kitchens, inventoryItems, , menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
@@ -116,7 +118,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
   if (!order) notFound();
   // The Menu Approval tab (where /menu-approvals/[id] redirects), for the viewer's capabilities (read-only without menus: approve).
   const approvalSelection = menuApproval ? await getMenuSelection(organizationId, menuApproval.menuSelectionId) : null;
-  const reviewData = approvalSelection ? await loadMenuApprovalReviewData(organizationId, approvalSelection, { viewVersion }) : null;
+  const reviewData = approvalSelection ? await loadMenuApprovalReviewData(organizationId, approvalSelection, { viewVersion, showPrices: prices.orderPrices }) : null;
 
   const [orderPayments, confirmedPaid, activeInvoice, billingOrg, canCreateInvoice, canRecordPayment, canManagePayment, gstDefaults] = await Promise.all([
     listOrderPayments(organizationId, id),
@@ -153,6 +155,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
   // The food cost of this order: what the inventory sent to it cost, taken from the batches it came from.
   const stockCost = (await orderStockCostTotals([id])).get(id) ?? { cost: 0, unknownQuantity: 0 };
 
+  const showPrices = prices.orderPrices;
   const initialValues: OrderFormValues = {
     customerId: order.customerId,
     eventTypeId: order.eventTypeId ?? "",
@@ -179,19 +182,20 @@ export default async function OrderDetailPage({ params, searchParams }: { params
     childBelow5Count: order.childBelow5Count?.toString() ?? "",
     child5To10Count: order.child5To10Count?.toString() ?? "",
     totalParticipants: order.totalParticipants?.toString() ?? "",
+    // Without the order-prices right the form is given the structure and no figures; the server keeps the saved pricing on save.
     pricingMethod: order.pricingMethod,
-    individualChildBelow5Rate: order.individualChildBelow5Rate?.toString() ?? "",
+    individualChildBelow5Rate: showPrices ? order.individualChildBelow5Rate?.toString() ?? "" : "",
     individualChildBelow5PricingType: order.individualChildBelow5PricingType ?? "FIXED",
-    individualChild5To10Rate: order.individualChild5To10Rate?.toString() ?? "",
+    individualChild5To10Rate: showPrices ? order.individualChild5To10Rate?.toString() ?? "" : "",
     individualChild5To10PricingType: order.individualChild5To10PricingType ?? "FIXED",
     individualPricingEnabled: order.individualPricingEnabled,
-    discount: order.discountMode === "PERCENTAGE" ? order.discountRate.toString() : order.discount.toString(),
+    discount: !showPrices ? "0" : order.discountMode === "PERCENTAGE" ? order.discountRate.toString() : order.discount.toString(),
     discountMode: order.discountMode,
-    transportationCost: order.transportationMode === "PERCENTAGE" ? order.transportationRate.toString() : order.transportationCost.toString(),
+    transportationCost: !showPrices ? "0" : order.transportationMode === "PERCENTAGE" ? order.transportationRate.toString() : order.transportationCost.toString(),
     transportationMode: order.transportationMode,
-    otherCharges: order.otherChargesMode === "PERCENTAGE" ? order.otherChargesRate.toString() : order.otherCharges.toString(),
+    otherCharges: !showPrices ? "0" : order.otherChargesMode === "PERCENTAGE" ? order.otherChargesRate.toString() : order.otherCharges.toString(),
     otherChargesMode: order.otherChargesMode,
-    customCharges: parseCustomCharges(order.customCharges).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
+    customCharges: (!showPrices ? [] : parseCustomCharges(order.customCharges)).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
     venuePerEvent: order.venuePerEvent,
     eventVenues: Object.fromEntries(
       order.eventVenues.map((row) => [
@@ -220,14 +224,14 @@ export default async function OrderDetailPage({ params, searchParams }: { params
     mealPlanEntries: order.mealPlanEntries.map((entry) => ({
       date: toDateInputValue(entry.date),
       mealType: entry.mealType,
-      price: entry.price?.toString() ?? "",
+      price: showPrices ? entry.price?.toString() ?? "" : "",
       menuId: entry.menuId ?? "",
       items: entry.items.map((item) => ({
         key: item.id,
         itemType: item.itemType === "ADD_ON" ? ("ADD_ON" as const) : ("MENU_ITEM" as const),
         catalogId: (item.itemType === "ADD_ON" ? item.addOnId : item.menuItemId) ?? "",
         name: item.name,
-        unitPrice: Number(item.unitPrice),
+        unitPrice: showPrices ? Number(item.unitPrice) : 0,
         // Extras and per-plate add-ons were saved with a per-guest quantity.
         perGuest: item.itemType === "ADD_ON" ? item.quantity > 1 : item.isExtra,
       })),
@@ -241,8 +245,6 @@ export default async function OrderDetailPage({ params, searchParams }: { params
     <div className="flex flex-col gap-6 p-6 md:p-8">
       <EditOrderClient
         orderId={order.id}
-        menuPlanReadOnly={menuApproval !== null}
-        menuPlanInApprovalTab={menuApproval !== null}
         priceFrozen={priceIsFrozen(menuApproval?.status ?? null)}
         withCustomer={menuIsWithCustomer(menuApproval?.status ?? null)}
         initialTab={parseOrderTab(tab)}
@@ -292,17 +294,6 @@ export default async function OrderDetailPage({ params, searchParams }: { params
           </div>
         }
         headerActions={isOrderLocked(order.status) ? undefined : <DeleteOrderButton key="header-actions" orderId={order.id} name={order.customer.name} />}
-        menuPlanBanner={
-          <MenuStatusBanner
-            key="menu-status-banner"
-            status={menuApproval?.status ?? null}
-            version={menuApproval?.currentVersion ?? null}
-            editHref={menuApproval ? `/orders/${order.id}?tab=approval` : null}
-            inApprovalTab={menuApproval !== null}
-            menuSelectionId={menuApproval?.menuSelectionId ?? null}
-            canRecall={canManageApproval}
-          />
-        }
         statusCard={
           <Fragment key="status-card">
             <OrderStatusCard
@@ -360,7 +351,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
           </Fragment>
         }
         sidebarInvoiceAction={
-          activeInvoice || (canCreateInvoice && orderTotal > 0) ? (
+          prices.commercialDocuments && (activeInvoice || (canCreateInvoice && orderTotal > 0)) ? (
             <div key="sidebar-invoice-action" className="flex flex-col [&>a]:w-full [&>button]:w-full" data-testid="sidebar-invoice-action">
               {activeInvoice ? (
                 <OpenInvoiceLink invoiceId={activeInvoice.id} number={activeInvoice.number} />
@@ -371,7 +362,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
           ) : undefined
         }
         billingPanel={
-          <div key="order-billing" className="flex flex-col gap-3" data-testid="order-billing">
+          !prices.paymentDetails ? undefined : <div key="order-billing" className="flex flex-col gap-3" data-testid="order-billing">
               <PaymentsPanel
                 orderId={order.id}
                 invoiceId={activeInvoice?.id}
@@ -389,7 +380,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
         pricingExtra={
           <Fragment key="pricing-extra">
             {/* Whole-order items only exist on an Order converted from an accepted Quotation (convertQuotationToOrder copies the Quotation's frozen item snapshots); the order form has no picker for them, so this read-only recap is where they show. */}
-            {order.items.length > 0 && (
+            {showPrices && order.items.length > 0 && (
               <section className="flex flex-col gap-2 rounded-lg border border-border p-4">
                 <h2 className="text-sm font-semibold">Carried over from the original Quotation</h2>
                 <div className="flex flex-col gap-1.5">
@@ -409,29 +400,23 @@ export default async function OrderDetailPage({ params, searchParams }: { params
         }
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email }))}
         eventTypes={eventTypes.filter((t) => t.isActive || t.id === order.eventTypeId).map((t) => ({ id: t.id, name: t.name }))}
-        menus={menus
-          .filter((m) => m.isActive)
-          .map((m) => ({
-            id: m.id,
-            name: m.name,
-            menuType: m.menuType,
-            price: Number(m.pricePerPlate),
-            childUnder5Chargeable: m.childUnder5Chargeable,
-            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
-            child5To10PricingType: m.child5To10PricingType,
-            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
-          }))}
-        carriedOverItemsSubtotal={order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0)}
+        menus={menuOptionsFor(menus.filter((m) => m.isActive), showPrices)}
+        carriedOverItemsSubtotal={showPrices ? order.items.reduce((sum, item) => sum + Number(item.unitPrice) * item.quantity, 0) : 0}
+        showPrices={showPrices}
         expensesTab={
           canViewExpenses ? (
             <ExpensesCard
               key="expenses"
               orderId={order.id}
-              profitability={computeProfitability(
-                orderTotal,
-                expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
-                stockCost.cost,
-              )}
+              profitability={
+                prices.profitability
+                  ? computeProfitability(
+                      orderTotal,
+                      expenses.map((e) => ({ category: e.category, amount: Number(e.amount) })),
+                      stockCost.cost,
+                    )
+                  : null
+              }
               expenses={expenses.map((e) => ({
                 id: e.id,
                 orderId: e.orderId,
@@ -459,7 +444,8 @@ export default async function OrderDetailPage({ params, searchParams }: { params
               key="inventory"
               orderId={order.id}
               canEdit={canTakeStock}
-              data={orderInventory}
+              showCosts={prices.supplierCosts}
+              data={prices.supplierCosts ? orderInventory : { ...orderInventory, lines: orderInventory.lines.map((l) => ({ ...l, sentCost: 0, sentCostUnknown: 0 })) }}
               extrasSlot={
               <RequiredInventoryCard
             orderId={order.id}
@@ -486,7 +472,7 @@ const ORDER_KIND_LABEL_TEXT: Record<OrderKind, string> = { SINGLE: "Single Order
  * ApprovalOnlyOrderView) and none of the payments, invoice, expense, staffing, inventory or customer-list loads of the full page.
  * The caller has already checked the permission, the business (every read below is scoped by it) and the location.
  */
-async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVersion, can, canMoveKitchenStage }: { organizationId: string; orderId: string; activeEnabled: boolean; viewVersion: number | null; can: { editOrders: boolean; approveMenus: boolean }; canMoveKitchenStage: boolean }) {
+async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVersion, can, canMoveKitchenStage, showPrices }: { organizationId: string; orderId: string; activeEnabled: boolean; viewVersion: number | null; can: { editOrders: boolean; approveMenus: boolean }; canMoveKitchenStage: boolean; showPrices: boolean }) {
   const [order, menuApproval, statusHistory] = await Promise.all([
     getOrder(organizationId, orderId),
     getOrderMenuApproval(organizationId, orderId),
@@ -494,7 +480,7 @@ async function approvalOnlyPage({ organizationId, orderId, activeEnabled, viewVe
   ]);
   if (!order) notFound();
   const selection = menuApproval ? await getMenuSelection(organizationId, menuApproval.menuSelectionId) : null;
-  const review = selection ? await loadMenuApprovalReviewData(organizationId, selection, { viewVersion }) : null;
+  const review = selection ? await loadMenuApprovalReviewData(organizationId, selection, { viewVersion, showPrices }) : null;
   const event = order.events[0] ?? null;
   return (
     <ApprovalOnlyOrderView

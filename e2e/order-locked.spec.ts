@@ -18,11 +18,13 @@ test("Sent to Kitchen: fields read-only; Completed: closed completely; payments 
   const { orderId } = await seedApprovedOrderForShare(email);
   await page.setViewportSize({ width: 1440, height: 1000 });
 
-  // Approved: editable, and the old Payment Details card is gone from an existing order.
+  // Approved by the customer: not locked as sent to the kitchen is, but the customer, event, guests and pricing are read-only (AJ, 2026-10-17),
+  // and the old Payment Details card is gone from an existing order.
   await page.goto(`/orders/${orderId}`);
   await expect(page.getByTestId("order-locked-banner")).toHaveCount(0);
+  await expect(page.getByTestId("order-frozen-banner")).toContainText("The customer has approved the menu");
   await page.getByRole("tab", { name: "Order Details" }).click();
-  await expect(page.getByRole("button", { name: "Edit event information" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Edit event information" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Pricing & Payment" }).click();
   await expect(page.getByRole("heading", { name: "Payment Details" })).toHaveCount(0);
   await expect(page.getByLabel("Advance Received")).toHaveCount(0);

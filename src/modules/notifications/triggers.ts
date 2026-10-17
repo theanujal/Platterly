@@ -12,6 +12,8 @@ import { normalizePhone } from "@/lib/phone";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { todayStartInZone } from "@/lib/time/timezone";
 import { ABANDONED_AFTER_MS } from "@/modules/menu-approvals/storefront-draft-constants";
+import { sensitiveKeysFor } from "@/modules/roles/role-grants";
+import type { SensitiveKey } from "@/lib/auth/role-matrix";
 
 /**
  * Chunk 16: who gets told what, and when. Every business event that sends a message calls ONE function here, so the
@@ -98,13 +100,15 @@ export function emailPayload(c: OrderContext, extra: Record<string, unknown> = {
 }
 
 /** Active team members holding any of these roles. */
-export async function teamMembers(organizationId: string, roles?: string[]) {
-  const members = await prisma.member.findMany({
+export async function teamMembers(organizationId: string, roles?: string[], requires?: SensitiveKey) {
+  const all = await prisma.member.findMany({
     where: { organizationId, ...(roles ? { role: { in: roles } } : {}), disabledAt: null },
-    select: { user: { select: { id: true, email: true } } },
+    select: { role: true, user: { select: { id: true, email: true } } },
   });
+  // A message that carries an amount goes only to people allowed to see that kind of figure (AJ, 2026-10-17).
+  const members = requires ? (await Promise.all(all.map(async (m) => ((await sensitiveKeysFor(organizationId, m.role))[requires] ? m : null)))).filter((m): m is (typeof all)[number] => m !== null) : all;
   const seen = new Set<string>();
-  return members.map((m) => m.user).filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
+  return members.map((m) => ({ ...m.user, role: m.role })).filter((u) => (seen.has(u.id) ? false : (seen.add(u.id), true)));
 }
 
 type Payload = Record<string, string | number | boolean | null | undefined>;
@@ -131,9 +135,16 @@ export async function notifyKitchenWhatsApp(organizationId: string, event: strin
 }
 
 /** In-app (one row per person, so the bell can show each their own) and optionally email, to the team by role. */
-export async function notifyTeam(params: { organizationId: string; roles?: string[]; event: string; title: string; message: string; email?: boolean; push?: boolean; payload: Payload }) {
-  const payload = JSON.parse(JSON.stringify({ ...params.payload, title: params.title, message: params.message }));
-  for (const user of await teamMembers(params.organizationId, params.roles)) {
+export async function notifyTeam(params: { organizationId: string; roles?: string[]; /** Only people who hold this sensitive-data right are told (a message that carries an amount or a price). */ requires?: SensitiveKey; event: string; title: string; message: string; email?: boolean; push?: boolean; payload: Payload }) {
+  const shared = { ...params.payload, title: params.title, message: params.message };
+  for (const user of await teamMembers(params.organizationId, params.roles, params.requires)) {
+    // Each person is sent only the figures their role may see (AJ, 2026-10-17): an order amount or a balance is dropped from the payload for a role without that right (the email lines for them simply do not appear).
+    const keys = await sensitiveKeysFor(params.organizationId, user.role);
+    const own: Record<string, unknown> = { ...shared };
+    if (!keys.orderPrices && !keys.paymentDetails) delete own.amount;
+    if (!keys.orderPrices) delete own.total;
+    if (!keys.paymentDetails) delete own.balance;
+    const payload = JSON.parse(JSON.stringify(own));
     await notify({ organizationId: params.organizationId, channel: "IN_APP", event: params.event, recipient: { userId: user.id }, payload });
     if (params.push !== false) await notify({ organizationId: params.organizationId, channel: "PUSH", event: params.event, recipient: { userId: user.id }, payload });
     if (params.email) await notify({ organizationId: params.organizationId, channel: "EMAIL", event: params.event, recipient: { email: user.email, userId: user.id }, payload });
@@ -193,10 +204,11 @@ const orderLabel = (c: OrderContext) => (c.orderNumber ? `Order ${c.orderNumber}
 // --- triggers ---------------------------------------------------------------------------------------------
 
 /** A new order exists (storefront submit, admin-created, converted quotation). */
-export function onOrderCreated(organizationId: string, orderId: string) {
+export function onOrderCreated(organizationId: string, orderId: string, options: { customerEmail?: boolean } = {}) {
   return safely("onOrderCreated", async () => {
     const c = await loadOrderContext(organizationId, orderId);
-    await notifyCustomer({ organizationId, event: "order.created", email: c.customerEmail, payload: emailPayload(c) });
+    // A converted quotation tells the customer in its own email (onQuotationConverted), so the generic one is skipped.
+    if (options.customerEmail !== false) await notifyCustomer({ organizationId, event: "order.created", email: c.customerEmail, payload: emailPayload(c) });
     await notifyTeam({
       organizationId,
       event: "order.new_alert",
@@ -206,6 +218,14 @@ export function onOrderCreated(organizationId: string, orderId: string) {
       payload: emailPayload(c),
     });
     await notifyKitchenWhatsApp(organizationId, "order.new_alert", [c.orderNumber, c.customerName, c.eventDate]);
+  });
+}
+
+/** The quotation the customer accepted became an order: thank them and give them the order number (switched by Settings -> Email -> Order Accepted). */
+export function onQuotationConverted(organizationId: string, orderId: string) {
+  return safely("onQuotationConverted", async () => {
+    const c = await loadOrderContext(organizationId, orderId);
+    await notifyCustomer({ organizationId, event: "quotation.converted", email: c.customerEmail, payload: emailPayload(c) });
   });
 }
 
@@ -282,6 +302,7 @@ export function onPaymentActivity(organizationId: string, orderId: string, amoun
     await notifyTeam({
       organizationId,
       event: kind === "received" ? "payment.received" : "payment.upi_claimed",
+      requires: "paymentDetails",
       email: true,
       title: kind === "received" ? "Payment received" : "UPI payment to confirm",
       message: `${c.customerName} ${kind === "received" ? "paid" : "says they paid"} ${formatInr(amount)}${c.orderNumber ? ` for ${c.orderNumber}` : ""}.`,
@@ -643,6 +664,7 @@ export async function runDueNotifications(now: Date = new Date()): Promise<DueRu
           organizationId,
           // The people who collect the money (AJ, 2026-10-12).
           roles: ["owner", "manager", "accounts"],
+          requires: "paymentDetails",
           event: "payment.overdue_team",
           title: "Payment overdue",
           message: `${orderLabel(c)} for ${c.customerName} has ${formatInr(c.balance)} unpaid and the event is over.`,

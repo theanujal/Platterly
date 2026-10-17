@@ -255,3 +255,29 @@ export async function getDashboardSnapshot(organizationId: string, locationId?: 
     },
   };
 }
+
+export type DashboardSnapshot = Awaited<ReturnType<typeof getDashboardSnapshot>>;
+
+/**
+ * The snapshot for a person who may not see every kind of money (Roles & Permissions redesign, AJ 2026-10-17): the figures they may
+ * not see are replaced by 0 here, on the server, before the page hands anything to a client component, so the browser never receives
+ * them. `orderPrices` covers revenue and order totals; `paymentDetails` covers what is owed, overdue and paid.
+ */
+export function redactDashboardSnapshot(snapshot: DashboardSnapshot, allowed: { orderPrices: boolean; paymentDetails: boolean }): DashboardSnapshot {
+  if (allowed.orderPrices && allowed.paymentDetails) return snapshot;
+  const row = (r: DashboardOrderRow): DashboardOrderRow => ({
+    ...r,
+    total: allowed.orderPrices ? r.total : 0,
+    advance: allowed.paymentDetails ? r.advance : 0,
+    paymentStatus: allowed.paymentDetails ? r.paymentStatus : "UNPAID",
+  });
+  const tab = (t: DashboardSnapshot["orderTabs"]["today"]) => ({ ...t, rows: t.rows.map(row) });
+  return {
+    ...snapshot,
+    outstandingBalance: allowed.paymentDetails ? snapshot.outstandingBalance : 0,
+    outstandingOrdersCount: allowed.paymentDetails ? snapshot.outstandingOrdersCount : 0,
+    overdue: allowed.paymentDetails ? snapshot.overdue : { count: 0, amount: 0, top: null },
+    activity: snapshot.activity.map((day) => ({ ...day, revenue: allowed.orderPrices ? day.revenue : 0 })),
+    orderTabs: { today: tab(snapshot.orderTabs.today), upcoming: tab(snapshot.orderTabs.upcoming), all: tab(snapshot.orderTabs.all) },
+  };
+}

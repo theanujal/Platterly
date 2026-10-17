@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { getSupplierProfile } from "@/modules/suppliers/supplier";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,8 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["view"] }, organizationId);
+  // Spend, balances, unit costs, order totals, payments and expense amounts are supplier costs (Sensitive data, AJ 2026-10-17).
+  const showCosts = await canSee("supplierCosts", organizationId);
   const profile = await getSupplierProfile(organizationId, id);
   if (!profile) notFound();
   const { supplier, items, expenses, totalSpend } = profile;
@@ -49,10 +51,14 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">{supplier.name}</h1>
-          <p className="text-sm text-muted-foreground">Total spent: {formatRupees(totalSpend)}</p>
-          <p className="text-sm text-muted-foreground">
-            Outstanding balance: <span className="font-semibold text-foreground" data-testid="supplier-outstanding">{formatRupees(balance.outstanding)}</span> (received {formatRupees(balance.received)}, paid {formatRupees(balance.paid)})
-          </p>
+          {showCosts && (
+            <>
+              <p className="text-sm text-muted-foreground">Total spent: {formatRupees(totalSpend)}</p>
+              <p className="text-sm text-muted-foreground">
+                Outstanding balance: <span className="font-semibold text-foreground" data-testid="supplier-outstanding">{formatRupees(balance.outstanding)}</span> (received {formatRupees(balance.received)}, paid {formatRupees(balance.paid)})
+              </p>
+            </>
+          )}
         </div>
         <ActiveBadge active={supplier.isActive} />
       </div>
@@ -91,7 +97,7 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
                 <TableRow>
                   <TableHead>Item</TableHead>
                   <TableHead>In stock</TableHead>
-                  <TableHead>Cost / unit</TableHead>
+                  {showCosts && <TableHead>Cost / unit</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -101,7 +107,7 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
                     <TableCell>
                       {Number(item.stockCount)} {item.unit}
                     </TableCell>
-                    <TableCell>{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>
+                    {showCosts && <TableCell>{item.costPerUnit !== null ? `₹${Number(item.costPerUnit).toFixed(2)}` : "—"}</TableCell>}
                   </TableRow>
                 ))}
               </TableBody>
@@ -123,7 +129,7 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
                 <TableRow>
                   <TableHead>Order</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  {showCosts && <TableHead className="text-right">Total</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -137,7 +143,7 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
                     <TableCell>
                       <Badge variant={PO_STATUS_TONE[po.status]}>{PO_STATUS_LABEL[po.status]}</Badge>
                     </TableCell>
-                    <TableCell className="text-right">{formatRupees(orderedValue(po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }))))}</TableCell>
+                    {showCosts && <TableCell className="text-right">{formatRupees(orderedValue(po.items.map((i) => ({ quantity: Number(i.quantity), receivedQuantity: Number(i.receivedQuantity), unitCost: Number(i.unitCost) }))))}</TableCell>}
                   </TableRow>
                 ))}
               </TableBody>
@@ -146,6 +152,8 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
         </CardContent>
       </Card>
 
+      {showCosts && (
+        <>
       <Card>
         <CardHeader>
           <CardTitle>Payments to this supplier</CardTitle>
@@ -189,6 +197,8 @@ export default async function SupplierProfilePage({ params }: { params: Promise<
           )}
         </CardContent>
       </Card>
+        </>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { markAllRead, markRead } from "@/modules/notifications/inbox";
 import { cookies } from "next/headers";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { ACTIVE_LOCATION_COOKIE, getActiveLocation } from "@/modules/locations/active-location";
 import { prisma } from "@/lib/db";
 import { listOrders } from "@/modules/orders/order";
@@ -13,7 +13,8 @@ export interface GlobalSearchResult {
   id: string;
   orderNumber: string | null;
   status: OrderStatus;
-  total: number;
+  /** Null for a viewer without the order-prices right: the server does not send the amount. */
+  total: number | null;
   customerName: string;
   customerPhone: string;
 }
@@ -29,12 +30,13 @@ export async function searchOrdersAction(query: string): Promise<GlobalSearchRes
   await requirePermission({ orders: ["view"] }, organizationId);
 
   const orders = await listOrders(organizationId, { search: trimmed, take: 8 });
+  const showTotal = await canSee("orderPrices", organizationId);
 
   return orders.map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
     status: order.status,
-    total: Number(order.total),
+    total: showTotal ? Number(order.total) : null,
     customerName: order.customer.name,
     customerPhone: order.customer.phone,
   }));

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
+import { menuOptionsFor } from "@/modules/roles/redact";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
@@ -15,10 +16,11 @@ export const metadata: Metadata = {
 export default async function NewOrderPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ orders: ["create"] }, organizationId);
-  const [customers, eventTypes, menus] = await Promise.all([
+  const [customers, eventTypes, menus, showPrices] = await Promise.all([
     listCustomers(organizationId),
     listEventTypes(organizationId),
     listMenus(organizationId),
+    canSee("orderPrices", organizationId),
   ]);
 
   return (
@@ -35,18 +37,8 @@ export default async function NewOrderPage() {
         }
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone, email: c.email }))}
         eventTypes={eventTypes.filter((t) => t.isActive).map((t) => ({ id: t.id, name: t.name }))}
-        menus={menus
-          .filter((m) => m.isActive)
-          .map((m) => ({
-            id: m.id,
-            name: m.name,
-            menuType: m.menuType,
-            price: Number(m.pricePerPlate),
-            childUnder5Chargeable: m.childUnder5Chargeable,
-            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
-            child5To10PricingType: m.child5To10PricingType,
-            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
-          }))}
+        menus={menuOptionsFor(menus.filter((m) => m.isActive), showPrices)}
+        showPrices={showPrices}
       />
     </div>
   );

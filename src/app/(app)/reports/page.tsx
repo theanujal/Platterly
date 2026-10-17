@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
+import { allowedReportTabs } from "@/modules/reports/tabs";
 import { loadEventsReport, loadSalesReport } from "@/modules/reports/reports";
 import { loadFinanceReport, loadInventoryReport, loadMenuReport, loadStorefrontReport } from "@/modules/reports/more-reports";
 import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
@@ -29,15 +30,16 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   const location = locationId ? await prisma.kitchen.findFirst({ where: { id: locationId, organizationId }, select: { name: true } }) : null;
   const query = await searchParams;
-  const [canInventory, canFinance, canSeeVisitors, canOpenOrders, canExport] = await Promise.all([
+  const [canInventory, canFinance, canSeeVisitors, canOpenOrders, canExport, prices] = await Promise.all([
     hasPermission({ inventory: ["view"] }, organizationId),
     hasPermission({ expenses: ["view"] }, organizationId),
     hasPermission({ tenant: ["view"] }, organizationId),
     hasPermission({ orders: ["edit"] }, organizationId),
     hasPermission({ reports: ["export"] }, organizationId),
+    sensitiveAccess(organizationId),
   ]);
-  const allowed = ["sales", "events", "menu", ...(canInventory ? ["inventory"] : []), ...(canFinance ? ["finance"] : []), "storefront"];
-  const tab = allowed.includes(query.tab ?? "") ? (query.tab as string) : "sales";
+  const allowed = allowedReportTabs({ inventory: canInventory, expenses: canFinance, financialReports: prices.financialReports, supplierCosts: prices.supplierCosts });
+  const tab = allowed.includes(query.tab ?? "") ? (query.tab as string) : allowed[0];
   const range = resolveRange(query);
   const scope = { organizationId, locationId };
 
@@ -92,10 +94,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           { id: "sales", label: "Sales" },
           { id: "events", label: "Events" },
           { id: "menu", label: "Menu" },
-          ...(canInventory ? [{ id: "inventory", label: "Inventory" }] : []),
-          ...(canFinance ? [{ id: "finance", label: "Finance" }] : []),
+          { id: "inventory", label: "Inventory" },
+          { id: "finance", label: "Finance" },
           { id: "storefront", label: "Storefront" },
-        ]}
+        ].filter((t) => allowed.includes(t.id))}
         active={tab}
         basePath="/reports"
         keep={keep}

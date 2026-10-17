@@ -3,6 +3,7 @@ import { getMenuSelection, listMenuApprovalNotes } from "./menu-approval";
 import { listStatusChanges } from "./status-history";
 import { getActiveApprovalUrl, getApprovalFreshness } from "./approval-link";
 import type { ApprovalSnapshot } from "./approval-snapshot";
+import { menuOptionsFor } from "@/modules/roles/redact";
 import { getOrder } from "@/modules/orders/order";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import { listMenus } from "@/modules/menus/menu";
@@ -15,6 +16,49 @@ import type { MenuApprovalReviewProps } from "./_components/review/types";
 export type MenuApprovalReviewData = Omit<MenuApprovalReviewProps, "capabilities">;
 
 type LoadedMenuSelection = NonNullable<Awaited<ReturnType<typeof getMenuSelection>>>;
+
+/** The pricing block for a viewer without the order-prices right: the structure the screen expects, with every figure 0. */
+function NO_PRICING(individualPricingEnabled: boolean, menuGuests: number, totalGuests: number): MenuApprovalReviewData["pricing"] {
+  return {
+    individualPricingEnabled,
+    menuGuests,
+    totalGuests,
+    childrenCharge: 0,
+    discount: 0,
+    transportationCost: 0,
+    otherCharges: 0,
+    customCharges: 0,
+    discountMode: "FIXED",
+    discountRate: 0,
+    otherChargesMode: "FIXED",
+    otherChargesRate: 0,
+    transportationMode: "FIXED",
+    transportationRate: 0,
+    customChargeLines: [],
+    saved: { menuAmount: 0, extrasAmount: 0, childrenCharge: 0, chargesAndDiscount: 0, total: 0 },
+  };
+}
+
+/** A sent version's frozen snapshot with every price, total and breakdown removed (names, dishes and quantities stay). */
+export function snapshotWithoutPrices(snapshot: ApprovalSnapshot | null): ApprovalSnapshot | null {
+  if (!snapshot) return null;
+  const { breakdown: _breakdown, ...rest } = snapshot;
+  void _breakdown;
+  return {
+    ...rest,
+    total: 0,
+    meals: snapshot.meals.map((meal) => ({
+      ...meal,
+      price: null,
+      pricePerPlate: null,
+      items: meal.items.map((item) => {
+        const { unitPrice: _unitPrice, ...itemRest } = item;
+        void _unitPrice;
+        return itemRest;
+      }),
+    })),
+  };
+}
 
 const isoDay = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -35,8 +79,9 @@ function enumerateDays(start: Date, end: Date): string[] {
 export async function loadMenuApprovalReviewData(
   organizationId: string,
   menuSelection: LoadedMenuSelection,
-  options: { viewVersion?: number | null } = {},
+  options: { viewVersion?: number | null; /** false = the viewer lacks the order-prices right: no price, total or charge is built (default true: callers pass it). */ showPrices?: boolean } = {},
 ): Promise<MenuApprovalReviewData | null> {
+  const showPrices = options.showPrices ?? false;
   const orderId = menuSelection.event.orderId;
   if (!orderId) return null;
   const [order, menus, notes, statusChanges, approvalUrl, freshness] = await Promise.all([
@@ -94,7 +139,8 @@ export async function loadMenuApprovalReviewData(
     currentVersion: menuSelection.currentVersion,
     lockedAt: menuSelection.lockedAt,
     isCustomMenu: menuSelection.isCustomMenu,
-    customPricePerPlate: menuSelection.customPricePerPlate ? Number(menuSelection.customPricePerPlate) : null,
+    customPricePerPlate: showPrices && menuSelection.customPricePerPlate ? Number(menuSelection.customPricePerPlate) : null,
+    showPrices,
     header: {
       orderId: order.id,
       orderNumber: order.orderNumber,
@@ -104,7 +150,7 @@ export async function loadMenuApprovalReviewData(
       guests: totalGuests,
       kitchen: menuSelection.event.assignedKitchen?.name ?? null,
     },
-    pricing: {
+    pricing: !showPrices ? NO_PRICING(order.individualPricingEnabled, menuGuestCount(order), totalGuests) : {
       individualPricingEnabled: order.individualPricingEnabled,
       menuGuests: menuGuestCount(order),
       totalGuests,
@@ -131,19 +177,11 @@ export async function loadMenuApprovalReviewData(
     menuPreference: order.menuPreference ?? "",
     days,
     eventDays,
-    entries,
-    menus: menus
-      .filter((m) => m.isActive || entries.some((e) => e.menuId === m.id))
-      .map((m) => ({
-        id: m.id,
-        name: m.name,
-        menuType: m.menuType,
-        price: Number(m.pricePerPlate),
-        childUnder5Chargeable: m.childUnder5Chargeable,
-        childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
-        child5To10PricingType: m.child5To10PricingType,
-        child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
-      })),
+    entries: showPrices ? entries : entries.map((e) => ({ ...e, price: "", items: e.items.map((i) => ({ ...i, unitPrice: 0 })) })),
+    menus: menuOptionsFor(
+      menus.filter((m) => m.isActive || entries.some((e) => e.menuId === m.id)),
+      showPrices,
+    ),
     notes: notes.map((n) => ({
       id: n.id,
       authorType: n.authorType,
@@ -157,7 +195,7 @@ export async function loadMenuApprovalReviewData(
       createdAt: v.createdAt,
       sentAt: v.sentAt,
       superseded: v.supersededAt !== null,
-      snapshot: (v.snapshot as ApprovalSnapshot | null) ?? null,
+      snapshot: showPrices ? ((v.snapshot as ApprovalSnapshot | null) ?? null) : snapshotWithoutPrices((v.snapshot as ApprovalSnapshot | null) ?? null),
     })),
     statusHistory: statusChanges.map((c) => ({
       id: c.id,
@@ -173,6 +211,6 @@ export async function loadMenuApprovalReviewData(
     approvalUrl,
     venueDetailsSubmittedAt: order.venueDetailsSubmittedAt?.toISOString() ?? null,
     viewVersion: options.viewVersion ?? null,
-    freshness,
+    freshness: showPrices || !freshness ? freshness : { ...freshness, sentTotal: 0, currentTotal: 0, reasons: freshness.reasons.map((r) => r.replace(/\s*\(₹[^)]*\)/g, "")) },
   };
 }

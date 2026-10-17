@@ -20,6 +20,25 @@ export const MATRIX_MODULES = [
   { key: "audit", label: "Audit Log", pages: "Audit Log", actions: ["view"] },
   { key: "inventory", label: "Stock & Supplies", pages: "Inventory, Suppliers, Purchasing, Recipes", actions: ["view", "create", "edit", "delete"] },
   { key: "staffing", label: "Staff", pages: "Staff, event staffing, logistics", actions: ["view", "create", "edit", "delete"] },
+  { key: "kitchen", label: "Kitchen Dashboard", pages: "Kitchen Dashboard, prep sheets, kitchen order PDF", actions: ["view", "updateStatus", "viewPdf"] },
+  { key: "recipes", label: "Recipes", pages: "Recipes", actions: ["view", "create", "edit", "delete"] },
+  {
+    key: "sensitive",
+    label: "Sensitive data",
+    pages: "Prices, costs, payments, financial reports and commercial documents",
+    actions: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"],
+  },
+] as const;
+
+/** The sensitive-data keys, one per kind of protected field or document. */
+export const SENSITIVE_KEYS = ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const;
+export type SensitiveKey = (typeof SENSITIVE_KEYS)[number];
+
+/** Reserved for the stock-request and stock-receiving workflows (not built; D4). Shown as "Coming soon", never enforced. */
+export const RESERVED_PERMISSIONS = [
+  { resource: "stockRequests", action: "request", label: "Request stock", note: "Kitchen asks the store for ingredients" },
+  { resource: "stockRequests", action: "fulfil", label: "Fulfil stock requests", note: "Store answers a kitchen request" },
+  { resource: "stockRequests", action: "receive", label: "Receive stock", note: "Store books goods that arrive from a supplier" },
 ] as const;
 
 export type MatrixModuleKey = (typeof MATRIX_MODULES)[number]["key"];
@@ -43,7 +62,9 @@ export function sanitizeGrants(input: unknown): Record<MatrixModuleKey, string[]
   for (const mod of MATRIX_MODULES) {
     const raw = Array.isArray(source[mod.key]) ? (source[mod.key] as unknown[]) : [];
     const picked = mod.actions.filter((action) => raw.includes(action));
-    out[mod.key] = picked.length > 0 && !picked.includes("view") ? ["view", ...picked] : [...picked];
+    // Only a module that has a "view" action gets it added; the sensitive-data keys are independent of every module.
+    const hasView = (mod.actions as readonly string[]).includes("view");
+    out[mod.key] = hasView && picked.length > 0 && !picked.includes("view") ? ["view", ...picked] : [...picked];
   }
   return out;
 }

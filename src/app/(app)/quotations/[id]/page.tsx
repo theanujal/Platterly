@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
+import { menuOptionsFor } from "@/modules/roles/redact";
 import { getQuotation, getOrIssueQuotationLink } from "@/modules/quotations/quotation";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
@@ -52,16 +53,19 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
   const { id } = await params;
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["edit"] }, organizationId);
-  const [quotation, customers, eventTypes, menus, canBypassDateRestriction] = await Promise.all([
+  const [quotation, customers, eventTypes, menus, canBypassDateRestriction, prices] = await Promise.all([
     getQuotation(organizationId, id),
     listCustomers(organizationId),
     listEventTypes(organizationId),
     listMenus(organizationId),
     hasPermission({ orders: ["bypass_date_restriction"] }, organizationId),
+    sensitiveAccess(organizationId),
   ]);
+  const showPrices = prices.orderPrices;
   if (!quotation) notFound();
 
-  const shareableLink = quotation.status !== "DRAFT" ? await getOrIssueQuotationLink(organizationId, id) : null;
+  // The customer link opens the priced quotation, so it is a commercial document: shown only with that right (AJ, 2026-10-17).
+  const shareableLink = quotation.status !== "DRAFT" && prices.commercialDocuments ? await getOrIssueQuotationLink(organizationId, id) : null;
   const kitchenName = shareableLink ? (await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } })).name : "";
   const whatsappHref = shareableLink
     ? `https://wa.me/${whatsappDigits(quotation.customer.phone)}?text=${encodeURIComponent(`Hi ${quotation.customer.name}, this is ${kitchenName}. Here is your quotation. Please review it and let us know: ${shareableLink}`)}`
@@ -81,32 +85,32 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
     child5To10Count: quotation.child5To10Count?.toString() ?? "",
     totalParticipants: quotation.totalParticipants?.toString() ?? "",
     pricingMethod: quotation.pricingMethod,
-    individualChildBelow5Rate: quotation.individualChildBelow5Rate?.toString() ?? "",
+    individualChildBelow5Rate: showPrices ? quotation.individualChildBelow5Rate?.toString() ?? "" : "",
     individualChildBelow5PricingType: quotation.individualChildBelow5PricingType ?? "FIXED",
-    individualChild5To10Rate: quotation.individualChild5To10Rate?.toString() ?? "",
+    individualChild5To10Rate: showPrices ? quotation.individualChild5To10Rate?.toString() ?? "" : "",
     individualChild5To10PricingType: quotation.individualChild5To10PricingType ?? "FIXED",
     individualPricingEnabled: quotation.individualPricingEnabled,
     validUntil: toDateInputValue(quotation.validUntil),
     terms: quotation.terms ?? "",
     notes: quotation.notes ?? "",
-    discount: quotation.discountMode === "PERCENTAGE" ? quotation.discountRate.toString() : quotation.discount.toString(),
+    discount: !showPrices ? "0" : quotation.discountMode === "PERCENTAGE" ? quotation.discountRate.toString() : quotation.discount.toString(),
     discountMode: quotation.discountMode,
-    transportationCost: quotation.transportationMode === "PERCENTAGE" ? quotation.transportationRate.toString() : quotation.transportationCost.toString(),
+    transportationCost: !showPrices ? "0" : quotation.transportationMode === "PERCENTAGE" ? quotation.transportationRate.toString() : quotation.transportationCost.toString(),
     transportationMode: quotation.transportationMode,
-    otherCharges: quotation.otherChargesMode === "PERCENTAGE" ? quotation.otherChargesRate.toString() : quotation.otherCharges.toString(),
+    otherCharges: !showPrices ? "0" : quotation.otherChargesMode === "PERCENTAGE" ? quotation.otherChargesRate.toString() : quotation.otherCharges.toString(),
     otherChargesMode: quotation.otherChargesMode,
-    customCharges: parseCustomCharges(quotation.customCharges).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
+    customCharges: (!showPrices ? [] : parseCustomCharges(quotation.customCharges)).map((c) => (c.mode === "PERCENTAGE" ? { label: c.label, amount: String(c.rate ?? 0), mode: "PERCENTAGE" as const } : { label: c.label, amount: c.amount.toString(), mode: "FIXED" as const })),
     mealPlanEntries: quotation.mealPlanEntries.map((entry) => ({
       date: toDateInputValue(entry.date),
       mealType: entry.mealType,
-      price: entry.price?.toString() ?? "",
+      price: showPrices ? entry.price?.toString() ?? "" : "",
       menuId: entry.menuId ?? "",
       items: entry.items.map((item) => ({
         key: item.id,
         itemType: item.itemType === "ADD_ON" ? ("ADD_ON" as const) : ("MENU_ITEM" as const),
         catalogId: (item.itemType === "ADD_ON" ? item.addOnId : item.menuItemId) ?? "",
         name: item.name,
-        unitPrice: Number(item.unitPrice),
+        unitPrice: showPrices ? Number(item.unitPrice) : 0,
         // Extras and per-plate add-ons were saved with a per-guest quantity.
         perGuest: item.itemType === "ADD_ON" ? item.quantity > 1 : item.isExtra,
       })),
@@ -158,18 +162,8 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
         }
         customers={customers.map((c) => ({ id: c.id, name: c.name, phone: c.phone }))}
         eventTypes={eventTypes.filter((t) => t.isActive || t.id === quotation.eventTypeId).map((t) => ({ id: t.id, name: t.name }))}
-        menus={menus
-          .filter((m) => m.isActive)
-          .map((m) => ({
-            id: m.id,
-            name: m.name,
-            menuType: m.menuType,
-            price: Number(m.pricePerPlate),
-            childUnder5Chargeable: m.childUnder5Chargeable,
-            childUnder5Price: m.childUnder5Price !== null ? Number(m.childUnder5Price) : null,
-            child5To10PricingType: m.child5To10PricingType,
-            child5To10PriceValue: m.child5To10PriceValue !== null ? Number(m.child5To10PriceValue) : null,
-          }))}
+        menus={menuOptionsFor(menus.filter((m) => m.isActive), showPrices)}
+        showPrices={showPrices}
         canBypassDateRestriction={canBypassDateRestriction}
       />
     </div>

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, requireSensitive } from "@/lib/auth/require-session";
 import { assertOrderAtMyLocation } from "@/modules/locations/active-location";
 import { getInvoice, confirmedPaidForOrder } from "@/modules/invoices/invoice";
 import { invoiceDisplayStatus } from "@/modules/invoices/invoice-status";
@@ -23,6 +23,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["view"] }, organizationId);
+  // commercialDocuments is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("commercialDocuments", organizationId);
   const invoice = await getInvoice(organizationId, id);
   if (!invoice) notFound();
   await assertOrderAtMyLocation(organizationId, session.user.id, invoice.orderId);

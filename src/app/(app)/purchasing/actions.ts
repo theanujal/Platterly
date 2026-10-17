@@ -3,7 +3,7 @@
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { assertPurchaseOrderAtMyLocationById, getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSensitive } from "@/lib/auth/require-session";
 import { createPurchaseOrder, updatePurchaseOrder, markOrdered, cancelPurchaseOrder, deletePurchaseOrder, receiveStock } from "@/modules/purchasing/purchase-order";
 import { recordSupplierPayment, deleteSupplierPayment } from "@/modules/purchasing/supplier-payment";
 import type { PaymentMethod } from "@/generated/prisma/enums";
@@ -114,6 +114,8 @@ const asDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(
 export async function receiveStockAction(id: string, payload: ReceiptPayload): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  // A receipt books the price paid for each line, so it needs the supplier-costs right (AJ, 2026-10-17).
+  await requireSensitive("supplierCosts", organizationId);
   await assertPurchaseOrderAtMyLocationById(organizationId, session.user.id, id);
   try {
     await receiveStock(
@@ -140,6 +142,7 @@ const METHODS: PaymentMethod[] = ["UPI", "CARD", "NET_BANKING", "CASH", "BANK_TR
 export async function recordSupplierPaymentAction(supplierId: string, form: { amount: number; paidAt: string; method: string; note: string }): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
+  await requireSensitive("supplierCosts", organizationId);
   try {
     await recordSupplierPayment(
       organizationId,
@@ -157,6 +160,7 @@ export async function recordSupplierPaymentAction(supplierId: string, form: { am
 export async function deleteSupplierPaymentAction(supplierId: string, paymentId: string): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["delete"] }, organizationId);
+  await requireSensitive("supplierCosts", organizationId);
   try {
     await deleteSupplierPayment(organizationId, paymentId, session.user.id);
   } catch (error) {

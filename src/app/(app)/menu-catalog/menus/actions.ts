@@ -2,7 +2,8 @@
 
 import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { prisma } from "@/lib/db";
+import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
 import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
@@ -18,7 +19,41 @@ function stringField(formData: FormData, name: string): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string): Promise<MenuInput> {
+type MenuPricing = Pick<MenuInput, "pricePerPlate" | "childUnder5Chargeable" | "childUnder5Price" | "child5To10PricingType" | "child5To10PriceValue">;
+
+/** Without the menu-prices right a menu keeps the pricing it has (a new one starts free of charge): nothing submitted can set it. */
+async function keptPricing(organizationId: string, existingId?: string): Promise<MenuPricing> {
+  if (!existingId) return { pricePerPlate: 0, childUnder5Chargeable: false, childUnder5Price: null, child5To10PricingType: "FIXED", child5To10PriceValue: null };
+  const menu = await prisma.menu.findFirstOrThrow({ where: { id: existingId, organizationId } });
+  return {
+    pricePerPlate: Number(menu.pricePerPlate),
+    childUnder5Chargeable: menu.childUnder5Chargeable,
+    childUnder5Price: menu.childUnder5Price === null ? null : Number(menu.childUnder5Price),
+    child5To10PricingType: menu.child5To10PricingType,
+    child5To10PriceValue: menu.child5To10PriceValue === null ? null : Number(menu.child5To10PriceValue),
+  };
+}
+
+async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<MenuInput> {
+  const mayPrice = await canSee("menuPrices", organizationId);
+  if (!mayPrice) {
+    const name = stringField(formData, "name");
+    if (!name) throw new Error("Name is required.");
+    const menuType = stringField(formData, "menuType") as FoodType | undefined;
+    if (menuType !== "VEGETARIAN" && menuType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
+    let image = existingImage;
+    const file = formData.get("image");
+    if (file instanceof File && file.size > 0) image = await uploadCatalogImage(organizationId, "menus", file);
+    const categoryAssignments = formData.getAll("categoryAssignment").flatMap((raw) => {
+      if (typeof raw !== "string") return [];
+      const parsed = JSON.parse(raw) as { categoryId?: unknown; maxSelection?: unknown };
+      if (typeof parsed.categoryId !== "string") return [];
+      const max = typeof parsed.maxSelection === "number" && Number.isInteger(parsed.maxSelection) && parsed.maxSelection > 0 ? parsed.maxSelection : null;
+      return [{ categoryId: parsed.categoryId, maxSelection: max }];
+    });
+    return { name, description: stringField(formData, "description"), image, categoryAssignments, menuType, isActive: formData.get("isActive") === "true", ...(await keptPricing(organizationId, existingId)) };
+  }
+
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
@@ -99,7 +134,7 @@ export async function updateMenuAction(
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage);
+    const input = await buildInput(organizationId, formData, existingImage, id);
     await updateMenu(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);

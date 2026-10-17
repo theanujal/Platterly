@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { getActiveNotice } from "@/modules/subscriptions/platform-notice";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app-shell/app-sidebar";
 import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shell/nav-permissions";
 import { Toaster } from "@/components/ui/toaster";
+import { SensitiveAccessProvider } from "@/components/sensitive-access";
 import { UserMenu } from "@/components/app-shell/user-menu";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
@@ -38,6 +39,7 @@ function daysUntil(date: Date): number {
 // Menu Catalog's own layouts already used before this change).
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const { session, organizationId } = await requireActiveOrganization();
+  const sensitive = await sensitiveAccess(organizationId);
   const [organization, subscription, inbox, push] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
@@ -79,6 +81,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     ((session.user.firstName?.[0] ?? session.user.name[0] ?? "") + (session.user.lastName?.[0] ?? "")).toUpperCase() || "U";
 
   return (
+    <SensitiveAccessProvider flags={sensitive}>
     <SidebarProvider defaultOpen={defaultOpen}>
       <AppSidebar organizationName={organization.name} trial={trial} notice={notice} grace={grace} allowedHrefs={allowedHrefs} />
       <SidebarInset>
@@ -104,5 +107,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         />
       </SidebarInset>
     </SidebarProvider>
+    </SensitiveAccessProvider>
   );
 }

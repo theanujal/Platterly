@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { Input } from "@/components/ui/input";
+import { useSensitive } from "@/components/sensitive-access";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
@@ -49,6 +50,7 @@ function StockTransactionForm({
   currentStock,
   tracksExpiry,
 }: Pick<StockTransactionDialogProps, "onOpenChange" | "itemId" | "unit" | "currentStock" | "tracksExpiry">) {
+  const showCost = useSensitive().supplierCosts;
   const router = useRouter();
   const [type, setType] = useState<(typeof TYPE_OPTIONS)[number]["value"]>("STOCK_IN");
   const [quantity, setQuantity] = useState("");
@@ -68,7 +70,7 @@ function StockTransactionForm({
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
-    if (type === "STOCK_IN" && !costUnknown && unitCost.trim() === "") return setError("Enter the unit cost, or tick Cost unknown.");
+    if (type === "STOCK_IN" && showCost && !costUnknown && unitCost.trim() === "") return setError("Enter the unit cost, or tick Cost unknown.");
     if (isFree && costNote.trim().length < 3) return setError("A unit cost of 0 means free goods. Say why (for example a free sample).");
     if (startsBatch && tracksExpiry && !expiryDate) return setError("Enter an expiry date: this item tracks expiry.");
     setPending(true);
@@ -125,7 +127,7 @@ function StockTransactionForm({
         </Label>
         <Input id="stock-quantity" type="number" step="0.001" required value={quantity} onChange={(e) => setQuantity(e.target.value)} />
       </div>
-      {type === "STOCK_IN" && (
+      {type === "STOCK_IN" && showCost && (
         <div className="flex flex-col gap-2 rounded-lg border border-border p-4">
           <Label htmlFor="stock-cost">Unit cost (₹ per {unit})</Label>
           <Input id="stock-cost" type="number" min="0" step="0.01" disabled={costUnknown} value={costUnknown ? "" : unitCost} onChange={(e) => setUnitCost(e.target.value)} />

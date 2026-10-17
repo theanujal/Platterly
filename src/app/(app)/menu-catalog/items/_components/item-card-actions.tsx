@@ -16,11 +16,13 @@ interface ItemCardActionsProps {
   menus: { id: string; name: string }[];
   recipe: RecipeFormValues | null;
   ingredientOptions: IngredientOption[];
+  /** Recipe costs visible (Sensitive data: recipeCosts). */
+  showRecipeCost?: boolean;
   variant?: "overlay" | "plain";
 }
 
 /** 3-dot menu for a Food Item card or row: Edit (popup), Duplicate, Activate / Deactivate, Delete. */
-export function ItemCardActions({ itemId, name, initialValues, categories, menus, recipe, ingredientOptions, variant }: ItemCardActionsProps) {
+export function ItemCardActions({ itemId, name, initialValues, categories, menus, recipe, ingredientOptions, variant, showRecipeCost = true }: ItemCardActionsProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [recipeOpen, setRecipeOpen] = useState(false);
 
@@ -39,7 +41,7 @@ export function ItemCardActions({ itemId, name, initialValues, categories, menus
         deleteDescription="The menus and categories using it aren't deleted, only this item."
       />
       <EditItemDialog open={editOpen} onOpenChange={setEditOpen} itemId={itemId} initialValues={initialValues} categories={categories} menus={menus} />
-      <RecipeDialog key={recipe ? JSON.stringify(recipe) : "none"} open={recipeOpen} onOpenChange={setRecipeOpen} itemId={itemId} name={name} initialValues={recipe} options={ingredientOptions} />
+      <RecipeDialog key={recipe ? JSON.stringify(recipe) : "none"} open={recipeOpen} onOpenChange={setRecipeOpen} itemId={itemId} name={name} initialValues={recipe} options={ingredientOptions} showCost={showRecipeCost} />
     </>
   );
 }

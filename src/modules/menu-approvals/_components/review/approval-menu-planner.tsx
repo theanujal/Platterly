@@ -30,7 +30,9 @@ export function ApprovalMenuPlanner({
   onEntriesChange,
   onMenuPreferenceChange,
   onFoodDialogChange,
+  hidePrices = false,
 }: {
+  hidePrices?: boolean;
   shownVersion: VersionView | null;
   compareOn: boolean;
   versionHasDishIds: boolean;
@@ -111,6 +113,7 @@ export function ApprovalMenuPlanner({
             onOpenFoodDialog={() => {}}
             onCloseFoodDialog={() => {}}
             readOnly
+            hidePrices={hidePrices}
             compare={compareMarks}
             sectioned
             outsideDays={versionDays.filter((d) => !eventDays.includes(d))}
@@ -136,6 +139,7 @@ export function ApprovalMenuPlanner({
           readOnly={planReadOnly}
           sectioned
           priceInPricingTab
+          hidePrices={hidePrices}
           outsideDays={days.filter((d) => !eventDays.includes(d))}
           kindOf={(list) => orderKindFor(eventDays.length, list.map((e) => e.mealType))}
           keepOneMeal

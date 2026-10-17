@@ -21,7 +21,7 @@ const formatDate = (d: Date) => d.toLocaleDateString("en-IN", { weekday: "short"
 export default async function ProductionPlanningPage() {
   const { organizationId, session } = await requireActiveOrganization();
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
-  await requirePermission({ menus: ["view"] }, organizationId);
+  await requirePermission({ kitchen: ["view"] }, organizationId);
   const [plan, canBuy] = await Promise.all([getProductionPlan(organizationId, locationId), hasPermission({ inventory: ["create"] }, organizationId)]);
   const windowText = plan.daysBeforeEvent === 0 ? "today" : `today through the next ${plan.daysBeforeEvent} ${plan.daysBeforeEvent === 1 ? "day" : "days"}`;
   const buyLink = `/purchasing/new?items=${plan.shortfalls.map((s) => `${s.inventoryId}:${s.short}`).join(",")}`;

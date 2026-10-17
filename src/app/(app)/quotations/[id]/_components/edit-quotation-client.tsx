@@ -23,6 +23,8 @@ interface EditQuotationClientProps {
     child5To10PriceValue: number | null;
   }[];
   canBypassDateRestriction: boolean;
+  /** Whether the viewer may see prices (Sensitive data: orderPrices). */
+  showPrices: boolean;
   header: React.ReactNode;
   headerActions?: React.ReactNode;
   beforeContent?: React.ReactNode;
@@ -37,6 +39,7 @@ export function EditQuotationClient({
   eventTypes,
   menus,
   canBypassDateRestriction,
+  showPrices,
   header,
   headerActions,
   beforeContent,
@@ -52,6 +55,7 @@ export function EditQuotationClient({
       eventTypes={eventTypes}
       menus={menus}
       canBypassDateRestriction={canBypassDateRestriction}
+      showPrices={showPrices}
       initialValues={initialValues}
       status={status}
       quotationId={quotationId}

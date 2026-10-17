@@ -115,6 +115,8 @@ export interface OrderInput {
   /** The venue differs by event: one venue per event (meal slot). Left out, the order's venue is not touched. */
   venuePerEvent?: boolean;
   eventVenues?: EventVenueInput[];
+  /** A converted quotation tells the customer in its own email, so the generic "order received" one is skipped. Not stored. */
+  skipCustomerNotice?: boolean;
   advance?: number;
   paymentStatus?: OrderPaymentStatus;
   status?: OrderStatus;
@@ -461,7 +463,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
     recordId: order.id,
     after: JSON.parse(JSON.stringify(withTotals)),
   });
-  await onOrderCreated(organizationId, order.id);
+  await onOrderCreated(organizationId, order.id, { customerEmail: !input.skipCustomerNotice });
 
   return withTotals;
 }

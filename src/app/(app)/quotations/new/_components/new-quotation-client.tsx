@@ -18,10 +18,12 @@ interface NewQuotationClientProps {
     child5To10PriceValue: number | null;
   }[];
   canBypassDateRestriction: boolean;
+  /** Whether the viewer may see prices (Sensitive data: orderPrices). */
+  showPrices: boolean;
   header: React.ReactNode;
 }
 
-export function NewQuotationClient({ customers, eventTypes, menus, canBypassDateRestriction, header }: NewQuotationClientProps) {
+export function NewQuotationClient({ customers, eventTypes, menus, canBypassDateRestriction, showPrices, header }: NewQuotationClientProps) {
   const router = useRouter();
 
   return (
@@ -31,6 +33,7 @@ export function NewQuotationClient({ customers, eventTypes, menus, canBypassDate
       eventTypes={eventTypes}
       menus={menus}
       canBypassDateRestriction={canBypassDateRestriction}
+      showPrices={showPrices}
       submitLabel="Create Quotation"
       onSubmit={createQuotationAction}
       onSuccess={() => router.push("/quotations")}

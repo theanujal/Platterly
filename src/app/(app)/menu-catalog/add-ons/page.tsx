@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { listAddOns } from "@/modules/addons/addon";
 import { listMenus } from "@/modules/menus/menu";
 import { cn } from "cn";
@@ -45,7 +45,7 @@ function formatPrice(price: number, priceType: "PER_PLATE" | "FIXED", included =
 export default async function AddOnsPage() {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["view"] }, organizationId);
-  const [addOns, menus] = await Promise.all([listAddOns(organizationId), listMenus(organizationId)]);
+  const [addOns, menus, showPrices] = await Promise.all([listAddOns(organizationId), listMenus(organizationId), canSee("menuPrices", organizationId)]);
   const availableMenus = menus.map((m) => ({ id: m.id, name: m.name }));
   const menuNames = new Map(availableMenus.map((m) => [m.id, m.name]));
 
@@ -55,7 +55,7 @@ export default async function AddOnsPage() {
       description: addOn.description ?? "",
       type: addOn.type,
       priceType: addOn.priceType,
-      price: addOn.price.toString(),
+      price: showPrices ? addOn.price.toString() : "",
       includedInPackage: addOn.includedInPackage,
       appliesToAllMenus: addOn.appliesToAllMenus,
       menuIds: addOn.menus.map((m) => m.menuId),
@@ -67,7 +67,7 @@ export default async function AddOnsPage() {
       id: addOn.id,
       searchText: `${addOn.name} ${addOn.description ?? ""}`,
       filterValues: { type: addOn.type },
-      sortValues: { name: addOn.name, price: Number(addOn.price), newest: addOn.createdAt.getTime() },
+      sortValues: { name: addOn.name, ...(showPrices ? { price: Number(addOn.price) } : {}), newest: addOn.createdAt.getTime() },
       card: (
         <>
           <CatalogCardMedia
@@ -84,7 +84,11 @@ export default async function AddOnsPage() {
             title={addOn.name}
             description={addOn.description}
             footer={
-              addOn.includedInPackage ? (
+              !showPrices ? (
+                <span className="truncate text-xs text-muted-foreground" title={menusLabel(addOn, menuNames)}>
+                  {menusLabel(addOn, menuNames)}
+                </span>
+              ) : addOn.includedInPackage ? (
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-base font-semibold">Included</span>
                   <span className="truncate text-xs text-muted-foreground" title={menusLabel(addOn, menuNames)}>
@@ -112,7 +116,7 @@ export default async function AddOnsPage() {
           <TableCell className="px-3 py-3">
             <AddOnTypeBadge type={addOn.type} />
           </TableCell>
-          <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</TableCell>
+          {showPrices && <TableCell className="px-3 py-3 text-sm font-semibold">{formatPrice(Number(addOn.price), addOn.priceType, addOn.includedInPackage)}</TableCell>}
           <TableCell className="max-w-64 px-3 py-3 text-sm text-muted-foreground">{menusLabel(addOn, menuNames)}</TableCell>
           <TableCell className="px-3 py-3">
             <ActiveBadge active={addOn.isActive} />
@@ -141,8 +145,12 @@ export default async function AddOnsPage() {
   const sortOptions: CatalogSortOption[] = [
     { value: "newest", label: "Newest First", key: "newest", direction: "desc" },
     { value: "name", label: "Name (A–Z)", key: "name" },
-    { value: "price-low", label: "Price (Low–High)", key: "price" },
-    { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" },
+    ...(showPrices
+      ? [
+          { value: "price-low", label: "Price (Low–High)", key: "price" },
+          { value: "price-high", label: "Price (High–Low)", key: "price", direction: "desc" as const },
+        ]
+      : []),
   ];
 
   return (
@@ -161,7 +169,7 @@ export default async function AddOnsPage() {
         entries={entries}
         defaultView="list"
         addTile={<AddAddOnDialog variant="tile" availableMenus={availableMenus} />}
-        columns={["Add-on", "Type", "Price", "Menus", "Status", ""]}
+        columns={["Add-on", "Type", ...(showPrices ? ["Price"] : []), "Menus", "Status", ""]}
         richList
         gridColumnsClassName={CATALOG_GRID_CLASSNAME}
         searchPlaceholder="Search add-ons…"

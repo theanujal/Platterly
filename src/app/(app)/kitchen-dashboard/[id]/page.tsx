@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CalendarDays, ClipboardList, ConciergeBell, MapPin, Users } from "lucide-react";
 import { assertKitchenAtMyLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import { getKitchenPrepSheet } from "@/modules/menu-approvals/menu-approval";
 import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
 import { KITCHEN_PRODUCTION_STATUS_LABEL } from "@/modules/menu-approvals/kitchen-production-status";
@@ -31,11 +31,12 @@ const formatDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toL
 // Read-only "what do we cook" sheet for the kitchen (AJ, 2026-09-30, from his
 // screenshot). The kitchen role has no menus:approve, so linking to
 // /menu-approvals/[id] sent it to a closed page — this route needs only
-// menus:view (moving the stage needs menus:edit, checked by the action).
+// kitchen:view (the PDF needs kitchen:viewPdf, moving the stage kitchen:updateStatus; both checked again by the route and the action).
 export default async function KitchenPrepSheetPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { organizationId, session } = await requireActiveOrganization();
-  await requirePermission({ menus: ["view"] }, organizationId);
+  await requirePermission({ kitchen: ["view"] }, organizationId);
+  const [canPdf, canUpdateStage] = await Promise.all([hasPermission({ kitchen: ["viewPdf"] }, organizationId), hasPermission({ kitchen: ["updateStatus"] }, organizationId)]);
 
   const sheet = await getKitchenPrepSheet(organizationId, id);
   if (!sheet) notFound();
@@ -63,8 +64,8 @@ export default async function KitchenPrepSheetPage({ params }: { params: Promise
           </p>
         </div>
         <div className="flex flex-wrap items-start gap-2">
-          <PrepSheetActions pdfUrl={`/kitchen-dashboard/${selection.id}/pdf`} />
-          <StageActions menuSelectionId={selection.id} currentStage={selection.kitchenProductionStatus} />
+          {canPdf && <PrepSheetActions pdfUrl={`/kitchen-dashboard/${selection.id}/pdf`} />}
+          {canUpdateStage && <StageActions menuSelectionId={selection.id} currentStage={selection.kitchenProductionStatus} />}
         </div>
       </div>
 

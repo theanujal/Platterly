@@ -19,10 +19,7 @@ interface EditOrderClientProps {
   pricingExtra?: React.ReactNode;
   billingPanel?: React.ReactNode;
   sidebarInvoiceAction?: React.ReactNode;
-  menuPlanBanner?: React.ReactNode;
   /** True while the menu is with the customer or the kitchen (see menu-status-banner.tsx's phases). */
-  menuPlanReadOnly: boolean;
-  menuPlanInApprovalTab: boolean;
   menuApprovalTab: React.ReactNode;
   initialTab?: string;
   priceFrozen: boolean;
@@ -45,6 +42,8 @@ interface EditOrderClientProps {
   }[];
   /** See OrderForm's own doc comment — non-zero only for an Order converted from a Quotation. */
   carriedOverItemsSubtotal?: number;
+  /** The viewer may see prices (Sensitive data: orderPrices). See OrderForm. */
+  showPrices: boolean;
 }
 
 export function EditOrderClient({
@@ -54,6 +53,7 @@ export function EditOrderClient({
   eventTypes,
   menus,
   carriedOverItemsSubtotal,
+  showPrices,
   header,
   headerActions,
   sidebarTop,
@@ -65,9 +65,6 @@ export function EditOrderClient({
   pricingExtra,
   billingPanel,
   sidebarInvoiceAction,
-  menuPlanBanner,
-  menuPlanReadOnly,
-  menuPlanInApprovalTab,
   menuApprovalTab,
   initialTab,
   priceFrozen,
@@ -90,20 +87,18 @@ export function EditOrderClient({
       pricingExtra={pricingExtra}
       billingPanel={billingPanel}
       sidebarInvoiceAction={sidebarInvoiceAction}
-      menuPlanReadOnly={menuPlanReadOnly}
       menuPlanOnlyIfChanged
-      menuPlanInApprovalTab={menuPlanInApprovalTab}
       menuApprovalTab={menuApprovalTab}
       initialTab={initialTab}
       priceFrozen={priceFrozen}
       withCustomer={withCustomer}
       locked={locked}
       completed={completed}
-      menuPlanBanner={menuPlanBanner}
       customers={customers}
       eventTypes={eventTypes}
       menus={menus}
       carriedOverItemsSubtotal={carriedOverItemsSubtotal}
+      showPrices={showPrices}
       initialValues={initialValues}
       submitLabel="Save changes"
       onSubmit={(formData) => updateOrderAction(orderId, formData)}

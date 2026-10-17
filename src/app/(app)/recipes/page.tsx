@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, hasPermission, canSee } from "@/lib/auth/require-session";
 import { listMenuItems } from "@/modules/menus/item";
 import { listRecipes } from "@/modules/recipes/recipe";
 import { listInventoryItems } from "@/modules/inventory/inventory";
@@ -17,24 +17,28 @@ export const metadata: Metadata = {
 // recipes, so a dish without one is the thing to find and fix; this page is where that is done in one place.
 export default async function RecipesPage() {
   const { organizationId } = await requireActiveOrganization();
-  await requirePermission({ inventory: ["view"] }, organizationId);
-  const [items, recipes, inventory, canEdit] = await Promise.all([
+  await requirePermission({ recipes: ["view"] }, organizationId);
+  const [items, recipes, inventory, canEdit, showCost] = await Promise.all([
     listMenuItems(organizationId, { isActive: true }),
     listRecipes(organizationId),
     listInventoryItems(organizationId),
-    hasPermission({ menus: ["edit"] }, organizationId),
+    hasPermission({ recipes: ["edit"] }, organizationId),
+    canSee("recipeCosts", organizationId),
   ]);
 
   // Each recipe is costed from the batches it would actually use (FIFO, oldest first); the item's own cost is only an estimate.
-  const queues = await usableQueues(
-    organizationId,
-    inventory.map((i) => i.id),
-  );
+  // Costs are worked out only for a person who may see them; otherwise no cost, batch or unit price is built or sent.
+  const queues = showCost
+    ? await usableQueues(
+        organizationId,
+        inventory.map((i) => i.id),
+      )
+    : new Map<string, never[]>();
   const itemCost = new Map(inventory.map((i) => [i.id, i.costPerUnit === null ? null : Number(i.costPerUnit)]));
   const recipeByItem = new Map(recipes.map((r) => [r.menuItemId, r]));
   const rows: RecipeRow[] = items.map((item) => {
     const recipe = recipeByItem.get(item.id);
-    const cost = recipe
+    const cost = recipe && showCost
       ? costRecipe(
           recipe.ingredients.map((i) => ({
             inventoryId: i.inventoryId,
@@ -69,12 +73,12 @@ export default async function RecipesPage() {
         : null,
     };
   });
-  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: itemCost.get(i.id) ?? null, queue: queues.get(i.id) ?? [] }));
+  const ingredientOptions = inventory.map((i) => ({ id: i.id, name: i.name, unit: i.unit, itemCost: showCost ? itemCost.get(i.id) ?? null : null, queue: queues.get(i.id) ?? [] }));
 
   return (
     <div className="flex flex-col gap-4 p-6 md:p-8">
       <PageBreadcrumb items={[{ label: "Dashboard", href: "/dashboard" }, { label: "Recipes" }]} />
-      <RecipesBrowser rows={rows} ingredientOptions={ingredientOptions} canEdit={canEdit} />
+      <RecipesBrowser rows={rows} ingredientOptions={ingredientOptions} canEdit={canEdit} showCost={showCost} />
     </div>
   );
 }

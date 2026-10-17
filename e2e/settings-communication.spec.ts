@@ -65,7 +65,7 @@ test("WhatsApp and Email settings: status, email switches, activate once connect
   // Email is connected and on for every kitchen by default, and only lists the emails sent to customers, each on.
   await expect(page.getByText("Email Service Active")).toBeVisible();
   await expect(page.getByRole("switch", { name: "Activate Email" })).toBeEnabled();
-  for (const name of ["Order Received", "Order Confirmed", "Order Completed", "Quotation", "Menu & Order Review", "Food Dispatched", "Invoice", "Payment Receipt", "Payment Link", "Payment Reminder", "Event Reminder"]) {
+  for (const name of ["Order Received", "Order Accepted", "Order Confirmed", "Order Completed", "Quotation", "Menu & Order Review", "Food Dispatched", "Invoice", "Payment Receipt", "Payment Link", "Payment Reminder", "Event Reminder"]) {
     await expect(page.getByRole("switch", { name, exact: true })).toBeChecked();
   }
   await expect(page.getByRole("switch", { name: "System Alerts" })).toHaveCount(0);

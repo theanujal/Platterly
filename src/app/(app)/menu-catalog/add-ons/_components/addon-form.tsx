@@ -11,6 +11,7 @@ import { DrawerForm, useIsDirty } from "@/components/catalog/form-drawer";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ActionResult } from "../actions";
+import { useMenuPricesVisible } from "../../_components/menu-prices-context";
 
 const TYPE_OPTIONS = [
   { value: "LIVE_COUNTER", label: "Live Counter" },
@@ -59,6 +60,7 @@ interface AddOnFormProps {
 }
 
 export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, submitLabel, onCancel }: AddOnFormProps) {
+  const showPrice = useMenuPricesVisible();
   const [values, setValues] = useState<AddOnFormValues>({ ...EMPTY_ADDON_VALUES, ...initialValues });
   const [image, setImage] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +141,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
               </SelectContent>
             </Select>
           </div>
+          {showPrice && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="addon-price-type">Price Type</Label>
             <Select
@@ -158,7 +161,10 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
               </SelectContent>
             </Select>
           </div>
+          )}
         </div>
+        {showPrice && (
+        <>
         {!values.includedInPackage && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="addon-price">Price</Label>
@@ -182,6 +188,8 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
             <p className="text-xs text-muted-foreground">Customers still choose it, but it adds nothing to their bill, so no price is needed. Leave off to charge a price.</p>
           </div>
         </div>
+        </>
+        )}
         <div className="flex flex-col gap-2 border-t border-border pt-4">
           <Label>Applies to menus</Label>
           <p className="text-xs text-muted-foreground">Each menu only offers the add-ons ticked for it. Choose All menus to offer it everywhere, including menus you add later.</p>

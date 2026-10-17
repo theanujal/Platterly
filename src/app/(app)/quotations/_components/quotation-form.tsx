@@ -239,6 +239,8 @@ interface QuotationFormProps {
   cancelHref?: string;
   /** Owner — lets the <2-days-before-event validation below be overridden instead of blocking submission. */
   canBypassDateRestriction: boolean;
+  /** Whether the viewer may see prices (Sensitive data: orderPrices). When false the server sent none; the Pricing tab and totals are not drawn and the server keeps the saved pricing. */
+  showPrices?: boolean;
   onSubmit: (formData: FormData) => Promise<ActionResult>;
   onSuccess: () => void;
   submitLabel: string;
@@ -258,6 +260,7 @@ export function QuotationForm({
   afterContent,
   cancelHref = "/quotations",
   canBypassDateRestriction,
+  showPrices = true,
   onSubmit,
   onSuccess,
   submitLabel,
@@ -769,6 +772,7 @@ export function QuotationForm({
         readOnly={locked}
         sectioned
         priceInPricingTab
+        hidePrices={!showPrices}
         outsideDays={outsideDays}
       />
     </div>
@@ -1171,7 +1175,7 @@ export function QuotationForm({
       ),
     },
     { id: "menu", label: "Build Menu", panel: buildMenuTab },
-    { id: "pricing", label: "Pricing", panel: freeze(pricingEditorCard) },
+    ...(showPrices ? [{ id: "pricing", label: "Pricing", panel: freeze(pricingEditorCard) }] : []),
     { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
   ];
 
@@ -1212,7 +1216,7 @@ export function QuotationForm({
           {/* ---------------- Summary column ---------------- */}
           <aside className="flex min-w-0 flex-col gap-4">
             {summaryCard}
-            {pricingSummaryCard}
+            {showPrices && pricingSummaryCard}
           </aside>
         </div>
       </form>

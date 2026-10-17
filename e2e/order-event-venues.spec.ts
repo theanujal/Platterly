@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { cleanupOnboardingTestUser, seedApprovedOrderForShare, seedMealSlots } from "./db";
+import { cleanupOnboardingTestUser, seedApprovedOrderForShare, seedMealSlots, setMenuSelectionStatus } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -30,6 +30,8 @@ test("a multi-event order: the team gives each event its own venue on Order Deta
   const { orderId } = await seedApprovedOrderForShare(email, { stage: "VENUE", multi: true });
   const day1 = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10);
   const day2 = new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10);
+  // The customer's approval would lock the event details (AJ, 2026-10-17), so put the menu back with the team to edit them.
+  await setMenuSelectionStatus(orderId, "DRAFT");
   await seedMealSlots(orderId, [
     { date: day1, mealType: "DINNER" },
     { date: day2, mealType: "LUNCH" },

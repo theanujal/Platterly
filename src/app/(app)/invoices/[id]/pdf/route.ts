@@ -1,4 +1,4 @@
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSensitive } from "@/lib/auth/require-session";
 import { orderAtMyLocation } from "@/modules/locations/active-location";
 import { getInvoice, confirmedPaidForOrder } from "@/modules/invoices/invoice";
 import { buildInvoiceDocument } from "@/modules/invoices/invoice-document";
@@ -8,6 +8,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const { organizationId, session } = await requireActiveOrganization();
   await requirePermission({ invoices: ["view"] }, organizationId);
+  // commercialDocuments is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("commercialDocuments", organizationId);
   const invoice = await getInvoice(organizationId, id);
   if (!invoice || !(await orderAtMyLocation(organizationId, session.user.id, invoice.orderId))) return new Response("Not found", { status: 404 });
   const pdf = renderInvoicePdf(buildInvoiceDocument(invoice, await confirmedPaidForOrder(invoice.orderId)));

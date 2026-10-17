@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { User, CalendarDays, MapPin } from "lucide-react";
 import { getActiveLocation } from "@/modules/locations/active-location";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, requireSensitive } from "@/lib/auth/require-session";
 import { listInvoices } from "@/modules/invoices/invoice";
 import { inr, longDate } from "@/modules/invoices/invoice-format";
 import { invoiceDisplayStatus } from "@/modules/invoices/invoice-status";
@@ -20,6 +20,8 @@ export default async function InvoicesPage() {
   const { organizationId, session } = await requireActiveOrganization();
   const { locationId } = await getActiveLocation(organizationId, session.user.id);
   await requirePermission({ invoices: ["view"] }, organizationId);
+  // commercialDocuments is sensitive data, separate from the module (AJ, 2026-10-17).
+  await requireSensitive("commercialDocuments", organizationId);
   const invoices = await listInvoices(organizationId, { locationId });
 
   const sortOptions: CatalogSortOption[] = [

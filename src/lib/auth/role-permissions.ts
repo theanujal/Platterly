@@ -22,9 +22,23 @@ const AREAS = [
   ["staffing", "staff scheduling"],
   ["users", "team members"],
   ["settings", "settings"],
+  ["kitchen", "the kitchen dashboard"],
+  ["recipes", "recipes"],
 ] as const;
 
-const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export", "manage"] as const;
+/** What each sensitive key lets a person see, in the words the invite card uses. */
+const SENSITIVE_LABEL: Record<string, string> = {
+  menuPrices: "menu and dish prices",
+  orderPrices: "order and quotation prices",
+  paymentDetails: "payment details",
+  supplierCosts: "supplier costs",
+  recipeCosts: "recipe costs",
+  profitability: "profitability",
+  financialReports: "financial reports",
+  commercialDocuments: "customer-facing documents",
+};
+
+const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export", "manage", "updateStatus", "viewPdf"] as const;
 
 function joinActions(actions: string[]): string {
   const [first, ...rest] = actions;
@@ -55,6 +69,10 @@ export function describeRolePermissions(roleId: keyof typeof roles, override?: R
     const phrase = `${joinActions([...actions])} ${noun}`;
     included.push(phrase.charAt(0).toUpperCase() + phrase.slice(1));
   }
+
+  const seen = (grants.sensitive ?? []).map((key) => SENSITIVE_LABEL[key]).filter(Boolean);
+  if (seen.length > 0) included.push(`See ${joinActions(seen)}`);
+  else included.push("No prices or costs");
 
   return { included, excluded };
 }

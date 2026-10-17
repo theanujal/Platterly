@@ -41,7 +41,8 @@ export function ExpensesCard({
   canDelete,
 }: {
   orderId: string;
-  profitability: Profitability;
+  /** Null when the viewer lacks the profitability right: the revenue, margin and cost tiles are not drawn and none of those figures were sent. */
+  profitability: Profitability | null;
   expenses: ExpenseRowData[];
   suppliers: { id: string; name: string }[];
   /** Stock sent to the order whose cost was never known, so the food cost leaves it out. */
@@ -54,7 +55,7 @@ export function ExpensesCard({
   const [removing, setRemoving] = useState<ExpenseRowData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
-  const loss = profitability.profit < 0;
+  const loss = profitability ? profitability.profit < 0 : false;
 
   async function confirmRemove() {
     if (!removing) return;
@@ -80,6 +81,8 @@ export function ExpensesCard({
         )}
       </div>
 
+      {profitability && (
+      <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Tile label="Revenue (order total)" value={inr(profitability.revenue)} testId="profit-revenue" />
         <Tile label="Total cost" value={inr(profitability.totalCost)} testId="profit-cost" />
@@ -105,6 +108,8 @@ export function ExpensesCard({
           {inventoryUnknownQuantity > 0 && " Some stock sent has no confirmed cost yet, so it is not counted."}
         </p>
       </div>
+      </>
+      )}
 
       {notice && (
         <p role="status" className="rounded-lg border border-border px-3 py-2 text-sm">
