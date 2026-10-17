@@ -1,6 +1,6 @@
 # roles
 
-Roles & Permissions redesign, Phase A (AJ, 2026-10-17). Plan: `docs/roles-permissions-redesign-plan.md`. The editor UI (Phase B) is not built.
+Roles & Permissions redesign (AJ, 2026-10-17). Plan: `docs/roles-permissions-redesign-plan.md`. Phase A is the enforcement; Phase B (below) is the editor UI.
 
 ## Three layers
 
@@ -34,6 +34,20 @@ Session and tenant, module access, action, then the sensitive key **before** any
 - Dashboard snapshot, Orders, quotations, menu approvals, recipes, inventory, suppliers, purchasing, customers, reports tabs, exports, PDFs, audit log, global search and team notifications read through the same checks. `SensitiveAccessProvider` (`src/components/sensitive-access.tsx`) gives client forms the same answer.
 - The invoice PDF (`/invoices/[id]/pdf`) needs `commercialDocuments` (403 without it); the purchase order PDF needs `inventory: view` and is rendered unpriced (quantities only) without `supplierCosts`; the kitchen sheet needs only `kitchen: viewPdf`. Finance exports need `financialReports` or `profitability` on top of `reports: export`.
 
+## The editor (Phase B)
+
+Settings -> Team -> Manage Role Permissions: a list of the six editable roles (Admin is never listed) and, for the chosen role, three tabs.
+
+| Tab | Controls | Rule |
+|---|---|---|
+| Module Access | One switch per module, in three groups (Sales & customers, Kitchen & stock, Finance & reports) | On grants View only. Off also clears every action the role had in that module. |
+| Actions & Operations | The non-View actions of each module (Create, Edit, Delete, Approve, Export, Manage, Update cooking status, Kitchen PDF) | Ticking an action turns the module on. Locked, with the reason, while the module is off. Stock requests and receiving are listed as Coming soon and are never saved. |
+| Sensitive Data Access | One switch per sensitive key, each with what it protects | Independent of modules in both directions. Enforced on the server as before. |
+
+It reads and saves the same grants through the same server actions (`saveRolePermissionsAction`, `resetRolePermissionsAction`), so no permission key or rule changed. It opens read-only; Edit, Save (with a confirmation), Cancel, Reset to defaults, the unsaved-changes guard and toasts work as before. Role switching is locked while editing. A role shows a "Customised" badge when it differs from its preset, a row shows "Changed" when it differs from the preset, and a one-line summary counts modules, actions and sensitive items.
+
+Code: the logic is in `src/lib/auth/role-editor.ts` (pure functions); the UI is `team/_components/role-permissions-form.tsx` and `role-permission-panels.tsx`.
+
 ## Tests
 
 | Layer | Tests |
@@ -41,10 +55,12 @@ Session and tenant, module access, action, then the sensitive key **before** any
 | Presets and matrix | `src/lib/auth/__tests__/permissions.test.ts` (including: Manager's only delete is `staffing`), `src/lib/security/__tests__/role-matrix.test.ts`, `__tests__/role-grants.test.ts` |
 | Sensitive access and redaction | `__tests__/sensitive-access.test.ts`, `__tests__/redact.test.ts` |
 | Kitchen Team | `__tests__/kitchen-access.test.ts` (allowed actions, no orders/menus/prices, `kitchen` permission used only by the Kitchen Dashboard actions) |
+| Editor rules and coverage | `src/lib/auth/__tests__/role-editor.test.ts` (every permission is on exactly one tab, the editing rules, sensitive independence, preset summaries, what the editor produces equals what the server stores) |
+| Editor in the browser | `e2e/role-permissions.spec.ts` (role list, tab navigation by click and keyboard, editing across tabs, save and reload, reset, presets load exactly, a saved sensitive key is enforced) |
 | Browser, real server responses | `e2e/roles-sensitive-access.spec.ts` (Admin vs Manager, grant and revoke on the same signed-in session, raw HTML and RSC payload hold no protected amount, kitchen stage change, kitchen PDF 200, commercial PDFs and exports 403), `e2e/role-permissions.spec.ts`, `e2e/kitchen-role-order-view.spec.ts`, `e2e/export.spec.ts` |
 
 ## Not built / deferred
 
-- Phase B: the three-tab editor (Module Access, Actions, Sensitive Data), "why can't they?" summary and preset diff. Today's Manage Role Permissions still edits modules and actions only; sensitive keys are not yet editable in the UI (set through the override table).
+- Not in the editor: a "why can't they?" explanation and a side-by-side preset diff (the plan's extras). A role's differences from its preset are shown as badges instead.
 - Stock requests (`stockRequests`, `inventory: receive`): reserved, not built.
 - Existing businesses lose price visibility for every role except Admin when this ships (intended; no live environment yet).

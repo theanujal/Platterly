@@ -4,7 +4,7 @@ import { KeyRound, Mail, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
-import { INVITABLE_ROLE_DEFINITIONS, roleLabel } from "@/lib/auth/role-metadata";
+import { INVITABLE_ROLE_DEFINITIONS, ROLE_DEFINITIONS, roleLabel } from "@/lib/auth/role-metadata";
 import { describeRolePermissions } from "@/lib/auth/role-permissions";
 import { applyTeamPrivacy, getSeatUsage, listMembers, listPendingInvitations } from "@/modules/team/team";
 import { INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
@@ -75,7 +75,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
   const editableRoles =
     active === "permissions"
       ? await Promise.all(
-          EDITABLE_ROLE_IDS.map(async (id) => ({ id, label: roleLabel(id), current: await effectiveMatrixGrants(organizationId, id), defaults: defaultGrants(id) })),
+          EDITABLE_ROLE_IDS.map(async (id) => ({ id, label: roleLabel(id), description: ROLE_DEFINITIONS.find((r) => r.id === id)?.description ?? "", current: await effectiveMatrixGrants(organizationId, id), defaults: defaultGrants(id) })),
         )
       : [];
 
