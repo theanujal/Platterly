@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-17T00:00:00.000Z",
+  "notice": { "enabled": true, "text": "Fixture notice: Caterly by Platterly is open for every catering kitchen.", "linkLabel": "See plans", "linkHref": "/catering/" },
+  "contact": {
+    "email": "fixture-hello@example.test",
+    "phone": "+91 98000 00001",
+    "whatsapp": "+91 98000 00002",
+    "hours": ["Fixture hours: Mon to Fri, 9 AM to 6 PM"],
+    "addressLines": ["Fixture Street 1", "Fixtureville"],
+    "reply": "Fixture reply: within one working day."
+  },
+  "releases": [{ "id": "fixture-release", "date": "2026-10-01", "title": "Fixture release", "body": "A fixed update for the tests.", "kind": "new" }],
+  "posts": [
+    { "slug": "fixture-post", "title": "Fixture post", "excerpt": "A fixed post for the tests.", "date": "2026-10-01", "author": "The Platterly team", "tags": ["Fixture"], "colourway": "sunrise", "body": "Hello from the fixture.", "metaTitle": null, "metaDescription": null, "ogImage": null }
+  ],
+  "media": [],
+  "pages": [],
+  "plans": [
+    { "code": "trial", "name": "Trial", "description": "Fixture trial text.", "isTrial": true, "trialDurationDays": 14, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [] },
+    { "code": "fixture-one", "name": "Fixture Basic", "description": "Fixture basic text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 1500, "priceAnnual": 15000, "gstPercent": 18, "highlights": ["Fixture feature A", "Fixture feature B"] },
+    { "code": "fixture-two", "name": "Fixture Plus", "description": "Fixture plus text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 4999, "priceAnnual": null, "gstPercent": 18, "highlights": ["Fixture feature C"] },
+    { "code": "fixture-hidden", "name": "Fixture Hidden", "description": "Has no price, so the site must not show it.", "isTrial": false, "trialDurationDays": null, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [] }
+  ]
+}

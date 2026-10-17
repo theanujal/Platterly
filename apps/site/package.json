@@ -12,6 +12,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "check:links": "node scripts/check-links.mjs",
     "test:e2e": "cd ../.. && npx playwright test -c apps/site/e2e/playwright.config.ts",
+    "test:e2e:ops-fed": "node scripts/test-ops-fed.mjs",
     "capture": "cd ../.. && npx playwright test -c apps/site/capture/capture.config.ts && cd apps/site && node scripts/optimize-media.mjs",
     "optimize:media": "node scripts/optimize-media.mjs"
   },
