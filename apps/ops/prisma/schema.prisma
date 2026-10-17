@@ -373,6 +373,9 @@ model Plan {
   entitlements      Json     @default("{}")
   // Retire a plan without breaking subscription history; a plan is never hard-deleted.
   isActive          Boolean  @default(true)
+  // The one plan the marketing site's pricing cards mark "Most popular". At most one per product (a partial unique index in the
+  // migration enforces it); only an active, non-trial plan with a monthly price can hold it, and it is cleared when it stops being one.
+  isFeatured        Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

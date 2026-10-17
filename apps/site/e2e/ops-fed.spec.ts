@@ -44,6 +44,10 @@ test("Catering pricing shows the trial and the priced plans from Ops, and no pla
   await expect(plus).toContainText("₹4,999");
   await expect(plus).not.toContainText("a year");
   await expect(pricing).not.toContainText("Fixture Hidden");
+  // Only the plan Ops marks featured carries the badge; the trial and the other paid plan do not.
+  await expect(pricing.getByText("Most popular")).toHaveCount(1);
+  await expect(plus.getByText("Most popular")).toBeVisible();
+  await expect(basic.getByText("Most popular")).toHaveCount(0);
   await expect(pricing).not.toContainText("Premium"); // the repo's own typed-in Premium card must not leak into an Ops-fed build
 });
 

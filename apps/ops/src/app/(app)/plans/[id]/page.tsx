@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import type { ProductManifest } from "@platterly/contract";
 import { Badge, Button, PageHeader } from "@/components/ui";
+import { prisma } from "@/lib/db";
 import { getPlan } from "@/modules/plans/plans";
 import { setPlanActiveAction } from "../actions";
 import { PlanForm } from "../plan-form";
@@ -19,6 +20,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
         description={`${plan.product.name} · ${plan.code}`}
         actions={
           <>
+            {plan.isFeatured ? <Badge tone="info">Featured</Badge> : null}
             <Badge tone={plan.isActive ? "success" : "neutral"}>{plan.isActive ? "Active" : "Retired"}</Badge>
             <form action={setPlanActiveAction}>
               <input type="hidden" name="id" value={plan.id} />
@@ -33,6 +35,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
           productKey={plan.productKey}
           productName={plan.product.name}
           defs={manifest.entitlements}
+          otherFeatured={(await prisma.plan.findFirst({ where: { productKey: plan.productKey, isFeatured: true, id: { not: plan.id } }, select: { name: true } }))?.name ?? null}
           values={{
             id: plan.id,
             code: plan.code,
@@ -44,6 +47,8 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
             priceAnnual: plan.priceAnnual?.toString() ?? "",
             gstPercent: plan.gstPercent.toString(),
             highlights: plan.highlights.join("\n"),
+            isFeatured: plan.isFeatured,
+            isActive: plan.isActive,
             entitlements: (plan.entitlements ?? {}) as Record<string, number | boolean | string | null>,
           }}
         />

@@ -50,6 +50,7 @@ export async function savePlanAction(_prev: PlanFormState, formData: FormData): 
     priceAnnual: optionalNumber(formData, "priceAnnual"),
     gstPercent: Number(text(formData, "gstPercent") || 18),
     highlights: text(formData, "highlights").split("\n"),
+    isFeatured: formData.get("isFeatured") === "on",
     entitlements: readEntitlements(formData, manifest.entitlements),
   };
   try {

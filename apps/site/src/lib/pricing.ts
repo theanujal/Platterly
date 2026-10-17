@@ -11,6 +11,8 @@ export interface OpsPlan {
   priceAnnual: number | null;
   gstPercent: number;
   highlights: string[];
+  /** The plan marked "Most popular" in Ops. Absent when Ops predates the setting. */
+  featured?: boolean;
 }
 
 export interface PricingCard {
@@ -32,13 +34,15 @@ const rupees = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
 /**
  * The pricing cards from Ops' plans: the active trial, then every active plan with a monthly price, cheapest first. A plan without a
- * monthly price is never shown. With no plans from Ops (not set up, or an older Ops) the typed-in cards in content/catering.ts are used.
+ * monthly price is never shown. The card Ops marks featured gets the badge (never the trial); when no plan carries the field at all (an older
+ * Ops), the sole paid plan is featured as before. With no plans from Ops (not set up, or an older Ops) the typed-in cards in content/catering.ts are used.
  */
 export function pricingFromPlans(plans: OpsPlan[] | undefined): PricingData {
   const shown = (plans ?? []).filter((p) => p.isTrial || (p.priceMonthly !== null && p.priceMonthly > 0));
   if (shown.length === 0) return PRICING;
   const paid = shown.filter((p) => !p.isTrial);
   const gst = [...new Set(paid.map((p) => p.gstPercent))];
+  const explicit = shown.some((p) => p.featured !== undefined);
   return {
     note: gst.length === 1 ? `Prices are in Indian rupees and GST (${gst[0]}%) is added at checkout.` : "Prices are in Indian rupees and GST is added at checkout.",
     plans: shown.map((p) => {
@@ -54,7 +58,7 @@ export function pricingFromPlans(plans: OpsPlan[] | undefined): PricingData {
         ...(p.isTrial ? {} : yearly ? { yearly } : {}),
         features: p.highlights,
         cta: p.isTrial ? "Start Free" : "Get Started",
-        featured: paid.length === 1 && !p.isTrial,
+        featured: !p.isTrial && (explicit ? p.featured === true : paid.length === 1),
       };
     }),
   };

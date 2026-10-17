@@ -28,7 +28,7 @@ export default async function PlansPage() {
                   <Link href={`/plans/${p.id}`} className="block truncate text-base font-semibold hover:underline">{p.name}</Link>
                   <p className="font-mono text-xs text-muted-foreground">{p.code}</p>
                 </div>
-                <div className="flex shrink-0 gap-1.5">{p.isTrial ? <Badge tone="info">Trial</Badge> : null}<Badge tone={p.isActive ? "success" : "neutral"}>{p.isActive ? "Active" : "Retired"}</Badge></div>
+                <div className="flex shrink-0 gap-1.5">{p.isTrial ? <Badge tone="info">Trial</Badge> : null}{p.isFeatured ? <Badge tone="info">Featured</Badge> : null}<Badge tone={p.isActive ? "success" : "neutral"}>{p.isActive ? "Active" : "Retired"}</Badge></div>
               </div>
               <div>
                 {p.isTrial ? <p className="text-2xl font-bold">{p.trialDurationDays} days <span className="text-sm font-normal text-muted-foreground">free</span></p> : (

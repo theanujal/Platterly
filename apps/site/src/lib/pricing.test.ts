@@ -24,8 +24,22 @@ describe("pricingFromPlans", () => {
     expect(data.plans[1].yearly).toBe("or ₹39,999 a year + GST, which saves ₹19,989");
   });
 
-  it("features no card when there are several paid plans", () => {
-    const data = pricingFromPlans([plan({ name: "A" }), plan({ name: "B", priceMonthly: 2000 })]);
-    expect(data.plans.some((p) => p.featured)).toBe(false);
+  it("features no card when an older Ops (no featured field) sends several paid plans, and the sole paid plan when it sends one", () => {
+    expect(pricingFromPlans([plan({ name: "A" }), plan({ name: "B", priceMonthly: 2000 })]).plans.some((p) => p.featured)).toBe(false);
+    expect(pricingFromPlans([trial, plan({ name: "Only" })]).plans.map((p) => p.featured)).toEqual([false, true]);
+  });
+
+  it("respects the featured plan Ops marks, among several paid plans", () => {
+    const data = pricingFromPlans([trial, plan({ name: "A", featured: false }), plan({ name: "B", priceMonthly: 2000, featured: true }), plan({ name: "C", priceMonthly: 3000, featured: false })]);
+    expect(data.plans.map((p) => [p.name, p.featured])).toEqual([["Free Trial", false], ["A", false], ["B", true], ["C", false]]);
+  });
+
+  it("features nothing when the field is present and no plan is marked, even for a sole paid plan", () => {
+    expect(pricingFromPlans([trial, plan({ name: "Only", featured: false })]).plans.some((p) => p.featured)).toBe(false);
+  });
+
+  it("never features the trial, whatever the bundle says", () => {
+    const data = pricingFromPlans([{ ...trial, featured: true }, plan({ name: "A", featured: false })]);
+    expect(data.plans[0].featured).toBe(false);
   });
 });

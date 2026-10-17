@@ -15,7 +15,7 @@ export default async function NewPlanPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader title="New plan" description={`For ${product.name}.`} />
-      <PlanForm productKey={product.key} productName={product.name} defs={manifest.entitlements} values={{ code: "", name: "", description: "", isTrial: false, trialDurationDays: "", priceMonthly: "", priceAnnual: "", gstPercent: "18", highlights: "", entitlements: {} }} />
+      <PlanForm productKey={product.key} productName={product.name} defs={manifest.entitlements} values={{ code: "", name: "", description: "", isTrial: false, trialDurationDays: "", priceMonthly: "", priceAnnual: "", gstPercent: "18", highlights: "", isFeatured: false, isActive: true, entitlements: {} }} otherFeatured={(await prisma.plan.findFirst({ where: { productKey: product.key, isFeatured: true }, select: { name: true } }))?.name ?? null} />
     </>
   );
 }

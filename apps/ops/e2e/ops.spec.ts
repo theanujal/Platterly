@@ -145,6 +145,67 @@ test("staff create a plan from a product's manifest, assign it to a business and
   }
 });
 
+test("staff feature one plan for the website: a replacement note, a Featured badge, and an ineligible plan cannot be featured", async ({ page }) => {
+  // Its own product, so the real catering plans (and their featured flag) are never touched.
+  const key = `e2efeat${randomBytes(3).toString("hex")}`;
+  const manifest = { contract: 1, productKey: key, name: "E2E Feature Product", version: "1", baseUrl: "https://x.example", entitlements: [{ key: "maxCustomers", type: "limit", label: "Customers" }], trial: { days: 7, entitlements: {} } };
+  await pool.query('insert into product (key, name, "baseUrl", "outboundSecret", "inboundSecret", manifest, "manifestVersion", "updatedAt") values ($1, $2, $3, $4, $5, $6, $7, now())', [key, "E2E Feature Product", "http://127.0.0.1:9", "v1.x.x.x", "v1.x.x.x", JSON.stringify(manifest), "1"]);
+  const featuredBox = (_name?: string) => page.getByLabel("Most popular on the website");
+  try {
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(EMAIL);
+    await page.getByLabel("Password").fill(PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await chooseProduct(page, "E2E Feature Product");
+
+    const create = async (name: string, code: string, monthly: string) => {
+      await page.getByRole("link", { name: "Plans" }).first().click();
+      await page.getByRole("link", { name: "New E2E Feature Product plan" }).click();
+      await page.getByLabel("Name", { exact: true }).fill(name);
+      await page.getByLabel("Code").fill(code);
+      if (monthly) await page.getByLabel("Monthly price (₹)").fill(monthly);
+      return featuredBox(name);
+    };
+
+    // A plan with no monthly price cannot be featured, and the form says why.
+    const unpriced = await create("E2E Basic", "basic", "");
+    await expect(unpriced).toBeDisabled();
+    await expect(page.getByTestId("featured-hint")).toContainText("Set a monthly price");
+    await page.getByLabel("Monthly price (₹)").fill("500");
+    await expect(unpriced).toBeEnabled();
+    await unpriced.check();
+    await page.getByRole("button", { name: "Create plan" }).click();
+    await expect(page.getByRole("heading", { name: "E2E Basic" })).toBeVisible();
+    await expect(page.getByText("Featured", { exact: true })).toBeVisible();
+
+    // Featuring a second plan says it replaces the first; after saving only the second carries the badge.
+    const second = await create("E2E Plus", "plus", "900");
+    await second.check();
+    await expect(page.getByTestId("featured-hint")).toContainText("This replaces E2E Basic");
+    await page.getByRole("button", { name: "Create plan" }).click();
+    await expect(page.getByRole("heading", { name: "E2E Plus" })).toBeVisible();
+    await page.getByRole("link", { name: "Plans" }).first().click();
+    const cards = page.locator("section", { has: page.getByRole("link", { name: /^E2E (Basic|Plus)$/ }) });
+    await expect(cards.filter({ hasText: "E2E Plus" }).getByText("Featured", { exact: true })).toBeVisible();
+    await expect(cards.filter({ hasText: "E2E Basic" }).getByText("Featured", { exact: true })).toHaveCount(0);
+
+    // Making the featured plan a trial disables the box and clears the flag on save.
+    await page.getByRole("link", { name: "E2E Plus" }).click();
+    await page.getByLabel("This is the trial plan").check();
+    await expect(featuredBox("E2E Plus")).toBeDisabled();
+    await expect(page.getByTestId("featured-hint")).toContainText("trial plan cannot be featured");
+    await page.getByLabel("Trial length (days)").fill("7");
+    await page.getByRole("button", { name: "Save plan" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Featured", { exact: true })).toHaveCount(0);
+  } finally {
+    await pool.query("delete from plan where \"productKey\" = $1", [key]);
+    await pool.query("delete from product where key = $1", [key]);
+  }
+});
+
 test("staff edit the seller's billing details: a bad GSTIN is refused, a good one is saved, and the screen shows Razorpay is off", async ({ page }) => {
   // The real seller profile is shared state, so it is put back exactly as it was.
   const before = (await pool.query("select * from platform_billing_profile where id = 'platform'")).rows[0];

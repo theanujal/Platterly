@@ -265,8 +265,8 @@ export interface SiteContentBundle {
   /** The library's picture names. The site build copies the ones its content refers to. */
   media: string[];
   pages: { slug: string; title: string; summary: string; updated: string; body: string }[];
-  /** The catering plans the pricing section shows: the active trial and every active plan with a monthly price. Prices are before GST. */
-  plans: { code: string; name: string; description: string | null; isTrial: boolean; trialDurationDays: number | null; priceMonthly: number | null; priceAnnual: number | null; gstPercent: number; highlights: string[] }[];
+  /** The catering plans the pricing section shows: the active trial and every active plan with a monthly price. Prices are before GST. `featured` is the one plan marked "Most popular" (never the trial). */
+  plans: { code: string; name: string; description: string | null; isTrial: boolean; trialDurationDays: number | null; priceMonthly: number | null; priceAnnual: number | null; gstPercent: number; highlights: string[]; featured: boolean }[];
 }
 
 /** An empty section is sent as null/[] only when nothing was ever saved, so the site can tell "not set up" from "set empty". */
@@ -286,6 +286,6 @@ export async function buildBundle(now = new Date()): Promise<SiteContentBundle> 
     posts: allPosts.filter((p) => p.status === "PUBLISHED" && (!p.publishAt || p.publishAt.getTime() <= now.getTime())).map(({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage }) => ({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage })),
     media: media.map((m) => m.name),
     pages: pages.map(({ slug: s, title, summary, updated, body }) => ({ slug: s, title, summary, updated, body })),
-    plans: planRows.map((p) => ({ code: p.code, name: p.name, description: p.description, isTrial: p.isTrial, trialDurationDays: p.trialDurationDays, priceMonthly: p.priceMonthly === null ? null : Number(p.priceMonthly), priceAnnual: p.priceAnnual === null ? null : Number(p.priceAnnual), gstPercent: Number(p.gstPercent), highlights: p.highlights })),
+    plans: planRows.map((p) => ({ code: p.code, name: p.name, description: p.description, isTrial: p.isTrial, trialDurationDays: p.trialDurationDays, priceMonthly: p.priceMonthly === null ? null : Number(p.priceMonthly), priceAnnual: p.priceAnnual === null ? null : Number(p.priceAnnual), gstPercent: Number(p.gstPercent), highlights: p.highlights, featured: p.isFeatured && !p.isTrial })),
   };
 }

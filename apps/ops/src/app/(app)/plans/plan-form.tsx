@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useFormAction } from "@/lib/use-form-action";
 import type { EntitlementDef } from "@platterly/contract";
 import { Button, Card, Field, inputClass } from "@/components/ui";
@@ -16,12 +17,20 @@ export interface PlanFormValues {
   priceAnnual: string;
   gstPercent: string;
   highlights: string;
+  isFeatured: boolean;
+  /** Whether the plan is active (a new plan is). A retired plan cannot be featured. */
+  isActive: boolean;
   entitlements: Record<string, number | boolean | string | null>;
 }
 
-export function PlanForm({ productKey, productName, defs, values }: { productKey: string; productName: string; defs: EntitlementDef[]; values: PlanFormValues }) {
+export function PlanForm({ productKey, productName, defs, values, otherFeatured }: { productKey: string; productName: string; defs: EntitlementDef[]; values: PlanFormValues; /** The product's featured plan when it is not this one. */ otherFeatured: string | null }) {
   const { state, onSubmit, pending } = useFormAction(savePlanAction, {});
   const editing = Boolean(values.id);
+  const [isTrial, setIsTrial] = useState(values.isTrial);
+  const [monthly, setMonthly] = useState(values.priceMonthly);
+  const [featured, setFeatured] = useState(values.isFeatured);
+  const eligible = values.isActive && !isTrial && monthly.trim() !== "";
+  const featuredHint = !values.isActive ? "A retired plan cannot be featured." : isTrial ? "The trial plan cannot be featured." : monthly.trim() === "" ? "Set a monthly price to feature this plan." : null;
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
       <input type="hidden" name="id" value={values.id ?? ""} />
@@ -32,7 +41,7 @@ export function PlanForm({ productKey, productName, defs, values }: { productKey
           <Field label="Name" htmlFor="name"><input id="name" name="name" required defaultValue={values.name} className={inputClass} /></Field>
           <Field label="Code" htmlFor="code" hint="Lowercase, unique within the product. Example: pro"><input id="code" name="code" required defaultValue={values.code} className={inputClass} /></Field>
           <div className="sm:col-span-2"><Field label="Description" htmlFor="description"><input id="description" name="description" defaultValue={values.description} className={inputClass} /></Field></div>
-          <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="isTrial" defaultChecked={values.isTrial} className="size-4 accent-[#ff6900]" /> This is the trial plan</label>
+          <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="isTrial" checked={isTrial} onChange={(e) => setIsTrial(e.target.checked)} className="size-4 accent-[#ff6900]" /> This is the trial plan</label>
           <Field label="Trial length (days)" htmlFor="trialDurationDays" hint="Only for a trial plan."><input id="trialDurationDays" name="trialDurationDays" type="number" min={1} max={365} defaultValue={values.trialDurationDays} className={inputClass} /></Field>
         </div>
       </Card>
@@ -41,9 +50,17 @@ export function PlanForm({ productKey, productName, defs, values }: { productKey
         <h2 className="mb-1 text-base font-semibold">Pricing</h2>
         <p className="mb-4 text-sm text-muted-foreground">Prices are before GST. Leave a price empty if the plan is not sold that way.</p>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Monthly price (₹)" htmlFor="priceMonthly"><input id="priceMonthly" name="priceMonthly" type="number" min={0} step="0.01" defaultValue={values.priceMonthly} className={inputClass} /></Field>
+          <Field label="Monthly price (₹)" htmlFor="priceMonthly"><input id="priceMonthly" name="priceMonthly" type="number" min={0} step="0.01" value={monthly} onChange={(e) => setMonthly(e.target.value)} className={inputClass} /></Field>
           <Field label="Annual price (₹)" htmlFor="priceAnnual"><input id="priceAnnual" name="priceAnnual" type="number" min={0} step="0.01" defaultValue={values.priceAnnual} className={inputClass} /></Field>
           <Field label="GST (%)" htmlFor="gstPercent"><input id="gstPercent" name="gstPercent" type="number" min={0} max={100} step="0.01" defaultValue={values.gstPercent} className={inputClass} /></Field>
+          <div className="sm:col-span-3">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input type="checkbox" name="isFeatured" checked={eligible && featured} disabled={!eligible} onChange={(e) => setFeatured(e.target.checked)} className="size-4 accent-[#ff6900]" /> Most popular on the website
+            </label>
+            <p className="mt-1 text-xs text-muted-foreground" data-testid="featured-hint">
+              {featuredHint ?? (featured && otherFeatured ? `This replaces ${otherFeatured} as the featured plan.` : "Marks this plan's card on platterly.in. Only one plan can be featured.")}
+            </p>
+          </div>
           <div className="sm:col-span-3">
             <Field label="Benefits shown to the owner" htmlFor="highlights" hint="One per line."><textarea id="highlights" name="highlights" rows={4} defaultValue={values.highlights} className={`${inputClass} h-auto py-2`} /></Field>
           </div>

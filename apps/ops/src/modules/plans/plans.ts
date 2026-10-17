@@ -20,9 +20,11 @@ export interface PlanInput {
   gstPercent: number;
   highlights: string[];
   entitlements: EntitlementValues;
+  /** The plan the website marks "Most popular". Left out on a save, the plan keeps what it has. */
+  isFeatured?: boolean;
 }
 
-async function validate(input: PlanInput, existingId?: string) {
+async function validate(input: PlanInput, existingId?: string, isActive = true) {
   const product = await prisma.product.findUnique({ where: { key: input.productKey } });
   if (!product) throw new PlanError("Unknown product.");
   const code = input.code.trim().toLowerCase();
@@ -38,12 +40,18 @@ async function validate(input: PlanInput, existingId?: string) {
   if (!manifest) throw new PlanError("Read this product's manifest first: its entitlement keys come from there.");
   const checked = validateEntitlements(manifest.entitlements, input.entitlements);
   if (!checked.ok) throw new PlanError(`Entitlements: ${checked.error}.`);
+  if (input.isFeatured === true && !canBeFeatured({ isTrial: input.isTrial, priceMonthly: input.priceMonthly ?? null, isActive })) {
+    throw new PlanError("Only an active plan with a monthly price can be featured on the website, and the trial cannot.");
+  }
   const clash = await prisma.plan.findUnique({ where: { productKey_code: { productKey: input.productKey, code } } });
   if (clash && clash.id !== existingId) throw new PlanError(`This product already has a plan with the code "${code}".`);
   return { code, name, entitlements: checked.value };
 }
 
-const data = (input: PlanInput, clean: { code: string; name: string; entitlements: EntitlementValues }) => ({
+/** Only an active plan with a monthly price, and not the trial, can be the featured one. */
+export const canBeFeatured = (plan: { isTrial: boolean; priceMonthly: unknown; isActive: boolean }) => plan.isActive && !plan.isTrial && plan.priceMonthly !== null && plan.priceMonthly !== undefined;
+
+const data = (input: PlanInput, clean: { code: string; name: string; entitlements: EntitlementValues }, isFeatured: boolean) => ({
   code: clean.code,
   name: clean.name,
   description: input.description?.trim() || null,
@@ -54,11 +62,30 @@ const data = (input: PlanInput, clean: { code: string; name: string; entitlement
   gstPercent: input.gstPercent,
   highlights: input.highlights.map((h) => h.trim()).filter(Boolean),
   entitlements: clean.entitlements as Prisma.InputJsonValue,
+  isFeatured,
 });
 
+/**
+ * Saves a plan; when it is featured, the product's other featured plan is cleared in the same transaction. The partial unique index
+ * (plan_one_featured_per_product) is the backstop for two saves racing: the loser gets a clear message instead of a database error.
+ */
+async function savePlanRow(productKey: string, write: (tx: Prisma.TransactionClient) => Promise<Plan>, isFeatured: boolean, planId?: string): Promise<Plan> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (isFeatured) await tx.plan.updateMany({ where: { productKey, isFeatured: true, ...(planId ? { id: { not: planId } } : {}) }, data: { isFeatured: false } });
+      return write(tx);
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002" && JSON.stringify(error.meta ?? {}).includes("plan_one_featured_per_product")) {
+      throw new PlanError("Another plan was just made the featured plan. Reload the plans and try again.");
+    }
+    throw error;
+  }
+}
+
 /** What the marketing site shows of a plan (apps/site pricing cards, via the content bundle). Limits (entitlements) are not shown. */
-type SitePlan = Pick<Plan, "productKey" | "name" | "description" | "isTrial" | "trialDurationDays" | "priceMonthly" | "priceAnnual" | "gstPercent" | "highlights" | "isActive">;
-const siteView = (plan: SitePlan) => JSON.stringify([plan.name, plan.description, plan.isTrial, plan.trialDurationDays, plan.priceMonthly === null ? null : Number(plan.priceMonthly), plan.priceAnnual === null ? null : Number(plan.priceAnnual), Number(plan.gstPercent), plan.highlights, plan.isActive]);
+type SitePlan = Pick<Plan, "productKey" | "name" | "description" | "isTrial" | "trialDurationDays" | "priceMonthly" | "priceAnnual" | "gstPercent" | "highlights" | "isActive" | "isFeatured">;
+const siteView = (plan: SitePlan) => JSON.stringify([plan.name, plan.description, plan.isTrial, plan.trialDurationDays, plan.priceMonthly === null ? null : Number(plan.priceMonthly), plan.priceAnnual === null ? null : Number(plan.priceAnnual), Number(plan.gstPercent), plan.highlights, plan.isActive, plan.isFeatured]);
 /** A plan is on the site while it is active and either the trial or has a monthly price (see buildBundle). */
 const onSite = (plan: SitePlan) => plan.productKey === "catering" && plan.isActive && (plan.isTrial || plan.priceMonthly !== null);
 
@@ -71,7 +98,8 @@ async function markSiteIfPlanChanged(before: SitePlan | null, after: SitePlan) {
 
 export async function createPlan(input: PlanInput, actorUserId: string | null) {
   const clean = await validate(input);
-  const plan = await prisma.plan.create({ data: { productKey: input.productKey, ...data(input, clean) } });
+  const featured = input.isFeatured === true;
+  const plan = await savePlanRow(input.productKey, (tx) => tx.plan.create({ data: { productKey: input.productKey, ...data(input, clean, featured) } }), featured);
   await audit({ actorUserId, action: "plan.created", subject: plan.id, detail: { productKey: plan.productKey, code: plan.code } });
   await markSiteIfPlanChanged(null, plan);
   return plan;
@@ -82,8 +110,10 @@ export async function updatePlan(id: string, input: PlanInput, actorUserId: stri
   const existing = await prisma.plan.findUnique({ where: { id } });
   if (!existing) throw new PlanError("Plan not found.");
   if (existing.productKey !== input.productKey) throw new PlanError("A plan cannot move to another product.");
-  const clean = await validate(input, id);
-  const plan = await prisma.plan.update({ where: { id }, data: data(input, clean) });
+  const clean = await validate(input, id, existing.isActive);
+  // Left out on the save, the plan keeps its flag; a featured plan that stops being eligible (trial, no monthly price) loses it.
+  const featured = (input.isFeatured ?? existing.isFeatured) && canBeFeatured({ isTrial: input.isTrial, priceMonthly: input.priceMonthly ?? null, isActive: existing.isActive });
+  const plan = await savePlanRow(input.productKey, (tx) => tx.plan.update({ where: { id }, data: data(input, clean, featured) }), featured, id);
   await audit({ actorUserId, action: "plan.updated", subject: id, detail: { productKey: plan.productKey, code: plan.code } });
   await markSiteIfPlanChanged(existing, plan);
   const reissued = await reissueForPlan(id);
@@ -92,7 +122,8 @@ export async function updatePlan(id: string, input: PlanInput, actorUserId: stri
 
 export async function setPlanActive(id: string, isActive: boolean, actorUserId: string | null) {
   const existing = await prisma.plan.findUnique({ where: { id } });
-  const plan = await prisma.plan.update({ where: { id }, data: { isActive } });
+  // A retired plan cannot be the featured one.
+  const plan = await prisma.plan.update({ where: { id }, data: { isActive, ...(isActive ? {} : { isFeatured: false }) } });
   await audit({ actorUserId, action: isActive ? "plan.activated" : "plan.retired", subject: id });
   await markSiteIfPlanChanged(existing, plan);
 }

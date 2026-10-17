@@ -17,9 +17,9 @@
   "media": [],
   "pages": [],
   "plans": [
-    { "code": "trial", "name": "Trial", "description": "Fixture trial text.", "isTrial": true, "trialDurationDays": 14, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [] },
-    { "code": "fixture-one", "name": "Fixture Basic", "description": "Fixture basic text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 1500, "priceAnnual": 15000, "gstPercent": 18, "highlights": ["Fixture feature A", "Fixture feature B"] },
-    { "code": "fixture-two", "name": "Fixture Plus", "description": "Fixture plus text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 4999, "priceAnnual": null, "gstPercent": 18, "highlights": ["Fixture feature C"] },
-    { "code": "fixture-hidden", "name": "Fixture Hidden", "description": "Has no price, so the site must not show it.", "isTrial": false, "trialDurationDays": null, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [] }
+    { "code": "trial", "name": "Trial", "description": "Fixture trial text.", "isTrial": true, "trialDurationDays": 14, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [], "featured": false },
+    { "code": "fixture-one", "name": "Fixture Basic", "description": "Fixture basic text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 1500, "priceAnnual": 15000, "gstPercent": 18, "highlights": ["Fixture feature A", "Fixture feature B"], "featured": false },
+    { "code": "fixture-two", "name": "Fixture Plus", "description": "Fixture plus text.", "isTrial": false, "trialDurationDays": null, "priceMonthly": 4999, "priceAnnual": null, "gstPercent": 18, "highlights": ["Fixture feature C"], "featured": true },
+    { "code": "fixture-hidden", "name": "Fixture Hidden", "description": "Has no price, so the site must not show it.", "isTrial": false, "trialDurationDays": null, "priceMonthly": null, "priceAnnual": null, "gstPercent": 18, "highlights": [], "featured": false }
   ]
 }
