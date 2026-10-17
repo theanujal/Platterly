@@ -21,6 +21,9 @@ test("2 days after the period ended: open, with a Payment overdue box and 5 days
 
   await setPaidPeriodEnded(email, 2);
   await page.goto("/dashboard");
+  // A Dashboard without a claimed link opens "Create Your Custom Link" on every visit; while it is open it hides the sidebar
+  // from role queries, so close it before looking for the Renew button.
+  await page.getByRole("button", { name: "Close" }).click();
   const box = page.getByTestId("grace-card");
   await expect(box).toBeVisible();
   await expect(box).toContainText("Payment overdue");
