@@ -52,7 +52,8 @@ export interface LogisticsForm {
   setupTime: string;
 }
 
-export async function saveLogisticsAction(orderId: string | null, eventId: string, form: LogisticsForm): Promise<ActionResult> {
+/** `slotKey` is the event (a day and a meal) when the order has two or more; left empty it is the event's own record. */
+export async function saveLogisticsAction(orderId: string | null, eventId: string, form: LogisticsForm, slotKey = ""): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ staffing: ["edit"] }, organizationId);
   await assertEventAtMyLocationById(organizationId, session.user.id, eventId);
@@ -72,6 +73,7 @@ export async function saveLogisticsAction(orderId: string | null, eventId: strin
         setupTime: naive(form.setupTime),
       },
       session.user.id,
+      slotKey,
     );
   } catch (error) {
     return fail(error);

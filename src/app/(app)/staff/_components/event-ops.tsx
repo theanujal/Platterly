@@ -2,20 +2,48 @@ import { hasPermission } from "@/lib/auth/require-session";
 import { listManagerSuggestions } from "@/modules/employees/assignment";
 import { prisma } from "@/lib/db";
 import { getStaffCounts } from "@/modules/employees/staff-counts";
-import { getLogistics, getDeliveryAddress } from "@/modules/logistics/logistics";
+import { getDeliveryAddress, getLogisticsSlots, listLogistics } from "@/modules/logistics/logistics";
 import { StaffingCountsCard } from "./staffing-counts-card";
-import { LogisticsCard } from "./logistics-card";
+import { LogisticsCard, type LogisticsEntry } from "./logistics-card";
 
 const toLocalInput = (d: Date | null) => (d ? d.toISOString().slice(0, 16) : "");
 
 /**
  * Everything the kitchen team enters for one event, in one place: how many people per duty, and the dispatch and setup
  * details. Used by the event staffing page (which the kitchen role can open) and by the Staffing tab on the order.
- * Staffing and logistics notes live under Additional Details on the order, not here.
+ * Staffing and logistics notes live under Additional Details on the order, not here. An order with two or more events gets a logistics
+ * record for each, and logistics opens once the order is sent to the kitchen.
  */
 export async function EventOps({ organizationId, eventId, orderId }: { organizationId: string; eventId: string; orderId: string | null }) {
   const canEdit = await hasPermission({ staffing: ["edit"] }, organizationId);
-  const [counts, event, suggestions, logistics, address] = await Promise.all([getStaffCounts(organizationId, eventId), prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { eventManagerName: true } }), listManagerSuggestions(organizationId), getLogistics(organizationId, eventId), getDeliveryAddress(organizationId, orderId)]);
+  const [counts, event, suggestions, rows, address, { orderStatus, slots }] = await Promise.all([
+    getStaffCounts(organizationId, eventId),
+    prisma.event.findFirstOrThrow({ where: { id: eventId, organizationId }, select: { eventManagerName: true } }),
+    listManagerSuggestions(organizationId),
+    listLogistics(organizationId, eventId),
+    getDeliveryAddress(organizationId, orderId),
+    getLogisticsSlots(organizationId, eventId),
+  ]);
+
+  const entries: Record<string, LogisticsEntry> = Object.fromEntries(
+    rows.map((row) => [
+      row.slotKey,
+      {
+        dispatchedAt: row.dispatchedAt?.toISOString() ?? null,
+        deliveredAt: row.deliveredAt?.toISOString() ?? null,
+        form: {
+          vehicleType: row.vehicleType ?? "",
+          vehicleNumber: row.vehicleNumber ?? "",
+          driverName: row.driverName ?? "",
+          driverPhone: row.driverPhone ?? "",
+          dispatchPlannedAt: toLocalInput(row.dispatchPlannedAt),
+          dispatchStatus: row.dispatchStatus,
+          setupStatus: row.setupStatus,
+          setupTime: toLocalInput(row.setupTime),
+        },
+      },
+    ]),
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -24,21 +52,11 @@ export async function EventOps({ organizationId, eventId, orderId }: { organizat
         orderId={orderId}
         eventId={eventId}
         canEdit={canEdit}
-        data={{
-          address,
-          dispatchedAt: logistics?.dispatchedAt?.toISOString() ?? null,
-          deliveredAt: logistics?.deliveredAt?.toISOString() ?? null,
-          form: {
-            vehicleType: logistics?.vehicleType ?? "",
-            vehicleNumber: logistics?.vehicleNumber ?? "",
-            driverName: logistics?.driverName ?? "",
-            driverPhone: logistics?.driverPhone ?? "",
-            dispatchPlannedAt: toLocalInput(logistics?.dispatchPlannedAt ?? null),
-            dispatchStatus: logistics?.dispatchStatus ?? "NOT_DISPATCHED",
-            setupStatus: logistics?.setupStatus ?? "NOT_STARTED",
-            setupTime: toLocalInput(logistics?.setupTime ?? null),
-          },
-        }}
+        // Logistics opens once the order is sent to the kitchen; an event with no order is not held to it.
+        state={orderStatus === null || orderStatus === "SENT_TO_KITCHEN" ? "open" : orderStatus === "COMPLETED" ? "completed" : "notYet"}
+        slots={slots.map((slot) => ({ key: slot.key, date: slot.date, title: slot.title }))}
+        entries={entries}
+        address={address}
       />
     </div>
   );

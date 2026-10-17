@@ -1,6 +1,7 @@
 "use server";
 
 import { userMessage } from "@/lib/errors";
+import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission, hasPermission } from "@/lib/auth/require-session";
 import {
@@ -8,10 +9,13 @@ import {
   updateQuotation,
   deleteQuotation,
   sendQuotation,
+  recallQuotation,
   markQuotationExpired,
   convertQuotationToOrder,
   type QuotationInput,
 } from "@/modules/quotations/quotation";
+import { isQuotationEditable, QUOTATION_LOCKED_MESSAGE } from "@/modules/quotations/quotation-lock";
+import { quotationMissingField, quotationMissingMessage, type QuotationRequiredInput } from "@/modules/quotations/required-fields";
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
 import { syncOrderEvent, type OrderItemCatalogInput, type MealPlanEntryInput } from "@/modules/orders/order";
 import { ensureOrderMenuSelection } from "@/modules/menu-approvals/approval-link";
@@ -139,11 +143,23 @@ async function assertEventDateAllowed(organizationId: string, eventStartDate: Da
   }
 }
 
+/** A quotation can't be saved, sent or converted without its event type, event date, venue location and guests (AJ, 2026-10-18). */
+function assertQuotationComplete(input: QuotationRequiredInput) {
+  const missing = quotationMissingField(input);
+  if (missing) throw new Error(quotationMissingMessage(missing));
+}
+
+async function assertStoredQuotationComplete(organizationId: string, id: string) {
+  const stored = await prisma.quotation.findFirst({ where: { id, organizationId }, select: { eventTypeId: true, eventStartDate: true, eventEndDate: true, venue: true, adultCount: true } });
+  if (stored) assertQuotationComplete(stored);
+}
+
 export async function createQuotationAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["create"] }, organizationId);
   try {
     const input = buildInput(formData);
+    assertQuotationComplete(input);
     await assertEventDateAllowed(organizationId, input.eventStartDate);
     await createQuotation(organizationId, input, session.user.id);
   } catch (error) {
@@ -158,6 +174,10 @@ export async function updateQuotationAction(id: string, formData: FormData): Pro
   await requirePermission({ quotations: ["edit"] }, organizationId);
   try {
     const input = buildInput(formData);
+    // A sent quotation is locked: what the customer sees is what is on file. Recall it to edit.
+    const stored = await prisma.quotation.findFirst({ where: { id, organizationId }, select: { status: true } });
+    if (stored && !isQuotationEditable(stored.status)) throw new Error(QUOTATION_LOCKED_MESSAGE);
+    assertQuotationComplete(input);
     await assertEventDateAllowed(organizationId, input.eventStartDate);
     await updateQuotation(organizationId, id, input, session.user.id);
   } catch (error) {
@@ -185,6 +205,7 @@ export async function sendQuotationAction(id: string): Promise<ActionResult & { 
   await requirePermission({ quotations: ["edit"] }, organizationId);
   let notice: string;
   try {
+    await assertStoredQuotationComplete(organizationId, id);
     const sent = await sendQuotation(organizationId, id, session.user.id);
     notice = sent.emailed
       ? `Quotation emailed to ${sent.customerEmail}.`
@@ -196,6 +217,19 @@ export async function sendQuotationAction(id: string): Promise<ActionResult & { 
   }
   revalidatePath(`/quotations/${id}`);
   return { ok: true, notice };
+}
+
+export async function recallQuotationAction(id: string): Promise<ActionResult> {
+  const { session, organizationId } = await requireActiveOrganization();
+  await requirePermission({ quotations: ["edit"] }, organizationId);
+  try {
+    await recallQuotation(organizationId, id, session.user.id);
+  } catch (error) {
+    return toErrorResult(error);
+  }
+  revalidatePath("/quotations");
+  revalidatePath(`/quotations/${id}`);
+  return { ok: true };
 }
 
 export async function markQuotationExpiredAction(id: string): Promise<ActionResult> {
@@ -214,6 +248,7 @@ export async function convertQuotationToOrderAction(id: string): Promise<ActionR
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ quotations: ["edit"], orders: ["create"] }, organizationId);
   try {
+    await assertStoredQuotationComplete(organizationId, id);
     const order = await convertQuotationToOrder(organizationId, id, session.user.id);
     await syncOrderEvent(organizationId, order.id, session.user.id);
     await ensureOrderMenuSelection(organizationId, order.id, session.user.id);

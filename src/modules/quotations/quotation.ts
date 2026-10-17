@@ -10,6 +10,7 @@ import { issueToken, resolveToken } from "@/lib/secure-access/token";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { menuGuestCount, priceMeals } from "@/modules/orders/meal-pricing";
 import { percentOf } from "@/modules/orders/amount";
+import { isQuotationRecallable } from "./quotation-lock";
 import { parseCustomCharges, resolveCustomCharges, sumCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
 import {
   resolveCatalogItem,
@@ -437,6 +438,24 @@ export async function sendQuotation(organizationId: string, id: string, actorUse
   const emailed = Boolean(quotation.customer.email) && email.active && email.messages.quotation === true;
 
   return { quotation: after, url, emailed, customerEmail: quotation.customer.email };
+}
+
+/**
+ * Takes a sent quotation back from the customer so it can be edited: Sent or Viewed goes back to Draft and the customer's link stops working
+ * (sending it again issues a new one). An accepted, rejected or expired quotation is final and is refused.
+ */
+export async function recallQuotation(organizationId: string, id: string, actorUserId: string) {
+  const before = await prisma.quotation.findFirstOrThrow({ where: { id, organizationId } });
+  if (!isQuotationRecallable(before.status)) throw new InvalidQuotationTransitionError(`Cannot recall a Quotation with status ${before.status}.`);
+  const after = await prisma.$transaction(async (tx) => {
+    // The status is part of the match, so two recalls at once (or a customer reply a moment earlier) change it once.
+    const moved = await tx.quotation.updateMany({ where: { id, organizationId, status: { in: ["SENT", "VIEWED"] } }, data: { status: "DRAFT" } });
+    if (moved.count === 0) throw new InvalidQuotationTransitionError("This quotation was just answered by the customer, so it can't be recalled.");
+    await tx.secureAccessToken.updateMany({ where: { organizationId, resourceType: "QUOTATION", resourceId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return tx.quotation.findUniqueOrThrow({ where: { id } });
+  });
+  await audit({ organizationId, actorUserId, action: "quotation.recall", recordType: "Quotation", recordId: id, before: { status: before.status }, after: { status: after.status } });
+  return after;
 }
 
 /** Admin-only escalation, mirroring the codebase's existing owner-only-lifecycle convention (e.g. Organization's own status transitions). */

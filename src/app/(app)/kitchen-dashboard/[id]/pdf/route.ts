@@ -6,7 +6,7 @@ import { MEAL_TYPE_LABEL } from "@/modules/menu-approvals/approval-snapshot";
 import { buildKitchenSheetPdf } from "@/modules/menu-approvals/kitchen-sheet-pdf";
 import { getKitchenSheetText } from "@/modules/kitchen/kitchen-rules";
 import { textToPoints } from "@/modules/kitchen/sheet-text";
-import { getLogistics } from "@/modules/logistics/logistics";
+import { getLogisticsSlots, listLogistics } from "@/modules/logistics/logistics";
 import { formatPhoneDisplay } from "@/lib/phone";
 
 const formatDate = (date: Date, options: Intl.DateTimeFormatOptions) => date.toLocaleDateString("en-IN", { timeZone: "UTC", ...options });
@@ -30,9 +30,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [organization, sheetText, logistics] = await Promise.all([
     prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, addressLine1: true, addressLine2: true, city: true, state: true, contactPhone: true } }),
     getKitchenSheetText(organizationId),
-    getLogistics(organizationId, event.id),
+    listLogistics(organizationId, event.id),
   ]);
 
+  // Each meal's own pickup time (an order with several events has a logistics record per event); the event's own record is the fallback.
+  const perEvent = (await getLogisticsSlots(organizationId, event.id)).slots.length >= 2;
+  const pickupFor = (meal: { date: Date; mealType: string }): Date | null => {
+    const own = perEvent ? logistics.find((row) => row.slotKey === `${meal.date.toISOString().slice(0, 10)}-${meal.mealType}`) : undefined;
+    return (own ?? logistics.find((row) => row.slotKey === ""))?.dispatchPlannedAt ?? null;
+  };
   const adults = order?.adultCount ?? guests;
   const manyDays = new Set(meals.map((meal) => meal.date.getTime())).size > 1;
   const days = [...new Set(meals.map((meal) => meal.date.getTime()))].sort();
@@ -55,7 +61,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       title: MEAL_TYPE_LABEL[meal.mealType],
       dayLabel: manyDays ? `Day ${days.indexOf(meal.date.getTime()) + 1}` : null,
       dateText: formatDate(meal.date, { weekday: "short", day: "numeric", month: "short", year: "numeric" }),
-      pickup: logistics?.dispatchPlannedAt ? logistics.dispatchPlannedAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).toUpperCase() : null,
+      pickup: pickupFor(meal)?.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" }).toUpperCase() ?? null,
       totalGuests: guests,
       adults,
       under5: order?.childBelow5Count ?? 0,

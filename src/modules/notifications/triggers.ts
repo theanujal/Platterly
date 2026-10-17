@@ -353,9 +353,11 @@ export function onTaskAssigned(organizationId: string, eventId: string, assignme
 }
 
 /** The vehicle left or the food arrived. Everyone on the team is told, in-app and by push. */
-export function onDispatchChanged(organizationId: string, eventId: string, status: "DISPATCHED" | "DELIVERED", driverName?: string | null) {
+export function onDispatchChanged(organizationId: string, eventId: string, status: "DISPATCHED" | "DELIVERED", driverName?: string | null, eventTitle?: string) {
   return safely("onDispatchChanged", async () => {
-    const { label } = await loadEventLabel(organizationId, eventId);
+    const base = await loadEventLabel(organizationId, eventId);
+    // An order with several events: say which one left or arrived.
+    const label = eventTitle ? `${base.label} (${eventTitle})` : base.label;
     await notifyTeam({
       organizationId,
       event: status === "DISPATCHED" ? "logistics.dispatched" : "logistics.delivered",

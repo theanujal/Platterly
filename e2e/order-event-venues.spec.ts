@@ -38,6 +38,10 @@ test("a multi-event order: the team gives each event its own venue on Order Deta
   await page.goto(`/orders/${orderId}`);
   await page.waitForLoadState("networkidle");
   await page.getByRole("tab", { name: "Order Details" }).click();
+  // The card lists what it still needs: the order has a venue name and address, but no venue type or contact yet.
+  const missing = page.getByTestId("event-missing-fields");
+  await expect(missing).toContainText("Venue Type");
+  await expect(missing).toContainText("Venue Contact Person");
   await page.getByRole("button", { name: "Edit event information" }).click();
 
   // The question, then one venue per event.
@@ -70,6 +74,7 @@ test("a multi-event order: the team gives each event its own venue on Order Deta
   await page.reload();
   await page.waitForLoadState("networkidle");
   await page.getByRole("tab", { name: "Order Details" }).click();
+  await expect(page.getByTestId("event-missing-fields")).toHaveCount(0); // every event's venue is complete now
   const view = page.getByTestId("event-venues-view");
   await expect(view).toContainText("Day 1 · Dinner");
   await expect(view).toContainText("Green Villa");

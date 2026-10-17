@@ -451,6 +451,11 @@ export async function seedMealSlots(orderId: string, slots: { date: string; meal
   await pool.query('UPDATE "order" SET "eventStartDate" = $2, "eventEndDate" = $3, "orderKind" = $4::"OrderKind" WHERE id = $1', [orderId, dates[0], dates[dates.length - 1], dates[0] === dates[dates.length - 1] && slots.length === 1 ? "SINGLE" : "MULTI"]);
 }
 
+/** Says whether the order's venue differs by event (Order Details), which is what gives logistics a record per event. */
+export async function setOrderVenuePerEvent(orderId: string, perEvent: boolean): Promise<void> {
+  await pool.query('UPDATE "order" SET "venuePerEvent" = $2 WHERE id = $1', [orderId, perEvent]);
+}
+
 /** Moves an order's event `daysAgo` days into the past (and optionally cancels it), for the Overdue payment specs. */
 export async function setOrderEventPast(orderId: string, daysAgo: number, status?: "CANCELLED" | "COMPLETED"): Promise<void> {
   await pool.query(

@@ -3,10 +3,13 @@
 import { useRouter } from "next/navigation";
 import { QuotationForm, type QuotationFormValues } from "../../_components/quotation-form";
 import { updateQuotationAction } from "../../actions";
+import type { QuotationStatus } from "@/generated/prisma/enums";
 
 interface EditQuotationClientProps {
   quotationId: string;
   initialValues: QuotationFormValues;
+  status: QuotationStatus;
+  customerMessage: string | null;
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
   menus: {
@@ -28,6 +31,8 @@ interface EditQuotationClientProps {
 export function EditQuotationClient({
   quotationId,
   initialValues,
+  status,
+  customerMessage,
   customers,
   eventTypes,
   menus,
@@ -48,6 +53,9 @@ export function EditQuotationClient({
       menus={menus}
       canBypassDateRestriction={canBypassDateRestriction}
       initialValues={initialValues}
+      status={status}
+      quotationId={quotationId}
+      customerMessage={customerMessage}
       submitLabel="Save changes"
       onSubmit={(formData) => updateQuotationAction(quotationId, formData)}
       onSuccess={() => router.refresh()}

@@ -612,6 +612,31 @@ export function OrderForm({
   // An event not filled in yet starts as a copy of the order's own venue, like on the customer's page.
   const venueOf = (key: string): EventVenueValues => values.eventVenues[key] ?? venueFromValues(values);
   const venuesForEditor = Object.fromEntries(eventSlots.map((slot) => [slot.key, venueOf(slot.key)]));
+  // What the Event Information card still needs (AJ, 2026-10-18): the event type and the venue details the customer gives on the final
+  // confirmation (or the team adds here). Shown on a saved order only, so a new order's blank form is not scolded.
+  const orderLevelMissing: string[] = [];
+  if (!values.venueType) orderLevelMissing.push("Venue Type");
+  if (!values.venue.trim()) orderLevelMissing.push("Venue / Building Name");
+  if (!values.eventAddress.trim()) orderLevelMissing.push("Complete Venue Address");
+  if (!values.venueContactName.trim()) orderLevelMissing.push("Venue Contact Person");
+  if (!values.venueContactPhone) orderLevelMissing.push("Contact Number");
+  const missingEventDetails: string[] = [
+    ...(values.eventTypeId ? [] : ["Event Type"]),
+    ...(perEvent ? eventSlots.flatMap((slot) => { const field = missingEventVenueField(venueOf(slot.key)); return field ? [`${slot.title}: ${field}`] : []; }) : orderLevelMissing),
+  ];
+  const missingNotice =
+    !!initialValues && missingEventDetails.length > 0 ? (
+      <div role="status" className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning sm:col-span-2" data-testid="event-missing-fields">
+        <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+        <div>
+          <p className="font-semibold">
+            {missingEventDetails.length} event {missingEventDetails.length === 1 ? "detail is" : "details are"} still needed
+          </p>
+          <p>{missingEventDetails.join(" · ")}</p>
+          <p className="text-xs">The customer gives the venue on the final confirmation; you can also add it here.</p>
+        </div>
+      </div>
+    ) : null;
   function setVenuePerEvent(different: boolean) {
     setValues((prev) => {
       if (!different) return { ...prev, venuePerEvent: false };
@@ -940,13 +965,20 @@ export function OrderForm({
       setEditingEvent(true);
     })}
   >
+    {missingNotice && <div className="mb-4">{missingNotice}</div>}
     <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-2">
-      {shownEventViewFields.map(([label, value]) => (
-        <div key={label} className="flex min-w-0 flex-col gap-0.5">
-          <dt className="text-muted-foreground">{label}</dt>
-          <dd className="break-words font-medium">{value}</dd>
-        </div>
-      ))}
+      {shownEventViewFields.map(([label, value]) => {
+        // A detail the card still needs reads "Not set · needed" in warning colour.
+        const needed = (label === "Event Type" && !values.eventTypeId) || (!perEvent && orderLevelMissing.includes(label));
+        return (
+          <div key={label} className="flex min-w-0 flex-col gap-0.5">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className={cn("break-words font-medium", needed && "text-warning")} data-needed={needed || undefined}>
+              {needed ? "Not set · needed" : value}
+            </dd>
+          </div>
+        );
+      })}
     </dl>
     {perEvent && (
       <div className="mt-4 flex flex-col gap-3" data-testid="event-venues-view">
@@ -976,7 +1008,9 @@ export function OrderForm({
                 ).map(([label, value]) => (
                   <div key={label} className="flex min-w-0 flex-col gap-0.5">
                     <dt className="text-muted-foreground">{label}</dt>
-                    <dd className="break-words font-medium">{value}</dd>
+                    <dd className={cn("break-words font-medium", value === "Not set" && "text-warning")} data-needed={value === "Not set" || undefined}>
+                      {value === "Not set" ? "Not set · needed" : value}
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -1015,6 +1049,7 @@ export function OrderForm({
     }
   >
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {missingNotice}
       <div className="flex flex-col gap-2 sm:col-span-2" role="group" aria-label="Order Type">
         <Label>Order Type</Label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1490,7 +1525,8 @@ export function OrderForm({
               <p className="text-xs text-muted-foreground">{row.menuName} · {Number(values.adultCount) || 0} adults</p>
             </div>
             {individualOn ? (
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
                 <div className="flex items-center">
                   <span className="flex h-10 w-12 items-center justify-center rounded-l-lg border border-r-0 border-input text-sm" aria-hidden>
                     ₹
@@ -1506,6 +1542,13 @@ export function OrderForm({
                   />
                 </div>
                 <span className="text-xs text-muted-foreground">/ plate</span>
+              </div>
+              {/* What the price was before: the menu's own price, so the team can see what they are changing. */}
+              {row.menuName !== "No menu" && (
+                <span className="text-xs text-muted-foreground" data-testid="default-plate-price">
+                  Menu price {formatCurrency(row.menuPrice)} / plate
+                </span>
+              )}
               </div>
             ) : (
               <span className="shrink-0 font-medium">{formatCurrency(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
@@ -1541,6 +1584,16 @@ export function OrderForm({
             })}
           </div>
         ))}
+        {childPricingMenu && (
+          <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground" data-testid="menu-child-defaults">
+            <p className="font-medium text-foreground">Menu default ({childPricingMenu.name})</p>
+            <p>Children (Under 5): {childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</p>
+            <p>
+              Children (5–10):{" "}
+              {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+            </p>
+          </div>
+        )}
       </div>
     )}
     {!individualOn && childPricingMenu && (

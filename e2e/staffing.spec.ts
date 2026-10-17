@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, seedOrderWithEvent, setMemberRole } from "./db";
+import { cleanupOnboardingTestUser, seedOrderWithEvent, setMemberRole, setOrderStatus } from "./db";
 import { signUpCaterer } from "./auth-helpers";
 
 /**
@@ -95,13 +95,23 @@ test("enter staffing as numbers per duty, see them on the Staffing page, add the
   expect(Math.abs((vb?.y ?? 0) - (db?.y ?? 999))).toBeLessThan(80);
   expect((db?.x ?? 0) - (vb?.x ?? 0)).toBeGreaterThan(150);
   await expect(logistics.getByRole("heading", { name: "Schedule & Status" })).toBeVisible();
+  // Logistics opens once the order is sent to the kitchen (AJ, 2026-10-18): until then it is read-only, with a note and no Save button.
+  await expect(logistics.getByTestId("logistics-closed")).toContainText("once the order is sent to the kitchen");
+  await expect(logistics.getByLabel("Vehicle number")).toBeDisabled();
+  await expect(logistics.getByRole("button", { name: "Save logistics" })).toHaveCount(0);
+  await setOrderStatus(orderId, "SENT_TO_KITCHEN");
+  await page.reload();
+  await page.getByRole("tab", { name: "Staffing & Logistics" }).click();
+  await expect(logistics.getByTestId("logistics-closed")).toHaveCount(0);
   await logistics.getByLabel("Vehicle number").fill("ka01ab1234");
   await logistics.getByLabel("Dispatch status").click();
   await page.getByRole("option", { name: "On the way" }).click();
   await logistics.getByRole("button", { name: "Save logistics" }).click();
   await expect(logistics.getByText("Saved")).toBeVisible();
 
-  // Staffing and logistics notes are under Additional Details
+  // Staffing and logistics notes are under Additional Details (the order is back in a state the notes can be edited in)
+  await setOrderStatus(orderId, "APPROVED");
+  await page.reload();
   await page.getByRole("tab", { name: "Additional Details" }).click();
   await page.getByLabel("Staffing & Logistics Notes").fill("Two vans, crew meets at 6 am");
   await Promise.all([page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/orders/")), page.getByTestId("order-save-top").click()]);

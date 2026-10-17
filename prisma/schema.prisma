@@ -1335,13 +1335,16 @@ enum SetupStatus {
   DONE
 }
 
-// One row per event: vehicle, driver, dispatch and setup. The delivery address itself is the order's venue details.
+// Vehicle, driver, dispatch and setup. One row for an order with a single event (`slotKey` ""), and one row per event (a meal slot: a day
+// and a meal, "YYYY-MM-DD-MEALTYPE") when the order has two or more, so each delivery is tracked on its own (AJ, 2026-10-18). The delivery
+// address itself is the order's venue details. Filled in only once the order is sent to the kitchen.
 model EventLogistics {
   id             String       @id @default(cuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  eventId        String       @unique
+  eventId        String
   event          Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  slotKey        String       @default("")
 
   vehicleType       String?
   vehicleNumber     String?
@@ -1360,6 +1363,7 @@ model EventLogistics {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([eventId, slotKey])
   @@index([organizationId])
   @@map("event_logistics")
 }
@@ -1727,7 +1731,7 @@ model Event {
   staffCounts       EventStaffCount[]
   // Free-text Event Manager for the Staff page and the order's Staffing tab (AJ, 2026-10-14); the other duties are numbers.
   eventManagerName  String?
-  logistics         EventLogistics?
+  logistics         EventLogistics[]
   // Chunk 11 — at most one MenuSelection per Event (MenuSelection.eventId
   // is @unique).
   menuSelection     MenuSelection?

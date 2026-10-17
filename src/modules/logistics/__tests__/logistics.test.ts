@@ -99,7 +99,7 @@ describe("Event logistics (Chunk 19.3)", () => {
   it("emails the customer once when the food is dispatched, unless the kitchen switched that email off", async () => {
     const { org, actor, event, customer } = await setup();
     await prisma.customer.update({ where: { id: customer.id }, data: { email: "cust@example.test" } });
-    const order = await prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, orderNumber: "ORD-DISP", eventStartDate: new Date(), eventEndDate: new Date() } });
+    const order = await prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, orderNumber: "ORD-DISP", status: "SENT_TO_KITCHEN", eventStartDate: new Date(), eventEndDate: new Date() } });
     await prisma.event.update({ where: { id: event.id }, data: { orderId: order.id } });
     const emails = () => prisma.notification.findMany({ where: { organizationId: org.id, event: "logistics.dispatched_customer", channel: "EMAIL" }, include: { logs: true } });
 
@@ -120,6 +120,58 @@ describe("Event logistics (Chunk 19.3)", () => {
     const after = await emails();
     expect(after).toHaveLength(2);
     expect(after.filter((n) => n.logs[0].status === "skipped")).toHaveLength(1);
+  });
+
+  async function orderWithEvents(status: "PENDING_REVIEW" | "SENT_TO_KITCHEN", meals: { date: string; mealType: "LUNCH" | "DINNER" }[], venuePerEvent = false) {
+    const { org, actor, event, customer } = await setup();
+    const order = await prisma.order.create({ data: { organizationId: org.id, customerId: customer.id, orderNumber: `ORD-${Math.floor(1000 + Math.random() * 8999)}`, status, venuePerEvent, eventStartDate: new Date(meals[0].date), eventEndDate: new Date(meals[meals.length - 1].date) } });
+    for (const meal of meals) await prisma.mealPlanEntry.create({ data: { orderId: order.id, date: new Date(meal.date), mealType: meal.mealType } });
+    await prisma.event.update({ where: { id: event.id }, data: { orderId: order.id } });
+    return { org, actor, event };
+  }
+
+  it("opens only once the order is sent to the kitchen (AJ, 2026-10-18)", async () => {
+    const { org, actor, event } = await orderWithEvents("PENDING_REVIEW", [{ date: "2026-12-05", mealType: "DINNER" }]);
+    await expect(saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id)).rejects.toThrow(/once the order is sent to the kitchen/);
+    expect(await getLogistics(org.id, event.id)).toBeNull();
+    await prisma.order.updateMany({ where: { organizationId: org.id }, data: { status: "SENT_TO_KITCHEN" } });
+    expect((await saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id)).driverName).toBe("Ravi");
+  });
+
+  it("with the venue the same for all events, logistics is one record, whatever the number of events", async () => {
+    const { org, actor, event } = await orderWithEvents("SENT_TO_KITCHEN", [
+      { date: "2026-12-05", mealType: "LUNCH" },
+      { date: "2026-12-06", mealType: "DINNER" },
+    ]);
+    await expect(saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id, "2026-12-05-LUNCH")).rejects.toThrow(/single event/);
+    expect((await saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id)).slotKey).toBe("");
+    expect(await prisma.eventLogistics.count({ where: { eventId: event.id } })).toBe(1);
+  });
+
+  it("with a venue per event, logistics keeps one record per event, each stamped on its own", async () => {
+    const { org, actor, event } = await orderWithEvents(
+      "SENT_TO_KITCHEN",
+      [
+        { date: "2026-12-05", mealType: "LUNCH" },
+        { date: "2026-12-06", mealType: "DINNER" },
+      ],
+      true,
+    );
+    // The event's own record is not used: an event must be named.
+    await expect(saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id)).rejects.toThrow(/Choose which event/);
+    await expect(saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id, "2026-12-09-LUNCH")).rejects.toThrow(/Choose which event/);
+
+    const one = await saveLogistics(org.id, event.id, { ...base, vehicleType: "Tempo", driverName: "Ravi", dispatchStatus: "DISPATCHED" }, actor.id, "2026-12-05-LUNCH");
+    const two = await saveLogistics(org.id, event.id, { ...base, vehicleType: "Van", driverName: "Meera" }, actor.id, "2026-12-06-DINNER");
+    expect([one.driverName, one.dispatchStatus, one.slotKey]).toEqual(["Ravi", "DISPATCHED", "2026-12-05-LUNCH"]);
+    expect([two.driverName, two.dispatchStatus, two.slotKey]).toEqual(["Meera", "NOT_DISPATCHED", "2026-12-06-DINNER"]);
+    expect(await prisma.eventLogistics.count({ where: { eventId: event.id } })).toBe(2);
+  });
+
+  it("an order with a single event keeps one record and refuses an event key", async () => {
+    const { org, actor, event } = await orderWithEvents("SENT_TO_KITCHEN", [{ date: "2026-12-05", mealType: "LUNCH" }]);
+    await expect(saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id, "2026-12-05-LUNCH")).rejects.toThrow(/single event/);
+    expect((await saveLogistics(org.id, event.id, { ...base, driverName: "Ravi" }, actor.id)).slotKey).toBe("");
   });
 
   it("saves vehicle, driver and setup, and stamps dispatch times as the status moves", async () => {

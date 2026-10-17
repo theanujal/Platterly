@@ -69,6 +69,28 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
     );
   }
 
+  // While the team is making the changes the customer asked for, they are not shown the quotation: half-edited prices and menus stay
+  // private until it is sent again (an order's customer page is a frozen copy for the same reason).
+  if (quotation.status === "CHANGES_REQUESTED") {
+    return (
+      <PublicShell brand={{ name: organization.name, logo: organization.logo }} title="Your Quotation" subtitle={`Quotation for ${quotation.customer.name}`} width="max-w-xl">
+        <div className="flex justify-center">
+          <Badge variant={STATUS_VARIANT[quotation.status]}>{STATUS_LABEL[quotation.status]}</Badge>
+        </div>
+        <div className="flex flex-col items-center gap-3 rounded-xl bg-card p-8 text-center ring-1 ring-foreground/10 md:p-10" data-testid="quotation-being-updated">
+          <h2 className="text-xl font-semibold">We&apos;re updating your quotation</h2>
+          <p className="text-sm text-muted-foreground">You&apos;ve requested changes. {organization.name} is working on them and will send you the updated quotation.</p>
+          {quotation.customerMessage && (
+            <p className="w-full rounded-lg bg-muted p-3 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Your note: </span>
+              {quotation.customerMessage}
+            </p>
+          )}
+        </div>
+      </PublicShell>
+    );
+  }
+
   const isExpiredByDate = isQuotationPastValidity(quotation.validUntil);
   const view = buildApprovalView(await buildQuotationSnapshot(resolved.organizationId, quotation));
   const validUntil = quotation.validUntil ? quotation.validUntil.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null;
@@ -77,11 +99,9 @@ export default async function PublicQuotationPage({ params }: { params: Promise<
       ? "You've accepted this quotation. Your caterer will follow up shortly."
       : quotation.status === "REJECTED"
         ? "You've declined this quotation."
-        : quotation.status === "CHANGES_REQUESTED"
-          ? "You've requested changes — your caterer will send an updated quotation."
-          : quotation.status === "EXPIRED"
-            ? "This quotation has expired."
-            : null;
+        : quotation.status === "EXPIRED"
+          ? "This quotation has expired."
+          : null;
 
   return (
     <PublicShell brand={{ name: organization.name, logo: organization.logo }} title="Your Quotation" subtitle={`Quotation for ${quotation.customer.name}`} width="max-w-6xl">

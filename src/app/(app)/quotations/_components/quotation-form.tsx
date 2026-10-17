@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ClipboardList, FileText, Info, MapPin, Plus, Tag, Trash2, User, UtensilsCrossed, Users, Wallet } from "lucide-react";
+import { CalendarDays, ClipboardList, FileText, Info, MapPin, Plus, Tag, Trash2, User, Users, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -33,8 +35,13 @@ import { FormSection, SummaryCard, SummaryRow } from "../../orders/_components/o
 import { FormTabs, type FormTab } from "../../orders/_components/form-tabs";
 import { priceMeals } from "@/modules/orders/meal-pricing";
 import { percentOf } from "@/modules/orders/amount";
+import { quotationMissingField, quotationMissingMessage } from "@/modules/quotations/required-fields";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { IconTip } from "@/components/ui/icon-tip";
+import { QuotationMenuNotices } from "./quotation-menu-notices";
+import { QuotationLockBanner } from "./quotation-lock-banner";
+import { isQuotationEditable } from "@/modules/quotations/quotation-lock";
+import type { QuotationStatus } from "@/generated/prisma/enums";
 import { TONE_SURFACE, TONE_TEXT } from "../../orders/_components/order-display";
 import { getOrderCountsByDayAction, searchCustomersAction, createCustomerForOrderAction } from "../../orders/actions";
 import { getMenuForQuotationPickerAction, type ActionResult } from "../actions";
@@ -217,6 +224,11 @@ function deriveStandardChildPricingMenuIdPreview(entries: MealSelection[]): stri
 
 interface QuotationFormProps {
   initialValues?: Partial<QuotationFormValues>;
+  /** The quotation's stage and the customer's last message, for the alerts on the Build Menu tab. A new quotation has neither. */
+  status?: QuotationStatus;
+  customerMessage?: string | null;
+  /** The saved quotation's id (not on the create page): the lock notice recalls it. */
+  quotationId?: string;
   customers: { id: string; name: string; phone: string }[];
   eventTypes: { id: string; name: string }[];
   menus: MenuOption[];
@@ -234,6 +246,9 @@ interface QuotationFormProps {
 
 export function QuotationForm({
   initialValues,
+  status,
+  customerMessage,
+  quotationId,
   customers,
   eventTypes,
   menus,
@@ -260,9 +275,13 @@ export function QuotationForm({
   const [selectedCustomer, setSelectedCustomer] = useState<SelectedCustomer | null>(initialSelectedCustomer);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // A sent quotation is locked, like an order while its menu is with the customer: only a Draft, or one sent back with Changes Requested, can be edited.
+  const locked = status !== undefined && !isQuotationEditable(status);
+  // Asked when a Multi Order picked by hand has one day and now one meal: is it really a Single Order?
+  const [singleAsk, setSingleAsk] = useState(false);
   // Set when the form itself switched the Order Kind to Multi, so a popup can
   // say why (mirrors order-form.tsx exactly): a date range, or more than one meal type.
-  const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | null>(null);
+  const [multiNotice, setMultiNotice] = useState<"dates" | "meals" | "multiOff" | null>(null);
   // Which meal's "Select/Edit Food Items" drawer is open — lifted here (not
   // internal to MenuPlanningSection) so the "Selected Meals" summary card
   // can also open it directly for any date, not just the sidebar-focused one.
@@ -308,6 +327,8 @@ export function QuotationForm({
   function setMealPlan(entries: MealSelection[]) {
     setField("mealPlanEntries", entries);
     if (new Set(entries.map((e) => e.mealType)).size > 1) autoMulti("meals");
+    // A Multi Order chosen by hand, one event day, and now exactly one meal: that is a Single Order, so ask.
+    if (values.orderKind === "MULTI" && !autoSwitchedToMulti && days.length <= 1 && entries.length === 1 && values.mealPlanEntries.length !== 1) setSingleAsk(true);
   }
 
   // One pricing rule everywhere (meal-pricing.ts): a meal costs its Menu's price x guests; only Extra dishes and add-ons move the price.
@@ -355,7 +376,11 @@ export function QuotationForm({
   // Back to one date and one meal type: undo the automatic switch (AJ, 2026-09-30). A Multi the user picked by hand stays.
   if (autoSwitchedToMulti && !multiRequired) {
     setAutoSwitchedToMulti(false);
-    if (values.orderKind === "MULTI") setField("orderKind", "SINGLE");
+    if (values.orderKind === "MULTI") {
+      setField("orderKind", "SINGLE");
+      // Say so, as an order does: removing a meal or a date took it back to one date and one meal type.
+      setMultiNotice("multiOff");
+    }
   }
   const individualOn = values.individualPricingEnabled || values.pricingMethod === "INDIVIDUAL";
   const guestsComputed = guestsForPricing;
@@ -429,6 +454,12 @@ export function QuotationForm({
       setError("A Customer is required.");
       return;
     }
+    // The same four a quotation can never go without (the server checks them too).
+    const missing = quotationMissingField({ eventTypeId: values.eventTypeId, eventStartDate: values.eventStartDate, eventEndDate: values.eventEndDate, venue: values.venue, adultCount: values.adultCount });
+    if (missing) {
+      setError(quotationMissingMessage(missing));
+      return;
+    }
     if (eventDateRestricted && !canBypassDateRestriction) {
       setError(`Quotations can't normally be created or edited for an event less than ${MIN_DAYS_BEFORE_EVENT} days away. Ask an Owner.`);
       return;
@@ -456,14 +487,13 @@ export function QuotationForm({
   }
 
   const startsIn = startsInPreview(eventDaysUntil);
+  // How long the quotation stays valid, in the same chip style as the event's countdown.
+  const validDays = daysUntilPreview(values.validUntil);
+  const validIn = validDays === null ? null : startsInPreview(validDays);
   const totalGuests = String(guestsComputed);
   const orderKindOptions = [
-    { value: "SINGLE", label: "Single", hint: "One event / one meal type" },
-    {
-      value: "MULTI",
-      label: "Multi",
-      hint: "Multiple meals across the same event",
-    },
+    { value: "SINGLE", label: "Single Order", hint: "One date, one meal type" },
+    { value: "MULTI", label: "Multi Order", hint: "Several meals, several dates, or both" },
   ] as const;
   const formatDay = (iso: string, opts: Intl.DateTimeFormatOptions) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", opts);
   const eventDateText =
@@ -486,15 +516,11 @@ export function QuotationForm({
     }));
   }
 
-  const individualToggle = (
-    <label htmlFor="quote-individual-pricing" className="flex cursor-pointer items-center gap-2">
-      <Switch id="quote-individual-pricing" checked={individualOn} onCheckedChange={setIndividualPricing} />
-      <span className="text-sm font-medium">Individual Pricing {individualOn ? "On" : "Off"}</span>
-    </label>
-  );
+
+  const isMulti = values.orderKind === "MULTI";
 
   const customerSection = (
-    <FormSection icon={User} title="Customer & Event" description="Who this Quotation is for, and where the event will take place.">
+    <FormSection icon={User} title="Customer Details" description="Who this quotation is for.">
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="quote-customer" required>
           Customer
@@ -519,14 +545,58 @@ export function QuotationForm({
           </Link>
         )}
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quote-event-type">Event Type</Label>
-          <Select
-            items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))}
-            value={values.eventTypeId}
-            onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}
-          >
+          <Label htmlFor="quote-customer-email">Email</Label>
+          <Input id="quote-customer-email" readOnly tabIndex={-1} className="bg-muted" value={selectedCustomer?.email ?? ""} placeholder="Filled in from the customer" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="quote-customer-phone">Phone</Label>
+          <PhoneInput id="quote-customer-phone" disabled value={selectedCustomer?.phone ?? ""} onChange={() => {}} />
+        </div>
+      </div>
+    </FormSection>
+  );
+
+  const eventSection = (
+    <FormSection icon={CalendarDays} title="Event Information" description="The event, its date and where it takes place.">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-2 sm:col-span-2" role="group" aria-label="Order Type">
+          <Label>Order Type</Label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {orderKindOptions.map((option) => {
+              const selected = values.orderKind === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setOrderKind(option.value)}
+                  disabled={option.value === "SINGLE" && multiRequired}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+                    selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
+                  )}
+                >
+                  <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
+                    {selected && <span className="size-2.5 rounded-full bg-primary" />}
+                  </span>
+                  <span className="flex flex-col">
+                    <span className="text-sm font-semibold">{option.label}</span>
+                    <span className="text-xs text-muted-foreground">{option.hint}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {multiRequired && <p className="text-xs text-muted-foreground">More than one date or meal type, so this stays Multi.</p>}
+        </div>
+
+        <div className={cn("flex flex-col gap-1.5", isMulti && "sm:col-span-2")}>
+          <Label htmlFor="quote-event-type" required>
+            Event Type
+          </Label>
+          <Select items={Object.fromEntries(eventTypes.map((t) => [t.id, t.name]))} value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? values.eventTypeId)}>
             <SelectTrigger id="quote-event-type" className="w-full">
               <SelectValue placeholder="Not set" />
             </SelectTrigger>
@@ -539,18 +609,45 @@ export function QuotationForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quote-event-date">Event Date</Label>
+
+        <div className={cn("flex flex-col gap-1.5", isMulti && "sm:col-span-2")}>
+          <Label htmlFor={isMulti ? "quote-event-start" : "quote-event-date"} required>
+            {isMulti ? "Event Dates" : "Event Date"}
+          </Label>
           <div className="flex items-stretch gap-2">
-            <div className="min-w-0 flex-1">
-              <DateRangePicker
-                id="quote-event-date"
-                startDate={values.eventStartDate}
-                endDate={values.eventEndDate}
-                onChange={setEventDateRange}
-                loadOrderCounts={getOrderCountsByDayAction}
-              />
-            </div>
+            {isMulti ? (
+              <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Event start date</span>
+                  <DateRangePicker
+                    single
+                    id="quote-event-start"
+                    ariaLabel="Event start date"
+                    startDate={values.eventStartDate}
+                    endDate={values.eventStartDate}
+                    onChange={(start) => setEventDateRange(start, values.eventEndDate && values.eventEndDate >= start ? values.eventEndDate : start)}
+                    loadOrderCounts={getOrderCountsByDayAction}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs text-muted-foreground">Event end date</span>
+                  <DateRangePicker
+                    single
+                    id="quote-event-end"
+                    ariaLabel="Event end date"
+                    startDate={values.eventEndDate}
+                    endDate={values.eventEndDate}
+                    onChange={(end) => setEventDateRange(values.eventStartDate || end, end)}
+                    minDate={values.eventStartDate || undefined}
+                    loadOrderCounts={getOrderCountsByDayAction}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="min-w-0 flex-1">
+                <DateRangePicker single id="quote-event-date" startDate={values.eventStartDate} endDate={values.eventStartDate} onChange={(day) => setEventDateRange(day, day)} loadOrderCounts={getOrderCountsByDayAction} />
+              </div>
+            )}
             {startsIn && (
               <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[startsIn.tone])}>
                 <span>{startsIn.caption}</span>
@@ -566,69 +663,51 @@ export function QuotationForm({
             </p>
           )}
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quote-venue">Location / Venue</Label>
+
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <Label htmlFor="quote-venue" required>
+            Venue Location
+          </Label>
           <IconInput icon={MapPin} id="quote-venue" value={values.venue} onChange={(e) => setField("venue", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quote-address">Event Address</Label>
-          <IconInput icon={MapPin} id="quote-address" value={values.eventAddress} onChange={(e) => setField("eventAddress", e.target.value)} />
         </div>
       </div>
     </FormSection>
   );
 
-  const kindSection = (
-    <FormSection
-      icon={Users}
-      title="Order Kind"
-      description={
-        values.orderKind === "MULTI"
-          ? multiRequired
-            ? "More than one date or meal type, so this stays Multi."
-            : "Meal Planning below groups each date into its own event."
-          : "One date and one meal type. Adding a date or another meal makes it Multi."
-      }
-    >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {orderKindOptions.map((option) => {
-          const selected = values.orderKind === option.value;
-          return (
-            <button
-              key={option.value}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => setOrderKind(option.value)}
-              disabled={option.value === "SINGLE" && multiRequired}
-              className={cn(
-                "flex items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-                selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",
-              )}
-            >
-              <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-input")}>
-                {selected && <span className="size-2.5 rounded-full bg-primary" />}
-              </span>
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold">{option.label}</span>
-                <span className="text-xs text-muted-foreground">{option.hint}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </FormSection>
+  const singleAskDialog = (
+    <AlertDialog open={singleAsk} onOpenChange={(open) => !open && setSingleAsk(false)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Change this quotation to a Single Order?</AlertDialogTitle>
+          <AlertDialogDescription>It has one event day and one meal, which is a Single Order. Multi Order is for several meals, several dates, or both. Your meal, menu and food items are kept.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Keep Multi Order</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              setOrderKind("SINGLE");
+              setSingleAsk(false);
+            }}
+          >
+            Change to Single Order
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 
   const kindDialog = (
     <AlertDialog open={multiNotice !== null} onOpenChange={(open) => !open && setMultiNotice(null)}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Order Kind changed to Multi</AlertDialogTitle>
+          <AlertDialogTitle>{multiNotice === "multiOff" ? "Order Type changed to Single Order" : "Order Type changed to Multi Order"}</AlertDialogTitle>
           <AlertDialogDescription>
-            {multiNotice === "dates"
-              ? "You picked more than one date, so this is now Multi. Menu Planning groups each date into its own event."
-              : "You picked more than one meal type, so this is now Multi — even on a single day. Menu Planning groups the meals into their own events."}{" "}
-            Your meals, menus and food items are kept.
+            {multiNotice === "multiOff"
+              ? "This is now a Single Order: one date and one meal type."
+              : multiNotice === "dates"
+                ? "You picked more than one date, so this is now a Multi Order. Menu Planning groups each date into its own event."
+                : "You picked more than one meal type, so this is now a Multi Order, even on a single day. Menu Planning groups the meals into their own events."}{" "}
+            {multiNotice === "multiOff" ? "" : "Your meals, menus and food items are kept."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -640,9 +719,9 @@ export function QuotationForm({
 
   const guestSection = (
     <FormSection icon={Users} title="Guest Information" description="Enter the expected guest count. This will be used for all selected meals.">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="quote-adults">Adults</Label>
+          <Label htmlFor="quote-adults" required>Adults</Label>
           <Input id="quote-adults" type="number" min="0" value={values.adultCount} onChange={(e) => setField("adultCount", e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -661,8 +740,17 @@ export function QuotationForm({
     </FormSection>
   );
 
-  const menuSection = (
-    <FormSection icon={UtensilsCrossed} title="Menu Planning" description="Select meals and assign menu items for this event." action={individualToggle}>
+  // Days that carry meals but fall outside the event dates (the dates were changed after the menu was planned).
+  const outsideDays = [...new Set(values.mealPlanEntries.map((e) => e.date))].filter((d) => !days.includes(d)).sort();
+  const buildMenuTab = (
+    <div className="flex flex-col gap-4" data-testid="quotation-build-menu">
+      <QuotationMenuNotices
+        status={status}
+        customerMessage={customerMessage}
+        outsideDays={outsideDays}
+        noDates={days.length === 0}
+        noAdults={values.mealPlanEntries.length > 0 && guestsForPricing < 1}
+      />
       <MenuPlanningSection
         idPrefix="quote"
         mealSlotTestIdPrefix="quote-"
@@ -678,8 +766,12 @@ export function QuotationForm({
         foodDialogTarget={foodDialogTarget}
         onOpenFoodDialog={(date, mealType) => setFoodDialogTarget({ date, mealType })}
         onCloseFoodDialog={() => setFoodDialogTarget(null)}
+        readOnly={locked}
+        sectioned
+        priceInPricingTab
+        outsideDays={outsideDays}
       />
-    </FormSection>
+    </div>
   );
 
   const additionalSection = (
@@ -687,7 +779,17 @@ export function QuotationForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="col-span-full flex flex-col gap-1.5">
           <Label htmlFor="quote-valid-until">Valid Until</Label>
-          <Input id="quote-valid-until" type="date" value={values.validUntil} onChange={(e) => setField("validUntil", e.target.value)} />
+          <div className="flex items-stretch gap-2">
+            <div className="min-w-0 flex-1">
+              <DateRangePicker single id="quote-valid-until" placeholder="Select a date" startDate={values.validUntil} endDate={values.validUntil} onChange={(day) => setField("validUntil", day)} minDate={toLocalIsoDate(new Date())} />
+            </div>
+            {validIn && (
+              <div className={cn("flex shrink-0 flex-col justify-center rounded-lg px-3 text-xs leading-tight", TONE_SURFACE[validIn.tone])}>
+                <span>Valid for</span>
+                <span className="text-sm font-semibold">{validIn.label}</span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="col-span-full flex flex-col gap-1.5">
           <Label htmlFor="quote-terms">Terms</Label>
@@ -706,8 +808,8 @@ export function QuotationForm({
       <SummaryRow icon={User} label="Customer">
         <span className="break-words">{selectedCustomer?.name ?? "Not selected"}</span>
       </SummaryRow>
-      <SummaryRow icon={Users} label="Order Kind">
-        {values.orderKind === "MULTI" ? "Multi" : "Single"}
+      <SummaryRow icon={Users} label="Order Type">
+        {values.orderKind === "MULTI" ? "Multi Order" : "Single Order"}
       </SummaryRow>
       <SummaryRow icon={Tag} label="Event Type">
         {eventTypeName ?? "Not set"}
@@ -790,7 +892,7 @@ export function QuotationForm({
           {individualOn ? "On: set your own per-plate price for each meal and each child age band." : "Off: prices come from each meal's menu. Turn on to set your own."}
         </p>
       </div>
-      <Switch id="quote-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing}  />
+      <Switch id="quote-individual-pricing-tab" aria-label="Individual / Custom Pricing" checked={individualOn} onCheckedChange={setIndividualPricing} disabled={locked} />
     </div>
 
     <div className="flex flex-col gap-3">
@@ -808,7 +910,8 @@ export function QuotationForm({
               <p className="text-xs text-muted-foreground">{row.menuName} · {Number(values.adultCount) || 0} adults</p>
             </div>
             {individualOn ? (
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
                 <div className="flex items-center">
                   <span className="flex h-10 w-12 items-center justify-center rounded-l-lg border border-r-0 border-input text-sm" aria-hidden>
                     ₹
@@ -824,6 +927,13 @@ export function QuotationForm({
                   />
                 </div>
                 <span className="text-xs text-muted-foreground">/ plate</span>
+              </div>
+              {/* What the price was before: the menu's own price, so the team can see what they are changing. */}
+              {row.menuName !== "No menu" && (
+                <span className="text-xs text-muted-foreground" data-testid="default-plate-price">
+                  Menu price {formatCurrency(row.menuPrice)} / plate
+                </span>
+              )}
               </div>
             ) : (
               <span className="shrink-0 font-medium">{formatCurrency(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
@@ -859,6 +969,16 @@ export function QuotationForm({
             })}
           </div>
         ))}
+        {childPricingMenu && (
+          <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground" data-testid="menu-child-defaults">
+            <p className="font-medium text-foreground">Menu default ({childPricingMenu.name})</p>
+            <p>Children (Under 5): {childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</p>
+            <p>
+              Children (5–10):{" "}
+              {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+            </p>
+          </div>
+        )}
       </div>
     )}
     {!individualOn && childPricingMenu && (
@@ -1018,30 +1138,41 @@ export function QuotationForm({
     </SummaryCard>
   );
 
+  // A locked quotation keeps every field on screen at full strength but cannot change them (as an order does): a disabled fieldset covers the
+  // inputs and buttons, and the pointer rules cover the dropdowns, which are not native controls. The menu builder shows its own read-only plan.
+  const freeze = (node: React.ReactNode) =>
+    locked ? (
+      <fieldset disabled className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0 [&_:disabled]:bg-muted! [&_:disabled]:opacity-100! [&_button]:pointer-events-none [&_[role=combobox]]:pointer-events-none" data-testid="quotation-locked-fields">
+        {node}
+      </fieldset>
+    ) : (
+      node
+    );
+
   const tabs: FormTab[] = [
     {
       id: "details",
-      label: "Quotation Details",
+      label: "Order Details",
+      // Customer and guests side by side, the event below them, as on an order.
       panel: (
         <>
-          {customerSection}
-          {kindSection}
+          {freeze(
+            <>
+              <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2 [&>*]:h-full">
+                {customerSection}
+                {guestSection}
+              </div>
+              {eventSection}
+            </>,
+          )}
           {kindDialog}
+          {singleAskDialog}
         </>
       ),
     },
-    {
-      id: "menu",
-      label: "Guests & Menu Planning",
-      panel: (
-        <>
-          {guestSection}
-          {menuSection}
-        </>
-      ),
-    },
-    { id: "additional", label: "Additional Details", panel: additionalSection },
-    { id: "pricing", label: "Pricing", panel: pricingEditorCard },
+    { id: "menu", label: "Build Menu", panel: buildMenuTab },
+    { id: "pricing", label: "Pricing", panel: freeze(pricingEditorCard) },
+    { id: "additional", label: "Additional Details", panel: freeze(additionalSection) },
   ];
 
   return (
@@ -1054,9 +1185,11 @@ export function QuotationForm({
             <Button type="button" variant="outline" render={<Link href={cancelHref} />} nativeButton={false}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Saving…" : submitLabel}
-            </Button>
+            {!locked && (
+              <Button type="submit" disabled={pending}>
+                {pending ? "Saving…" : submitLabel}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -1065,6 +1198,8 @@ export function QuotationForm({
             {error}
           </p>
         )}
+
+        {locked && quotationId && status && <QuotationLockBanner quotationId={quotationId} status={status} />}
 
         {beforeContent}
 

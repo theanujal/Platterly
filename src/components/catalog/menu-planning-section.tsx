@@ -472,7 +472,7 @@ export function MenuPlanningSection({
                   key={option.value}
                   type="button"
                   aria-pressed={selected}
-                  onClick={() => onMenuPreferenceChange(selected ? "" : option.value)}
+                  onClick={() => onMenuPreferenceChange(option.value)}
                   className={cn(
                     "flex min-w-44 flex-1 items-center gap-3 rounded-lg border p-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                     selected ? "border-primary bg-accent/40" : "border-input hover:bg-muted",

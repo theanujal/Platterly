@@ -118,6 +118,8 @@ export default async function QuotationDetailPage({ params }: { params: Promise<
       <EditQuotationClient
         quotationId={quotation.id}
         initialValues={initialValues}
+        status={quotation.status}
+        customerMessage={quotation.customerMessage}
         header={
           <div className="flex flex-col gap-4">
             <PageBreadcrumb items={[{ label: "Quotations", href: "/quotations" }, { label: "Quotation" }]} />

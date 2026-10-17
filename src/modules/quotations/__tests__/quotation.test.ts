@@ -17,10 +17,12 @@ import {
   rejectQuotation,
   requestQuotationChanges,
   convertQuotationToOrder,
+  recallQuotation,
   isQuotationPastValidity,
   InvalidQuotationTransitionError,
   QuotationEventDatesRequiredError,
 } from "@/modules/quotations/quotation";
+import { isQuotationEditable, isQuotationRecallable } from "@/modules/quotations/quotation-lock";
 import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenu } from "@/modules/menus/menu";
@@ -270,6 +272,33 @@ describe("Quotation CRUD (Chunk 10 Group 10.1 + item-picker parity, 2026-09-28)"
     expect(Number(quotation.discount)).toBe(100);
     expect(Number(quotation.transportationCost)).toBe(50);
     expect(Number(quotation.total)).toBe(970);
+  });
+
+  it("a sent quotation is locked, and recalling it makes it a Draft again with its link switched off (AJ, 2026-10-18)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id }, actor.id);
+    expect([isQuotationEditable("DRAFT"), isQuotationEditable("CHANGES_REQUESTED")]).toEqual([true, true]);
+    expect(["SENT", "VIEWED", "ACCEPTED", "REJECTED", "EXPIRED"].map((status) => isQuotationEditable(status as never))).toEqual([false, false, false, false, false]);
+
+    // A Draft can't be recalled; once sent it can, and the customer's old link stops working.
+    await expect(recallQuotation(org.id, quotation.id, actor.id)).rejects.toThrow(InvalidQuotationTransitionError);
+    const { url } = await sendQuotation(org.id, quotation.id, actor.id);
+    const token = url.split("/quote/")[1];
+    expect(await resolveQuotationToken(token)).not.toBeNull();
+    const recalled = await recallQuotation(org.id, quotation.id, actor.id);
+    expect(recalled.status).toBe("DRAFT");
+    expect(await resolveQuotationToken(token)).toBeNull();
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "quotation.recall", recordId: quotation.id } })).toBe(1);
+
+    // Sending again issues a fresh link.
+    const again = await sendQuotation(org.id, quotation.id, actor.id);
+    expect(again.url).not.toBe(url);
+    // A quotation the customer has answered is final: no recall.
+    await prisma.quotation.update({ where: { id: quotation.id }, data: { status: "ACCEPTED" } });
+    expect(isQuotationRecallable("ACCEPTED")).toBe(false);
+    await expect(recallQuotation(org.id, quotation.id, actor.id)).rejects.toThrow(InvalidQuotationTransitionError);
   });
 
   it("recalculateQuotationTotals is idempotent when called directly", async () => {

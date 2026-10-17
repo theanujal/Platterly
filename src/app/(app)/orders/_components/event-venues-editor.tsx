@@ -92,7 +92,7 @@ export function eventVenueToInput(venue: EventVenueValues): VenueDetailsInput {
 }
 
 /** An event day as a small date tile: month over day. */
-function DateTile({ date, active }: { date: string; active?: boolean }) {
+export function DateTile({ date, active }: { date: string; active?: boolean }) {
   const month = new Date(`${date}T00:00:00.000Z`).toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" });
   const day = new Date(`${date}T00:00:00.000Z`).getUTCDate();
   return (
