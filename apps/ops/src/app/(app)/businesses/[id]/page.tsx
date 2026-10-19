@@ -7,6 +7,7 @@ import { getBusiness, getBusinessActivity } from "@/modules/directory/businesses
 import { Avatar } from "../business-views";
 import { listSubscriptions } from "@/modules/subscriptions/subscriptions";
 import { AssignForm } from "./assign-form";
+import { UsageNote } from "./usage-note";
 import { IdentityForm, ProviderButtons, StatusControls } from "./lifecycle-forms";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function BusinessPage({ params, searchParams }: { params: P
   const business = await getBusiness(id);
   if (!business) notFound();
   const [subscriptions, plans, activity] = await Promise.all([listSubscriptions(id), prisma.plan.findMany({ where: { isActive: true, productKey: { in: business.products.map((p) => p.productKey) } }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] }), getBusinessActivity(id)]);
+  const now = new Date();
   const when = (d: Date | null) => (d ? formatWhen(d) : "—");
   const actionsOf = (manifest: unknown): string[] => ((manifest as { actions?: string[] } | null)?.actions ?? []);
   const STATUS_TONE = { TRIALING: "info", ACTIVE: "success", PAST_DUE: "warning", LOCKED: "danger", CANCELLED: "neutral" } as const;
@@ -60,7 +62,7 @@ export default async function BusinessPage({ params, searchParams }: { params: P
             return (
               <Card key={bp.productKey}>
                 <p className="font-semibold">{bp.product.name}</p>
-                <p className="mb-3 text-xs text-muted-foreground">Last active {formatWhen(bp.lastActiveAt)} · usage reported {formatWhen(bp.usageReportedAt)}</p>
+                <UsageNote className="mb-3" lastActiveAt={bp.lastActiveAt} usageReportedAt={bp.usageReportedAt} now={now} />
                 <details className="mb-3 text-sm">
                   <summary className="cursor-pointer font-medium">Change details{actionsOf(bp.product.manifest).includes("provider") ? " and message providers" : ""}</summary>
                   <div className="mt-3 grid gap-4">
@@ -143,7 +145,7 @@ export default async function BusinessPage({ params, searchParams }: { params: P
               {usageRows.map(({ bp, counts }) => (
                 <Card key={bp.productKey}>
                   <p className="font-semibold">{bp.product.name}</p>
-                  <p className="mb-4 text-xs text-muted-foreground">Last active {formatWhen(bp.lastActiveAt)} · usage reported {formatWhen(bp.usageReportedAt)}</p>
+                  <UsageNote className="mb-4" lastActiveAt={bp.lastActiveAt} usageReportedAt={bp.usageReportedAt} now={now} />
                   {Object.keys(counts).length === 0 ? <p className="text-sm text-muted-foreground">No usage reported yet.</p> : (
                     <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                       {Object.entries(counts).map(([k, v]) => <div key={k} className="rounded-xl bg-muted p-3"><dt className="text-xs capitalize text-muted-foreground">{k}</dt><dd className="text-2xl font-semibold">{v.toLocaleString("en-IN")}</dd></div>)}

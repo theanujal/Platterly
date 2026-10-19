@@ -18,7 +18,8 @@
     "db:seed-catalog": "node scripts/seed-catalog.ts",
     "db:seed-dev-plan": "node scripts/seed-dev-plan.ts",
     "check:migrations": "node scripts/check-migrations.mjs",
-    "db:backup": "bash scripts/backup-db.sh"
+    "db:backup": "bash scripts/backup-db.sh",
+    "cron:local": "node scripts/cron-local.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

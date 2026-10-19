@@ -56,3 +56,5 @@ The flag, the old catering plan and payment tables, the seller-profile row and `
 ## Local setup note
 
 With `OPS_BILLING` empty (the default), `/subscribe` reads catering's own `subscription_plan` rows and shows "No plans are open for sale yet" until one paid plan exists (active, not a trial, monthly price set). For a local database run `npm run db:seed-dev-plan` (adds a "Standard" plan, safe to repeat). To test the real Ops flow instead, run `apps/ops`, create the plans there, set `OPS_BASE_URL` and `OPS_BILLING=1` in catering's `.env` and restart catering.
+
+Locally nothing runs the scheduled job, so Ops only learns of changes when `/api/cron/daily` is called. Run `npm run cron:local` next to `npm run dev` (it calls the job every minute with `CRON_SECRET`; add `-- --ops` to also call Ops's own job). The usage totals then reach Ops within about a minute of a change; the first report of each UTC day always goes, and after that one goes only when a total has changed.

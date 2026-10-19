@@ -450,7 +450,7 @@ describe("events to ops", () => {
     expect(received.filter((r) => JSON.parse(r.body).type === "business.updated")).toHaveLength(0);
   });
 
-  it("the scheduled job catches up unknown businesses and reports usage once a day", async () => {
+  it("the scheduled job catches up unknown businesses and reports usage once a day, and again as soon as a total changes", async () => {
     const org = await makeOrg({ ownerEmail: `catchup-${crypto.randomUUID()}@example.test` });
     const first = await runOpsLinkJobs(new Date(), 1000);
     expect(first.signedUp).toBeGreaterThanOrEqual(1);
@@ -466,6 +466,19 @@ describe("events to ops", () => {
     const second = await runOpsLinkJobs(new Date(), 1000);
     expect(second.signedUp).toBe(0);
     expect(second.usage).toBe(0);
+    expect(received.filter((r) => JSON.parse(r.body).businessId === org.businessId)).toHaveLength(0);
+
+    // A total changes (a customer is added): the next run reports it, without waiting for tomorrow, and only once.
+    await prisma.customer.create({ data: { organizationId: org.id, name: "New", phone: `+9199${Math.floor(10000000 + Math.random() * 89999999)}` } });
+    const third = await runOpsLinkJobs(new Date(Date.now() + 60_000), 1000);
+    expect(third.usage).toBeGreaterThanOrEqual(1);
+    while ((await runDueOutbox(new Date(Date.now() + 60_000), 50)) > 0);
+    const mine = received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === org.businessId && e.type === "usage.reported");
+    expect(mine).toHaveLength(1);
+    expect(mine[0].data.counts.customers).toBe(1);
+    received = [];
+    await runOpsLinkJobs(new Date(Date.now() + 120_000), 1000);
+    while ((await runDueOutbox(new Date(Date.now() + 120_000), 50)) > 0);
     expect(received.filter((r) => JSON.parse(r.body).businessId === org.businessId)).toHaveLength(0);
   });
 

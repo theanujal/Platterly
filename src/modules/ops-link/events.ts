@@ -64,11 +64,13 @@ export async function emitBusinessUpdated(before: { name: string; ownerFirstName
 }
 
 const dayOf = (d: Date) => d.toISOString().slice(0, 10);
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The scheduled part: send what is due, tell ops about any business it has not heard of yet (this also covers every
  * business that existed before the link was switched on; a business with no known owner email is skipped until it has one),
- * report each known business's usage once a day, and pull any snapshot that has gone stale (the backup to ops's pushes).
+ * report each known business's usage (once a day as a backstop, and again within a minute of any total changing, so Ops stays current
+ * without a hook in every order action), and pull any snapshot that has gone stale (the backup to ops's pushes).
  */
 export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promise<{ sent: number; signedUp: number; usage: number; pulled: number }> {
   if (!opsLink()) return { sent: 0, signedUp: 0, usage: 0, pulled: 0 };
@@ -90,12 +92,24 @@ export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promi
     let usage = 0;
     const today = dayOf(now);
     const done = new Set((await prisma.opsOutbox.findMany({ where: { dedupeKey: { startsWith: "usage:", endsWith: `:${today}` } }, select: { dedupeKey: true } })).map((r) => r.dedupeKey));
+    // The counts each business last reported (newest first, so the first row seen per business wins).
+    const lastCounts = new Map<string, Record<string, number>>();
+    const recent = await prisma.opsOutbox.findMany({ where: { type: "usage.reported", createdAt: { gte: new Date(now.getTime() - 2 * DAY_MS) } }, orderBy: { createdAt: "desc" }, select: { businessId: true, payload: true } });
+    for (const row of recent) {
+      const counts = (row.payload as { data?: { counts?: Record<string, number> } } | null)?.data?.counts;
+      if (counts && !lastCounts.has(row.businessId)) lastCounts.set(row.businessId, counts);
+    }
     for (const org of orgs) {
       if (usage >= limit) break;
-      const key = `usage:${org.businessId}:${today}`;
       // Ops only accepts usage for a business it already knows, so a business with no sign-up queued yet (no owner email) waits.
-      if (done.has(key) || !known.has(`signed_up:${org.businessId}`)) continue;
-      if (await enqueueEvent({ type: "usage.reported", businessId: org.businessId, dedupeKey: key, data: { periodStart: `${today}T00:00:00.000Z`, counts: await usageCounts(org.id) } })) usage += 1;
+      if (!known.has(`signed_up:${org.businessId}`)) continue;
+      const dailyKey = `usage:${org.businessId}:${today}`;
+      const counts = await usageCounts(org.id);
+      const last = lastCounts.get(org.businessId);
+      const changed = !last || JSON.stringify(Object.entries(last).sort()) !== JSON.stringify(Object.entries(counts).sort());
+      // The first report of the day always goes (the backstop); after that a report goes whenever a total has changed, at most one a minute.
+      const key = !done.has(dailyKey) ? dailyKey : changed ? `usage:${org.businessId}:${now.toISOString().slice(0, 16)}` : null;
+      if (key && (await enqueueEvent({ type: "usage.reported", businessId: org.businessId, dedupeKey: key, data: { periodStart: `${today}T00:00:00.000Z`, counts } }))) usage += 1;
     }
 
     const sent = await runDueOutbox(now);
