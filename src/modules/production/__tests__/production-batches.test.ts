@@ -9,6 +9,7 @@ import { createBatch, findStockMismatches, previewConsumption, todayDate, usable
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, sendOrderItems, returnAllOrderItems } from "@/modules/production/production";
 import { getOrderProfitability, listProfitability } from "@/modules/expenses/expense";
+import { startKitchen } from "./kitchen-started";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -44,6 +45,7 @@ async function setup() {
   const date = new Date();
   const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: date, eventEndDate: date, totalParticipants: 100, mealPlanEntries: [{ date, mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 }] }] }, actor.id);
   await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+  await startKitchen(org.id, order.id);
   const batch = (quantity: number, unitCost: number | null, extra: { receivedDate?: Date; expiryDate?: Date } = {}) =>
     prisma.$transaction((tx) => createBatch(tx, { organizationId: org.id, inventoryId: paneer.id, source: "RECEIPT", quantity, unitCost, receivedDate: extra.receivedDate ?? new Date(), expiryDate: extra.expiryDate ?? day(30) }));
   return { org, actor, paneer, order, batch, dish };

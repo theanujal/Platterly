@@ -266,8 +266,8 @@ test("create an order with guests/venue/payment (no menu planner), then see its 
   await expect(page.getByText("Assigned Kitchen")).toHaveCount(0);
   await page.getByRole("tab", { name: "Inventory" }).click();
   await expect(page.getByTestId("required-inventory-card")).toBeVisible();
-  // Items can only be sent once the customer approves the menu; until then a message says so and the button is off (AJ, 2026-10-10).
-  await expect(page.getByTestId("inventory-not-approved")).toContainText("Items can be set once the customer approves the menu.");
+  // Items can only be sent once the kitchen moves the order from Pending to In Preparation; until then a message says so and the button is off (AJ, 2026-10-10).
+  await expect(page.getByTestId("inventory-not-approved")).toContainText("Items can be sent once the kitchen starts preparing this order");
   await expect(page.getByRole("button", { name: "Send items to this order" })).toBeDisabled();
 
   // Sidebar summary carries the order number, status, kitchen and timestamps.

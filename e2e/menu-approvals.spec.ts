@@ -330,6 +330,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(counts.getByText("1 Dish", { exact: true })).toBeVisible();
   await expect(counts.getByText("1 Extra", { exact: true })).toBeVisible();
   await expect(counts.getByText("1 Add-on", { exact: true })).toBeVisible();
+  // Under the counts, every picked dish is listed under its category (AJ, 2026-10-19), add-ons in their own group.
+  await expect(review.getByTestId("meal-dish").first()).toBeVisible();
+  await expect(review.getByTestId("meal-dish-group").filter({ hasText: "Add-ons" }).first()).toBeVisible();
   await expect(review.getByRole("button", { name: "Edit Items" }).first()).toBeVisible();
 
   // --- One planner (AJ, 2026-10-16): the order page's planner is read-only; the Menu Approval tab edits the same stored meals ---

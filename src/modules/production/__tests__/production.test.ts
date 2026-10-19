@@ -1,12 +1,14 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { prisma } from "@/lib/db";
 import { createCustomer } from "@/modules/customers/customer";
-import { createOrder, createEventForOrder, updateOrder, deleteOrder } from "@/modules/orders/order";
+import { createOrder, createEventForOrder, deleteOrder } from "@/modules/orders/order";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenuItem } from "@/modules/menus/item";
 import { createInventoryItem, recordStockTransaction } from "@/modules/inventory/inventory";
 import { saveRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { getOrderInventory, sendOrderItems, returnOrderItem, returnAllOrderItems, getProductionPlan, StockTakeError } from "@/modules/production/production";
+import { setKitchenProductionStatus } from "@/modules/menu-approvals/menu-approval";
+import { startKitchen } from "./kitchen-started";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -53,7 +55,12 @@ async function setup(stock: number, guests: number | null = 100, eventDate: Date
 }
 
 const sendToKitchen = (orderId: string) => prisma.order.update({ where: { id: orderId }, data: { status: "SENT_TO_KITCHEN" } });
-const approve = (orderId: string) => prisma.order.update({ where: { id: orderId }, data: { status: "APPROVED" } });
+const approvedOnly = (orderId: string) => prisma.order.update({ where: { id: orderId }, data: { status: "APPROVED" } });
+/** Approved and the kitchen has started (In Preparation): the point at which stock can be sent. */
+const approve = async (orderId: string) => {
+  const { organizationId } = await prisma.order.update({ where: { id: orderId }, data: { status: "APPROVED" }, select: { organizationId: true } });
+  await startKitchen(organizationId, orderId);
+};
 const stockOf = async (id: string) => Number((await prisma.inventory.findUniqueOrThrow({ where: { id } })).stockCount);
 
 describe("Production planning and stock take (Chunk 18.4)", () => {
@@ -65,13 +72,18 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     expect(plan?.lines[0]).toMatchObject({ name: "Paneer", fromRecipes: 22, required: 22, sent: 0, remaining: 22, inStock: 50, short: 0 });
     expect(plan?.withoutRecipe).toEqual(["Salad"]);
     expect(plan?.canSend).toBe(false); // the customer has not approved the menu yet
-    expect(plan?.blockedReason).toBe("Items can be set once the customer approves the menu.");
+    expect(plan?.blockedReason).toBe("Items can be sent once the kitchen starts preparing this order (moves it from Pending to In Preparation).");
   });
 
-  it("only sends items once the menu is approved", async () => {
+  it("only sends items once the kitchen moves the order from Pending to In Preparation", async () => {
     const { org, actor, order } = await setup(50);
     await expect(sendOrderItems(org.id, order.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
-    await approve(order.id);
+    await approvedOnly(order.id);
+    await expect(sendOrderItems(org.id, order.id, actor.id)).rejects.toBeInstanceOf(StockTakeError); // approved, but the kitchen is still on Pending
+    expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(false);
+    await startKitchen(org.id, order.id, "PENDING");
+    expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(false); // a locked menu at Pending still does not activate it
+    await startKitchen(org.id, order.id);
     expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(true);
     await sendToKitchen(order.id);
     expect((await getOrderInventory(org.id, order.id))?.canSend).toBe(true);
@@ -165,14 +177,14 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     await expect(returnOrderItem(org.id, order.id, paneer.id, actor.id)).rejects.toBeInstanceOf(StockTakeError);
   });
 
-  it("cancelling an order puts every sent item back on the shelf, once", async () => {
+  it("the kitchen cancelling an order puts every sent item back on the shelf, once", async () => {
     const { org, actor, order, paneer } = await setup(100);
     await approve(order.id);
     await sendOrderItems(org.id, order.id, actor.id);
     expect(await stockOf(paneer.id)).toBe(78);
 
-    const customerId = order.customerId;
-    await updateOrder(org.id, order.id, { customerId, eventStartDate: order.eventStartDate, eventEndDate: order.eventEndDate, status: "CANCELLED" }, actor.id);
+    const selection = await prisma.menuSelection.findFirstOrThrow({ where: { event: { orderId: order.id } } });
+    await setKitchenProductionStatus(org.id, selection.id, "CANCELLED", actor.id);
     expect(await stockOf(paneer.id)).toBe(100);
     const ledger = await prisma.inventoryTransaction.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" } });
     expect(ledger.map((r) => [r.type, Number(r.quantity)])).toEqual([["STOCK_OUT", 22], ["STOCK_IN", 22]]);
@@ -182,15 +194,15 @@ describe("Production planning and stock take (Chunk 18.4)", () => {
     expect(await stockOf(paneer.id)).toBe(100);
   });
 
-  it("cancelling an order that sent nothing changes no stock, and deleting one returns what it held", async () => {
+  it("cancelling an order that sent nothing changes no stock, and an order the kitchen is preparing cannot be deleted", async () => {
     const { org, actor, order, paneer } = await setup(100);
     expect(await returnAllOrderItems(org.id, order.id, actor.id)).toEqual([]);
     expect(await stockOf(paneer.id)).toBe(100);
 
     await approve(order.id);
     await sendOrderItems(org.id, order.id, actor.id);
-    await deleteOrder(org.id, order.id, actor.id);
-    expect(await stockOf(paneer.id)).toBe(100);
+    await expect(deleteOrder(org.id, order.id, actor.id)).rejects.toThrow(); // locked with the kitchen
+    expect(await stockOf(paneer.id)).toBe(78);
   });
 
   it("another kitchen cannot read or send this order's items", async () => {

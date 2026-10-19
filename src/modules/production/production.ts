@@ -2,7 +2,7 @@ import "server-only";
 import { orderAt } from "@/modules/locations/scope";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
-import type { OrderStatus } from "@/generated/prisma/enums";
+import type { KitchenProductionStatus, MenuSelectionStatus, OrderStatus } from "@/generated/prisma/enums";
 import { audit } from "@/lib/audit/audit";
 import { lockAndReadOrder } from "@/modules/orders/kitchen-lock";
 import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
@@ -63,8 +63,11 @@ async function stockOf(organizationId: string, ids: string[]) {
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
-/** Items can be set once the customer has approved the menu (AJ, 2026-10-10): the order is Approved, or already with the kitchen. */
+/** Items can be set once the order is with the kitchen (AJ, 2026-10-10): the order is Approved, or already with the kitchen. */
 const SENDABLE_STATUSES: OrderStatus[] = ["APPROVED", "SENT_TO_KITCHEN"];
+/** ...and, since AJ's change of 2026-10-19, only once the kitchen has moved the menu out of Pending: the Inventory tab is activated by In Preparation (or later). */
+const KITCHEN_STARTED_STAGES: KitchenProductionStatus[] = ["IN_PREPARATION", "READY", "DELIVERED"];
+const kitchenStarted = (selections: { status: MenuSelectionStatus; stage: KitchenProductionStatus }[]) => selections.some((s) => s.status === "FINAL_LOCKED" && KITCHEN_STARTED_STAGES.includes(s.stage));
 const CLOSED_STATUSES: OrderStatus[] = ["COMPLETED", "CANCELLED"];
 
 export interface OrderInventoryLine {
@@ -154,13 +157,15 @@ export async function getOrderInventory(organizationId: string, orderId: string)
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const approved = SENDABLE_STATUSES.includes(order.status);
+  const selections = await prisma.menuSelection.findMany({ where: { organizationId, event: { orderId } }, select: { status: true, kitchenProductionStatus: true } });
+  const started = kitchenStarted(selections.map((s) => ({ status: s.status, stage: s.kitchenProductionStatus })));
+  const approved = SENDABLE_STATUSES.includes(order.status) && started;
   const closed = CLOSED_STATUSES.includes(order.status);
   const toSend = lines.some((l) => l.remaining > 0);
   const blockedReason = closed
     ? `This order is ${order.status === "COMPLETED" ? "completed" : "cancelled"}, so items can no longer be sent.`
     : !approved
-      ? "Items can be set once the customer approves the menu."
+      ? "Items can be sent once the kitchen starts preparing this order (moves it from Pending to In Preparation)."
       : lines.length === 0
         ? draftRecipe.length > 0
           ? `Nothing to send yet: the recipe for ${draftRecipe.join(", ")} is still a Draft. Activate it in Recipes to approve it for production, or add extra items.`
@@ -239,7 +244,7 @@ export async function sendOrderItems(organizationId: string, orderId: string, ac
     const state = await lockOrder(tx, organizationId, orderId);
     // The plan above was read before the locks: the order's status is read again under them. An order moved back, cancelled or
     // completed in the meantime takes no stock.
-    if (!state || !SENDABLE_STATUSES.includes(state.orderStatus)) throw new StockTakeError("This order is no longer approved for stock, so nothing was sent. Review it and try again.");
+    if (!state || !SENDABLE_STATUSES.includes(state.orderStatus) || !kitchenStarted(state.selections.map((sel) => ({ status: sel.status, stage: sel.stage })))) throw new StockTakeError("This order is no longer in preparation, so nothing was sent. Review it and try again.");
     await assertRecipesUnchanged(tx, organizationId, orderId, plan);
     for (const line of plan.lines) {
       const already = Math.max(0, await netSent(tx, orderId, line.inventoryId));

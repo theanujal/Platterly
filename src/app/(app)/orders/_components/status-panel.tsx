@@ -85,6 +85,7 @@ export function StatusPanel({
   description,
   historyName = "status",
   historyExtra,
+  extraBadges,
 }: {
   title: string;
   icon: LucideIcon;
@@ -112,6 +113,8 @@ export function StatusPanel({
   historyName?: string;
   /** Compact only: more for the history dialog (the menu versions); gets a function that closes the dialog. */
   historyExtra?: (close: () => void) => React.ReactNode;
+  /** Compact only: more labelled badges beside the status badge, e.g. the menu approval and kitchen stages on the Order Status card. */
+  extraBadges?: { label: string; tone: Tone }[];
 }) {
   const router = useRouter();
   const [pendingValue, setPendingValue] = useState<string | null>(null);
@@ -155,6 +158,11 @@ export function StatusPanel({
       <SummaryCard icon={icon} title={title} description={description ?? hint}>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={currentTone}>{currentLabel}</Badge>
+          {extraBadges?.map((b) => (
+            <Badge key={b.label} variant={b.tone}>
+              {b.label}
+            </Badge>
+          ))}
         </div>
         {last && (
           <p className="text-xs text-muted-foreground" data-testid="status-last-update">

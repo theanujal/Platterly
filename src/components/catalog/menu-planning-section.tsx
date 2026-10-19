@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import { CalendarDays, ChevronDown, Coffee, Copy, Moon, PenSquare, Plus, Sun, Sunrise, Trash2, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -376,6 +376,8 @@ export function MenuPlanningSection({
                 </Button>
               )}
             </div>
+            {/* Menu Approval tab (AJ, 2026-10-19): every dish the customer picked, under its category, instead of just counts. */}
+            {sectioned && !compare && entry.items.length > 0 && <MealDishes items={entry.items} menuId={entry.menuId} loadPickerData={loadPickerData} />}
             {entry.items.length > 0 && (
               <>
                 <div className="flex flex-wrap gap-1.5" data-testid="meal-item-counts">
@@ -669,5 +671,110 @@ function ItemCountPills({ items }: { items: { itemType: string; perGuest?: boole
       {pill(extras, "Extra", "Extras", "text-warning")}
       {pill(addOns, "Add-on", "Add-ons", "text-primary")}
     </>
+  );
+}
+
+/** Beyond this many dishes the list starts collapsed and gets a search box; beyond this many categories it scrolls inside the card. */
+const DISHES_OPEN_LIMIT = 12;
+const CATEGORIES_SCROLL_LIMIT = 6;
+
+/**
+ * The dishes of one meal under the Menu's categories (add-ons last, anything the Menu no longer lists under "Other Items"), built to
+ * hold 20 categories of 10 dishes (AJ, 2026-10-19). Each category is one collapsible row (name, dish count, Extra count) with its dishes
+ * as compact chips inside, so a closed category costs a single line. A meal with few dishes starts fully open; a big one starts
+ * collapsed, with a search box, Expand all / Collapse all, and a bounded scroll area so the card never grows endlessly. A search
+ * filters the dishes and opens the categories that match. Categories come from the Menu's picker data, loaded once per Menu.
+ */
+function MealDishes({ items, menuId, loadPickerData }: { items: PickedItem[]; menuId: string; loadPickerData: (menuId: string) => Promise<MenuPickerData | null> }) {
+  const [data, setData] = useState<{ menuId: string; picker: MenuPickerData | null } | null>(null);
+  const [query, setQuery] = useState("");
+  // Categories the person toggled by hand; anything not toggled follows the default for the size of the meal.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    let live = true;
+    if (menuId) loadPickerData(menuId).then((picker) => live && setData({ menuId, picker }), () => live && setData({ menuId, picker: null }));
+    return () => {
+      live = false;
+    };
+  }, [menuId, loadPickerData]);
+
+  const groups = useMemo(() => {
+    const picker = data?.menuId === menuId ? data.picker : null;
+    const categoryOf = new Map<string, string>();
+    const order: string[] = [];
+    for (const section of picker?.sections ?? []) {
+      order.push(section.categoryName);
+      for (const item of section.items) if (!categoryOf.has(item.id)) categoryOf.set(item.id, section.categoryName);
+    }
+    const byGroup = new Map<string, PickedItem[]>();
+    for (const item of items) {
+      const group = item.itemType === "ADD_ON" ? "Add-ons" : (categoryOf.get(item.catalogId) ?? "Other Items");
+      byGroup.set(group, [...(byGroup.get(group) ?? []), item]);
+    }
+    const rank = (name: string) => (name === "Add-ons" ? order.length + 1 : name === "Other Items" ? order.length : order.indexOf(name));
+    return [...byGroup.entries()].sort((a, b) => rank(a[0]) - rank(b[0]));
+  }, [data, items, menuId]);
+
+  const big = items.length > DISHES_OPEN_LIMIT;
+  const needle = query.trim().toLowerCase();
+  const visible = groups
+    .map(([name, groupItems]) => [name, needle ? groupItems.filter((item) => item.name.toLowerCase().includes(needle)) : groupItems] as const)
+    .filter(([, groupItems]) => groupItems.length > 0);
+  const isOpen = (name: string) => (needle ? true : (toggled[name] ?? !big));
+  const allOpen = visible.every(([name]) => isOpen(name));
+  const setAll = (open: boolean) => setToggled(Object.fromEntries(groups.map(([name]) => [name, open])));
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="meal-dishes">
+      {big && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={`Search ${items.length} items`}
+            aria-label="Search the selected food items"
+            className="h-9 min-w-0 flex-1 basis-48"
+          />
+          {!needle && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setAll(!allOpen)}>
+              {allOpen ? "Collapse all" : "Expand all"}
+            </Button>
+          )}
+        </div>
+      )}
+      <div className={cn("flex flex-col divide-y divide-border rounded-lg border border-border bg-background", groups.length > CATEGORIES_SCROLL_LIMIT && "max-h-96 overflow-y-auto")}>
+        {visible.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">No selected item matches “{query}”.</p>}
+        {visible.map(([name, groupItems]) => {
+          const open = isOpen(name);
+          const extras = groupItems.filter((item) => item.itemType !== "ADD_ON" && item.perGuest).length;
+          return (
+            <section key={name} data-testid="meal-dish-group">
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => setToggled((prev) => ({ ...prev, [name]: !open }))}
+                className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm font-medium outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
+                <span className="min-w-0 flex-1 truncate">{name}</span>
+                {extras > 0 && <Badge variant="warning">{extras} Extra</Badge>}
+                <Badge variant="outline">{groupItems.length}</Badge>
+              </button>
+              {open && (
+                <ul className="flex flex-wrap gap-1.5 px-3 pb-3 pl-9">
+                  {groupItems.map((item) => (
+                    <li key={item.key} data-testid="meal-dish" className="max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-sm break-words">
+                      {item.name}
+                      {item.itemType === "ADD_ON" ? <span className="ml-1.5 text-xs text-primary">Add-on</span> : item.perGuest ? <span className="ml-1.5 text-xs text-warning">Extra</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
+      </div>
+    </div>
   );
 }

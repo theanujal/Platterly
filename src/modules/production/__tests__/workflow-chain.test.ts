@@ -10,6 +10,7 @@ import { saveRecipe, getRecipeForItem, setRecipeStatus } from "@/modules/recipes
 import { findStockMismatches, todayDate, usableQueues } from "@/modules/inventory/batches";
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, sendOrderItems } from "@/modules/production/production";
+import { startKitchen } from "./kitchen-started";
 
 /** The whole workflow through the real functions: purchase order -> receipts -> batches -> recipe ingredient -> recipe cost -> stock deduction. */
 
@@ -53,6 +54,7 @@ async function setup() {
   // 100 guests + 10% extra = 110 servings = 22 kg
   const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: date, eventEndDate: date, totalParticipants: 100, mealPlanEntries: [{ date, mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 }] }] }, actor.id);
   await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+  await startKitchen(org.id, order.id);
   const po = await createPurchaseOrder(org.id, { supplierId: supplier.id, items: [{ inventoryId: paneer.id, quantity: 40 }] }, actor.id);
   const lineId = po.items[0].id;
   const receive = (quantity: number, unitCost: number, expiryDate: Date) =>

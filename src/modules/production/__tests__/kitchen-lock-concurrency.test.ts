@@ -84,8 +84,8 @@ describe("stock send vs the kitchen lock", () => {
   it("a send that goes first wins: the move-back is refused and the order stays with the kitchen", async () => {
     const b = await newBusiness();
     const { order, selection, paneer } = await approvedOrderNeedingStock(b);
-    // Hand-off first (the order is now Sent to Kitchen with the stage at Pending and nothing recorded: a move-back would be allowed).
-    await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "FINAL_LOCKED", kitchenProductionStatus: "PENDING", lockedAt: new Date() } });
+    // Hand-off first (the kitchen is In Preparation, which is what lets the send through; the move-back is refused either way).
+    await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "FINAL_LOCKED", kitchenProductionStatus: "IN_PREPARATION", lockedAt: new Date() } });
     await prisma.order.update({ where: { id: order.id }, data: { status: "SENT_TO_KITCHEN" } });
 
     const [send, back] = await race(
@@ -103,18 +103,15 @@ describe("stock send vs the kitchen lock", () => {
     expect(await movements(order.id, "STOCK_OUT")).toBe(1);
   });
 
-  it("a move-back that goes first wins: the send is refused and no stock leaves the shelf", async () => {
+  it("a move-back while the kitchen is still on Pending: the send is refused and no stock leaves the shelf", async () => {
+    // No race any more: with the kitchen on Pending the send is refused before it takes a lock (it needs In Preparation).
     const b = await newBusiness();
     const { order, selection, paneer } = await approvedOrderNeedingStock(b);
     await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "FINAL_LOCKED", kitchenProductionStatus: "PENDING", lockedAt: new Date() } });
     await prisma.order.update({ where: { id: order.id }, data: { status: "SENT_TO_KITCHEN" } });
 
-    const [back, send] = await race(
-      b,
-      order.id,
-      () => changeStatusManually(b.org.id, { orderId: order.id, target: { kind: "ORDER", status: "PENDING_REVIEW" }, reason: "Sent by mistake", actorUserId: b.owner.user.id }),
-      () => sendOrderItems(b.org.id, order.id, b.owner.user.id),
-    );
+    const back = await settle(changeStatusManually(b.org.id, { orderId: order.id, target: { kind: "ORDER", status: "PENDING_REVIEW" }, reason: "Sent by mistake", actorUserId: b.owner.user.id }));
+    const send = await settle(sendOrderItems(b.org.id, order.id, b.owner.user.id));
     expect(back.ok).toBe(true);
     expect(send.ok).toBe(false);
     expect(!send.ok && send.error).toBeInstanceOf(StockTakeError);
@@ -127,7 +124,7 @@ describe("stock send vs the kitchen lock", () => {
   it("a send that goes first beats a kitchen stage change too, and neither leaves a half state", async () => {
     const b = await newBusiness();
     const { order, selection, paneer } = await approvedOrderNeedingStock(b);
-    await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "FINAL_LOCKED", kitchenProductionStatus: "PENDING", lockedAt: new Date() } });
+    await prisma.menuSelection.update({ where: { id: selection.id }, data: { status: "FINAL_LOCKED", kitchenProductionStatus: "IN_PREPARATION", lockedAt: new Date() } });
     await prisma.order.update({ where: { id: order.id }, data: { status: "SENT_TO_KITCHEN" } });
     const [send, stage] = await race(
       b,
@@ -142,54 +139,28 @@ describe("stock send vs the kitchen lock", () => {
   });
 });
 
-describe("delete vs the hand-off, and delete vs stock return", () => {
-  it("a delete that goes first wins: stock comes back, the order is gone, the hand-off finds nothing", async () => {
+describe("delete vs stock that has been sent", () => {
+  it("an order the kitchen is preparing cannot be deleted: the delete is refused and the stock stays out", async () => {
     const b = await newBusiness();
     const { order, selection, paneer } = await approvedOrderNeedingStock(b);
+    await approveAndSendToKitchen(b.org.id, selection.id, b.owner.user.id);
+    await setKitchenProductionStatus(b.org.id, selection.id, "IN_PREPARATION", b.owner.user.id);
     await sendOrderItems(b.org.id, order.id, b.owner.user.id);
     expect(await stockOf(paneer.id)).toBe(45);
-    const [del, handoff] = await race(
-      b,
-      order.id,
-      () => deleteOrder(b.org.id, order.id, b.owner.user.id),
-      () => approveAndSendToKitchen(b.org.id, selection.id, b.owner.user.id),
-    );
-    expect(del.ok).toBe(true);
-    expect(handoff.ok).toBe(false);
-    expect(await prisma.order.count({ where: { id: order.id } })).toBe(0);
-    expect(await stockOf(paneer.id)).toBe(50);
-  });
-
-  it("a hand-off that goes first wins: the delete is refused and the order and its stock are untouched", async () => {
-    const b = await newBusiness();
-    const { order, selection, paneer } = await approvedOrderNeedingStock(b);
-    await sendOrderItems(b.org.id, order.id, b.owner.user.id);
-    const [handoff, del] = await race(
-      b,
-      order.id,
-      () => approveAndSendToKitchen(b.org.id, selection.id, b.owner.user.id),
-      () => deleteOrder(b.org.id, order.id, b.owner.user.id),
-    );
-    expect(handoff.ok).toBe(true);
+    const del = await settle(deleteOrder(b.org.id, order.id, b.owner.user.id));
     expect(del.ok).toBe(false);
     expect(!del.ok && del.error).toBeInstanceOf(OrderLockedError);
     expect(await prisma.order.count({ where: { id: order.id } })).toBe(1);
     expect(await stockOf(paneer.id)).toBe(45);
-    expect(await movements(order.id, "STOCK_IN")).toBe(0); // nothing was returned by the refused delete
+    expect(await movements(order.id, "STOCK_IN")).toBe(0);
   });
 
-  it("a delete that fails after the stock return rolls the return back (the order has a payment, which blocks the delete)", async () => {
+  it("stock cannot be sent while the kitchen is still on Pending", async () => {
     const b = await newBusiness();
-    const { order, paneer } = await approvedOrderNeedingStock(b);
-    await sendOrderItems(b.org.id, order.id, b.owner.user.id);
-    await prisma.payment.create({ data: { organizationId: b.org.id, orderId: order.id, amount: 100, type: "ADVANCE", method: "CASH" } });
-    const failed = await settle(deleteOrder(b.org.id, order.id, b.owner.user.id));
-    expect(failed.ok).toBe(false);
-    expect(await prisma.order.count({ where: { id: order.id } })).toBe(1);
-    expect(await stockOf(paneer.id)).toBe(45); // still out: the return did not survive the failed delete
-    expect(await movements(order.id, "STOCK_IN")).toBe(0);
-    expect(await movements(order.id, "STOCK_OUT")).toBe(1);
-    expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).stockDeductedAt).not.toBeNull();
+    const { order, selection, paneer } = await approvedOrderNeedingStock(b);
+    await approveAndSendToKitchen(b.org.id, selection.id, b.owner.user.id);
+    await expect(sendOrderItems(b.org.id, order.id, b.owner.user.id)).rejects.toBeInstanceOf(StockTakeError);
+    expect(await stockOf(paneer.id)).toBe(50);
   });
 });
 

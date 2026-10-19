@@ -253,7 +253,7 @@ export function OrderInventoryPanel({ orderId, data, canEdit, extrasSlot, showCo
                 )}
                 {!data.approved && !data.closed && (
                   <p id="send-items-why" className="text-center text-xs text-muted-foreground">
-                    Available once the customer approves the menu.
+                    Available once the kitchen moves the order to In Preparation.
                   </p>
                 )}
               </div>

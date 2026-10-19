@@ -490,10 +490,20 @@ export async function seedKitchenOrderWithDish(email: string, dishName: string):
   const orderId = `ord_${suffix}`;
   const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 8999)}`;
   await pool.query('INSERT INTO customer (id, "organizationId", name, phone, "updatedAt") VALUES ($1, $2, $3, $4, now())', [customerId, organizationId, "Kitchen Customer", `+9198111${String(Math.floor(Math.random() * 100000)).padStart(5, "0")}`]);
+  await pool.query('INSERT INTO event_type (id, "organizationId", name, "updatedAt") VALUES ($1, $2, $3, now())', [`et_${suffix}`, organizationId, "Wedding"]);
   await pool.query(
-    `INSERT INTO "order" (id, "organizationId", "customerId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, "updatedAt")
-     VALUES ($1, $2, $3, $4, 'SENT_TO_KITCHEN', now(), now(), 100, 100, 1000, 1000, 1000, now())`,
-    [orderId, organizationId, customerId, orderNumber],
+    `INSERT INTO "order" (id, "organizationId", "customerId", "eventTypeId", "orderNumber", status, "eventStartDate", "eventEndDate", "totalParticipants", "adultCount", subtotal, total, balance, "updatedAt")
+     VALUES ($1, $2, $3, $5, $4, 'SENT_TO_KITCHEN', now(), now(), 100, 100, 1000, 1000, 1000, now())`,
+    [orderId, organizationId, customerId, orderNumber, `et_${suffix}`],
+  );
+  // The kitchen has moved the menu from Pending to In Preparation (AJ, 2026-10-19): that is what activates the order's Inventory tab.
+  await pool.query(
+    `INSERT INTO event (id, "organizationId", "customerId", "eventTypeId", name, "startDate", "endDate", "guestCount", "orderId", "updatedAt") VALUES ($1, $2, $3, $4, 'Wedding', now(), now(), 100, $5, now())`,
+    [`ev_${suffix}`, organizationId, customerId, `et_${suffix}`, orderId],
+  );
+  await pool.query(
+    `INSERT INTO menu_selection (id, "organizationId", "eventId", status, "kitchenProductionStatus", "currentVersion", "lockedAt", "updatedAt") VALUES ($1, $2, $3, 'FINAL_LOCKED', 'IN_PREPARATION', 1, now(), now())`,
+    [`ms_${suffix}`, organizationId, `ev_${suffix}`],
   );
   await pool.query(`INSERT INTO meal_plan_entry (id, "orderId", date, "mealType") VALUES ($1, $2, now(), 'LUNCH')`, [`mpe_${suffix}`, orderId]);
   await pool.query(

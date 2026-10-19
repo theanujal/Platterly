@@ -47,7 +47,7 @@ export function ApprovalStatusCard({
     <StatusPanel
       compact
       idPrefix="menu-status"
-      title="Approval Status"
+      title="Menu Approval Status"
       historyName="approval"
       icon={ShoppingBasket}
       currentLabel={statusLabel}

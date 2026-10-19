@@ -1,5 +1,6 @@
 import { formatInr } from "@/lib/format-currency";
 import { escapeHtml, p, renderEmail } from "./layout";
+import type { ApprovedOrderEmail } from "./approved-order";
 
 export interface RenderedEmail {
   subject: string;
@@ -28,6 +29,8 @@ export interface EmailData {
   customBody?: string;
   /** Customer emails only. */
   unsubscribeUrl?: string;
+  /** The "order approved" email's extra sections (menu, venue, prices, share link, kitchen contact). */
+  approved?: ApprovedOrderEmail;
 }
 
 const SECURITY_NOTE = "Platterly will never ask you to share your OTP, password, or account access details outside the platform.";
@@ -207,8 +210,77 @@ const STATUS_COPY: Record<string, { title: string; line: string }> = {
   CANCELLED: { title: "Your order was cancelled", line: "Your order has been cancelled. Please get in touch with us if this is unexpected." },
 };
 
+const SECTION_HEAD = "margin:0 0 6px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#D9531E;";
+const link = (url: string) => `<a href="${escapeHtml(url)}" style="color:#B8400E;word-break:break-all;">${escapeHtml(url)}</a>`;
+
+/** A labelled block in the approved email: small orange caps label, then the value (trusted HTML). */
+function block(label: string, valueHtml: string): string {
+  return `<div style="margin:0 0 18px;"><div style="${SECTION_HEAD}">${escapeHtml(label)}</div><div style="font-size:14px;line-height:1.6;color:#111827;">${valueHtml}</div></div>`;
+}
+
+/** Everything under "Your order is approved": the order, the menu, where to follow it, the venue, the price, sharing and who to call. */
+function approvedSections(d: EmailData, a: ApprovedOrderEmail): string {
+  const lines = (items: string[]) => items.map((l) => escapeHtml(l)).join("<br>");
+  const prices =
+    a.priceRows.length > 0
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 4px;">${a.priceRows
+          .map(
+            (r) =>
+              `<tr><td style="padding:6px 0;font-size:13px;color:#374151;border-bottom:1px solid #F3EADB;">${escapeHtml(r.label)}${r.detail ? `<div style="font-size:12px;color:#78716C;">${escapeHtml(r.detail)}</div>` : ""}</td><td align="right" valign="top" style="padding:6px 0;font-size:13px;font-weight:700;color:${r.negative ? "#15803D" : "#111827"};border-bottom:1px solid #F3EADB;white-space:nowrap;">${r.negative ? "−" : ""}${escapeHtml(formatInr(r.amount))}</td></tr>`,
+          )
+          .join("")}</table>`
+      : "";
+  const total = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 0;background:#FFF6EA;border:1px solid #F8DDB8;border-radius:12px;"><tr><td style="padding:12px 16px;font-size:14px;font-weight:800;color:#9A3412;">Grand Total</td><td align="right" style="padding:12px 16px;font-size:18px;font-weight:800;color:#D9531E;">${escapeHtml(formatInr(a.total))}</td></tr></table>`;
+  const share =
+    a.shareUrl
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0 22px;background:#F8FAFC;border:1px solid #E5E7EB;border-radius:12px;"><tr><td style="padding:16px 18px;vertical-align:top;">
+          <div style="font-size:15px;font-weight:800;color:#111827;">Want to share with family &amp; team?</div>
+          <div style="margin-top:4px;font-size:13px;color:#4B5563;">One page with the event details, the menu and our contact. No prices, no phone numbers.</div>
+          <div style="margin-top:12px;font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#D9531E;">Share link</div>
+          <div style="margin-top:2px;font-size:13px;">${link(a.shareUrl)}</div>
+        </td>${
+          a.shareQrUrl
+            ? `<td align="center" style="padding:16px 18px;vertical-align:top;width:132px;"><div style="font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#D9531E;margin-bottom:6px;">Share menu QR</div><img src="${escapeHtml(a.shareQrUrl)}" alt="QR code for the shared page" width="110" height="110" style="display:block;border:0;width:110px;height:110px;border-radius:8px;"></td>`
+            : ""
+        }</tr></table>`
+      : "";
+  const k = a.kitchen;
+  const contact = [
+    `<strong>${escapeHtml(k.name)}</strong>`,
+    k.phone ? `Phone: <a href="tel:${escapeHtml(k.phone)}" style="color:#B8400E;text-decoration:none;">${escapeHtml(k.phone)}</a>` : "",
+    k.email ? `Email: <a href="mailto:${escapeHtml(k.email)}" style="color:#B8400E;text-decoration:none;">${escapeHtml(k.email)}</a>` : "",
+    k.address ? escapeHtml(k.address) : "",
+  ]
+    .filter(Boolean)
+    .join("<br>");
+  return (
+    (d.orderNumber ? block("Order ID", escapeHtml(d.orderNumber)) : "") +
+    block("Selected Menu", escapeHtml(a.menuName)) +
+    block("Order Details", escapeHtml(a.orderDetails)) +
+    (a.statusUrl ? block("Order Status URL", link(a.statusUrl)) : "") +
+    block("Venue Details", a.venue ? lines(a.venue) : `<span style="color:#78716C;">Not shared with us yet. You can add it any time from your order status link above.</span>`) +
+    `<div style="margin:6px 0 22px;"><div style="${SECTION_HEAD}">Pricing Summary</div>${prices}${total}</div>` +
+    share +
+    `<div style="margin:0 0 4px;"><div style="font-size:15px;font-weight:800;color:#111827;">Need to make changes?</div><div style="margin-top:4px;font-size:13px;line-height:1.6;color:#4B5563;">If you want to change the approved menu, please contact our team.</div><div style="margin-top:10px;font-size:13px;line-height:1.7;color:#111827;">${contact}</div></div>`
+  );
+}
+
 /** To the customer when the order status changes. */
 export function orderStatusEmail(d: EmailData): RenderedEmail {
+  if (d.status === "APPROVED" && d.approved) {
+    return {
+      subject: "Your Catering Order is Confirmed",
+      html: renderEmail({
+        tag: "Order Confirmed",
+        eyebrow: "Order status",
+        title: "Your order is approved",
+        greeting: customerGreeting(d),
+        bodyHtml: p("Thank you for approving your menu. Your order is confirmed. Here is everything in one place.") + (d.note ? p(escapeHtml(d.note)) : "") + approvedSections(d, d.approved),
+        signOff: kitchenSignOff(d),
+        unsubscribeUrl: d.unsubscribeUrl,
+      }),
+    };
+  }
   const copy = STATUS_COPY[d.status ?? ""] ?? { title: "Your order was updated", line: "There is an update on your order." };
   const subject = d.status === "APPROVED" ? "Your Catering Order is Confirmed" : d.status === "COMPLETED" ? "Your Catering Order Has Been Completed" : "Update on Your Catering Order Request";
   return {
@@ -446,6 +518,7 @@ function pick(data: Record<string, unknown>): EmailData {
     note: text(data.note),
     customBody: text(data.customBody),
     unsubscribeUrl: text(data.unsubscribeUrl),
+    approved: data.approved && typeof data.approved === "object" ? (data.approved as ApprovedOrderEmail) : undefined,
   };
 }
 

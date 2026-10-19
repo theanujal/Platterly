@@ -7,6 +7,7 @@ import { createInventoryItem, recordStockTransaction } from "@/modules/inventory
 import { getRecipeForItem, saveRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
 import { findStockMismatches, todayDate } from "@/modules/inventory/batches";
 import { sendOrderItems, StockTakeError } from "@/modules/production/production";
+import { startKitchen } from "./kitchen-started";
 
 /**
  * The race: the plan is read and confirmed while a recipe is Active, then the recipe is returned to Draft (or changed) before the
@@ -46,6 +47,7 @@ async function setup() {
   const date = new Date();
   const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: date, eventEndDate: date, totalParticipants: 100, mealPlanEntries: [{ date, mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 }] }] }, actor.id);
   await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+  await startKitchen(org.id, order.id);
   await recordStockTransaction(org.id, paneer.id, { type: "STOCK_IN", quantity: 30, unitCost: 40, expiryDate: new Date(todayDate().getTime() + 30 * 86_400_000) }, actor.id);
   return { org, actor, paneer, dish, order };
 }

@@ -8,6 +8,7 @@ import { copyRecipe, getRecipeForItem, saveRecipe, setRecipeStatus } from "@/mod
 import { findStockMismatches, todayDate, usableQueues } from "@/modules/inventory/batches";
 import { costRecipe } from "@/modules/recipes/recipe-cost-math";
 import { getOrderInventory, getProductionPlan, sendOrderItems, StockTakeError } from "@/modules/production/production";
+import { startKitchen } from "@/modules/production/__tests__/kitchen-started";
 
 /** Recipe lifecycle: Draft until explicitly activated. Approval is separate from cost verification and never touches stock. */
 
@@ -49,6 +50,7 @@ async function setup() {
   const date = new Date();
   const order = await createOrder(org.id, { customerId: customer.id, eventStartDate: date, eventEndDate: date, totalParticipants: 100, mealPlanEntries: [{ date, mealType: "LUNCH", items: [{ itemType: "MENU_ITEM", catalogId: dish.id, quantity: 1 }] }] }, actor.id);
   await prisma.order.update({ where: { id: order.id }, data: { status: "APPROVED" } });
+  await startKitchen(org.id, order.id);
   const stockIn = (quantity: number, unitCost: number | null) =>
     recordStockTransaction(org.id, paneer.id, unitCost === null ? { type: "STOCK_IN", quantity, costUnknown: true, expiryDate: day(30) } : { type: "STOCK_IN", quantity, unitCost, expiryDate: day(30) }, actor.id);
   const status = async () => (await getRecipeForItem(org.id, dish.id))!.status;

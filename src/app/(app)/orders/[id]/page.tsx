@@ -10,7 +10,8 @@ import { getMenuSelection } from "@/modules/menu-approvals/menu-approval";
 import { loadMenuApprovalReviewData } from "@/modules/menu-approvals/review-data";
 import { approvalCapabilities, notStartedState, orderPageMode, parseOrderTab, priceIsFrozen, menuIsWithCustomer } from "@/modules/menu-approvals/page-access";
 import { listStatusChanges } from "@/modules/menu-approvals/status-history";
-import { getOrderStatusHint } from "@/modules/orders/order-status";
+import { getOrderStatusHint, KITCHEN_STATUS_TONE, MENU_SELECTION_STATUS_LABEL, MENU_SELECTION_STATUS_TONE } from "@/modules/orders/order-status";
+import { KITCHEN_PRODUCTION_STATUS_LABEL } from "@/modules/menu-approvals/kitchen-production-status";
 import { listCustomers } from "@/modules/customers/customer";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listMenus } from "@/modules/menus/menu";
@@ -299,6 +300,16 @@ export default async function OrderDetailPage({ params, searchParams }: { params
             <OrderStatusCard
               orderId={order.id}
               status={order.status}
+              extraBadges={
+                menuApproval
+                  ? [
+                      { label: `Menu Status: ${MENU_SELECTION_STATUS_LABEL[menuApproval.status]}`, tone: MENU_SELECTION_STATUS_TONE[menuApproval.status] },
+                      ...(menuApproval.status === "FINAL_LOCKED"
+                        ? [{ label: `Kitchen Status: ${KITCHEN_PRODUCTION_STATUS_LABEL[menuApproval.kitchenProductionStatus]}`, tone: KITCHEN_STATUS_TONE[menuApproval.kitchenProductionStatus] }]
+                        : []),
+                    ]
+                  : undefined
+              }
               hint={getOrderStatusHint(order.status, menuApproval ? [menuApproval.kitchenProductionStatus] : [])}
               history={statusHistory.map((c) => ({
                 id: c.id,

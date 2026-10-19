@@ -12,6 +12,7 @@ import { normalizePhone } from "@/lib/phone";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { todayStartInZone } from "@/lib/time/timezone";
 import { ABANDONED_AFTER_MS } from "@/modules/menu-approvals/storefront-draft-constants";
+import { approvedOrderEmailDetails } from "./approved-order-details";
 import { sensitiveKeysFor } from "@/modules/roles/role-grants";
 import type { SensitiveKey } from "@/lib/auth/role-matrix";
 
@@ -236,7 +237,9 @@ export function onOrderStatusChanged(organizationId: string, orderId: string, st
   return safely("onOrderStatusChanged", async () => {
     if (!CUSTOMER_STATUS_UPDATES.has(status)) return;
     const c = await loadOrderContext(organizationId, orderId);
-    await notifyCustomer({ organizationId, event: "order.status_changed", email: c.customerEmail, payload: emailPayload(c, { status, note: note ?? undefined }) });
+    // The approved email carries the menu, venue, prices, share link and kitchen contact; if they cannot be read it falls back to the short one.
+    const approved = status === "APPROVED" ? await approvedOrderEmailDetails(organizationId, orderId).catch(() => null) : null;
+    await notifyCustomer({ organizationId, event: "order.status_changed", email: c.customerEmail, payload: emailPayload(c, { status, note: note ?? undefined, ...(approved ? { approved } : {}) }) });
     if (status === "SENT_TO_KITCHEN") {
       await notifyTeam({
         organizationId,
