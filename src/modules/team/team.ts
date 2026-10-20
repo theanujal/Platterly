@@ -77,6 +77,8 @@ export async function removeMember(organizationId: string, memberId: string, act
   if (member.userId === actorUserId) throw new ValidationError("You cannot remove yourself.");
 
   await prisma.member.delete({ where: { id: memberId } });
+  // Sign them out of every session that is working in this kitchen; sessions in another kitchen they belong to stay.
+  await prisma.session.deleteMany({ where: { userId: member.userId, activeOrganizationId: organizationId } });
   await audit({
     organizationId,
     actorUserId,

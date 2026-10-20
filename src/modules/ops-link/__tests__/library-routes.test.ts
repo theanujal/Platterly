@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { newId, parseLibraryCandidates, signedHeaders, verifyRequest } from "@platterly/contract";
+import { newId, parseLibraryCandidates, requestTarget, signedHeaders, verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { GET as candidatesGET } from "@/app/api/ops/library/candidates/route";
 import { POST as decisionsPOST } from "@/app/api/ops/library/decisions/route";
@@ -10,10 +10,10 @@ const EVENT_SECRET = "opssec_library_event";
 const saved: Record<string, string | undefined> = {};
 const names: string[] = [];
 
-const get = (secret = COMMAND_SECRET) => candidatesGET(new Request("http://127.0.0.1:3000/api/ops/library/candidates", { headers: signedHeaders(secret, newId("command"), "") }));
+const get = (secret = COMMAND_SECRET) => candidatesGET(new Request("http://127.0.0.1:3000/api/ops/library/candidates", { headers: signedHeaders(secret, newId("command"), "", { target: requestTarget("GET", "http://127.0.0.1:3000/api/ops/library/candidates") }) }));
 const post = (body: unknown, secret = COMMAND_SECRET) => {
   const text = JSON.stringify(body);
-  return decisionsPOST(new Request("http://127.0.0.1:3000/api/ops/library/decisions", { method: "POST", headers: signedHeaders(secret, newId("command"), text), body: text }));
+  return decisionsPOST(new Request("http://127.0.0.1:3000/api/ops/library/decisions", { method: "POST", headers: signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", "http://127.0.0.1:3000/api/ops/library/decisions") }), body: text }));
 };
 const replyText = async (res: Response) => {
   const text = await res.text();
@@ -97,12 +97,13 @@ describe("POST /api/ops/library/decisions", () => {
 describe("/api/ops/library/entries", () => {
   const entriesGet = async (kind: string, secret = COMMAND_SECRET) => {
     const { GET } = await import("@/app/api/ops/library/entries/route");
-    return GET(new Request(`http://127.0.0.1:3000/api/ops/library/entries?kind=${kind}`, { headers: signedHeaders(secret, newId("command"), "") }));
+    const url = `http://127.0.0.1:3000/api/ops/library/entries?kind=${kind}`;
+    return GET(new Request(url, { headers: signedHeaders(secret, newId("command"), "", { target: requestTarget("GET", url) }) }));
   };
   const entriesPost = async (body: unknown, secret = COMMAND_SECRET) => {
     const { POST } = await import("@/app/api/ops/library/entries/route");
     const text = JSON.stringify(body);
-    return POST(new Request("http://127.0.0.1:3000/api/ops/library/entries", { method: "POST", headers: signedHeaders(secret, newId("command"), text), body: text }));
+    return POST(new Request("http://127.0.0.1:3000/api/ops/library/entries", { method: "POST", headers: signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", "http://127.0.0.1:3000/api/ops/library/entries") }), body: text }));
   };
 
   it("needs a valid signature and a valid kind, and signs its answers", async () => {

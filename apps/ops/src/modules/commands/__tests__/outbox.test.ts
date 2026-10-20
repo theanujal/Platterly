@@ -7,6 +7,7 @@ import { registerProduct, rotateSecrets } from "@/modules/registry/products";
 import { MAX_ATTEMPTS, OutboxError, RETRY_DELAYS_SECONDS, attemptCommand, classify, enqueueCommand, runDueCommands, sendCommand } from "../outbox";
 import { GET as cronGET } from "@/app/api/cron/route";
 
+const COMMANDS = { method: "POST", path: "/api/ops/commands" };
 const KEY = "cmdtest";
 let server: Server;
 let baseUrl: string;
@@ -62,7 +63,7 @@ describe("command outbox", () => {
   it("sends a command signed with the outbound secret, with its id as the signed id, and stores the verified reply", async () => {
     const id = (await sendCommand(suspend("non-payment")))!;
     expect(received).toHaveLength(1);
-    const verified = verifyRequest([outboundSecret], new Headers(received[0].headers as Record<string, string>), received[0].body);
+    const verified = verifyRequest([outboundSecret], new Headers(received[0].headers as Record<string, string>), received[0].body, { target: COMMANDS });
     expect(verified).toMatchObject({ ok: true, id });
     expect(JSON.parse(received[0].body)).toMatchObject({ commandId: id, businessId, type: "business.suspend", payload: { reason: "non-payment" } });
     expect(await prisma.outboundCommand.findUniqueOrThrow({ where: { commandId: id } })).toMatchObject({ status: "SENT", attempts: 1, lastStatusCode: 200, response: { ok: true, applied: true } });
@@ -148,7 +149,7 @@ describe("command outbox", () => {
     const fresh = await rotateSecrets(KEY, null);
     inboundSecret = fresh.inbound;
     const b = (await sendCommand(suspend("after rotation")))!;
-    expect(verifyRequest([fresh.outbound], new Headers(received[0].headers as Record<string, string>), received[0].body)).toMatchObject({ ok: true, id: b });
+    expect(verifyRequest([fresh.outbound], new Headers(received[0].headers as Record<string, string>), received[0].body, { target: COMMANDS })).toMatchObject({ ok: true, id: b });
   });
 
   it("classifies statuses", () => {

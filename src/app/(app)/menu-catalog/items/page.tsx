@@ -1,7 +1,7 @@
 import { ItemHighlightBadges } from "@/components/catalog/item-highlights";
 import type { Metadata } from "next";
 import { UtensilsCrossed } from "lucide-react";
-import { requireActiveOrganization, sensitiveAccess } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { listMenuItems } from "@/modules/menus/item";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
@@ -27,6 +27,8 @@ export const metadata: Metadata = {
 
 export default async function ItemsPage() {
   const { organizationId } = await requireActiveOrganization();
+  // The layout checks this too, but a layout is skipped on in-section navigation, so the page holds its own check.
+  await requirePermission({ menus: ["view"] }, organizationId);
   // Dish prices and recipe costs are sensitive data, separate from opening the catalog (AJ, 2026-10-17).
   const prices = await sensitiveAccess(organizationId);
   const [items, categories, menus, inventory, recipes, catalog] = await Promise.all([

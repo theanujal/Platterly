@@ -1,6 +1,6 @@
 import "server-only";
 import { notify } from "@/modules/notifications/notifications";
-import { CONTRACT_VERSION, HEADERS, parseEvent, verifyRequest, type ProductEvent } from "@platterly/contract";
+import { CONTRACT_VERSION, HEADERS, parseEvent, verifyRequest, type ProductEvent, type SignedTarget } from "@platterly/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { secretsOf } from "@/modules/registry/products";
@@ -67,7 +67,7 @@ async function apply(tx: Tx, event: ProductEvent): Promise<Outcome> {
  * POST /api/products/events. Order matters: find the product, verify the signature, then validate and apply.
  * Nothing in the body is trusted before the signature checks out; an unknown product and a bad signature look the same.
  */
-export async function receiveEvent(rawBody: string, headers: Headers): Promise<EventReply> {
+export async function receiveEvent(rawBody: string, headers: Headers, target: SignedTarget): Promise<EventReply> {
   let json: unknown;
   try {
     json = JSON.parse(rawBody);
@@ -80,7 +80,7 @@ export async function receiveEvent(rawBody: string, headers: Headers): Promise<E
   const product = await prisma.product.findUnique({ where: { key: productKey } });
   if (!product || product.status !== "ACTIVE") return UNAUTHORIZED;
 
-  const verified = verifyRequest(secretsOf(product).accept, headers, rawBody);
+  const verified = verifyRequest(secretsOf(product).accept, headers, rawBody, { target });
   if (!verified.ok) return UNAUTHORIZED;
   if (verified.contract > CONTRACT_VERSION) return { status: 400, body: { error: `contract ${verified.contract} is not supported` } };
 

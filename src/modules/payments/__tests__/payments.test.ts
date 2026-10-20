@@ -14,6 +14,7 @@ import { getPaymentSettingsView, getRazorpayCredentials, saveAdvancePercent, sav
 import { decryptSecret, encryptSecret } from "../secret-box";
 import { verifyCheckoutSignature, verifyWebhookSignature } from "../razorpay";
 import { advanceAmount, derivePaymentState } from "../payment-math";
+import { confirmRazorpayPayment, failRazorpayPayment } from "../checkout";
 
 const orgIds: string[] = [];
 const userIds: string[] = [];
@@ -461,5 +462,46 @@ describe("what the customer's link shows about payments", () => {
     const received = await getCustomerPaymentView(org.id, order.id);
     expect(received).toMatchObject({ paid: 3200, awaiting: 0, balance: Number(order.total) - 3200 });
     expect(received.payments.find((p) => p.reference === "UTR1234")).toMatchObject({ status: "CONFIRMED" });
+  });
+});
+
+describe("money safety (issues 75, 79, 81, 86)", () => {
+  it("a Razorpay retry after a failed attempt on the same order is still recorded (75)", async () => {
+    const { org, order } = await makeOrderWithTotal(10000);
+    const row = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 2000, type: "ADVANCE", method: "UPI", source: "RAZORPAY", status: "PENDING", razorpayOrderId: "order_retry" });
+    await failRazorpayPayment(org.id, "order_retry");
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: row.id } })).status).toBe("FAILED");
+    const confirmed = await confirmRazorpayPayment(org.id, "order_retry", "pay_retry", "upi", 200000);
+    expect(confirmed).toMatchObject({ status: "CONFIRMED", razorpayPaymentId: "pay_retry" });
+    expect(Number((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).advance)).toBe(2000);
+    expect(await prisma.invoice.count({ where: { organizationId: org.id, type: "RECEIPT" } })).toBe(1);
+  }, 20_000);
+
+  it("an opened Razorpay checkout is not 'awaiting' and staff can't confirm it (79)", async () => {
+    const { org, order } = await makeOrderWithTotal(10000);
+    const opened = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 2000, type: "ADVANCE", method: "UPI", source: "RAZORPAY", status: "PENDING", razorpayOrderId: "order_abandoned" });
+    await recordPayment({ organizationId: org.id, orderId: order.id, amount: 500, type: "PARTIAL", method: "UPI", source: "UPI_QR" });
+    expect((await getCustomerPaymentView(org.id, order.id)).awaiting).toBe(500);
+    await expect(confirmPayment(org.id, opened.id)).rejects.toBeInstanceOf(PaymentError);
+    await expect(rejectPayment(org.id, opened.id)).rejects.toBeInstanceOf(PaymentError);
+  });
+
+  it("two confirms of the same UPI claim at once make one receipt and one audit entry (81)", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    const claim = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 3000, type: "ADVANCE", method: "UPI", source: "UPI_QR" });
+    await Promise.all([confirmPayment(org.id, claim.id, actor.id), confirmPayment(org.id, claim.id, actor.id)]);
+    expect(await prisma.invoice.count({ where: { organizationId: org.id, type: "RECEIPT" } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { organizationId: org.id, action: "payment.confirm" } })).toBe(1);
+    expect(Number((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).advance)).toBe(3000);
+  });
+
+  it("a payment link stops asking once it has been paid (86)", async () => {
+    const { org, order } = await makeOrderWithTotal(10000);
+    const { link, url } = await createPaymentLink({ organizationId: org.id, orderId: order.id, kind: "CUSTOM", amount: 4000 });
+    const token = url.split("/pay/")[1];
+    await recordPayment({ organizationId: org.id, orderId: order.id, paymentLinkId: link.id, amount: 1000, type: link.type, method: "UPI", source: "UPI_QR", status: "CONFIRMED" });
+    expect(await resolvePaymentLink(token)).not.toBeNull();
+    await recordPayment({ organizationId: org.id, orderId: order.id, paymentLinkId: link.id, amount: 3000, type: link.type, method: "UPI", source: "UPI_QR", status: "CONFIRMED" });
+    expect(await resolvePaymentLink(token)).toBeNull();
   });
 });

@@ -26,7 +26,7 @@ beforeAll(async () => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
-      seen.push({ method: req.method!, path: req.url!, verified: verifyRequest([outboundSecret], new Headers(req.headers as Record<string, string>), body).ok, body });
+      seen.push({ method: req.method!, path: req.url!, verified: verifyRequest([outboundSecret], new Headers(req.headers as Record<string, string>), body, { target: { method: req.method!, path: req.url! } }).ok, body });
       res.writeHead(answer.status, answer.sign ? signedHeaders(inboundSecret, newId("command"), answer.body) : {});
       res.end(answer.body);
     });

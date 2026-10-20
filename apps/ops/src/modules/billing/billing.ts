@@ -121,7 +121,9 @@ export async function verifyCheckout(input: { businessId: string; productKey: st
 
 /**
  * Razorpay says the payment was captured (checkout verification or webhook, whichever comes first). Safe to call twice: only
- * the call that flips PENDING to PAID does the work, so one payment is one period and one invoice.
+ * the call that flips PENDING (or FAILED, a retry on the same Razorpay order) to PAID does the work, so one payment is one
+ * period and one invoice. The flip, the period and the invoice commit together: if any of it fails, the payment is still
+ * unpaid and Razorpay's retry runs it all again.
  */
 export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId: string, now: Date = new Date(), capturedPaise?: number) {
   const payment = await prisma.subscriptionPayment.findUnique({ where: { razorpayOrderId }, include: { plan: true, business: true } });
@@ -132,16 +134,7 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
     console.error("[billing] captured amount does not match", payment.id);
     return null;
   }
-  const claimed = await prisma.subscriptionPayment.updateMany({ where: { id: payment.id, status: "PENDING" }, data: { status: "PAID", razorpayPaymentId, paidAt: now } });
-  if (claimed.count === 0) return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
-
   const { businessId, productKey, planId, interval } = payment;
-  const previous = await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
-  const renewing = !!previous && previous.status === "ACTIVE" && previous.planId === planId && !!previous.currentPeriodEnd && previous.currentPeriodEnd > now;
-  // Renewing early adds on top of what is left; anything else (first payment, new plan, a lapsed business) starts today.
-  const periodStart = renewing ? previous!.currentPeriodEnd! : now;
-  const periodEnd = periodEndFrom(periodStart, interval);
-
   const seller = await getProfile();
   const stored = (payment.buyer ?? {}) as Partial<Buyer>;
   const buyer = {
@@ -181,7 +174,17 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
   };
 
   let invoiceNumber = "";
-  await prisma.$transaction(async (tx) => {
+  let periodEnd = now;
+  const done = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.subscriptionPayment.updateMany({ where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "PAID", razorpayPaymentId, paidAt: now } });
+    if (claimed.count === 0) return false;
+    // One payment at a time per business: two early renewals confirmed together each add their own period.
+    await tx.$queryRaw`SELECT id FROM business WHERE id = ${businessId} FOR UPDATE`;
+    const previous = await tx.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
+    const renewing = !!previous && previous.status === "ACTIVE" && previous.planId === planId && !!previous.currentPeriodEnd && previous.currentPeriodEnd > now;
+    // Renewing early adds on top of what is left; anything else (first payment, new plan, a lapsed business) starts today.
+    const periodStart = renewing ? previous!.currentPeriodEnd! : now;
+    periodEnd = periodEndFrom(periodStart, interval);
     // The number is taken here, with the payment's own update, so a failure leaves no gap in the product's numbering.
     invoiceNumber = formatInvoiceNumber(prefix, buyer.name, now, await nextInvoiceNumber(tx, productKey));
     if (renewing) {
@@ -191,7 +194,9 @@ export async function confirmPayment(razorpayOrderId: string, razorpayPaymentId:
       await tx.subscription.create({ data: { id: newSubscriptionId(), businessId, productKey, planId, status: "ACTIVE", startDate: now, billingInterval: interval, currentPeriodEnd: periodEnd } });
     }
     await tx.subscriptionPayment.update({ where: { id: payment.id }, data: { invoiceNumber, periodStart, periodEnd, invoiceSnapshot: snapshot as unknown as Prisma.InputJsonObject } });
+    return true;
   });
+  if (!done) return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
   await audit({ actorUserId: null, action: "billing.payment_confirmed", subject: businessId, detail: { paymentId: payment.id, productKey, total: Number(payment.total), interval, invoiceNumber, periodEnd: periodEnd.toISOString() } });
   // The product learns the new state through a fresh snapshot. A problem delivering it never undoes a payment.
   try {

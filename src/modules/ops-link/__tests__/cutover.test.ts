@@ -167,7 +167,7 @@ describe("with OPS_BILLING on the screens ask ops", () => {
     expect(data.plans[0]).toMatchObject({ monthly: { total: 1180 }, priceMonthly: 1000 });
     expect(data.subscription).toMatchObject({ status: "ACTIVE", planId: "plan_pro", planName: "Ops Pro", priceMonthly: 1000, priceAnnual: 10000, limits: { maxUsers: 8, maxEvents: 80, maxOrders: 90 } });
     expect(data).toMatchObject({ locked: false, onlineBilling: true });
-    for (const r of requests) expect(verifyRequest([EVENT_SECRET], new Headers(r.headers as Record<string, string>), r.body)).toMatchObject({ ok: true });
+    for (const r of requests) expect(verifyRequest([EVENT_SECRET], new Headers(r.headers as Record<string, string>), r.body, { target: { method: r.method, path: r.path } })).toMatchObject({ ok: true });
   });
 
   it("the Settings page gets history without per-row PDFs, real payments with their GST, and the pending plan", async () => {

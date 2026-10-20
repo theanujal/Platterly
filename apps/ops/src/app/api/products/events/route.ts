@@ -1,3 +1,4 @@
+import { requestTarget } from "@platterly/contract";
 import { receiveEvent } from "@/modules/directory/events";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -8,6 +9,6 @@ export async function POST(request: Request) {
   if (declared > MAX_BODY_BYTES) return Response.json({ error: "body too large" }, { status: 413 });
   const rawBody = await request.text();
   if (rawBody.length > MAX_BODY_BYTES) return Response.json({ error: "body too large" }, { status: 413 });
-  const reply = await receiveEvent(rawBody, request.headers);
+  const reply = await receiveEvent(rawBody, request.headers, requestTarget(request.method, request.url));
   return Response.json(reply.body, { status: reply.status });
 }

@@ -135,7 +135,7 @@ describe("the signed content endpoint", () => {
     expect((await good.json()).notice.text).toBe("Hello");
     expect((await call({})).status).toBe(401);
     expect((await call(signedHeaders("wrong-secret", "build-1", ""))).status).toBe(401);
-    expect((await call(signedHeaders(SECRET, "build-1", "", Math.floor(Date.now() / 1000) - 3600))).status).toBe(401);
+    expect((await call(signedHeaders(SECRET, "build-1", "", { now: Math.floor(Date.now() / 1000) - 3600 }))).status).toBe(401);
     delete process.env.SITE_SECRET;
     expect((await call(signedHeaders(SECRET, "build-1", ""))).status).toBe(404);
   });

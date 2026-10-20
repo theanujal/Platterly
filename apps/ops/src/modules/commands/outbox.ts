@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseCommand, signedHeaders, verifyRequest, type Command, type EntitlementDef, type ProductManifest } from "@platterly/contract";
+import { newId, parseCommand, requestTarget, signedHeaders, verifyRequest, type Command, type EntitlementDef, type ProductManifest } from "@platterly/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { secretsOf } from "@/modules/registry/products";
@@ -94,9 +94,10 @@ export async function attemptCommand(commandId: string, now: Date = new Date(), 
 
   const body = JSON.stringify(row.payload);
   try {
-    const response = await fetchImpl(`${row.product.baseUrl}/api/ops/commands`, {
+    const url = `${row.product.baseUrl}/api/ops/commands`;
+    const response = await fetchImpl(url, {
       method: "POST",
-      headers: signedHeaders(secrets.sign, row.commandId, body),
+      headers: signedHeaders(secrets.sign, row.commandId, body, { target: requestTarget("POST", url) }),
       body,
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { newId, parseManifest, parseReportDoc, signedHeaders, verifyRequest } from "@platterly/contract";
+import { newId, parseManifest, parseReportDoc, requestTarget, signedHeaders, verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { GET as manifestGET } from "@/app/api/ops/manifest/route";
 import { GET as reportGET } from "@/app/api/ops/reports/[key]/route";
@@ -16,7 +16,7 @@ const orgIds: string[] = [];
 const userIds: string[] = [];
 const day = (iso: string) => new Date(iso);
 
-const request = (path: string, secret = COMMAND_SECRET) => new Request(`http://127.0.0.1:3000${path}`, { headers: signedHeaders(secret, newId("command"), "") });
+const request = (path: string, secret = COMMAND_SECRET) => new Request(`http://127.0.0.1:3000${path}`, { headers: signedHeaders(secret, newId("command"), "", { target: requestTarget("GET", `http://127.0.0.1:3000${path}`) }) });
 const call = (key: string, query = "") => reportGET(request(`/api/ops/reports/${key}${query}`), { params: Promise.resolve({ key }) });
 
 async function kitchen(label: string, customerName: string, total: number) {

@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseEvent, signedHeaders, type EventData } from "@platterly/contract";
+import { newId, parseEvent, requestTarget, signedHeaders, type EventData } from "@platterly/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { opsLink } from "./config";
@@ -67,9 +67,10 @@ export async function attemptDelivery(eventId: string, now: Date = new Date(), f
   let outcome: { kind: "sent" | "retry" | "failed"; error?: string };
   try {
     const body = JSON.stringify(row.payload);
-    const response = await fetchImpl(`${config.baseUrl}/api/products/events`, {
+    const url = `${config.baseUrl}/api/products/events`;
+    const response = await fetchImpl(url, {
       method: "POST",
-      headers: signedHeaders(config.eventSecret, row.eventId, body),
+      headers: signedHeaders(config.eventSecret, row.eventId, body, { target: requestTarget("POST", url) }),
       body,
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",

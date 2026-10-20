@@ -110,7 +110,7 @@ describe("product registry", () => {
       expect(stored.manifestError).toBeNull();
       expect(stored.manifestFetchedAt).not.toBeNull();
       // The request ops sent carried a valid signature made with the outbound secret.
-      expect(String(seenHeaders["x-platterly-signature"])).toMatch(/^v1=[0-9a-f]{64}$/);
+      expect(String(seenHeaders["x-platterly-signature"])).toMatch(/^v2=[0-9a-f]{64}$/);
       expect(seenHeaders["x-platterly-contract"]).toBe("1");
       expect(secrets.outbound).toBeTruthy();
     });

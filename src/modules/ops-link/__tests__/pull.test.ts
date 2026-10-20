@@ -73,7 +73,7 @@ describe("pulling a snapshot from ops", () => {
     const org = await makeOrg();
     expect(await pullSnapshot(org.id, org.businessId)).toBe("stored");
     expect(seen[0].url).toBe(`/api/products/catering/snapshots/${org.businessId}`);
-    expect(verifyRequest([EVENT_SECRET], new Headers(seen[0].headers as Record<string, string>), "").ok).toBe(true);
+    expect(verifyRequest([EVENT_SECRET], new Headers(seen[0].headers as Record<string, string>), "", { target: { method: "GET", path: seen[0].url! } }).ok).toBe(true);
     const row = await prisma.opsSnapshot.findUniqueOrThrow({ where: { businessId: org.businessId } });
     expect(row).toMatchObject({ organizationId: org.id, version: 4 });
     expect(await pullSnapshot(org.id, org.businessId)).toBe("unchanged");

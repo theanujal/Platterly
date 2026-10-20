@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, signedHeaders, verifyRequest, CONTRACT_VERSION } from "@platterly/contract";
+import { newId, requestTarget, signedHeaders, verifyRequest, CONTRACT_VERSION } from "@platterly/contract";
 import { opsLink, type OpsLinkConfig } from "./config";
 
 /** A signed answer: ops checks the reply really came from this product (same headers as an event). */
@@ -19,7 +19,8 @@ export async function authoriseOps(request: Request): Promise<{ config: OpsLinkC
   const config = opsLink();
   if (!config) return { response: NOT_FOUND() };
   const rawBody = request.method === "GET" || request.method === "HEAD" ? "" : await request.text();
-  const verified = verifyRequest(config.commandSecrets, request.headers, rawBody);
+  // Bound to this route and its query, so a request signed for one route or business can't be replayed against another.
+  const verified = verifyRequest(config.commandSecrets, request.headers, rawBody, { target: requestTarget(request.method, request.url) });
   if (!verified.ok) return { response: UNAUTHORIZED() };
   if (verified.contract > CONTRACT_VERSION) return { response: Response.json({ error: `contract ${verified.contract} is not supported` }, { status: 400 }) };
   return { config, rawBody };

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import { createPlan } from "@/modules/subscriptions/plan";
 import { assignPlan, getCurrentSubscription } from "@/modules/subscriptions/subscription";
-import { confirmSubscriptionPayment, getBillingState, listSellablePlans, scheduleDowngrade, startSubscriptionCheckout } from "@/modules/subscriptions/billing";
+import { confirmSubscriptionPayment, failSubscriptionPayment, getBillingState, listSellablePlans, scheduleDowngrade, startSubscriptionCheckout } from "@/modules/subscriptions/billing";
 import { annualSaving, billingGraceEndsAt, billingLockReason, paymentGraceEndsAt, periodEndFrom, priceBreakdown } from "@/modules/subscriptions/billing-math";
 import { assertWithinPlanLimit } from "@/modules/subscriptions/limits";
 import { createCustomer } from "@/modules/customers/customer";
@@ -158,6 +158,44 @@ describe("paying for a plan (Chunk 20)", () => {
     const later = new Date(t0.getTime() + 100 * DAY);
     const third = await payFor(org.id, pro.id, "ANNUAL", later);
     expect(third?.periodEnd?.getTime()).toBe(later.getTime() + 365 * DAY);
+  });
+
+  it("a retry that succeeds after a failed attempt on the same Razorpay order is still paid (issue 75)", async () => {
+    const { org, make } = await setup();
+    const pro = await make("Pro", 3000);
+    const orderId = `order_${crypto.randomUUID().slice(0, 12)}`;
+    await prisma.subscriptionPayment.create({ data: { organizationId: org.id, subscriptionPlanId: pro.id, interval: "MONTHLY", amount: 1000, gstPercent: 18, gstAmount: 180, total: 1180, razorpayOrderId: orderId } });
+    await failSubscriptionPayment(orderId);
+    const paid = await confirmSubscriptionPayment(orderId, "pay_retry");
+    expect(paid).toMatchObject({ status: "PAID", razorpayPaymentId: "pay_retry" });
+    expect(paid?.invoiceNumber).toBeTruthy();
+    expect((await getCurrentSubscription(org.id))?.status).toBe("ACTIVE");
+  });
+
+  it("if the period or invoice can't be written, the payment stays unpaid and Razorpay's retry finishes it (issue 76)", async () => {
+    const { org, make } = await setup();
+    const pro = await make("Pro", 3000);
+    const orderId = `order_${crypto.randomUUID().slice(0, 12)}`;
+    await prisma.subscriptionPayment.create({ data: { organizationId: org.id, subscriptionPlanId: pro.id, interval: "MONTHLY", amount: 1000, gstPercent: 18, gstAmount: 180, total: 1180, razorpayOrderId: orderId } });
+    const realTx = prisma.$transaction.bind(prisma);
+    const spy = vi.spyOn(prisma, "$transaction").mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
+      realTx(async (tx) => {
+        await fn(tx);
+        throw new Error("database hiccup");
+      })) as never);
+    await expect(confirmSubscriptionPayment(orderId, "pay_1")).rejects.toThrow("database hiccup");
+    spy.mockRestore();
+    expect((await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: orderId } })).status).toBe("PENDING");
+    expect((await confirmSubscriptionPayment(orderId, "pay_1"))?.invoiceNumber).toBeTruthy();
+  });
+
+  it("two early renewals confirmed at the same moment each add a period (issue 82)", async () => {
+    const { org, make } = await setup();
+    const pro = await make("Pro", 3000);
+    const t0 = new Date();
+    await payFor(org.id, pro.id, "MONTHLY", t0);
+    await Promise.all([payFor(org.id, pro.id, "MONTHLY", t0), payFor(org.id, pro.id, "MONTHLY", t0)]);
+    expect((await getCurrentSubscription(org.id))?.currentPeriodEnd?.getTime()).toBe(t0.getTime() + 90 * DAY);
   });
 
   it("an upgrade starts the new plan today; a downgrade waits until the next payment", async () => {

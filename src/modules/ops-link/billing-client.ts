@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, signedHeaders, verifyRequest } from "@platterly/contract";
+import { newId, requestTarget, signedHeaders, verifyRequest } from "@platterly/contract";
 import { ValidationError } from "@/lib/errors";
 import { opsLink } from "./config";
 
@@ -30,9 +30,10 @@ export async function opsBilling<T = unknown>(method: "GET" | "POST" | "DELETE",
   let response: Response;
   let raw: string;
   try {
-    response = await fetchImpl(`${config.baseUrl}/api/products/${config.productKey}${path}`, {
+    const url = `${config.baseUrl}/api/products/${config.productKey}${path}`;
+    response = await fetchImpl(url, {
       method,
-      headers: signedHeaders(config.eventSecret, newId("command"), text),
+      headers: signedHeaders(config.eventSecret, newId("command"), text, { target: requestTarget(method, url) }),
       body: text || undefined,
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",

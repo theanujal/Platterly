@@ -13,10 +13,12 @@ function event(type: string, data: unknown, over: Record<string, unknown> = {}) 
   return { eventId: newId("event"), productKey: A, businessId: newId("business"), occurredAt: new Date().toISOString(), type, data, ...over };
 }
 
+const EVENTS = { method: "POST", path: "/api/products/events" };
+
 async function send(body: Record<string, unknown>, opts: { secret?: string; id?: string; tamper?: boolean } = {}) {
   const raw = JSON.stringify(body);
-  const headers = new Headers(signedHeaders(opts.secret ?? secretA, opts.id ?? String(body.eventId), raw));
-  return receiveEvent(opts.tamper ? raw.replace("Spice", "Spicy") : raw, headers);
+  const headers = new Headers(signedHeaders(opts.secret ?? secretA, opts.id ?? String(body.eventId), raw, { target: EVENTS }));
+  return receiveEvent(opts.tamper ? raw.replace("Spice", "Spicy") : raw, headers, EVENTS);
 }
 
 async function clean() {
@@ -64,8 +66,8 @@ describe("receiveEvent", () => {
     expect((await send({ ...body, productKey: "evtest-nobody" })).status).toBe(401);
 
     const raw = JSON.stringify(body);
-    const stale = new Headers(signedHeaders(secretA, String(body.eventId), raw, Math.floor(Date.now() / 1000) - 3600));
-    expect((await receiveEvent(raw, stale)).status).toBe(401);
+    const stale = new Headers(signedHeaders(secretA, String(body.eventId), raw, { now: Math.floor(Date.now() / 1000) - 3600, target: EVENTS }));
+    expect((await receiveEvent(raw, stale, EVENTS)).status).toBe(401);
 
     await prisma.product.update({ where: { key: A }, data: { status: "DISABLED" } });
     expect((await send(body)).status).toBe(401);
@@ -73,7 +75,7 @@ describe("receiveEvent", () => {
   });
 
   it("answers 400 for a body that is not JSON or not a valid event, and when the header id disagrees", async () => {
-    expect((await receiveEvent("nope", new Headers())).status).toBe(400);
+    expect((await receiveEvent("nope", new Headers(), EVENTS)).status).toBe(400);
     expect((await send(event("usage.reported", { periodStart: "bad", counts: {} }))).status).toBe(400);
     expect((await send(signup(), { id: newId("event") })).status).toBe(400);
   });

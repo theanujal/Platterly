@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { newId, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
+import { newId, signedHeaders, verifyRequest, type Buyer, requestTarget } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
@@ -68,11 +68,11 @@ async function setup() {
   return { pro: proPlan, lite, trial, biz: id };
 }
 
-const sign = (secret: string, id: string, body: string) => signedHeaders(secret, id, body);
 const params = <T,>(p: T) => ({ params: Promise.resolve(p) });
 const route = (path: string, method: string, body?: unknown, secret = inboundSecret) => {
   const text = body === undefined ? "" : JSON.stringify(body);
-  return new Request(`http://127.0.0.1:3200${path}`, { method, headers: sign(secret, newId("command"), text), body: text || undefined });
+  const url = `http://127.0.0.1:3200${path}`;
+  return new Request(url, { method, headers: signedHeaders(secret, newId("command"), text, { target: requestTarget(method, url) }), body: text || undefined });
 };
 const razorpaySig = (orderId: string, paymentId: string) => createHmac("sha256", KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
 const webhook = (event: string, orderId: string, paymentId: string, amountPaise: number, secret = WEBHOOK_SECRET) => {
@@ -303,6 +303,44 @@ describe("checkout and confirmation", () => {
     const paid = await confirmPayment(c2.razorpayOrderId, "pay_2");
     expect(Math.abs(paid!.periodStart!.getTime() - Date.now())).toBeLessThan(5000);
     expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } })).status).toBe("ACTIVE");
+  });
+
+  it("a retry that succeeds after a failed attempt on the same Razorpay order is still paid (issue 75)", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
+    await failPayment(razorpayOrderId);
+    const paid = await confirmPayment(razorpayOrderId, "pay_retry");
+    expect(paid).toMatchObject({ status: "PAID", razorpayPaymentId: "pay_retry" });
+    expect(paid!.invoiceNumber).toBeTruthy();
+    expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, productKey: KEY, endDate: null } })).status).toBe("ACTIVE");
+  });
+
+  it("if the period or invoice can't be written, the payment stays unpaid and Razorpay's retry finishes it (issue 76)", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
+    const realTx = prisma.$transaction.bind(prisma);
+    const spy = vi.spyOn(prisma, "$transaction").mockImplementationOnce(((fn: (tx: unknown) => Promise<unknown>) =>
+      realTx(async (tx) => {
+        await fn(tx);
+        throw new Error("database hiccup");
+      })) as never);
+    await expect(confirmPayment(razorpayOrderId, "pay_1")).rejects.toThrow("database hiccup");
+    spy.mockRestore();
+    expect((await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId } })).status).toBe("PENDING");
+    const paid = await confirmPayment(razorpayOrderId, "pay_1");
+    expect(paid).toMatchObject({ status: "PAID" });
+    expect(paid!.invoiceNumber).toBeTruthy();
+  });
+
+  it("two early renewals confirmed at the same moment each add a period (issue 82)", async () => {
+    const { pro, biz } = await setup();
+    const c0 = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
+    const first = await confirmPayment(c0.razorpayOrderId, "pay_0");
+    const a = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
+    const b = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
+    await Promise.all([confirmPayment(a.razorpayOrderId, "pay_a"), confirmPayment(b.razorpayOrderId, "pay_b")]);
+    const current = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, productKey: KEY, endDate: null } });
+    expect(current.currentPeriodEnd!.getTime() - first!.periodEnd!.getTime()).toBe(60 * DAY);
   });
 
   it("a business cannot verify another business's payment", async () => {

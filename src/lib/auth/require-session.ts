@@ -45,7 +45,8 @@ export async function requireOrg(organizationId: string) {
     where: { userId: session.user.id, organizationId },
     select: { disabledAt: true },
   });
-  if (membership?.disabledAt) {
+  // No row at all means they were removed from the team: as locked out as a disabled teammate.
+  if (!membership || membership.disabledAt) {
     forbidden();
   }
   return session;
@@ -117,7 +118,8 @@ export async function requireActiveOrganization(options: { allowLocked?: boolean
     organizationId = membership.organizationId;
   }
 
-  if (membership?.disabledAt) {
+  // No row at all means they were removed from the team while this session still pointed at the kitchen.
+  if (!membership || membership.disabledAt) {
     forbidden();
   }
 

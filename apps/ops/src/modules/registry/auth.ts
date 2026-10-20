@@ -1,5 +1,5 @@
 import "server-only";
-import { CONTRACT_VERSION, verifyRequest } from "@platterly/contract";
+import { CONTRACT_VERSION, requestTarget, verifyRequest } from "@platterly/contract";
 import type { Product } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { secretsOf } from "./products";
@@ -14,7 +14,8 @@ export async function authoriseProductRequest(request: Request, productKey: stri
   const product = await prisma.product.findUnique({ where: { key: productKey } });
   if (!product || product.status !== "ACTIVE") return unauthorized;
   const secrets = secretsOf(product);
-  const verified = verifyRequest(secrets.accept, request.headers, rawBody);
+  // Bound to this route and its query (issue 80): a request signed for one business's route can't read another's.
+  const verified = verifyRequest(secrets.accept, request.headers, rawBody, { target: requestTarget(request.method, request.url) });
   if (!verified.ok) return unauthorized;
   if (verified.contract > CONTRACT_VERSION) return { response: Response.json({ error: `contract ${verified.contract} is not supported` }, { status: 400 }) };
   return { product, sign: secrets.sign };

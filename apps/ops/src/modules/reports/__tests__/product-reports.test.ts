@@ -22,7 +22,7 @@ async function clean() {
 
 beforeAll(async () => {
   server = createServer((req, res) => {
-    seen.push({ path: req.url!, verified: verifyRequest([outboundSecret], new Headers(req.headers as Record<string, string>), "").ok });
+    seen.push({ path: req.url!, verified: verifyRequest([outboundSecret], new Headers(req.headers as Record<string, string>), "", { target: { method: "GET", path: req.url! } }).ok });
     res.writeHead(answer.status, answer.sign ? signedHeaders(inboundSecret, newId("command"), answer.body) : {});
     res.end(answer.body);
   });

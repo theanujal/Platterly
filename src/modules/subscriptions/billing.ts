@@ -93,7 +93,9 @@ export async function verifySubscriptionCheckout(organizationId: string, params:
 
 /**
  * Razorpay says the payment was captured (checkout verification or webhook, whichever comes first). Safe to call
- * twice: only the call that flips PENDING to PAID does the work, so one payment is one period and one invoice.
+ * twice: only the call that flips PENDING (or FAILED, a retry on the same Razorpay order) to PAID does the work, so one
+ * payment is one period and one invoice. The flip, the period and the invoice commit together: if any of it fails, the
+ * payment is still unpaid and Razorpay's retry runs it all again.
  */
 export async function confirmSubscriptionPayment(razorpayOrderId: string, razorpayPaymentId: string, now: Date = new Date(), capturedPaise?: number) {
   const payment = await prisma.subscriptionPayment.findUnique({ where: { razorpayOrderId }, include: { subscriptionPlan: true } });
@@ -104,18 +106,8 @@ export async function confirmSubscriptionPayment(razorpayOrderId: string, razorp
     console.error("[billing] captured amount does not match", payment.id);
     return null;
   }
-  const claimed = await prisma.subscriptionPayment.updateMany({ where: { id: payment.id, status: "PENDING" }, data: { status: "PAID", razorpayPaymentId, paidAt: now } });
-  if (claimed.count === 0) return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
-
   const { organizationId, subscriptionPlanId, interval } = payment;
-  const previous = await getCurrentSubscription(organizationId);
-  const renewing = !!previous && previous.status === "ACTIVE" && previous.subscriptionPlanId === subscriptionPlanId && !!previous.currentPeriodEnd && previous.currentPeriodEnd > now;
-  // Renewing early adds on top of what is left; anything else (first payment, new plan, a lapsed kitchen) starts today.
-  const periodStart = renewing ? previous!.currentPeriodEnd! : now;
-  const periodEnd = periodEndFrom(periodStart, interval);
-  const [{ nextval }] = await prisma.$queryRaw<{ nextval: bigint }[]>`select nextval('subscription_invoice_seq')`;
   const [seller, buyer] = await Promise.all([getPlatformBillingProfile(), prisma.organization.findUniqueOrThrow({ where: { id: organizationId } })]);
-  const invoiceNumber = formatInvoiceNumber(seller.invoicePrefix, buyer.name, now, Number(nextval));
   const kind = gstKind(seller, { gstin: buyer.gstNumber, state: buyer.state });
   const invoiceSnapshot: InvoiceSnapshot = {
     seller: { legalName: seller.legalName, addressLine1: seller.addressLine1, addressLine2: seller.addressLine2, city: seller.city, state: seller.state, stateCode: seller.stateCode, postalCode: seller.postalCode, country: seller.country, gstin: seller.gstin, pan: seller.pan, sacCode: seller.sacCode, email: seller.email, phone: seller.phone, website: seller.website, note: seller.invoiceNote },
@@ -124,7 +116,18 @@ export async function confirmSubscriptionPayment(razorpayOrderId: string, razorp
     highlights: payment.subscriptionPlan.highlights,
   };
 
-  await prisma.$transaction(async (tx) => {
+  const done = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.subscriptionPayment.updateMany({ where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } }, data: { status: "PAID", razorpayPaymentId, paidAt: now } });
+    if (claimed.count === 0) return null;
+    // One payment at a time per kitchen: two early renewals confirmed together each add their own period.
+    await tx.$queryRaw`SELECT id FROM organization WHERE id = ${organizationId} FOR UPDATE`;
+    const previous = await tx.subscription.findFirst({ where: { organizationId, endDate: null }, include: { subscriptionPlan: true }, orderBy: { startDate: "desc" } });
+    const renewing = !!previous && previous.status === "ACTIVE" && previous.subscriptionPlanId === subscriptionPlanId && !!previous.currentPeriodEnd && previous.currentPeriodEnd > now;
+    // Renewing early adds on top of what is left; anything else (first payment, new plan, a lapsed kitchen) starts today.
+    const periodStart = renewing ? previous!.currentPeriodEnd! : now;
+    const periodEnd = periodEndFrom(periodStart, interval);
+    const [{ nextval }] = await tx.$queryRaw<{ nextval: bigint }[]>`select nextval('subscription_invoice_seq')`;
+    const invoiceNumber = formatInvoiceNumber(seller.invoicePrefix, buyer.name, now, Number(nextval));
     if (renewing) {
       await tx.subscription.update({ where: { id: previous!.id }, data: { currentPeriodEnd: periodEnd, billingInterval: interval, pendingPlanId: null, pendingInterval: null } });
     } else {
@@ -132,10 +135,13 @@ export async function confirmSubscriptionPayment(razorpayOrderId: string, razorp
       await tx.subscription.create({ data: { organizationId, subscriptionPlanId, status: "ACTIVE", startDate: now, billingInterval: interval, currentPeriodEnd: periodEnd } });
     }
     await tx.subscriptionPayment.update({ where: { id: payment.id }, data: { invoiceNumber, periodStart, periodEnd, invoiceSnapshot: invoiceSnapshot as unknown as Prisma.InputJsonObject } });
+    return { renewing, previousPlanName: previous?.subscriptionPlan.name ?? null, invoiceNumber, periodEnd };
   });
+  if (!done) return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
+  const { renewing, previousPlanName, invoiceNumber, periodEnd } = done;
 
   await audit({ organizationId, action: "subscription.payment_confirmed", recordType: "SubscriptionPayment", recordId: payment.id, after: { total: Number(payment.total), interval, invoiceNumber, periodEnd: periodEnd.toISOString() } });
-  if (!renewing) await onPlanChanged(organizationId, payment.subscriptionPlan.name, previous?.subscriptionPlan.name ?? null);
+  if (!renewing) await onPlanChanged(organizationId, payment.subscriptionPlan.name, previousPlanName);
   return prisma.subscriptionPayment.findUniqueOrThrow({ where: { id: payment.id } });
 }
 

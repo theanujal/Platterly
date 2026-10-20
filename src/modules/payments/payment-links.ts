@@ -78,9 +78,12 @@ export async function resolvePaymentLink(token: string): Promise<ResolvedPayment
     include: {
       organization: { select: { name: true, logo: true } },
       order: { select: { orderNumber: true, status: true, eventStartDate: true, customer: { select: { name: true } }, eventType: { select: { name: true } } } },
+      payments: { where: { status: "CONFIRMED" }, select: { amount: true } },
     },
   });
   if (!link || link.order.status === "CANCELLED") return null;
+  // A link is used up once what was paid through it covers its amount, so reopening it can't take the same advance twice.
+  if (link.payments.reduce((sum, p) => sum + Number(p.amount), 0) >= Number(link.amount) - 0.005) return null;
   const { balance } = await orderBalance(link.organizationId, link.orderId);
   if (balance <= 0) return null;
 

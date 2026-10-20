@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import sharp from "sharp";
-import { newId, signedHeaders, type Buyer, type StandCheckoutRequest } from "@platterly/contract";
+import { newId, signedHeaders, type Buyer, type StandCheckoutRequest, requestTarget } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { BillingError } from "@/modules/billing/billing";
@@ -58,7 +58,8 @@ const razorpaySig = (orderId: string, paymentId: string) => createHmac("sha256",
 const params = <T,>(p: T) => ({ params: Promise.resolve(p) });
 const route = (path: string, method: string, body?: unknown) => {
   const text = body === undefined ? "" : JSON.stringify(body);
-  return new Request(`http://127.0.0.1:3200${path}`, { method, headers: signedHeaders(inboundSecret, newId("command"), text), body: text || undefined });
+  const url = `http://127.0.0.1:3200${path}`;
+  return new Request(url, { method, headers: signedHeaders(inboundSecret, newId("command"), text, { target: requestTarget(method, url) }), body: text || undefined });
 };
 const webhook = (event: string, orderId: string, paymentId: string, amountPaise: number) => {
   const body = JSON.stringify({ event, payload: { payment: { entity: { id: paymentId, order_id: orderId, amount: amountPaise } } } });
@@ -200,6 +201,16 @@ describe("payment", () => {
     await webhookPOST(webhook("payment.failed", b.razorpayOrderId, "pay_x", b.amountPaise));
     expect((await prisma.standOrder.findUniqueOrThrow({ where: { id: b.orderId } })).paymentStatus).toBe("FAILED");
     expect(await failStandPayment("order_unknown")).toBe(false);
+  });
+
+  it("a retry that succeeds after a failed attempt on the same Razorpay order is still paid and invoiced (issue 75)", async () => {
+    const biz = await setup();
+    const c = await startStandCheckout({ businessId: biz, productKey: KEY, ...request(1) });
+    await webhookPOST(webhook("payment.failed", c.razorpayOrderId, "pay_first", c.amountPaise));
+    expect((await webhookPOST(webhook("payment.captured", c.razorpayOrderId, "pay_retry", c.amountPaise))).status).toBe(200);
+    const row = await prisma.standOrder.findUniqueOrThrow({ where: { id: c.orderId } });
+    expect(row).toMatchObject({ paymentStatus: "PAID", razorpayPaymentId: "pay_retry" });
+    expect(row.invoiceNumber).toBeTruthy();
   });
 
   it("a kitchen sees only its own paid orders", async () => {

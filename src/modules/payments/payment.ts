@@ -53,10 +53,10 @@ export async function getCustomerPaymentView(organizationId: string, orderId: st
     prisma.order.findFirstOrThrow({ where: { id: orderId, organizationId }, select: { total: true } }),
     prisma.payment.findMany({ where: { organizationId, orderId }, orderBy: { receivedAt: "desc" }, take: 20 }),
   ]);
-  const sum = (status: string) => round2(rows.filter((row) => row.status === status).reduce((acc, row) => acc + Number(row.amount), 0));
   const total = Number(order.total);
   const paid = await confirmedPaidForOrder(orderId);
-  const awaiting = sum("PENDING");
+  // Only a UPI claim is money waiting on the kitchen; a PENDING Razorpay row is just a checkout that was opened.
+  const awaiting = round2(rows.filter((row) => row.status === "PENDING" && row.source === "UPI_QR").reduce((acc, row) => acc + Number(row.amount), 0));
   return {
     total,
     paid,
@@ -238,19 +238,25 @@ export async function confirmPayment(organizationId: string, paymentId: string, 
   const payment = await prisma.payment.findFirstOrThrow({ where: { id: paymentId, organizationId } });
   if (payment.status === "CONFIRMED") return payment;
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be confirmed.");
+  // Razorpay rows are confirmed by Razorpay alone; a PENDING one is a checkout that may never have been paid.
+  if (payment.source !== "UPI_QR") throw new PaymentError("Only a UPI payment the customer reported can be confirmed here.");
   const { balance } = await orderBalance(organizationId, payment.orderId);
   if (Number(payment.amount) > balance + 0.005) throw new PaymentError("Confirming this would take the order past what it owes.");
-  const confirmed = await prisma.payment.update({ where: { id: paymentId }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+  // Two people clicking Confirm at once: only the one that flips PENDING goes on to the receipt and audit.
+  const claimed = await prisma.payment.updateMany({ where: { id: paymentId, organizationId, status: "PENDING" }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+  if (claimed.count === 0) return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
   await syncOrderPayments(payment.orderId);
   await issueReceipt(organizationId, paymentId);
   await audit({ organizationId, actorUserId, action: "payment.confirm", recordType: "Payment", recordId: paymentId, after: { amount: Number(payment.amount) } });
-  return confirmed;
+  return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
 }
 
 export async function rejectPayment(organizationId: string, paymentId: string, actorUserId?: string) {
   const payment = await prisma.payment.findFirstOrThrow({ where: { id: paymentId, organizationId } });
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be rejected.");
-  await prisma.payment.update({ where: { id: paymentId }, data: { status: "FAILED" } });
+  if (payment.source !== "UPI_QR") throw new PaymentError("Only a UPI payment the customer reported can be rejected here.");
+  const claimed = await prisma.payment.updateMany({ where: { id: paymentId, organizationId, status: "PENDING" }, data: { status: "FAILED" } });
+  if (claimed.count === 0) return;
   await audit({ organizationId, actorUserId, action: "payment.reject", recordType: "Payment", recordId: paymentId });
 }
 

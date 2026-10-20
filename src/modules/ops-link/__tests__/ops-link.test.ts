@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { newId, parseManifest, signedHeaders, verifyRequest, type EntitlementSnapshot } from "@platterly/contract";
+import { newId, parseManifest, signedHeaders, verifyRequest, type EntitlementSnapshot, requestTarget } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { GET as manifestGET } from "@/app/api/ops/manifest/route";
 import { POST as commandsPOST } from "@/app/api/ops/commands/route";
@@ -72,8 +72,10 @@ async function makeOrg(over: { name?: string; ownerEmail?: string | null; status
 /** A request signed the way ops signs it. */
 function opsRequest(path: string, init: { method?: string; body?: unknown; secret?: string; id?: string } = {}) {
   const body = init.body === undefined ? "" : JSON.stringify(init.body);
-  const headers = signedHeaders(init.secret ?? COMMAND_SECRET, init.id ?? newId("command"), body);
-  return new Request(`http://127.0.0.1:3000${path}`, { method: init.method ?? "GET", headers, body: body || undefined });
+  const url = `http://127.0.0.1:3000${path}`;
+  const method = init.method ?? "GET";
+  const headers = signedHeaders(init.secret ?? COMMAND_SECRET, init.id ?? newId("command"), body, { target: requestTarget(method, url) });
+  return new Request(url, { method, headers, body: body || undefined });
 }
 
 function snapshotFor(businessId: string, version: number, status: EntitlementSnapshot["status"] = "ACTIVE"): EntitlementSnapshot {
@@ -97,7 +99,11 @@ describe("the ops routes", () => {
     const unsigned = new Request("http://127.0.0.1:3000/api/ops/manifest");
     expect((await manifestGET(unsigned)).status).toBe(401);
     expect((await manifestGET(opsRequest("/api/ops/manifest", { secret: "not-the-secret" }))).status).toBe(401);
-    const stale = new Request("http://127.0.0.1:3000/api/ops/manifest", { headers: signedHeaders(COMMAND_SECRET, newId("command"), "", Math.floor(Date.now() / 1000) - 3600) });
+    const stale = new Request("http://127.0.0.1:3000/api/ops/manifest", { headers: signedHeaders(COMMAND_SECRET, newId("command"), "", { now: Math.floor(Date.now() / 1000) - 3600, target: requestTarget("GET", "http://127.0.0.1:3000/api/ops/manifest") }) });
+    // Issue 80: a request signed for another route (here a report) is refused, and so is one with no route in its signature.
+    const forReport = opsRequest("/api/ops/reports/sales");
+    expect((await manifestGET(new Request("http://127.0.0.1:3000/api/ops/manifest", { headers: forReport.headers }))).status).toBe(401);
+    expect((await manifestGET(new Request("http://127.0.0.1:3000/api/ops/manifest", { headers: signedHeaders(COMMAND_SECRET, newId("command"), "") }))).status).toBe(401);
     const res = await manifestGET(stale);
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
@@ -351,7 +357,7 @@ describe("events to ops", () => {
     expect(eventId).toBeTruthy();
     expect(await attemptDelivery(eventId!)).toBe("sent");
     expect(received).toHaveLength(1);
-    const verified = verifyRequest([EVENT_SECRET], new Headers(received[0].headers as Record<string, string>), received[0].body);
+    const verified = verifyRequest([EVENT_SECRET], new Headers(received[0].headers as Record<string, string>), received[0].body, { target: { method: "POST", path: "/api/products/events" } });
     expect(verified).toMatchObject({ ok: true, id: eventId });
     expect(JSON.parse(received[0].body)).toMatchObject({ eventId, productKey: "catering", businessId: org.businessId, type: "usage.reported" });
     expect((await prisma.opsOutbox.findUniqueOrThrow({ where: { eventId: eventId! } })).status).toBe("SENT");

@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseReportDoc, signedHeaders, verifyRequest, type ProductManifest, type ReportDoc, type ReportListing } from "@platterly/contract";
+import { newId, parseReportDoc, requestTarget, signedHeaders, verifyRequest, type ProductManifest, type ReportDoc, type ReportListing } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { secretsOf } from "@/modules/registry/products";
 
@@ -29,9 +29,10 @@ export async function fetchProductReport(productKey: string, reportKey: string, 
   }
   const query = new URLSearchParams({ ...(range.from ? { from: range.from } : {}), ...(range.to ? { to: range.to } : {}) }).toString();
   try {
-    const response = await fetchImpl(`${product.baseUrl}/api/ops/reports/${encodeURIComponent(reportKey)}${query ? `?${query}` : ""}`, {
+    const url = `${product.baseUrl}/api/ops/reports/${encodeURIComponent(reportKey)}${query ? `?${query}` : ""}`;
+    const response = await fetchImpl(url, {
       method: "GET",
-      headers: signedHeaders(secrets.sign, newId("command"), ""),
+      headers: signedHeaders(secrets.sign, newId("command"), "", { target: requestTarget("GET", url) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",
     });

@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { newId, parseSnapshot, signedHeaders, verifyRequest } from "@platterly/contract";
+import { newId, parseSnapshot, signedHeaders, verifyRequest, requestTarget } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan, PlanError, setPlanActive, updatePlan, type PlanInput } from "@/modules/plans/plans";
@@ -151,7 +151,7 @@ describe("subscriptions", () => {
     const signup = async (name: string, backfill: boolean) => {
       const body = { eventId: newId("event"), productKey: KEY, businessId: businessId(), occurredAt: new Date().toISOString(), type: "business.signed_up", data: { businessName: name, ownerName: "O", ownerEmail: "o@example.test", ...(backfill ? { backfill: true } : {}) } };
       const raw = JSON.stringify(body);
-      const reply = await receiveEvent(raw, new Headers(signedHeaders(inboundSecret, body.eventId, raw)));
+      const reply = await receiveEvent(raw, new Headers(signedHeaders(inboundSecret, body.eventId, raw, { target: { method: "POST", path: "/api/products/events" } })), { method: "POST", path: "/api/products/events" });
       expect(reply.status).toBe(200);
       return body.businessId;
     };
@@ -285,7 +285,7 @@ describe("snapshots", () => {
   it("a product can pull its business's snapshot; the reply is signed by ops and carries the already-issued version", async () => {
     const { biz } = await subscribed();
     const pull = (secret: string, key = KEY, id = biz) =>
-      pullGET(new Request(`http://127.0.0.1:3200/api/products/${key}/snapshots/${id}`, { headers: signedHeaders(secret, newId("command"), "") }), { params: Promise.resolve({ productKey: key, businessId: id }) });
+      pullGET(new Request(`http://127.0.0.1:3200/api/products/${key}/snapshots/${id}`, { headers: signedHeaders(secret, newId("command"), "", { target: requestTarget("GET", `http://127.0.0.1:3200/api/products/${key}/snapshots/${id}`) }) }), { params: Promise.resolve({ productKey: key, businessId: id }) });
     const res = await pull(inboundSecret);
     expect(res.status).toBe(200);
     const text = await res.text();
@@ -312,7 +312,7 @@ describe("snapshots", () => {
     const other = await registerProduct({ key: "snaptest2", name: "Other", baseUrl: baseUrl, actorUserId: null });
     try {
       const { biz } = await subscribed();
-      const res = await pullGET(new Request(`http://127.0.0.1:3200/api/products/snaptest2/snapshots/${biz}`, { headers: signedHeaders(other.secrets.inbound, newId("command"), "") }), { params: Promise.resolve({ productKey: "snaptest2", businessId: biz }) });
+      const res = await pullGET(new Request(`http://127.0.0.1:3200/api/products/snaptest2/snapshots/${biz}`, { headers: signedHeaders(other.secrets.inbound, newId("command"), "", { target: requestTarget("GET", `http://127.0.0.1:3200/api/products/snaptest2/snapshots/${biz}`) }) }), { params: Promise.resolve({ productKey: "snaptest2", businessId: biz }) });
       expect(res.status).toBe(404);
     } finally {
       await prisma.product.deleteMany({ where: { key: "snaptest2" } });

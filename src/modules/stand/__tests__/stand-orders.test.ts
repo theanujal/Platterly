@@ -97,7 +97,7 @@ describe("the page's data", () => {
     expect(data).toMatchObject({ unavailable: false, offer: { unitTotal: 590 }, kitchenName: "Spice Route", shipTo: { name: "Asha Rao", city: "Bengaluru", postalCode: "560001", phone: "+919876543210" } });
     expect(data.orders).toHaveLength(1);
     expect(data.linkUrl).toContain(`/${org.slug}`);
-    for (const r of requests) expect(verifyRequest([EVENT_SECRET], new Headers(r.headers as Record<string, string>), r.body).ok).toBe(true);
+    for (const r of requests) expect(verifyRequest([EVENT_SECRET], new Headers(r.headers as Record<string, string>), r.body, { target: { method: r.method, path: r.path } }).ok).toBe(true);
   });
 
   it("says unavailable when the ops link is not set up or ops cannot be reached, and never throws", async () => {

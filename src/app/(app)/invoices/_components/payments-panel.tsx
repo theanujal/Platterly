@@ -269,7 +269,7 @@ export function PaymentsPanel({
             trailing={
               <>
                 <PaymentStatusBadge status={payment.status} />
-                {payment.status === "PENDING" && canManage && (
+                {payment.status === "PENDING" && payment.source === "UPI_QR" && canManage && (
                   <div className="flex gap-2">
                     <Button type="button" size="sm" disabled={busyId === payment.id} onClick={() => rowAction(payment.id, () => confirmPaymentAction(payment.id, false))}>
                       Confirm

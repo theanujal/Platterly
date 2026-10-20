@@ -98,7 +98,8 @@ export async function verifyStandCheckout(input: { businessId: string; productKe
 
 /**
  * Razorpay says it was captured (checkout verification or webhook, whichever is first). Safe to call twice: only the call that
- * flips PENDING to PAID takes the invoice number and sends the email. Null when no stand order has this Razorpay order id.
+ * flips PENDING (or FAILED, a retry on the same Razorpay order) to PAID takes the invoice number and sends the email. The flip
+ * and the invoice commit together, so a failure leaves it unpaid for Razorpay's retry. Null when no stand order has this Razorpay order id.
  */
 export async function confirmStandPayment(razorpayOrderId: string, razorpayPaymentId: string, now: Date = new Date(), capturedPaise?: number) {
   const order = await prisma.standOrder.findUnique({ where: { razorpayOrderId }, include: { business: true } });
@@ -108,9 +109,6 @@ export async function confirmStandPayment(razorpayOrderId: string, razorpayPayme
     console.error("[stand] captured amount does not match", order.id);
     return null;
   }
-  const claimed = await prisma.standOrder.updateMany({ where: { id: order.id, paymentStatus: "PENDING" }, data: { paymentStatus: "PAID", razorpayPaymentId, paidAt: now } });
-  if (claimed.count === 0) return prisma.standOrder.findUniqueOrThrow({ where: { id: order.id } });
-
   const seller = await getProfile();
   const stored = (order.buyer ?? {}) as Partial<Buyer>;
   const buyer = {
@@ -151,11 +149,15 @@ export async function confirmStandPayment(razorpayOrderId: string, razorpayPayme
   };
 
   let invoiceNumber = "";
-  await prisma.$transaction(async (tx) => {
+  const done = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.standOrder.updateMany({ where: { id: order.id, paymentStatus: { in: ["PENDING", "FAILED"] } }, data: { paymentStatus: "PAID", razorpayPaymentId, paidAt: now } });
+    if (claimed.count === 0) return false;
     // Taken here, with the order's own update, so a failure leaves no gap in the product's numbering.
     invoiceNumber = formatInvoiceNumber(prefix, buyer.name, now, await nextInvoiceNumber(tx, order.productKey));
     await tx.standOrder.update({ where: { id: order.id }, data: { invoiceNumber, invoiceSnapshot: snapshot as unknown as Prisma.InputJsonObject } });
+    return true;
   });
+  if (!done) return prisma.standOrder.findUniqueOrThrow({ where: { id: order.id } });
   await audit({ actorUserId: null, action: "stand.payment_confirmed", subject: order.businessId, detail: { orderId: order.id, productKey: order.productKey, total: money(order.total), invoiceNumber } });
   await notifySafely({ productKey: order.productKey, businessId: order.businessId, kind: "stand.ordered", title: "New Order QR stand order", body: `${order.business.name} ordered ${order.quantity} stand${order.quantity === 1 ? "" : "s"} (invoice ${invoiceNumber}). Print and ship it.`, link: `/stand-orders/${order.id}`, dedupeKey: `stand_ordered:${order.id}` });
   await tellOwner({ businessId: order.businessId, productKey: order.productKey, template: "stand_placed", variables: { quantity: order.quantity, amount: money(order.total), invoiceNumber }, dedupeKey: `stand_placed:${order.id}` });

@@ -1,6 +1,6 @@
 import "server-only";
 import { notifySafely } from "@/modules/notifications/notifications";
-import { isProductKey, newId, parseManifest, signedHeaders, verifyRequest, type ProductManifest } from "@platterly/contract";
+import { isProductKey, newId, parseManifest, requestTarget, signedHeaders, verifyRequest, type ProductManifest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { derivePrefix } from "@/modules/billing/numbering";
 import { audit } from "@/lib/audit";
@@ -105,9 +105,10 @@ export async function refreshManifest(key: string, actorUserId: string | null, f
 
   try {
     const secrets = secretsOf(product);
-    const response = await fetchImpl(`${product.baseUrl}/api/ops/manifest`, {
+    const url = `${product.baseUrl}/api/ops/manifest`;
+    const response = await fetchImpl(url, {
       method: "GET",
-      headers: signedHeaders(secrets.sign, newId("command"), ""),
+      headers: signedHeaders(secrets.sign, newId("command"), "", { target: requestTarget("GET", url) }),
       signal: AbortSignal.timeout(8000),
       redirect: "error",
     });

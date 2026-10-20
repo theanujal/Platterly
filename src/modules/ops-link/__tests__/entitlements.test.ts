@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { newId, type EntitlementSnapshot } from "@platterly/contract";
+import { newId, type EntitlementSnapshot, requestTarget } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { POST as commandsPOST } from "@/app/api/ops/commands/route";
 import { signedHeaders } from "@platterly/contract";
@@ -70,7 +70,7 @@ function snapshot(businessId: string, over: Partial<EntitlementSnapshot> = {}): 
 
 async function push(businessId: string, snap: EntitlementSnapshot) {
   const body = JSON.stringify({ commandId: newId("command"), businessId, type: "snapshot.push", payload: { snapshot: snap } });
-  const res = await commandsPOST(new Request("http://127.0.0.1:3000/api/ops/commands", { method: "POST", headers: signedHeaders(COMMAND_SECRET, newId("command"), body), body }));
+  const res = await commandsPOST(new Request("http://127.0.0.1:3000/api/ops/commands", { method: "POST", headers: signedHeaders(COMMAND_SECRET, newId("command"), body, { target: requestTarget("POST", "http://127.0.0.1:3000/api/ops/commands") }), body }));
   return { status: res.status, body: await res.json() };
 }
 

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Layers } from "lucide-react";
-import { requireActiveOrganization } from "@/lib/auth/require-session";
+import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { listCategories } from "@/modules/menus/category";
 import { listMenus } from "@/modules/menus/menu";
 import { TableCell } from "@/components/ui/table";
@@ -23,6 +23,8 @@ export const metadata: Metadata = {
 
 export default async function CategoriesPage() {
   const { organizationId } = await requireActiveOrganization();
+  // The layout checks this too, but a layout is skipped on in-section navigation, so the page holds its own check.
+  await requirePermission({ menus: ["view"] }, organizationId);
   const [categories, menus] = await Promise.all([listCategories(organizationId), listMenus(organizationId)]);
   const availableMenus = menus.map((m) => ({ id: m.id, name: m.name }));
   const assignedMenuCount = (categoryId: string) => menus.filter((m) => m.categoryAssignments.some((a) => a.categoryId === categoryId)).length;

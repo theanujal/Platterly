@@ -38,7 +38,7 @@ export async function startRazorpayCheckout(link: ResolvedPaymentLink) {
 
 /**
  * Razorpay says this payment was captured (checkout verification or webhook, whichever comes first).
- * Safe to call twice: only the call that flips PENDING to CONFIRMED does the work, so a webhook
+ * Safe to call twice: only the call that flips PENDING (or FAILED) to CONFIRMED does the work, so a webhook
  * delivered twice makes one payment and one receipt.
  */
 export async function confirmRazorpayPayment(organizationId: string, razorpayOrderId: string, razorpayPaymentId: string, method?: string, capturedPaise?: number) {
@@ -50,8 +50,9 @@ export async function confirmRazorpayPayment(organizationId: string, razorpayOrd
     console.error("[payments] captured amount does not match", payment.id);
     return null;
   }
+  // FAILED too: a failed first attempt and a successful retry share one Razorpay order, so the capture must still land.
   const claimed = await prisma.payment.updateMany({
-    where: { id: payment.id, status: "PENDING" },
+    where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
     data: { status: "CONFIRMED", razorpayPaymentId, confirmedAt: new Date(), ...(method ? { method: paymentMethodForRazorpay(method) } : {}) },
   });
   if (claimed.count === 0) return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });

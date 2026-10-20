@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseLibraryCandidates, parseLibraryEntries, signedHeaders, verifyRequest, type LibraryDecision, type LibraryEntryDoc, type LibraryEntryUpdate } from "@platterly/contract";
+import { newId, parseLibraryCandidates, parseLibraryEntries, requestTarget, signedHeaders, verifyRequest, type LibraryDecision, type LibraryEntryDoc, type LibraryEntryUpdate } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { notifySafely } from "@/modules/notifications/notifications";
@@ -27,7 +27,8 @@ export async function pullLibraryCandidates(productKey: string, fetchImpl: typeo
     return { ok: false, error: "The product's signing secret could not be read. Rotate its secrets." };
   }
   try {
-    const response = await fetchImpl(`${product.baseUrl}/api/ops/library/candidates`, { method: "GET", headers: signedHeaders(secrets.sign, newId("command"), ""), signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
+    const url = `${product.baseUrl}/api/ops/library/candidates`;
+    const response = await fetchImpl(url, { method: "GET", headers: signedHeaders(secrets.sign, newId("command"), "", { target: requestTarget("GET", url) }), signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
     const text = await response.text();
     if (response.status === 404) return { ok: true, created: 0, updated: 0, withdrawn: 0 }; // this product has no library review
     if (!response.ok) return { ok: false, error: `The product answered ${response.status}.` };
@@ -105,7 +106,8 @@ export async function decideCandidate(id: string, input: ReviewInput, staffId: s
   let response: Response;
   let text: string;
   try {
-    response = await fetchImpl(`${candidate.product.baseUrl}/api/ops/library/decisions`, { method: "POST", headers: signedHeaders(secrets.sign, newId("command"), body), body, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
+    const url = `${candidate.product.baseUrl}/api/ops/library/decisions`;
+    response = await fetchImpl(url, { method: "POST", headers: signedHeaders(secrets.sign, newId("command"), body, { target: requestTarget("POST", url) }), body, signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
     text = await response.text();
   } catch (error) {
     throw new LibraryReviewError(error instanceof Error ? `Could not reach the product: ${error.message}` : "Could not reach the product.");
@@ -152,7 +154,8 @@ async function callProduct(productKey: string, path: string, method: "GET" | "PO
   let response: Response;
   let text: string;
   try {
-    response = await fetchImpl(`${product.baseUrl}${path}`, { method, headers: signedHeaders(secrets.sign, newId("command"), body), ...(method === "POST" ? { body } : {}), signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
+    const url = `${product.baseUrl}${path}`;
+    response = await fetchImpl(url, { method, headers: signedHeaders(secrets.sign, newId("command"), body, { target: requestTarget(method, url) }), ...(method === "POST" ? { body } : {}), signal: AbortSignal.timeout(TIMEOUT_MS), redirect: "error" });
     text = await response.text();
   } catch (error) {
     throw new LibraryReviewError(error instanceof Error ? `Could not reach the product: ${error.message}` : "Could not reach the product.");

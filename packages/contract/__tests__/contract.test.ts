@@ -26,7 +26,7 @@ import {
   parseSnapshot,
   parseVerifyRequest,
   signBody,
-  signedHeaders,
+  requestTarget, signedHeaders,
   verifyRequest,
   type EntitlementSnapshot,
 } from "../index";
@@ -86,41 +86,57 @@ describe("signing", () => {
   const body = JSON.stringify({ hello: "world" });
 
   it("round-trips, and gives the same signature scheme as the Chunk 25 webhooks", () => {
-    const headers = signedHeaders(SECRET, newId("event"), body, NOW);
+    const headers = signedHeaders(SECRET, newId("event"), body, { now: NOW });
     expect(headers["x-platterly-signature"]).toBe(signBody(SECRET, NOW, body));
     expect(headers["x-platterly-contract"]).toBe(String(CONTRACT_VERSION));
-    const result = verifyRequest([SECRET], headers, body, NOW);
+    const result = verifyRequest([SECRET], headers, body, { now: NOW });
     expect(result.ok).toBe(true);
   });
 
   it("accepts a header bag with a Headers object too", () => {
-    const headers = new Headers(signedHeaders(SECRET, newId("event"), body, NOW));
-    expect(verifyRequest([SECRET], headers, body, NOW).ok).toBe(true);
+    const headers = new Headers(signedHeaders(SECRET, newId("event"), body, { now: NOW }));
+    expect(verifyRequest([SECRET], headers, body, { now: NOW }).ok).toBe(true);
   });
 
   it("rejects a changed body, a wrong secret and missing headers", () => {
-    const headers = signedHeaders(SECRET, newId("event"), body, NOW);
-    expect(verifyRequest([SECRET], headers, body + " ", NOW)).toEqual({ ok: false, reason: "bad_signature" });
-    expect(verifyRequest(["other"], headers, body, NOW)).toEqual({ ok: false, reason: "bad_signature" });
-    expect(verifyRequest([SECRET], {}, body, NOW)).toEqual({ ok: false, reason: "missing_headers" });
-    expect(verifyRequest([], headers, body, NOW)).toEqual({ ok: false, reason: "no_secret" });
-    expect(verifyRequest([""], headers, body, NOW)).toEqual({ ok: false, reason: "no_secret" });
+    const headers = signedHeaders(SECRET, newId("event"), body, { now: NOW });
+    expect(verifyRequest([SECRET], headers, body + " ", { now: NOW })).toEqual({ ok: false, reason: "bad_signature" });
+    expect(verifyRequest(["other"], headers, body, { now: NOW })).toEqual({ ok: false, reason: "bad_signature" });
+    expect(verifyRequest([SECRET], {}, body, { now: NOW })).toEqual({ ok: false, reason: "missing_headers" });
+    expect(verifyRequest([], headers, body, { now: NOW })).toEqual({ ok: false, reason: "no_secret" });
+    expect(verifyRequest([""], headers, body, { now: NOW })).toEqual({ ok: false, reason: "no_secret" });
+  });
+
+  it("binds a request to its method, path and query, so it can't be replayed elsewhere (issue 80)", () => {
+    const target = requestTarget("get", "https://ops.example/api/products/catering/businesses/biz_a/billing?x=1");
+    expect(target).toEqual({ method: "GET", path: "/api/products/catering/businesses/biz_a/billing?x=1" });
+    const headers = signedHeaders(SECRET, newId("command"), "", { now: NOW, target });
+    expect(headers["x-platterly-signature"]).toMatch(/^v2=/);
+    expect(verifyRequest([SECRET], headers, "", { now: NOW, target }).ok).toBe(true);
+    // Another host is fine (ops and a product may see different ones); another business, query, route or method is not.
+    expect(verifyRequest([SECRET], headers, "", { now: NOW, target: requestTarget("GET", "http://127.0.0.1:3200/api/products/catering/businesses/biz_a/billing?x=1") }).ok).toBe(true);
+    for (const other of ["/api/products/catering/businesses/biz_b/billing?x=1", "/api/products/catering/businesses/biz_a/billing", "/api/products/catering/snapshots/biz_a"]) {
+      expect(verifyRequest([SECRET], headers, "", { now: NOW, target: { method: "GET", path: other } })).toEqual({ ok: false, reason: "bad_signature" });
+    }
+    expect(verifyRequest([SECRET], headers, "", { now: NOW, target: { ...target, method: "POST" } })).toEqual({ ok: false, reason: "bad_signature" });
+    // A receiver that binds the route never accepts an unbound (v1) signature.
+    expect(verifyRequest([SECRET], signedHeaders(SECRET, newId("command"), "", { now: NOW }), "", { now: NOW, target })).toEqual({ ok: false, reason: "bad_signature" });
   });
 
   it("rejects a stale or malformed timestamp (replay protection)", () => {
-    const headers = signedHeaders(SECRET, newId("event"), body, NOW);
-    expect(verifyRequest([SECRET], headers, body, NOW + 301)).toEqual({ ok: false, reason: "stale_timestamp" });
-    expect(verifyRequest([SECRET], headers, body, NOW - 301)).toEqual({ ok: false, reason: "stale_timestamp" });
-    expect(verifyRequest([SECRET], headers, body, NOW + 299).ok).toBe(true);
-    expect(verifyRequest([SECRET], { ...headers, "x-platterly-timestamp": "abc" }, body, NOW)).toEqual({ ok: false, reason: "bad_timestamp" });
+    const headers = signedHeaders(SECRET, newId("event"), body, { now: NOW });
+    expect(verifyRequest([SECRET], headers, body, { now: NOW + 301 })).toEqual({ ok: false, reason: "stale_timestamp" });
+    expect(verifyRequest([SECRET], headers, body, { now: NOW - 301 })).toEqual({ ok: false, reason: "stale_timestamp" });
+    expect(verifyRequest([SECRET], headers, body, { now: NOW + 299 }).ok).toBe(true);
+    expect(verifyRequest([SECRET], { ...headers, "x-platterly-timestamp": "abc" }, body, { now: NOW })).toEqual({ ok: false, reason: "bad_timestamp" });
   });
 
   it("accepts either secret during a rotation", () => {
-    const old = signedHeaders("old-secret", newId("event"), body, NOW);
-    const fresh = signedHeaders("new-secret", newId("event"), body, NOW);
-    expect(verifyRequest(["new-secret", "old-secret"], old, body, NOW).ok).toBe(true);
-    expect(verifyRequest(["new-secret", "old-secret"], fresh, body, NOW).ok).toBe(true);
-    expect(verifyRequest(["new-secret"], old, body, NOW).ok).toBe(false);
+    const old = signedHeaders("old-secret", newId("event"), body, { now: NOW });
+    const fresh = signedHeaders("new-secret", newId("event"), body, { now: NOW });
+    expect(verifyRequest(["new-secret", "old-secret"], old, body, { now: NOW }).ok).toBe(true);
+    expect(verifyRequest(["new-secret", "old-secret"], fresh, body, { now: NOW }).ok).toBe(true);
+    expect(verifyRequest(["new-secret"], old, body, { now: NOW }).ok).toBe(false);
   });
 });
 

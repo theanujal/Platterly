@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseSnapshot, signedHeaders, verifyRequest } from "@platterly/contract";
+import { newId, parseSnapshot, requestTarget, signedHeaders, verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { opsLink } from "./config";
 import { CATERING_ENTITLEMENTS } from "./manifest";
@@ -18,9 +18,10 @@ export async function pullSnapshot(organizationId: string, businessId: string, f
   const config = opsLink();
   if (!config) return "failed";
   try {
-    const response = await fetchImpl(`${config.baseUrl}/api/products/${config.productKey}/snapshots/${businessId}`, {
+    const url = `${config.baseUrl}/api/products/${config.productKey}/snapshots/${businessId}`;
+    const response = await fetchImpl(url, {
       method: "GET",
-      headers: signedHeaders(config.eventSecret, newId("command"), ""),
+      headers: signedHeaders(config.eventSecret, newId("command"), "", { target: requestTarget("GET", url) }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",
     });
