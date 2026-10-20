@@ -130,6 +130,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // Step 1 — Event Details (+ the pre-ticked WhatsApp/offers consent box)
   await publicPage.goto(`/${slug}`);
   await publicPage.getByLabel("Your Name").fill(customerName);
+  await publicPage.getByRole("radio", { name: /Single Order/ }).click();
   await publicPage.getByLabel("Email Address").fill(`customer-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500000");
   // Two days out: customers need 2 days' notice (AJ, 2026-09-27), and that is
@@ -186,7 +187,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // Dishes: Select / Selected only (no quantity boxes anywhere)
   await expect(publicPage.getByLabel(/Quantity/)).toHaveCount(0);
   const counter = publicPage.getByTestId("category-counter");
-  await expect(counter).toHaveText("0/1 selected");
+  await expect(counter).toHaveText("0/1 included selected");
   // The limit is a minimum, and there is no "Show All" tab: one tab per category, the first one chosen.
   await expect(publicPage.getByText("Select at least 1 item from this category", { exact: false })).toBeVisible();
   await expect(publicPage.getByRole("tab", { name: /Show All/ })).toHaveCount(0);
@@ -202,14 +203,14 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await publicPage.getByTestId("item-section").first().getByRole("button", { expanded: false }).first().click();
   await expect(publicPage.getByTestId("item-card")).toHaveCount(2);
 
-  // The dishes are a table (Dish, Type, Status), and there is no Grid / List switch.
+  // The dishes are rows (photo, name with its chips, eye, Select), with no table headings and no Grid / List switch.
   await expect(publicPage.getByLabel("Grid view")).toHaveCount(0);
-  for (const heading of ["Dish", "Type", "Status"]) await expect(publicPage.getByText(heading, { exact: true })).toBeVisible();
+  await expect(publicPage.getByText("Status", { exact: true })).toHaveCount(0);
 
   const tikkaCard = publicPage.getByTestId("item-card").filter({ hasText: itemName });
   const kebabCard = publicPage.getByTestId("item-card").filter({ hasText: extraItemName });
-  // While a slot is free, every dish says it is included; nothing is chosen for the customer.
-  await expect(tikkaCard.getByText("Included", { exact: true })).toBeVisible();
+  // While a slot is free, no dish is charged; nothing is chosen for the customer.
+  await expect(tikkaCard.getByText("Veg", { exact: true })).toBeVisible(); // an included dish carries no price chip
   await expect(tikkaCard.getByText("₹150.00")).toHaveCount(0); // an included dish shows no price, only extras do
   // Without the category's minimum Continue stays off and a note names the category that is still needed.
   await expect(publicPage.getByRole("button", { name: "Continue to Review" })).toBeDisabled();
@@ -220,11 +221,10 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(publicPage.getByTestId("dishes-section")).toBeHidden();
   await publicPage.getByRole("button", { name: /Select Dishes/ }).click();
   await expect(tikkaCard.getByRole("button", { name: "Selected" })).toBeVisible();
-  await expect(counter).toHaveText("1/1 selected");
+  await expect(counter).toHaveText("1/1 included selected");
   await expect(publicPage.getByTestId("selection-needed")).toHaveCount(0);
   // With the included pick used up, the other dish now says what it would add to the bill.
-  await expect(kebabCard.getByText("Extra", { exact: true })).toBeVisible();
-  await expect(kebabCard.getByText(/₹[\d,.]+ per plate/)).toBeVisible();
+  await expect(kebabCard.getByText(/Extra · ₹[\d,.]+\/plate/)).toBeVisible();
 
   // The View Details popup, then adding beyond the limit opens the Additional Option popup
   await kebabCard.getByRole("button", { name: "View details" }).click();
@@ -236,9 +236,9 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(kebabCard.getByRole("button", { name: "Select", exact: true })).toBeVisible(); // not selected automatically
   await kebabCard.getByRole("button", { name: "Select", exact: true }).click();
   await publicPage.getByRole("button", { name: /^Add .* \(\+₹12,000\.00\)$/ }).click();
-  await expect(kebabCard.getByText("Extra", { exact: true })).toBeVisible();
-  // A pick past the limit reads "1/1 selected + 1 extra"; the extra doesn't count toward the cap.
-  await expect(counter).toHaveText("1/1 selected + 1 extra");
+  await expect(kebabCard.getByText(/Extra · ₹/)).toBeVisible();
+  // A pick past the limit reads "1/1 included selected + 1 extra"; the extra doesn't count toward the cap.
+  await expect(counter).toHaveText("1/1 included selected + 1 extra");
   await expect(publicPage.getByTestId("selection-summary")).toHaveText("2 dishes selected (1 extra)");
   await expect(publicPage.getByTestId("extras-summary")).toHaveText("Extras: ₹12,000.00");
   // The dish names are not repeated in the summary, only counts.
@@ -289,6 +289,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   const abandonName = `Abandoner ${suffix}`;
   await publicPage.goto(`/${slug}`);
   await publicPage.getByLabel("Your Name").fill(abandonName);
+  await publicPage.getByRole("radio", { name: /Single Order/ }).click();
   await publicPage.getByLabel("Email Address").fill(`abandon-${suffix}@example.test`);
   await publicPage.getByRole("textbox", { name: "Phone Number" }).fill("9876511111");
   await pickCalendarDate(publicPage, publicPage.getByLabel("Event Date"), toLocalIsoDate(new Date(Date.now() + 5 * 86_400_000)));
@@ -331,8 +332,11 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(counts.getByText("1 Extra", { exact: true })).toBeVisible();
   await expect(counts.getByText("1 Add-on", { exact: true })).toBeVisible();
   // Under the counts, every picked dish is listed under its category (AJ, 2026-10-19), add-ons in their own group.
-  await expect(review.getByTestId("meal-dish").first()).toBeVisible();
-  await expect(review.getByTestId("meal-dish-group").filter({ hasText: "Add-ons" }).first()).toBeVisible();
+  // Each category is one collapsed row that already names its dishes; opening it lists them as chips.
+  const addOnRow = review.getByTestId("meal-dish-group").filter({ hasText: "Add-ons" }).first();
+  await expect(addOnRow).toBeVisible();
+  await addOnRow.getByRole("button").click();
+  await expect(addOnRow.getByTestId("meal-dish").first()).toBeVisible();
   await expect(review.getByRole("button", { name: "Edit Items" }).first()).toBeVisible();
 
   // --- One planner (AJ, 2026-10-16): the order page's planner is read-only; the Menu Approval tab edits the same stored meals ---

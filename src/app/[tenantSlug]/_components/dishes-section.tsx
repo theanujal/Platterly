@@ -120,10 +120,6 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
     sectionsRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }
 
-  // The dishes are a table (AJ's mockup): Dish, Type, Status and the action. The mockup's Price and Quantity columns
-  // are left out: a dish inside the limit is already in the plate price, and a dish is either chosen or not.
-  const tableColumns = isCustomMenu ? "sm:grid-cols-[minmax(0,1fr)_4.5rem_9.5rem]" : "sm:grid-cols-[minmax(0,1fr)_4.5rem_7rem_9.5rem]";
-
   function renderDish(item: StorefrontMenuItem, section: StorefrontMenuSection, full: boolean) {
     const selected = itemIds.includes(item.id);
     const isExtra = extraSet.has(item.id);
@@ -131,49 +127,37 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
     // be one when the category's included picks are already used up.
     const additional = !isCustomMenu && (selected ? isExtra : full);
     const veg = item.foodType === "VEGETARIAN";
-    const typeBadge = <Badge variant={veg ? "success" : "danger"}>{veg ? "Veg" : "Non-Veg"}</Badge>;
-    const status = isCustomMenu ? null : additional ? (
-      <span className="flex flex-col items-start gap-0.5">
-        <Badge variant="warning">Extra</Badge>
-        <span className="text-xs text-muted-foreground">{formatInr(item.price)} per plate</span>
-      </span>
-    ) : (
-      <Badge variant="success">
-        <Check /> Included
-      </Badge>
-    );
+    // A row (AJ's mockup, 2026-10-19): the photo, the name with its chips (Extra price when it is charged, Veg / Non-Veg), the eye, and the button.
     return (
       <div
         key={item.id}
         data-testid="item-card"
-        // One copy of each cell: a phone wraps them (Type and Status sit under the name), from `sm` they are columns.
-        className={cn("flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-border px-4 py-3 first:border-t-0 sm:grid sm:gap-3", tableColumns, selected && "bg-accent/50")}
+        className={cn("flex flex-wrap items-center gap-x-4 gap-y-3 border-t border-border px-4 py-3 first:border-t-0", selected && "bg-accent/50")}
       >
-        <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+        <div className="flex min-w-0 flex-1 basis-64 items-center gap-4">
           {item.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt="" className="size-12 shrink-0 rounded-lg object-cover sm:size-14" />
+            <img src={item.image} alt="" className="size-16 shrink-0 rounded-xl object-cover sm:size-[4.5rem]" />
           ) : (
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted sm:size-14">
-              <UtensilsCrossed className="size-5 text-muted-foreground" />
+            <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted sm:size-[4.5rem]">
+              <UtensilsCrossed className="size-6 text-muted-foreground" />
             </div>
           )}
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <h4 className="text-[15px] font-semibold leading-snug">{item.name}</h4>
-            <ItemHighlightBadges highlights={item.highlights} className="flex flex-wrap gap-1" />
-            {item.description && <p className="line-clamp-2 text-sm text-muted-foreground">{item.description}</p>}
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <h4 className="text-base font-semibold leading-snug">{item.name}</h4>
+            <div className="flex flex-wrap items-center gap-2">
+              {additional && <Badge variant="warning">Extra · {formatInr(item.price)}/plate</Badge>}
+              <Badge variant={veg ? "success" : "danger"}>{veg ? "Veg" : "Non-Veg"}</Badge>
+              <ItemHighlightBadges highlights={item.highlights} className="contents" />
+            </div>
             {needle !== "" && <span className="text-xs text-muted-foreground">{section.categoryName}</span>}
           </div>
         </div>
-        <div>{typeBadge}</div>
-        {!isCustomMenu && <div>{status}</div>}
-        <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end sm:gap-2">
-          {/* Icon only from `sm` (the table is tight); the words stay on a phone. */}
-          <Button type="button" variant="link" className="h-auto p-0 font-medium" aria-label="View details" title="View details" onClick={() => setDetail({ item, categoryName: section.categoryName })}>
-            <Eye />
-            <span className="sm:sr-only">View details</span>
+        <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end sm:gap-5">
+          <Button type="button" variant="ghost" size="icon" className="text-primary hover:bg-primary/10 hover:text-primary" aria-label="View details" title="View details" onClick={() => setDetail({ item, categoryName: section.categoryName })}>
+            <Eye className="size-6" />
           </Button>
-          <Button type="button" size="md" variant={selected ? "default" : "outline"} aria-pressed={selected} onClick={() => toggleItem(item, section.categoryName)}>
+          <Button type="button" variant={selected ? "default" : "outline"} aria-pressed={selected} onClick={() => toggleItem(item, section.categoryName)} className="h-11 w-36 text-[15px]">
             {selected && <Check />}
             {selected ? "Selected" : "Select"}
           </Button>
@@ -318,7 +302,7 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
                         {capped && (
                           <Badge variant={regularInSection >= needed ? "success" : "neutral"} data-testid="category-counter">
                             {regularInSection >= needed && <Check />}
-                            {regularInSection}/{section.maxSelection} selected{extrasInSection > 0 ? ` + ${extrasInSection} extra` : ""}
+                            {regularInSection}/{section.maxSelection} included selected{extrasInSection > 0 ? ` + ${extrasInSection} extra` : ""}
                           </Badge>
                         )}
                         {!capped && extrasInSection > 0 && <Badge variant="neutral">{extrasInSection} selected</Badge>}
@@ -328,12 +312,6 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
                       {open && (
                         <>
                           <div className="overflow-hidden rounded-xl border border-border bg-card">
-                            <div className={cn("hidden gap-3 bg-muted/60 px-4 py-2.5 text-[11px] font-bold tracking-wide text-muted-foreground uppercase sm:grid", tableColumns)}>
-                              <span>Dish</span>
-                              <span>Type</span>
-                              {!isCustomMenu && <span>Status</span>}
-                              <span className="sr-only">Actions</span>
-                            </div>
                             {items.map((item) => renderDish(item, section, full))}
                           </div>
                           {full && (

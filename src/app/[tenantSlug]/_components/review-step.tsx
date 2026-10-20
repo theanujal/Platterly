@@ -223,7 +223,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
               <SummaryRow label="Customer" value={summary.customerName} />
               <SummaryRow label="Phone" value={summary.phone} />
               <SummaryRow label="Event Type" value={summary.eventTypeName} />
-              <SummaryRow label="Event Date" value={summary.eventDate} />
+              <SummaryRow label={summary.eventDate.includes(" to ") ? "Event Dates" : "Event Date"} value={summary.eventDate} />
               <SummaryRow label="Meals Required" value={summary.mealType} />
               <SummaryRow label="Preference" value={summary.menuPreferenceLabel} />
               <SummaryRow label="Adults" value={String(summary.guests)} />
@@ -247,7 +247,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
                     key={mealQuote.mealType}
                     title={several ? `${labelOf(mealQuote.mealType)} · ${mealQuote.menuName ?? "Menu"}` : (mealQuote.menuName ?? "Menu")}
                     amount={mealQuote.menuAmount}
-                    detail={`${formatInr(mealQuote.pricePerPlate ?? 0)} × ${quote.guests} guests`}
+                    detail={`${formatInr(mealQuote.pricePerPlate ?? 0)} × ${quote.guests} guests${quote.days > 1 ? ` × ${quote.days} days` : ""}`}
                   />
                 ),
               )}
@@ -258,7 +258,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
                     m.extras.map((e) => (
                       <li key={`${m.mealType}-${e.id}`}>
                         {several ? `${labelOf(m.mealType)} · ` : ""}
-                        {e.name}: {formatInr(e.price)} × {quote.guests}
+                        {e.name}: {formatInr(e.price)} × {quote.guests}{quote.days > 1 ? ` × ${quote.days} days` : ""}
                       </li>
                     )),
                   )}
@@ -270,7 +270,7 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
                     m.addOns.map((a) => (
                       <li key={`${m.mealType}-${a.id}`}>
                         {several ? `${labelOf(m.mealType)} · ` : ""}
-                        {a.name}: {a.included ? "Included in package" : a.priceType === "PER_PLATE" ? `${formatInr(a.price)} × ${quote.guests}` : formatInr(a.price)}
+                        {a.name}: {a.included ? "Included in package" : a.priceType === "PER_PLATE" ? `${formatInr(a.price)} × ${quote.guests}${quote.days > 1 ? ` × ${quote.days} days` : ""}` : `${formatInr(a.price)}${quote.days > 1 ? ` × ${quote.days} days` : ""}`}
                       </li>
                     )),
                   )}

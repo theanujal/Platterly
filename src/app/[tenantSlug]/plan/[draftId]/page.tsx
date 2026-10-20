@@ -38,6 +38,13 @@ const MEAL_LABEL: Record<string, string> = { BREAKFAST: "Breakfast", LUNCH: "Lun
 // unlocked (draft.currentStep). Everything is saved server-side per step, so
 // a refresh, a back-button, or a WhatsApp "continue your booking" link all
 // land exactly where they left off.
+/** "9 Nov 2026", or "9 Nov 2026 to 11 Nov 2026" for a date range. */
+function eventDateText(data: { eventDate: string; eventEndDate?: string }, month: "short" | "long"): string {
+  const format = (day: string) => new Date(day).toLocaleDateString("en-IN", { day: "numeric", month, year: "numeric", timeZone: "UTC" });
+  const end = data.eventEndDate ?? data.eventDate;
+  return end > data.eventDate ? `${format(data.eventDate)} to ${format(end)}` : format(data.eventDate);
+}
+
 export default async function PlanPage({ params, searchParams }: PlanPageProps) {
   const { tenantSlug, draftId } = await params;
   const { step: stepParam, meal: mealParam } = await searchParams;
@@ -121,6 +128,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
       phone: formatPhoneDisplay(draft.customer.phone),
       eventTypeId: data.eventTypeId,
       eventDate: data.eventDate,
+      eventEndDate: data.eventEndDate ?? data.eventDate,
       guestCount: String(data.guestCount),
       childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
       child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
@@ -147,6 +155,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
             phone: formatPhoneDisplay(draft.customer.phone),
             eventTypeId: data.eventTypeId,
             eventDate: data.eventDate,
+            eventEndDate: data.eventEndDate ?? data.eventDate,
             guestCount: String(data.guestCount),
             childBelow5Count: data.childBelow5Count ? String(data.childBelow5Count) : "",
             child5To10Count: data.child5To10Count ? String(data.child5To10Count) : "",
@@ -200,7 +209,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
         addOns={addOns}
         guests={data.guestCount}
         event={{
-          date: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }),
+          date: eventDateText(data, "short"),
           eventType: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
           adults: data.guestCount,
           kidsBelow5: data.childBelow5Count,
@@ -257,7 +266,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
           customerName: draft.customer.name,
           phone: formatPhoneDisplay(draft.customer.phone),
           eventTypeName: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",
-          eventDate: new Date(data.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }),
+          eventDate: eventDateText(data, "long"),
           mealType: data.eventMealTypes.map((m) => MEAL_LABEL[m] ?? m).join(", "),
           menuPreferenceLabel: data.menuPreference === "VEGETARIAN" ? "Vegetarian" : "Non-Vegetarian",
           guests: data.guestCount,

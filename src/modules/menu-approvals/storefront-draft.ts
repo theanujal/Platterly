@@ -27,16 +27,20 @@ export class StorefrontDraftError extends Error {}
 
 export interface EventDetailsInput {
   eventTypeId: string;
-  /** yyyy-mm-dd */
+  /** yyyy-mm-dd: the first (or only) day. */
   eventDate: string;
+  /** yyyy-mm-dd: the last day of a Multi Order's date range; the same as `eventDate` (or absent) for one day. */
+  eventEndDate?: string;
   guestCount: number;
   childBelow5Count: number;
   child5To10Count: number;
-  /** "Meals Required" — one or more meals on the event day. The menu, dishes and add-ons repeat for each. */
+  /** "Meals Required" — one or more meals on each event day. The menu, dishes and add-ons repeat for each meal, and for each day of a date range. */
   eventMealTypes: MealType[];
   menuPreference: FoodType;
   /** Where the event is (an area, locality or address). The detailed venue and delivery information is collected after the customer approves the menu. */
   venueLocation: string;
+  /** What the visitor chose first: a Single Order holds one meal, a Multi Order one or more (each with its own menu). Not stored; the meals are what the order is built from. */
+  orderType?: "SINGLE" | "MULTI";
 }
 
 export interface StartDraftInput extends EventDetailsInput {
@@ -77,6 +81,18 @@ export function isMealComplete(selection: MealSelection | undefined): boolean {
   return !!selection?.menuChoice && (selection.itemIds?.length ?? 0) > 0;
 }
 
+/** Every day of the event, first to last (one entry for a single day). Days are yyyy-mm-dd, counted in UTC like the order's own dates. */
+export function draftDays(data: { eventDate: string; eventEndDate?: string }): string[] {
+  const start = data.eventDate.slice(0, 10);
+  const end = (data.eventEndDate ?? start).slice(0, 10);
+  const days: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`) && days.length < MAX_EVENT_DAYS; t += 86_400_000) days.push(new Date(t).toISOString().slice(0, 10));
+  return days.length > 0 ? days : [start];
+}
+
+/** A Multi Order's date range is capped, so a typo cannot book a year of meals. */
+export const MAX_EVENT_DAYS = 31;
+
 // --- validation helpers -------------------------------------------------
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -102,6 +118,13 @@ async function validateEventDetails(organizationId: string, details: EventDetail
     throw new StorefrontDraftError(`Please pick a date at least ${PUBLIC_MIN_LEAD_DAYS} days from today — we need that much notice.`);
   }
 
+  const endChosen = (details.eventEndDate || details.eventDate).slice(0, 10);
+  if (Number.isNaN(new Date(endChosen).getTime())) throw new StorefrontDraftError("Event end date is not a valid date.");
+  if (endChosen < chosen) throw new StorefrontDraftError("The event end date can't be before the start date.");
+  if ((Date.parse(`${endChosen}T00:00:00Z`) - Date.parse(`${chosen}T00:00:00Z`)) / 86_400_000 + 1 > MAX_EVENT_DAYS) {
+    throw new StorefrontDraftError(`An event can run up to ${MAX_EVENT_DAYS} days.`);
+  }
+
   const isCount = (n: number) => Number.isInteger(n) && n >= 0;
   if (!Number.isInteger(details.guestCount) || details.guestCount < 1) throw new StorefrontDraftError("Number of Adults is required.");
   if (eventType.minGuests && details.guestCount < eventType.minGuests) {
@@ -110,12 +133,13 @@ async function validateEventDetails(organizationId: string, details: EventDetail
   const requested = new Set(details.eventMealTypes ?? []);
   const meals = MEAL_ORDER.filter((meal) => requested.has(meal));
   if (meals.length === 0) throw new StorefrontDraftError("Please choose at least one meal.");
+  if (details.orderType === "SINGLE" && (meals.length > 1 || endChosen > chosen)) throw new StorefrontDraftError("A Single Order has one date and one meal. Choose Multi Order for several meals or dates.");
 
   if (!isCount(details.childBelow5Count) || !isCount(details.child5To10Count)) throw new StorefrontDraftError("Kids counts must be zero or more.");
 
   const venueLocation = requireText(details.venueLocation, "Venue Location");
 
-  return { ...details, eventMealTypes: meals, eventDate: details.eventDate.slice(0, 10), venueLocation };
+  return { ...details, orderType: undefined, eventMealTypes: meals, eventDate: chosen, eventEndDate: endChosen, venueLocation };
 }
 
 function readData(draft: { data: Prisma.JsonValue }): DraftData {
@@ -128,6 +152,8 @@ function readData(draft: { data: Prisma.JsonValue }): DraftData {
   };
   // Drafts saved before "Meals Required" held a single meal.
   if (!data.eventMealTypes) data.eventMealTypes = data.eventMealType ? [data.eventMealType] : [];
+  // Drafts saved before date ranges ran one day.
+  if (!data.eventEndDate) data.eventEndDate = data.eventDate;
   // Drafts saved before the 3-step flow have no Venue Location; their old venue address stands in for it.
   if (!data.venueLocation) data.venueLocation = data.venue?.completeVenueAddress ?? "";
   // Drafts saved before 2026-10-12 had one menu, one dish list and one add-on list that every meal repeated.
@@ -417,6 +443,8 @@ export interface DraftQuote {
   guests: number;
   /** How many meals are priced; every amount below already covers all of them. */
   meals: number;
+  /** How many event days: each meal's menu, extras and add-ons are served every day, so their amounts already cover all of them. The kids' charge is once. */
+  days: number;
   /** Menu price x guests, summed over the meals (0 for a Custom Menu). */
   menuAmount: number;
   /** The same dish or add-on on several meals is one line with the amounts added up. */
@@ -446,6 +474,8 @@ function mergeById<T extends { id: string; amount: number }>(lines: T[]): T[] {
  */
 export async function buildDraftQuote(organizationId: string, data: DraftData): Promise<DraftQuote> {
   const guests = data.guestCount;
+  // The same meals are served on every day of the event, so each meal's amounts are per day x days.
+  const days = draftDays(data).length;
   const perMeal: DraftMealQuote[] = [];
   let childMenu: Awaited<ReturnType<typeof prisma.menu.findFirst>> = null;
 
@@ -460,7 +490,7 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
     const { items, extraIds } = await classifyItems(organizationId, data.menuPreference, selection, selection.itemIds ?? []);
     const extras = extraIds.map((id) => {
       const item = items.get(id)!;
-      return { id, name: item.name, price: item.price, amount: item.price * guests };
+      return { id, name: item.name, price: item.price, amount: item.price * guests * days };
     });
     const addOnRecords = selection.addOnIds?.length ? await prisma.addOn.findMany({ where: { id: { in: selection.addOnIds }, organizationId, isActive: true } }) : [];
     const addOns = addOnRecords.map((addOn) => ({
@@ -470,10 +500,10 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
       priceType: addOn.priceType,
       price: Number(addOn.price),
       included: addOn.includedInPackage,
-      amount: addOn.includedInPackage ? 0 : addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price),
+      amount: (addOn.includedInPackage ? 0 : addOn.priceType === "PER_PLATE" ? Number(addOn.price) * guests : Number(addOn.price)) * days,
     }));
     const pricePerPlate = menu ? Number(menu.pricePerPlate) : null;
-    const menuAmount = pricePerPlate !== null ? pricePerPlate * guests : 0;
+    const menuAmount = pricePerPlate !== null ? pricePerPlate * guests * days : 0;
     perMeal.push({
       mealType,
       isCustomMenu,
@@ -495,6 +525,7 @@ export async function buildDraftQuote(organizationId: string, data: DraftData): 
     pricePerPlate: first?.pricePerPlate ?? null,
     guests,
     meals: perMeal.length,
+    days,
     menuAmount,
     extras: mergeById(perMeal.flatMap((m) => m.extras)),
     addOns: mergeById(perMeal.flatMap((m) => m.addOns)),
@@ -528,7 +559,9 @@ export async function submitDraft(organizationId: string, draftId: string, notes
 
   try {
     const quote = await buildDraftQuote(organizationId, data);
-    const eventDate = new Date(data.eventDate);
+    const days = draftDays(data);
+    const eventDate = new Date(days[0]);
+    const eventEndDate = new Date(days[days.length - 1]);
     const guests = data.guestCount;
     const mealTypes = data.eventMealTypes;
 
@@ -544,22 +577,25 @@ export async function submitDraft(organizationId: string, draftId: string, notes
         ...extraIds.map((id) => ({ itemType: "MENU_ITEM" as const, catalogId: id, quantity: guests, isExtra: true })),
         ...mealQuote.addOns.map((a) => ({ itemType: "ADD_ON" as const, catalogId: a.id, quantity: a.priceType === "PER_PLATE" ? guests : 1 })),
       ];
-      entries.push({
-        date: eventDate,
-        mealType,
-        menuId: selection.menuChoice!.kind === "MENU" ? selection.menuChoice!.menuId : null,
-        // Individual Pricing is a per-plate price: the meal's own menu price (nothing for a Custom Menu until the kitchen quotes it).
-        price: mealQuote.pricePerPlate ?? 0,
-        items: mealItems,
-      });
+      // The same meal on every day of the event, each its own entry the team can change in the Menu Approval planner.
+      for (const day of days) {
+        entries.push({
+          date: new Date(day),
+          mealType,
+          menuId: selection.menuChoice!.kind === "MENU" ? selection.menuChoice!.menuId : null,
+          // Individual Pricing is a per-plate price: the meal's own menu price (nothing for a Custom Menu until the kitchen quotes it).
+          price: mealQuote.pricePerPlate ?? 0,
+          items: mealItems.map((item) => ({ ...item })),
+        });
+      }
     }
 
     const order = await createOrder(organizationId, {
       customerId: draft.customerId,
       eventTypeId: data.eventTypeId,
       eventStartDate: eventDate,
-      eventEndDate: eventDate,
-      orderKind: mealTypes.length > 1 ? "MULTI" : "SINGLE",
+      eventEndDate,
+      orderKind: mealTypes.length > 1 || days.length > 1 ? "MULTI" : "SINGLE",
       // Only the location is known at this point; the venue and delivery details come after the customer approves.
       eventAddress: data.venueLocation,
       // "Number of Adults" on the form is the adults; children are counted on top.

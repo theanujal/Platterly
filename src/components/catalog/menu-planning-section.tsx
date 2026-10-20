@@ -1,7 +1,7 @@
 "use client";
 
 import { createElement, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronDown, Coffee, Copy, Moon, PenSquare, Plus, Sun, Sunrise, Trash2, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { CalendarDays, Cake, ChevronDown, CirclePlus, Coffee, ConciergeBell, Copy, CupSoda, Leaf, Moon, PenSquare, Plus, Salad, Soup, Sun, Sunrise, Trash2, Utensils, UtensilsCrossed, Wheat, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -270,12 +270,12 @@ export function MenuPlanningSection({
       <div
         key={mealType}
         data-testid={`${mealSlotTestIdPrefix}meal-slot-${date}-${mealType}`}
-        className="flex flex-col gap-3 rounded-lg border border-primary/40 bg-accent/40 p-3 sm:p-4"
+        className={cn("flex flex-col gap-3 rounded-lg border border-primary/40 bg-accent/40 p-3 sm:p-4", sectioned && "gap-4 rounded-2xl border-primary/20 bg-gradient-to-b from-primary/[0.06] to-transparent")}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="flex items-center gap-2 text-sm font-semibold">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              {createElement(MEAL_ICON[mealType], { className: "size-4" })}
+          <span className={cn("flex items-center gap-2 text-sm font-semibold", sectioned && "gap-3 text-lg font-bold")}>
+            <span className={cn("flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary", sectioned && "size-12 rounded-xl")}>
+              {createElement(MEAL_ICON[mealType], { className: sectioned ? "size-6" : "size-4" })}
             </span>
             {meal.label}
           </span>
@@ -364,8 +364,9 @@ export function MenuPlanningSection({
           <div className="flex flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm">
-                <span className="font-medium">Food Items</span>
-                <span className="ml-2 text-muted-foreground">
+                <span className={cn("font-medium", sectioned && "text-base font-semibold")}>Food Items</span>
+                {sectioned && entry.items.length > 0 && <span className="mx-2 inline-block size-1.5 rounded-full bg-primary align-middle" aria-hidden />}
+                <span className={cn("ml-2 text-muted-foreground", sectioned && entry.items.length > 0 && "ml-0")}>
                   {entry.items.length === 0 ? "No items selected" : `${entry.items.length} item${entry.items.length === 1 ? "" : "s"} selected`}
                 </span>
               </span>
@@ -659,19 +660,35 @@ function ItemCountPills({ items }: { items: { itemType: string; perGuest?: boole
   const addOns = items.filter((item) => item.itemType === "ADD_ON").length;
   const extras = items.filter((item) => item.itemType !== "ADD_ON" && item.perGuest).length;
   const dishes = items.length - addOns - extras;
-  const pill = (count: number, singular: string, plural: string, tone?: string) =>
+  const pill = (count: number, singular: string, plural: string, icon: LucideIcon, tone?: string) =>
     count > 0 ? (
-      <Badge variant="outline" className={cn("gap-1", tone)}>
+      <span className={cn("inline-flex h-10 items-center gap-2 rounded-full bg-muted px-4 text-sm font-medium", tone)}>
+        {createElement(icon, { className: "size-4" })}
         {count} {count === 1 ? singular : plural}
-      </Badge>
+      </span>
     ) : null;
   return (
     <>
-      {pill(dishes, "Dish", "Dishes")}
-      {pill(extras, "Extra", "Extras", "text-warning")}
-      {pill(addOns, "Add-on", "Add-ons", "text-primary")}
+      {pill(dishes, "Dish", "Dishes", Utensils)}
+      {pill(extras, "Extra", "Extras", UtensilsCrossed, "bg-warning/10 text-warning")}
+      {pill(addOns, "Add-on", "Add-ons", CirclePlus, "bg-primary/10 text-primary")}
     </>
   );
+}
+
+const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
+  [/starter|appetis|snack|chaat|tikka|kebab/i, Leaf],
+  [/soup/i, Soup],
+  [/salad/i, Salad],
+  [/bread|roti|naan|paratha|kulcha/i, Wheat],
+  [/dessert|sweet|ice ?cream|cake/i, Cake],
+  [/beverage|drink|juice|shake|tea|coffee/i, CupSoda],
+  [/main|curry|gravy|rice|biryani|dal/i, ConciergeBell],
+];
+/** A category has no icon of its own, so one is picked from its name (Main Course, Starter, Dessert...); anything else gets the plain cutlery. */
+function categoryIcon(name: string): LucideIcon {
+  if (name === "Add-ons") return CirclePlus;
+  return CATEGORY_ICONS.find(([pattern]) => pattern.test(name))?.[1] ?? Utensils;
 }
 
 /** Beyond this many dishes the list starts collapsed and gets a search box; beyond this many categories it scrolls inside the card. */
@@ -681,8 +698,7 @@ const CATEGORIES_SCROLL_LIMIT = 6;
 /**
  * The dishes of one meal under the Menu's categories (add-ons last, anything the Menu no longer lists under "Other Items"), built to
  * hold 20 categories of 10 dishes (AJ, 2026-10-19). Each category is one collapsible row (name, dish count, Extra count) with its dishes
- * as compact chips inside, so a closed category costs a single line. A meal with few dishes starts fully open; a big one starts
- * collapsed, with a search box, Expand all / Collapse all, and a bounded scroll area so the card never grows endlessly. A search
+ * as compact chips inside, so a closed category costs a single line. Every row starts collapsed with its dishes summarised on the row; a big meal adds a search box, Expand all / Collapse all, and a bounded scroll area so the card never grows endlessly. A search
  * filters the dishes and opens the categories that match. Categories come from the Menu's picker data, loaded once per Menu.
  */
 function MealDishes({ items, menuId, loadPickerData }: { items: PickedItem[]; menuId: string; loadPickerData: (menuId: string) => Promise<MenuPickerData | null> }) {
@@ -720,7 +736,7 @@ function MealDishes({ items, menuId, loadPickerData }: { items: PickedItem[]; me
   const visible = groups
     .map(([name, groupItems]) => [name, needle ? groupItems.filter((item) => item.name.toLowerCase().includes(needle)) : groupItems] as const)
     .filter(([, groupItems]) => groupItems.length > 0);
-  const isOpen = (name: string) => (needle ? true : (toggled[name] ?? !big));
+  const isOpen = (name: string) => (needle ? true : (toggled[name] ?? false));
   const allOpen = visible.every(([name]) => isOpen(name));
   const setAll = (open: boolean) => setToggled(Object.fromEntries(groups.map(([name]) => [name, open])));
 
@@ -743,26 +759,35 @@ function MealDishes({ items, menuId, loadPickerData }: { items: PickedItem[]; me
           )}
         </div>
       )}
-      <div className={cn("flex flex-col divide-y divide-border rounded-lg border border-border bg-background", groups.length > CATEGORIES_SCROLL_LIMIT && "max-h-96 overflow-y-auto")}>
+      <div className={cn("flex flex-col divide-y divide-border rounded-xl border border-border bg-background", groups.length > CATEGORIES_SCROLL_LIMIT && "max-h-96 overflow-y-auto")}>
         {visible.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">No selected item matches “{query}”.</p>}
         {visible.map(([name, groupItems]) => {
           const open = isOpen(name);
           const extras = groupItems.filter((item) => item.itemType !== "ADD_ON" && item.perGuest).length;
+          const Icon = categoryIcon(name);
           return (
             <section key={name} data-testid="meal-dish-group">
               <button
                 type="button"
                 aria-expanded={open}
                 onClick={() => setToggled((prev) => ({ ...prev, [name]: !open }))}
-                className="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm font-medium outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
+                className="flex min-h-14 w-full items-center gap-3 px-3 text-left text-sm outline-none hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", !open && "-rotate-90")} />
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                {extras > 0 && <Badge variant="warning">{extras} Extra</Badge>}
-                <Badge variant="outline">{groupItems.length}</Badge>
+                <Icon className="size-5 shrink-0 text-primary" />
+                <span className="w-28 shrink-0 truncate font-semibold sm:w-36">{name}</span>
+                <span className="hidden h-6 w-px shrink-0 bg-border sm:block" />
+                <span className="hidden shrink-0 text-muted-foreground sm:inline">{groupItems.length} selected</span>
+                <span className="hidden h-6 w-px shrink-0 bg-border sm:block" />
+                {/* The dishes themselves, in one line, as in the design; the full list opens under the row. */}
+                <span className="min-w-0 flex-1 truncate" title={groupItems.map((item) => item.name).join(", ")}>
+                  {groupItems.map((item) => item.name).join(", ")}
+                </span>
+                {extras > 0 && <Badge variant="warning" className="shrink-0">{extras} Extra</Badge>}
+                <span className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-full bg-muted px-2 text-sm font-medium">{groupItems.length}</span>
               </button>
               {open && (
-                <ul className="flex flex-wrap gap-1.5 px-3 pb-3 pl-9">
+                <ul className="flex flex-wrap gap-1.5 px-3 pb-3 pl-14">
                   {groupItems.map((item) => (
                     <li key={item.key} data-testid="meal-dish" className="max-w-full rounded-md border border-border bg-muted/40 px-2 py-1 text-sm break-words">
                       {item.name}

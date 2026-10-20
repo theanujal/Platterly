@@ -57,12 +57,14 @@ function readEventDetails(formData: FormData): EventDetailsInput {
   return {
     eventTypeId: text(formData, "eventTypeId"),
     eventDate: text(formData, "eventDate"),
+    eventEndDate: text(formData, "eventEndDate") || undefined,
     guestCount: count(formData, "guestCount"),
     childBelow5Count: count(formData, "childBelow5Count"),
     child5To10Count: count(formData, "child5To10Count"),
     eventMealTypes: formData.getAll("eventMealTypes").map(String) as MealType[],
     menuPreference: text(formData, "menuPreference") as FoodType,
     venueLocation: text(formData, "venueLocation"),
+    orderType: text(formData, "orderType") === "SINGLE" ? "SINGLE" : text(formData, "orderType") === "MULTI" ? "MULTI" : undefined,
   };
 }
 

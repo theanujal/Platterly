@@ -75,6 +75,7 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
     const shot = async (name: string, full = false) => { await p.waitForTimeout(300); const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth); expect(over, `${sz.n} ${name} scrolls sideways`).toBeLessThanOrEqual(0); void full; };
     await p.goto(`/${slug}`);
     await p.getByLabel("Your Name").fill("Asha Rao");
+    await p.getByRole("radio", { name: /Single Order/ }).click();
     await p.getByLabel("Email Address").fill(`a${suffix}${sz.n}@example.test`);
     await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random()*89999));
     await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0,10));

@@ -77,6 +77,7 @@ test("tick Lunch and Dinner, build each meal on its own menu, review both, submi
   const p = await ctx.newPage();
   await p.goto(`/${slug}`);
   await p.getByLabel("Your Name").fill("Meals Customer");
+  await p.getByRole("radio", { name: /Single Order/ }).click();
   await p.getByLabel("Email Address").fill(`meals${suffix}@example.test`);
   await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random() * 89999));
   await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10));
@@ -85,6 +86,7 @@ test("tick Lunch and Dinner, build each meal on its own menu, review both, submi
   await p.getByLabel("Number of Adults").fill("40");
   await p.getByRole("checkbox", { name: "Lunch" }).click();
   await p.getByRole("checkbox", { name: "Dinner" }).click();
+  await p.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click(); // a second meal makes it a Multi Order
   await p.getByRole("radio", { name: /^Vegetarian/ }).click();
   await p.getByLabel("Venue Location").fill("Whitefield, Bangalore");
   await p.getByRole("button", { name: "Continue to Build Your Menu" }).click();
@@ -189,6 +191,7 @@ test("a visitor sent straight to the review before every meal is built is taken 
   const p = await ctx.newPage();
   await p.goto(`/${slug}`);
   await p.getByLabel("Your Name").fill("Early Customer");
+  await p.getByRole("radio", { name: /Single Order/ }).click();
   await p.getByLabel("Email Address").fill(`early${suffix}@example.test`);
   await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random() * 89999));
   await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10));
@@ -197,6 +200,7 @@ test("a visitor sent straight to the review before every meal is built is taken 
   await p.getByLabel("Number of Adults").fill("30");
   await p.getByRole("checkbox", { name: "Breakfast" }).click();
   await p.getByRole("checkbox", { name: "Dinner" }).click();
+  await p.getByRole("alertdialog").getByRole("button", { name: "Got it" }).click(); // a second meal makes it a Multi Order
   await p.getByRole("radio", { name: /^Vegetarian/ }).click();
   await p.getByLabel("Venue Location").fill("Indiranagar");
   await p.getByRole("button", { name: "Continue to Build Your Menu" }).click();

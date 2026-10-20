@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { User, Mail, Leaf, Drumstick, ArrowRight, CalendarDays, Users, UtensilsCrossed, PartyPopper, Check, MapPin } from "lucide-react";
+import { User, Mail, Leaf, Drumstick, ArrowRight, CalendarDays, Users, UtensilsCrossed, PartyPopper, Check, MapPin, Layers, FileText, Files } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { FormCard, FormSection } from "@/components/public/form-section";
 import { MARKETING_CONSENT_DEFAULT_CHECKED } from "@/modules/menu-approvals/storefront-draft-constants";
 import { startDraftAction, saveDetailsAction } from "../actions";
 import { cn } from "cn";
+import type { LucideIcon } from "lucide-react";
 import { guestBreakdown } from "@/modules/menu-approvals/guest-summary";
 import { earliestPublicEventDate, PUBLIC_MIN_LEAD_DAYS } from "@/modules/menu-approvals/public-lead-time";
 
@@ -27,11 +29,15 @@ const MEAL_TYPE_OPTIONS = [
 ] as const;
 
 interface FormValues {
+  /** Single: one date and one meal. Multi: a date range, several meals, or both. Chosen before the event date; it switches by itself when a second meal is ticked or removed. An existing draft starts from its dates and meal count. */
+  orderType?: "SINGLE" | "MULTI" | "";
   name: string;
   email: string;
   phone: string;
   eventTypeId: string;
   eventDate: string;
+  /** Last day of a Multi Order; the same as `eventDate` for one day. */
+  eventEndDate?: string;
   guestCount: string;
   childBelow5Count: string;
   child5To10Count: string;
@@ -41,11 +47,13 @@ interface FormValues {
 }
 
 const EMPTY_VALUES: FormValues = {
+  orderType: "",
   name: "",
   email: "",
   phone: "",
   eventTypeId: "",
   eventDate: "",
+  eventEndDate: "",
   guestCount: "",
   childBelow5Count: "",
   child5To10Count: "",
@@ -69,13 +77,56 @@ export type { FormValues as EventDetailsFormValues };
 export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, onSaved }: EventDetailsFormProps) {
   const inPanel = !!onSaved;
   const router = useRouter();
-  const [values, setValues] = useState<FormValues>(draft?.values ?? EMPTY_VALUES);
+  const [values, setValues] = useState<FormValues>(draft ? { ...draft.values, orderType: draft.values.eventMealTypes.length > 1 || (draft.values.eventEndDate ?? draft.values.eventDate) > draft.values.eventDate ? "MULTI" : "SINGLE" } : EMPTY_VALUES);
   const [consent, setConsent] = useState(MARKETING_CONSENT_DEFAULT_CHECKED);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // The Order Type popups, as in the kitchen's Create Order: a question before Single Order removes anything, and a "Got it" notice whenever the type changes.
+  const [pendingSingle, setPendingSingle] = useState(false);
+  const [typeNotice, setTypeNotice] = useState<"multiOn" | "multiOnMeals" | "multiOff" | "multiOffMeals" | null>(null);
 
   function setField<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  const hasRange = !!values.eventEndDate && values.eventEndDate > values.eventDate;
+
+  /** What Single Order would keep (the start date, the first meal) and what it would remove. */
+  const singleLoss = { extraDates: hasRange ? 1 : 0, removedMeals: Math.max(values.eventMealTypes.length - 1, 0) };
+  const singleLosesSomething = singleLoss.extraDates > 0 || singleLoss.removedMeals > 0;
+
+  function applyOrderType(type: "SINGLE" | "MULTI") {
+    setValues((prev) => ({
+      ...prev,
+      orderType: type,
+      eventMealTypes: type === "SINGLE" ? prev.eventMealTypes.slice(0, 1) : prev.eventMealTypes,
+      eventEndDate: type === "SINGLE" ? prev.eventDate : prev.eventEndDate || prev.eventDate,
+    }));
+    // The first choice is not a change, so it gets no popup.
+    if (values.orderType) setTypeNotice(type === "MULTI" ? "multiOn" : "multiOff");
+  }
+
+  /** Single keeps one date (the start) and one meal (the first ticked), and asks first when that removes something; Multi allows several meals, a date range, or both. */
+  function chooseOrderType(type: "SINGLE" | "MULTI") {
+    if (type === values.orderType) return;
+    if (type === "SINGLE" && singleLosesSomething) {
+      setPendingSingle(true);
+      return;
+    }
+    applyOrderType(type);
+  }
+
+  /** Ticking a second meal makes it a Multi Order; taking it back to one meal on one date makes it a Single Order again. */
+  function toggleMeal(meal: string, selected: boolean) {
+    const nextMeals = values.orderType === "SINGLE" && !selected && values.eventMealTypes.length === 0 ? [meal] : selected ? values.eventMealTypes.filter((m) => m !== meal) : [...values.eventMealTypes, meal];
+    // Only taking a meal away can send it back to Single: ticking a first meal after choosing Multi keeps Multi.
+    const nextType = nextMeals.length > 1 || hasRange ? "MULTI" : selected && values.orderType === "MULTI" ? "SINGLE" : values.orderType;
+    setValues((prev) => ({ ...prev, eventMealTypes: nextMeals, orderType: nextType }));
+    if (nextType !== values.orderType) setTypeNotice(nextType === "MULTI" ? "multiOnMeals" : "multiOffMeals");
+  }
+
+  function setStartDate(start: string) {
+    setValues((prev) => ({ ...prev, eventDate: start, eventEndDate: prev.orderType === "MULTI" && prev.eventEndDate && prev.eventEndDate >= start ? prev.eventEndDate : start }));
   }
 
   const selectedEventType = eventTypes.find((et) => et.id === values.eventTypeId);
@@ -86,8 +137,16 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+    if (!values.orderType) {
+      setError("Please choose an Order Type.");
+      return;
+    }
     if (!values.eventDate) {
-      setError("Please choose an Event Date.");
+      setError(values.orderType === "MULTI" ? "Please choose the event start date." : "Please choose an Event Date.");
+      return;
+    }
+    if (values.orderType === "MULTI" && !values.eventEndDate) {
+      setError("Please choose the event end date.");
       return;
     }
     if (!values.menuPreference) {
@@ -105,7 +164,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
     setPending(true);
 
     const formData = new FormData();
-    Object.entries(values).forEach(([key, value]) => {
+    Object.entries({ ...values, eventEndDate: values.orderType === "MULTI" ? values.eventEndDate || values.eventDate : values.eventDate }).forEach(([key, value]) => {
       if (Array.isArray(value)) value.forEach((v) => formData.append(key, v));
       else if (value !== "") formData.set(key, value);
     });
@@ -167,22 +226,58 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
           </div>
         </FormSection>
 
+        <FormSection stacked={inPanel} icon={Layers} title="Order Type" required description="Choose how many menus you need for this event.">
+          <div role="radiogroup" aria-label="Order Type" className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <OrderTypeCard selected={values.orderType === "SINGLE"} onSelect={() => chooseOrderType("SINGLE")} icon={FileText} tone="orange" title="Single Order" subtitle="One menu for your event" />
+            <OrderTypeCard selected={values.orderType === "MULTI"} onSelect={() => chooseOrderType("MULTI")} icon={Files} tone="red" title="Multi Order" subtitle="Different menus for different meals or groups" />
+          </div>
+        </FormSection>
+
         <FormSection stacked={inPanel} icon={CalendarDays} title="Your Event" description="Share the event details.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {values.orderType === "MULTI" ? (
+              <div className="flex flex-col gap-1.5 sm:col-span-2">
+                <Label htmlFor="ed-date" required>Event Dates</Label>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">Event start date</span>
+                    <DateRangePicker id="ed-date" single ariaLabel="Event start date" startDate={values.eventDate} endDate={values.eventDate} onChange={(start) => setStartDate(start)} minDate={earliestDate} placeholder="Select start date" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">Event end date</span>
+                    <DateRangePicker
+                      id="ed-end-date"
+                      single
+                      ariaLabel="Event end date"
+                      startDate={values.eventEndDate || values.eventDate}
+                      endDate={values.eventEndDate || values.eventDate}
+                      onChange={(end) => setField("eventEndDate", end)}
+                      minDate={values.eventDate || earliestDate}
+                      placeholder="Select end date"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">We need at least {PUBLIC_MIN_LEAD_DAYS} days&apos; notice, so today and tomorrow can&apos;t be booked. Use the same day for several meals on one day.</p>
+              </div>
+            ) : (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ed-date" required>Event Date</Label>
+              {/* The date follows the Order Type, so it opens once one is chosen. */}
+              <fieldset disabled={!values.orderType} className="m-0 min-w-0 border-0 p-0 disabled:opacity-60">
               <DateRangePicker
                 id="ed-date"
                 single
                 startDate={values.eventDate}
                 endDate={values.eventDate}
-                onChange={(start) => setField("eventDate", start)}
+                onChange={(start) => setStartDate(start)}
                 minDate={earliestDate}
-                placeholder="Select event date"
+                placeholder={values.orderType ? "Select event date" : "Choose an Order Type first"}
               />
+              </fieldset>
               <p className="text-xs text-muted-foreground">We need at least {PUBLIC_MIN_LEAD_DAYS} days&apos; notice, so today and tomorrow can&apos;t be booked.</p>
             </div>
-            <div className="flex flex-col gap-1.5">
+            )}
+            <div className={cn("flex flex-col gap-1.5", values.orderType === "MULTI" && "sm:col-span-2")}>
               <Label htmlFor="ed-event-type" required>Event Type</Label>
               <Select items={eventTypeItems} value={values.eventTypeId} onValueChange={(v) => setField("eventTypeId", v ?? "")}>
                 <SelectTrigger id="ed-event-type" className="w-full">
@@ -246,7 +341,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
           )}
         </FormSection>
 
-        <FormSection stacked={inPanel} icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need on this day. You can pick more than one, and you will build a menu for each.">
+        <FormSection stacked={inPanel} icon={UtensilsCrossed} title="Meals Required" required description="Choose every meal you need on each day. Pick more than one and this becomes a Multi Order; you will build a menu for each meal.">
           <div role="group" aria-label="Meals Required" className="flex flex-wrap gap-3">
             {MEAL_TYPE_OPTIONS.map((o) => {
               const selected = values.eventMealTypes.includes(o.value);
@@ -256,7 +351,7 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
                   type="button"
                   role="checkbox"
                   aria-checked={selected}
-                  onClick={() => setField("eventMealTypes", selected ? values.eventMealTypes.filter((m) => m !== o.value) : [...values.eventMealTypes, o.value])}
+                  onClick={() => toggleMeal(o.value, selected)}
                   className={cn(
                     "flex h-10 items-center gap-2.5 rounded-lg border px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                     selected ? "border-primary bg-accent text-accent-foreground" : "border-border bg-card hover:border-foreground/30",
@@ -321,7 +416,72 @@ export function EventDetailsForm({ tenantSlug, businessName, eventTypes, draft, 
       </div>
       </FormCard>
 
+      <AlertDialog open={pendingSingle} onOpenChange={(open) => !open && setPendingSingle(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change this order to Single Order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Single Order keeps one date and one meal. This removes{" "}
+              {[singleLoss.extraDates > 0 ? "the date range (the start date is kept)" : "", singleLoss.removedMeals > 0 ? `${singleLoss.removedMeals} ${singleLoss.removedMeals === 1 ? "meal" : "meals"} (the first one is kept)` : ""].filter(Boolean).join(" and ")}. Cancel to keep everything as it is.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep Multi Order</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                applyOrderType("SINGLE");
+                setPendingSingle(false);
+              }}
+            >
+              Switch and remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      <AlertDialog open={typeNotice !== null} onOpenChange={(open) => !open && setTypeNotice(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{typeNotice === "multiOff" || typeNotice === "multiOffMeals" ? "Order Type changed to Single Order" : "Order Type changed to Multi Order"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {typeNotice === "multiOn"
+                ? "This is now a Multi Order. Pick a start and an end date (the same day for several meals on one day), and choose every meal you need. You will build a menu for each meal."
+                : typeNotice === "multiOnMeals"
+                  ? "You picked more than one meal, so this is now a Multi Order, even on a single day. You will build a menu for each meal."
+                  : typeNotice === "multiOffMeals"
+                    ? "Back to one meal on one date, so this is now a Single Order."
+                    : "This is now a Single Order: one date and one meal."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setTypeNotice(null)}>Got it</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
+  );
+}
+
+function OrderTypeCard({ selected, onSelect, icon: Icon, tone, title, subtitle }: { selected: boolean; onSelect: () => void; icon: LucideIcon; tone: "orange" | "red"; title: string; subtitle: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={cn(
+        "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        selected ? "border-primary bg-accent/40" : "border-border bg-card hover:border-foreground/30",
+      )}
+    >
+      <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full border", selected ? "border-primary" : "border-foreground/40")}>{selected && <span className="size-2.5 rounded-full bg-primary" />}</span>
+      <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-lg", tone === "orange" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive")}>
+        <Icon className="size-6" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="text-xs text-muted-foreground">{subtitle}</span>
+      </span>
+    </button>
   );
 }
 

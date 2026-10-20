@@ -73,6 +73,7 @@ test("the approval link fits desktop, tablet and phone at every stage: review, v
 
   await customerPage.goto(`/${slug}`);
   await customerPage.getByLabel("Your Name").fill(customerName);
+  await customerPage.getByRole("radio", { name: /Single Order/ }).click();
   await customerPage.getByLabel("Email Address").fill(`approval-customer-${suffix}@example.test`);
   await customerPage.getByRole("textbox", { name: "Phone Number" }).fill("9876500123");
   // Two days out: the 2-day notice rule, and still inside the Kitchen Dashboard's today-through-+2-days board.

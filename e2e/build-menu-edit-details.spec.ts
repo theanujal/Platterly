@@ -57,6 +57,7 @@ test("Edit event details in a side panel: unsaved dish picks stay, the summary u
   const p = await ctx.newPage();
   await p.goto(`/${slug}`);
   await p.getByLabel("Your Name").fill("Asha Rao");
+  await p.getByRole("radio", { name: /Single Order/ }).click();
   await p.getByLabel("Email Address").fill(`a${suffix}@example.test`);
   await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random() * 89999));
   await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10));
@@ -136,6 +137,7 @@ test("kids are shown on top of the adults: live total on the form, breakdown in 
   const p = await ctx.newPage();
   await p.goto(`/${slug}`);
   await p.getByLabel("Your Name").fill("Asha Rao");
+  await p.getByRole("radio", { name: /Single Order/ }).click();
   await p.getByLabel("Email Address").fill(`g${suffix}@example.test`);
   await p.getByRole("textbox", { name: "Phone Number" }).fill("98765" + Math.floor(10000 + Math.random() * 89999));
   await pickCalendarDate(p, p.getByLabel("Event Date"), new Date(Date.now() + 4 * 86_400_000).toISOString().slice(0, 10));

@@ -347,6 +347,43 @@ describe("quote + final submit (Order created only here)", () => {
     await expect(saveDraftDetails(t.org.id, draft.id, { ...before, eventMealTypes: [] })).rejects.toThrow(/at least one meal/);
   });
 
+  it("a Single Order holds one meal; a Multi Order holds several (the Order Type chosen on the form)", async () => {
+    const t = await setup();
+    await expect(startDraft(t.org.id, t.details({ orderType: "SINGLE", eventMealTypes: ["LUNCH", "DINNER"] }))).rejects.toThrow(/Single Order has one date and one meal/);
+    const single = await startDraft(t.org.id, t.details({ orderType: "SINGLE", eventMealTypes: ["DINNER"] }));
+    expect((await getDraft(t.org.id, single.draft.id))!.data.eventMealTypes).toEqual(["DINNER"]);
+    const multi = await startDraft(t.org.id, t.details({ orderType: "MULTI", eventMealTypes: ["LUNCH", "DINNER"], phone: "+919888877766", email: "multi@example.test" }));
+    expect((await getDraft(t.org.id, multi.draft.id))!.data.eventMealTypes).toEqual(["LUNCH", "DINNER"]);
+  });
+
+  it("a date range is a Multi Order: the same meals every day, priced per day, booked as one entry per day (kids once)", async () => {
+    const t = await setup();
+    const start = futureDate();
+    const end = futureDate(62); // three days
+    await expect(startDraft(t.org.id, t.details({ orderType: "SINGLE", eventEndDate: end }))).rejects.toThrow(/one date and one meal/);
+    await expect(startDraft(t.org.id, t.details({ eventEndDate: futureDate(58) }))).rejects.toThrow(/can't be before/);
+    await expect(startDraft(t.org.id, t.details({ eventEndDate: futureDate(120) }))).rejects.toThrow(/up to 31 days/);
+
+    const { draft } = await completeDraft(t, { orderType: "MULTI", eventEndDate: end });
+    const data = (await getDraft(t.org.id, draft.id))!.data;
+    expect(data.eventEndDate).toBe(end);
+    const quote = await buildDraftQuote(t.org.id, data);
+    expect(quote.days).toBe(3);
+    expect(quote.menuAmount).toBe(500 * 60 * 3);
+    expect(quote.extras).toEqual([expect.objectContaining({ name: "Veg Kebab", amount: 120 * 60 * 3 })]);
+    expect(quote.addOns.map((a) => a.amount)).toEqual([10 * 60 * 3, 1000 * 3]);
+    expect(quote.childrenCharge).toBe(2 * 250); // once, not per day
+    expect(quote.total).toBe(3 * (30000 + 7200 + 600 + 1000) + 500);
+
+    const submitted = await submitDraft(t.org.id, draft.id);
+    const order = await prisma.order.findUniqueOrThrow({ where: { id: submitted.orderId }, include: { mealPlanEntries: true } });
+    expect(order.orderKind).toBe("MULTI");
+    expect(order.eventStartDate.toISOString().slice(0, 10)).toBe(start);
+    expect(order.eventEndDate.toISOString().slice(0, 10)).toBe(end);
+    expect(order.mealPlanEntries).toHaveLength(3);
+    expect(Number(order.total)).toBe(quote.total);
+  });
+
   it("a second submit of the same draft is refused (no duplicate Order)", async () => {
     const t = await setup();
     const { draft } = await completeDraft(t);
