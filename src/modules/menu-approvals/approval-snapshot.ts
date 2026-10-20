@@ -34,7 +34,7 @@ export interface ApprovalSnapshot {
       /** A dish's first category, so the page can group dishes (2026-10-02 versions on). */
       category?: string | null;
       /** Add-ons only (2026-10-02 versions on). */
-      addOnType?: "LIVE_COUNTER" | "SPECIAL_ADD_ON";
+      addOnType?: "LIVE_COUNTER" | "SPECIAL_ADD_ON" | "SETUP_STYLE";
       priceType?: "PER_PLATE" | "FIXED";
       included?: boolean;
     }[];

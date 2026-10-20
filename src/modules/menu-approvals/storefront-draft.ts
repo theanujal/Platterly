@@ -378,6 +378,7 @@ async function addOnIdsOfferedOn(organizationId: string, addOnIds: string[], cho
 async function assertAddOnsAvailable(organizationId: string, addOnIds: string[], choices: (MenuChoice | undefined)[]) {
   const addOns = await prisma.addOn.findMany({ where: { id: { in: addOnIds }, organizationId, isActive: true }, include: { menus: { select: { menuId: true } } } });
   if (addOns.length !== addOnIds.length) throw new StorefrontDraftError("One of your add-ons isn't available.");
+  if (addOns.filter((a) => a.type === "SETUP_STYLE").length > 1) throw new StorefrontDraftError("Please choose only one setup style.");
   for (const choice of choices) {
     if (addOns.some((a) => !addOnOfferedOnMenu(a, choiceMenuId(choice)))) throw new StorefrontDraftError("One of your add-ons isn't offered with your menu.");
   }
@@ -412,7 +413,7 @@ export interface QuoteExtra {
 export interface QuoteAddOn {
   id: string;
   name: string;
-  type: "LIVE_COUNTER" | "SPECIAL_ADD_ON";
+  type: "LIVE_COUNTER" | "SPECIAL_ADD_ON" | "SETUP_STYLE";
   priceType: "PER_PLATE" | "FIXED";
   price: number;
   included: boolean;

@@ -16,6 +16,7 @@ import { useMenuPricesVisible } from "../../_components/menu-prices-context";
 const TYPE_OPTIONS = [
   { value: "LIVE_COUNTER", label: "Live Counter" },
   { value: "SPECIAL_ADD_ON", label: "Special Add-on" },
+  { value: "SETUP_STYLE", label: "Setup Style" },
 ] as const;
 
 const PRICE_TYPE_OPTIONS = [

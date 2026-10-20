@@ -178,7 +178,7 @@ test("team sends a placed order for approval, the customer approves via a no-log
   await expect(publicPage.getByTestId("picked-menu")).toContainText(menuName);
   await expect(publicPage.getByTestId("menu-card")).toHaveCount(0);
   await expect(publicPage.getByTestId("dishes-section")).toBeVisible();
-  await expect(publicPage.getByTestId("addons-block")).toHaveCount(0); // add-ons wait until the dishes are complete
+  await expect(publicPage.getByTestId("extras-card")).toHaveCount(0); // the extras wait until the dishes are complete
   await publicPage.getByTestId("picked-menu").getByRole("button", { name: "Change" }).click();
   await expect(menuCard).toBeVisible(); // all the menus are listed again
   await publicPage.getByRole("button", { name: "Keep my current menu" }).click();
@@ -244,25 +244,29 @@ test("team sends a placed order for approval, the customer approves via a no-log
   // The dish names are not repeated in the summary, only counts.
   await expect(publicPage.getByRole("complementary", { name: "Your selection" })).not.toContainText(itemName);
 
-  // Add-ons & Live Counters open once the dishes are complete (optional)
-  await expect(publicPage.getByRole("heading", { name: "Add-ons & Live Counters", level: 2 })).toBeVisible();
+  // The extras are offered once the dishes are complete, but never open on their own (optional)
+  await expect(publicPage.getByTestId("extras-card")).toBeVisible();
+  await expect(publicPage.getByTestId("extras-modal")).toHaveCount(0);
   await expect(publicPage.getByTestId("addon-summary")).toHaveText("0 add-ons selected");
-  await publicPage.getByRole("button", { name: `Select ${addOnName}` }).click();
-  await expect(publicPage.getByTestId("addon-summary")).toHaveText("1 add-on selected");
-  // The two groups are tabs; an add-on marked included says so and shows no price.
-  await expect(publicPage.getByRole("tab", { name: /Live Counters/ })).toHaveAttribute("aria-selected", "true");
-  await publicPage.getByRole("tab", { name: /^Add-ons/ }).click();
-  const includedCard = publicPage.getByTestId("addon-card").filter({ hasText: includedName });
-  await expect(includedCard.getByText("Included in Package")).toBeVisible();
-  await expect(includedCard.getByText("₹50.00")).toHaveCount(0);
-  await publicPage.getByLabel("Search add-ons").fill("zzzz");
-  await expect(publicPage.getByText("Nothing matches your search.")).toBeVisible();
-  await publicPage.getByLabel("Search add-ons").fill("");
-  await publicPage.getByRole("button", { name: `Select ${includedName}` }).click();
-  await expect(publicPage.getByTestId("addon-summary")).toHaveText("2 add-ons selected");
-  // The running total is the server's own quote: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000.
-  await expect(publicPage.getByTestId("estimated-total")).toHaveText("₹53,000.00");
+  // Continue opens Enhance your event; closing it keeps the customer on the page with nothing picked.
   await publicPage.getByRole("button", { name: "Continue to Review" }).click();
+  const modal = publicPage.getByTestId("extras-modal");
+  await expect(modal.getByRole("heading", { name: "Enhance your event" })).toBeVisible();
+  await publicPage.keyboard.press("Escape");
+  await expect(modal).toHaveCount(0);
+  await expect(publicPage).toHaveURL(/step=menu/);
+  await publicPage.getByRole("button", { name: "Continue to Review" }).click();
+  await expect(modal).toBeVisible();
+  await publicPage.getByRole("button", { name: `Select ${addOnName}` }).click();
+  await expect(modal.getByTestId("extras-group-LIVE_COUNTER")).toContainText("1 selected");
+  // An add-on marked included says so and shows no price.
+  const includedCard = modal.getByTestId("addon-card").filter({ hasText: includedName });
+  await expect(includedCard.getByText("Included", { exact: true })).toBeVisible();
+  await expect(includedCard.getByText("₹50.00")).toHaveCount(0);
+  await publicPage.getByRole("button", { name: `Select ${includedName}` }).click();
+  // The modal's total: 10 x 100 guests; the included add-on costs nothing.
+  await expect(publicPage.getByTestId("extras-total")).toHaveText("₹1,000.00");
+  await publicPage.getByRole("button", { name: "Add selected extras" }).click();
   await expect(publicPage).toHaveURL(/step=review/);
 
   // Step 3 — Review & Submit: 400 x 100 + extra 120 x 100 + add-on 10 x 100 = 53,000

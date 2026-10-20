@@ -5,7 +5,7 @@ import { getPublishedTenantBySlug } from "@/modules/tenants/tenant";
 import { listEventTypes } from "@/modules/events/event-type";
 import { listAddOns } from "@/modules/addons/addon";
 import { listStorefrontMenus, listCustomMenuSections, listMenus } from "@/modules/menus/menu";
-import { getDraft, getDraftOrderNumber, buildDraftQuote, allMealsComplete, isMealComplete, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
+import { getDraft, getDraftOrderNumber, buildDraftQuote, allMealsComplete, isMealComplete, draftDays, StorefrontDraftError } from "@/modules/menu-approvals/storefront-draft";
 import { WIZARD_STEPS, isDraftExpired, type WizardStepKey } from "@/modules/menu-approvals/storefront-draft-constants";
 import { formatPhoneDisplay } from "@/lib/phone";
 import { PublicShell } from "@/components/public/public-shell";
@@ -208,6 +208,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
         customSections={customSections}
         addOns={addOns}
         guests={data.guestCount}
+        days={draftDays(data).length}
         event={{
           date: eventDateText(data, "short"),
           eventType: eventTypes.find((e) => e.id === data.eventTypeId)?.name ?? "—",

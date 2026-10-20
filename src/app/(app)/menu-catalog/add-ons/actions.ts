@@ -24,7 +24,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   if (!name) throw new Error("Name is required.");
 
   const type = stringField(formData, "type") as AddOnType | undefined;
-  if (type !== "LIVE_COUNTER" && type !== "SPECIAL_ADD_ON") throw new Error("Type is required.");
+  if (type !== "LIVE_COUNTER" && type !== "SPECIAL_ADD_ON" && type !== "SETUP_STYLE") throw new Error("Type is required.");
 
   // Add-on pricing is sensitive data (AJ, 2026-10-17): without the menu-prices right the price, price type and "in the package" choice are
   // not taken from the form: an edit keeps what is saved and a new add-on starts at 0 per plate.

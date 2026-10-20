@@ -207,6 +207,21 @@ describe("menu + items steps (server-side rules)", () => {
     expect((await getDraft(t.org.id, draft.id))!.data.meals.DINNER?.addOnIds).toEqual([t.perPlateAddOn.id]);
   });
 
+  it("a setup style is one choice per meal and is priced like any other add-on (2026-10-20)", async () => {
+    const t = await setup();
+    const buffet = await createAddOn(t.org.id, { name: "Traditional Buffet", type: "SETUP_STYLE", priceType: "FIXED", price: 0 }, t.actor.id);
+    const plated = await createAddOn(t.org.id, { name: "Plated Service", type: "SETUP_STYLE", priceType: "FIXED", price: 5000 }, t.actor.id);
+
+    const { draft } = await startDraft(t.org.id, t.details());
+    await saveDraftMenuChoice(t.org.id, draft.id, { kind: "MENU", menuId: t.menu.id });
+    await saveDraftItems(t.org.id, draft.id, { itemIds: [t.tikka.id, t.dal.id] });
+    await expect(saveDraftAddOns(t.org.id, draft.id, [buffet.id, plated.id])).rejects.toThrow(/only one setup style/);
+    await saveDraftAddOns(t.org.id, draft.id, [plated.id, t.perPlateAddOn.id]); // one style plus other extras is fine
+
+    const quote = await buildDraftQuote(t.org.id, (await getDraft(t.org.id, draft.id))!.data);
+    expect(quote.addOns.find((a) => a.id === plated.id)).toMatchObject({ type: "SETUP_STYLE", amount: 5000 });
+  });
+
   it("another tenant's draft id is simply not found", async () => {
     const a = await setup();
     const b = await setup();

@@ -16,7 +16,7 @@ import { MenuSection } from "./menu-section";
 import { DishesSection } from "./dishes-section";
 import { SummaryRow, SummarySeparator } from "@/components/public/summary-row";
 import { EditDetailsSheet, type EditDetails } from "./edit-details-sheet";
-import { AddOnsSection, type StorefrontAddOn } from "./addons-section";
+import { ExtrasModal, addOnCost, type StorefrontAddOn } from "./extras-modal";
 
 export interface BuildMenuEventSummary {
   date: string;
@@ -41,6 +41,8 @@ interface BuildMenuStepProps {
   customSections: StorefrontMenuSection[];
   addOns: StorefrontAddOn[];
   guests: number;
+  /** How many days the event runs; the extras are served every day. */
+  days: number;
   event: BuildMenuEventSummary;
   /** What the Edit panel needs to change the event details without leaving this page. */
   editDetails: EditDetails;
@@ -75,7 +77,7 @@ function scrollToRef(element: HTMLElement | null) {
  * Once the dishes are complete they fold into a one-line accordion (tap to reopen and change them) and the Add-ons card
  * is brought into view.
  */
-export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, event, editDetails, initial }: BuildMenuStepProps) {
+export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, days, event, editDetails, initial }: BuildMenuStepProps) {
   const router = useRouter();
   const [choice, setChoice] = useState<MenuChoice | null>(initial.choice);
   const [listOpen, setListOpen] = useState(initial.choice === null);
@@ -88,8 +90,11 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const [pending, setPending] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const [editOpen, setEditOpen] = useState(false);
+  // Enhance your event: opened by Continue (then it carries on to the next step) or from its card (then it only saves the picks).
+  const [extrasMode, setExtrasMode] = useState<"continue" | "edit" | null>(null);
+  // Once the customer has seen the extras (or already chose some on an earlier visit), Continue goes straight on.
+  const [extrasSeen, setExtrasSeen] = useState(initial.addOnIds.length > 0);
   const dishesRef = useRef<HTMLDivElement>(null);
-  const addOnsRef = useRef<HTMLDivElement>(null);
 
   const pickedMenu = choice?.kind === "MENU" ? menus.find((menu) => menu.id === choice.menuId) : undefined;
   const isCustomMenu = choice?.kind === "CUSTOM";
@@ -126,11 +131,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
     const nowComplete = hasMenu && next.length > 0 && (isCustomMenu || requiredShortfalls(sections, next).length === 0);
     if (nowComplete && !complete) {
       setDishesOpen(false);
-      if (menuAddOns.length > 0) {
-        setAnnouncement("Your dishes are complete and folded away. Add-ons and live counters are optional below.");
-        // After the dishes fold, so the add-ons land at the top of the screen.
-        setTimeout(() => requestAnimationFrame(() => scrollToRef(addOnsRef.current)), 50);
-      }
+      setAnnouncement(menuAddOns.length > 0 ? "Your dishes are complete and folded away. Tap Continue to see the optional extras." : "Your dishes are complete and folded away.");
     }
     if (!nowComplete && complete) setDishesOpen(true);
   }
@@ -149,13 +150,21 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
     };
   }, [tenantSlug, draftId, meal, choice, itemIds, addOnIds, hasMenu]);
 
-  async function handleContinue() {
+  /** Continue: the first time, the extras open first (never on their own); then the meal is saved and the next step opens. */
+  function handleContinue() {
+    if (!choice || !complete) return;
+    if (!extrasSeen && menuAddOns.length > 0) setExtrasMode("continue");
+    else void saveAndContinue(addOnIds);
+  }
+
+  async function saveAndContinue(ids: string[]) {
     if (!choice || !complete) return;
     setError(null);
     setPending(true);
-    const result = await saveBuildMenuAction(tenantSlug, draftId, meal, { choice, itemIds, addOnIds });
+    const result = await saveBuildMenuAction(tenantSlug, draftId, meal, { choice, itemIds, addOnIds: ids });
     if (!result.ok) {
       setPending(false);
+      setExtrasMode(null);
       setError(result.error);
       return;
     }
@@ -163,10 +172,23 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
     router.push(nextMeal ? `/${tenantSlug}/plan/${draftId}?step=menu&meal=${nextMeal.meal}` : `/${tenantSlug}/plan/${draftId}?step=review`);
   }
 
+  /** Add selected extras / Skip extras. */
+  function finishExtras(ids: string[]) {
+    setAddOnIds(ids);
+    setExtrasSeen(true);
+    if (extrasMode === "continue") {
+      void saveAndContinue(ids);
+    } else {
+      setExtrasMode(null);
+      setAnnouncement(ids.length > 0 ? "Extras saved to your selection." : "No extras selected.");
+    }
+  }
+
   const total = hasMenu && quote ? formatInr(quote.total) : "—";
   const totalLabel = isCustomMenu ? "Estimated total (excl. menu price)" : "Estimated Total";
   const dishesLine = `${itemIds.length} dish${itemIds.length === 1 ? "" : "es"} selected${split.extraIds.length > 0 ? ` (${split.extraIds.length} extra)` : ""}`;
   const addOnsLine = `${addOnIds.length} add-on${addOnIds.length === 1 ? "" : "s"} selected`;
+  const extrasTotal = menuAddOns.filter((a) => addOnIds.includes(a.id)).reduce((sum, a) => sum + addOnCost(a, guests) * days, 0);
   const whyDisabled = !hasMenu ? "Choose a menu to continue." : itemIds.length === 0 || short.length > 0 ? "Select your dishes to continue." : null;
   const mealIndex = mealTabs.findIndex((tab) => tab.meal === meal);
   const several = mealTabs.length > 1;
@@ -237,13 +259,21 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
           )}
 
           {complete && menuAddOns.length > 0 && (
-            <div ref={addOnsRef} className="flex scroll-mt-4 flex-col gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {dishesFolded && (
-                <p className="flex items-center justify-center gap-2 text-sm font-medium text-primary">
-                  <Sparkles className="size-4" /> Dishes done. Want to make it special? Add live counters or extras, or skip to continue.
-                </p>
-              )}
-              <AddOnsSection addOns={menuAddOns} guests={guests} addOnIds={addOnIds} onAddOnIdsChange={(update) => setAddOnIds(update)} />
+            <div className="flex flex-col gap-3 rounded-xl bg-card p-4 ring-1 ring-foreground/10 sm:flex-row sm:items-center sm:justify-between animate-in fade-in slide-in-from-bottom-2 duration-300" data-testid="extras-card">
+              <div className="flex items-start gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                  <Sparkles className="size-5" />
+                </span>
+                <div className="flex flex-col">
+                  <h3 className="text-base font-semibold">Enhance your event</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {addOnIds.length > 0 ? `${addOnsLine} · ${formatInr(extrasTotal)}` : "Optional live counters, add-ons and setup style. Tap Continue to see them, or open them now."}
+                  </p>
+                </div>
+              </div>
+              <Button type="button" size="md" variant="outline" onClick={() => setExtrasMode("edit")}>
+                {addOnIds.length > 0 ? "Change extras" : "Choose extras"}
+              </Button>
             </div>
           )}
 
@@ -333,6 +363,8 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
           </div>
         </aside>
       </div>
+
+      <ExtrasModal open={extrasMode !== null} onClose={() => !pending && setExtrasMode(null)} addOns={menuAddOns} guests={guests} days={days} addOnIds={addOnIds} onDone={finishExtras} busy={pending} />
 
       <EditDetailsSheet
         tenantSlug={tenantSlug}

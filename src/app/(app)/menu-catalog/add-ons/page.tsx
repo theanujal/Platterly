@@ -19,12 +19,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-function AddOnTypeBadge({ type, onImage = false }: { type: "LIVE_COUNTER" | "SPECIAL_ADD_ON"; onImage?: boolean }) {
+function AddOnTypeBadge({ type, onImage = false }: { type: "LIVE_COUNTER" | "SPECIAL_ADD_ON" | "SETUP_STYLE"; onImage?: boolean }) {
   const live = type === "LIVE_COUNTER";
   // On a photo a tinted badge would wash out, so it sits on a solid pill like the Veg tag.
   return (
     <Badge variant={live ? "violet" : "neutral"} className={cn(onImage && "h-10 bg-background px-3.5 text-sm shadow-sm", onImage && live && "text-tone-violet", onImage && !live && "text-foreground")}>
-      {live ? "Live Counter" : "Special Add-on"}
+      {live ? "Live Counter" : type === "SETUP_STYLE" ? "Setup Style" : "Special Add-on"}
     </Badge>
   );
 }
@@ -138,6 +138,7 @@ export default async function AddOnsPage() {
       options: [
         { value: "LIVE_COUNTER", label: "Live Counter" },
         { value: "SPECIAL_ADD_ON", label: "Special Add-on" },
+        { value: "SETUP_STYLE", label: "Setup Style" },
       ],
     },
   ];

@@ -113,7 +113,7 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
     // The dishes fold into an accordion once complete and the add-ons are showcased; the bar stays on screen at every size.
     await expect(p.getByTestId("dishes-accordion-summary")).toBeVisible();
     await expect(p.getByTestId("dishes-section")).toBeHidden();
-    await expect(p.getByText("Add-ons & Live Counters").first()).toBeVisible();
+    await expect(p.getByTestId("extras-card")).toBeVisible(); // the optional extras are offered, not opened
     await expect(p.getByRole("button", { name: "Back" })).toBeInViewport();
     await expect(p.getByRole("button", { name: "Continue to Review" })).toBeInViewport();
     // A big screen has no bottom bar: Back and Continue end the Your Selection panel (AJ, 2026-10-14). Smaller screens keep the bar.
@@ -132,7 +132,22 @@ test("Build Your Menu fits desktop, tablet and phone: no sideways scroll at any 
     if (sz.n === "desktop") await p.getByRole("tab", { name: new RegExp(cats[1]) }).click();
     await p.getByTestId("item-card").filter({ hasText: "Spring Roll" }).getByRole("button", { name: "Select", exact: true }).click();
     await p.getByRole("button", { name: /^Add Spring Roll/ }).click();
+    // Enhance your event: a bottom drawer on a phone, a centred modal on a bigger screen; its content scrolls and the buttons stay in view.
+    await p.getByRole("button", { name: "Choose extras" }).click();
+    const modal = p.getByTestId("extras-modal");
+    await expect(modal).toBeVisible();
     await p.getByRole("button", { name: "Select Chaat Counter" }).click();
+    await expect(p.getByTestId("extras-total")).toHaveText("₹2,800.00"); // 70 per plate x 40 guests
+    await expect(p.getByRole("button", { name: "Skip extras" })).toBeInViewport();
+    await expect(p.getByRole("button", { name: "Add selected extras" })).toBeInViewport();
+    const box = (await modal.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(sz.w + 1);
+    if (sz.w < 640) expect(Math.round(box.y + box.height)).toBeGreaterThanOrEqual(sz.h - 1); // a drawer sits on the bottom edge
+    await shot("5-extras-modal", true);
+    await p.getByRole("button", { name: "Add selected extras" }).click();
+    await expect(modal).toBeHidden();
+    await expect(p.getByTestId("addon-summary")).toHaveText("1 add-on selected");
     await expect(p.getByTestId("category-counter").filter({ hasText: "+ 1 extra" })).toHaveCount(1);
     await shot("5-extra-and-addon", true);
     await p.getByRole("button", { name: "Continue to Review" }).or(p.getByRole("button", { name: "Continue", exact: true })).first().click();

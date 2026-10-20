@@ -1128,6 +1128,8 @@ model EventTypeMenu {
 enum AddOnType {
   LIVE_COUNTER
   SPECIAL_ADD_ON
+  /// How the food is presented (buffet, plated...). The customer picks at most one per meal.
+  SETUP_STYLE
 }
 
 enum AddOnPriceType {
