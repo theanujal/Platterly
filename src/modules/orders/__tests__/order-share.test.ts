@@ -68,8 +68,8 @@ describe("Share order (AJ, 2026-10-12)", () => {
 
   it("switching it on gives one link (the same one again), and the page shows the event, menu and kitchen contact", async () => {
     const { org, order } = await makeOrder();
-    expect((await getShareState(org.id, order.id)).url).toBeNull();
-    const url = await enableShare(org.id, order.id);
+    // The approval email carries the share link, so approving the menu already switches sharing on.
+    const url = (await getShareState(org.id, order.id)).url;
     expect(url).toContain("/share/");
     expect(await enableShare(org.id, order.id)).toBe(url);
     expect(await prisma.secureAccessToken.count({ where: { organizationId: org.id, resourceType: "ORDER_SHARE", revokedAt: null } })).toBe(1);
