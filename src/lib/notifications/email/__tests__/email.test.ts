@@ -28,6 +28,10 @@ describe("email templates", () => {
 });
 
 describe("sendEmail (ZeptoMail)", () => {
+  it("never has the real token from .env in a test run", () => {
+    expect(process.env.ZEPTOMAIL_TOKEN).toBeUndefined();
+  });
+
   it("skips when not configured", async () => {
     vi.stubEnv("ZEPTOMAIL_TOKEN", "");
     expect((await sendEmail({ to: "a@b.test", subject: "s", html: "<p>x</p>" })).status).toBe("skipped");
