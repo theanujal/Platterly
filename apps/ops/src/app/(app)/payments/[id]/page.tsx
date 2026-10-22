@@ -1,12 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { Card, PageHeader, formatWhen } from "@/components/ui";
+import { Card, PageHeader, formatWhen, money } from "@/components/ui";
 import type { InvoiceSnapshot } from "@/modules/billing/math";
 
 export const dynamic = "force-dynamic";
 
-const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const address = (p: { addressLine1: string | null; addressLine2: string | null; city: string | null; state: string | null; postalCode: string | null; country: string | null }) =>
   [p.addressLine1, p.addressLine2, [p.city, p.state, p.postalCode].filter(Boolean).join(", "), p.country].filter(Boolean);
 

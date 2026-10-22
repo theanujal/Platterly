@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { inr, longDate } from "@/modules/invoices/invoice-format";
+import { inr, longDate, percent } from "@/modules/invoices/invoice-format";
 import type { MenuReport } from "@/modules/reports/menu-math";
 import { movementCostHint, stockValueHint, type MovementReport, type PurchaseReport, type StockReport } from "@/modules/reports/inventory-math";
 import type { FinanceReport, PayablesReport, ReceivablesReport } from "@/modules/reports/finance-math";
@@ -11,7 +11,6 @@ import { BarList, ReportSection, ReportTile } from "./report-ui";
 
 const whole = (n: number) => n.toLocaleString("en-IN");
 const qty = (n: number) => n.toLocaleString("en-IN", { maximumFractionDigits: 2 });
-const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const when = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 function Empty({ text = "Nothing in this period." }: { text?: string }) {

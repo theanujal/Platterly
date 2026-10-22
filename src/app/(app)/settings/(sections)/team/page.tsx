@@ -19,13 +19,12 @@ import { RolePermissionsForm } from "./_components/role-permissions-form";
 import { TeamPrivacyForm } from "./_components/team-privacy-form";
 import { TeamTabs, type TeamTab } from "./_components/team-tabs";
 import { RoleIcon } from "./_components/role-icons";
+import { formatDate } from "@/lib/time/local-date";
 
 export const metadata: Metadata = {
   title: "Team Management — Caterly",
   robots: { index: false, follow: false },
 };
-
-const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 function RoleBadge({ role }: { role: string }) {
   return (

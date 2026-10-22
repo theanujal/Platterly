@@ -3,11 +3,10 @@ import path from "node:path";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getPaymentInvoice } from "@/modules/subscriptions/billing-source";
 import { renderPlanInvoicePdf, PRODUCT_NAME } from "@/modules/subscriptions/plan-invoice-pdf";
+import { inrPdf } from "@/modules/invoices/invoice-format";
 
 // IST, so the invoice date matches the month in its number.
 const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
-// The standard PDF font has no rupee glyph, so INR is written "Rs.".
-const money = (amount: number) => `Rs. ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const addressOf = (p: { addressLine1: string | null; addressLine2: string | null; city: string | null; state: string | null; postalCode: string | null; country: string | null }) =>
   [p.addressLine1, p.addressLine2, [p.city, p.postalCode].filter(Boolean).join(" "), p.state, p.country].filter(Boolean) as string[];
@@ -46,9 +45,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     paymentMethod: "Razorpay",
     transactionId: payment.razorpayPaymentId ?? "-",
     features: snapshot.highlights,
-    amount: money(Number(payment.amount)),
-    taxLines: gst.lines.map((line) => ({ label: line.label, amount: money(line.amount) })),
-    total: money(Number(payment.total)),
+    amount: inrPdf(Number(payment.amount)),
+    taxLines: gst.lines.map((line) => ({ label: line.label, amount: inrPdf(line.amount) })),
+    total: inrPdf(Number(payment.total)),
     totalLabel: "Total Paid",
     paymentNote: "Payment received through Razorpay. Your plan is active and all its features are available.",
     footerNote: seller.note,

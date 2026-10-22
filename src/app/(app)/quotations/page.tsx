@@ -22,6 +22,7 @@ import {
 import { QuotationsFilterBar } from "./_components/quotations-filter-bar";
 import { STATUS_VARIANT, STATUS_ICON, STATUS_LABEL } from "./_components/quotation-display";
 import type { QuotationStatus } from "@/generated/prisma/enums";
+import { inrPlain } from "@/modules/invoices/invoice-format";
 
 export const metadata: Metadata = {
   title: "Quotations — Caterly",
@@ -30,10 +31,6 @@ export const metadata: Metadata = {
 
 // Badge pads its leading edge tighter when it sees this attribute on an icon child (same convention as order-card.tsx).
 const INLINE_START_ICON = { "data-icon": "inline-start" } as LucideProps;
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
 
 function formatDate(date: Date) {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
@@ -136,7 +133,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
           {showMoney && (
             <div className="mt-auto flex flex-col gap-0.5 border-t border-border pt-4">
               <span className="text-xs text-muted-foreground">Total Amount</span>
-              <span className="text-xl font-bold">{formatCurrency(Number(quotation.total))}</span>
+              <span className="text-xl font-bold">{inrPlain(Number(quotation.total))}</span>
             </div>
           )}
         </div>
@@ -170,7 +167,7 @@ export default async function QuotationsPage({ searchParams }: QuotationsPagePro
               </div>
             </div>
           </TableCell>
-          {showMoney && <TableCell className="px-3 py-3 font-semibold">{formatCurrency(Number(quotation.total))}</TableCell>}
+          {showMoney && <TableCell className="px-3 py-3 font-semibold">{inrPlain(Number(quotation.total))}</TableCell>}
           <TableCell className="px-3 py-3 text-sm text-muted-foreground">{validUntilLabel}</TableCell>
           <TableCell className="px-3 py-3">{statusBadge}</TableCell>
         </Fragment>

@@ -1,14 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { STAND_FULFILMENT, type ShipTo } from "@platterly/contract";
-import { Badge, Card, LinkButton, PageHeader, formatWhen } from "@/components/ui";
+import { Badge, Card, LinkButton, PageHeader, formatWhen, money } from "@/components/ui";
 import { getStandOrderForStaff } from "@/modules/stand/stand";
 import { FULFILMENT_LABEL, FULFILMENT_TONE, NEXT_STEP_LABEL } from "@/modules/stand/labels";
 import { AdvanceForm } from "./advance-form";
 
 export const dynamic = "force-dynamic";
-
-const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** One paid stand order: what to print, where it goes, and the step it is in. */
 export default async function StandOrderPage({ params }: { params: Promise<{ id: string }> }) {

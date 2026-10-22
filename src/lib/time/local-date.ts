@@ -8,3 +8,6 @@ export function toLocalIsoDate(d: Date): string {
 
 /** Today in the browser's (or server's) own time zone, as "YYYY-MM-DD". */
 export const todayLocalIso = () => toLocalIsoDate(new Date());
+
+/** "22 Oct 2026" in the running time zone. */
+export const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });

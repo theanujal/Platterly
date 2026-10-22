@@ -33,10 +33,6 @@ export function enumerateDates(start: string, end: string): string[] {
   return dates;
 }
 
-export function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
-
 /** One typed charge line as the shared parser reads it: a percentage line carries its rate, a rupee line its amount. */
 export function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }) {
   const typed = Number.parseFloat(c.amount);

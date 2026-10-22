@@ -2,10 +2,7 @@ import { CircleCheck, ReceiptText } from "lucide-react";
 import { FormCard } from "@/components/public/form-section";
 import type { ApprovalPriceRow } from "@/modules/menu-approvals/approval-view";
 import { cn } from "cn";
-
-function inr(amount: number) {
-  return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { inr } from "@/modules/invoices/invoice-format";
 
 /**
  * The Price Summary card: every line that makes up the total, as the team's Pricing Details card lists them, and the Grand Total.

@@ -2,10 +2,7 @@ import { CalendarDays, UtensilsCrossed, Users } from "lucide-react";
 import { FormCard } from "@/components/public/form-section";
 import type { ApprovalView } from "@/modules/menu-approvals/approval-view";
 import { OrderNumberRow } from "./order-number-row";
-
-function inr(amount: number) {
-  return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { inr } from "@/modules/invoices/invoice-format";
 
 /** "65 adults · 5 under 5 · 20 aged 5–10": the breakdown of the guest count, empty when there are no children to spell out. */
 export function guestDetail(view: ApprovalView) {

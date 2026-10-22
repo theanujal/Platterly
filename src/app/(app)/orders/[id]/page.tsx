@@ -50,6 +50,7 @@ import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { customerHasApproved, derivePaymentState, isPaymentOverdue } from "@/modules/payments/payment-math";
 import type { OrderKind } from "@/generated/prisma/enums";
 import type { LucideIcon } from "lucide-react";
+import { inrPlain } from "@/modules/invoices/invoice-format";
 
 export const metadata: Metadata = {
   title: "Order — Caterly",
@@ -80,10 +81,6 @@ function toDateInputValue(date: Date) {
 function formatEventDates(start: Date, end: Date) {
   const day = (d: Date, withYear: boolean) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}) });
   return start.getTime() === end.getTime() ? day(start, true) : `${day(start, false)} – ${day(end, true)}`;
-}
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
 }
 
 export default async function OrderDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; version?: string }> }) {
@@ -401,7 +398,7 @@ export default async function OrderDetailPage({ params, searchParams }: { params
                         <span>{item.name}</span>
                         <span className="text-muted-foreground">× {item.quantity}</span>
                       </div>
-                      <span className="font-medium">{formatCurrency(Number(item.unitPrice) * item.quantity)}</span>
+                      <span className="font-medium">{inrPlain(Number(item.unitPrice) * item.quantity)}</span>
                     </div>
                   ))}
                 </div>

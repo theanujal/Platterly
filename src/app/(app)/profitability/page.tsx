@@ -4,7 +4,7 @@ import { requireActiveOrganization, requirePermission, hasPermission, requireSen
 import { listProfitability } from "@/modules/expenses/expense";
 import { resolveRange, toIsoDate } from "@/modules/expenses/date-range";
 import { RangeFilter } from "./_components/range-filter";
-import { inr, longDate } from "@/modules/invoices/invoice-format";
+import { inr, longDate, percent } from "@/modules/invoices/invoice-format";
 import { ExportMenu } from "@/components/reports/export-menu";
 import { SectionTabs } from "@/components/app-shell/section-tabs";
 import { PageBreadcrumb } from "@/components/ui/breadcrumb";
@@ -17,7 +17,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const profitTone = (profit: number) => (profit < 0 ? "text-destructive" : "text-success");
 
 export default async function ProfitabilityPage({ searchParams }: { searchParams: Promise<{ range?: string; from?: string; to?: string }> }) {

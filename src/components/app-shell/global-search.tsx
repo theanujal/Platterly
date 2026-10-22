@@ -6,12 +6,9 @@ import { Search, Loader2 } from "lucide-react";
 import { searchOrdersAction, type GlobalSearchResult } from "@/app/(app)/actions";
 import { ORDER_STATUS_LABEL } from "@/modules/orders/order-status";
 import { formatPhoneDisplay } from "@/lib/phone";
+import { inrPlain } from "@/modules/invoices/invoice-format";
 
 const STATUS_LABEL = ORDER_STATUS_LABEL;
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
 
 // Header search — client name, Order Number, or phone number, all via
 // Order.listOrders' existing search OR-clause (see ../../app/(app)/actions.ts).
@@ -98,7 +95,7 @@ export function GlobalSearch() {
                       </span>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-0.5">
-                      {result.total !== null && <span className="text-xs font-semibold">{formatCurrency(result.total)}</span>}
+                      {result.total !== null && <span className="text-xs font-semibold">{inrPlain(result.total)}</span>}
                       <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[result.status]}</span>
                     </div>
                   </button>

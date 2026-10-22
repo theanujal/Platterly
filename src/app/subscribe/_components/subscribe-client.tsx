@@ -9,10 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { annualSaving, type BillingLockReason } from "@/modules/subscriptions/billing-math";
 import type { SellablePlan } from "@/modules/subscriptions/billing";
 import { cancelDowngradeAction, scheduleDowngradeAction, startCheckoutAction, verifyCheckoutAction } from "../actions";
+import { inrUpTo2 } from "@/modules/invoices/invoice-format";
 
 type Interval = "MONTHLY" | "ANNUAL";
 
-const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const longDate = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
 const HEADLINE: Record<BillingLockReason, { title: string; text: string }> = {
@@ -63,7 +63,7 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
   // Against what the kitchen is on now: same plan renews, a dearer one upgrades, a cheaper one waits for period end.
   const mode = !current || !plan ? "pay" : plan.id === current.planId ? "renew" : plan.priceMonthly < current.priceMonthly ? "downgrade" : "upgrade";
   const heading = locked && lockReason ? HEADLINE[lockReason] : { title: current ? "Manage your plan" : "Upgrade your plan", text: "Pick a plan and billing period. You can change it again at any time." };
-  const buttonLabel = !price ? "Pay" : mode === "downgrade" ? "Switch at the end of this period" : `${mode === "renew" ? "Renew" : "Pay"} ${rupees(price.total)}`;
+  const buttonLabel = !price ? "Pay" : mode === "downgrade" ? "Switch at the end of this period" : `${mode === "renew" ? "Renew" : "Pay"} ${inrUpTo2(price.total)}`;
 
   async function pay() {
     if (!plan) return;
@@ -148,20 +148,20 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
                       {candidate.name}
                       {current?.planId === candidate.id && <Badge variant="success">Current</Badge>}
                     </span>
-                    <span className="text-sm text-muted-foreground">{rupees(candidate.monthly.amount)} / month</span>
+                    <span className="text-sm text-muted-foreground">{inrUpTo2(candidate.monthly.amount)} / month</span>
                   </button>
                 ))}
               </div>
             )}
             {plan?.annual && (
               <div className="flex flex-wrap items-center justify-center gap-4 rounded-xl border border-border bg-card px-5 py-4">
-                <span className={`text-sm font-medium ${annual ? "text-muted-foreground" : ""}`}>Monthly ({rupees(plan.monthly.amount)})</span>
+                <span className={`text-sm font-medium ${annual ? "text-muted-foreground" : ""}`}>Monthly ({inrUpTo2(plan.monthly.amount)})</span>
                 <Switch checked={annual} onCheckedChange={setAnnual} aria-label="Pay yearly" />
                 <span className={`flex flex-col text-sm ${annual ? "font-medium" : "text-muted-foreground"}`}>
                   <span>
-                    Yearly {saving > 0 && <s className="text-xs text-muted-foreground">{rupees(plan.monthly.amount * 12)}</s>} <span className="font-semibold">{rupees(plan.annual.amount)}</span>
+                    Yearly {saving > 0 && <s className="text-xs text-muted-foreground">{inrUpTo2(plan.monthly.amount * 12)}</s>} <span className="font-semibold">{inrUpTo2(plan.annual.amount)}</span>
                   </span>
-                  {saving > 0 && <span className="text-xs font-medium text-success">Save {rupees(saving)}</span>}
+                  {saving > 0 && <span className="text-xs font-medium text-success">Save {inrUpTo2(saving)}</span>}
                 </span>
               </div>
             )}
@@ -196,15 +196,15 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
               <dl className="flex flex-col gap-2 text-sm" data-testid="price-breakdown">
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">{plan.name}, {interval === "ANNUAL" ? "1 year" : "30 days"}</dt>
-                  <dd>{rupees(price.amount)}</dd>
+                  <dd>{inrUpTo2(price.amount)}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">GST ({price.gstPercent}%)</dt>
-                  <dd>{rupees(price.gstAmount)}</dd>
+                  <dd>{inrUpTo2(price.gstAmount)}</dd>
                 </div>
                 <div className="flex justify-between border-t border-border pt-2 text-base font-semibold">
                   <dt>Total</dt>
-                  <dd>{rupees(price.total)}</dd>
+                  <dd>{inrUpTo2(price.total)}</dd>
                 </div>
               </dl>
 

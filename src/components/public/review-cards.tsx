@@ -9,10 +9,7 @@ import { FormCard } from "@/components/public/form-section";
 import type { ApprovalAddOnView, ApprovalMealView, ApprovalView } from "@/modules/menu-approvals/approval-view";
 import { formatApprovalDay } from "@/modules/menu-approvals/approval-view";
 import { cn } from "cn";
-
-function inr(amount: number) {
-  return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+import { inr } from "@/modules/invoices/invoice-format";
 
 const MEAL_ICON = { BREAKFAST: Sunrise, LUNCH: Sun, HITEA: Coffee, DINNER: Moon, OTHER: UtensilsCrossed } as const;
 

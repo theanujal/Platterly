@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import { Badge, Empty, PageHeader, Table, formatWhen } from "@/components/ui";
+import { Badge, Empty, PageHeader, Table, formatWhen, money } from "@/components/ui";
 import { formatInvoiceNumber } from "@/modules/billing/math";
 import { getProfile } from "@/modules/billing/profile";
 import { platformRazorpay } from "@/modules/billing/razorpay";
@@ -8,8 +8,6 @@ import { ProfileForm } from "./profile-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Billing" };
-
-const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function BillingPage() {
   const [profile, payments, products] = await Promise.all([

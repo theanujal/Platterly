@@ -34,8 +34,9 @@ import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "../../orders/_components/order-form-parts";
 import { FormTabs, type FormTab } from "../../orders/_components/form-tabs";
 import { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, priceMeals, type ChildPricingType } from "@/modules/orders/meal-pricing";
-import { customChargeInput, daysUntilPreview, enumerateDates, formatCurrency, startsInPreview } from "@/components/orders/form-helpers";
+import { customChargeInput, daysUntilPreview, enumerateDates, startsInPreview } from "@/components/orders/form-helpers";
 import { toLocalIsoDate } from "@/lib/time/local-date";
+import { inrPlain } from "@/modules/invoices/invoice-format";
 import { percentOf } from "@/modules/orders/amount";
 import { quotationMissingField, quotationMissingMessage } from "@/modules/quotations/required-fields";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
@@ -846,12 +847,12 @@ export function QuotationForm({
               {/* What the price was before: the menu's own price, so the team can see what they are changing. */}
               {row.menuName !== "No menu" && (
                 <span className="text-xs text-muted-foreground" data-testid="default-plate-price">
-                  Menu price {formatCurrency(row.menuPrice)} / plate
+                  Menu price {inrPlain(row.menuPrice)} / plate
                 </span>
               )}
               </div>
             ) : (
-              <span className="shrink-0 font-medium">{formatCurrency(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
+              <span className="shrink-0 font-medium">{inrPlain(row.menuPrice)} <span className="text-xs font-normal text-muted-foreground">/ plate</span></span>
             )}
           </div>
         ))
@@ -887,10 +888,10 @@ export function QuotationForm({
         {childPricingMenu && (
           <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground" data-testid="menu-child-defaults">
             <p className="font-medium text-foreground">Menu default ({childPricingMenu.name})</p>
-            <p>Children (Under 5): {childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</p>
+            <p>Children (Under 5): {childPricingMenu.childUnder5Chargeable ? `${inrPlain(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</p>
             <p>
               Children (5–10):{" "}
-              {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+              {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${inrPlain(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
             </p>
           </div>
         )}
@@ -901,12 +902,12 @@ export function QuotationForm({
         <h3 className="text-base font-semibold">Children</h3>
         <div className="flex justify-between gap-3">
           <span className="text-muted-foreground">Children (Under 5)</span>
-          <span className="font-medium">{childPricingMenu.childUnder5Chargeable ? `${formatCurrency(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</span>
+          <span className="font-medium">{childPricingMenu.childUnder5Chargeable ? `${inrPlain(childPricingMenu.childUnder5Price ?? 0)} per plate` : "Complimentary"}</span>
         </div>
         <div className="flex justify-between gap-3">
           <span className="text-muted-foreground">Children (5–10)</span>
           <span className="font-medium">
-            {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${formatCurrency(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
+            {childPricingMenu.child5To10PricingType === "PERCENTAGE" ? `${childPricingMenu.child5To10PriceValue ?? 0}% of the plate price` : `${inrPlain(childPricingMenu.child5To10PriceValue ?? 0)} per plate`}
           </span>
         </div>
       </div>
@@ -914,12 +915,12 @@ export function QuotationForm({
     <div className="flex flex-col gap-2.5 text-sm">
       <div className="flex items-center justify-between gap-3">
         <span className="text-muted-foreground">Total Amount</span>
-        <span className="text-base font-semibold">{formatCurrency(mealItemsSubtotal + mealsSubtotal)}</span>
+        <span className="text-base font-semibold">{inrPlain(mealItemsSubtotal + mealsSubtotal)}</span>
       </div>
       {(Number(values.childBelow5Count) || 0) + (Number(values.child5To10Count) || 0) > 0 && (
         <div className="flex items-center justify-between gap-3">
           <span className="text-muted-foreground">Children Charges</span>
-          <span>{formatCurrency(childrenCharge)}</span>
+          <span>{inrPlain(childrenCharge)}</span>
         </div>
       )}
     </div>
@@ -1020,7 +1021,7 @@ export function QuotationForm({
         <span className="font-semibold">Grand Total</span>
         <span className="text-xs font-normal">Including all charges and discounts</span>
       </span>
-      <span className="text-xl font-semibold">{formatCurrency(total)}</span>
+      <span className="text-xl font-semibold">{inrPlain(total)}</span>
     </div>
     <div className="flex items-start gap-2 rounded-lg bg-info/10 p-3 text-xs text-info">
       <Info className="mt-0.5 size-4 shrink-0" />
@@ -1042,13 +1043,13 @@ export function QuotationForm({
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3">
             <span className="text-muted-foreground">{row.label}</span>
-            <span className="font-medium">{formatCurrency(row.amount)}</span>
+            <span className="font-medium">{inrPlain(row.amount)}</span>
           </div>
         ))}
       </div>
       <div className="flex items-center justify-between gap-3 rounded-lg bg-accent px-4 py-3 font-semibold text-accent-foreground">
         <span>Grand Total</span>
-        <span className="text-lg">{formatCurrency(total)}</span>
+        <span className="text-lg">{inrPlain(total)}</span>
       </div>
     </SummaryCard>
   );

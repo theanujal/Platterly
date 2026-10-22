@@ -3,8 +3,7 @@ import path from "node:path";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { renderPlanInvoicePdf, PRODUCT_NAME } from "@/modules/subscriptions/plan-invoice-pdf";
-
-const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+import { formatDate } from "@/lib/time/local-date";
 
 // The standard PDF font has no ₹ glyph, so INR is written "Rs.".
 const money = (currency: string, amount: number) => `${currency === "INR" ? "Rs." : currency} ${amount.toLocaleString("en-IN")}`;

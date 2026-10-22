@@ -1,4 +1,5 @@
 import { round2 } from "@/modules/payments/payment-math";
+import { inrUpTo2 } from "@/modules/invoices/invoice-format";
 
 /**
  * Chunk 22.1 — the Inventory report's arithmetic (PRD §51 Inventory): stock value, low stock, what is expiring, stock
@@ -188,7 +189,6 @@ export function computePurchases(orders: { id: string; lines: PurchaseLine[] }[]
 }
 
 const count = new Intl.NumberFormat("en-IN");
-const rupees = (n: number) => `₹${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(n)}`;
 
 /** The note under the Stock value figure, the same wherever the report is shown. */
 export function stockValueHint(stock: StockReport): string {
@@ -200,6 +200,6 @@ export function stockValueHint(stock: StockReport): string {
 /** The note about movements whose cost was never recorded; the estimate is only a guide and is in none of the totals. */
 export function movementCostHint(movements: MovementReport): string | undefined {
   if (movements.unknownCostMovements === 0) return undefined;
-  const estimate = movements.estimatedUnknownValue > 0 ? ` At today's item cost they would be about ${rupees(movements.estimatedUnknownValue)} (an estimate, not included).` : "";
+  const estimate = movements.estimatedUnknownValue > 0 ? ` At today's item cost they would be about ${inrUpTo2(movements.estimatedUnknownValue)} (an estimate, not included).` : "";
   return `${count.format(movements.unknownCostMovements)} ${movements.unknownCostMovements === 1 ? "movement has" : "movements have"} no recorded cost and ${movements.unknownCostMovements === 1 ? "is" : "are"} left out.${estimate}`;
 }

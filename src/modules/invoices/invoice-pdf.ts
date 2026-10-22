@@ -1,6 +1,7 @@
 import "server-only";
 import { jsPDF } from "jspdf";
 import type { InvoiceDocument } from "./invoice-document";
+import { inrPdf } from "./invoice-format";
 
 // The design system's colours (globals.css), as RGB for the PDF.
 type Rgb = [number, number, number];
@@ -26,7 +27,6 @@ const STATUS_COLOR: Record<string, { fg: Rgb; bg: Rgb }> = {
 };
 
 // The standard PDF font has no ₹ glyph, so INR is written "Rs.".
-const money = (n: unknown) => `Rs. ${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const date = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 const LEFT = 40;
@@ -278,8 +278,8 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
     color(TEXT);
     if (invoice.gst.enabled && item.hsnSac) doc.text(item.hsnSac, cols.hsn, y + 14);
     doc.text(item.quantity.toLocaleString("en-IN"), cols.qty, y + 14, { align: "right" });
-    doc.text(money(item.rate), cols.rate, y + 14, { align: "right" });
-    doc.text(money(item.amount), cols.amt, y + 14, { align: "right" });
+    doc.text(inrPdf(item.rate), cols.rate, y + 14, { align: "right" });
+    doc.text(inrPdf(item.amount), cols.amt, y + 14, { align: "right" });
     y += rowHeight;
   }
   stroke(BORDER);
@@ -300,7 +300,7 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
         color(GREEN);
         doc.text(row.label, LEFT + 16, ry + 3);
         doc.setFontSize(13);
-        doc.text(money(row.value), RIGHT - 16, ry + 3, { align: "right" });
+        doc.text(inrPdf(row.value), RIGHT - 16, ry + 3, { align: "right" });
         ry += 28;
       } else {
         doc.setFont("helvetica", "bold").setFontSize(10);
@@ -308,7 +308,7 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
         doc.text(row.label, LEFT + 16, ry);
         doc.setFont("helvetica", "normal");
         color(TEXT);
-        doc.text(row.kind === "discount" ? `- ${money(row.value)}` : money(row.value), RIGHT - 16, ry, { align: "right" });
+        doc.text(row.kind === "discount" ? `- ${inrPdf(row.value)}` : inrPdf(row.value), RIGHT - 16, ry, { align: "right" });
         ry += 20;
       }
     }
@@ -316,11 +316,11 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
       ry += 4;
       doc.setFont("helvetica", "normal").setFontSize(8.5);
       color(MUTED);
-      const gstLines: [string, string][] = [["Taxable value", money(invoice.gst.taxableValue)]];
-      if (invoice.gst.type === "IGST") gstLines.push([`IGST ${invoice.gst.rate}%`, money(invoice.gst.igst)]);
+      const gstLines: [string, string][] = [["Taxable value", inrPdf(invoice.gst.taxableValue)]];
+      if (invoice.gst.type === "IGST") gstLines.push([`IGST ${invoice.gst.rate}%`, inrPdf(invoice.gst.igst)]);
       else {
-        gstLines.push([`CGST ${invoice.gst.rate / 2}%`, money(invoice.gst.cgst)]);
-        gstLines.push([`SGST ${invoice.gst.rate / 2}%`, money(invoice.gst.sgst)]);
+        gstLines.push([`CGST ${invoice.gst.rate / 2}%`, inrPdf(invoice.gst.cgst)]);
+        gstLines.push([`SGST ${invoice.gst.rate / 2}%`, inrPdf(invoice.gst.sgst)]);
       }
       gstLines.push(["Prices include GST.", ""]);
       for (const [label, value] of gstLines) {
@@ -360,7 +360,7 @@ export function renderInvoicePdf(invoice: InvoiceDocument): Uint8Array {
   color(TEXT);
   doc.text("Total Amount:", LEFT, y);
   color(GREEN);
-  doc.setFontSize(20).text(money(invoice.total), RIGHT, y, { align: "right" });
+  doc.setFontSize(20).text(inrPdf(invoice.total), RIGHT, y, { align: "right" });
 
   // --- Footer on every page ---
   const pages = doc.getNumberOfPages();

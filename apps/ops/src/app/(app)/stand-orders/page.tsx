@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { STAND_FULFILMENT, type StandFulfilment } from "@platterly/contract";
 import { prisma } from "@/lib/db";
-import { Badge, Empty, PageHeader, Table, formatWhen } from "@/components/ui";
+import { Badge, Empty, PageHeader, Table, formatWhen, money } from "@/components/ui";
 import { PickProduct } from "@/components/pick-product";
 import { getSelectedProduct } from "@/lib/selected-product";
 import { listStandOrdersForStaff } from "@/modules/stand/stand";
@@ -10,8 +10,6 @@ import { PricingForm } from "./pricing-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Stand orders" };
-
-const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function StandOrdersPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const selected = await getSelectedProduct();

@@ -1,9 +1,9 @@
 import type { ApprovalSnapshot } from "./approval-snapshot";
 import { MEAL_TYPE_LABEL } from "./approval-snapshot";
+import { inrUpTo2 } from "@/modules/invoices/invoice-format";
 
 // Client-safe. Compares what the customer was sent (a frozen snapshot) with what the order says now, in words for the team.
 
-const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 const dayText = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 
 type Item = ApprovalSnapshot["meals"][number]["items"][number];
@@ -20,7 +20,7 @@ const MAX_REASONS = 6;
 export function snapshotChanges(sent: ApprovalSnapshot, live: ApprovalSnapshot): string[] {
   const reasons: string[] = [];
 
-  if (Math.abs(sent.total - live.total) >= 0.005) reasons.push(`The price changed (${rupees(sent.total)} to ${rupees(live.total)})`);
+  if (Math.abs(sent.total - live.total) >= 0.005) reasons.push(`The price changed (${inrUpTo2(sent.total)} to ${inrUpTo2(live.total)})`);
   if (sent.adultCount !== undefined && live.adultCount !== undefined) {
     if (sent.adultCount !== live.adultCount) reasons.push(`Adults changed (${sent.adultCount} to ${live.adultCount})`);
   } else if ((sent.guests ?? 0) !== (live.guests ?? 0)) {

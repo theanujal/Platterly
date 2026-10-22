@@ -23,6 +23,7 @@ import { ApprovedMenuCard, guestDetail } from "./approved-menu-card";
 import { PaymentDialog } from "./payment-dialog";
 import { OrderNumberRow } from "./order-number-row";
 import { PriceSummary } from "./price-summary";
+import { inr } from "@/modules/invoices/invoice-format";
 
 const venueTypeItems = Object.fromEntries(VENUE_TYPE_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -42,10 +43,6 @@ export interface VenuePayment {
 type VenueValues = Omit<VenueDetails, "venueType"> & { venueType: string };
 
 const toValues = (venue: VenueDetails): VenueValues => ({ ...venue, venueType: venue.venueType ?? "" });
-
-function inr(amount: number) {
-  return `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 /** The first required field an event's venue is still missing, or null when it can be sent. */
 function missingField(values: VenueValues): string | null {

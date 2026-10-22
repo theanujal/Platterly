@@ -1,7 +1,7 @@
 import { movementCostHint, stockValueHint } from "@/modules/reports/inventory-math";
 import "server-only";
 import type { ReportBarRow, ReportBlock, ReportDoc, ReportListing } from "@platterly/contract";
-import { inr } from "@/modules/invoices/invoice-format";
+import { inr, percent } from "@/modules/invoices/invoice-format";
 import { loadEventsReport, loadSalesReport } from "@/modules/reports/reports";
 import { loadFinanceReport, loadInventoryReport, loadStorefrontReport } from "@/modules/reports/more-reports";
 import { parseIsoDate, toIsoDate } from "@/modules/expenses/date-range";
@@ -21,7 +21,6 @@ export const CATERING_REPORTS: ReportListing[] = [
 ];
 
 const whole = (n: number) => n.toLocaleString("en-IN");
-const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const plural = (n: number, one: string, many = `${one}s`) => `${whole(n)} ${n === 1 ? one : many}`;
 const day = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 

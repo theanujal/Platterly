@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FoodItemSelectionDrawer, type PickedItem } from "@/components/catalog/food-item-selection-drawer";
 import type { MenuPickerData } from "@/modules/menus/menu";
 import { cn } from "cn";
+import { inrPlain } from "@/modules/invoices/invoice-format";
 
 /**
  * Event Dates sidebar + per-meal detail panel (AJ, 2026-09-29) — shared by
@@ -69,10 +70,6 @@ export interface MealSelection {
 
 function formatDay(iso: string, opts: Intl.DateTimeFormatOptions) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString("en-IN", opts);
-}
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
 }
 
 /**
@@ -347,10 +344,10 @@ export function MenuPlanningSection({
                 <span>
                   {individualPricingEnabled
                     ? entry.price
-                      ? formatCurrency(Number(entry.price))
+                      ? inrPlain(Number(entry.price))
                       : "—"
                     : assignedMenu
-                      ? formatCurrency(assignedMenu.price)
+                      ? inrPlain(assignedMenu.price)
                       : "—"}
                 </span>
                 <span className="text-xs text-muted-foreground">/ plate</span>

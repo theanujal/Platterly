@@ -11,11 +11,11 @@ import { Label } from "@/components/ui/label";
 import { InfoBox, SettingsSection } from "../../../../_components/settings-ui";
 import { StandPreview } from "./stand-preview";
 import { startStandOrderAction, verifyStandOrderAction } from "../stand-actions";
+import { inr } from "@/modules/invoices/invoice-format";
 
 const STEP_LABEL: Record<StandFulfilment, string> = { PLACED: "Placed", PRINTING: "Printing", SHIPPED: "Shipped", DELIVERED: "Delivered" };
 const STEP_VARIANT: Record<StandFulfilment, "info" | "warning" | "success" | "neutral"> = { PLACED: "info", PRINTING: "warning", SHIPPED: "info", DELIVERED: "success" };
 
-const rupees = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 
 function loadCheckout(): Promise<boolean> {
@@ -183,13 +183,13 @@ export function OrderStandSection({ unavailable, offer, orders, linkUrl, kitchen
         <dl className="flex flex-col gap-2 rounded-lg bg-muted/50 p-4 text-sm tabular-nums" data-testid="stand-price">
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">
-              {quantity} × {rupees(offer.unitAmount)}
+              {quantity} × {inr(offer.unitAmount)}
             </dt>
-            <dd>{rupees(amount)}</dd>
+            <dd>{inr(amount)}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">GST ({offer.gstPercent}%)</dt>
-            <dd>{rupees(gst)}</dd>
+            <dd>{inr(gst)}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Shipping</dt>
@@ -197,7 +197,7 @@ export function OrderStandSection({ unavailable, offer, orders, linkUrl, kitchen
           </div>
           <div className="flex justify-between gap-3 border-t border-border pt-2 font-semibold">
             <dt>Total</dt>
-            <dd data-testid="stand-total">{rupees(total)}</dd>
+            <dd data-testid="stand-total">{inr(total)}</dd>
           </div>
         </dl>
 
@@ -213,7 +213,7 @@ export function OrderStandSection({ unavailable, offer, orders, linkUrl, kitchen
         )}
         <Button type="submit" size="md" className="self-start" disabled={busy}>
           <Package className="size-4" />
-          {busy ? "Opening payment…" : `Pay ${rupees(total)} and order`}
+          {busy ? "Opening payment…" : `Pay ${inr(total)} and order`}
         </Button>
       </form>
     );
@@ -242,7 +242,7 @@ export function OrderStandSection({ unavailable, offer, orders, linkUrl, kitchen
               <li key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm" data-testid="stand-order">
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <span className="font-medium">
-                    {order.quantity} stand{order.quantity === 1 ? "" : "s"} · {rupees(order.total)}
+                    {order.quantity} stand{order.quantity === 1 ? "" : "s"} · {inr(order.total)}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     Ordered {day(order.createdAt)}

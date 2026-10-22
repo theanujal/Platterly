@@ -6,6 +6,7 @@ import { getSubscriptionPageData } from "@/modules/subscriptions/billing-source"
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
+import { formatDate } from "@/lib/time/local-date";
 
 export const metadata: Metadata = {
   title: "Subscription — Caterly",
@@ -16,7 +17,6 @@ function formatLimit(value: number | null): string {
   return value === null ? "Unlimited" : value.toLocaleString();
 }
 
-const formatDate = (date: Date) => date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 const formatMoney = (value: unknown, currency: string) => (value === null || value === undefined ? "—" : `${currency} ${Number(value).toLocaleString("en-IN")}`);
 
 function daysUntil(date: Date): number {

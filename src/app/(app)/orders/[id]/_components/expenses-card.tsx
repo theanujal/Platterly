@@ -7,13 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { inr, longDate } from "@/modules/invoices/invoice-format";
+import { inr, longDate, percent } from "@/modules/invoices/invoice-format";
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_LABEL, type Profitability } from "@/modules/expenses/profitability";
 import { deleteExpenseAction } from "../../../profitability/actions";
 import { ExpenseDialog, METHOD_LABEL, type ExpenseRowData } from "../../../expenses/_components/expense-dialog";
 import { ExpenseFiles } from "../../../expenses/_components/expense-files";
-
-const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 
 function Tile({ label, value, tone, testId }: { label: string; value: string; tone?: "success" | "danger"; testId?: string }) {
   return (

@@ -84,6 +84,8 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-xl bg-muted px-4 py-6 text-center text-sm text-muted-foreground">{children}</p>;
 }
 
+export const money = (value: unknown) => `₹${Number(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export function formatWhen(date: Date | null | undefined): string {
   if (!date) return "—";
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(date);

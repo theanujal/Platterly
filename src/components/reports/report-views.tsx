@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { inr, longDate } from "@/modules/invoices/invoice-format";
+import { inr, longDate, percent } from "@/modules/invoices/invoice-format";
 import { monthLabel, type EventsReport, type SalesReport } from "@/modules/reports/report-math";
 import { BarList, ReportSection, ReportTile } from "./report-ui";
 
 /** The Sales and Events views, shared by the kitchen's Reports page and the Super Admin platform report. */
 
-const percent = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("en-IN", { maximumFractionDigits: 1 })}%`);
 const whole = (n: number) => n.toLocaleString("en-IN");
 
 /** `byLocation`: the figures are one location's, and customers and quotations have no location, so those four tiles are left out. */

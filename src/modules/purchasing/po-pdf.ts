@@ -2,6 +2,7 @@ import "server-only";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { PO_STATUS_LABEL, orderedValue } from "./po-math";
+import { inrPdf } from "@/modules/invoices/invoice-format";
 
 /**
  * A purchase order as an A4 PDF, built only from the saved order: the quantities and unit costs on its lines, never the current
@@ -28,7 +29,6 @@ const BORDER: Rgb = [229, 231, 235];
 const BAR: Rgb = [243, 244, 246];
 
 // The standard PDF font has no ₹ glyph, so INR is written "Rs.".
-const money = (n: number) => `Rs. ${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const quantity = (n: number, unit: string) => `${n.toLocaleString("en-IN", { maximumFractionDigits: 3 })} ${unit}`;
 /** A timestamp is a moment, shown as the calendar day in India; a date-only column (expected delivery) is shown as stored. */
 const day = (d: Date, timeZone: "Asia/Kolkata" | "UTC") => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone });
@@ -110,7 +110,7 @@ export function renderPurchaseOrderPdf(po: PoPdfSource): Uint8Array {
       l.name,
       quantity(l.quantity, l.unit),
       ...(showReceived ? [quantity(l.receivedQuantity, l.unit)] : []),
-      ...(pricing.anyPriced ? (l.unitCost > 0 ? [money(l.unitCost), money(l.quantity * l.unitCost)] : ["Not priced", "Not priced"]) : []),
+      ...(pricing.anyPriced ? (l.unitCost > 0 ? [inrPdf(l.unitCost), inrPdf(l.quantity * l.unitCost)] : ["Not priced", "Not priced"]) : []),
     ]),
     styles: { font: "helvetica", fontSize: 10, cellPadding: 6, textColor: TEXT, lineColor: BORDER, lineWidth: 0.5, overflow: "linebreak" },
     headStyles: { fillColor: BAR, textColor: TEXT, fontStyle: "bold" },
@@ -134,7 +134,7 @@ export function renderPurchaseOrderPdf(po: PoPdfSource): Uint8Array {
   if (pricing.total !== null) {
     doc.setFont("helvetica", "bold").setFontSize(12);
     color(TEXT);
-    doc.text(`Order total: ${money(pricing.total)}`, RIGHT, y, { align: "right" });
+    doc.text(`Order total: ${inrPdf(pricing.total)}`, RIGHT, y, { align: "right" });
     y += 18;
   } else {
     doc.setFont("helvetica", "italic").setFontSize(9);
