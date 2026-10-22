@@ -33,7 +33,9 @@ import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "./order-form-parts";
 import { IconTip } from "@/components/ui/icon-tip";
 import { FormTabs, type FormTab } from "./form-tabs";
-import { priceMeals } from "@/modules/orders/meal-pricing";
+import { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, priceMeals, type ChildPricingType } from "@/modules/orders/meal-pricing";
+import { customChargeInput, daysUntilPreview, enumerateDates, formatCurrency, startsInPreview } from "@/components/orders/form-helpers";
+import { toLocalIsoDate } from "@/lib/time/local-date";
 import { percentOf } from "@/modules/orders/amount";
 import { orderBlockingField, orderMissingMessage } from "@/modules/orders/required-fields";
 import { ApprovalSidebarSlotProvider } from "@/modules/menu-approvals/_components/review/sidebar-slot";
@@ -42,25 +44,6 @@ import { LiveOrderTotalProvider, OrderPriceLinesProvider, type OrderPriceLine } 
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
 import { TONE_SURFACE, TONE_TEXT } from "./order-display";
 import { getOrderCountsByDayAction, searchCustomersAction, createCustomerForOrderAction, type ActionResult } from "../actions";
-
-// Mirrors actions.ts's own past-date check — a live client-side preview of the
-// same server-enforced rule, never the only place it's checked. The team may
-// book today and tomorrow; only a date already gone is refused (AJ, 2026-09-27).
-function daysUntilPreview(iso: string): number | null {
-  if (!iso) return null;
-  const [y, m, d] = iso.split("-").map(Number);
-  const eventDate = new Date(y, m - 1, d);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((eventDate.getTime() - startOfToday.getTime()) / 86_400_000);
-}
-
-/** "Starts in" wording for the event-date chip and the summary — same tones as the Orders card's countdown. */
-function startsInPreview(days: number | null): { caption: string; label: string; tone: "orange" | "yellow" | "success" } | null {
-  if (days === null || days < 0) return null;
-  if (days === 0) return { caption: "Event", label: "Today", tone: "orange" };
-  return { caption: "Starts in", label: `${days} ${days === 1 ? "day" : "days"}`, tone: days <= 2 ? "yellow" : "success" };
-}
 
 // Mirrors the customer-facing intake form's own VENUE_TYPE_OPTIONS
 // (event-details-form.tsx) exactly — same Order.venueType enum, same labels.
@@ -187,77 +170,12 @@ export const EMPTY_ORDER_VALUES: OrderFormValues = {
   mealPlanEntries: [],
 };
 
-/**
- * Formats a Date's own local calendar date as "YYYY-MM-DD" — deliberately
- * NOT `.toISOString().slice(0, 10)`, which converts through UTC first and
- * silently shifts the date backward a full day in any positive-UTC-offset
- * timezone (IST included — this app's primary market).
- */
-function toLocalIsoDate(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function enumerateDates(start: string, end: string): string[] {
-  if (!start || !end) return [];
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return [];
-  const dates: string[] = [];
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    dates.push(toLocalIsoDate(d));
-  }
-  return dates;
-}
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
-
-/** One typed charge line as the shared parser reads it: a percentage line carries its rate, a rupee line its amount. */
-function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }) {
-  const typed = Number.parseFloat(c.amount);
-  return c.mode === "PERCENTAGE" ? { label: c.label, mode: c.mode, rate: typed, amount: 0 } : { label: c.label, amount: typed };
-}
-
 /** The fields the Event Information card edits, kept so Cancel can put them back. */
 const EVENT_FIELDS = [
   "orderKind", "eventTypeId", "eventStartDate", "eventEndDate", "mealPlanEntries", "venueType", "venue", "eventAddress", "venueDoorNumber", "venueTower", "venueFloor",
   "venueLandmark", "venueContactName", "venueContactPhone", "vehicleAccess", "venueAccessInstructions", "deliveryInstructions", "cookingInstructions", "venuePerEvent", "eventVenues",
   "liveCounterAvailable", "gasElectricAvailable",
 ] as const;
-
-/** Mirrors order.ts's server-side computeChildrenCharge exactly (STANDARD). */
-function computeChildrenChargePreview(menu: MenuOption | undefined, below5Count: number, child5To10Count: number): number {
-  if (!menu) return 0;
-  const under5Charge = menu.childUnder5Chargeable ? below5Count * (menu.childUnder5Price ?? 0) : 0;
-  const perChild5to10 =
-    menu.child5To10PricingType === "PERCENTAGE" ? (menu.price * (menu.child5To10PriceValue ?? 0)) / 100 : (menu.child5To10PriceValue ?? 0);
-  return under5Charge + child5To10Count * perChild5to10;
-}
-
-/** Mirrors order.ts's server-side computeIndividualChildrenCharge exactly (INDIVIDUAL — Per Plate/Percentage per band). */
-function computeIndividualChildrenChargePreview(
-  below5Rate: number,
-  below5Type: string,
-  child5To10Rate: number,
-  child5To10Type: string,
-  referenceMenuPrice: number,
-  below5Count: number,
-  child5To10Count: number,
-): number {
-  const perBelow5 = below5Type === "PERCENTAGE" ? (referenceMenuPrice * below5Rate) / 100 : below5Rate;
-  const per5to10 = child5To10Type === "PERCENTAGE" ? (referenceMenuPrice * child5To10Rate) / 100 : child5To10Rate;
-  return below5Count * perBelow5 + child5To10Count * per5to10;
-}
-
-/** Mirrors order.ts's server-side deriveStandardChildPricingMenuId exactly — the first (by date) meal's own assigned Menu. */
-function deriveStandardChildPricingMenuIdPreview(entries: MealSelection[]): string {
-  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  return sorted.find((e) => e.menuId)?.menuId ?? "";
-}
 
 interface OrderFormProps {
   initialValues?: Partial<OrderFormValues>;
@@ -491,7 +409,7 @@ export function OrderForm({
   );
   const mealItemsSubtotal = pricedMeals.extrasAmount;
   const mealsSubtotal = pricedMeals.menuAmount;
-  const childPricingMenuId = deriveStandardChildPricingMenuIdPreview(values.mealPlanEntries);
+  const childPricingMenuId = deriveStandardChildPricingMenuId(values.mealPlanEntries) ?? "";
   const childPricingMenu = menus.find((m) => m.id === childPricingMenuId);
   // Same rule as the server (usesIndividualChildRates): the Individual Pricing switch or the method.
   const individualChildRates =
@@ -499,31 +417,25 @@ export function OrderForm({
     (values.individualPricingEnabled && ((Number.parseFloat(values.individualChildBelow5Rate) || 0) > 0 || (Number.parseFloat(values.individualChild5To10Rate) || 0) > 0));
   const childrenCharge =
     individualChildRates
-      ? computeIndividualChildrenChargePreview(
-          Number.parseFloat(values.individualChildBelow5Rate) || 0,
-          values.individualChildBelow5PricingType,
-          Number.parseFloat(values.individualChild5To10Rate) || 0,
-          values.individualChild5To10PricingType,
+      ? computeIndividualChildrenCharge(
+          { individualChildBelow5Rate: Number.parseFloat(values.individualChildBelow5Rate) || 0, individualChildBelow5PricingType: values.individualChildBelow5PricingType as ChildPricingType, individualChild5To10Rate: Number.parseFloat(values.individualChild5To10Rate) || 0, individualChild5To10PricingType: values.individualChild5To10PricingType as ChildPricingType },
           childPricingMenu?.price ?? 0,
           Number(values.childBelow5Count) || 0,
           Number(values.child5To10Count) || 0,
         )
-      : computeChildrenChargePreview(childPricingMenu, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
+      : computeChildrenCharge(childPricingMenu ? { ...childPricingMenu, pricePerPlate: childPricingMenu.price } : null, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
   // The same children charge split by age band (it is linear in the counts), so the summary can list each band.
   const below5Count = Number(values.childBelow5Count) || 0;
   const child5To10Count = Number(values.child5To10Count) || 0;
   const childBandCharge = (below5: number, to10: number) =>
     individualChildRates
-      ? computeIndividualChildrenChargePreview(
-          Number.parseFloat(values.individualChildBelow5Rate) || 0,
-          values.individualChildBelow5PricingType,
-          Number.parseFloat(values.individualChild5To10Rate) || 0,
-          values.individualChild5To10PricingType,
+      ? computeIndividualChildrenCharge(
+          { individualChildBelow5Rate: Number.parseFloat(values.individualChildBelow5Rate) || 0, individualChildBelow5PricingType: values.individualChildBelow5PricingType as ChildPricingType, individualChild5To10Rate: Number.parseFloat(values.individualChild5To10Rate) || 0, individualChild5To10PricingType: values.individualChild5To10PricingType as ChildPricingType },
           childPricingMenu?.price ?? 0,
           below5,
           to10,
         )
-      : computeChildrenChargePreview(childPricingMenu, below5, to10);
+      : computeChildrenCharge(childPricingMenu ? { ...childPricingMenu, pricePerPlate: childPricingMenu.price } : null, below5, to10);
   const childBelow5Charge = childBandCharge(below5Count, 0);
   const child5To10Charge = childBandCharge(0, child5To10Count);
   const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge; // carried-over Quotation items are informational, not priced (same as the server)

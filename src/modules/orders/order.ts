@@ -19,7 +19,7 @@ import { notify } from "@/lib/notifications/notify";
 import { onOrderCreated } from "@/modules/notifications/triggers";
 import { orderAt } from "@/modules/locations/scope";
 import { createEvent, listKitchens } from "@/modules/events/event";
-import { menuGuestCount, priceMeals } from "./meal-pricing";
+import { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, menuGuestCount, priceMeals } from "./meal-pricing";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
 import { returnAllOrderItems, returnAllOrderItemsInTransaction } from "@/modules/production/production";
 import type { Prisma } from "@/generated/prisma/client";
@@ -27,6 +27,7 @@ import { moveMealsWithEventDates } from "./meal-dates";
 import { percentOf } from "./amount";
 import { applyEventVenues, type EventVenueInput } from "./event-venues";
 import type { MenuSelectionStatus, OrderStatus, OrderPaymentStatus, OrderItemType, MealType, OrderKind, AmountMode, ChildPricingType, PricingMethod, VenueType, VehicleAccessType, FoodType } from "@/generated/prisma/enums";
+export { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, type ChildPricingRates, type IndividualChildRates } from "./meal-pricing";
 
 export interface OrderItemCatalogInput {
   itemType: OrderItemType;
@@ -252,21 +253,6 @@ async function nextOrderNumber(organizationId: string): Promise<string> {
   return `${org.orderNumberPrefix}-${String(assigned).padStart(org.orderNumberPadding, "0")}`;
 }
 
-export interface ChildPricingRates {
-  childUnder5Chargeable: boolean;
-  childUnder5Price: unknown;
-  child5To10PricingType: ChildPricingType;
-  child5To10PriceValue: unknown;
-  pricePerPlate: unknown;
-}
-
-/**
- * Children Guests & Pricing charge (STANDARD) for one (Menu, below5Count,
- * 5-10Count) combination — under-5 is complimentary unless the Menu opted
- * into charging it; 5-10 always prices, either as a percentage of that
- * Menu's own pricePerPlate or a flat per-plate amount. `menu` is null when
- * no meal has an assigned Menu yet — degrades to 0, never throws.
- */
 /**
  * Individual child rates apply when the method is Individual, or when the Individual Pricing switch is on and child rates were typed.
  * The form shows the child price boxes whenever the switch is on, so rates typed there count even if the method was left at Standard
@@ -274,52 +260,6 @@ export interface ChildPricingRates {
  */
 export function usesIndividualChildRates(order: { pricingMethod: PricingMethod; individualPricingEnabled: boolean; individualChildBelow5Rate: unknown; individualChild5To10Rate: unknown }): boolean {
   return order.pricingMethod === "INDIVIDUAL" || (order.individualPricingEnabled && (Number(order.individualChildBelow5Rate ?? 0) > 0 || Number(order.individualChild5To10Rate ?? 0) > 0));
-}
-
-export function computeChildrenCharge(menu: ChildPricingRates | null, below5Count: number | null, child5To10Count: number | null): number {
-  if (!menu) return 0;
-  const below5 = below5Count ?? 0;
-  const child5to10 = child5To10Count ?? 0;
-  const under5Charge = menu.childUnder5Chargeable ? below5 * Number(menu.childUnder5Price ?? 0) : 0;
-  const perChild5to10 =
-    menu.child5To10PricingType === "PERCENTAGE"
-      ? (Number(menu.pricePerPlate) * Number(menu.child5To10PriceValue ?? 0)) / 100
-      : Number(menu.child5To10PriceValue ?? 0);
-  return under5Charge + child5to10 * perChild5to10;
-}
-
-export interface IndividualChildRates {
-  individualChildBelow5Rate: unknown;
-  individualChildBelow5PricingType: ChildPricingType | null;
-  individualChild5To10Rate: unknown;
-  individualChild5To10PricingType: ChildPricingType | null;
-}
-
-/**
- * Children Guests & Pricing charge (INDIVIDUAL) — Create Order redesign
- * (2026-09-20): each child band gets its own Per Plate/Percentage type, not
- * just a flat rate. Percentage is computed against `referenceMenuPrice`
- * (the same first-assigned-Menu `pricePerPlate` STANDARD derives — see
- * deriveStandardChildPricingMenuId); a FIXED rate ignores it entirely.
- */
-export function computeIndividualChildrenCharge(
-  rates: IndividualChildRates | null,
-  referenceMenuPrice: number,
-  below5Count: number | null,
-  child5To10Count: number | null,
-): number {
-  if (!rates) return 0;
-  const below5 = below5Count ?? 0;
-  const child5to10 = child5To10Count ?? 0;
-  const perBelow5 =
-    rates.individualChildBelow5PricingType === "PERCENTAGE"
-      ? (referenceMenuPrice * Number(rates.individualChildBelow5Rate ?? 0)) / 100
-      : Number(rates.individualChildBelow5Rate ?? 0);
-  const per5to10 =
-    rates.individualChild5To10PricingType === "PERCENTAGE"
-      ? (referenceMenuPrice * Number(rates.individualChild5To10Rate ?? 0)) / 100
-      : Number(rates.individualChild5To10Rate ?? 0);
-  return below5 * perBelow5 + child5to10 * per5to10;
 }
 
 /**
@@ -373,21 +313,6 @@ export async function recalculateOrderTotals(orderId: string, db: Db = prisma) {
   const balance = total - Number(order.advance);
 
   return db.order.update({ where: { id: orderId }, data: { subtotal, childrenCharge, discount, otherCharges, transportationCost, customCharges, total, balance } });
-}
-
-/**
- * The Menu Children Guests & Pricing prices against — "the menu remains the
- * same for everyone," so this is always the first Meal Planning entry's own
- * assigned Menu (by date; a stable sort preserves original submission order
- * as the tiebreaker for same-date meals), never a separate selector. Used
- * both as STANDARD's actual rate source and as INDIVIDUAL Percentage's
- * reference price (computeIndividualChildrenCharge) — so this is derived
- * regardless of pricingMethod. Null if no meal has a Menu assigned yet.
- */
-export function deriveStandardChildPricingMenuId(entries: MealPlanEntryInput[] | undefined): string | null {
-  if (!entries || entries.length === 0) return null;
-  const sorted = [...entries].sort((a, b) => a.date.getTime() - b.date.getTime());
-  return sorted.find((e) => e.menuId)?.menuId ?? null;
 }
 
 export async function createOrder(organizationId: string, input: OrderInput, actorUserId?: string) {

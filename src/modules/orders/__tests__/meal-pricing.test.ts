@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extrasAndAddOnsAmount, itemMovesPrice, mealBaseAmount, menuGuestCount, priceMeals } from "../meal-pricing";
+import { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, extrasAndAddOnsAmount, itemMovesPrice, mealBaseAmount, menuGuestCount, priceMeals } from "../meal-pricing";
 
 describe("meal-pricing (the one rule for orders, quotations and previews)", () => {
   it("only Extra dishes and add-ons move the price", () => {
@@ -40,5 +40,23 @@ describe("meal-pricing (the one rule for orders, quotations and previews)", () =
     expect(menuGuestCount({ adultCount: 40, totalParticipants: 50 })).toBe(40);
     expect(menuGuestCount({ adultCount: null, totalParticipants: 50 })).toBe(50);
     expect(menuGuestCount({ adultCount: null, totalParticipants: null })).toBe(0);
+  });
+});
+
+describe("child pricing (one rule for server and forms, issue 73)", () => {
+  const menu = { childUnder5Chargeable: true, childUnder5Price: 100, child5To10PricingType: "PERCENTAGE" as const, child5To10PriceValue: 50, pricePerPlate: 500 };
+  it("prices the same from numbers (form) and from strings like Decimal (server)", () => {
+    expect(computeChildrenCharge(menu, 2, 3)).toBe(2 * 100 + 3 * 250);
+    expect(computeChildrenCharge({ ...menu, childUnder5Price: "100", pricePerPlate: "500" }, 2, 3)).toBe(950);
+    expect(computeChildrenCharge(null, 2, 3)).toBe(0);
+  });
+  it("individual rates: fixed and percentage of the reference menu", () => {
+    const rates = { individualChildBelow5Rate: 50, individualChildBelow5PricingType: "FIXED" as const, individualChild5To10Rate: 40, individualChild5To10PricingType: "PERCENTAGE" as const };
+    expect(computeIndividualChildrenCharge(rates, 500, 2, 1)).toBe(2 * 50 + 200);
+  });
+  it("first menu by date, from Dates or ISO strings", () => {
+    expect(deriveStandardChildPricingMenuId([{ date: "2026-12-02", menuId: "b" }, { date: "2026-12-01", menuId: null }, { date: "2026-12-01T00:00:00Z", menuId: "a" }])).toBe("a");
+    expect(deriveStandardChildPricingMenuId([{ date: new Date("2026-12-02"), menuId: "b" }])).toBe("b");
+    expect(deriveStandardChildPricingMenuId([])).toBeNull();
   });
 });

@@ -33,7 +33,9 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { cn } from "cn";
 import { FormSection, SummaryCard, SummaryRow } from "../../orders/_components/order-form-parts";
 import { FormTabs, type FormTab } from "../../orders/_components/form-tabs";
-import { priceMeals } from "@/modules/orders/meal-pricing";
+import { computeChildrenCharge, computeIndividualChildrenCharge, deriveStandardChildPricingMenuId, priceMeals, type ChildPricingType } from "@/modules/orders/meal-pricing";
+import { customChargeInput, daysUntilPreview, enumerateDates, formatCurrency, startsInPreview } from "@/components/orders/form-helpers";
+import { toLocalIsoDate } from "@/lib/time/local-date";
 import { percentOf } from "@/modules/orders/amount";
 import { quotationMissingField, quotationMissingMessage } from "@/modules/quotations/required-fields";
 import { MAX_CUSTOM_CHARGES, parseCustomCharges, resolveCustomCharges, sumCustomCharges } from "@/modules/orders/custom-charges";
@@ -64,30 +66,6 @@ import { getMenuForQuotationPickerAction, type ActionResult } from "../actions";
 // 2026-09-19), same rule as Create Order's own. A Quotation's event date is
 // optional, so this is a no-op until one is actually set.
 const MIN_DAYS_BEFORE_EVENT = 2;
-
-function daysUntilPreview(iso: string): number | null {
-  if (!iso) return null;
-  const [y, m, d] = iso.split("-").map(Number);
-  const eventDate = new Date(y, m - 1, d);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.round((eventDate.getTime() - startOfToday.getTime()) / 86_400_000);
-}
-
-/** "Starts in" wording for the event-date chip and the summary — same tones as the Orders card's countdown. */
-function startsInPreview(days: number | null): {
-  caption: string;
-  label: string;
-  tone: "orange" | "yellow" | "success";
-} | null {
-  if (days === null || days < 0) return null;
-  if (days === 0) return { caption: "Event", label: "Today", tone: "orange" };
-  return {
-    caption: "Starts in",
-    label: `${days} ${days === 1 ? "day" : "days"}`,
-    tone: days <= 2 ? "yellow" : "success",
-  };
-}
 
 export interface QuotationFormValues {
   customerId: string;
@@ -157,70 +135,6 @@ export const EMPTY_QUOTATION_VALUES: QuotationFormValues = {
   customCharges: [],
   mealPlanEntries: [],
 };
-
-/** One typed charge line as the shared parser reads it: a percentage line carries its rate, a rupee line its amount. */
-function customChargeInput(c: { label: string; amount: string; mode: "FIXED" | "PERCENTAGE" }) {
-  const typed = Number.parseFloat(c.amount);
-  return c.mode === "PERCENTAGE" ? { label: c.label, mode: c.mode, rate: typed, amount: 0 } : { label: c.label, amount: typed };
-}
-
-/**
- * Formats a Date's own local calendar date as "YYYY-MM-DD" — deliberately
- * NOT `.toISOString().slice(0, 10)`, which converts through UTC first and
- * silently shifts the date backward a full day in any positive-UTC-offset
- * timezone (IST included — this app's primary market).
- */
-function toLocalIsoDate(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function enumerateDates(start: string, end: string): string[] {
-  if (!start || !end) return [];
-  const startDate = new Date(`${start}T00:00:00`);
-  const endDate = new Date(`${end}T00:00:00`);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) return [];
-  const dates: string[] = [];
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    dates.push(toLocalIsoDate(d));
-  }
-  return dates;
-}
-
-function formatCurrency(amount: number) {
-  return `₹${amount.toFixed(2)}`;
-}
-
-/** Mirrors order.ts's server-side computeChildrenCharge exactly (STANDARD) — shared formula, see quotation.ts's own recalculateQuotationTotals. */
-function computeChildrenChargePreview(menu: MenuOption | undefined, below5Count: number, child5To10Count: number): number {
-  if (!menu) return 0;
-  const under5Charge = menu.childUnder5Chargeable ? below5Count * (menu.childUnder5Price ?? 0) : 0;
-  const perChild5to10 = menu.child5To10PricingType === "PERCENTAGE" ? (menu.price * (menu.child5To10PriceValue ?? 0)) / 100 : (menu.child5To10PriceValue ?? 0);
-  return under5Charge + child5To10Count * perChild5to10;
-}
-
-/** Mirrors order.ts's server-side computeIndividualChildrenCharge exactly (INDIVIDUAL — Per Plate/Percentage per band). */
-function computeIndividualChildrenChargePreview(
-  below5Rate: number,
-  below5Type: string,
-  child5To10Rate: number,
-  child5To10Type: string,
-  referenceMenuPrice: number,
-  below5Count: number,
-  child5To10Count: number,
-): number {
-  const perBelow5 = below5Type === "PERCENTAGE" ? (referenceMenuPrice * below5Rate) / 100 : below5Rate;
-  const per5to10 = child5To10Type === "PERCENTAGE" ? (referenceMenuPrice * child5To10Rate) / 100 : child5To10Rate;
-  return below5Count * perBelow5 + child5To10Count * per5to10;
-}
-
-/** Mirrors order.ts's server-side deriveStandardChildPricingMenuId exactly — the first (by date) meal's own assigned Menu. */
-function deriveStandardChildPricingMenuIdPreview(entries: MealSelection[]): string {
-  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
-  return sorted.find((e) => e.menuId)?.menuId ?? "";
-}
 
 interface QuotationFormProps {
   initialValues?: Partial<QuotationFormValues>;
@@ -353,7 +267,7 @@ export function QuotationForm({
   );
   const mealItemsSubtotal = pricedMeals.extrasAmount;
   const mealsSubtotal = pricedMeals.menuAmount;
-  const childPricingMenuId = deriveStandardChildPricingMenuIdPreview(values.mealPlanEntries);
+  const childPricingMenuId = deriveStandardChildPricingMenuId(values.mealPlanEntries) ?? "";
   const childPricingMenu = menus.find((m) => m.id === childPricingMenuId);
   // Same rule as the server (usesIndividualChildRates): the Individual Pricing switch with a typed child price, or the method.
   const individualChildRates =
@@ -361,16 +275,13 @@ export function QuotationForm({
     (values.individualPricingEnabled && ((Number.parseFloat(values.individualChildBelow5Rate) || 0) > 0 || (Number.parseFloat(values.individualChild5To10Rate) || 0) > 0));
   const childrenCharge =
     individualChildRates
-      ? computeIndividualChildrenChargePreview(
-          Number.parseFloat(values.individualChildBelow5Rate) || 0,
-          values.individualChildBelow5PricingType,
-          Number.parseFloat(values.individualChild5To10Rate) || 0,
-          values.individualChild5To10PricingType,
+      ? computeIndividualChildrenCharge(
+          { individualChildBelow5Rate: Number.parseFloat(values.individualChildBelow5Rate) || 0, individualChildBelow5PricingType: values.individualChildBelow5PricingType as ChildPricingType, individualChild5To10Rate: Number.parseFloat(values.individualChild5To10Rate) || 0, individualChild5To10PricingType: values.individualChild5To10PricingType as ChildPricingType },
           childPricingMenu?.price ?? 0,
           Number(values.childBelow5Count) || 0,
           Number(values.child5To10Count) || 0,
         )
-      : computeChildrenChargePreview(childPricingMenu, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
+      : computeChildrenCharge(childPricingMenu ? { ...childPricingMenu, pricePerPlate: childPricingMenu.price } : null, Number(values.childBelow5Count) || 0, Number(values.child5To10Count) || 0);
   const subtotal = mealItemsSubtotal + mealsSubtotal + childrenCharge;
   const eventDaysUntil = daysUntilPreview(values.eventStartDate);
   const eventDateRestricted = eventDaysUntil !== null && eventDaysUntil < MIN_DAYS_BEFORE_EVENT;
