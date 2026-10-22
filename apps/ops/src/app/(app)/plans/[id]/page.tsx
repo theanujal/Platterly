@@ -36,6 +36,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
           productName={plan.product.name}
           defs={manifest.entitlements}
           otherFeatured={(await prisma.plan.findFirst({ where: { productKey: plan.productKey, isFeatured: true, id: { not: plan.id } }, select: { name: true } }))?.name ?? null}
+          businessesOnPlan={await prisma.subscription.count({ where: { planId: plan.id, endDate: null } })}
           values={{
             id: plan.id,
             code: plan.code,
