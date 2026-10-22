@@ -570,10 +570,15 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
   if (!quotation.eventStartDate || !quotation.eventEndDate) {
     throw new QuotationEventDatesRequiredError("Set this Quotation's Event Start/End Date before converting it to an Order.");
   }
+  const ALREADY_CONVERTED = "This quotation has already been converted to an order.";
+  if (await prisma.order.findFirst({ where: { quotationId, organizationId }, select: { id: true } })) {
+    throw new InvalidQuotationTransitionError(ALREADY_CONVERTED);
+  }
 
   const order = await createOrder(
     organizationId,
     {
+      quotationId,
       customerId: quotation.customerId,
       eventTypeId: quotation.eventTypeId,
       menuPreference: quotation.menuPreference,
@@ -610,7 +615,11 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
       // OrderItem copies its QuotationItem snapshot untouched.
     },
     actorUserId,
-  );
+  ).catch((error: unknown) => {
+    // Two clicks at once: the other request inserted the order first, and nothing else was written for this one.
+    if ((error as { code?: string }).code === "P2002") throw new InvalidQuotationTransitionError(ALREADY_CONVERTED);
+    throw error;
+  });
 
   for (const entry of quotation.mealPlanEntries) {
     const mealPlanEntry = await prisma.mealPlanEntry.create({
@@ -654,7 +663,7 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
   const childPricingMenuId = deriveStandardChildPricingMenuId(
     quotation.mealPlanEntries.map((entry) => ({ date: entry.date, mealType: entry.mealType, menuId: entry.menuId })),
   );
-  await prisma.order.update({ where: { id: order.id }, data: { quotationId, childPricingMenuId } });
+  await prisma.order.update({ where: { id: order.id }, data: { childPricingMenuId } });
   const finalOrder = await recalculateOrderTotals(order.id);
 
   await audit({

@@ -754,6 +754,36 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
     await expect(convertQuotationToOrder(org.id, quotation.id, actor.id)).rejects.toThrow(InvalidQuotationTransitionError);
   });
 
+  it("refuses a second conversion and leaves no extra order (issue 85)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") }, actor.id);
+    const { url } = await sendQuotation(org.id, quotation.id, actor.id);
+    const resolved = (await resolveQuotationToken(url.split("/quote/")[1]))!;
+    await acceptQuotation(resolved.organizationId, resolved.quotationId);
+
+    await convertQuotationToOrder(org.id, quotation.id, actor.id);
+    await expect(convertQuotationToOrder(org.id, quotation.id, actor.id)).rejects.toThrow(/already been converted/);
+    expect(await prisma.order.count({ where: { organizationId: org.id } })).toBe(1);
+  });
+
+  it("two conversions at the same time make one order (issue 85)", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") }, actor.id);
+    const { url } = await sendQuotation(org.id, quotation.id, actor.id);
+    const resolved = (await resolveQuotationToken(url.split("/quote/")[1]))!;
+    await acceptQuotation(resolved.organizationId, resolved.quotationId);
+
+    const results = await Promise.allSettled([convertQuotationToOrder(org.id, quotation.id, actor.id), convertQuotationToOrder(org.id, quotation.id, actor.id)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(InvalidQuotationTransitionError);
+    expect(await prisma.order.count({ where: { organizationId: org.id } })).toBe(1);
+  });
+
   it("rejects converting an Accepted Quotation with no event dates set", async () => {
     const org = await makeOrg();
     const actor = await makeActor();

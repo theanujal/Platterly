@@ -117,6 +117,8 @@ export interface OrderInput {
   eventVenues?: EventVenueInput[];
   /** A converted quotation tells the customer in its own email, so the generic "order received" one is skipped. Not stored. */
   skipCustomerNotice?: boolean;
+  /** Set only by convertQuotationToOrder: stored on insert, so the unique link stops a second order before anything is written (issue 85). */
+  quotationId?: string;
   advance?: number;
   paymentStatus?: OrderPaymentStatus;
   status?: OrderStatus;
@@ -399,6 +401,7 @@ export async function createOrder(organizationId: string, input: OrderInput, act
   const order = await prisma.order.create({
     data: {
       organizationId,
+      quotationId: input.quotationId,
       customerId: input.customerId,
       eventTypeId: input.eventTypeId,
       menuPreference: input.menuPreference,
