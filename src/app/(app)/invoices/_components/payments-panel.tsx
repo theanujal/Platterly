@@ -15,6 +15,7 @@ import { useLiveOrderTotal, useOrderPriceLines } from "@/modules/orders/live-tot
 import { confirmPaymentAction, createPaymentLinkAction, recordPaymentAction, rejectPaymentAction, sendReceiptAction, type ActionResult } from "../actions";
 import { Badge } from "@/components/ui/badge";
 import { PaymentStatusBadge } from "./invoice-badges";
+import { todayLocalIso } from "@/lib/time/local-date";
 
 export interface PaymentRowData {
   id: string;
@@ -306,8 +307,6 @@ export function PaymentsPanel({
   );
 }
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
-
 /** A payment added on the New Order page: held in the form and recorded when the order is saved. */
 export interface StagedPaymentDraft {
   key: string;
@@ -345,7 +344,7 @@ export function RecordPaymentDialog({
   const [amount, setAmount] = useState(String(balance));
   const [type, setType] = useState(paid > 0 ? "FINAL" : "ADVANCE");
   const [method, setMethod] = useState("UPI");
-  const [receivedAt, setReceivedAt] = useState(todayIso());
+  const [receivedAt, setReceivedAt] = useState(todayLocalIso());
   const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<"only" | "send" | null>(null);
@@ -392,7 +391,7 @@ export function RecordPaymentDialog({
             <SelectField id="pay-method" label="Method" value={method} onChange={setMethod} options={{ UPI: "UPI", CARD: "Card", NET_BANKING: "Net Banking", CASH: "Cash", BANK_TRANSFER: "Bank Transfer" }} />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pay-date">Date received</Label>
-              <IconInput icon={CalendarDays} id="pay-date" type="date" value={receivedAt} max={todayIso()} onChange={(e) => setReceivedAt(e.target.value)} />
+              <IconInput icon={CalendarDays} id="pay-date" type="date" value={receivedAt} max={todayLocalIso()} onChange={(e) => setReceivedAt(e.target.value)} />
             </div>
           </div>
           <div className="flex flex-col gap-1.5">

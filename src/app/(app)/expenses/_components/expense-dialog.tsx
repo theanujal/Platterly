@@ -26,6 +26,7 @@ import {
   updateRecurringExpenseAction,
   uploadExpenseAttachmentAction,
 } from "../../profitability/actions";
+import { todayLocalIso } from "@/lib/time/local-date";
 
 export interface ExpenseRowData {
   id: string;
@@ -60,7 +61,6 @@ const fileProblem = (file: File) => (!ACCEPT.split(",").includes(file.type) ? `$
 export const METHOD_LABEL: Record<string, string> = { UPI: "UPI", CARD: "Card", NET_BANKING: "Net Banking", CASH: "Cash", BANK_TRANSFER: "Bank Transfer" };
 const METHOD_OPTIONS: Record<string, string> = { NONE: "Not specified", ...METHOD_LABEL };
 const COMPANY = "COMPANY";
-const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const FREQUENCY_OPTIONS = Object.fromEntries(RECURRENCE_FREQUENCIES.map((f) => [f, RECURRENCE_LABEL[f]]));
 
@@ -117,7 +117,7 @@ export function ExpenseDialog({
   const forOrder = target !== COMPANY;
   const [category, setCategory] = useState<string>(row?.category ?? (forOrder ? "FOOD" : "RENT"));
   const [amount, setAmount] = useState(row ? String(row.amount) : "");
-  const [spentAt, setSpentAt] = useState(row ? row.spentAt.slice(0, 10) : todayIso());
+  const [spentAt, setSpentAt] = useState(row ? row.spentAt.slice(0, 10) : todayLocalIso());
   const [method, setMethod] = useState(row?.paymentMethod ?? "NONE");
   const [supplierId, setSupplierId] = useState(row?.supplierId ?? "");
   const [supplier, setSupplier] = useState(row?.supplierId ? "" : (row?.supplierName ?? ""));

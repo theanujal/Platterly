@@ -11,6 +11,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { recordStockTransactionAction } from "../actions";
+import { todayLocalIso } from "@/lib/time/local-date";
 
 const TYPE_OPTIONS = [
   { value: "STOCK_IN", label: "Stock In" },
@@ -38,11 +39,6 @@ export function StockTransactionDialog({ open, onOpenChange, itemId, name, unit,
 }
 
 // The form lives inside the drawer so its state starts fresh every time the drawer opens (and a discard really discards).
-const todayIso = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
 function StockTransactionForm({
   onOpenChange,
   itemId,
@@ -152,7 +148,7 @@ function StockTransactionForm({
               ariaLabel="Expiry date"
               single
               placeholder="Pick a date"
-              minDate={todayIso()}
+              minDate={todayLocalIso()}
               startDate={expiryDate}
               endDate={expiryDate}
               onChange={(d) => setExpiryDate(d)}

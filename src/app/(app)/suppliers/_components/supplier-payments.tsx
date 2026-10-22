@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { DrawerForm, FormDrawer, useIsDirty } from "@/components/catalog/form-drawer";
 import { formatRupees } from "@/components/catalog/catalog-display";
 import { deleteSupplierPaymentAction, recordSupplierPaymentAction } from "../../purchasing/actions";
+import { todayLocalIso } from "@/lib/time/local-date";
 
 const METHODS: Record<string, string> = { NONE: "Not specified", UPI: "UPI", CARD: "Card", NET_BANKING: "Net Banking", CASH: "Cash", BANK_TRANSFER: "Bank Transfer" };
-const todayIso = () => new Date().toISOString().slice(0, 10);
 
 export interface PaymentRow {
   id: string;
@@ -106,7 +106,7 @@ export function SupplierPayments({ supplierId, payments, canRecord, canDelete }:
 function RecordPaymentForm({ supplierId, onClose }: { supplierId: string; onClose: () => void }) {
   const router = useRouter();
   const [amount, setAmount] = useState("");
-  const [paidAt, setPaidAt] = useState(todayIso());
+  const [paidAt, setPaidAt] = useState(todayLocalIso());
   const [method, setMethod] = useState("NONE");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
