@@ -25,7 +25,3 @@ export async function ensureTrialPlan() {
     update: {},
   });
 }
-
-export async function getTrialPlan() {
-  return prisma.subscriptionPlan.findUnique({ where: { code: TRIAL_PLAN_CODE } });
-}

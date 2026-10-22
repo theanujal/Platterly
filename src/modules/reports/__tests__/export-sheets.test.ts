@@ -1,10 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { aboutSheet, auditSheets, channelsSheet, expensesSheets, financeSheets, profitabilitySheets, saasSheets, salesSheets, storefrontSheets } from "../export-sheets";
-import { computeSaas } from "../saas-math";
+import { aboutSheet, auditSheets, channelsSheet, expensesSheets, financeSheets, profitabilitySheets, salesSheets, storefrontSheets } from "../export-sheets";
 import type { SalesReport } from "../report-math";
 import type { FinanceReport, PayablesReport, ReceivablesReport } from "../finance-math";
 import type { StorefrontReport } from "../storefront-math";
-import { toCsv } from "@/lib/export/tabular";
 
 const sales: SalesReport = { revenue: 75000, orders: 2, averageOrderValue: 37500, confirmedOrders: 1, confirmedOrderValue: 45000, enquiries: 4, converted: 2, conversionRate: 50, quotationsSent: 3, quotationValue: 90000, acceptedQuotationValue: 40000, revenueByMonth: [{ month: "2026-10", label: "Oct 2026", count: 2, guests: 150, revenue: 75000 }] };
 const finance: FinanceReport = { revenue: 1000, expenses: 200, profit: 800, marginPercent: 80, months: [{ month: "2026-10", label: "Oct 2026", revenue: 1000, expenses: 200, profit: 800 }], expensesByCategory: [{ category: "FOOD", label: "Food", amount: 200 }] };
@@ -73,13 +71,5 @@ describe("report export sheets (Chunk 24)", () => {
   it("exports the audit log in India time with each change as text", () => {
     const [sheet] = auditSheets([{ id: "1", createdAt: new Date("2026-10-04T10:00:00Z"), who: "Anoop", summary: "Order updated", action: "order.update", recordType: "Order", recordId: "abc", href: null, changes: [{ field: "Status", before: "Pending", after: "Approved" }] }]);
     expect(sheet.rows[0]).toEqual(["4 Oct 2026, 3:30 pm", "Anoop", "Order updated", "order.update", "Order", "abc", "Status: Pending -> Approved"]);
-  });
-
-  it("exports the Subscriptions report and survives a CSV round trip", () => {
-    const report = computeSaas({ payments: [], trials: [], failedPayments: 0, period: { from: null, to: null }, now: new Date("2026-02-15T10:00:00Z") });
-    const sheets = saasSheets(report);
-    expect(sheets.map((s) => s.title)).toEqual(["Subscriptions summary", "MRR by plan", "Revenue by plan", "Revenue by month"]);
-    expect(sheets[0].rows.find((r) => r[0] === "MRR today, before GST (₹)")).toEqual(["MRR today, before GST (₹)", 0]);
-    expect(toCsv(sheets)).toContain('"MRR today, before GST (₹)",0');
   });
 });

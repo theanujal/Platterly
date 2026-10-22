@@ -34,11 +34,6 @@ export function advanceAmount(total: number, confirmedPaid: number, percent: num
   return Math.min(round2((total * percent) / 100), balance);
 }
 
-export function paymentTypeFor(amount: number, total: number, confirmedPaid: number): "ADVANCE" | "PARTIAL" | "FINAL" {
-  if (amount + 0.005 >= round2(total - confirmedPaid)) return confirmedPaid > 0 ? "FINAL" : "ADVANCE";
-  return confirmedPaid > 0 ? "PARTIAL" : "ADVANCE";
-}
-
 /** Razorpay's payment.method values mapped to ours; anything unknown stays UPI-like generic. */
 export function paymentMethodForRazorpay(method: string): "UPI" | "CARD" | "NET_BANKING" | "BANK_TRANSFER" {
   switch (method) {

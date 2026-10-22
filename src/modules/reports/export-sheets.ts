@@ -1,10 +1,9 @@
 import type { Sheet } from "@/lib/export/tabular";
-import type { EventsReport, KitchenRow, SalesReport } from "./report-math";
+import type { EventsReport, SalesReport } from "./report-math";
 import type { MenuReport } from "./menu-math";
 import type { MovementReport, PurchaseReport, StockReport } from "./inventory-math";
 import type { FinanceReport, PayablesReport, ReceivablesReport } from "./finance-math";
 import type { ChannelRow, StorefrontReport } from "./storefront-math";
-import type { SaasReport } from "./saas-math";
 import { EXPENSE_CATEGORY_LABEL, type OrderExpenseCategory, type Profitability } from "@/modules/expenses/profitability";
 import type { ExpenseListRow } from "@/modules/expenses/expense";
 import type { AuditEntry } from "@/modules/audit/audit-log";
@@ -39,10 +38,6 @@ export function salesSheets(sales: SalesReport, byLocation = false): Sheet[] {
     summary("Sales summary", pairs),
     { title: "Revenue by month", columns: ["Month", "Orders", "Guests", "Revenue (₹)"], rows: sales.revenueByMonth.map((m) => [m.label, m.count, m.guests, m.revenue]) },
   ];
-}
-
-export function kitchensSheet(kitchens: KitchenRow[]): Sheet {
-  return { title: "Kitchens", columns: ["Kitchen", "Orders", "Revenue (₹)", "Average order (₹)", "Guests"], rows: kitchens.map((k) => [k.kitchenName, k.orders, k.revenue, k.averageOrderValue, k.guests]) };
 }
 
 export function eventsSheets(events: EventsReport): Sheet[] {
@@ -240,35 +235,4 @@ export function aboutSheet(info: { report: string; kitchen?: string; location?: 
   pairs.push(["Period", period], ["Made on", IST.format(info.now ?? new Date()) + " (India time)"]);
   if (info.note) pairs.push(["Note", info.note]);
   return { title: "About this export", columns: ["", ""], rows: pairs };
-}
-
-/** Super Admin's Subscriptions report: what kitchens pay Platterly, before GST. */
-export function saasSheets(r: SaasReport): Sheet[] {
-  return [
-    summary("Subscriptions summary", [
-      ["MRR today, before GST (₹)", r.mrr],
-      ["ARR (MRR x 12, ₹)", r.arr],
-      ["Paying kitchens", r.payingKitchens],
-      ["Average a month per kitchen (₹)", r.averagePerKitchen],
-      ["Locked for non-payment", r.lapsedNow],
-      ["Revenue collected in the period, before GST (₹)", r.revenue],
-      ["GST collected (₹)", r.gstCollected],
-      ["Payments in the period", r.payments],
-      ["New paying kitchens", r.newPayingKitchens],
-      ["Failed payments", r.failedPayments],
-      ["Trials started", r.trials.started],
-      ["Trials converted to paying", r.trials.converted],
-      ["Trial conversion (%)", r.trials.conversionPercent],
-      ["Trials ended unpaid", r.trials.endedUnpaid],
-      ["Trials running now", r.trials.runningNow],
-      ["Kitchens paying at the start of the period", r.churn.startKitchens],
-      ["Kitchens churned", r.churn.churned],
-      ["Logo churn (%)", r.churn.logoChurnPercent],
-      ["Churned MRR (₹)", r.churn.churnedMrr],
-      ["Revenue churn (% of MRR)", r.churn.revenueChurnPercent],
-    ]),
-    { title: "MRR by plan", columns: ["Plan", "Kitchens", "MRR (₹)", "Share (%)"], rows: r.mrrByPlan.map((p) => [p.planName, p.kitchens, p.mrr, p.sharePercent]) },
-    { title: "Revenue by plan", columns: ["Plan", "Payments", "Revenue (₹)", "Share (%)"], rows: r.revenueByPlan.map((p) => [p.planName, p.payments, p.revenue, p.sharePercent]) },
-    { title: "Revenue by month", columns: ["Month", "Payments", "Revenue (₹)"], rows: r.revenueByMonth.map((m) => [m.label, m.payments, m.revenue]) },
-  ];
 }

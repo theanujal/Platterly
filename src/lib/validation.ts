@@ -9,7 +9,6 @@ export { ValidationError };
 
 export const MAX_MONEY = 100_000_000; // Rs 10 crore on one line is already far beyond any real catering order
 export const MAX_COUNT = 100_000; // guests, items, plates
-export const MAX_QUANTITY = 1_000_000_000;
 
 const label = (field: string) => field.replace(/([A-Z])/g, " $1").toLowerCase();
 

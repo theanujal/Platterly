@@ -44,8 +44,3 @@ export function pickerWithoutPrices(data: MenuPickerData): MenuPickerData {
     addOns: data.addOns.map((addOn) => ({ ...addOn, price: 0 })),
   };
 }
-
-/** A figure shown only with the right: null otherwise. */
-export function onlyIf<T>(allowed: boolean, value: T): T | null {
-  return allowed ? value : null;
-}

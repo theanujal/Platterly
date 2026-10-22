@@ -407,10 +407,6 @@ export async function customerRequestsChanges(organizationId: string, id: string
   return transitionMenuSelection(organizationId, id, "CHANGES_REQUESTED", "menu_selection.customer_request_changes", { note, trigger: "Customer asked for changes" });
 }
 
-export async function customerResumesReviewing(organizationId: string, id: string) {
-  return transitionMenuSelection(organizationId, id, "CUSTOMER_REVIEWING", "menu_selection.customer_resume_reviewing", { trigger: "Customer reviewing" });
-}
-
 /** The customer's final "Approve Menu". The menu waits as Customer Approved until the team sends it to the kitchen. */
 export async function customerApproves(organizationId: string, id: string) {
   return transitionMenuSelection(organizationId, id, "CUSTOMER_APPROVED", "menu_selection.customer_approved", { trigger: "Customer approved the menu" });
@@ -542,10 +538,6 @@ export async function setCustomMenuPricePerPlate(organizationId: string, menuSel
       tx,
     );
   });
-}
-
-export async function getMenuSelectionByEventId(organizationId: string, eventId: string) {
-  return prisma.menuSelection.findFirst({ where: { eventId, organizationId }, include: { items: true } });
 }
 
 /** Group 11.5 — Kitchen Dashboard's own listing, no separate data model. */

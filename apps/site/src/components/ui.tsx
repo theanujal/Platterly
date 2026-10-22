@@ -39,20 +39,6 @@ export function Badge({ children }: { children: ReactNode }) {
   return <span className="inline-flex items-center rounded-full bg-ink-navy/5 px-3 py-1 text-xs font-medium text-ink-navy">{children}</span>;
 }
 
-/** Centered intro for a section: a small uppercase label, a big Midnight heading, grey sub-text, an optional action. */
-export function SectionHeader({ id, eyebrow, title, children, action }: { id?: string; eyebrow?: string; title: string; children?: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="mx-auto flex max-w-3xl flex-col items-center gap-5 text-center">
-      {eyebrow && <p className="eyebrow">{eyebrow}</p>}
-      <h2 id={id} className="h-section">
-        {title}
-      </h2>
-      {children && <p className="max-w-2xl text-lg leading-relaxed text-slate-gray sm:text-xl">{children}</p>}
-      {action}
-    </div>
-  );
-}
-
 /** A page section on the magnolia page: max 1200px, generous air above and below. */
 export function Section({ children, className = "", label }: { children: ReactNode; className?: string; tone?: "canvas" | "paper" | "navy"; label?: string }) {
   return (

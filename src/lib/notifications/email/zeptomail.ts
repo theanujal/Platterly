@@ -19,10 +19,6 @@ export interface SendEmailParams {
 
 export type SendEmailResult = { status: "sent"; providerMessageId: string | null } | { status: "skipped"; reason: string } | { status: "failed"; reason: string };
 
-export function emailProviderConfigured(): boolean {
-  return Boolean(process.env.ZEPTOMAIL_TOKEN && process.env.ZEPTOMAIL_FROM);
-}
-
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const token = process.env.ZEPTOMAIL_TOKEN;
   const from = process.env.ZEPTOMAIL_FROM;
