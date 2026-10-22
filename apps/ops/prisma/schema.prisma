@@ -207,6 +207,32 @@ model InboundEvent {
   @@map("inbound_event")
 }
 
+// Every Razorpay webhook to Platterly's own account (plan and stand payments), and every failed-setup report from a product,
+// kept for good so a payment question can be answered from Ops without searching Razorpay's dashboard.
+model RazorpayEvent {
+  id                     String    @id
+  // Razorpay's x-razorpay-event-id; a retry of the same event reuses it, so it is stored once. Null for a product's report.
+  eventId                String?   @unique
+  // "webhook" or "product".
+  source                 String
+  // "subscription.charged", "payment.failed", "setup.failed", ...
+  type                   String
+  businessId             String?
+  razorpaySubscriptionId String?
+  razorpayPaymentId      String?
+  razorpayOrderId        String?
+  payload                Json
+  receivedAt             DateTime  @default(now())
+  // Set when it was applied; a null value with an `error` means it was kept but could not be applied.
+  processedAt            DateTime?
+  error                  String?
+
+  @@index([businessId, receivedAt])
+  @@index([razorpaySubscriptionId])
+  @@index([receivedAt])
+  @@map("razorpay_event")
+}
+
 enum AlertSeverity {
   INFO
   WARNING
@@ -381,6 +407,7 @@ model Plan {
 
   subscriptions Subscription[]
   payments      SubscriptionPayment[]
+  razorpayPlans RazorpayPlan[]
 
   @@unique([productKey, code])
   @@map("plan")
@@ -389,24 +416,27 @@ model Plan {
 // One business's subscription to one product. History is kept: a change ends the current row (`endDate`) and starts a new one.
 // At most one row per business and product has no `endDate` (a partial unique index in the migration enforces it).
 model Subscription {
-  id               String             @id
-  businessId       String
-  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  productKey       String
-  product          Product            @relation(fields: [productKey], references: [key], onDelete: Restrict)
-  planId           String
-  plan             Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
-  status           SubscriptionStatus
-  startDate        DateTime           @default(now())
-  trialEndsAt      DateTime?
-  endDate          DateTime?
-  billingInterval  BillingInterval?
-  currentPeriodEnd DateTime?
+  id                     String             @id
+  businessId             String
+  business               Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  productKey             String
+  product                Product            @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  planId                 String
+  plan                   Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status                 SubscriptionStatus
+  startDate              DateTime           @default(now())
+  trialEndsAt            DateTime?
+  endDate                DateTime?
+  billingInterval        BillingInterval?
+  currentPeriodEnd       DateTime?
   // A downgrade chosen mid-period starts at the next payment, never now.
-  pendingPlanId    String?
-  pendingInterval  BillingInterval?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  pendingPlanId          String?
+  pendingInterval        BillingInterval?
+  // Monthly auto-pay (Razorpay Subscriptions): the Razorpay subscription and its last known state. Null for yearly and hand-assigned plans.
+  razorpaySubscriptionId String?            @unique
+  autoPay                AutoPayStatus?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
 
   @@index([businessId, productKey])
   @@index([planId])
@@ -421,40 +451,69 @@ enum PaymentStatus {
   FAILED
 }
 
+// What Razorpay last said about a monthly auto-pay. Access never depends on it (the period end and the grace decide); it drives the
+// owner's emails and banners.
+enum AutoPayStatus {
+  ACTIVE
+  PENDING
+  PAUSED
+  HALTED
+  CANCELLED
+}
+
 // What a business pays Platterly for a plan (one row per attempt). This is Platterly's own accounting record, so it is
 // never deleted with a business or a plan (Restrict). The price, GST and invoice details are frozen when it is paid.
 model SubscriptionPayment {
-  id                String          @id
-  businessId        String
-  business          Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
-  productKey        String
-  product           Product         @relation(fields: [productKey], references: [key], onDelete: Restrict)
-  planId            String
-  plan              Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
-  interval          BillingInterval
+  id                     String          @id
+  businessId             String
+  business               Business        @relation(fields: [businessId], references: [id], onDelete: Restrict)
+  productKey             String
+  product                Product         @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  planId                 String
+  plan                   Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+  interval               BillingInterval
   // Rupees. amount + gstAmount = total.
-  amount            Decimal         @db.Decimal(10, 2)
-  gstPercent        Decimal         @db.Decimal(5, 2)
-  gstAmount         Decimal         @db.Decimal(10, 2)
-  total             Decimal         @db.Decimal(10, 2)
-  status            PaymentStatus   @default(PENDING)
-  razorpayOrderId   String?         @unique
-  razorpayPaymentId String?
-  invoiceNumber     String?         @unique
-  periodStart       DateTime?
-  periodEnd         DateTime?
-  paidAt            DateTime?
+  amount                 Decimal         @db.Decimal(10, 2)
+  gstPercent             Decimal         @db.Decimal(5, 2)
+  gstAmount              Decimal         @db.Decimal(10, 2)
+  total                  Decimal         @db.Decimal(10, 2)
+  status                 PaymentStatus   @default(PENDING)
+  razorpayOrderId        String?         @unique
+  // Set for an auto-pay charge: the first is written at checkout, each later one when Razorpay's webhook says it was charged.
+  razorpaySubscriptionId String?
+  razorpayPaymentId      String?         @unique
+  invoiceNumber          String?         @unique
+  periodStart            DateTime?
+  periodEnd              DateTime?
+  paidAt                 DateTime?
+  // Why an auto-pay setup failed, as the owner's checkout window reported it ("declined", or "not finished"). Shown in Ops.
+  failureReason          String?
   // The business's name, address and GSTIN as the product sent them at checkout, kept so a payment confirmed later by
   // Razorpay's webhook (when no product is involved) can still print the right buyer on the invoice.
-  buyer             Json?
+  buyer                  Json?
   // The seller, the buyer and the GST split as they were on the day it was paid, so an invoice never changes later.
-  invoiceSnapshot   Json?
+  invoiceSnapshot        Json?
   // Where an imported row came from (for example "catering:<payment id>"); null for payments made through ops.
-  importedFrom      String?
-  createdAt         DateTime        @default(now())
+  importedFrom           String?
+  createdAt              DateTime        @default(now())
 
   @@index([businessId, createdAt])
+  @@index([razorpaySubscriptionId])
   @@map("subscription_payment")
+}
+
+// The Razorpay plan behind monthly auto-pay for one of our plans at one price (with GST, in paise). Razorpay plans cannot be
+// edited, so a new price gets a new row; businesses already on the old one keep that price until they change plan.
+model RazorpayPlan {
+  id             String   @id @default(cuid())
+  planId         String
+  plan           Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  amountPaise    Int
+  razorpayPlanId String   @unique
+  createdAt      DateTime @default(now())
+
+  @@unique([planId, amountPaise])
+  @@map("razorpay_plan")
 }
 
 // Platterly's own details printed on plan invoices (the seller). One row, id "platform". Every field is optional so it can be

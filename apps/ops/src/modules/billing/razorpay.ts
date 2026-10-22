@@ -49,3 +49,41 @@ export function verifyCheckoutSignature(params: { razorpayOrderId: string; razor
 export function verifyWebhookSignature(rawBody: string, signature: string, webhookSecret: string): boolean {
   return safeEqual(createHmac("sha256", webhookSecret).update(rawBody).digest("hex"), signature);
 }
+
+/** A Razorpay subscription as its API and webhooks describe it. Times are Unix seconds. */
+export interface RazorpaySubscription {
+  id: string;
+  status: string;
+  current_start: number | null;
+  current_end: number | null;
+  charge_at?: number | null;
+}
+
+async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {
+  const response = await fetchImpl(`${API}${path}`, {
+    method,
+    headers: { Authorization: `Basic ${Buffer.from(`${creds.keyId}:${creds.keySecret}`).toString("base64")}`, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new RazorpayError(`Razorpay refused ${method} ${path.split("/")[1]} (${response.status}).`);
+  return (await response.json()) as T;
+}
+
+/** A plan that charges every 30 days (our period), for the price with GST. Razorpay plans cannot be edited. */
+export const createRazorpayPlan = (creds: PlatformRazorpay, p: { name: string; amountPaise: number }, fetchImpl: typeof fetch = fetch) =>
+  call<{ id: string }>(creds, "POST", "/plans", { period: "daily", interval: 30, item: { name: p.name, amount: p.amountPaise, currency: "INR" } }, fetchImpl).then(({ id }) => ({ id }));
+
+/** 120 cycles of 30 days is about ten years: auto-pay until the owner pauses, changes plan or is locked. */
+export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; startAt?: Date; notes: Record<string, string> }, fetchImpl: typeof fetch = fetch) =>
+  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, ...(p.startAt ? { start_at: Math.floor(p.startAt.getTime() / 1000) } : {}), notes: p.notes }, fetchImpl);
+
+export const fetchRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "GET", `/subscriptions/${id}`, undefined, fetchImpl);
+export const cancelRazorpaySubscription = (creds: PlatformRazorpay, id: string, atCycleEnd: boolean, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }, fetchImpl);
+export const pauseRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/pause`, { pause_at: "now" }, fetchImpl);
+export const resumeRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/resume`, { resume_at: "now" }, fetchImpl);
+
+/** Razorpay Checkout's signature for a subscription: HMAC-SHA256 of `payment_id|subscription_id` with the key secret. */
+export function verifySubscriptionSignature(params: { razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string }, keySecret: string): boolean {
+  return safeEqual(createHmac("sha256", keySecret).update(`${params.razorpayPaymentId}|${params.razorpaySubscriptionId}`).digest("hex"), params.signature);
+}

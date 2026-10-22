@@ -1,5 +1,5 @@
 import "server-only";
-import type { BillingView, Buyer, CheckoutAnswer, PlanOffer } from "@platterly/contract";
+import type { BillingView, Buyer, OrderCheckoutAnswer, PlanOffer } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 import type { BillingInterval } from "@/generated/prisma/enums";
@@ -214,10 +214,10 @@ export async function getSubscriptionPageData(organizationId: string): Promise<S
 
 /* ---------- actions ---------- */
 
-export async function startCheckout(organizationId: string, planId: string, interval: BillingInterval, actorUserId: string): Promise<CheckoutAnswer> {
+export async function startCheckout(organizationId: string, planId: string, interval: BillingInterval, actorUserId: string): Promise<OrderCheckoutAnswer> {
   if (!opsBillingOn()) return startSubscriptionCheckout(organizationId, planId, interval, actorUserId);
   const businessId = await businessIdOf(organizationId);
-  return opsBillingOk<CheckoutAnswer>("POST", `${base(businessId)}/checkout`, { planId, interval, buyer: await buyerOf(organizationId) });
+  return opsBillingOk<OrderCheckoutAnswer>("POST", `${base(businessId)}/checkout`, { planId, interval, buyer: await buyerOf(organizationId) });
 }
 
 export async function verifyCheckout(organizationId: string, params: { razorpayOrderId: string; razorpayPaymentId: string; signature: string }) {

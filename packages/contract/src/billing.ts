@@ -37,10 +37,16 @@ export function parseBuyer(input: unknown): ParseResult<Buyer> {
   return ok({ name, ...out } as unknown as Buyer);
 }
 
+/** What Razorpay last said about a monthly auto-pay (Razorpay Subscriptions). Yearly and hand-assigned plans have none. */
+export const AUTO_PAY_STATUSES = ["ACTIVE", "PENDING", "PAUSED", "HALTED", "CANCELLED"] as const;
+export type AutoPayStatus = (typeof AUTO_PAY_STATUSES)[number];
+
 export interface CheckoutRequest {
   planId: string;
   interval: BillingInterval;
   buyer: Buyer;
+  /** The product can open Razorpay's auto-pay window. A monthly checkout with this set is a Razorpay subscription, not an order. */
+  autoPay?: true;
 }
 
 export function parseCheckoutRequest(input: unknown): ParseResult<CheckoutRequest> {
@@ -49,7 +55,7 @@ export function parseCheckoutRequest(input: unknown): ParseResult<CheckoutReques
   if (!BILLING_INTERVALS.includes(input.interval as BillingInterval)) return fail("interval must be MONTHLY or ANNUAL");
   const buyer = parseBuyer(input.buyer);
   if (!buyer.ok) return buyer;
-  return ok({ planId: input.planId, interval: input.interval as BillingInterval, buyer: buyer.value });
+  return ok({ planId: input.planId, interval: input.interval as BillingInterval, buyer: buyer.value, ...(input.autoPay === true ? { autoPay: true as const } : {}) });
 }
 
 export interface VerifyRequest {
@@ -65,6 +71,35 @@ export function parseVerifyRequest(input: unknown): ParseResult<VerifyRequest> {
   if (typeof razorpayPaymentId !== "string" || !/^[\w-]{3,64}$/.test(razorpayPaymentId)) return fail("razorpayPaymentId is invalid");
   if (typeof signature !== "string" || !/^[0-9a-f]{64}$/i.test(signature)) return fail("signature is invalid");
   return ok({ razorpayOrderId, razorpayPaymentId, signature });
+}
+
+/** Why an auto-pay setup didn't finish, as the owner's checkout window saw it: declined, or closed or stopped partway. */
+export const AUTO_PAY_FAILURES = ["declined", "not_finished"] as const;
+export type AutoPayFailure = (typeof AUTO_PAY_FAILURES)[number];
+
+/**
+ * The plan verify call (monthly plans can be auto-pay). An order, as for stands and yearly plans; an auto-pay subscription's
+ * first payment; or a setup that failed, which only the product sees (Razorpay's webhook for it names no subscription).
+ */
+export type BillingVerifyRequest =
+  | VerifyRequest
+  | { razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string }
+  | { razorpaySubscriptionId: string; failed: { reason: AutoPayFailure; detail: string | null } };
+
+export function parseBillingVerifyRequest(input: unknown): ParseResult<BillingVerifyRequest> {
+  if (!isRecord(input) || input.razorpaySubscriptionId === undefined) return parseVerifyRequest(input);
+  const { razorpayOrderId, razorpaySubscriptionId, razorpayPaymentId, signature, failed } = input;
+  if (razorpayOrderId !== undefined) return fail("send razorpayOrderId or razorpaySubscriptionId, not both");
+  if (typeof razorpaySubscriptionId !== "string" || !/^[\w-]{3,64}$/.test(razorpaySubscriptionId)) return fail("razorpaySubscriptionId is invalid");
+  if (failed !== undefined) {
+    if (!isRecord(failed) || !AUTO_PAY_FAILURES.includes(failed.reason as AutoPayFailure)) return fail("failed.reason must be declined or not_finished");
+    if (failed.detail !== undefined && failed.detail !== null && (typeof failed.detail !== "string" || failed.detail.length > 500)) return fail("failed.detail is invalid");
+    const detail = typeof failed.detail === "string" ? failed.detail.trim() || null : null;
+    return ok({ razorpaySubscriptionId, failed: { reason: failed.reason as AutoPayFailure, detail } });
+  }
+  if (typeof razorpayPaymentId !== "string" || !/^[\w-]{3,64}$/.test(razorpayPaymentId)) return fail("razorpayPaymentId is invalid");
+  if (typeof signature !== "string" || !/^[0-9a-f]{64}$/i.test(signature)) return fail("signature is invalid");
+  return ok({ razorpaySubscriptionId, razorpayPaymentId, signature });
 }
 
 export interface DowngradeRequest {
@@ -109,15 +144,32 @@ export interface BillingView {
     trialEndsAt: string | null;
     currentPeriodEnd: string | null;
     pending: { planId: string; planName: string; interval: BillingInterval | null } | null;
+    /** Monthly auto-pay; null (or absent, from an older ops) for yearly and hand-assigned plans. `nextChargeAt` only while it is on. */
+    autoPay?: { status: AutoPayStatus; nextChargeAt: string | null } | null;
   } | null;
   history: { id: string; planName: string; status: SubscriptionStatus; startDate: string; endDate: string | null }[];
   payments: { id: string; planName: string; interval: BillingInterval; total: number; paidAt: string | null; periodStart: string | null; periodEnd: string | null; invoiceNumber: string | null }[];
 }
 
-export interface CheckoutAnswer {
+export interface OrderCheckoutAnswer {
+  kind?: "order";
   keyId: string;
   razorpayOrderId: string;
   amountPaise: number;
   businessName: string;
   description: string;
 }
+
+export interface AutoPayCheckoutAnswer {
+  kind: "subscription";
+  keyId: string;
+  razorpaySubscriptionId: string;
+  amountPaise: number;
+  businessName: string;
+  description: string;
+  /** Set when the first charge waits for days already paid for: Razorpay only takes the mandate (a refundable ₹5) now. */
+  startsAt: string | null;
+}
+
+/** An order unless the product asked for `autoPay` on a monthly plan. */
+export type CheckoutAnswer = OrderCheckoutAnswer | AutoPayCheckoutAnswer;

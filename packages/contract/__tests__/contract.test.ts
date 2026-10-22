@@ -13,6 +13,7 @@ import {
   isNewerSnapshot,
   isWithinLimit,
   newId,
+  parseBillingVerifyRequest,
   parseBuyer,
   parseCheckoutRequest,
   parseCommand,
@@ -389,6 +390,37 @@ describe("billing API requests", () => {
     expect(parseVerifyRequest({ razorpayOrderId: "order_Abc123", razorpayPaymentId: "pay_Abc123", signature: "short" }).ok).toBe(false);
     expect(parseVerifyRequest({ razorpayOrderId: "../x", razorpayPaymentId: "pay_Abc123", signature: sig }).ok).toBe(false);
     expect(parseVerifyRequest({ razorpayOrderId: "order_Abc123", razorpayPaymentId: "", signature: sig }).ok).toBe(false);
+  });
+
+  it("plan verify takes an order id or a subscription id, never both or neither", () => {
+    const base = { razorpayPaymentId: "pay_Abc123", signature: "a".repeat(64) };
+    expect(parseBillingVerifyRequest({ ...base, razorpaySubscriptionId: "sub_Abc123" })).toEqual({ ok: true, value: { razorpaySubscriptionId: "sub_Abc123", ...base } });
+    expect(parseBillingVerifyRequest({ ...base, razorpayOrderId: "order_Abc123" })).toEqual({ ok: true, value: { razorpayOrderId: "order_Abc123", ...base } });
+    expect(parseBillingVerifyRequest({ ...base }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ ...base, razorpayOrderId: "order_Abc123", razorpaySubscriptionId: "sub_Abc123" }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ ...base, razorpaySubscriptionId: "../x" }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", razorpayPaymentId: "pay_Abc123", signature: "short" }).ok).toBe(false);
+  });
+
+  it("plan verify takes a failed auto-pay setup with its reason", () => {
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", failed: { reason: "declined", detail: "  Bank declined it. " } })).toEqual({ ok: true, value: { razorpaySubscriptionId: "sub_Abc123", failed: { reason: "declined", detail: "Bank declined it." } } });
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", failed: { reason: "not_finished" } })).toEqual({ ok: true, value: { razorpaySubscriptionId: "sub_Abc123", failed: { reason: "not_finished", detail: null } } });
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", failed: { reason: "paid" } }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", failed: { reason: "declined", detail: "x".repeat(501) } }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", failed: "declined" }).ok).toBe(false);
+    expect(parseBillingVerifyRequest({ razorpayOrderId: "order_Abc123", failed: { reason: "declined" } }).ok).toBe(false);
+  });
+
+  it("order verify (yearly plans and stands) still refuses a subscription id", () => {
+    expect(parseVerifyRequest({ razorpaySubscriptionId: "sub_Abc123", razorpayPaymentId: "pay_Abc123", signature: "a".repeat(64) }).ok).toBe(false);
+  });
+
+  it("checkout carries autoPay only when it is exactly true", () => {
+    const body = { planId: "p1", interval: "MONTHLY", buyer: { name: "A" } };
+    const parsedTrue = parseCheckoutRequest({ ...body, autoPay: true });
+    expect(parsedTrue.ok && parsedTrue.value.autoPay).toBe(true);
+    const parsedOther = parseCheckoutRequest({ ...body, autoPay: "yes" });
+    expect(parsedOther.ok && "autoPay" in parsedOther.value).toBe(false);
   });
 
   it("parses a downgrade request", () => {

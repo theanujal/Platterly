@@ -19,7 +19,14 @@ export default async function BusinessPage({ params, searchParams }: { params: P
   const tab = TABS.find((t) => t === wanted) ?? "overview";
   const business = await getBusiness(id);
   if (!business) notFound();
-  const [subscriptions, plans, activity] = await Promise.all([listSubscriptions(id), prisma.plan.findMany({ where: { isActive: true, productKey: { in: business.products.map((p) => p.productKey) } }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] }), getBusinessActivity(id)]);
+  const [subscriptions, plans, activity, failedSetups] = await Promise.all([
+    listSubscriptions(id),
+    prisma.plan.findMany({ where: { isActive: true, productKey: { in: business.products.map((p) => p.productKey) } }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] }),
+    getBusinessActivity(id),
+    // Auto-pay setups the kitchen's checkout reported as declined or not finished (Razorpay tells ops about neither).
+    prisma.subscriptionPayment.findMany({ where: { businessId: id, status: "FAILED", razorpaySubscriptionId: { not: null } }, select: { id: true, productKey: true, createdAt: true, failureReason: true }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const day = (d: Date) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(d);
   const now = new Date();
   const when = (d: Date | null) => (d ? formatWhen(d) : "—");
   const actionsOf = (manifest: unknown): string[] => ((manifest as { actions?: string[] } | null)?.actions ?? []);
@@ -119,6 +126,13 @@ export default async function BusinessPage({ params, searchParams }: { params: P
                   </dl>
                 ) : null}
                 <AssignForm businessId={business.id} productKey={bp.productKey} currentPlanId={current?.planId ?? null} plans={plans.filter((p) => p.productKey === bp.productKey).map((p) => ({ id: p.id, label: `${p.name}${p.isTrial ? " (trial)" : ""}` }))} />
+                {failedSetups.some((p) => p.productKey === bp.productKey) ? (
+                  <ul className="mt-4 flex flex-wrap gap-2" data-testid="failed-autopay-setups">
+                    {failedSetups.filter((p) => p.productKey === bp.productKey).map((p) => (
+                      <li key={p.id}><Badge tone="danger">{p.failureReason === "declined" ? `Auto-pay setup failed, ${day(p.createdAt)}: declined` : `Auto-pay setup not finished, ${day(p.createdAt)}`}</Badge></li>
+                    ))}
+                  </ul>
+                ) : null}
                 {rows.length > 1 ? (
                   <details className="mt-4 text-sm">
                     <summary className="cursor-pointer text-muted-foreground">History ({rows.length})</summary>

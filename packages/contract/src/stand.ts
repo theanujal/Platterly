@@ -1,5 +1,5 @@
 import { fail, isRecord, ok, type ParseResult } from "./result";
-import { parseBuyer, type Buyer, type CheckoutAnswer } from "./billing";
+import { parseBuyer, type Buyer, type OrderCheckoutAnswer } from "./billing";
 
 /**
  * The Order QR stand (docs/ops-contract.md section 33): a paid, physical A6 acrylic stand printed with a kitchen's logo, name
@@ -100,7 +100,7 @@ export interface StandOffer {
   maxPerOrder: number;
 }
 
-export interface StandCheckoutAnswer extends CheckoutAnswer {
+export interface StandCheckoutAnswer extends OrderCheckoutAnswer {
   orderId: string;
 }
 
