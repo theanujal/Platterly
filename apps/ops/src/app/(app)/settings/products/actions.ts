@@ -51,9 +51,11 @@ export async function finishRotationAction(formData: FormData): Promise<void> {
 export async function refreshManifestAction(formData: FormData): Promise<void> {
   const staff = await requireStaff();
   const key = String(formData.get("key") ?? "");
-  await refreshManifest(key, staff.id);
+  const result = await refreshManifest(key, staff.id);
   revalidatePath(`/settings/products/${key}`);
   revalidatePath("/settings/products");
+  // Says on the page that the check ran; a failure already shows the product's error message.
+  if (result.ok) redirect(`/settings/products/${key}?checked=1`);
 }
 
 export async function updateProductAction(formData: FormData): Promise<void> {
@@ -67,6 +69,7 @@ export async function updateProductAction(formData: FormData): Promise<void> {
   });
   revalidatePath(`/settings/products/${key}`);
   revalidatePath("/settings/products");
+  redirect(`/settings/products/${key}`);
 }
 
 export async function setInvoicePrefixAction(formData: FormData): Promise<void> {
@@ -76,8 +79,9 @@ export async function setInvoicePrefixAction(formData: FormData): Promise<void> 
     await setInvoicePrefix(key, String(formData.get("invoicePrefix") ?? ""), staff.id);
   } catch (error) {
     if (!(error instanceof NumberingError)) throw error;
-    redirect(`/settings/products/${key}?prefixError=${encodeURIComponent(error.message)}`);
+    redirect(`/settings/products/${key}?edit=prefix&prefixError=${encodeURIComponent(error.message)}`);
   }
   revalidatePath(`/settings/products/${key}`);
   revalidatePath("/billing");
+  redirect(`/settings/products/${key}`);
 }
