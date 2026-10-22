@@ -30,15 +30,29 @@ const statusLabel = (status: string) => STATUS_LABEL[status] ?? status.charAt(0)
 // Laid out like AJ's Subscription reference (2026-09-30). Real payments (Chunk 20) are listed in their own panel;
 // the history rows still show the plan's list price, and each row's invoice is a PDF
 // generated from the subscription itself (invoice/[id]/route.ts).
-export default async function SubscriptionPage() {
+export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ paid?: string }> }) {
   const { organizationId } = await requireActiveOrganization();
   await requirePermission({ settings: ["view"] }, organizationId);
   const { current, history, payments, unavailable, historyInvoices } = await getSubscriptionPageData(organizationId);
   const pendingPlan = current?.pendingPlanName ? { name: current.pendingPlanName } : null;
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
+  // The plan checkout lands here with ?paid=1 once the payment is verified; the newest payment is the one just made.
+  const justPaid = (await searchParams).paid ? payments[0] : undefined;
 
   return (
     <SettingsCard title="Subscription" description="Your current plan and subscription history.">
+      {justPaid && (
+        <InfoBox tone="success" title="Payment received">
+          <p data-testid="payment-received">
+            {justPaid.planName}, {justPaid.interval === "ANNUAL" ? "1 year" : "30 days"}: {formatMoney(justPaid.total, "INR")} paid (GST included). Invoice {justPaid.invoiceNumber}.
+            {current?.currentPeriodEnd && ` Your plan is active until ${formatDate(current.currentPeriodEnd)}.`}
+          </p>
+          <Button variant="outline" size="md" className="self-start" render={<a href={`/settings/subscription/payment-invoice/${justPaid.id}`} download />} nativeButton={false}>
+            <Download data-icon="inline-start" />
+            Download invoice
+          </Button>
+        </InfoBox>
+      )}
       {unavailable && (
         <InfoBox tone="warning">
           <p>Your billing details are temporarily unavailable. Your plan and limits keep working; please check again in a few minutes.</p>

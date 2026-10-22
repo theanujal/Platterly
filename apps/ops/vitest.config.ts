@@ -12,6 +12,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@platterly/contract/plan-invoice-pdf": path.resolve(__dirname, "../../packages/contract/src/plan-invoice-pdf.ts"),
       "@platterly/contract": path.resolve(__dirname, "../../packages/contract/index.ts"),
       "server-only": path.resolve(__dirname, "./vitest.server-only-stub.ts"),
     },

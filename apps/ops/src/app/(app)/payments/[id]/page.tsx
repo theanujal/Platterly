@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { Card, PageHeader, formatWhen, money } from "@/components/ui";
+import { Card, PageHeader, buttonClass, formatWhen, money } from "@/components/ui";
 import type { InvoiceSnapshot } from "@/modules/billing/math";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,11 @@ export default async function PaymentPage({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <PageHeader title={`Invoice ${payment.invoiceNumber}`} description={`${payment.business.name} · ${payment.product.name} · paid ${formatWhen(payment.paidAt)}`} />
+      <PageHeader
+        title={`Invoice ${payment.invoiceNumber}`}
+        description={`${payment.business.name} · ${payment.product.name} · paid ${formatWhen(payment.paidAt)}`}
+        actions={<a href={`/payments/${payment.id}/invoice`} download className={buttonClass("outline", "md")}>Download invoice</a>}
+      />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Seller</p>

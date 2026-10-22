@@ -16,7 +16,8 @@
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"],
-      "@platterly/contract": ["../../packages/contract/index.ts"]
+      "@platterly/contract": ["../../packages/contract/index.ts"],
+      "@platterly/contract/plan-invoice-pdf": ["../../packages/contract/src/plan-invoice-pdf.ts"]
     }
   },
   "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", "../../packages/contract/**/*.ts", "vitest.config.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],

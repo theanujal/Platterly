@@ -15,6 +15,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Kept out of the index so jsPDF never reaches a browser bundle; listed first so the shorter alias does not catch it.
+      "@platterly/contract/plan-invoice-pdf": path.resolve(__dirname, "./packages/contract/src/plan-invoice-pdf.ts"),
       "@platterly/contract": path.resolve(__dirname, "./packages/contract/index.ts"),
       // The real package throws unconditionally outside Next's RSC bundler.
       "server-only": path.resolve(__dirname, "./vitest.server-only-stub.ts"),

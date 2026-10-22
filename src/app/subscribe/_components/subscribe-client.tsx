@@ -100,7 +100,7 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
           setBusy(false);
           return setError(verified.error);
         }
-        router.push("/dashboard");
+        router.push("/settings/subscription?paid=1");
         router.refresh();
       },
       modal: { ondismiss: () => setBusy(false) },

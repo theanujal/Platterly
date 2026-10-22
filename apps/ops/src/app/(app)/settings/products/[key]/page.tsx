@@ -6,6 +6,8 @@ import { Badge, Button, Card, Field, LinkButton, PageHeader, Table, formatWhen, 
 import { finishRotationAction, refreshManifestAction, setInvoicePrefixAction, updateProductAction } from "../actions";
 import { RotateForm } from "./rotate-form";
 import { signupTrialPlan } from "@/modules/subscriptions/subscriptions";
+import { formatInvoiceNumber } from "@/modules/billing/math";
+import { getProfile } from "@/modules/billing/profile";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
   const manifest = product.manifest as unknown as ProductManifest | null;
   const rotating = product.outboundSecretPrevious !== null || product.inboundSecretPrevious !== null;
   // The trial a new business gets (startTrial), not the product's own built-in default.
-  const trialPlan = await signupTrialPlan(key);
+  const [trialPlan, profile] = await Promise.all([signupTrialPlan(key), getProfile()]);
 
   return (
     <>
@@ -69,9 +71,9 @@ export default async function ProductPage({ params, searchParams }: { params: Pr
               <LinkButton href={here} variant="outline" size="md">Cancel</LinkButton>
             </form>
           ) : (
-            <dl className="text-sm">
-              <dt className="text-xs text-muted-foreground">Invoice prefix</dt>
-              <dd className="font-mono">{product.invoicePrefix ?? "Not set"}</dd>
+            <dl className="grid gap-3 text-sm">
+              <div><dt className="text-xs text-muted-foreground">Invoice prefix</dt><dd className="font-mono">{product.invoicePrefix ?? "Not set"}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Next invoice, for a business called Example Business</dt><dd className="font-mono">{formatInvoiceNumber(product.invoicePrefix ?? profile.invoicePrefix, "Example Business", new Date(), (product.invoiceCounter?.lastNumber ?? 0) + 1)}</dd></div>
             </dl>
           )}
           {prefixError ? <p role="alert" className="mt-3 text-sm text-destructive">{prefixError}</p> : null}

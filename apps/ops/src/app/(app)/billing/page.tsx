@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Badge, Empty, PageHeader, Table, formatWhen, money } from "@/components/ui";
-import { formatInvoiceNumber } from "@/modules/billing/math";
 import { getProfile } from "@/modules/billing/profile";
 import { platformRazorpay } from "@/modules/billing/razorpay";
 import { ProfileForm } from "./profile-form";
@@ -13,9 +12,9 @@ export default async function BillingPage() {
   const [profile, payments, products] = await Promise.all([
     getProfile(),
     prisma.subscriptionPayment.findMany({ where: { status: "PAID" }, orderBy: { paidAt: "desc" }, take: 50, include: { business: { select: { id: true, name: true } }, plan: { select: { name: true } }, product: { select: { name: true } } } }),
-    prisma.product.findMany({ orderBy: { name: "asc" }, select: { key: true, name: true, invoicePrefix: true, invoiceCounter: { select: { lastNumber: true } } } }),
+    prisma.product.findMany({ orderBy: { name: "asc" }, select: { key: true, invoiceCounter: { select: { lastNumber: true } } } }),
   ]);
-  const numbering = products.map((p) => ({ key: p.key, name: p.name, issued: p.invoiceCounter?.lastNumber ?? 0, preview: formatInvoiceNumber(p.invoicePrefix ?? profile.invoicePrefix, "Example Business", new Date(), (p.invoiceCounter?.lastNumber ?? 0) + 1) }));
+  const numbering = products.map((p) => ({ key: p.key, issued: p.invoiceCounter?.lastNumber ?? 0 }));
   const razorpay = platformRazorpay();
 
   return (
@@ -23,7 +22,6 @@ export default async function BillingPage() {
       <PageHeader title="Billing" description="What businesses pay Platterly, and the details printed on each invoice." actions={<Badge tone={razorpay ? "success" : "warning"}>{razorpay ? "Razorpay connected" : "Razorpay keys not set"}</Badge>} />
       <div className="mb-8 grid gap-6 lg:grid-cols-[2fr_1fr]">
         <ProfileForm
-          numbering={numbering}
           values={{
             legalName: profile.legalName ?? "", addressLine1: profile.addressLine1 ?? "", addressLine2: profile.addressLine2 ?? "", city: profile.city ?? "", state: profile.state ?? "", stateCode: profile.stateCode ?? "",
             postalCode: profile.postalCode ?? "", country: profile.country ?? "", gstin: profile.gstin ?? "", pan: profile.pan ?? "", sacCode: profile.sacCode, invoicePrefix: profile.invoicePrefix,

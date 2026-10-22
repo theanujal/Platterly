@@ -20,7 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@platterly/contract": ["./packages/contract/index.ts"]
+      "@platterly/contract": ["./packages/contract/index.ts"],
+      "@platterly/contract/plan-invoice-pdf": ["./packages/contract/src/plan-invoice-pdf.ts"]
     }
   },
   "include": [

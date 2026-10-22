@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useFormAction } from "@/lib/use-form-action";
 import { Button, Card, Field, inputClass } from "@/components/ui";
-import { saveProfileAction } from "./actions";
+import { saveProfileAction, type ProfileFormState } from "./actions";
 
 export interface ProfileValues {
   legalName: string;
@@ -23,13 +24,49 @@ export interface ProfileValues {
   invoiceNote: string;
 }
 
-export function ProfileForm({ values, numbering }: { values: ProfileValues; numbering: { name: string; key: string; preview: string; issued: number }[] }) {
+export function ProfileForm({ values }: { values: ProfileValues }) {
   const { state, onSubmit, pending } = useFormAction(saveProfileAction, {});
+  // Saved details show read-only; "Edit" opens the form. The answer that was current when Edit was clicked is kept, so a newer
+  // answer that saved closes the form again, and one with an error leaves it open with what was typed.
+  const [editFrom, setEditFrom] = useState<ProfileFormState | null>(null);
+  const editing = editFrom !== null && (editFrom === state || !!state.error);
   const text = (name: keyof ProfileValues, label: string, hint?: string) => (
     <Field label={label} htmlFor={name} hint={hint}>
       <input id={name} name={name} defaultValue={values[name]} className={inputClass} />
     </Field>
   );
+  const shown = (label: string, value: string, mono = false) => (
+    <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className={`whitespace-pre-line ${mono ? "font-mono" : ""}`}>{value || "Not set"}</dd></div>
+  );
+  const editButton = <Button type="button" variant="outline" size="md" onClick={() => setEditFrom(state)}>Edit</Button>;
+
+  if (!editing) {
+    const address = [values.addressLine1, values.addressLine2, values.city, values.state, values.postalCode, values.country].filter(Boolean).join(", ");
+    return (
+      <div className="grid gap-6">
+        <Card>
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Seller details on invoices</h2>
+            {editButton}
+          </div>
+          <p className="mb-4 text-sm text-muted-foreground">Platterly&apos;s own details, printed on every plan invoice. A blank one is left off.</p>
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            {shown("Legal name", values.legalName)}
+            {shown("GSTIN", values.gstin, true)}
+            <div className="sm:col-span-2">{shown("Address", address)}</div>
+            {shown("State code", values.stateCode, true)}
+            {shown("PAN", values.pan, true)}
+            {shown("Email", values.email)}
+            {shown("Phone", values.phone)}
+            {shown("Website", values.website)}
+            {shown("SAC code", values.sacCode, true)}
+          </dl>
+        </Card>
+        {state.saved ? <p role="status" className="text-sm text-success">Saved.</p> : null}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
       <Card>
@@ -51,27 +88,14 @@ export function ProfileForm({ values, numbering }: { values: ProfileValues; numb
           {text("website", "Website")}
           {text("sacCode", "SAC code", "998314 is hosting / IT infrastructure; confirm with your CA.")}
         </div>
-      </Card>
-      <Card>
-        <h2 className="mb-1 text-base font-semibold">Invoice numbering</h2>
-        <p className="mb-3 text-sm text-muted-foreground">Format: the product&apos;s prefix, the business&apos;s initials, year, month and a running number. Every product has its own prefix and its own running number (change it under Settings, Products), and a number never repeats.</p>
-        <ul className="mb-4 grid gap-1 text-sm">
-          {numbering.map((n) => (
-            <li key={n.key}><span className="font-medium">{n.name}</span>: next invoice <span className="font-mono">{n.preview}</span> ({n.issued} issued so far)</li>
-          ))}
-        </ul>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <input type="hidden" name="invoicePrefix" value={values.invoicePrefix} />
-          <div className="sm:col-span-2">
-            <Field label="Note printed on every invoice" htmlFor="invoiceNote">
-              <textarea id="invoiceNote" name="invoiceNote" rows={3} defaultValue={values.invoiceNote} className={`${inputClass} h-auto py-2`} />
-            </Field>
-          </div>
-        </div>
+        {/* The prefix is set per product now; the saved fallback is kept. There is no invoice note any more, so saving clears it. */}
+        <input type="hidden" name="invoicePrefix" value={values.invoicePrefix} />
       </Card>
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
-      {state.saved ? <p role="status" className="text-sm text-success">Saved.</p> : null}
-      <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save billing details"}</Button></div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save billing details"}</Button>
+        <Button type="button" variant="outline" disabled={pending} onClick={() => setEditFrom(null)}>Cancel</Button>
+      </div>
     </form>
   );
 }
