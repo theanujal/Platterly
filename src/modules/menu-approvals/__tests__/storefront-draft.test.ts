@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   startDraft,
@@ -21,6 +21,22 @@ import { createMenu } from "@/modules/menus/menu";
 import { createCategory } from "@/modules/menus/category";
 import { createMenuItem } from "@/modules/menus/item";
 import { createAddOn } from "@/modules/addons/addon";
+
+// Lets one test make the last submit step fail once (issue 77). Off by default, so every other test runs the real thing.
+const failMirror = vi.hoisted(() => ({ once: false }));
+vi.mock("@/modules/menu-approvals/menu-approval", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/modules/menu-approvals/menu-approval")>();
+  return {
+    ...real,
+    mirrorSelectionItemsFromMealPlan: async (...args: Parameters<typeof real.mirrorSelectionItemsFromMealPlan>) => {
+      if (failMirror.once) {
+        failMirror.once = false;
+        throw new Error("mirror failed");
+      }
+      return real.mirrorSelectionItemsFromMealPlan(...args);
+    },
+  };
+});
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -326,6 +342,24 @@ describe("quote + final submit (Order created only here)", () => {
     const done = await getDraft(t.org.id, draft.id);
     expect(done?.status).toBe("COMPLETED");
     expect(done?.orderId).toBe(order.id);
+  });
+
+  it("a submit that fails part-way leaves no half-made event, and the retry reuses the same order (issue 77)", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+
+    failMirror.once = true;
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow("mirror failed");
+    expect(await prisma.event.count({ where: { organizationId: t.org.id } })).toBe(0);
+    expect((await getDraft(t.org.id, draft.id))?.status).toBe("IN_PROGRESS");
+
+    const result = await submitDraft(t.org.id, draft.id);
+    expect(await prisma.order.count({ where: { organizationId: t.org.id } })).toBe(1);
+    expect(await prisma.event.count({ where: { organizationId: t.org.id } })).toBe(1);
+    expect(await prisma.menuSelection.count({ where: { organizationId: t.org.id } })).toBe(1);
+    const done = await getDraft(t.org.id, draft.id);
+    expect(done?.status).toBe("COMPLETED");
+    expect(done?.orderId).toBe(result.orderId);
   });
 
   it("a meal added later starts empty and needs its own menu; once built it is a second entry of a Multi Order", async () => {

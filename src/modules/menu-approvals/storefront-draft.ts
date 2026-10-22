@@ -591,53 +591,65 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       }
     }
 
-    const order = await createOrder(organizationId, {
-      customerId: draft.customerId,
-      eventTypeId: data.eventTypeId,
-      eventStartDate: eventDate,
-      eventEndDate,
-      orderKind: mealTypes.length > 1 || days.length > 1 ? "MULTI" : "SINGLE",
-      // Only the location is known at this point; the venue and delivery details come after the customer approves.
-      eventAddress: data.venueLocation,
-      // "Number of Adults" on the form is the adults; children are counted on top.
-      adultCount: guests,
-      totalParticipants: guests + data.childBelow5Count + data.child5To10Count,
-      childBelow5Count: data.childBelow5Count,
-      child5To10Count: data.child5To10Count,
-      individualPricingEnabled: true,
-      notes: notes?.trim() || undefined,
-      mealPlanEntries: entries,
-    });
+    // A retry after a failure further down reuses the order the first attempt made, so the kitchen never gets two (issue 77).
+    // ponytail: a retry reuses the first order as created; edits made to the draft between the failure and the retry don't reach it.
+    // Rebuild the order from the draft on retry if that ever matters.
+    const orderId =
+      draft.orderId ??
+      (
+        await createOrder(organizationId, {
+          customerId: draft.customerId,
+          eventTypeId: data.eventTypeId,
+          eventStartDate: eventDate,
+          eventEndDate,
+          orderKind: mealTypes.length > 1 || days.length > 1 ? "MULTI" : "SINGLE",
+          // Only the location is known at this point; the venue and delivery details come after the customer approves.
+          eventAddress: data.venueLocation,
+          // "Number of Adults" on the form is the adults; children are counted on top.
+          adultCount: guests,
+          totalParticipants: guests + data.childBelow5Count + data.child5To10Count,
+          childBelow5Count: data.childBelow5Count,
+          child5To10Count: data.child5To10Count,
+          individualPricingEnabled: true,
+          notes: notes?.trim() || undefined,
+          mealPlanEntries: entries,
+        })
+      ).id;
+    if (!draft.orderId) await prisma.storefrontDraft.update({ where: { id: draftId }, data: { orderId } });
 
     await prisma.order.update({
-      where: { id: order.id },
+      where: { id: orderId },
       data: {
         menuPreference: data.menuPreference,
         eventMealType: mealTypes[0],
       },
     });
 
-    const event = await createEventForOrder(organizationId, order.id);
-
     // One selection for the event: any Custom Menu meal makes it a quote the kitchen prices; the chosen menu is the first fixed one.
     const firstMenu = mealTypes.map((m) => data.meals[m]!.menuChoice!).find((c) => c.kind === "MENU");
-    const menuSelection = await createMenuSelection(organizationId, event.id, {
-      chosenMenuId: firstMenu?.kind === "MENU" ? firstMenu.menuId : null,
-      isCustomMenu: quote.isCustomMenu,
+    // All or nothing, so a failure never leaves an event without its selection behind for the retry to trip over.
+    const { event, menuSelection } = await prisma.$transaction(async (tx) => {
+      const event = await createEventForOrder(organizationId, orderId, undefined, undefined, tx);
+      const menuSelection = await createMenuSelection(
+        organizationId,
+        event.id,
+        { chosenMenuId: firstMenu?.kind === "MENU" ? firstMenu.menuId : null, isCustomMenu: quote.isCustomMenu },
+        tx,
+      );
+      // The flat selection rows mirror the meal plan (a dish on several meals is listed once, as an Extra if any copy is).
+      await mirrorSelectionItemsFromMealPlan(organizationId, menuSelection.id, tx);
+      return { event, menuSelection };
     });
-    // The flat selection rows mirror the meal plan (a dish on several meals is listed once, as an Extra if any copy is).
-    await mirrorSelectionItemsFromMealPlan(organizationId, menuSelection.id);
 
-    await prisma.storefrontDraft.update({ where: { id: draftId }, data: { orderId: order.id } });
     await audit({
       organizationId,
       action: "storefront.order_submitted",
       recordType: "MenuSelection",
       recordId: menuSelection.id,
-      after: { customerId: draft.customerId, orderId: order.id, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total, meals: mealTypes },
+      after: { customerId: draft.customerId, orderId, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total, meals: mealTypes },
     });
 
-    return { orderId: order.id, menuSelectionId: menuSelection.id, isCustomMenu: quote.isCustomMenu };
+    return { orderId, menuSelectionId: menuSelection.id, isCustomMenu: quote.isCustomMenu };
   } catch (error) {
     // Nothing (or only part) was created — hand the draft back so the visitor can retry.
     await prisma.storefrontDraft.update({ where: { id: draftId }, data: { status: "IN_PROGRESS", completedAt: null } });
