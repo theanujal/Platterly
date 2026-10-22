@@ -1,3 +1,5 @@
+import { round2 } from "@/modules/payments/payment-math";
+
 /**
  * Chunk 22.1 — the Inventory report's arithmetic (PRD §51 Inventory): stock value, low stock, what is expiring, stock
  * movements and purchases. Pure functions over plain rows. Stock value is a snapshot of today (stock x cost per unit);
@@ -18,7 +20,6 @@ export interface StockRow {
   expiryDate: Date | null;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface StockReport {

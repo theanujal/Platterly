@@ -1,4 +1,5 @@
 import { planFifo, type PlanBatch, type PlanSlice } from "@/modules/inventory/fifo-plan";
+import { round2, round3 } from "@/modules/payments/payment-math";
 
 /**
  * What a recipe costs, from the stock that would actually be used (pure; the server and the recipe dialog both use it).
@@ -52,9 +53,6 @@ export interface RecipeCost {
   /** The ingredients that stop the cost being verified, with the reason in words. */
   issues: { inventoryId: string; name: string; reason: string }[];
 }
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 export function costRecipe(ingredients: RecipeIngredientInput[], yieldServings: number): RecipeCost {
   const costed: IngredientCost[] = [];

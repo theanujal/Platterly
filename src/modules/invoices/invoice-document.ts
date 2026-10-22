@@ -1,5 +1,6 @@
 import { getGuestCount } from "@/modules/orders/order-card";
 import { invoiceDisplayStatus } from "./invoice-status";
+import { round2 } from "@/modules/payments/payment-math";
 
 /**
  * Everything the invoice or receipt shows, worked out once and shared by the invoice page, the customer's link and the PDF,
@@ -70,7 +71,6 @@ export interface InvoiceDocument {
 }
 
 const num = (v: unknown) => Number(v);
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const STATUS: Record<string, { label: string; tone: StatusTone }> = {
   DRAFT: { label: "UNPAID", tone: "info" },

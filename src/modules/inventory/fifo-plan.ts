@@ -1,3 +1,5 @@
+import { round3 } from "@/modules/payments/payment-math";
+
 /**
  * The one FIFO allocation rule (pure, so the server and the recipe dialog share it).
  *
@@ -20,8 +22,6 @@ export interface PlanSlice {
   quantity: number;
   unitCost: number | null;
 }
-
-const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 export function planFifo(queue: PlanBatch[], quantity: number): { slices: PlanSlice[]; shortfall: number } {
   const slices: PlanSlice[] = [];

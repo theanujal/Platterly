@@ -1,3 +1,5 @@
+import { round2 } from "@/modules/payments/payment-math";
+
 // Client-safe: PRD §42's profit math, in one place so the Order tab, the Profitability page and the tests agree.
 export type OrderExpenseCategory = "FOOD" | "LABOUR" | "TRANSPORT" | "EQUIPMENT" | "VENUE" | "MISC";
 export type CompanyExpenseCategory = "RENT" | "SALARIES" | "UTILITIES" | "MARKETING" | "MAINTENANCE" | "LICENCES_FEES" | "MISC";
@@ -35,8 +37,6 @@ export interface Profitability {
   /** The part of Food that is the cost of the inventory sent to the order (the rest is recorded Food expenses). */
   inventoryFoodCost: number;
 }
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /** Revenue is the order total (AJ, 2026-10-03), whatever has been paid so far. */
 export function computeProfitability(revenue: number, expenses: { category: ExpenseCategoryValue; amount: number }[], inventoryFoodCost = 0): Profitability {

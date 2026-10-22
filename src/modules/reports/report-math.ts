@@ -1,3 +1,5 @@
+import { round2 } from "@/modules/payments/payment-math";
+
 /**
  * Chunk 17.1 — the arithmetic behind the Sales and Events reports (PRD §51). Pure functions over plain rows, with no
  * database, so every figure is unit-tested and the kitchen view and the Super Admin view cannot disagree.
@@ -34,7 +36,6 @@ export interface ReportQuotation {
   status: "DRAFT" | "SENT" | "VIEWED" | "CHANGES_REQUESTED" | "ACCEPTED" | "REJECTED" | "EXPIRED";
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 /** "2026-10" for the month a moment falls in. `tz` "ist" for when something happened, "utc" for an event's calendar date. */

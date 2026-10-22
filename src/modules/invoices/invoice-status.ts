@@ -1,3 +1,5 @@
+import { round2 } from "@/modules/payments/payment-math";
+
 // Client-safe: the one place that decides what an invoice's status badge says.
 export type InvoiceStatusValue = "DRAFT" | "SENT" | "PARTIALLY_PAID" | "PAID" | "CANCELLED";
 export type InvoiceDisplayStatus = InvoiceStatusValue | "OVERDUE";
@@ -35,8 +37,6 @@ export const INVOICE_STATUS_VARIANT: Record<InvoiceDisplayStatus, "neutral" | "i
   OVERDUE: "danger",
   CANCELLED: "neutral",
 };
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /** GST is carved out of an inclusive total, so the invoice total never differs from the order total. */
 export function splitInclusiveGst(total: number, ratePercent: number, type: "CGST_SGST" | "IGST") {

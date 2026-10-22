@@ -9,6 +9,7 @@ import { menuGuestCount, itemMovesPrice, mealBaseAmount } from "@/modules/orders
 import { parseCustomCharges, type CustomCharge } from "@/modules/orders/custom-charges";
 import { sendInvoiceAutomatically } from "./invoice-send";
 import { computeInvoiceStatus, splitInclusiveGst } from "./invoice-status";
+import { round2 } from "@/modules/payments/payment-math";
 
 const INVOICE_TERMS_KEY = "communication.invoiceTerms";
 export { DEFAULT_GST_RATE };
@@ -19,7 +20,6 @@ export class InvoiceError extends Error {}
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const pad = (n: number) => String(n).padStart(4, "0");
 
 export async function nextInvoiceNumber(organizationId: string, type: "INVOICE" | "RECEIPT", db: Db = prisma): Promise<string> {

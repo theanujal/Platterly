@@ -1,12 +1,12 @@
 import { EXPENSE_CATEGORY_LABEL, type ExpenseCategoryValue } from "@/modules/expenses/profitability";
 import { monthKey, monthLabel } from "./report-math";
+import { round2 } from "@/modules/payments/payment-math";
 
 /**
  * Chunk 22.2 — the Finance report's arithmetic (PRD §51 Finance): revenue against expenses by month, profit,
  * receivables (what customers still owe) and payables (what is owed to suppliers), both aged. Pure functions.
  * Revenue and expenses follow the date range; receivables and payables are always "as of today".
  */
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const utcDay = (d: Date) => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 

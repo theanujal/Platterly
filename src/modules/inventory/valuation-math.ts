@@ -1,3 +1,5 @@
+import { round2, round3 } from "@/modules/payments/payment-math";
+
 /**
  * Stock valuation, the one calculation every screen uses (Dashboard, Inventory, Reports).
  *
@@ -31,9 +33,6 @@ export interface StockValuation {
   /** True while some stock has no known cost, so `totalValue` understates the real value. */
   incomplete: boolean;
 }
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 export function summariseValuation(rows: ValuationInput[]): StockValuation {
   const items = new Map<string, ItemValuation>();

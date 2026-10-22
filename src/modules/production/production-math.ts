@@ -1,4 +1,5 @@
 import { scaleQuantity } from "@/modules/recipes/recipe-math";
+import { round3 } from "@/modules/payments/payment-math";
 
 /** Pure planning maths: what ingredients a set of dishes needs, and against what is on the shelf. */
 
@@ -20,8 +21,6 @@ export interface NeedLine {
   needed: number;
   forDishes: string[];
 }
-
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /** Adds up every ingredient across the dishes (a dish served at two meals counts twice). Dishes with no recipe, or only a Draft one, are listed, not guessed at. */
 export function aggregateNeeds(dishes: PlanDish[]): { lines: NeedLine[]; withoutRecipe: string[]; draftRecipe: string[] } {

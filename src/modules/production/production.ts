@@ -9,6 +9,7 @@ import { getKitchenRules } from "@/modules/kitchen/kitchen-rules";
 import { cookQuantity } from "@/modules/menu-approvals/kitchen-production-status";
 import { consumeStock, InsufficientStockError, orderStockCost, restoreOrderStock, stockPosition, usableStockMap } from "@/modules/inventory/batches";
 import { aggregateNeeds, quantityToTake, withStock, type PlanDish } from "./production-math";
+import { round3 } from "@/modules/payments/payment-math";
 
 export class StockTakeError extends Error {}
 
@@ -62,7 +63,6 @@ async function stockOf(organizationId: string, ids: string[]) {
   return usableStockMap(organizationId, ids);
 }
 
-const round3 = (n: number) => Math.round(n * 1000) / 1000;
 /** Items can be set once the order is with the kitchen (AJ, 2026-10-10): the order is Approved, or already with the kitchen. */
 const SENDABLE_STATUSES: OrderStatus[] = ["APPROVED", "SENT_TO_KITCHEN"];
 /** ...and, since AJ's change of 2026-10-19, only once the kitchen has moved the menu out of Pending: the Inventory tab is activated by In Preparation (or later). */

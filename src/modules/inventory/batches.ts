@@ -5,6 +5,7 @@ import { checkUnitCost } from "@/modules/purchasing/receipt-rules";
 import type { Prisma } from "@/generated/prisma/client";
 import type { StockBatchSource, StockBatchStatus } from "@/generated/prisma/enums";
 import { planFifo, type PlanBatch } from "./fifo-plan";
+import { round3 } from "@/modules/payments/payment-math";
 
 /**
  * Stock batches: stock that arrived together at one cost and one expiry date (AJ, 2026-10-15).
@@ -28,8 +29,6 @@ type Tx = Prisma.TransactionClient;
 
 /** A batch expiring within this many days is shown as "expires soon". */
 export const EXPIRY_SOON_DAYS = 7;
-
-const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 export class InsufficientStockError extends Error {
   constructor(

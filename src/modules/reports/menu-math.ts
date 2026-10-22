@@ -1,3 +1,5 @@
+import { round2 } from "@/modules/payments/payment-math";
+
 /**
  * Chunk 22.1 — the Menu report's arithmetic (PRD §51 Menu): which dishes are picked most and least, and how each Menu
  * Type performs. Pure functions over plain rows, so every figure is unit-tested. ("Package performance" in the PRD
@@ -41,8 +43,6 @@ export interface MenuReport {
   neverPicked: { total: number; names: string[] };
   menuTypes: MenuTypeRow[];
 }
-
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function computeMenuReport(orders: MenuReportOrder[], catalog: { id: string; name: string; isActive: boolean }[], top = 10): MenuReport {
   const dishes = new Map<string, DishRow>();

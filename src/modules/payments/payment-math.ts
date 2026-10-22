@@ -27,6 +27,7 @@ export function isPaymentOverdue(order: { status: string; paymentStatus: OrderPa
 }
 
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+export const round3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 
 /** The Advance option: a percentage of the order total, never more than what is still owed. */
 export function advanceAmount(total: number, confirmedPaid: number, percent: number): number {

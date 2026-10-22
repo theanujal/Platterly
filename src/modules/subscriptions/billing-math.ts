@@ -1,5 +1,6 @@
 import { PAID_GRACE_DAYS } from "@platterly/contract";
 import type { BillingInterval } from "@/generated/prisma/enums";
+import { round2 } from "@/modules/payments/payment-math";
 
 /**
  * Chunk 20: the arithmetic of a subscription payment, kept free of the database so the paywall page, the
@@ -9,8 +10,6 @@ import type { BillingInterval } from "@/generated/prisma/enums";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A monthly plan buys 30 days, an annual plan 365 (the paywall promises "30-Day Premium Access"). */
 export const INTERVAL_DAYS: Record<BillingInterval, number> = { MONTHLY: 30, ANNUAL: 365 };
-
-const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 export interface PriceBreakdown {
   amount: number;
