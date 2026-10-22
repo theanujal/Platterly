@@ -6,16 +6,12 @@ import { requireActiveOrganization, requirePermission } from "@/lib/auth/require
 import { updateTenant, type TenantProfileUpdateInput } from "@/modules/tenants/tenant";
 import { getStorageDriver } from "@/lib/storage/storage";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
+import { stringField } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
 
 function numberField(formData: FormData, name: string): number | undefined {
   const raw = stringField(formData, name);

@@ -1,15 +1,11 @@
 "use server";
 
-import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createSupplier, updateSupplier, deleteSupplier, setSupplierActive, type SupplierInput, type SupplierProductInput } from "@/modules/suppliers/supplier";
+import { toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
 
 function field(formData: FormData, name: string): string | undefined {
   const value = formData.get(name);

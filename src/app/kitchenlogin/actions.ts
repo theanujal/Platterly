@@ -9,16 +9,12 @@ import { getStorageDriver } from "@/lib/storage/storage";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 import { userMessage } from "@/lib/errors";
 import { saveGstSettings, DEFAULT_GST_RATE } from "@/modules/payments/payment-settings";
+import { stringField } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
 
 /**
  * Chunk 4 Group 4.2 — orchestrates the wizard's final submit. The

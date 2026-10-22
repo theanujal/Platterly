@@ -7,17 +7,9 @@ import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth
 import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
+import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
 
 type MenuPricing = Pick<MenuInput, "pricePerPlate" | "childUnder5Chargeable" | "childUnder5Price" | "child5To10PricingType" | "child5To10PriceValue">;
 

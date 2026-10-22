@@ -30,24 +30,9 @@ import { getMenuPickerData, type MenuPickerData, type MenuPickerAddOn } from "@/
 import { getOrderCountsByDay } from "@/modules/orders/calendar";
 import { isBackdated } from "@/modules/orders/event-date-rule";
 import type { OrderStatus, OrderPaymentStatus, MealType, OrderKind, FoodType, PricingMethod, ChildPricingType, VenueType, VehicleAccessType } from "@/generated/prisma/enums";
+import { numberField, stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
-
-function numberField(formData: FormData, name: string): number | undefined {
-  const raw = stringField(formData, name);
-  if (raw === undefined) return undefined;
-  const parsed = Number.parseFloat(raw);
-  return Number.isNaN(parsed) ? undefined : parsed;
-}
 
 function dateField(formData: FormData, name: string): Date | undefined {
   const raw = stringField(formData, name);

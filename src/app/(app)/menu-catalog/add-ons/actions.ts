@@ -1,23 +1,14 @@
 "use server";
 
-import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { duplicateAddOn, setAddOnActive, createAddOn, updateAddOn, deleteAddOn, type AddOnInput } from "@/modules/addons/addon";
 import { uploadCatalogImage } from "@/lib/storage/catalog-image";
 import type { AddOnType, AddOnPriceType } from "@/generated/prisma/enums";
+import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
 
 async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<AddOnInput> {
   const name = stringField(formData, "name");

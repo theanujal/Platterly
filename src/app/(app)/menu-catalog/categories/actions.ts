@@ -1,6 +1,5 @@
 "use server";
 
-import { userMessage } from "@/lib/errors";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import {
@@ -12,12 +11,9 @@ import {
   listCategoryMenuAssignments,
   type CategoryInput,
 } from "@/modules/menus/category";
+import { toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
 
 export async function createCategoryAction(input: CategoryInput): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();

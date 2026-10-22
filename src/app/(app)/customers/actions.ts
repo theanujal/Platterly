@@ -1,22 +1,13 @@
 "use server";
 
-import { userMessage } from "@/lib/errors";
 import { addCustomerNote, updateCustomerNote, deleteCustomerNote } from "@/modules/customers/customer-notes";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { createCustomer, updateCustomer, updateCustomerNotes, deleteCustomer, type CustomerInput } from "@/modules/customers/customer";
 import type { EnquiryLeadSource } from "@/generated/prisma/enums";
+import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
-
-function toErrorResult(error: unknown): ActionResult {
-  return { ok: false, error: userMessage(error, "Something went wrong.") };
-}
-
-function stringField(formData: FormData, name: string): string | undefined {
-  const value = formData.get(name);
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
-}
 
 function buildInput(formData: FormData): CustomerInput {
   const name = stringField(formData, "name");
