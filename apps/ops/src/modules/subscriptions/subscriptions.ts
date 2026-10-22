@@ -47,10 +47,15 @@ export async function assignPlan(input: { businessId: string; productKey: string
   return subscription;
 }
 
+/** The trial plan a new business starts on: the product's oldest active trial plan. Other trial plans are only assigned by hand. */
+export function signupTrialPlan(productKey: string) {
+  return prisma.plan.findFirst({ where: { productKey, isTrial: true, isActive: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, trialDurationDays: true } });
+}
+
 /** A new business starts on the product's active trial plan. No trial plan configured: nothing is created. */
 export async function startTrial(businessId: string, productKey: string, now: Date = new Date(), issue = true) {
   if (await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null } })) return null;
-  const plan = await prisma.plan.findFirst({ where: { productKey, isTrial: true, isActive: true }, orderBy: { createdAt: "asc" } });
+  const plan = await signupTrialPlan(productKey);
   if (!plan) return null;
   return assignPlan({ businessId, productKey, planId: plan.id, actorUserId: null, now, issue });
 }

@@ -4,6 +4,7 @@ import { Badge, Empty, LinkButton, PageHeader } from "@/components/ui";
 import { PickProduct } from "@/components/pick-product";
 import { getSelectedProduct } from "@/lib/selected-product";
 import { listPlans } from "@/modules/plans/plans";
+import { signupTrialPlan } from "@/modules/subscriptions/subscriptions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Plans" };
@@ -13,7 +14,7 @@ const money = (value: unknown) => (value === null || value === undefined ? "—"
 export default async function PlansPage() {
   const selected = await getSelectedProduct();
   if (!selected) return (<><PageHeader title="Plans" description="What a product sells, and what each plan allows." /><PickProduct what="Plans" /></>);
-  const [plans, products] = await Promise.all([listPlans(selected?.key), prisma.product.findMany({ where: { status: "ACTIVE", ...(selected ? { key: selected.key } : {}) }, orderBy: { name: "asc" } })]);
+  const [plans, products, signupTrial] = await Promise.all([listPlans(selected?.key), prisma.product.findMany({ where: { status: "ACTIVE", ...(selected ? { key: selected.key } : {}) }, orderBy: { name: "asc" } }), signupTrialPlan(selected.key)]);
   return (
     <>
       <PageHeader title="Plans" description={selected ? `What ${selected.name} sells, and what each plan allows.` : "What each product sells, and what each plan allows."} actions={products.filter((p) => p.manifest).map((p) => <LinkButton key={p.key} href={`/plans/new?product=${p.key}`} size="md">New {p.name} plan</LinkButton>)} />
@@ -31,7 +32,12 @@ export default async function PlansPage() {
                 <div className="flex shrink-0 gap-1.5">{p.isTrial ? <Badge tone="info">Trial</Badge> : null}{p.isFeatured ? <Badge tone="info">Featured</Badge> : null}<Badge tone={p.isActive ? "success" : "neutral"}>{p.isActive ? "Active" : "Retired"}</Badge></div>
               </div>
               <div>
-                {p.isTrial ? <p className="text-2xl font-bold">{p.trialDurationDays} days <span className="text-sm font-normal text-muted-foreground">free</span></p> : (
+                {p.isTrial ? (
+                  <>
+                    <p className="text-2xl font-bold">{p.trialDurationDays} days <span className="text-sm font-normal text-muted-foreground">free</span></p>
+                    <p className="text-sm text-muted-foreground" data-testid="trial-use">{p.id === signupTrial?.id ? <span className="font-medium text-success">New businesses start on this plan</span> : "Only when assigned by hand"}</p>
+                  </>
+                ) : (
                   <>
                     <p className="text-2xl font-bold">{money(p.priceMonthly)} <span className="text-sm font-normal text-muted-foreground">/ month</span></p>
                     <p className="text-sm text-muted-foreground">{money(p.priceAnnual)} a year · plus {Number(p.gstPercent)}% GST</p>

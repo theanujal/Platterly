@@ -3,6 +3,7 @@ import type { ProductManifest } from "@platterly/contract";
 import { Badge, Button, PageHeader } from "@/components/ui";
 import { prisma } from "@/lib/db";
 import { getPlan } from "@/modules/plans/plans";
+import { signupTrialPlan } from "@/modules/subscriptions/subscriptions";
 import { setPlanActiveAction } from "../actions";
 import { PlanForm } from "../plan-form";
 
@@ -13,6 +14,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
   const plan = await getPlan(id);
   if (!plan) notFound();
   const manifest = plan.product.manifest as unknown as ProductManifest | null;
+  const signupTrial = plan.isTrial ? await signupTrialPlan(plan.productKey) : null;
   return (
     <>
       <PageHeader
@@ -37,6 +39,7 @@ export default async function PlanPage({ params }: { params: Promise<{ id: strin
           defs={manifest.entitlements}
           otherFeatured={(await prisma.plan.findFirst({ where: { productKey: plan.productKey, isFeatured: true, id: { not: plan.id } }, select: { name: true } }))?.name ?? null}
           businessesOnPlan={await prisma.subscription.count({ where: { planId: plan.id, endDate: null } })}
+          trialNote={!signupTrial ? null : signupTrial.id === plan.id ? "New businesses start on this trial plan." : `Only used when assigned by hand. New businesses start on ${signupTrial.name}, the oldest active trial plan.`}
           values={{
             id: plan.id,
             code: plan.code,

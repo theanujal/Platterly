@@ -23,7 +23,7 @@ export interface PlanFormValues {
   entitlements: Record<string, number | boolean | string | null>;
 }
 
-export function PlanForm({ productKey, productName, defs, values, otherFeatured, businessesOnPlan = 0 }: { productKey: string; productName: string; defs: EntitlementDef[]; values: PlanFormValues; /** The product's featured plan when it is not this one. */ otherFeatured: string | null; /** Businesses whose current subscription is this plan. */ businessesOnPlan?: number }) {
+export function PlanForm({ productKey, productName, defs, values, otherFeatured, businessesOnPlan = 0, trialNote = null }: { productKey: string; productName: string; defs: EntitlementDef[]; values: PlanFormValues; /** The product's featured plan when it is not this one. */ otherFeatured: string | null; /** Businesses whose current subscription is this plan. */ businessesOnPlan?: number; /** Whether new sign-ups get this trial plan (null when it isn't a trial plan). */ trialNote?: string | null }) {
   const { state, onSubmit, pending } = useFormAction(savePlanAction, {});
   const editing = Boolean(values.id);
   const [isTrial, setIsTrial] = useState(values.isTrial);
@@ -42,6 +42,7 @@ export function PlanForm({ productKey, productName, defs, values, otherFeatured,
           <Field label="Code" htmlFor="code" hint="Lowercase, unique within the product. Example: pro"><input id="code" name="code" required defaultValue={values.code} className={inputClass} /></Field>
           <div className="sm:col-span-2"><Field label="Description" htmlFor="description"><input id="description" name="description" defaultValue={values.description} className={inputClass} /></Field></div>
           <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" name="isTrial" checked={isTrial} onChange={(e) => setIsTrial(e.target.checked)} className="size-4 accent-[#ff6900]" /> This is the trial plan</label>
+          {isTrial && trialNote ? <p className="text-sm text-muted-foreground sm:col-span-2" data-testid="trial-note">{trialNote}</p> : null}
           {values.isTrial && !isTrial && businessesOnPlan > 0 ? (
             <p className="rounded-md bg-warning/10 p-3 text-sm text-warning sm:col-span-2" data-testid="trial-off-warning">
               {businessesOnPlan === 1 ? "1 business is" : `${businessesOnPlan} businesses are`} on this plan. Their current trial keeps its end date, but anyone assigned this plan from now on gets it as an active plan with no end date, so every feature it allows is free for as long as they stay on it.
