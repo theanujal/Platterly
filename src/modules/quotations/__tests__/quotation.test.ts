@@ -1,5 +1,5 @@
 import { parseCustomCharges } from "@/modules/orders/custom-charges";
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   createQuotation,
@@ -28,6 +28,22 @@ import { createCustomer } from "@/modules/customers/customer";
 import { createEventType } from "@/modules/events/event-type";
 import { createMenu } from "@/modules/menus/menu";
 import { createMenuItem } from "@/modules/menus/item";
+
+// Lets one test make a single audit write fail once (the conversion's last write). Off by default.
+const failAudit = vi.hoisted(() => ({ action: null as string | null }));
+vi.mock("@/lib/audit/audit", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/audit/audit")>();
+  return {
+    ...real,
+    audit: async (...args: Parameters<typeof real.audit>) => {
+      if (failAudit.action === args[0].action) {
+        failAudit.action = null;
+        throw new Error("audit failed");
+      }
+      return real.audit(...args);
+    },
+  };
+});
 
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
@@ -752,6 +768,24 @@ describe("convertQuotationToOrder — item-picker parity (2026-09-28): real Meal
     const quotation = await createQuotation(org.id, { customerId: customer.id, eventStartDate: new Date(), eventEndDate: new Date() }, actor.id);
 
     await expect(convertQuotationToOrder(org.id, quotation.id, actor.id)).rejects.toThrow(InvalidQuotationTransitionError);
+  });
+
+  it("a conversion that fails part-way can be retried, and the retry finishes the same order", async () => {
+    const org = await makeOrg();
+    const actor = await makeActor();
+    const customer = await makeCustomer(org.id, actor.id);
+    const quotation = await createQuotation(org.id, { customerId: customer.id, eventStartDate: new Date("2026-12-01"), eventEndDate: new Date("2026-12-01") }, actor.id);
+    const { url } = await sendQuotation(org.id, quotation.id, actor.id);
+    const resolved = (await resolveQuotationToken(url.split("/quote/")[1]))!;
+    await acceptQuotation(resolved.organizationId, resolved.quotationId);
+
+    failAudit.action = "quotation.convert_to_order";
+    await expect(convertQuotationToOrder(org.id, quotation.id, actor.id)).rejects.toThrow("audit failed");
+
+    const order = await convertQuotationToOrder(org.id, quotation.id, actor.id);
+    expect(await prisma.order.count({ where: { organizationId: org.id } })).toBe(1);
+    expect(order.quotationId).toBe(quotation.id);
+    await expect(convertQuotationToOrder(org.id, quotation.id, actor.id)).rejects.toThrow(/already been converted/);
   });
 
   it("refuses a second conversion and leaves no extra order (issue 85)", async () => {

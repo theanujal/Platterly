@@ -571,11 +571,10 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
     throw new QuotationEventDatesRequiredError("Set this Quotation's Event Start/End Date before converting it to an Order.");
   }
   const ALREADY_CONVERTED = "This quotation has already been converted to an order.";
-  if (await prisma.order.findFirst({ where: { quotationId, organizationId }, select: { id: true } })) {
-    throw new InvalidQuotationTransitionError(ALREADY_CONVERTED);
-  }
-
-  const order = await createOrder(
+  // An order already linked here is either a finished conversion (refused below) or one that failed part-way, which a
+  // retry finishes instead of refusing, so the quotation never gets stuck.
+  const existing = await prisma.order.findFirst({ where: { quotationId, organizationId }, select: { id: true } });
+  const order = existing ?? await createOrder(
     organizationId,
     {
       quotationId,
@@ -621,15 +620,40 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
     throw error;
   });
 
-  for (const entry of quotation.mealPlanEntries) {
-    const mealPlanEntry = await prisma.mealPlanEntry.create({
-      data: { orderId: order.id, date: entry.date, mealType: entry.mealType, price: entry.price, menuId: entry.menuId },
-    });
-    if (entry.items.length > 0) {
-      await prisma.orderItem.createMany({
-        data: entry.items.map((item) => ({
+  // Everything after the order shell is all or nothing, so a failure leaves nothing half-copied for the retry.
+  return prisma.$transaction(async (tx) => {
+    // A second click waits here for the first, then sees its finished conversion.
+    await tx.$queryRaw`SELECT "id" FROM "order" WHERE "id" = ${order.id} AND "organizationId" = ${organizationId} FOR UPDATE`;
+    if (await tx.auditLog.findFirst({ where: { organizationId, action: "quotation.convert_to_order", recordType: "Quotation", recordId: quotationId }, select: { id: true } })) {
+      throw new InvalidQuotationTransitionError(ALREADY_CONVERTED);
+    }
+
+    for (const entry of quotation.mealPlanEntries) {
+      const mealPlanEntry = await tx.mealPlanEntry.create({
+        data: { orderId: order.id, date: entry.date, mealType: entry.mealType, price: entry.price, menuId: entry.menuId },
+      });
+      if (entry.items.length > 0) {
+        await tx.orderItem.createMany({
+          data: entry.items.map((item) => ({
+            orderId: order.id,
+            mealPlanEntryId: mealPlanEntry.id,
+            itemType: item.itemType,
+            menuId: item.menuId,
+            menuItemId: item.menuItemId,
+            addOnId: item.addOnId,
+            name: item.name,
+            unitPrice: item.unitPrice,
+            quantity: item.quantity,
+            isExtra: item.isExtra,
+          })),
+        });
+      }
+    }
+
+    if (quotation.items.length > 0) {
+      await tx.orderItem.createMany({
+        data: quotation.items.map((item) => ({
           orderId: order.id,
-          mealPlanEntryId: mealPlanEntry.id,
           itemType: item.itemType,
           menuId: item.menuId,
           menuItemId: item.menuItemId,
@@ -637,43 +661,30 @@ export async function convertQuotationToOrder(organizationId: string, quotationI
           name: item.name,
           unitPrice: item.unitPrice,
           quantity: item.quantity,
-          isExtra: item.isExtra,
         })),
       });
     }
-  }
 
-  if (quotation.items.length > 0) {
-    await prisma.orderItem.createMany({
-      data: quotation.items.map((item) => ({
-        orderId: order.id,
-        itemType: item.itemType,
-        menuId: item.menuId,
-        menuItemId: item.menuItemId,
-        addOnId: item.addOnId,
-        name: item.name,
-        unitPrice: item.unitPrice,
-        quantity: item.quantity,
-      })),
-    });
-  }
+    // childPricingMenuId re-derived over the real written structure (createOrder's
+    // own derivation saw `undefined` mealPlanEntries above and returned null).
+    const childPricingMenuId = deriveStandardChildPricingMenuId(
+      quotation.mealPlanEntries.map((entry) => ({ date: entry.date, mealType: entry.mealType, menuId: entry.menuId })),
+    );
+    await tx.order.update({ where: { id: order.id }, data: { childPricingMenuId } });
+    const finalOrder = await recalculateOrderTotals(order.id, tx);
 
-  // childPricingMenuId re-derived over the real written structure (createOrder's
-  // own derivation saw `undefined` mealPlanEntries above and returned null).
-  const childPricingMenuId = deriveStandardChildPricingMenuId(
-    quotation.mealPlanEntries.map((entry) => ({ date: entry.date, mealType: entry.mealType, menuId: entry.menuId })),
-  );
-  await prisma.order.update({ where: { id: order.id }, data: { childPricingMenuId } });
-  const finalOrder = await recalculateOrderTotals(order.id);
+    await audit(
+      {
+        organizationId,
+        actorUserId,
+        action: "quotation.convert_to_order",
+        recordType: "Quotation",
+        recordId: quotationId,
+        after: { orderId: order.id },
+      },
+      tx,
+    );
 
-  await audit({
-    organizationId,
-    actorUserId,
-    action: "quotation.convert_to_order",
-    recordType: "Quotation",
-    recordId: quotationId,
-    after: { orderId: order.id },
+    return finalOrder;
   });
-
-  return finalOrder;
 }
