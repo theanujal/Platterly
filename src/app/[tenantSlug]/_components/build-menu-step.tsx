@@ -47,6 +47,8 @@ interface BuildMenuStepProps {
   /** What the Edit panel needs to change the event details without leaving this page. */
   editDetails: EditDetails;
   initial: { choice: MenuChoice | null; itemIds: string[]; addOnIds: string[] };
+  /** Open the extras pop-up on arrival (the review step's "Add or change" link). */
+  openExtras?: boolean;
 }
 
 const sameChoice = (a: MenuChoice | null, b: MenuChoice | null) => JSON.stringify(a) === JSON.stringify(b);
@@ -77,7 +79,7 @@ function scrollToRef(element: HTMLElement | null) {
  * Once the dishes are complete they fold into a one-line accordion (tap to reopen and change them) and the Add-ons card
  * is brought into view.
  */
-export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, days, event, editDetails, initial }: BuildMenuStepProps) {
+export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, customSections, addOns, guests, days, event, editDetails, initial, openExtras = false }: BuildMenuStepProps) {
   const router = useRouter();
   const [choice, setChoice] = useState<MenuChoice | null>(initial.choice);
   const [listOpen, setListOpen] = useState(initial.choice === null);
@@ -91,7 +93,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
   const [announcement, setAnnouncement] = useState("");
   const [editOpen, setEditOpen] = useState(false);
   // Enhance your event: opened by Continue (then it carries on to the next step) or from its card (then it only saves the picks).
-  const [extrasMode, setExtrasMode] = useState<"continue" | "edit" | null>(null);
+  const [extrasMode, setExtrasMode] = useState<"continue" | "edit" | null>(openExtras ? "edit" : null);
   // Once the customer has seen the extras (or already chose some on an earlier visit), Continue goes straight on.
   const [extrasSeen, setExtrasSeen] = useState(initial.addOnIds.length > 0);
   const dishesRef = useRef<HTMLDivElement>(null);
@@ -364,7 +366,7 @@ export function BuildMenuStep({ tenantSlug, draftId, meal, mealTabs, menus, cust
         </aside>
       </div>
 
-      <ExtrasModal open={extrasMode !== null} onClose={() => !pending && setExtrasMode(null)} addOns={menuAddOns} guests={guests} days={days} addOnIds={addOnIds} onDone={finishExtras} busy={pending} />
+      <ExtrasModal open={extrasMode !== null && menuAddOns.length > 0} onClose={() => !pending && setExtrasMode(null)} addOns={menuAddOns} guests={guests} days={days} addOnIds={addOnIds} onDone={finishExtras} busy={pending} />
 
       <EditDetailsSheet
         tenantSlug={tenantSlug}

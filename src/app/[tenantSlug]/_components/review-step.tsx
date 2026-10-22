@@ -145,7 +145,18 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
           </FormCard>
 
           <FormCard className="gap-5">
-            <h3 className="text-xl font-semibold">Add-ons &amp; Live Counters</h3>
+            {/* Live counters and add-ons are chosen on the menu step; `extras=1` opens its extras pop-up straight away. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-xl font-semibold">Add-ons &amp; Live Counters</h3>
+              {summary.meals.map((meal) => (
+                <EditLink
+                  key={meal.mealType}
+                  href={`/${tenantSlug}/plan/${draftId}?step=menu&meal=${meal.mealType}&extras=1`}
+                  label={several ? `Add or change extras for ${meal.label}` : "Add or change extras"}
+                  text={several ? `Add or change (${meal.label})` : "Add or change"}
+                />
+              ))}
+            </div>
             {nothingExtra && <p className="text-sm text-muted-foreground">No extra dishes, add-ons or live counters selected.</p>}
 
             {quote.extras.length > 0 && (
@@ -326,10 +337,10 @@ export function ReviewStep({ tenantSlug, draftId, summary, quote, editDetails }:
   );
 }
 
-function EditLink({ href, label }: { href: string; label: string }) {
+function EditLink({ href, label, text = "Edit" }: { href: string; label: string; text?: string }) {
   return (
     <Link href={href} aria-label={label} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline">
-      <Pencil className="size-3.5" /> Edit
+      <Pencil className="size-3.5" /> {text}
     </Link>
   );
 }

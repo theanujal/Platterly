@@ -19,7 +19,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 
 interface PlanPageProps {
   params: Promise<{ tenantSlug: string; draftId: string }>;
-  searchParams: Promise<{ step?: string; meal?: string }>;
+  searchParams: Promise<{ step?: string; meal?: string; extras?: string }>;
 }
 
 // `cover` lets the bottom bar sit clear of a phone's home indicator (it pads by the safe-area inset).
@@ -47,7 +47,7 @@ function eventDateText(data: { eventDate: string; eventEndDate?: string }, month
 
 export default async function PlanPage({ params, searchParams }: PlanPageProps) {
   const { tenantSlug, draftId } = await params;
-  const { step: stepParam, meal: mealParam } = await searchParams;
+  const { step: stepParam, meal: mealParam, extras: extrasParam } = await searchParams;
   const organization = await getPublishedTenantBySlug(tenantSlug);
   if (!organization) notFound();
 
@@ -221,6 +221,7 @@ export default async function PlanPage({ params, searchParams }: PlanPageProps) 
         }}
         editDetails={buildEditDetails(eventTypes)}
         initial={{ choice: savedChoice, itemIds: savedChoice ? (selection.itemIds ?? []) : [], addOnIds: selection.addOnIds ?? [] }}
+        openExtras={extrasParam === "1"}
       />
     );
   } else {
