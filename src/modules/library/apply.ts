@@ -11,6 +11,7 @@ import { CATEGORY_OPTIONS, normalizeCategory, normalizeUnit } from "@/modules/in
 import { findLibraryCategory } from "./categories";
 import { normalizeName } from "./match";
 import { MIN_KITCHENS, PHOTO_MIN_KITCHENS } from "./scan";
+import type { LibraryCandidateKind } from "@/generated/prisma/enums";
 
 export class LibraryError extends Error {
   constructor(message: string, public status: number = 400) {
@@ -56,6 +57,7 @@ async function taken(kind: "FOOD_ITEM" | "INGREDIENT", name: string): Promise<bo
 export async function applyDecision(decision: LibraryDecision): Promise<"applied" | "already"> {
   const candidate = await prisma.libraryCandidate.findUnique({ where: { id: decision.candidateId } });
   if (!candidate) throw new LibraryError("Unknown candidate.", 404);
+  if (decision.action === "reopen") return reopen(candidate);
   if (candidate.status !== "PENDING") return "already";
   const now = new Date();
 
@@ -101,9 +103,10 @@ export async function applyDecision(decision: LibraryDecision): Promise<"applied
     const last = await prisma.systemFoodItem.aggregate({ _max: { sortOrder: true } });
     let image = catalogImage(name, categoryName).url;
     if (!publicFile(image)) image = catalogImage(name, "Main Course").url;
+    const id = crypto.randomUUID();
     await prisma.$transaction([
-      prisma.systemFoodItem.create({ data: { name, description: entry?.description ?? null, foodType, categoryName, image, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
-      prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", reviewedAt: now } }),
+      prisma.systemFoodItem.create({ data: { id, name, description: entry?.description ?? null, foodType, categoryName, image, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
+      prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", mergedIntoId: id, reviewedAt: now } }),
     ]);
     return "applied";
   }
@@ -113,10 +116,58 @@ export async function applyDecision(decision: LibraryDecision): Promise<"applied
   if (!category) throw new LibraryError(`Category must be one of: ${CATEGORY_OPTIONS.join(", ")}.`, 400);
   if (!unit) throw new LibraryError("Choose a unit.", 400);
   const last = await prisma.systemIngredient.aggregate({ _max: { sortOrder: true } });
+  const id = crypto.randomUUID();
   await prisma.$transaction([
-    prisma.systemIngredient.create({ data: { name, description: entry?.description ?? null, categoryName: category, unit, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
-    prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", reviewedAt: now } }),
+    prisma.systemIngredient.create({ data: { id, name, description: entry?.description ?? null, categoryName: category, unit, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
+    prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", mergedIntoId: id, reviewedAt: now } }),
   ]);
+  return "applied";
+}
+
+/**
+ * Undoes a decision made by mistake: the candidate is back for review. A merge's name comes off the library item again, and an
+ * approval's library entry is deleted (kitchens that already added it keep their own copy, a separate row). A photo's approval
+ * is not undone: the picture it replaced was not kept.
+ */
+async function reopen(candidate: { id: string; kind: LibraryCandidateKind; name: string; status: string; mergedIntoId: string | null }): Promise<"applied" | "already"> {
+  if (candidate.status === "PENDING") return "already";
+  const back = prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "PENDING", mergedIntoId: null, reviewedAt: null } });
+  if (candidate.status === "APPROVED") {
+    if (candidate.kind === "PHOTO") throw new LibraryError("An approved photo cannot be undone: the picture it replaced was not kept. Approve another photo instead.", 409);
+    // Approvals from before Undo kept no entry id: take the entry with the candidate's own name (approve refuses a taken name).
+    const named = { name: candidate.name.trim() };
+    const id = candidate.mergedIntoId ?? (candidate.kind === "CATEGORY" ? await prisma.systemFoodCategory.findUnique({ where: named }) : candidate.kind === "INGREDIENT" ? await prisma.systemIngredient.findUnique({ where: named }) : await prisma.systemFoodItem.findUnique({ where: named }))?.id;
+    if (!id) throw new LibraryError("Its library entry was approved under another name, so Undo cannot find it. Change that entry under Edit library instead.", 409);
+    if (await prisma.libraryCandidate.count({ where: { status: "MERGED", mergedIntoId: id } })) throw new LibraryError("Other names were merged into this entry since. Undo those first.", 409);
+    if (candidate.kind === "CATEGORY") {
+      const category = await prisma.systemFoodCategory.findUnique({ where: { id } });
+      if (category && (await prisma.systemFoodItem.count({ where: { categoryName: category.name } }))) throw new LibraryError(`Library dishes are in "${category.name}" now. Move them to another category first.`, 409);
+      await prisma.$transaction([prisma.systemFoodCategory.deleteMany({ where: { id } }), back]);
+    } else if (candidate.kind === "INGREDIENT") {
+      await prisma.$transaction([prisma.systemIngredient.deleteMany({ where: { id } }), back]);
+    } else {
+      await prisma.$transaction([prisma.systemFoodItem.deleteMany({ where: { id } }), back]);
+    }
+    return "applied";
+  }
+  if (candidate.status === "REJECTED" || !candidate.mergedIntoId) {
+    await back;
+    return "applied";
+  }
+  // ponytail: removes the name even if the item had it before the merge; the scan only offers names the library lacked, so that is rare.
+  const key = normalizeName(candidate.name);
+  const without = (aliases: string[]) => aliases.filter((a) => normalizeName(a) !== key);
+  const where = { id: candidate.mergedIntoId };
+  if (candidate.kind === "CATEGORY") {
+    const target = await prisma.systemFoodCategory.findUnique({ where });
+    await prisma.$transaction([...(target ? [prisma.systemFoodCategory.update({ where, data: { aliases: without(target.aliases) } })] : []), back]);
+  } else if (candidate.kind === "INGREDIENT") {
+    const target = await prisma.systemIngredient.findUnique({ where });
+    await prisma.$transaction([...(target ? [prisma.systemIngredient.update({ where, data: { aliases: without(target.aliases) } })] : []), back]);
+  } else {
+    const target = await prisma.systemFoodItem.findUnique({ where });
+    await prisma.$transaction([...(target ? [prisma.systemFoodItem.update({ where, data: { aliases: without(target.aliases) } })] : []), back]);
+  }
   return "applied";
 }
 
@@ -167,9 +218,10 @@ async function applyCategory(candidate: { id: string; name: string }, decision: 
   const name = (decision.entry?.name ?? candidate.name).trim();
   if (await findLibraryCategory(name)) throw new LibraryError(`"${name}" is already a library category. Merge it instead.`, 409);
   const last = await prisma.systemFoodCategory.aggregate({ _max: { sortOrder: true } });
+  const id = crypto.randomUUID();
   await prisma.$transaction([
-    prisma.systemFoodCategory.create({ data: { name, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
-    prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", reviewedAt: now } }),
+    prisma.systemFoodCategory.create({ data: { id, name, sortOrder: (last._max.sortOrder ?? 0) + 1 } }),
+    prisma.libraryCandidate.update({ where: { id: candidate.id }, data: { status: "APPROVED", mergedIntoId: id, reviewedAt: now } }),
   ]);
   return "applied";
 }

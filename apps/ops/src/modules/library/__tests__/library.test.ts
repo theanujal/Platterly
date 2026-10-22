@@ -132,6 +132,22 @@ describe("deciding", () => {
     expect((await listCandidates(KEY, { status: "REJECTED" })).length).toBe(1);
   });
 
+  it("undo sends a signed reopen and puts a merged, rejected or approved item back to pending", async () => {
+    const a = await pending("a");
+    const b = await pending("b");
+    answer = { status: 200, body: JSON.stringify({ result: "applied" }), sign: true };
+    await decideCandidate(a.id, { action: "merge", mergeIntoId: "lib-1" }, "s");
+    await decideCandidate(b.id, { action: "reject" }, "s");
+    seen = [];
+    await decideCandidate(a.id, { action: "reopen" }, "s");
+    await decideCandidate(b.id, { action: "reopen" }, "s");
+    await decideCandidate(a.id, { action: "approve" }, "s");
+    await decideCandidate(a.id, { action: "reopen" }, "s");
+    expect(seen.map((s) => JSON.parse(s.body).action)).toEqual(["reopen", "reopen", "approve", "reopen"]);
+    expect((await listCandidates(KEY)).length).toBe(2);
+    await expect(decideCandidate(a.id, { action: "reopen" }, "s")).rejects.toThrow("That item is already pending.");
+  });
+
   it("a decided item is not reopened by a later pull", async () => {
     const c = await pending();
     answer = { status: 200, body: JSON.stringify({ result: "applied" }), sign: true };

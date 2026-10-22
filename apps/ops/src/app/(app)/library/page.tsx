@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Empty, PageHeader } from "@/components/ui";
+import { Button, Empty, PageHeader } from "@/components/ui";
 import { PickProduct } from "@/components/pick-product";
 import { getSelectedProduct } from "@/lib/selected-product";
 import { countPending, fetchLibraryEntries, listCandidates } from "@/modules/library/library";
+import { undoAction } from "./actions";
 import { CandidateForm } from "./candidate-form";
 import { PhotoForm } from "./photo-form";
 
@@ -16,10 +17,10 @@ const KINDS = [
   { key: "CATEGORY", label: "Categories" },
 ] as const;
 
-export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ kind?: string; status?: string }> }) {
+export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ kind?: string; status?: string; undoError?: string }> }) {
   const selected = await getSelectedProduct();
   if (!selected) return (<><PageHeader title="Library review" description="Dishes and ingredients kitchens added that the library does not have." /><PickProduct what="Library review" /></>);
-  const { kind: kindParam, status: statusParam } = await searchParams;
+  const { kind: kindParam, status: statusParam, undoError } = await searchParams;
   const kind = KINDS.some((k) => k.key === kindParam) ? kindParam! : "FOOD_ITEM";
   const status = ["PENDING", "APPROVED", "MERGED", "REJECTED"].includes(statusParam ?? "") ? statusParam! : "PENDING";
   const [counts, rows] = await Promise.all([countPending(selected.key), listCandidates(selected.key, { kind, status })]);
@@ -47,6 +48,7 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           ))}
         </span>
       </div>
+      {undoError ? <p role="alert" className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{undoError}</p> : null}
       {rows.length === 0 ? (
         <Empty>{status === "PENDING" ? "Nothing to review. New items appear here once at least two kitchens have added the same name." : `Nothing ${status.toLowerCase()} yet.`}</Empty>
       ) : status === "PENDING" ? (
@@ -59,7 +61,16 @@ export default async function LibraryPage({ searchParams }: { searchParams: Prom
           {rows.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
               <span className="font-medium">{c.name}</span>
-              <span className="text-muted-foreground">{c.kitchenCount} kitchens{c.decidedAt ? ` · ${c.decidedAt.toLocaleDateString("en-IN")}` : ""}</span>
+              <span className="flex items-center gap-3 text-muted-foreground">
+                {c.kitchenCount} kitchens{c.decidedAt ? ` · ${c.decidedAt.toLocaleDateString("en-IN")}` : ""}
+                {status !== "PENDING" && !(status === "APPROVED" && kind === "PHOTO") ? (
+                  <form action={undoAction}>
+                    <input type="hidden" name="id" value={c.id} />
+                    <input type="hidden" name="back" value={`/library?kind=${kind}&status=${status}`} />
+                    <Button type="submit" variant="outline" size="md" aria-label={status === "APPROVED" ? `Undo: remove ${c.name} from the library and put it back to Pending` : `Undo: put ${c.name} back to Pending`}>Undo</Button>
+                  </form>
+                ) : null}
+              </span>
             </li>
           ))}
         </ul>

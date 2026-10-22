@@ -496,6 +496,7 @@ describe("library review", () => {
 
   it("reads approve, merge and reject decisions", () => {
     expect(parseLibraryDecision({ candidateId: "c1", action: "reject" })).toEqual({ ok: true, value: { candidateId: "c1", action: "reject" } });
+    expect(parseLibraryDecision({ candidateId: "c1", action: "reopen" })).toEqual({ ok: true, value: { candidateId: "c1", action: "reopen" } });
     expect(parseLibraryDecision({ candidateId: "c1", action: "merge", mergeIntoId: "m1" })).toEqual({ ok: true, value: { candidateId: "c1", action: "merge", mergeIntoId: "m1" } });
     const approve = parseLibraryDecision({ candidateId: "c1", action: "approve", entry: { name: " Paneer Tikka Roll ", categoryName: "Starters", foodType: "VEGETARIAN", unit: null, description: "Roll" } });
     expect(approve.ok && approve.value.entry?.name).toBe("Paneer Tikka Roll");

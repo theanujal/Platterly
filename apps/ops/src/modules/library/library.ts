@@ -85,7 +85,7 @@ export async function refreshLibraryCandidates(now: Date = new Date(), onlyProdu
 }
 
 export interface ReviewInput {
-  action: "approve" | "merge" | "reject";
+  action: "approve" | "merge" | "reject" | "reopen";
   entry?: LibraryDecision["entry"];
   mergeIntoId?: string;
 }
@@ -94,7 +94,9 @@ export interface ReviewInput {
 export async function decideCandidate(id: string, input: ReviewInput, staffId: string, fetchImpl: typeof fetch = fetch): Promise<void> {
   const candidate = await prisma.libraryCandidate.findUnique({ where: { id }, include: { product: true } });
   if (!candidate) throw new LibraryReviewError("That item was not found.");
-  if (candidate.status !== "PENDING") throw new LibraryReviewError("That item was already decided.");
+  // reopen undoes a decision made by mistake; every other answer needs a pending item.
+  const reopening = input.action === "reopen";
+  if (reopening === (candidate.status === "PENDING")) throw new LibraryReviewError(reopening ? "That item is already pending." : "That item was already decided.");
   const decision: LibraryDecision = { candidateId: candidate.remoteId, action: input.action, ...(input.entry ? { entry: input.entry } : {}), ...(input.mergeIntoId ? { mergeIntoId: input.mergeIntoId } : {}) };
   let secrets: ReturnType<typeof secretsOf>;
   try {
@@ -122,8 +124,8 @@ export async function decideCandidate(id: string, input: ReviewInput, staffId: s
   const verified = verifyRequest(secrets.accept, response.headers, text);
   if (!verified.ok) throw new LibraryReviewError(`The product's answer was not signed correctly (${verified.reason}).`);
 
-  const status = input.action === "approve" ? "APPROVED" : input.action === "merge" ? "MERGED" : "REJECTED";
-  await prisma.libraryCandidate.update({ where: { id }, data: { status, decidedAt: new Date(), decidedById: staffId } });
+  const status = input.action === "approve" ? "APPROVED" : input.action === "merge" ? "MERGED" : input.action === "reject" ? "REJECTED" : "PENDING";
+  await prisma.libraryCandidate.update({ where: { id }, data: { status, decidedAt: reopening ? null : new Date(), decidedById: reopening ? null : staffId } });
   await audit({ actorUserId: staffId, action: `library.${input.action}`, subject: candidate.productKey, detail: { name: candidate.name, kind: candidate.kind, ...(input.entry ? { as: input.entry.name } : {}) } });
 }
 

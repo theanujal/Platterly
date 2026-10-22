@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/session";
 import { LibraryReviewError, decideCandidate, findEntryByName, updateLibraryEntry } from "@/modules/library/library";
 
@@ -56,6 +57,22 @@ export async function reviewAction(_prev: ReviewState, formData: FormData): Prom
   }
   revalidatePath("/library");
   return { done: "Saved." };
+}
+
+/** Undo of a decision made by mistake: the item goes back to Pending here and in the product (an approval's library entry is removed). */
+export async function undoAction(formData: FormData): Promise<void> {
+  const staff = await requireStaff();
+  const back = text(formData, "back");
+  const to = back.startsWith("/library?") ? back : "/library?";
+  let error = "";
+  try {
+    await decideCandidate(text(formData, "id"), { action: "reopen" }, staff.id);
+  } catch (e) {
+    if (!(e instanceof LibraryReviewError)) throw e;
+    error = e.message;
+  }
+  revalidatePath("/library");
+  if (error) redirect(`${to}&undoError=${encodeURIComponent(error)}`);
 }
 
 /** One change to a library entry (edit its fields, or hide / show it). Kitchens' own copies never change. */

@@ -924,7 +924,8 @@ model LibraryCandidate {
   photoUrl           String?
   kitchenCount       Int                      @default(0)
   status             LibraryCandidateStatus   @default(PENDING)
-  /// The library item this looks like (a hint for the reviewer), and the one a MERGED candidate was merged into.
+  /// The library item this looks like (a hint for the reviewer). mergedIntoId: the item a MERGED candidate was merged into, or
+  /// the entry an APPROVED one created (Undo deletes it).
   suggestedMatchId   String?
   suggestedMatchName String?
   mergedIntoId       String?

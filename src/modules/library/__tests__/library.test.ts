@@ -181,6 +181,60 @@ describe("applying a decision", () => {
     expect(await prisma.libraryCandidate.count({ where: { name: { in: [ours, refused] }, status: "PENDING" } })).toBe(0);
   });
 
+  it("undo puts a merged or rejected item back to pending, and takes the merge's name off the library item again", async () => {
+    const [a, b] = [await makeOrg(), await makeOrg()];
+    const word = unique();
+    const libName = `Undo ${word} Gravy`;
+    const ours = `Mistake ${word} Gravy`;
+    const refused = `Oops ${word} Thing`;
+    candidateNames.push(libName, ours, refused);
+    const lib = await prisma.systemFoodItem.create({ data: { name: libName, foodType: "VEGETARIAN", categoryName: "Main Course", aliases: ["Kept Name"] } });
+    systemFoodIds.push(lib.id);
+    for (const org of [a, b]) {
+      await dish(org.id, ours);
+      await dish(org.id, refused);
+    }
+    await runLibraryScan({ organizationIds: [a.id, b.id], minKitchens: 2 });
+    const mergeMe = await prisma.libraryCandidate.findFirstOrThrow({ where: { name: ours } });
+    const rejectMe = await prisma.libraryCandidate.findFirstOrThrow({ where: { name: refused } });
+    await applyDecision({ candidateId: mergeMe.id, action: "merge", mergeIntoId: lib.id });
+    await applyDecision({ candidateId: rejectMe.id, action: "reject" });
+
+    expect(await applyDecision({ candidateId: mergeMe.id, action: "reopen" })).toBe("applied");
+    expect(await applyDecision({ candidateId: rejectMe.id, action: "reopen" })).toBe("applied");
+    expect((await prisma.systemFoodItem.findUniqueOrThrow({ where: { id: lib.id } })).aliases).toEqual(["Kept Name"]);
+    expect(await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: mergeMe.id } })).toMatchObject({ status: "PENDING", mergedIntoId: null, reviewedAt: null });
+    expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: rejectMe.id } })).status).toBe("PENDING");
+    expect(await applyDecision({ candidateId: rejectMe.id, action: "reopen" })).toBe("already");
+  });
+
+  it("undo of an approval deletes the library entry it made, so it can be approved again; not while names are merged into it", async () => {
+    const name = `Undo ${unique()} Roll`;
+    const other = `Undo ${unique()} Wrap`;
+    const c = await candidateFor(name, ["x", "y"]);
+    const m = await candidateFor(other, ["x", "y"]);
+    await applyDecision({ candidateId: c.id, action: "approve" });
+    const made = await prisma.systemFoodItem.findUniqueOrThrow({ where: { name } });
+    await applyDecision({ candidateId: m.id, action: "merge", mergeIntoId: made.id });
+    await expect(applyDecision({ candidateId: c.id, action: "reopen" })).rejects.toMatchObject({ status: 409 });
+    await applyDecision({ candidateId: m.id, action: "reopen" });
+
+    expect(await applyDecision({ candidateId: c.id, action: "reopen" })).toBe("applied");
+    expect(await prisma.systemFoodItem.findUnique({ where: { id: made.id } })).toBeNull();
+    expect(await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ status: "PENDING", mergedIntoId: null });
+    expect(await applyDecision({ candidateId: c.id, action: "approve" })).toBe("applied");
+
+    const i = await candidateFor(`Undo ${unique()} Leaf`, ["x", "y"], "INGREDIENT");
+    await applyDecision({ candidateId: i.id, action: "approve" });
+    expect(await applyDecision({ candidateId: i.id, action: "reopen" })).toBe("applied");
+    expect(await prisma.systemIngredient.count({ where: { name: i.name } })).toBe(0);
+
+    // approved before Undo existed: no entry id kept, found by name
+    await prisma.libraryCandidate.update({ where: { id: c.id }, data: { mergedIntoId: null } });
+    expect(await applyDecision({ candidateId: c.id, action: "reopen" })).toBe("applied");
+    expect(await prisma.systemFoodItem.count({ where: { name } })).toBe(0);
+  });
+
   it("approving an ingredient needs a valid category and unit", async () => {
     const name = `Saffron ${unique()} Thread`;
     const c = await candidateFor(name, ["x", "y"], "INGREDIENT");

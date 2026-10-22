@@ -7,7 +7,8 @@ import { isRecord, fail, ok, type ParseResult } from "./result";
  */
 export const LIBRARY_KINDS = ["FOOD_ITEM", "INGREDIENT", "PHOTO", "CATEGORY"] as const;
 export type LibraryKind = (typeof LIBRARY_KINDS)[number];
-export const LIBRARY_ACTIONS = ["approve", "merge", "reject"] as const;
+// reopen: undo a decision made by mistake, so the item is back for review (an approval's library entry is removed).
+export const LIBRARY_ACTIONS = ["approve", "merge", "reject", "reopen"] as const;
 export type LibraryAction = (typeof LIBRARY_ACTIONS)[number];
 export const FOOD_TYPES = ["VEGETARIAN", "NON_VEGETARIAN"] as const;
 export type LibraryFoodType = (typeof FOOD_TYPES)[number];
@@ -83,9 +84,9 @@ export function parseLibraryDecision(input: unknown): ParseResult<LibraryDecisio
   if (!isRecord(input)) return fail("decision must be an object");
   const candidateId = text(input.candidateId, LIBRARY_LIMITS.id);
   if (!candidateId) return fail("candidateId is required");
-  if (!LIBRARY_ACTIONS.includes(input.action as LibraryAction)) return fail("action must be approve, merge or reject");
+  if (!LIBRARY_ACTIONS.includes(input.action as LibraryAction)) return fail("action must be approve, merge, reject or reopen");
   const action = input.action as LibraryAction;
-  if (action === "reject") return ok({ candidateId, action });
+  if (action === "reject" || action === "reopen") return ok({ candidateId, action });
   if (action === "merge") {
     const mergeIntoId = text(input.mergeIntoId, LIBRARY_LIMITS.id);
     return mergeIntoId ? ok({ candidateId, action, mergeIntoId }) : fail("merge needs mergeIntoId");

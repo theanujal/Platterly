@@ -98,6 +98,19 @@ describe("applying a category decision", () => {
     expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: dup.id } })).status).toBe("PENDING");
   });
 
+  it("undo of an approved category deletes it again, but not while library dishes use it", async () => {
+    const c = await pending();
+    await applyDecision({ candidateId: c.id, action: "approve" });
+    const made = await prisma.systemFoodCategory.findUniqueOrThrow({ where: { name: c.name } });
+    const used = await prisma.systemFoodItem.create({ data: { name: `Zdish ${unique()}`, foodType: "VEGETARIAN", categoryName: c.name } });
+    dishIds.push(used.id);
+    await expect(applyDecision({ candidateId: c.id, action: "reopen" })).rejects.toMatchObject({ status: 409 });
+    await prisma.systemFoodItem.delete({ where: { id: used.id } });
+    expect(await applyDecision({ candidateId: c.id, action: "reopen" })).toBe("applied");
+    expect(await prisma.systemFoodCategory.findUnique({ where: { id: made.id } })).toBeNull();
+    expect((await prisma.libraryCandidate.findUniqueOrThrow({ where: { id: c.id } })).status).toBe("PENDING");
+  });
+
   it("merge makes the kitchen's name another name of an existing category; unknown target 404; reject is final", async () => {
     const target = await libraryCategory(`Ztarget ${unique()} Items`);
     const c = await pending();
