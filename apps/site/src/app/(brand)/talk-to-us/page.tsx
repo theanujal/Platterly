@@ -3,13 +3,13 @@ import { EnquiryForm } from "@/components/enquiry-form";
 import { PageHero } from "@/components/page-hero";
 import { Reveal } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
-import { SITE } from "@/content/site";
+import { pageLinks, SITE } from "@/content/site";
 import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Talk to us",
   description: "Tell us about your catering business and we will show you how Caterly by Platterly fits. A short call, no pressure.",
-  alternates: { canonical: "/talk-to-us/" },
+  ...pageLinks("/talk-to-us/"),
 };
 
 const STEPS = [

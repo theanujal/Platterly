@@ -12,12 +12,12 @@ import { Badge, ButtonLink, Panel } from "@/components/ui";
 import { CATERING } from "@/content/catering";
 import { getPricing } from "@/lib/content";
 import { CATERING_PRODUCT, productVars } from "@/content/products";
-import { SITE, TESTIMONIALS } from "@/content/site";
+import { pageLinks, SITE, TESTIMONIALS } from "@/content/site";
 
 export const metadata: Metadata = {
   title: "Caterly by Platterly | Software for catering businesses",
   description: "Run your catering business without the chaos. Customers, events, menus, orders, kitchen, delivery and payments in one workflow. Start free for 7 days.",
-  alternates: { canonical: "/catering/" },
+  ...pageLinks("/catering/"),
 };
 
 export default async function CateringPage() {

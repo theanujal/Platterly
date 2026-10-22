@@ -6,7 +6,8 @@ import { JsonLd } from "@/components/json-ld";
 import { Markdown } from "@/components/markdown";
 import { Reveal } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
-import { SITE } from "@/content/site";
+import { OPEN_GRAPH, SITE } from "@/content/site";
+import type { PostDoc } from "@/content/types";
 import { formatDate, getPost, getPosts } from "@/lib/content";
 
 export const dynamicParams = false;
@@ -20,18 +21,44 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!post) return {};
   const title = post.metaTitle || post.title;
   const description = post.metaDescription || post.excerpt;
-  const image = post.ogImage ? (/^https:\/\//.test(post.ogImage) ? post.ogImage : `/uploads/${post.ogImage}`) : "/og.png";
-  return { title, description, alternates: { canonical: `/blog/${post.slug}/` }, openGraph: { type: "article", publishedTime: post.date, title, description, images: [{ url: image, ...(post.ogImage ? {} : { width: 1200, height: 630 }), alt: post.title }] } };
+  const path = `/blog/${post.slug}/`;
+  return { title, description, alternates: { canonical: path }, openGraph: { ...OPEN_GRAPH, url: path, type: "article", publishedTime: post.date, title, description, images: [{ url: postImage(post), ...(post.ogImage ? {} : { width: 1200, height: 630 }), alt: post.title }] } };
 }
+
+/** The post's sharing picture: an Ops upload, a full https address, or the site picture. */
+const postImage = (post: PostDoc) => (post.ogImage ? (/^https:\/\//.test(post.ogImage) ? post.ogImage : `/uploads/${post.ogImage}`) : "/og.png");
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const post = await getPost((await params).slug);
   if (!post) notFound();
   const related = (await getPosts()).filter((p) => p.slug !== post.slug).slice(0, 2);
-  const ld = { "@context": "https://schema.org", "@type": "BlogPosting", headline: post.title, description: post.excerpt, datePublished: post.date, author: { "@type": "Organization", name: post.author }, publisher: { "@type": "Organization", name: "Platterly", url: SITE.url }, mainEntityOfPage: `${SITE.url}/blog/${post.slug}/` };
+  const url = `${SITE.url}/blog/${post.slug}/`;
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    image: [new URL(postImage(post), SITE.url).href],
+    datePublished: post.date,
+    // Posts carry no separate edit date, so the publish date stands in.
+    dateModified: post.date,
+    author: { "@type": "Organization", name: post.author },
+    publisher: { "@type": "Organization", name: "Platterly", url: SITE.url, logo: { "@type": "ImageObject", url: `${SITE.url}/platterly-logo.png` } },
+    mainEntityOfPage: url,
+  };
+  const breadcrumbs = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: `${SITE.url}/` },
+      { "@type": "ListItem", position: 2, name: "Blog", item: `${SITE.url}/blog/` },
+      { "@type": "ListItem", position: 3, name: post.title, item: url },
+    ],
+  };
   return (
     <>
       <JsonLd data={ld} />
+      <JsonLd data={breadcrumbs} />
       <article>
         <header className="px-3 sm:px-6">
           <div className={`cw-${post.colourway} rounded-[28px] px-5 py-16 sm:rounded-[40px] md:py-24`}>

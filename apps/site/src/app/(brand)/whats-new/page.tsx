@@ -3,11 +3,12 @@ import { Markdown } from "@/components/markdown";
 import { PageHero } from "@/components/page-hero";
 import { Reveal } from "@/components/reveal";
 import { formatDate, getReleases } from "@/lib/content";
+import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
   title: "What's new",
-  description: "What has shipped in Caterly by Platterly, newest first.",
-  alternates: { canonical: "/whats-new/" },
+  description: "Every update to Caterly by Platterly, newest first: new features, improvements and fixes for catering businesses running events, menus and orders.",
+  ...pageLinks("/whats-new/"),
 };
 
 const month = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: "UTC" });

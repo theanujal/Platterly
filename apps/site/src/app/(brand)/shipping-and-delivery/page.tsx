@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { ContentPage } from "@/components/content-page";
 import { getPage } from "@/lib/content";
+import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
   title: "Shipping and Delivery",
   description: "Platterly is software delivered online: how you get access and when it starts.",
-  alternates: { canonical: "/shipping-and-delivery/" },
+  ...pageLinks("/shipping-and-delivery/"),
 };
 
 /** DRAFT for legal review before launch. The text is in src/content/pages/shipping-and-delivery.md. */

@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { BlogList } from "@/components/blog-list";
 import { PageHero } from "@/components/page-hero";
+import { OPEN_GRAPH } from "@/content/site";
 import { getPosts } from "@/lib/content";
 
 export const metadata: Metadata = {
   title: "Blog",
   description: "Practical ideas for running a catering business: planning events, working with the kitchen and getting paid.",
   alternates: { canonical: "/blog/", types: { "application/rss+xml": "/blog/rss.xml" } },
+  openGraph: { ...OPEN_GRAPH, url: "/blog/" },
 };
 
 export default async function BlogPage() {

@@ -11,12 +11,12 @@ import { ButtonLink, Panel } from "@/components/ui";
 import { PLATFORM } from "@/content/platform";
 import { HOME, HOME_CHAPTER, HOME_SCENE, HOME_STEPS } from "@/content/home";
 import { CATERING_PRODUCT } from "@/content/products";
-import { SITE, TESTIMONIALS } from "@/content/site";
+import { pageLinks, SITE, TESTIMONIALS } from "@/content/site";
 
 export const metadata: Metadata = {
   title: { absolute: "Platterly | Software built for the food business" },
   description: SITE.description,
-  alternates: { canonical: "/" },
+  ...pageLinks("/"),
 };
 
 const d = (n: number) => ({ "--d": `${n}ms` }) as React.CSSProperties;

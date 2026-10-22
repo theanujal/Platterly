@@ -5,12 +5,12 @@ import { ProductTile } from "@/components/product-tile";
 import { Reveal } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
 import { CATERING_PRODUCT } from "@/content/products";
-import { COMPANY, SITE } from "@/content/site";
+import { COMPANY, pageLinks, SITE } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "About Platterly",
+  title: "About us",
   description: "Platterly builds focused software for the work behind food businesses, starting with catering.",
-  alternates: { canonical: "/about/" },
+  ...pageLinks("/about/"),
 };
 
 /** TODO(AJ): the story below is written from the product documents; replace it with your own words when you like. */

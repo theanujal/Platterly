@@ -12,6 +12,12 @@ export const SITE = {
   description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
 } as const;
 
+/** Sharing defaults. A page's own `openGraph` replaces the layout's whole object (Next merges metadata shallowly), so pages spread this. */
+export const OPEN_GRAPH = { siteName: "Platterly", type: "website" as const, locale: "en_IN", images: [{ url: "/og.png", width: 1200, height: 630, alt: "Platterly" }] };
+
+/** A page's canonical address and og:url, which must agree. `path` is like "/about/". */
+export const pageLinks = (path: string) => ({ alternates: { canonical: path }, openGraph: { ...OPEN_GRAPH, url: path } });
+
 /** The company behind Platterly, as named in the policies. */
 export const COMPANY = {
   legalName: "Fragen Network Private Limited",

@@ -4,11 +4,12 @@ import { Reveal } from "@/components/reveal";
 import { ButtonLink } from "@/components/ui";
 import type { UpcomingStage } from "@/content/types";
 import { getUpcoming } from "@/lib/content";
+import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
   title: "Upcoming features",
-  description: "What we are working towards in Platterly. Tell us what you need.",
-  alternates: { canonical: "/upcoming/" },
+  description: "What we are building next in Caterly by Platterly, from WhatsApp messages for customers to new products for food businesses. Tell us what you need.",
+  ...pageLinks("/upcoming/"),
 };
 
 const COLUMNS: { stage: UpcomingStage; title: string; empty: string; way: string }[] = [
