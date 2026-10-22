@@ -38,6 +38,22 @@ vi.mock("@/modules/menu-approvals/menu-approval", async (importOriginal) => {
   };
 });
 
+// Lets one test make a single audit write fail once (the submit's last write). Off by default.
+const failAudit = vi.hoisted(() => ({ action: null as string | null }));
+vi.mock("@/lib/audit/audit", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/audit/audit")>();
+  return {
+    ...real,
+    audit: async (...args: Parameters<typeof real.audit>) => {
+      if (failAudit.action === args[0].action) {
+        failAudit.action = null;
+        throw new Error("audit failed");
+      }
+      return real.audit(...args);
+    },
+  };
+});
+
 const cleanupOrgIds: string[] = [];
 const cleanupUserIds: string[] = [];
 
@@ -360,6 +376,20 @@ describe("quote + final submit (Order created only here)", () => {
     const done = await getDraft(t.org.id, draft.id);
     expect(done?.status).toBe("COMPLETED");
     expect(done?.orderId).toBe(result.orderId);
+  });
+
+  it("a submit whose last write fails leaves no event behind, so the retry makes only one", async () => {
+    const t = await setup();
+    const { draft } = await completeDraft(t);
+
+    failAudit.action = "storefront.order_submitted";
+    await expect(submitDraft(t.org.id, draft.id)).rejects.toThrow("audit failed");
+    expect(await prisma.event.count({ where: { organizationId: t.org.id } })).toBe(0);
+
+    await submitDraft(t.org.id, draft.id);
+    expect(await prisma.order.count({ where: { organizationId: t.org.id } })).toBe(1);
+    expect(await prisma.event.count({ where: { organizationId: t.org.id } })).toBe(1);
+    expect(await prisma.menuSelection.count({ where: { organizationId: t.org.id } })).toBe(1);
   });
 
   it("a meal added later starts empty and needs its own menu; once built it is a second entry of a Multi Order", async () => {

@@ -627,8 +627,8 @@ export async function submitDraft(organizationId: string, draftId: string, notes
 
     // One selection for the event: any Custom Menu meal makes it a quote the kitchen prices; the chosen menu is the first fixed one.
     const firstMenu = mealTypes.map((m) => data.meals[m]!.menuChoice!).find((c) => c.kind === "MENU");
-    // All or nothing, so a failure never leaves an event without its selection behind for the retry to trip over.
-    const { event, menuSelection } = await prisma.$transaction(async (tx) => {
+    // All or nothing, audit included, so a failure never leaves an event behind for the retry to add a second one to.
+    const menuSelection = await prisma.$transaction(async (tx) => {
       const event = await createEventForOrder(organizationId, orderId, undefined, undefined, tx);
       const menuSelection = await createMenuSelection(
         organizationId,
@@ -638,15 +638,17 @@ export async function submitDraft(organizationId: string, draftId: string, notes
       );
       // The flat selection rows mirror the meal plan (a dish on several meals is listed once, as an Extra if any copy is).
       await mirrorSelectionItemsFromMealPlan(organizationId, menuSelection.id, tx);
-      return { event, menuSelection };
-    });
-
-    await audit({
-      organizationId,
-      action: "storefront.order_submitted",
-      recordType: "MenuSelection",
-      recordId: menuSelection.id,
-      after: { customerId: draft.customerId, orderId, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total, meals: mealTypes },
+      await audit(
+        {
+          organizationId,
+          action: "storefront.order_submitted",
+          recordType: "MenuSelection",
+          recordId: menuSelection.id,
+          after: { customerId: draft.customerId, orderId, eventId: event.id, isCustomMenu: quote.isCustomMenu, total: quote.total, meals: mealTypes },
+        },
+        tx,
+      );
+      return menuSelection;
     });
 
     return { orderId, menuSelectionId: menuSelection.id, isCustomMenu: quote.isCustomMenu };
