@@ -88,13 +88,14 @@ export function CandidateForm({ c, namesListId, categoryNames }: { c: CandidateV
           </>
         )}
       </div>
+      {/* Only approving needs the category and type filled in: merge and reject skip the browser's required-field check. */}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" name="intent" value="approve" size="md" disabled={pending}>{category ? "Approve as new category" : "Approve as new"}</Button>
-        {c.suggestedMatchId ? <Button type="submit" name="intent" value="merge" variant="outline" size="md" disabled={pending}>Merge into “{c.suggestedMatchName}”</Button> : null}
-        <Button type="submit" name="intent" value="reject" variant="outline" size="md" disabled={pending}>Reject</Button>
+        {c.suggestedMatchId ? <Button type="submit" name="intent" value="merge" formNoValidate variant="outline" size="md" disabled={pending}>Merge into “{c.suggestedMatchName}”</Button> : null}
+        <Button type="submit" name="intent" value="reject" formNoValidate variant="outline" size="md" disabled={pending}>Reject</Button>
         <span className="flex items-center gap-2">
           <input name="mergeIntoName" list={namesListId} aria-label={`Merge ${c.name} into another library item`} placeholder="Or merge into another library item…" className={`${inputClass} w-64`} />
-          <Button type="submit" name="intent" value="mergeOther" variant="outline" size="md" disabled={pending}>Merge into this</Button>
+          <Button type="submit" name="intent" value="mergeOther" formNoValidate variant="outline" size="md" disabled={pending}>Merge into this</Button>
         </span>
         {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
       </div>
