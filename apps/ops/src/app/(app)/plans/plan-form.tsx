@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFormAction } from "@/lib/use-form-action";
 import type { EntitlementDef } from "@platterly/contract";
 import { Button, Card, Field, inputClass } from "@/components/ui";
-import { savePlanAction } from "./actions";
+import { savePlanAction, type PlanFormState } from "./actions";
 
 export interface PlanFormValues {
   id?: string;
@@ -31,6 +31,60 @@ export function PlanForm({ productKey, productName, defs, values, otherFeatured,
   const [featured, setFeatured] = useState(values.isFeatured);
   const eligible = values.isActive && !isTrial && monthly.trim() !== "";
   const featuredHint = !values.isActive ? "A retired plan cannot be featured." : isTrial ? "The trial plan cannot be featured." : monthly.trim() === "" ? "Set a monthly price to feature this plan." : null;
+  // A saved plan shows read-only; "Edit" opens the form (the same pattern as Billing). The answer current when Edit was clicked is
+  // kept, so a newer answer that saved closes the form again, and one with an error leaves it open with what was typed.
+  const [editFrom, setEditFrom] = useState<PlanFormState | null>(null);
+  const open = !editing || (editFrom !== null && (editFrom === state || !!state.error));
+  const startEdit = () => {
+    setIsTrial(values.isTrial);
+    setMonthly(values.priceMonthly);
+    setFeatured(values.isFeatured);
+    setEditFrom(state);
+  };
+  const shown = (label: string, value: string) => (
+    <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="whitespace-pre-line">{value || "Not set"}</dd></div>
+  );
+  const rupees = (value: string) => (value.trim() === "" ? "Not sold" : `₹${Number(value).toLocaleString("en-IN")} + ${values.gstPercent}% GST`);
+
+  if (!open) {
+    return (
+      <div className="grid gap-6">
+        <Card>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Plan for {productName}</h2>
+            <Button type="button" variant="outline" size="md" onClick={startEdit}>Edit</Button>
+          </div>
+          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+            {shown("Name", values.name)}
+            {shown("Code", values.code)}
+            <div className="sm:col-span-2">{shown("Description", values.description)}</div>
+            {shown("Trial plan", values.isTrial ? `Yes, ${values.trialDurationDays || "?"} days` : "No")}
+          </dl>
+          {values.isTrial && trialNote ? <p className="mt-3 text-sm text-muted-foreground" data-testid="trial-note">{trialNote}</p> : null}
+        </Card>
+        <Card>
+          <h2 className="mb-4 text-base font-semibold">Pricing</h2>
+          <dl className="grid gap-3 text-sm sm:grid-cols-3">
+            {shown("Monthly", rupees(values.priceMonthly))}
+            {shown("Yearly", rupees(values.priceAnnual))}
+            {shown("Most popular on the website", values.isFeatured ? "Yes" : "No")}
+            <div className="sm:col-span-3">{shown("Benefits shown to the owner", values.highlights)}</div>
+          </dl>
+        </Card>
+        <Card>
+          <h2 className="mb-4 text-base font-semibold">Entitlements</h2>
+          <dl className="grid gap-3 text-sm sm:grid-cols-3">
+            {defs.map((def) => {
+              const v = values.entitlements[def.key];
+              return <div key={def.key}>{shown(def.label, def.type === "flag" ? (v === true ? "Yes" : "No") : v === null || v === undefined || v === "" ? (def.type === "limit" ? "Unlimited" : "") : String(v))}</div>;
+            })}
+          </dl>
+        </Card>
+        {state.saved ? <p role="status" className="text-sm text-success">{state.saved}</p> : null}
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
       <input type="hidden" name="id" value={values.id ?? ""} />
@@ -91,8 +145,10 @@ export function PlanForm({ productKey, productName, defs, values, otherFeatured,
       </Card>
 
       {state.error ? <p role="alert" className="text-sm text-destructive">{state.error}</p> : null}
-      {state.saved ? <p role="status" className="text-sm text-success">{state.saved}</p> : null}
-      <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : editing ? "Save plan" : "Create plan"}</Button></div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={pending}>{pending ? "Saving…" : editing ? "Save plan" : "Create plan"}</Button>
+        {editing ? <Button type="button" variant="outline" disabled={pending} onClick={() => setEditFrom(null)}>Cancel</Button> : null}
+      </div>
     </form>
   );
 }

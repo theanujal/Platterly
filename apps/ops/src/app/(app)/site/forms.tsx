@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button, Card, Field, inputClass } from "@/components/ui";
 import { RichEditor, type LibraryPicture } from "@/components/rich-editor";
 import { useFormAction } from "@/lib/use-form-action";
@@ -19,8 +20,53 @@ function Feedback({ state }: { state: SiteFormState }) {
   );
 }
 
+const shown = (label: string, value: string) => (
+  <div><dt className="text-xs text-muted-foreground">{label}</dt><dd className="whitespace-pre-line">{value || "Not set"}</dd></div>
+);
+
+/** Saved settings show read-only; "Edit" opens the form (the same pattern as Billing). The answer current when Edit was clicked is
+ * kept, so a newer answer that saved closes the form again, and one with an error leaves it open with what was typed. */
+function useEditView(state: SiteFormState) {
+  const [editFrom, setEditFrom] = useState<SiteFormState | null>(null);
+  return { editing: editFrom !== null && (editFrom === state || !!state.error), edit: () => setEditFrom(state), cancel: () => setEditFrom(null) };
+}
+
+function ReadOnly({ state, edit, children }: { state: SiteFormState; edit: () => void; children: React.ReactNode }) {
+  return (
+    <div className="grid max-w-2xl gap-4">
+      <Card>
+        <div className="flex items-start justify-between gap-3">
+          <dl className="grid flex-1 gap-3 text-sm sm:grid-cols-2">{children}</dl>
+          <Button type="button" variant="outline" size="md" onClick={edit}>Edit</Button>
+        </div>
+      </Card>
+      <Feedback state={state} />
+    </div>
+  );
+}
+
+function SaveCancel({ pending, cancel }: { pending: boolean; cancel: () => void }) {
+  return (
+    <div className="flex gap-2">
+      <Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button>
+      <Button type="button" variant="outline" disabled={pending} onClick={cancel}>Cancel</Button>
+    </div>
+  );
+}
+
 export function NoticeForm({ values }: { values: { enabled: boolean; text: string; linkLabel: string; linkHref: string } }) {
   const { state, onSubmit, pending } = useFormAction(saveNoticeAction, {});
+  const { editing, edit, cancel } = useEditView(state);
+  if (!editing) {
+    return (
+      <ReadOnly state={state} edit={edit}>
+        <div className="sm:col-span-2">{shown("Show the bar", values.enabled ? "Yes" : "No")}</div>
+        <div className="sm:col-span-2">{shown("Message", values.text)}</div>
+        {shown("Link label", values.linkLabel)}
+        {shown("Link address", values.linkHref)}
+      </ReadOnly>
+    );
+  }
   return (
     <form onSubmit={onSubmit} className="grid max-w-2xl gap-4">
       <Card>
@@ -33,14 +79,27 @@ export function NoticeForm({ values }: { values: { enabled: boolean; text: strin
           </div>
         </div>
       </Card>
-      <Feedback state={state} />
-      <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button></div>
+      <Feedback state={{ error: state.error }} />
+      <SaveCancel pending={pending} cancel={cancel} />
     </form>
   );
 }
 
 export function ContactForm({ values }: { values: { email: string; phone: string; whatsapp: string; hours: string; addressLines: string; reply: string } }) {
   const { state, onSubmit, pending } = useFormAction(saveContactAction, {});
+  const { editing, edit, cancel } = useEditView(state);
+  if (!editing) {
+    return (
+      <ReadOnly state={state} edit={edit}>
+        {shown("Email", values.email)}
+        {shown("Reply time", values.reply)}
+        {shown("Phone", values.phone)}
+        {shown("WhatsApp", values.whatsapp)}
+        {shown("Address", values.addressLines)}
+        {shown("Opening hours", values.hours)}
+      </ReadOnly>
+    );
+  }
   return (
     <form onSubmit={onSubmit} className="grid max-w-2xl gap-4">
       <Card>
@@ -53,8 +112,8 @@ export function ContactForm({ values }: { values: { email: string; phone: string
           <Field label="Opening hours" htmlFor="hours" hint="One line per row, such as “Mon to Fri, 9 to 6”. Leave empty to hide."><textarea id="hours" name="hours" rows={3} defaultValue={values.hours} className={areaClass} /></Field>
         </div>
       </Card>
-      <Feedback state={state} />
-      <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : "Save"}</Button></div>
+      <Feedback state={{ error: state.error }} />
+      <SaveCancel pending={pending} cancel={cancel} />
     </form>
   );
 }
