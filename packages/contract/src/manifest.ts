@@ -31,6 +31,8 @@ export interface ProductManifest {
   actions: string[];
   /** Reports the product publishes for the platform team (GET /api/ops/reports/{key}); see reports.ts. Optional, so older manifests stay valid. */
   reports: { key: string; label: string }[];
+  /** Who decides the plan today: "ops" once the product follows Ops snapshots (OPS_BILLING), "product" while it still uses its own plan rows. Optional, so older manifests stay valid. */
+  billing?: "ops" | "product";
 }
 
 const KEY = /^[a-zA-Z][a-zA-Z0-9]{0,63}$/;
@@ -92,6 +94,7 @@ export function parseManifest(input: unknown): ParseResult<ProductManifest> {
 
   const reportsRaw = input.reports ?? [];
   if (!Array.isArray(reportsRaw) || reportsRaw.length > 20 || !reportsRaw.every((r) => isRecord(r) && typeof r.key === "string" && KEY.test(r.key) && typeof r.label === "string" && r.label.trim())) return fail("reports must be a list of {key, label}");
+  if (input.billing !== undefined && input.billing !== "ops" && input.billing !== "product") return fail('billing must be "ops" or "product"');
 
   return ok({
     contract: CONTRACT_VERSION,
@@ -106,5 +109,6 @@ export function parseManifest(input: unknown): ParseResult<ProductManifest> {
     tabs: tabsRaw.map((t) => ({ key: String((t as Record<string, unknown>).key), label: String((t as Record<string, unknown>).label) })),
     actions: actions.value,
     reports: reportsRaw.map((r) => ({ key: String((r as Record<string, unknown>).key), label: String((r as Record<string, unknown>).label).trim() })),
+    ...(input.billing === undefined ? {} : { billing: input.billing as "ops" | "product" }),
   });
 }

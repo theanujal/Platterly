@@ -24,7 +24,7 @@ Written 2026-10-05, after steps 1 to 8 of `docs/ops-contract.md` were built. The
 | 10 | Back up catering's database | `pg_dump "$DATABASE_URL" > catering-before-cutover.sql` (keep it) | File exists and is not empty |
 | 11 | Import, dry run | `cd apps/ops && npm run ops:import-catering` | "Dry run finished" and every reconciliation line `OK` |
 | 12 | Import, for real, right before the flag | `npm run ops:import-catering -- --apply` | "Committed", and the invoice number line shows catering's last number carried over |
-| 13 | Switch on | Set `OPS_BILLING=1` in catering's environment and restart it | Catering restarts without errors |
+| 13 | Switch on | Set `OPS_BILLING=1` in catering's environment and restart it, then press **Refresh** on the product under Ops, Settings, Products | Catering restarts without errors; a business's Subscription tab in Ops no longer warns that catering isn't using Ops billing |
 | 14 | Check it | See "After the switch" | All checks pass |
 
 ## After the switch

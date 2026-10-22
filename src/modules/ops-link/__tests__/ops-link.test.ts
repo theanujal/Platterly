@@ -128,6 +128,19 @@ describe("the ops routes", () => {
     }
   });
 
+  it("says in the manifest whether catering follows Ops billing (issue 88)", async () => {
+    const billing = async () => parseManifest(JSON.parse(await (await manifestGET(opsRequest("/api/ops/manifest"))).text()));
+    const off = await billing();
+    expect(off.ok && off.value.billing).toBe("product");
+    process.env.OPS_BILLING = "1";
+    try {
+      const on = await billing();
+      expect(on.ok && on.value.billing).toBe("ops");
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+  });
+
   it("lists businesses in pages and returns one business's summary and counts", async () => {
     const org = await makeOrg();
     const page = await (await businessesGET(opsRequest("/api/ops/businesses?take=2"))).json();

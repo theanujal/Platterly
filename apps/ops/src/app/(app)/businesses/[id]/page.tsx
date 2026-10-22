@@ -105,6 +105,11 @@ export default async function BusinessPage({ params, searchParams }: { params: P
                   {current ? <Badge tone={STATUS_TONE[current.status]}>{current.plan.name} · {current.status.toLowerCase().replace("_", " ")}</Badge> : <Badge tone="warning">No subscription</Badge>}
                   <span className="text-xs text-muted-foreground">Snapshot version {bp.snapshotVersion}{bp.snapshotIssuedAt ? `, issued ${formatWhen(bp.snapshotIssuedAt)}` : ", none issued"}</span>
                 </div>
+                {(bp.product.manifest as { billing?: string } | null)?.billing === "product" ? (
+                  <p className="mb-3 rounded-md bg-warning/10 p-3 text-sm text-warning" data-testid="billing-not-in-use">
+                    {bp.product.name} isn&apos;t using Ops billing yet. Plan changes here are saved, but the business keeps seeing its plan from {bp.product.name} until the cutover.
+                  </p>
+                ) : null}
                 {current ? (
                   <dl className="mb-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                     <div><dt className="text-xs text-muted-foreground">Started</dt><dd>{when(current.startDate)}</dd></div>

@@ -3,6 +3,7 @@ import { CONTRACT_VERSION, type EntitlementDef, type ProductManifest } from "@pl
 import { originFor } from "@/lib/routing/hosts";
 import { CATERING_REPORTS } from "./reports";
 import { TRIAL_DURATION_DAYS } from "@/modules/subscriptions/trial-plan";
+import { opsBillingOn } from "./config";
 
 /** The plan limits catering enforces today (`SubscriptionPlan` columns and `limits.ts`), declared once for ops's plan editor. */
 export const CATERING_ENTITLEMENTS: EntitlementDef[] = [
@@ -37,5 +38,7 @@ export function buildManifest(productKey: string): ProductManifest {
     tabs: [{ key: "overview", label: "Overview" }],
     reports: CATERING_REPORTS,
     actions: ["suspend", "reactivate", "update", "slug", "provider", "delete", "restore"],
+    // Until the cutover catering uses its own plan rows; Ops shows a notice on the Subscription tab (issue 88).
+    billing: opsBillingOn() ? "ops" : "product",
   };
 }

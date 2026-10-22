@@ -159,8 +159,16 @@ describe("manifest", () => {
     ["trial defaults of the wrong type", { ...manifest, trial: { days: 7, entitlements: { multiLocation: "yes" } } }],
     ["a negative limit", { ...manifest, trial: { days: 7, entitlements: { maxCustomers: -1 } } }],
     ["a non-http base URL", { ...manifest, baseUrl: "ftp://x" }],
+    ["an unknown billing owner", { ...manifest, billing: "stripe" }],
   ])("rejects %s", (_name, input) => {
     expect(parseManifest(input).ok).toBe(false);
+  });
+
+  it("reads who owns billing, and leaves it out when the product doesn't say (issue 88)", () => {
+    const withBilling = parseManifest({ ...manifest, billing: "product" });
+    expect(withBilling.ok && withBilling.value.billing).toBe("product");
+    const without = parseManifest(manifest);
+    expect(without.ok && without.value.billing).toBeUndefined();
   });
 });
 
