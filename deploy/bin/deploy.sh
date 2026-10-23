@@ -18,24 +18,27 @@ dir="$(app_dir "$app" "$clone")"
 log "deploying $app ($ref) to the $idle slot; $active is live"
 
 # 1. The code, in the idle slot's own clone.
-if [ ! -d "$clone/.git" ]; then mkdir -p "$(dirname "$clone")"; git clone "$REPO_URL" "$clone"; fi
-git -C "$clone" fetch --prune origin
-sha="$(git -C "$clone" rev-parse "$ref")"
-git -C "$clone" checkout --detach "$sha"
+if [ ! -d "$clone/.git" ]; then app_mkdir "$(dirname "$clone")"; as_app "$app" "$(dirname "$clone")" git clone "$REPO_URL" "$clone"; fi
+as_app "$app" "$clone" git -C "$clone" fetch --prune origin
+sha="$(as_app "$app" "$clone" git -C "$clone" rev-parse "$ref")"
+as_app "$app" "$clone" git -C "$clone" checkout --detach "$sha"
 log "checked out $sha"
 
-# 2. Build. The migration guard first, so a release that could lose data never gets as far as the database.
+# 2. Build, as the service user with the app's env loaded (lib.sh as_app). The migration guard first, so a release that could lose
+# data never gets as far as the database.
 if [ "$app" = ops ]; then
-  ( cd "$clone" && node scripts/check-migrations.mjs )
-  ( cd "$dir" && npm ci && npm run build )
+  as_app "$app" "$clone" node scripts/check-migrations.mjs
+  as_app "$app" "$dir" npm ci
 else
-  ( cd "$clone" && npm ci && npm run check:migrations && npm run build )
+  as_app "$app" "$clone" npm ci
+  as_app "$app" "$clone" npm run check:migrations
 fi
+as_app "$app" "$dir" npm run build
 
 # 3. Database: backup, then only additive migrations (both slots share the database, so the live slot keeps working).
 # Catering's first, then Ops's own (docs/production-checklist.md).
-"$HERE/backup.sh" --db-only --tag "pre-deploy-$app-${sha:0:8}"
-if [ "$app" = ops ]; then ( cd "$dir" && npx prisma migrate deploy ); else ( cd "$clone" && npx prisma migrate deploy ); fi
+as_app "$app" "$PLATTERLY_ROOT" "$HERE/backup.sh" --db-only --tag "pre-deploy-$app-${sha:0:8}"
+as_app "$app" "$dir" npx prisma migrate deploy
 
 # 4. Start the idle slot and prove it works before any visitor is sent to it.
 systemctl restart "$(unit_of "$app" "$idle")"

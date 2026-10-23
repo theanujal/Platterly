@@ -18,7 +18,9 @@ Nothing here is needed until go-live. The scripts are tested with stand-ins (`ba
 5. Nginx: copy `deploy/nginx/platterly.conf` to `/etc/nginx/conf.d/`, add the certificate, and create `cloudflare-ips.conf` (Cloudflare's ranges as
    `set_real_ip_from`). Create the first upstream files so Nginx can start:
    `printf 'upstream platterly_catering { server 127.0.0.1:3000; }\n' > /etc/nginx/platterly/active-catering.conf` and the same for ops with 3200.
-6. First deploy: `sudo -u platterly /srv/platterly/bin/deploy.sh catering` then `... ops`. Because blue is "live" by default, the first deploy lands in green and switches to it.
+6. First deploy, as root: `/srv/platterly/bin/deploy.sh catering`, then `... ops`. Because blue is "live" by default, the first deploy lands in green and switches to it.
+   `deploy.sh` and `rollback.sh` run as root, because they restart services and reload Nginx. The code is fetched, built and migrated as
+   `platterly`, with that app's env file loaded (`as_app` in `lib.sh`), so the build sees `NEXT_PUBLIC_*` and Prisma sees `DATABASE_URL`.
 7. Cron: copy `deploy/cron/platterly.cron` to `/etc/cron.d/platterly` and set `MAILTO`.
 
 ## Every release

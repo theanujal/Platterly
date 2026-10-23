@@ -22,8 +22,9 @@ case "$1 $2" in
 esac
 if [ "$1" = "-C" ] && [ "$3" = "rev-parse" ]; then if [ "$4" = "--short" ]; then echo abc1234; else echo "${FAKE_SHA:-1111111111111111111111111111111111111111}"; fi; fi
 exit 0'
-stub npm 'echo "npm $* (in $PWD)" >> "'"$CALLS"'"; exit 0'
-stub npx 'echo "npx $* (in $PWD)" >> "'"$CALLS"'"; exit 0'
+stub npm 'echo "npm $* (in $PWD) url=${NEXT_PUBLIC_APP_URL:-}" >> "'"$CALLS"'"; exit 0'
+stub npx 'echo "npx $* (in $PWD) db=${DATABASE_URL:-}" >> "'"$CALLS"'"; exit 0'
+printf 'NEXT_PUBLIC_APP_URL="https://catering.test"\nDATABASE_URL="postgresql://catering-db"\n' > "$ROOT/env/catering.env"
 stub node 'echo "node $*" >> "'"$CALLS"'"; exit 0'
 stub systemctl 'echo "systemctl $*" >> "'"$CALLS"'"; [ "$1" = is-active ] && echo active; exit 0'
 stub systemd-run 'echo "systemd-run $*" >> "'"$CALLS"'"; exit 0'
@@ -45,6 +46,8 @@ assert_eq "$(upstream catering)" 3001 "nginx upstream is green's port (3001)"
 assert_contains "$CALLS" "systemctl restart platterly-app@catering-green" "the idle (green) slot was started"
 assert_contains "$CALLS" "backup --db-only --tag pre-deploy-catering-11111111" "the database was backed up before migrating"
 assert_contains "$CALLS" "npx prisma migrate deploy" "migrations were applied"
+assert_contains "$CALLS" "npm run build (in $ROOT/catering/green) url=https://catering.test" "the build sees the app's env file (NEXT_PUBLIC_*)"
+assert_contains "$CALLS" "db=postgresql://catering-db" "the migration sees the app's DATABASE_URL"
 assert_contains "$CALLS" "systemd-run --quiet --on-active=10m --unit=platterly-drain-catering-blue" "the old (blue) slot is scheduled to stop after the drain"
 assert_contains "$ROOT/state/releases.log" "catering green 1111111111" "the release was recorded"
 # Order: backup, then migrate, then start, then nginx reload.

@@ -18,6 +18,16 @@ HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"
 DRAIN_MINUTES="${DRAIN_MINUTES:-10}"
 SERVICE_USER="${SERVICE_USER:-platterly}"
 
+# deploy.sh and rollback.sh run as root (they restart services and reload Nginx). The code itself is fetched, built and migrated
+# as SERVICE_USER with the app's env file loaded: the release then belongs to the user that runs it (it writes .next/cache), the
+# build sees NEXT_PUBLIC_* and NEXT_SERVER_ACTIONS_ENCRYPTION_KEY, and Prisma sees DATABASE_URL. Run as anyone else, only the env is loaded.
+as_app() { # as_app <app> <dir> <command...>
+  local run=(bash -c 'set -a; [ -f "$0" ] && . "$0"; set +a; cd "$1" && shift && exec "$@"' "$ENV_DIR/$1.env" "$2"); shift 2
+  if [ "$(id -u)" -eq 0 ]; then runuser -u "$SERVICE_USER" -- env HOME="$(getent passwd "$SERVICE_USER" | cut -d: -f6)" "${run[@]}" "$@"; else "${run[@]}" "$@"; fi
+}
+# A folder SERVICE_USER can write in (when running as root), for the slot clones.
+app_mkdir() { mkdir -p "$1"; if [ "$(id -u)" -eq 0 ]; then chown "$SERVICE_USER:$SERVICE_USER" "$1"; fi; }
+
 log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${LOG_TAG:-deploy}" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 
