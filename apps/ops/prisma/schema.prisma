@@ -152,6 +152,8 @@ model Business {
   name        String
   ownerName   String?
   ownerEmail  String?
+  // The number Ops's billing WhatsApps go to: the business's mobile number, sent by the product in `business.updated`.
+  ownerPhone  String?
   status      BusinessStatus @default(ACTIVE)
   deleteAfter DateTime?
   createdAt   DateTime       @default(now())
@@ -339,24 +341,31 @@ enum MessageStatus {
   FAILED
 }
 
-// Every email ops sends to an owner, whether a product asked for it (`message.requested`) or ops itself did (receipts, trial
-// notices). Written before sending, so a failed send is retried by the scheduled job from the stored template and variables.
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+}
+
+// Every email or WhatsApp ops sends to an owner (one row each), whether a product asked for it (`message.requested`) or ops
+// itself did (receipts, trial notices). Written before sending, so a failed send is retried by the scheduled job from the stored template and variables.
 // `dedupeKey` makes "the same fact again" (a retried event, a daily sweep) send once.
 model MessageLog {
-  id              String        @id @default(cuid())
+  id              String         @id @default(cuid())
   businessId      String
   productKey      String?
   template        String
+  channel         MessageChannel @default(EMAIL)
   variables       Json
   toEmail         String?
+  toPhone         String?
   subject         String?
-  status          MessageStatus @default(PENDING)
-  attempts        Int           @default(0)
+  status          MessageStatus  @default(PENDING)
+  attempts        Int            @default(0)
   nextAttemptAt   DateTime?
   providerMessage String?
   error           String?
-  dedupeKey       String?       @unique
-  createdAt       DateTime      @default(now())
+  dedupeKey       String?        @unique
+  createdAt       DateTime       @default(now())
   sentAt          DateTime?
 
   @@index([businessId, createdAt])

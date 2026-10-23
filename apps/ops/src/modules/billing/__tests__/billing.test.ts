@@ -249,7 +249,7 @@ describe("checkout and confirmation", () => {
     expect(await prisma.subscription.count({ where: { businessId: biz, productKey: KEY } })).toBe(1);
     expect(await prisma.subscriptionPayment.count({ where: { businessId: biz, status: "PAID" } })).toBe(1);
     // One payment is one receipt email, however many times it is confirmed.
-    const receipts = await prisma.messageLog.findMany({ where: { businessId: biz, template: "payment_received" } });
+    const receipts = await prisma.messageLog.findMany({ where: { businessId: biz, template: "payment_received", channel: "EMAIL" } });
     expect(receipts).toHaveLength(1);
     expect(receipts[0].variables).toMatchObject({ planName: pro.name, invoiceNumber: first!.invoiceNumber });
   });

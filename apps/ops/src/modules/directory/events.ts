@@ -43,7 +43,7 @@ async function apply(tx: Tx, event: ProductEvent): Promise<Outcome> {
 
   switch (event.type) {
     case "business.updated":
-      await tx.business.update({ where: { id: businessId }, data: { ...(event.data.businessName !== undefined ? { name: event.data.businessName } : {}), ...(event.data.ownerName !== undefined ? { ownerName: event.data.ownerName } : {}) } });
+      await tx.business.update({ where: { id: businessId }, data: { ...(event.data.businessName !== undefined ? { name: event.data.businessName } : {}), ...(event.data.ownerName !== undefined ? { ownerName: event.data.ownerName } : {}), ...(event.data.contactPhone !== undefined ? { ownerPhone: event.data.contactPhone } : {}) } });
       return { applied: true };
     case "usage.reported":
       await tx.businessProduct.update({

@@ -190,7 +190,7 @@ describe("subscriptions", () => {
     expect(await sweepExpired(new Date(), KEY)).toBe(0);
     // The trial gets an "ended" email and the lapsed paid plan a "paused" email, once each. (Hand-assigned paid plans send "plan changed".)
     expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "trial_ended" }, select: { businessId: true } })).toEqual([{ businessId: a }]);
-    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "plan_locked" }, select: { businessId: true } })).toEqual([{ businessId: b }]);
+    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "plan_locked", channel: "EMAIL" }, select: { businessId: true } })).toEqual([{ businessId: b }]);
     expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "plan_changed" } })).toBe(2);
   });
 
@@ -201,7 +201,7 @@ describe("subscriptions", () => {
     const end = new Date("2026-11-01T12:00:00Z");
     await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: end } });
     const at = (days: number) => new Date(end.getTime() + days * DAY);
-    const mails = (template: string) => prisma.messageLog.count({ where: { productKey: KEY, template } });
+    const mails = (template: string) => prisma.messageLog.count({ where: { productKey: KEY, template, channel: "EMAIL" } });
 
     expect(await sendGraceNotices(at(-1), KEY)).toBe(0); // not ended yet
     expect(await sendGraceNotices(at(0.1), KEY)).toBe(1); // ended: the 7 days start

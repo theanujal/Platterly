@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { tellOwner } from "@/modules/messages/messages";
 import { stopAutoPay } from "@/modules/billing/billing";
+import { priceBreakdown } from "@/modules/billing/math";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { PAID_GRACE_DAYS } from "@platterly/contract";
 
@@ -139,23 +140,44 @@ export async function sendTrialNotices(now: Date = new Date(), productKey?: stri
   return sent;
 }
 
+const IST_OFFSET = 5.5 * 3_600_000;
+const istDay = (d: Date) => Math.floor((d.getTime() + IST_OFFSET) / DAY);
+const istHour = (d: Date) => new Date(d.getTime() + IST_OFFSET).getUTCHours();
+
 /**
- * Yearly plans are paid once, so the owner is reminded 30, 7 and 1 day before the year ends, once each (the stage and the period
- * are in the key; the email gives the real day count). After the end, the grace notices take over. Monthly auto-pay renews by
- * itself and gets none.
+ * Renewal reminders for every paid plan (Sharath, 2026-10-23), in Asia/Kolkata calendar days, by email and WhatsApp:
+ *   auto-pay on: 7 days before, "we will charge"; on the day from 8 am, "charging today". A charge before 8 am moves the
+ *                period on, so that day only gets the payment confirmation.
+ *   paid by hand (monthly, yearly, paused or halted auto-pay, or a downgrade waiting): 7 days before and on the day; yearly also
+ *                30 days and 1 day before, by email only.
+ * A plan assigned by hand (no billing interval) gets none. The key holds the period end and the stage, so each goes once a
+ * cycle. After the end, the grace notices take over.
  */
 export async function sendRenewalReminders(now: Date = new Date(), productKey?: string): Promise<number> {
   const subs = await prisma.subscription.findMany({
-    where: { endDate: null, status: "ACTIVE", billingInterval: "ANNUAL", currentPeriodEnd: { gt: now, lte: new Date(now.getTime() + 30 * DAY) }, ...(productKey ? { productKey } : {}) },
-    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true },
+    where: { endDate: null, status: "ACTIVE", billingInterval: { not: null }, currentPeriodEnd: { gt: now, lte: new Date(now.getTime() + 31 * DAY) }, ...(productKey ? { productKey } : {}) },
+    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true, billingInterval: true, autoPay: true, pendingPlanId: true, razorpaySubscriptionId: true, plan: { select: { name: true, priceMonthly: true, gstPercent: true } } },
   });
+  let sent = 0;
   for (const sub of subs) {
-    const daysLeft = Math.ceil((sub.currentPeriodEnd!.getTime() - now.getTime()) / DAY);
-    const stage = daysLeft <= 1 ? 1 : daysLeft <= 7 ? 7 : 30;
-    const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(sub.currentPeriodEnd!);
-    await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_renewal_due", variables: { daysLeft, endsOn }, dedupeKey: `renewal:${sub.id}:${sub.currentPeriodEnd!.getTime()}:${stage}` });
+    const end = sub.currentPeriodEnd!;
+    const yearly = sub.billingInterval === "ANNUAL";
+    const daysLeft = istDay(end) - istDay(now);
+    const stage = daysLeft === 0 ? (istHour(now) >= 8 ? 0 : null) : daysLeft === 1 ? (yearly ? 1 : null) : daysLeft <= 7 ? 7 : yearly && daysLeft <= 30 ? 30 : null;
+    if (stage === null) continue;
+    const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(end);
+    const base = { businessId: sub.businessId, productKey: sub.productKey };
+    if (!yearly && sub.autoPay === "ACTIVE" && !sub.pendingPlanId) {
+      const lastPaid = sub.razorpaySubscriptionId ? await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: sub.razorpaySubscriptionId, status: "PAID" }, orderBy: { createdAt: "desc" }, select: { total: true } }) : null;
+      const amount = lastPaid ? Number(lastPaid.total) : priceBreakdown(Number(sub.plan.priceMonthly ?? 0), Number(sub.plan.gstPercent)).total;
+      const template = stage === 0 ? "autopay_today" : "autopay_upcoming";
+      await tellOwner({ ...base, template, variables: { planName: sub.plan.name, amount, chargeOn: endsOn }, dedupeKey: `${template}:${sub.id}:${end.getTime()}` });
+    } else {
+      await tellOwner({ ...base, template: "plan_renewal_due", variables: { daysLeft, endsOn, planName: sub.plan.name, ...(sub.autoPay === "PAUSED" ? { paused: 1 } : {}) }, dedupeKey: `renewal:${sub.id}:${end.getTime()}:${stage}`, emailOnly: stage === 1 || stage === 30 });
+    }
+    sent += 1;
   }
-  return subs.length;
+  return sent;
 }
 
 export async function listSubscriptions(businessId: string) {

@@ -136,7 +136,7 @@ All are `POST {ops}/api/products/events`, body `{ "eventId", "type", "productKey
 | Type | Data | Ops does |
 |---|---|---|
 | `business.signed_up` | owner name and email, business name, optional `backfill: true` | Creates the `Business` if new, a trial `Subscription`, pushes the first snapshot. Raises the "New caterer signed up" alert, except for a repeat, a second product joining, or a `backfill` (a business that existed before the product was linked to ops). |
-| `business.updated` | the changed `businessName` and/or `ownerName` | Updates the directory entry. Sent when a business is renamed in onboarding or settings. |
+| `business.updated` | the changed `businessName`, `ownerName` and/or `contactPhone` | Updates the directory entry. Sent when a business is renamed in onboarding or settings. `contactPhone` (`+` and 8 to 15 digits) is the number the business's WhatsApp messages go to; the product sends it whenever it changes, and Ops sends billing WhatsApps to it. |
 | `usage.reported` | counts (customers, orders, events, users), period | Stores the latest counts for lists and limit warnings. Sent once a day as a backstop and again within about a minute of any total changing (the scheduled job compares each business's counts with the last report; at most one a minute per business). |
 | `alert.raised` | severity, code, message | Creates a Super Admin alert (bell, push). |
 | `owner.changed` | new owner email | Updates billing contact. |
@@ -215,6 +215,7 @@ Step 6 ships behind a flag (`OPS_BILLING`, off by default). Off means catering b
 
 - Products never send these themselves. They emit `message.requested` with a template key and variables. Ops renders the template in that product's email design, sends via ZeptoMail (and WhatsApp when connected), and logs it.
 - Ops itself sends billing messages (payment receipts, failed payment, trial ending) because it owns the facts.
+- Ops also sends some messages on WhatsApp, to the business's number from `business.updated.contactPhone`: `payment_received`, `plan_renewal_due`, `autopay_upcoming`, `autopay_today`, `autopay_failed`, `plan_grace`, `plan_locked`. A product never sends these itself.
 - A business's messages to **its own customers** stay in the product with the business's own channels. Ops is never in that path.
 
 ## 10. Versioning and compatibility

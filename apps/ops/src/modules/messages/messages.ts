@@ -1,13 +1,15 @@
 import "server-only";
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma, type MessageChannel } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "./zeptomail";
-import { hasTemplate, renderTemplate, type Variables } from "./templates";
+import { sendWacrmMessage, wacrmConfig } from "./wacrm";
+import { TEMPLATES, hasTemplate, renderTemplate, whatsappMessage, type Variables } from "./templates";
 
 /**
- * Messages from Platterly to a business owner (docs/ops-contract.md 9). Written to `message_log` first, then sent, so a send
- * that fails is retried from the stored template and variables:
- *   sent -> done          not configured / no owner email -> skipped (kept in the log, never retried)
+ * Messages from Platterly to a business owner (docs/ops-contract.md 9), by email and, for templates with a WhatsApp version,
+ * WhatsApp (one row each). Written to `message_log` first, then sent, so a send that fails is retried from the stored
+ * template and variables:
+ *   sent -> done          not configured / no owner email or phone -> skipped (kept in the log, never retried)
  *   provider error or network error -> retry at 1m, 5m, 30m, 2h, 12h, then failed
  * A claim pushes the next attempt forward before sending, so two workers never send one message together.
  */
@@ -24,6 +26,8 @@ export interface MessageInput {
   variables?: Variables;
   /** The same fact again (a retried event, a daily sweep) sends once. */
   dedupeKey?: string;
+  /** Email only, even when the template has a WhatsApp version (the yearly 30- and 1-day reminders). */
+  emailOnly?: boolean;
 }
 
 /** Writes the log row and makes the first attempt. Refuses an unknown template or missing variable before anything is stored. */
@@ -32,10 +36,17 @@ export async function sendMessage(input: MessageInput, fetchImpl: typeof fetch =
   const check = renderTemplate(input.template, input.variables ?? {}, { businessName: "", ownerName: "", productName: "", productUrl: "" });
   if (!check.ok) return { ok: false, error: check.error };
 
+  const email = await logAndAttempt(input, "EMAIL", input.dedupeKey ?? null, fetchImpl);
+  // WhatsApp is its own row, sent and retried on its own; a problem with it never touches the email.
+  if (!input.emailOnly && TEMPLATES[input.template].whatsapp) await logAndAttempt(input, "WHATSAPP", input.dedupeKey ? `wa:${input.dedupeKey}` : null, fetchImpl);
+  return email;
+}
+
+async function logAndAttempt(input: MessageInput, channel: MessageChannel, dedupeKey: string | null, fetchImpl: typeof fetch): Promise<{ ok: true; id: string | null; outcome: SendOutcome | "duplicate" }> {
   let id: string;
   try {
     const row = await prisma.messageLog.create({
-      data: { businessId: input.businessId, productKey: input.productKey, template: input.template, variables: (input.variables ?? {}) as Prisma.InputJsonValue, dedupeKey: input.dedupeKey ?? null },
+      data: { businessId: input.businessId, productKey: input.productKey, template: input.template, channel, variables: (input.variables ?? {}) as Prisma.InputJsonValue, dedupeKey },
       select: { id: true },
     });
     id = row.id;
@@ -59,22 +70,31 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
     await prisma.messageLog.update({ where: { id }, data });
     return outcome;
   };
-  if (!business?.ownerEmail) return finish({ status: "SKIPPED", error: "The business has no owner email.", nextAttemptAt: null }, "skipped");
+  const context = { businessName: business?.name ?? "", ownerName: business?.ownerName ?? "", productName: product?.name ?? "Platterly", productUrl: product?.baseUrl ?? "https://platterly.in" };
+  const retryOrFail = (base: Prisma.MessageLogUpdateInput, reason: string) =>
+    row.attempts < MAX_ATTEMPTS ? finish({ ...base, error: reason, nextAttemptAt: new Date(now.getTime() + RETRY_DELAYS_SECONDS[row.attempts - 1] * 1000) }, "retry") : finish({ ...base, status: "FAILED", error: reason, nextAttemptAt: null }, "failed");
 
-  const rendered = renderTemplate(row.template, row.variables as Variables, {
-    businessName: business.name,
-    ownerName: business.ownerName ?? "",
-    productName: product?.name ?? "Platterly",
-    productUrl: product?.baseUrl ?? "https://platterly.in",
-  });
+  if (row.channel === "WHATSAPP") {
+    if (!business?.ownerPhone) return finish({ status: "SKIPPED", error: "The business has no WhatsApp number.", nextAttemptAt: null }, "skipped");
+    const config = wacrmConfig(process.env, process.env.WACRM_ALLOW_IN_TESTS === "1");
+    if (!config) return finish({ status: "SKIPPED", error: "WhatsApp is not set up.", nextAttemptAt: null }, "skipped");
+    const wa = whatsappMessage(row.template, row.variables as Variables, context);
+    if (!wa) return finish({ status: "FAILED", error: `template "${row.template}" has no WhatsApp version`, nextAttemptAt: null }, "failed");
+    const result = await sendWacrmMessage(config, { to: business.ownerPhone, text: wa.text, template: { name: wa.name, params: wa.params } }, fetchImpl);
+    const base = { toPhone: result.to, subject: wa.name };
+    if (result.status === "sent") return finish({ ...base, status: "SENT", sentAt: new Date(), providerMessage: result.providerMessageId, error: null, nextAttemptAt: null }, "sent");
+    return retryOrFail(base, result.reason);
+  }
+
+  if (!business?.ownerEmail) return finish({ status: "SKIPPED", error: "The business has no owner email.", nextAttemptAt: null }, "skipped");
+  const rendered = renderTemplate(row.template, row.variables as Variables, context);
   if (!rendered.ok) return finish({ status: "FAILED", error: rendered.error, nextAttemptAt: null }, "failed");
 
   const result = await sendEmail({ to: business.ownerEmail, subject: rendered.value.subject, html: rendered.value.html }, fetchImpl);
   const base = { toEmail: business.ownerEmail, subject: rendered.value.subject };
   if (result.status === "sent") return finish({ ...base, status: "SENT", sentAt: new Date(), providerMessage: result.providerMessageId, error: null, nextAttemptAt: null }, "sent");
   if (result.status === "skipped") return finish({ ...base, status: "SKIPPED", error: result.reason, nextAttemptAt: null }, "skipped");
-  if (row.attempts < MAX_ATTEMPTS) return finish({ ...base, error: result.reason, nextAttemptAt: new Date(now.getTime() + RETRY_DELAYS_SECONDS[row.attempts - 1] * 1000) }, "retry");
-  return finish({ ...base, status: "FAILED", error: result.reason, nextAttemptAt: null }, "failed");
+  return retryOrFail(base, result.reason);
 }
 
 /** The scheduled part: sends what is due (first attempts that were interrupted, and retries). Returns how many went out. */

@@ -1,4 +1,5 @@
 import { escapeHtml, p, renderEmail } from "./layout";
+import { cleanParams } from "./wacrm";
 
 /**
  * The messages ops can send to a business owner (docs/ops-contract.md 9). A product asks for one by key with a few plain
@@ -21,6 +22,8 @@ interface Template {
   /** Variables the template cannot be written without. */
   requires: string[];
   render(v: Variables, c: MessageContext): Rendered;
+  /** Also sent on WhatsApp as this approved Meta template (Sharath, 2026-10-23). `body` is the template's wording, sent as plain text until it is approved. */
+  whatsapp?: { name: string; body: string; params(v: Variables, c: MessageContext): string[] };
 }
 
 const text = (v: Variables, key: string, fallback = "") => String(v[key] ?? fallback);
@@ -92,23 +95,26 @@ export const TEMPLATES: Record<string, Template> = {
         }),
       };
     },
+    whatsapp: { name: "platterly_plan_grace", body: "Hi {{1}}, your Platterly plan has ended. Everything still works, but your account will be locked on {{2}} unless the plan is renewed. Renew here: {{3}} Nothing is deleted.", params: (v, c) => [c.businessName, text(v, "endsOn"), v.paused ? `${c.productUrl}/settings/subscription` : `${c.productUrl}/subscribe`] },
   },
   plan_renewal_due: {
-    requires: ["daysLeft", "endsOn"],
+    requires: ["daysLeft", "endsOn", "planName"],
     render: (v, c) => {
       const days = Number(v.daysLeft);
+      const resume = Boolean(v.paused);
       return {
-        subject: days <= 1 ? "Your Platterly plan ends tomorrow" : `Your Platterly plan ends in ${plural(days, "day")}`,
+        subject: days === 0 ? "Your Platterly plan renews today" : days === 1 ? "Your Platterly plan ends tomorrow" : `Your Platterly plan ends in ${plural(days, "day")}`,
         html: renderEmail({
           tag: "Plan",
           eyebrow: "Renewal due",
-          title: `Your yearly plan ends on ${escapeHtml(text(v, "endsOn"))}`,
+          title: days === 0 ? "Your plan renews today" : `Your plan ends on ${escapeHtml(text(v, "endsOn"))}`,
           greeting: greet(c),
-          bodyHtml: p(`The yearly plan for <strong>${escapeHtml(c.businessName)}</strong> ends on <strong>${escapeHtml(text(v, "endsOn"))}</strong>. Renew before then to carry on without a break.`),
-          cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
+          bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> ends on <strong>${escapeHtml(text(v, "endsOn"))}</strong>. ${resume ? "Resume auto-pay" : "Renew"} before then to carry on without a break.`),
+          cta: resume ? { label: "Resume", url: `${c.productUrl}/settings/subscription` } : { label: "Renew now", url: `${c.productUrl}/subscribe` },
         }),
       };
     },
+    whatsapp: { name: "platterly_plan_renewal_due", body: "Hi {{1}}, your {{2}} plan ends {{3}}. Renew here to keep using Platterly without a break: {{4}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName", "Platterly"), Number(v.daysLeft) === 0 ? "today" : `on ${text(v, "endsOn")} (in ${plural(Number(v.daysLeft), "day")})`, v.paused ? `${c.productUrl}/settings/subscription` : `${c.productUrl}/subscribe`] },
   },
   plan_locked: {
     requires: [],
@@ -123,6 +129,7 @@ export const TEMPLATES: Record<string, Template> = {
         cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
       }),
     }),
+    whatsapp: { name: "platterly_plan_locked", body: "Hi {{1}}, the 7 days to renew your Platterly plan have passed, so your account is locked. Nothing is deleted. Renew here to carry on where you left off: {{2}} Thank you.", params: (_v, c) => [c.businessName, `${c.productUrl}/subscribe`] },
   },
   payment_received: {
     requires: ["planName", "amount"],
@@ -138,6 +145,7 @@ export const TEMPLATES: Record<string, Template> = {
         cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
       }),
     }),
+    whatsapp: { name: "platterly_plan_payment_received", body: "Hi {{1}}, we received your payment of {{2}} for the {{3}} plan. Your plan is active until {{4}}. Invoice {{5}} is in Settings > Subscription in Platterly.", params: (v, c) => [c.businessName, inr(text(v, "amount")), text(v, "planName"), text(v, "validUntil"), text(v, "invoiceNumber")] },
   },
   stand_placed: {
     requires: ["quantity", "amount"],
@@ -209,6 +217,38 @@ export const TEMPLATES: Record<string, Template> = {
         cta: { label: "Set up auto-pay again", url: `${c.productUrl}/subscribe` },
       }),
     }),
+    whatsapp: { name: "platterly_autopay_failed", body: "Hi {{1}}, we could not take the auto-pay for your {{2}} plan. Razorpay will try again over the next few days, and everything keeps working meanwhile. To fix it now, set up auto-pay again here: {{3}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName"), `${c.productUrl}/subscribe`] },
+  },
+  autopay_upcoming: {
+    requires: ["planName", "amount", "chargeOn"],
+    render: (v, c) => ({
+      subject: `Your Platterly plan renews on ${text(v, "chargeOn")}`,
+      html: renderEmail({
+        tag: "Payment",
+        eyebrow: "Auto-pay coming up",
+        title: `We will charge ${inr(text(v, "amount"))} on ${escapeHtml(text(v, "chargeOn"))}`,
+        greeting: greet(c),
+        bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> renews on <strong>${escapeHtml(text(v, "chargeOn"))}</strong>. We will charge <strong>${inr(text(v, "amount"))}</strong> (with GST) through your auto-pay, so there is nothing you need to do.`),
+        details: [["Plan", text(v, "planName")], ["Amount (with GST)", inr(text(v, "amount"))], ["Charge date", text(v, "chargeOn")]],
+        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+      }),
+    }),
+    whatsapp: { name: "platterly_autopay_upcoming", body: "Hi {{1}}, your {{2}} plan renews on {{3}}. We will charge {{4}} through your auto-pay, so there is nothing you need to do. To change or pause it, open Settings > Subscription in Platterly.", params: (v, c) => [c.businessName, text(v, "planName"), text(v, "chargeOn"), inr(text(v, "amount"))] },
+  },
+  autopay_today: {
+    requires: ["planName", "amount"],
+    render: (v, c) => ({
+      subject: "Your Platterly plan renews today",
+      html: renderEmail({
+        tag: "Payment",
+        eyebrow: "Auto-pay today",
+        title: `We will charge ${inr(text(v, "amount"))} today`,
+        greeting: greet(c),
+        bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> renews today. We will charge <strong>${inr(text(v, "amount"))}</strong> (with GST) through your auto-pay and send you a confirmation once it goes through.`),
+        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+      }),
+    }),
+    whatsapp: { name: "platterly_autopay_today", body: "Hi {{1}}, your {{2}} plan renews today. We will charge {{3}} through your auto-pay and send you a confirmation once it goes through.", params: (v, c) => [c.businessName, text(v, "planName"), inr(text(v, "amount"))] },
   },
   autopay_stopped: {
     requires: ["planName"],
@@ -280,4 +320,12 @@ export function renderTemplate(key: string, variables: Variables, context: Messa
   if (missing.length > 0) return { ok: false, error: `template "${key}" needs ${missing.join(", ")}` };
   if (template.requires.includes("daysLeft") && !Number.isFinite(Number(variables.daysLeft))) return { ok: false, error: `template "${key}" needs daysLeft as a number` };
   return { ok: true, value: template.render(variables, context) };
+}
+
+/** The WhatsApp version of a template: the Meta template name, its {{n}} parameters, and the same words as plain text. Null when the template has none. */
+export function whatsappMessage(key: string, v: Variables, c: MessageContext): { name: string; params: string[]; text: string } | null {
+  const wa = hasTemplate(key) ? TEMPLATES[key].whatsapp : undefined;
+  if (!wa) return null;
+  const params = cleanParams(wa.params(v, c));
+  return { name: wa.name, params, text: wa.body.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? "-") };
 }

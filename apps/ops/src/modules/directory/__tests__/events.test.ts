@@ -119,6 +119,13 @@ describe("receiveEvent", () => {
     expect(await prisma.notification.count({ where: { businessId: String(su.businessId), severity: "CRITICAL", kind: "db.down" } })).toBe(1);
   });
 
+  it("business.updated stores the WhatsApp number as ownerPhone", async () => {
+    const su = signup();
+    await send(su);
+    expect((await send(event("business.updated", { contactPhone: "+919812345678" }, { businessId: su.businessId }))).status).toBe(200);
+    expect((await prisma.business.findUniqueOrThrow({ where: { id: String(su.businessId) } })).ownerPhone).toBe("+919812345678");
+  });
+
   it("a repeated sign-up raises no second notification, and business.updated renames the business", async () => {
     const su = signup();
     await send(su);

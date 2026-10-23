@@ -348,7 +348,7 @@ const hook = (event: string, sub: { id: string; status: string; current_start?: 
   const body = JSON.stringify({ event, payload: { subscription: { entity: sub }, ...(payment ? { payment: { entity: { ...payment, order_id: "order_rzp_internal" } } } : {}) } });
   return webhookPOST(new Request("http://127.0.0.1:3200/api/webhooks/razorpay", { method: "POST", body, headers: { "x-razorpay-signature": createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex") } }));
 };
-const mails = async (biz: string) => (await prisma.messageLog.findMany({ where: { businessId: biz }, select: { template: true }, orderBy: { createdAt: "asc" } })).map((m) => m.template);
+const mails = async (biz: string) => (await prisma.messageLog.findMany({ where: { businessId: biz, channel: "EMAIL" }, select: { template: true }, orderBy: { createdAt: "asc" } })).map((m) => m.template);
 
 /** A kitchen on Pro with auto-pay, charged once. */
 async function onAutoPay() {
@@ -482,22 +482,31 @@ describe("grace and lock with auto-pay", () => {
   });
 });
 
-describe("yearly renewal reminders", () => {
-  it("30, 7 and 1 day before the year ends, once each, with the real day count; never for monthly auto-pay", async () => {
+describe("renewal reminders", () => {
+  it("yearly: 30, 7, 1 and 0 days before, once each; monthly auto-pay: the heads-up and charging today", async () => {
     const { pro, biz } = await setup();
     const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
     const paid = await confirmPayment(razorpayOrderId, "pay_y");
     const end = paid!.periodEnd!.getTime();
-    for (const daysBefore of [40, 29, 28, 6, 5, 0.5, 0.4]) await sendRenewalReminders(new Date(end - daysBefore * DAY), KEY);
-    const logs = await prisma.messageLog.findMany({ where: { businessId: biz, template: "plan_renewal_due" }, orderBy: { createdAt: "asc" } });
-    expect(logs.map((l) => (l.variables as { daysLeft: number }).daysLeft)).toEqual([29, 6, 1]);
-    // A second kitchen on the same plans, paying monthly by auto-pay.
+    // IST calendar days. `at(d, h)` is h o'clock IST, d calendar days before the period end's IST day.
+    const IST = 5.5 * 3_600_000;
+    const endDay = Math.floor((end + IST) / DAY);
+    const at = (daysBefore: number, hourIst: number) => new Date((endDay - daysBefore) * DAY - IST + hourIst * 3_600_000);
+    for (const [d, h] of [[40, 9], [29, 9], [28, 9], [6, 9], [5, 9], [1, 9], [0, 7], [0, 9], [0, 10]]) await sendRenewalReminders(at(d, h), KEY);
+    const logs = await prisma.messageLog.findMany({ where: { businessId: biz, template: "plan_renewal_due" }, orderBy: [{ createdAt: "asc" }, { channel: "asc" }] });
+    expect(logs.map((l) => [(l.variables as { daysLeft: number }).daysLeft, l.channel])).toEqual([[29, "EMAIL"], [6, "EMAIL"], [6, "WHATSAPP"], [1, "EMAIL"], [0, "EMAIL"], [0, "WHATSAPP"]]);
+
+    // A second kitchen on the same plans, paying monthly by auto-pay: the heads-up a week before, then "today" from 8 am IST.
     const other = businessId();
     await prisma.business.create({ data: { id: other, name: "AutoPayTest Monthly", ownerEmail: "m@example.test", products: { create: { productKey: KEY } } } });
     const a = await startAutoPayCheckout({ businessId: other, productKey: KEY, planId: pro.id, buyer });
     const first = cycle(a.razorpaySubscriptionId, new Date());
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_m1", ...first });
-    await sendRenewalReminders(new Date(first.periodEnd.getTime() - 5 * DAY), KEY);
-    expect(await prisma.messageLog.count({ where: { businessId: other, template: "plan_renewal_due" } })).toBe(0);
+    const mEnd = Math.floor((first.periodEnd.getTime() + IST) / DAY);
+    const mAt = (daysBefore: number, hourIst: number) => new Date((mEnd - daysBefore) * DAY - IST + hourIst * 3_600_000);
+    for (const [d, h] of [[10, 9], [7, 9], [3, 9], [1, 9], [0, 7], [0, 9]]) await sendRenewalReminders(mAt(d, h), KEY);
+    const mine = await prisma.messageLog.findMany({ where: { businessId: other, channel: "EMAIL", template: { in: ["autopay_upcoming", "autopay_today", "plan_renewal_due"] } }, orderBy: { createdAt: "asc" } });
+    const lastPaid = await prisma.subscriptionPayment.findFirstOrThrow({ where: { razorpaySubscriptionId: a.razorpaySubscriptionId, status: "PAID" }, orderBy: { createdAt: "desc" } });
+    expect(mine.map((l) => [l.template, (l.variables as { amount?: number }).amount])).toEqual([["autopay_upcoming", Number(lastPaid.total)], ["autopay_today", Number(lastPaid.total)]]);
   });
 });
