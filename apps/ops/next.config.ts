@@ -10,7 +10,8 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   allowedDevOrigins: ["*.localhost"],
   devIndicators: { position: "bottom-right" },
-  turbopack: { root: repoRoot },
+  // The contract's invoice PDF imports jsPDF, which only Ops' own node_modules has when Ops is installed on its own (CI, deploy).
+  turbopack: { root: repoRoot, resolveAlias: { jspdf: "./node_modules/jspdf" } },
   outputFileTracingRoot: repoRoot,
   async rewrites() {
     // The editor shows pictures as /uploads/<name>, the address the live site uses; in Ops they come from the library.
