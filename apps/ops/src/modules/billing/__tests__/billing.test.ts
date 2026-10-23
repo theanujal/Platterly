@@ -39,7 +39,11 @@ let razorpayCounter = 0;
 
 const businessId = () => `biz_${Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32)}`;
 
+// Webhooks in this file land in the payment log; rows written since the file started are its own.
+const startedAt = new Date();
+
 async function clean() {
+  await prisma.razorpayEvent.deleteMany({ where: { receivedAt: { gte: startedAt } } });
   await prisma.messageLog.deleteMany({ where: { productKey: KEY } });
   await prisma.subscriptionPayment.deleteMany({ where: { productKey: KEY } });
   await prisma.subscription.deleteMany({ where: { productKey: KEY } });

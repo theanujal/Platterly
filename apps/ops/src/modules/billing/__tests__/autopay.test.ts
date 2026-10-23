@@ -2,12 +2,15 @@ import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { newId, signedHeaders, type Buyer } from "@platterly/contract";
+import { newId, requestTarget, signedHeaders, type Buyer } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { cancelRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, pauseRazorpaySubscription, resumeRazorpaySubscription, verifySubscriptionSignature, type PlatformRazorpay } from "../razorpay";
-import { chargeAutoPay, confirmPayment, failAutoPayCheckout, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout } from "../billing";
+import { cancelScheduledDowngrade, chargeAutoPay, confirmPayment, failAutoPayCheckout, getBillingView, pauseAutoPay, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout } from "../billing";
+import { sendGraceNotices, sendRenewalReminders, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { POST as pausePOST } from "@/app/api/products/[productKey]/businesses/[businessId]/billing/autopay/pause/route";
+import { POST as webhookPOST } from "@/app/api/webhooks/razorpay/route";
 
 const KEY = "autopaytest";
 const DAY = 86_400_000;
@@ -55,7 +58,11 @@ function fakeRazorpay(): typeof fetch {
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 const businessId = () => `biz_${Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32)}`;
 
+// Webhooks in this file land in the payment log; rows written since the file started are its own.
+const startedAt = new Date();
+
 async function clean() {
+  await prisma.razorpayEvent.deleteMany({ where: { receivedAt: { gte: startedAt } } });
   await prisma.messageLog.deleteMany({ where: { productKey: KEY } });
   await prisma.notification.deleteMany({ where: { productKey: KEY } });
   await prisma.subscriptionPayment.deleteMany({ where: { productKey: KEY } });
@@ -119,10 +126,9 @@ describe("the Razorpay client", () => {
   it("makes a plan that bills every 30 days for the price with GST, and a subscription on it", async () => {
     expect(await createRazorpayPlan(creds, { name: "Pro (every 30 days)", amountPaise: 354000 })).toEqual({ id: "plan_T1" });
     expect(calls[0]).toEqual({ method: "POST", path: "/plans", body: { period: "daily", interval: 30, item: { name: "Pro (every 30 days)", amount: 354000, currency: "INR" } } });
-    const startAt = new Date("2026-11-22T00:00:00Z");
-    const sub = await createRazorpaySubscription(creds, { razorpayPlanId: "plan_T1", startAt, notes: { businessId: "b" } });
+    const sub = await createRazorpaySubscription(creds, { razorpayPlanId: "plan_T1", notes: { businessId: "b" } });
     expect(sub.id).toBe("sub_T2");
-    expect(calls[1].body).toEqual({ plan_id: "plan_T1", total_count: 120, customer_notify: 1, start_at: secs(startAt), notes: { businessId: "b" } });
+    expect(calls[1].body).toEqual({ plan_id: "plan_T1", total_count: 120, customer_notify: 1, notes: { businessId: "b" } });
   });
 
   it("pauses, resumes and cancels (now or at the end of the cycle)", async () => {
@@ -158,7 +164,7 @@ describe("auto-pay checkout and charges", () => {
   it("starts a subscription on a Razorpay plan made once per plan and price, with a PENDING payment", async () => {
     const { pro, biz } = await setup();
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
-    expect(a).toMatchObject({ kind: "subscription", keyId: KEY_ID, razorpaySubscriptionId: "sub_T2", amountPaise: 354000, startsAt: null });
+    expect(a).toMatchObject({ kind: "subscription", keyId: KEY_ID, razorpaySubscriptionId: "sub_T2", amountPaise: 354000 });
     await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     expect(calls.filter((c) => c.path === "/plans")).toHaveLength(1);
     await prisma.plan.update({ where: { id: pro.id }, data: { priceMonthly: 3500 } });
@@ -208,22 +214,12 @@ describe("auto-pay checkout and charges", () => {
     expect(await prisma.subscriptionPayment.count({ where: { businessId: biz, status: "PAID" } })).toBe(0);
   });
 
-  it("a kitchen already paid once on the same plan keeps its days: Razorpay starts charging when they end", async () => {
+  it("a kitchen already paid once on the same plan is charged at once: no start_at", async () => {
     const { pro, biz } = await setup();
     const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", buyer });
-    const once = await confirmPayment(razorpayOrderId, "pay_once");
-    const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
-    expect(a.startsAt).toBe(once!.periodEnd!.toISOString());
-    expect(calls.find((c) => c.path === "/subscriptions")!.body).toMatchObject({ start_at: secs(once!.periodEnd!) });
-    // Only the mandate now: Razorpay has no cycle yet.
-    await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_auth", signature: subSig(a.razorpaySubscriptionId, "pay_auth") });
-    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
-    expect(sub).toMatchObject({ razorpaySubscriptionId: a.razorpaySubscriptionId, autoPay: "ACTIVE" });
-    expect(sub.currentPeriodEnd!.getTime()).toBe(once!.periodEnd!.getTime());
-    // The first real charge renews it in place with Razorpay's dates.
-    const next = cycle(a.razorpaySubscriptionId, once!.periodEnd!);
-    await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_c1", ...next });
-    expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).currentPeriodEnd!.getTime()).toBe(next.periodEnd.getTime());
+    await confirmPayment(razorpayOrderId, "pay_once");
+    await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
+    expect(calls.find((c) => c.path === "/subscriptions")!.body).not.toHaveProperty("start_at");
   });
 
   it("refuses a second auto-pay on the plan it is already on", async () => {
@@ -265,6 +261,8 @@ describe("failed or unfinished auto-pay setup", () => {
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     const failed = await failAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: a.razorpaySubscriptionId, reason: "declined", detail: "Bank declined it." });
     expect(failed).toMatchObject({ status: "FAILED", failureReason: "declined", razorpaySubscriptionId: a.razorpaySubscriptionId });
+    // The product's report is kept in the payment log too.
+    expect(await prisma.razorpayEvent.findFirst({ where: { razorpaySubscriptionId: a.razorpaySubscriptionId } })).toMatchObject({ source: "product", type: "setup.failed", businessId: biz, eventId: null, payload: { reason: "declined", detail: "Bank declined it." }, processedAt: expect.any(Date) });
     const after = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
     expect(after).toMatchObject({ id: before.id, status: "ACTIVE", razorpaySubscriptionId: null, autoPay: null });
     expect(after.currentPeriodEnd!.getTime()).toBe(before.currentPeriodEnd!.getTime());
@@ -315,5 +313,163 @@ describe("failed or unfinished auto-pay setup", () => {
     const second = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     expect(second.razorpaySubscriptionId).not.toBe(first.razorpaySubscriptionId);
     expect(await prisma.notification.count({ where: { productKey: KEY, kind: "autopay.stop_failed" } })).toBe(1);
+  });
+});
+
+const hook = (event: string, sub: { id: string; status: string; current_start?: number | null; current_end?: number | null }, payment?: { id: string; amount: number }) => {
+  const body = JSON.stringify({ event, payload: { subscription: { entity: sub }, ...(payment ? { payment: { entity: { ...payment, order_id: "order_rzp_internal" } } } : {}) } });
+  return webhookPOST(new Request("http://127.0.0.1:3200/api/webhooks/razorpay", { method: "POST", body, headers: { "x-razorpay-signature": createHmac("sha256", WEBHOOK_SECRET).update(body).digest("hex") } }));
+};
+const mails = async (biz: string) => (await prisma.messageLog.findMany({ where: { businessId: biz }, select: { template: true }, orderBy: { createdAt: "asc" } })).map((m) => m.template);
+
+/** A kitchen on Pro with auto-pay, charged once. */
+async function onAutoPay() {
+  const s = await setup();
+  const a = await startAutoPayCheckout({ businessId: s.biz, productKey: KEY, planId: s.pro.id, buyer });
+  const first = cycle(a.razorpaySubscriptionId, new Date());
+  await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_1", ...first });
+  return { ...s, subId: a.razorpaySubscriptionId, first };
+}
+
+describe("Razorpay's subscription webhooks", () => {
+  it("subscription.charged records the charge once, with Razorpay's dates; its payment.captured twin records nothing", async () => {
+    const { biz, subId, first } = await onAutoPay();
+    const next = cycle(subId, first.periodEnd);
+    const entity = { id: subId, status: "active", current_start: secs(next.periodStart), current_end: secs(next.periodEnd) };
+    expect((await hook("subscription.charged", entity, { id: "pay_2", amount: 354000 })).status).toBe(200);
+    expect((await hook("subscription.charged", entity, { id: "pay_2", amount: 354000 })).status).toBe(200);
+    expect(await prisma.subscriptionPayment.count({ where: { businessId: biz, status: "PAID" } })).toBe(2);
+    expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } })).currentPeriodEnd!.getTime()).toBe(next.periodEnd.getTime());
+    expect((await mails(biz)).filter((t) => t === "payment_received")).toHaveLength(2);
+  });
+
+  it("pending, then halted: one email each, and the period end never moves", async () => {
+    const { biz, subId, first } = await onAutoPay();
+    await hook("subscription.pending", { id: subId, status: "pending" });
+    await hook("subscription.pending", { id: subId, status: "pending" });
+    await hook("subscription.halted", { id: subId, status: "halted" });
+    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
+    expect(sub).toMatchObject({ autoPay: "HALTED", status: "ACTIVE" });
+    expect(sub.currentPeriodEnd!.getTime()).toBe(first.periodEnd.getTime());
+    expect((await mails(biz)).filter((t) => t.startsWith("autopay_"))).toEqual(["autopay_failed", "autopay_stopped"]);
+  });
+
+  it("a retry that succeeds sets auto-pay back to ACTIVE", async () => {
+    const { biz, subId, first } = await onAutoPay();
+    await hook("subscription.pending", { id: subId, status: "pending" });
+    const next = cycle(subId, first.periodEnd);
+    await hook("subscription.charged", { id: subId, status: "active", current_start: secs(next.periodStart), current_end: secs(next.periodEnd) }, { id: "pay_2", amount: 354000 });
+    expect(await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } })).toMatchObject({ autoPay: "ACTIVE" });
+  });
+
+  it("an unknown subscription is answered 200 and changes nothing", async () => {
+    await setup();
+    expect((await hook("subscription.halted", { id: "sub_unknown", status: "halted" })).status).toBe(200);
+  });
+});
+
+const params = <T,>(p: T) => ({ params: Promise.resolve(p) });
+const route = (path: string, method: string, body?: unknown, secret = inboundSecret) => {
+  const text = body === undefined ? "" : JSON.stringify(body);
+  const url = `http://127.0.0.1:3200${path}`;
+  return new Request(url, { method, headers: signedHeaders(secret, newId("command"), text, { target: requestTarget(method, url) }), body: text || undefined });
+};
+
+describe("pause and resume", () => {
+  it("pause stops future charges only; resume turns them back on; each tells the owner once", async () => {
+    const { biz, subId, first } = await onAutoPay();
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay).toEqual({ status: "ACTIVE", nextChargeAt: first.periodEnd.toISOString() });
+    await pauseAutoPay(biz, KEY);
+    expect(rz[subId].status).toBe("paused");
+    await hook("subscription.paused", { id: subId, status: "paused" });
+    const view = (await getBillingView(biz, KEY)).subscription!;
+    expect(view.autoPay).toEqual({ status: "PAUSED", nextChargeAt: null });
+    expect(view.currentPeriodEnd).toBe(first.periodEnd.toISOString());
+    await expect(pauseAutoPay(biz, KEY)).rejects.toThrow(/not on/);
+    await resumeAutoPay(biz, KEY);
+    expect(rz[subId].status).toBe("active");
+    expect((await mails(biz)).filter((t) => t.startsWith("autopay_"))).toEqual(["autopay_paused", "autopay_resumed"]);
+  });
+
+  it("a yearly or hand-assigned plan has no auto-pay to pause", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
+    await confirmPayment(razorpayOrderId, "pay_y");
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay).toBeNull();
+    await expect(pauseAutoPay(biz, KEY)).rejects.toThrow(/no auto-pay/);
+  });
+
+  it("resume is refused once the paid days have ended", async () => {
+    const { biz, subId } = await onAutoPay();
+    await pauseAutoPay(biz, KEY);
+    await prisma.subscription.updateMany({ where: { businessId: biz, endDate: null }, data: { currentPeriodEnd: new Date(Date.now() - DAY) } });
+    await expect(resumeAutoPay(biz, KEY)).rejects.toThrow(/paid days have ended/);
+    expect(rz[subId].status).toBe("paused");
+  });
+
+  it("the pause route is signed by the product and scoped to its business", async () => {
+    const { biz } = await onAutoPay();
+    const path = `/api/products/${KEY}/businesses/${biz}/billing/autopay/pause`;
+    expect((await pausePOST(route(path, "POST", undefined, "wrong"), params({ productKey: KEY, businessId: biz }))).status).toBe(401);
+    expect((await pausePOST(route(path, "POST"), params({ productKey: KEY, businessId: biz }))).status).toBe(200);
+  });
+});
+
+describe("downgrade with auto-pay", () => {
+  it("stops the current auto-pay at the end of the cycle, and asks the owner to approve the new one when it ends", async () => {
+    const { lite, biz, subId } = await onAutoPay();
+    await scheduleDowngrade({ businessId: biz, productKey: KEY, planId: lite.id, interval: "MONTHLY" });
+    expect(calls.at(-1)).toEqual({ method: "POST", path: `/subscriptions/${subId}/cancel`, body: { cancel_at_cycle_end: 1 } });
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay).toEqual({ status: "ACTIVE", nextChargeAt: null });
+    await expect(cancelScheduledDowngrade(biz, KEY)).rejects.toThrow(/can't be undone/);
+    await hook("subscription.cancelled", { id: subId, status: "cancelled" });
+    expect(await mails(biz)).toContain("downgrade_approval");
+  });
+
+  it("changing the lower plan again does not ask Razorpay to cancel twice", async () => {
+    const { lite, biz } = await onAutoPay();
+    await scheduleDowngrade({ businessId: biz, productKey: KEY, planId: lite.id, interval: "MONTHLY" });
+    await scheduleDowngrade({ businessId: biz, productKey: KEY, planId: lite.id, interval: "MONTHLY" });
+    expect(calls.filter((c) => c.path.endsWith("/cancel"))).toHaveLength(1);
+  });
+});
+
+describe("grace and lock with auto-pay", () => {
+  it("at lock, the Razorpay subscription is cancelled now so a late retry can never charge a locked kitchen", async () => {
+    const { biz, subId } = await onAutoPay();
+    await hook("subscription.pending", { id: subId, status: "pending" });
+    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
+    await sweepExpired(new Date(sub.currentPeriodEnd!.getTime() + 8 * DAY), KEY);
+    expect(rz[subId].status).toBe("cancelled");
+    expect(await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).toMatchObject({ status: "LOCKED", autoPay: "CANCELLED" });
+    expect(await mails(biz)).toContain("plan_locked");
+  });
+
+  it("the grace email for a paused subscription says Resume", async () => {
+    const { biz, first } = await onAutoPay();
+    await pauseAutoPay(biz, KEY);
+    await sendGraceNotices(new Date(first.periodEnd.getTime() + DAY), KEY);
+    const log = await prisma.messageLog.findFirstOrThrow({ where: { businessId: biz, template: "plan_grace" } });
+    expect(JSON.stringify(log)).toContain("paused");
+  });
+});
+
+describe("yearly renewal reminders", () => {
+  it("30, 7 and 1 day before the year ends, once each, with the real day count; never for monthly auto-pay", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
+    const paid = await confirmPayment(razorpayOrderId, "pay_y");
+    const end = paid!.periodEnd!.getTime();
+    for (const daysBefore of [40, 29, 28, 6, 5, 0.5, 0.4]) await sendRenewalReminders(new Date(end - daysBefore * DAY), KEY);
+    const logs = await prisma.messageLog.findMany({ where: { businessId: biz, template: "plan_renewal_due" }, orderBy: { createdAt: "asc" } });
+    expect(logs.map((l) => (l.variables as { daysLeft: number }).daysLeft)).toEqual([29, 6, 1]);
+    // A second kitchen on the same plans, paying monthly by auto-pay.
+    const other = businessId();
+    await prisma.business.create({ data: { id: other, name: "AutoPayTest Monthly", ownerEmail: "m@example.test", products: { create: { productKey: KEY } } } });
+    const a = await startAutoPayCheckout({ businessId: other, productKey: KEY, planId: pro.id, buyer });
+    const first = cycle(a.razorpaySubscriptionId, new Date());
+    await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_m1", ...first });
+    await sendRenewalReminders(new Date(first.periodEnd.getTime() - 5 * DAY), KEY);
+    expect(await prisma.messageLog.count({ where: { businessId: other, template: "plan_renewal_due" } })).toBe(0);
   });
 });

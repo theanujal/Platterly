@@ -167,8 +167,6 @@ export interface AutoPayCheckoutAnswer {
   amountPaise: number;
   businessName: string;
   description: string;
-  /** Set when the first charge waits for days already paid for: Razorpay only takes the mandate (a refundable ₹5) now. */
-  startsAt: string | null;
 }
 
 /** An order unless the product asked for `autoPay` on a monthly plan. */

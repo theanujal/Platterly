@@ -6,12 +6,12 @@ import { refreshLibraryCandidates } from "@/modules/library/library";
 import { refreshDueManifests } from "@/modules/registry/products";
 import { publishDueScheduled } from "@/modules/site-content/publish";
 import { refreshDueSnapshots } from "@/modules/snapshots/issue";
-import { sendGraceNotices, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { sendGraceNotices, sendRenewalReminders, sendTrialNotices, sweepExpired } from "@/modules/subscriptions/subscriptions";
 
 /**
  * Ops's one scheduled job. A server cron calls it every minute or two:
  *   curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://ops.platterly.in/api/cron
- * It reads each product's manifest again once a day (a product still being connected every ten minutes), marks ended trials and paid periods as locked, refreshes entitlement snapshots older than a day, and queues the sidebar notice for businesses that joined after it was sent, sends commands
+ * It reads each product's manifest again once a day (a product still being connected every ten minutes), marks ended trials and paid periods as locked, reminds yearly plans before they end, refreshes entitlement snapshots older than a day, and queues the sidebar notice for businesses that joined after it was sent, sends commands
  * that have come due (retries), and sends owner emails that are due (first attempts that were interrupted, and retries). Safe to call as often as you like. `?product=<key>` runs it for one product only. Without CRON_SECRET set it answers
  * 404, so a forgotten setting never leaves it open.
  */
@@ -36,11 +36,12 @@ async function run(request: Request) {
   const snapshotsRefreshed = await refreshDueSnapshots(now, 200, product);
   const trialNotices = await sendTrialNotices(now, product);
   const graceNotices = await sendGraceNotices(now, product);
+  const renewalReminders = await sendRenewalReminders(now, product);
   const noticesQueued = await syncNotices(product);
   const commandsSent = await runDueCommands(now, 50, product);
   const messagesSent = await runDueMessages(now);
   const libraryNew = await refreshLibraryCandidates(now, product).catch(() => 0);
-  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, graceNotices, noticesQueued, commandsSent, messagesSent, libraryNew });
+  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, graceNotices, renewalReminders, noticesQueued, commandsSent, messagesSent, libraryNew });
 }
 
 export const GET = run;

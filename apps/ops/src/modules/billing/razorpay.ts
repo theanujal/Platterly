@@ -75,8 +75,8 @@ export const createRazorpayPlan = (creds: PlatformRazorpay, p: { name: string; a
   call<{ id: string }>(creds, "POST", "/plans", { period: "daily", interval: 30, item: { name: p.name, amount: p.amountPaise, currency: "INR" } }, fetchImpl).then(({ id }) => ({ id }));
 
 /** 120 cycles of 30 days is about ten years: auto-pay until the owner pauses, changes plan or is locked. */
-export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; startAt?: Date; notes: Record<string, string> }, fetchImpl: typeof fetch = fetch) =>
-  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, ...(p.startAt ? { start_at: Math.floor(p.startAt.getTime() / 1000) } : {}), notes: p.notes }, fetchImpl);
+export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; notes: Record<string, string> }, fetchImpl: typeof fetch = fetch) =>
+  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes }, fetchImpl);
 
 export const fetchRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "GET", `/subscriptions/${id}`, undefined, fetchImpl);
 export const cancelRazorpaySubscription = (creds: PlatformRazorpay, id: string, atCycleEnd: boolean, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }, fetchImpl);

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { Card, PageHeader, buttonClass, formatWhen, money } from "@/components/ui";
 import type { InvoiceSnapshot } from "@/modules/billing/math";
+import { listRazorpayEvents } from "@/modules/billing/events";
+import { PaymentLog } from "../payment-log";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +17,12 @@ export default async function PaymentPage({ params }: { params: Promise<{ id: st
   const payment = await prisma.subscriptionPayment.findUnique({ where: { id }, include: { business: true, plan: true, product: true } });
   if (!payment || !payment.invoiceSnapshot) notFound();
   const snapshot = payment.invoiceSnapshot as unknown as InvoiceSnapshot;
+  const ids = [
+    payment.razorpaySubscriptionId && { razorpaySubscriptionId: payment.razorpaySubscriptionId },
+    payment.razorpayOrderId && { razorpayOrderId: payment.razorpayOrderId },
+    payment.razorpayPaymentId && { razorpayPaymentId: payment.razorpayPaymentId },
+  ].filter((w) => !!w);
+  const events = ids.length > 0 ? await listRazorpayEvents({ OR: ids }) : [];
 
   return (
     <>
@@ -46,6 +54,8 @@ export default async function PaymentPage({ params }: { params: Promise<{ id: st
         {snapshot.seller.note ? <p className="mt-4 text-sm text-muted-foreground">{snapshot.seller.note}</p> : null}
       </Card>
       <p className="mt-4 text-xs text-muted-foreground">Razorpay order {payment.razorpayOrderId ?? "—"} · payment {payment.razorpayPaymentId ?? "—"}{payment.importedFrom ? ` · imported from ${payment.importedFrom}` : ""}</p>
+      <h2 className="mb-3 mt-8 text-base font-semibold">Payment log</h2>
+      <PaymentLog rows={events} />
     </>
   );
 }

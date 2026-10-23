@@ -3,6 +3,7 @@ import { notifySafely } from "@/modules/notifications/notifications";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { tellOwner } from "@/modules/messages/messages";
+import { stopAutoPay } from "@/modules/billing/billing";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { PAID_GRACE_DAYS } from "@platterly/contract";
 
@@ -69,10 +70,12 @@ export async function startTrial(businessId: string, productKey: string, now: Da
 export async function sweepExpired(now: Date = new Date(), productKey?: string): Promise<number> {
   const due = await prisma.subscription.findMany({
     where: { endDate: null, ...(productKey ? { productKey } : {}), OR: [{ status: "TRIALING", trialEndsAt: { lte: now } }, { status: "ACTIVE", currentPeriodEnd: { lte: new Date(now.getTime() - PAID_GRACE_DAYS * DAY) } }] },
-    select: { id: true, businessId: true, productKey: true, status: true },
+    select: { id: true, businessId: true, productKey: true, status: true, razorpaySubscriptionId: true, autoPay: true },
   });
   for (const sub of due) {
-    await prisma.subscription.update({ where: { id: sub.id }, data: { status: "LOCKED" } });
+    await prisma.subscription.update({ where: { id: sub.id }, data: { status: "LOCKED", ...(sub.razorpaySubscriptionId ? { autoPay: "CANCELLED" as const } : {}) } });
+    // A locked kitchen is never charged by a late Razorpay retry: its auto-pay stops here, and it sets up again to come back.
+    if (sub.razorpaySubscriptionId && sub.autoPay !== "CANCELLED") await stopAutoPay({ businessId: sub.businessId, productKey: sub.productKey, razorpaySubscriptionId: sub.razorpaySubscriptionId }, false);
     await audit({ actorUserId: null, action: "subscription.locked", subject: sub.businessId, detail: { productKey: sub.productKey, subscriptionId: sub.id } });
     try {
       await issueSnapshot(sub.businessId, sub.productKey, now);
@@ -82,8 +85,8 @@ export async function sweepExpired(now: Date = new Date(), productKey?: string):
     if (sub.status === "TRIALING") await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "trial.ended", title: "A trial ended", body: "The trial ended without a paid plan, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `trial_ended:${sub.id}` });
     if (sub.status === "TRIALING") await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "trial_ended", dedupeKey: `trial:${sub.id}:ended` });
     if (sub.status === "ACTIVE") {
-      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.paused", severity: "WARNING", title: "A business was paused", body: "The plan was not renewed within the 7-day grace, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `plan_paused:${sub.id}` });
-      await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_paused", dedupeKey: `plan:${sub.id}:paused` });
+      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.locked", severity: "WARNING", title: "A business was locked", body: "The plan was not renewed within the 7-day grace, so the business is locked.", link: `/businesses/${sub.businessId}`, dedupeKey: `plan_paused:${sub.id}` });
+      await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_locked", dedupeKey: `plan:${sub.id}:paused` });
     }
   }
   return due.length;
@@ -98,7 +101,7 @@ export async function sendGraceNotices(now: Date = new Date(), productKey?: stri
   const graceStart = new Date(now.getTime() - PAID_GRACE_DAYS * DAY);
   const subs = await prisma.subscription.findMany({
     where: { endDate: null, status: "ACTIVE", currentPeriodEnd: { lte: now, gt: graceStart }, ...(productKey ? { productKey } : {}) },
-    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true },
+    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true, autoPay: true },
   });
   let sent = 0;
   for (const sub of subs) {
@@ -108,9 +111,9 @@ export async function sendGraceNotices(now: Date = new Date(), productKey?: stri
     const key = `${sub.id}:${sub.currentPeriodEnd!.getTime()}:${stage}`;
     const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(endsAt);
     if (stage === "started") {
-      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.overdue", severity: "WARNING", title: "A plan payment is overdue", body: `The paid period ended. The business has ${daysLeft} day${daysLeft === 1 ? "" : "s"} to renew before it is paused.`, link: `/businesses/${sub.businessId}`, dedupeKey: `plan_overdue:${key}` });
+      await notifySafely({ productKey: sub.productKey, businessId: sub.businessId, kind: "plan.overdue", severity: "WARNING", title: "A plan payment is overdue", body: `The paid period ended. The business has ${daysLeft} day${daysLeft === 1 ? "" : "s"} to renew before it is locked.`, link: `/businesses/${sub.businessId}`, dedupeKey: `plan_overdue:${key}` });
     }
-    await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_grace", variables: { daysLeft, endsOn }, dedupeKey: `plan_grace:${key}` });
+    await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_grace", variables: { daysLeft, endsOn, ...(sub.autoPay === "PAUSED" ? { paused: 1 } : {}) }, dedupeKey: `plan_grace:${key}` });
     sent += 1;
   }
   return sent;
@@ -134,6 +137,25 @@ export async function sendTrialNotices(now: Date = new Date(), productKey?: stri
     sent += 1;
   }
   return sent;
+}
+
+/**
+ * Yearly plans are paid once, so the owner is reminded 30, 7 and 1 day before the year ends, once each (the stage and the period
+ * are in the key; the email gives the real day count). After the end, the grace notices take over. Monthly auto-pay renews by
+ * itself and gets none.
+ */
+export async function sendRenewalReminders(now: Date = new Date(), productKey?: string): Promise<number> {
+  const subs = await prisma.subscription.findMany({
+    where: { endDate: null, status: "ACTIVE", billingInterval: "ANNUAL", currentPeriodEnd: { gt: now, lte: new Date(now.getTime() + 30 * DAY) }, ...(productKey ? { productKey } : {}) },
+    select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true },
+  });
+  for (const sub of subs) {
+    const daysLeft = Math.ceil((sub.currentPeriodEnd!.getTime() - now.getTime()) / DAY);
+    const stage = daysLeft <= 1 ? 1 : daysLeft <= 7 ? 7 : 30;
+    const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(sub.currentPeriodEnd!);
+    await tellOwner({ businessId: sub.businessId, productKey: sub.productKey, template: "plan_renewal_due", variables: { daysLeft, endsOn }, dedupeKey: `renewal:${sub.id}:${sub.currentPeriodEnd!.getTime()}:${stage}` });
+  }
+  return subs.length;
 }
 
 export async function listSubscriptions(businessId: string) {

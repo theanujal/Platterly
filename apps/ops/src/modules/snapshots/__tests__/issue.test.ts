@@ -190,7 +190,7 @@ describe("subscriptions", () => {
     expect(await sweepExpired(new Date(), KEY)).toBe(0);
     // The trial gets an "ended" email and the lapsed paid plan a "paused" email, once each. (Hand-assigned paid plans send "plan changed".)
     expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "trial_ended" }, select: { businessId: true } })).toEqual([{ businessId: a }]);
-    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "plan_paused" }, select: { businessId: true } })).toEqual([{ businessId: b }]);
+    expect(await prisma.messageLog.findMany({ where: { productKey: KEY, template: "plan_locked" }, select: { businessId: true } })).toEqual([{ businessId: b }]);
     expect(await prisma.messageLog.count({ where: { productKey: KEY, template: "plan_changed" } })).toBe(2);
   });
 
@@ -217,7 +217,7 @@ describe("subscriptions", () => {
 
     expect(await sweepExpired(at(7.1), KEY)).toBe(1);
     expect((await prisma.subscription.findUniqueOrThrow({ where: { id: sub.id } })).status).toBe("LOCKED");
-    expect(await mails("plan_paused")).toBe(1);
+    expect(await mails("plan_locked")).toBe(1);
     expect(await prisma.notification.count({ where: { productKey: KEY, kind: "plan.overdue" } })).toBe(1);
   });
 

@@ -9,22 +9,25 @@ import { listSubscriptions } from "@/modules/subscriptions/subscriptions";
 import { AssignForm } from "./assign-form";
 import { UsageNote } from "./usage-note";
 import { IdentityForm, ProviderButtons, StatusControls } from "./lifecycle-forms";
+import { listRazorpayEvents } from "@/modules/billing/events";
+import { PaymentLog } from "../../payments/payment-log";
 
 export const dynamic = "force-dynamic";
 
-export default async function BusinessPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function BusinessPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; log?: string }> }) {
   const { id } = await params;
   const TABS = ["overview", "subscription", "usage", "activity", "messages"] as const;
-  const wanted = (await searchParams).tab;
+  const { tab: wanted, log } = await searchParams;
   const tab = TABS.find((t) => t === wanted) ?? "overview";
   const business = await getBusiness(id);
   if (!business) notFound();
-  const [subscriptions, plans, activity, failedSetups] = await Promise.all([
+  const [subscriptions, plans, activity, failedSetups, paymentLog] = await Promise.all([
     listSubscriptions(id),
     prisma.plan.findMany({ where: { isActive: true, productKey: { in: business.products.map((p) => p.productKey) } }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] }),
     getBusinessActivity(id),
     // Auto-pay setups the kitchen's checkout reported as declined or not finished (Razorpay tells ops about neither).
     prisma.subscriptionPayment.findMany({ where: { businessId: id, status: "FAILED", razorpaySubscriptionId: { not: null } }, select: { id: true, productKey: true, createdAt: true, failureReason: true }, orderBy: { createdAt: "desc" } }),
+    tab === "subscription" ? listRazorpayEvents({ businessId: id }, log === "all" ? undefined : 51) : [],
   ]);
   const day = (d: Date) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(d);
   const now = new Date();
@@ -155,6 +158,10 @@ export default async function BusinessPage({ params, searchParams }: { params: P
                 ))}
               </Table>
             )}
+
+            <h2 className="mb-3 mt-8 text-base font-semibold">Payment log</h2>
+            <PaymentLog rows={paymentLog.slice(0, log === "all" ? undefined : 50)} />
+            {log !== "all" && paymentLog.length > 50 ? <Link className="mt-3 inline-block text-sm text-accent-foreground hover:underline" href={`/businesses/${business.id}?tab=subscription&log=all`}>See all</Link> : null}
           </>
         ) : null}
 

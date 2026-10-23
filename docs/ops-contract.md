@@ -205,7 +205,7 @@ Platterly's Razorpay keys and webhook (`/api/webhooks/razorpay-platform` today) 
 
 A snapshot carries `trialEndsAt` and `currentPeriodEnd`. A product treats `TRIALING` with a passed `trialEndsAt`, or `ACTIVE` with a passed `currentPeriodEnd`, as locked on its own. This is today's `billingLockReason`, so a trial or paid period ends at the right minute even if ops is down. Ops's scheduled job still refreshes snapshots and writes the new status.
 
-**Paid grace (AJ, 2026-10-12).** An `ACTIVE` subscription whose `currentPeriodEnd` has passed is *not* locked at once: the product keeps full access for `PAID_GRACE_DAYS` (7) days and shows a Grace card; `evaluateAccess` returns `paymentGraceEndsAt`. After the grace the lock applies. Ops's `sweepExpired` uses the same rule and sends the `plan_grace` and `plan_paused` notices. Trials have no grace.
+**Paid grace (AJ, 2026-10-12).** An `ACTIVE` subscription whose `currentPeriodEnd` has passed is *not* locked at once: the product keeps full access for `PAID_GRACE_DAYS` (7) days and shows a Grace card; `evaluateAccess` returns `paymentGraceEndsAt`. After the grace the lock applies. Ops's `sweepExpired` uses the same rule and sends the `plan_grace` and `plan_locked` notices. Trials have no grace.
 
 ### 8.3 Cutover flag
 

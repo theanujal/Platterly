@@ -78,29 +78,48 @@ export const TEMPLATES: Record<string, Template> = {
     requires: ["daysLeft", "endsOn"],
     render: (v, c) => {
       const days = Number(v.daysLeft);
+      // A paused auto-pay comes back with Resume, not a new payment.
+      const act = v.paused ? "resume" : "renew";
       return {
-        subject: days <= 1 ? "Last day to renew your Platterly plan" : `Your Platterly plan has ended: ${plural(days, "day")} to renew`,
+        subject: days <= 1 ? `Last day to ${act} your Platterly plan` : `Your Platterly plan has ended: ${plural(days, "day")} to ${act}`,
         html: renderEmail({
           tag: "Plan",
           eyebrow: "Payment overdue",
-          title: days <= 1 ? "Today is the last day to renew" : `You have ${plural(days, "day")} to renew`,
+          title: days <= 1 ? `Today is the last day to ${act}` : `You have ${plural(days, "day")} to ${act}`,
           greeting: greet(c),
-          bodyHtml: p(`The paid plan for <strong>${escapeHtml(c.businessName)}</strong> has ended. Everything still works, but if it is not renewed by <strong>${escapeHtml(text(v, "endsOn"))}</strong> your account will be paused.`) + p("Nothing is deleted when an account is paused: renew and you carry on exactly where you left off."),
+          bodyHtml: p(`The paid plan for <strong>${escapeHtml(c.businessName)}</strong> has ended. Everything still works, but if it is not ${act}d by <strong>${escapeHtml(text(v, "endsOn"))}</strong> your account will be locked.`) + p(`Nothing is deleted when an account is locked: ${act} and you carry on exactly where you left off.`),
+          cta: v.paused ? { label: "Resume", url: `${c.productUrl}/settings/subscription` } : { label: "Renew now", url: `${c.productUrl}/subscribe` },
+        }),
+      };
+    },
+  },
+  plan_renewal_due: {
+    requires: ["daysLeft", "endsOn"],
+    render: (v, c) => {
+      const days = Number(v.daysLeft);
+      return {
+        subject: days <= 1 ? "Your Platterly plan ends tomorrow" : `Your Platterly plan ends in ${plural(days, "day")}`,
+        html: renderEmail({
+          tag: "Plan",
+          eyebrow: "Renewal due",
+          title: `Your yearly plan ends on ${escapeHtml(text(v, "endsOn"))}`,
+          greeting: greet(c),
+          bodyHtml: p(`The yearly plan for <strong>${escapeHtml(c.businessName)}</strong> ends on <strong>${escapeHtml(text(v, "endsOn"))}</strong>. Renew before then to carry on without a break.`),
           cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
         }),
       };
     },
   },
-  plan_paused: {
+  plan_locked: {
     requires: [],
     render: (_v, c) => ({
-      subject: "Your Platterly account is paused",
+      subject: "Your Platterly account is locked",
       html: renderEmail({
         tag: "Plan",
-        eyebrow: "Account paused",
-        title: "Your account is paused",
+        eyebrow: "Account locked",
+        title: "Your account is locked",
         greeting: greet(c),
-        bodyHtml: p(`The 7 days to renew the plan for <strong>${escapeHtml(c.businessName)}</strong> have passed, so the account is paused. Nothing has been deleted: renew and you can carry on where you left off.`),
+        bodyHtml: p(`The 7 days to renew the plan for <strong>${escapeHtml(c.businessName)}</strong> have passed, so the account is locked. Nothing has been deleted: renew and you can carry on where you left off.`),
         cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
       }),
     }),
@@ -174,6 +193,76 @@ export const TEMPLATES: Record<string, Template> = {
         greeting: greet(c),
         bodyHtml: p(`We could not take the payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong>. No money has been kept. You can try again, or use another way to pay.`),
         cta: { label: "Try again", url: `${c.productUrl}/subscribe` },
+      }),
+    }),
+  },
+  autopay_failed: {
+    requires: ["planName"],
+    render: (v, c) => ({
+      subject: "We could not take your Platterly auto-pay",
+      html: renderEmail({
+        tag: "Payment",
+        eyebrow: "Auto-pay failed",
+        title: "Your auto-pay did not go through",
+        greeting: greet(c),
+        bodyHtml: p(`We could not take this month's payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong>. Razorpay will try again over the next few days, and everything keeps working meanwhile.`) + p("If your card or bank mandate has changed, you can set up auto-pay again now."),
+        cta: { label: "Set up auto-pay again", url: `${c.productUrl}/subscribe` },
+      }),
+    }),
+  },
+  autopay_stopped: {
+    requires: ["planName"],
+    render: (v, c) => ({
+      subject: "Your Platterly auto-pay has stopped",
+      html: renderEmail({
+        tag: "Payment",
+        eyebrow: "Auto-pay stopped",
+        title: "Please set up auto-pay again",
+        greeting: greet(c),
+        bodyHtml: p(`Razorpay could not take the payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> after several tries, so auto-pay has stopped. Set it up again to keep your account open.`),
+        cta: { label: "Set up auto-pay again", url: `${c.productUrl}/subscribe` },
+      }),
+    }),
+  },
+  autopay_paused: {
+    requires: ["planName"],
+    render: (v, c) => ({
+      subject: "Your Platterly subscription is paused",
+      html: renderEmail({
+        tag: "Plan",
+        eyebrow: "Subscription paused",
+        title: "No more charges until you resume",
+        greeting: greet(c),
+        bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> is paused. Everything keeps working until the end of the period you have paid for. Resume at any time to carry on.`),
+        cta: { label: "Resume", url: `${c.productUrl}/settings/subscription` },
+      }),
+    }),
+  },
+  autopay_resumed: {
+    requires: ["planName"],
+    render: (v, c) => ({
+      subject: "Your Platterly subscription is back on",
+      html: renderEmail({
+        tag: "Plan",
+        eyebrow: "Subscription resumed",
+        title: "Auto-pay is on again",
+        greeting: greet(c),
+        bodyHtml: p(`Auto-pay for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> is on again.`),
+        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+      }),
+    }),
+  },
+  downgrade_approval: {
+    requires: ["planName", "newPlanName"],
+    render: (v, c) => ({
+      subject: `Approve auto-pay for ${text(v, "newPlanName")}`,
+      html: renderEmail({
+        tag: "Plan",
+        eyebrow: "Plan change",
+        title: `One step to move to ${escapeHtml(text(v, "newPlanName"))}`,
+        greeting: greet(c),
+        bodyHtml: p(`Your <strong>${escapeHtml(text(v, "planName"))}</strong> period has ended. To move <strong>${escapeHtml(c.businessName)}</strong> to <strong>${escapeHtml(text(v, "newPlanName"))}</strong>, approve its auto-pay. Your account keeps working for 7 days meanwhile.`),
+        cta: { label: "Approve auto-pay", url: `${c.productUrl}/subscribe` },
       }),
     }),
   },

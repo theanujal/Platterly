@@ -44,7 +44,7 @@ afterEach(clean);
 
 describe("templates", () => {
   it("render every template with a subject and escaped, branded html", () => {
-    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123", endsOn: "8 Nov 2026" };
+    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123", endsOn: "8 Nov 2026", newPlanName: "Lite" };
     for (const key of Object.keys(TEMPLATES)) {
       const out = renderTemplate(key, vars, ctx);
       expect(out.ok, key).toBe(true);
@@ -55,6 +55,20 @@ describe("templates", () => {
         expect(out.value.html).not.toContain("<Kitchen>");
       }
     }
+  });
+
+  it("the grace email says Resume for a paused subscription, and Renew otherwise", () => {
+    const paused = renderTemplate("plan_grace", { daysLeft: 3, endsOn: "8 Nov 2026", paused: 1 }, ctx);
+    const plain = renderTemplate("plan_grace", { daysLeft: 3, endsOn: "8 Nov 2026" }, ctx);
+    expect(paused.ok && paused.value.html).toContain("Resume");
+    expect(paused.ok && paused.value.subject).toContain("resume");
+    expect(plain.ok && plain.value.html).toContain("Renew now");
+    expect(plain.ok && plain.value.html).toContain("locked");
+  });
+
+  it("renders the auto-pay emails", () => {
+    for (const key of ["autopay_failed", "autopay_stopped", "autopay_paused", "autopay_resumed"]) expect(renderTemplate(key, { planName: "Pro" }, ctx).ok).toBe(true);
+    expect(renderTemplate("downgrade_approval", { planName: "Pro", newPlanName: "Lite" }, ctx).ok).toBe(true);
   });
 
   it("never lets a variable inject markup", () => {

@@ -1,7 +1,7 @@
 import "server-only";
 import { notifySafely } from "@/modules/notifications/notifications";
 import { randomBytes } from "node:crypto";
-import type { AutoPayCheckoutAnswer, AutoPayFailure, BillingView, Buyer, OrderCheckoutAnswer, PlanOffer, PriceView } from "@platterly/contract";
+import type { AutoPayCheckoutAnswer, AutoPayFailure, AutoPayStatus, BillingView, Buyer, OrderCheckoutAnswer, PlanOffer, PriceView } from "@platterly/contract";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -9,8 +9,9 @@ import { nextInvoiceNumber } from "./numbering";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
-import { cancelRazorpaySubscription, createRazorpayOrder, createRazorpayPlan, createRazorpaySubscription, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay } from "./razorpay";
+import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
+import { recordRazorpayEvent } from "./events";
 
 /**
  * A business pays Platterly for its plan (ported from catering's Chunk 20, now keyed by business and product). A yearly
@@ -74,6 +75,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
       trialEndsAt: iso(current.trialEndsAt),
       currentPeriodEnd: iso(current.currentPeriodEnd),
       pending: current.pendingPlanId && pendingPlan ? { planId: current.pendingPlanId, planName: pendingPlan.name, interval: current.pendingInterval } : null,
+      autoPay: current.autoPay ? { status: current.autoPay, nextChargeAt: current.autoPay === "ACTIVE" && !current.pendingPlanId ? iso(current.currentPeriodEnd) : null } : null,
     },
     history: subs.map((s) => ({ id: s.id, planName: s.plan.name, status: s.status, startDate: s.startDate.toISOString(), endDate: iso(s.endDate) })),
     payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber })),
@@ -288,22 +290,19 @@ export async function startAutoPayCheckout(input: { businessId: string; productK
   if (!plan) throw new BillingError("That plan is not available.");
   const current = await prisma.subscription.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, endDate: null } });
   if (current?.planId === plan.id && (current.autoPay === "ACTIVE" || current.autoPay === "PAUSED")) throw new BillingError("Auto-pay is already on for this plan.");
-  // A kitchen paid once on this plan (before auto-pay) keeps its days: Razorpay takes the mandate now and charges when they end.
-  const now = new Date();
-  const startAt = current?.status === "ACTIVE" && current.planId === plan.id && !current.razorpaySubscriptionId && current.currentPeriodEnd && current.currentPeriodEnd > now ? current.currentPeriodEnd : undefined;
   await dropUnpaidSetup(creds, input.businessId, input.productKey, current?.razorpaySubscriptionId ?? null, fetchImpl);
   const razorpayPlanId = await razorpayPlanFor(creds, plan, fetchImpl);
-  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, startAt, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
+  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
   const price = plan.monthly;
   const payment = await prisma.subscriptionPayment.create({
     data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: input.businessId, productKey: input.productKey, planId: plan.id, interval: "MONTHLY", amount: price.amount, gstPercent: price.gstPercent, gstAmount: price.gstAmount, total: price.total, razorpaySubscriptionId: sub.id, buyer: input.buyer as unknown as Prisma.InputJsonValue },
   });
-  await audit({ actorUserId: null, action: "billing.autopay_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: plan.id, razorpaySubscriptionId: sub.id, startsAt: startAt?.toISOString() ?? null } });
+  await audit({ actorUserId: null, action: "billing.autopay_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: plan.id, razorpaySubscriptionId: sub.id } });
   const amount = `₹${price.total.toLocaleString("en-IN")}`;
-  return { kind: "subscription", keyId: creds.keyId, razorpaySubscriptionId: sub.id, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${plan.name} plan, ${amount} every 30 days (auto-pay)`, startsAt: startAt?.toISOString() ?? null };
+  return { kind: "subscription", keyId: creds.keyId, razorpaySubscriptionId: sub.id, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${plan.name} plan, ${amount} every 30 days (auto-pay)` };
 }
 
-/** Checkout's own signature check for auto-pay, then the first charge (or, for a later start, only the mandate). */
+/** Checkout's own signature check for auto-pay, then the first charge. */
 export async function verifyAutoPayCheckout(input: { businessId: string; productKey: string; razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string }, fetchImpl: typeof fetch = fetch) {
   await requireBusiness(input.businessId, input.productKey);
   const creds = platformRazorpay();
@@ -311,12 +310,9 @@ export async function verifyAutoPayCheckout(input: { businessId: string; product
   const payment = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId }, orderBy: { createdAt: "asc" } });
   if (!payment || payment.businessId !== input.businessId || payment.productKey !== input.productKey) throw new BillingError("We could not verify this payment.");
   const sub = await fetchRazorpaySubscription(creds, input.razorpaySubscriptionId, fetchImpl);
-  if (sub.current_start && sub.current_end) {
-    return chargeAutoPay({ razorpaySubscriptionId: sub.id, razorpayPaymentId: input.razorpayPaymentId, periodStart: new Date(sub.current_start * 1000), periodEnd: new Date(sub.current_end * 1000) });
-  }
-  // No cycle yet: the first charge waits for the days already paid. The current subscription carries the auto-pay from now.
-  await prisma.subscription.updateMany({ where: { businessId: payment.businessId, productKey: payment.productKey, endDate: null, planId: payment.planId, status: "ACTIVE", razorpaySubscriptionId: null }, data: { razorpaySubscriptionId: sub.id, autoPay: "ACTIVE" } });
-  return payment;
+  // Razorpay charges at once, so a paid setup has its cycle; without one, the webhook's first charge settles the payment.
+  if (!sub.current_start || !sub.current_end) return payment;
+  return chargeAutoPay({ razorpaySubscriptionId: sub.id, razorpayPaymentId: input.razorpayPaymentId, periodStart: new Date(sub.current_start * 1000), periodEnd: new Date(sub.current_end * 1000) });
 }
 
 /**
@@ -327,6 +323,8 @@ export async function failAutoPayCheckout(input: { businessId: string; productKe
   await requireBusiness(input.businessId, input.productKey);
   const where = { businessId: input.businessId, productKey: input.productKey, razorpaySubscriptionId: input.razorpaySubscriptionId };
   const failed = await prisma.subscriptionPayment.updateMany({ where: { ...where, status: { in: ["PENDING", "FAILED"] } }, data: { status: "FAILED", failureReason: input.reason } });
+  // Kept in the payment log either way: a report that matched nothing is kept with that error.
+  await recordRazorpayEvent({ source: "product", type: "setup.failed", payload: { reason: input.reason, detail: input.detail ?? null }, businessId: input.businessId, razorpaySubscriptionId: input.razorpaySubscriptionId, ...(failed.count > 0 ? { processedAt: new Date() } : { error: "No unpaid auto-pay setup matched." }) });
   if (failed.count === 0) return null;
   await audit({ actorUserId: null, action: "billing.autopay_setup_failed", subject: input.businessId, detail: { productKey: input.productKey, razorpaySubscriptionId: input.razorpaySubscriptionId, reason: input.reason, detail: input.detail ?? null } });
   return prisma.subscriptionPayment.findFirst({ where, orderBy: { createdAt: "asc" } });
@@ -355,6 +353,58 @@ export async function chargeAutoPay(input: AutoPayCycle & { razorpayPaymentId: s
   return settle(payment, input.razorpayPaymentId, now, input.capturedPaise, { razorpaySubscriptionId: input.razorpaySubscriptionId, periodStart: input.periodStart, periodEnd: input.periodEnd });
 }
 
+const FROM_RAZORPAY: Record<string, AutoPayStatus> = { active: "ACTIVE", pending: "PENDING", halted: "HALTED", paused: "PAUSED", cancelled: "CANCELLED", completed: "CANCELLED", expired: "CANCELLED" };
+
+type CurrentWithPlan = { id: string; businessId: string; productKey: string; autoPay: AutoPayStatus | null; currentPeriodEnd: Date | null; pendingPlanId: string | null; plan: { name: string } };
+
+/** Records Razorpay's new auto-pay state and tells the owner once per change (the period is in the key, so a new month can tell again). */
+export async function setAutoPay(current: CurrentWithPlan, status: AutoPayStatus) {
+  if (current.autoPay === status) return;
+  await prisma.subscription.update({ where: { id: current.id }, data: { autoPay: status } });
+  const pending = status === "CANCELLED" && current.pendingPlanId ? await prisma.plan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
+  const template = { PENDING: "autopay_failed", HALTED: "autopay_stopped", PAUSED: "autopay_paused", ACTIVE: current.autoPay === "PAUSED" ? "autopay_resumed" : null, CANCELLED: pending ? "downgrade_approval" : null }[status];
+  if (!template) return;
+  await tellOwner({ businessId: current.businessId, productKey: current.productKey, template, variables: { planName: current.plan.name, ...(pending ? { newPlanName: pending.name } : {}) }, dedupeKey: `${template}:${current.id}:${current.currentPeriodEnd?.getTime() ?? 0}` });
+}
+
+/** Razorpay's `subscription.*` webhooks. A charge is a payment; anything else only updates the auto-pay state of a current subscription. */
+export async function autoPayEvent(event: string, sub: RazorpaySubscription, payment?: { id?: string; amount?: number }, now: Date = new Date()) {
+  if (event === "subscription.charged") {
+    if (payment?.id && sub.current_start && sub.current_end) await chargeAutoPay({ razorpaySubscriptionId: sub.id, razorpayPaymentId: payment.id, periodStart: new Date(sub.current_start * 1000), periodEnd: new Date(sub.current_end * 1000), capturedPaise: payment.amount }, now);
+    return;
+  }
+  const status = FROM_RAZORPAY[sub.status];
+  const current = status ? await prisma.subscription.findUnique({ where: { razorpaySubscriptionId: sub.id }, include: { plan: { select: { name: true } } } }) : null;
+  if (status && current && !current.endDate) await setAutoPay(current, status);
+}
+
+async function currentAutoPay(businessId: string, productKey: string) {
+  await requireBusiness(businessId, productKey);
+  const current = await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null }, include: { plan: { select: { name: true } } } });
+  const creds = platformRazorpay();
+  if (!current?.razorpaySubscriptionId || !creds) throw new BillingError("There is no auto-pay to change.");
+  return { current, creds, id: current.razorpaySubscriptionId };
+}
+
+/** "Pause subscription": no more charges; the paid days run out as usual, then the 7-day grace and the lock. */
+export async function pauseAutoPay(businessId: string, productKey: string, fetchImpl: typeof fetch = fetch) {
+  const { current, creds, id } = await currentAutoPay(businessId, productKey);
+  if (current.autoPay !== "ACTIVE") throw new BillingError("Auto-pay is not on.");
+  await pauseRazorpaySubscription(creds, id, fetchImpl);
+  await setAutoPay(current, "PAUSED");
+  await audit({ actorUserId: null, action: "billing.autopay_paused", subject: businessId, detail: { productKey, razorpaySubscriptionId: id } });
+}
+
+/** "Resume": the next charge is on the usual date. Razorpay's resume after the paid days ended is untested, so that is refused. */
+export async function resumeAutoPay(businessId: string, productKey: string, fetchImpl: typeof fetch = fetch) {
+  const { current, creds, id } = await currentAutoPay(businessId, productKey);
+  if (current.currentPeriodEnd && current.currentPeriodEnd <= new Date()) throw new BillingError("Your paid days have ended. Set up auto-pay again from the plans page to carry on.");
+  if (current.autoPay !== "PAUSED") throw new BillingError("Auto-pay is not paused.");
+  await resumeRazorpaySubscription(creds, id, fetchImpl);
+  await setAutoPay(current, "ACTIVE");
+  await audit({ actorUserId: null, action: "billing.autopay_resumed", subject: businessId, detail: { productKey, razorpaySubscriptionId: id } });
+}
+
 /** A lower plan chosen mid-period starts at the next payment, never now. */
 export async function scheduleDowngrade(input: { businessId: string; productKey: string; planId: string; interval: Interval }) {
   await requireBusiness(input.businessId, input.productKey);
@@ -363,6 +413,13 @@ export async function scheduleDowngrade(input: { businessId: string; productKey:
   if (!current || current.status !== "ACTIVE") throw new BillingError("There is no paid plan to change.");
   if (!target) throw new BillingError("That plan is not available.");
   priceFor(target, input.interval);
+  // Auto-pay for the current plan stops when its paid days end; the owner then approves auto-pay for the lower plan (emailed).
+  // Already scheduled by an earlier downgrade: Razorpay has the cancel, so only the plan changes.
+  if (current.razorpaySubscriptionId && current.autoPay === "ACTIVE" && !current.pendingPlanId) {
+    const creds = platformRazorpay();
+    if (!creds) throw new BillingError("Online payment is not switched on yet. Please contact Platterly.");
+    await cancelRazorpaySubscription(creds, current.razorpaySubscriptionId, true);
+  }
   await prisma.subscription.update({ where: { id: current.id }, data: { pendingPlanId: input.planId, pendingInterval: input.interval } });
   await audit({ actorUserId: null, action: "billing.downgrade_scheduled", subject: input.businessId, detail: { productKey: input.productKey, planId: input.planId, interval: input.interval } });
 }
@@ -371,6 +428,7 @@ export async function cancelScheduledDowngrade(businessId: string, productKey: s
   await requireBusiness(businessId, productKey);
   const current = await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
   if (!current?.pendingPlanId) return;
+  if (current.razorpaySubscriptionId && current.autoPay === "ACTIVE") throw new BillingError("Auto-pay for your current plan already stops at the end of this period, so this change can't be undone. When the period ends, choose any plan to set up auto-pay again.");
   await prisma.subscription.update({ where: { id: current.id }, data: { pendingPlanId: null, pendingInterval: null } });
   await audit({ actorUserId: null, action: "billing.downgrade_cancelled", subject: businessId, detail: { productKey } });
 }
