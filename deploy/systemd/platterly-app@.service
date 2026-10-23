@@ -1,6 +1,7 @@
 # One unit per app and slot: platterly-app@catering-blue, platterly-app@catering-green, platterly-app@ops-blue, platterly-app@ops-green.
 # Install: cp deploy/systemd/platterly-app@.service /etc/systemd/system/ && systemctl daemon-reload
 # Enable the two live ones the first time: systemctl enable --now platterly-app@catering-blue platterly-app@ops-blue
+# After that deploy.sh and rollback.sh keep only the live slot enabled, so a reboot brings back the slot Nginx points at.
 [Unit]
 Description=Platterly %i
 After=network.target postgresql.service

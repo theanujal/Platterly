@@ -52,6 +52,8 @@ fi
 # 5. Move traffic, remember it, and let the old slot drain.
 switch_traffic "$app" "$idle"
 record_release "$app" "$idle" "$sha"
+# Only the live slot starts on boot (disable does not stop the old one, so the drain still works).
+{ systemctl enable "$(unit_of "$app" "$idle")" && systemctl disable "$(unit_of "$app" "$active")"; } || log "could not set $idle to start on boot; run: systemctl enable $(unit_of "$app" "$idle") && systemctl disable $(unit_of "$app" "$active")"
 if [ "$DRAIN_MINUTES" -gt 0 ]; then
   systemd-run --quiet --on-active="${DRAIN_MINUTES}m" --unit="platterly-drain-$app-$active" systemctl stop "$(unit_of "$app" "$active")" || log "could not schedule stopping $active; stop it by hand when you are sure"
 fi

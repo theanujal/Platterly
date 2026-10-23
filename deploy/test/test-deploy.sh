@@ -49,6 +49,8 @@ assert_contains "$CALLS" "npx prisma migrate deploy" "migrations were applied"
 assert_contains "$CALLS" "npm run build (in $ROOT/catering/green) url=https://catering.test" "the build sees the app's env file (NEXT_PUBLIC_*)"
 assert_contains "$CALLS" "db=postgresql://catering-db" "the migration sees the app's DATABASE_URL"
 assert_contains "$CALLS" "systemd-run --quiet --on-active=10m --unit=platterly-drain-catering-blue" "the old (blue) slot is scheduled to stop after the drain"
+assert_contains "$CALLS" "systemctl enable platterly-app@catering-green" "the new live (green) slot starts on boot"
+assert_contains "$CALLS" "systemctl disable platterly-app@catering-blue" "the old (blue) slot no longer starts on boot"
 assert_contains "$ROOT/state/releases.log" "catering green 1111111111" "the release was recorded"
 # Order: backup, then migrate, then start, then nginx reload.
 b=$(grep -n "^backup" "$CALLS" | head -1 | cut -d: -f1); m=$(grep -n "prisma migrate" "$CALLS" | head -1 | cut -d: -f1); s=$(grep -n "systemctl restart" "$CALLS" | head -1 | cut -d: -f1); n=$(grep -n "nginx -s reload" "$CALLS" | head -1 | cut -d: -f1)
@@ -88,6 +90,8 @@ assert_eq "$(active catering)" blue "back on blue"
 assert_eq "$(upstream catering)" 3000 "nginx back on 3000"
 assert_contains "$CALLS" "systemctl restart platterly-app@catering-blue" "blue was started again if the drain had stopped it"
 assert_contains "$CALLS" "systemctl stop platterly-drain-catering-blue.timer" "a pending drain of blue was cancelled"
+assert_contains "$CALLS" "systemctl enable platterly-app@catering-blue" "blue starts on boot again"
+assert_contains "$CALLS" "systemctl disable platterly-app@catering-green" "green no longer starts on boot"
 touch "$T/unhealthy-3001"; rm -f "$ROOT/state/catering.previous"; printf 'green\n' > "$ROOT/state/catering.previous"
 "$R" catering >/dev/null 2>&1; rc=$?
 if [ "$rc" -ne 0 ]; then ok "rollback to an unhealthy slot refuses"; else bad "rollback should refuse"; fi
