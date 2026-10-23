@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Clock, CreditCard, Lock, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { annualSaving, type BillingLockReason } from "@/modules/subscriptions/billing-math";
 import type { SellablePlan } from "@/modules/subscriptions/billing";
-import { cancelDowngradeAction, scheduleDowngradeAction, startCheckoutAction, verifyCheckoutAction } from "../actions";
+import { cancelDowngradeAction, reportAutoPayFailedAction, scheduleDowngradeAction, startCheckoutAction, verifyCheckoutAction } from "../actions";
 import { inrUpTo2 } from "@/modules/invoices/invoice-format";
 
 type Interval = "MONTHLY" | "ANNUAL";
@@ -38,6 +38,11 @@ function loadCheckout(): Promise<boolean> {
   });
 }
 
+/** How an auto-pay setup went, as the checkout window saw it (design: "Failed or unfinished auto-pay setup"). */
+type Setup = { kind: "declined"; detail: string | null } | { kind: "not_finished" } | { kind: "setting"; checks: number } | { kind: "on" };
+// "Setting up auto-pay…" checks with ops every 5 seconds for a minute.
+const SETUP_CHECKS = 12;
+
 interface Current {
   planId: string;
   planName: string;
@@ -45,30 +50,64 @@ interface Current {
   periodEnd: string | null;
   pendingPlanName: string | null;
   pendingInterval: Interval | null;
+  autoPay: { status: string; nextChargeAt: string | null } | null;
 }
 
-export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilling, current }: { plans: SellablePlan[]; locked: boolean; lockReason: BillingLockReason | null; canPay: boolean; onlineBilling: boolean; current: Current | null }) {
+export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilling, autoPayBilling, current }: { plans: SellablePlan[]; locked: boolean; lockReason: BillingLockReason | null; canPay: boolean; onlineBilling: boolean; autoPayBilling: boolean; current: Current | null }) {
   const router = useRouter();
-  const [planId, setPlanId] = useState(current?.planId ?? plans[0]?.id ?? "");
+  // A downgrade waiting for approval (Ops stopped the auto-pay) opens on the plan it is moving to.
+  const [planId, setPlanId] = useState((current?.autoPay?.status === "CANCELLED" && plans.find((p) => p.name === current.pendingPlanName)?.id) || current?.planId || plans[0]?.id || "");
   const [annual, setAnnual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [setup, setSetup] = useState<Setup | null>(null);
 
   const plan = plans.find((candidate) => candidate.id === planId);
   const interval: Interval = annual && plan?.annual ? "ANNUAL" : "MONTHLY";
   const price = plan ? (interval === "ANNUAL" ? plan.annual! : plan.monthly) : null;
+  // Monthly is auto-pay only when Platterly Ops takes the money; catering's own billing sells 30 days at a time.
+  const monthlyAutoPay = interval === "MONTHLY" && autoPayBilling;
   const saving = plan?.annual ? annualSaving(plan.monthly.amount, plan.annual.amount) : 0;
 
+  const autoPay = current?.autoPay ?? null;
+  const autoPayOn = autoPay?.status === "ACTIVE" || autoPay?.status === "PAUSED";
   // Against what the kitchen is on now: same plan renews, a dearer one upgrades, a cheaper one waits for period end.
-  const mode = !current || !plan ? "pay" : plan.id === current.planId ? "renew" : plan.priceMonthly < current.priceMonthly ? "downgrade" : "upgrade";
+  // Auto-pay that failed, stopped or ended (a downgrade waiting for approval) is set up again: a new auto-pay, charged now.
+  const mode = !current || !plan || (autoPay && !autoPayOn) ? "pay" : plan.id === current.planId ? "renew" : plan.priceMonthly < current.priceMonthly ? "downgrade" : "upgrade";
+  // Monthly on the plan already on auto-pay: nothing to pay; the next charge is automatic.
+  const alreadyOn = monthlyAutoPay && mode === "renew" && autoPayOn;
+  // Auto-pay charges at once and starts 30 new days, so on the plan already paid for it waits until those days end (Sharath, 2026-10-23).
+  const waitUntil = monthlyAutoPay && mode === "renew" && !autoPayOn && current?.periodEnd && new Date(current.periodEnd) > new Date() ? current.periodEnd : null;
   const heading = locked && lockReason ? HEADLINE[lockReason] : { title: current ? "Manage your plan" : "Upgrade your plan", text: "Pick a plan and billing period. You can change it again at any time." };
-  const buttonLabel = !price ? "Pay" : mode === "downgrade" ? "Switch at the end of this period" : `${mode === "renew" ? "Renew" : "Pay"} ${inrUpTo2(price.total)}`;
+  const buttonLabel = !price
+    ? "Pay"
+    : mode === "downgrade"
+      ? "Switch at the end of this period"
+      : !monthlyAutoPay
+        ? `${mode === "renew" ? "Renew" : "Pay"} ${inrUpTo2(price.total)}`
+        : alreadyOn
+          ? "Auto-pay is on"
+          : waitUntil
+            ? `Set up auto-pay from ${longDate(waitUntil)}`
+            : `${autoPay ? "Set up auto-pay again and pay" : "Set up auto-pay and pay"} ${inrUpTo2(price.total)}`;
+
+  // Paid, but ops waits for Razorpay's webhook: ask again until the auto-pay shows as on.
+  const settingUp = setup?.kind === "setting" && !autoPayOn;
+  useEffect(() => {
+    if (setup?.kind !== "setting" || autoPayOn || setup.checks >= SETUP_CHECKS) return;
+    const timer = setTimeout(() => {
+      setSetup({ kind: "setting", checks: setup.checks + 1 });
+      router.refresh();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [setup, autoPayOn, router]);
 
   async function pay() {
     if (!plan) return;
     setError(null);
     setNotice(null);
+    setSetup(null);
     setBusy(true);
     if (mode === "downgrade") {
       const result = await scheduleDowngradeAction(plan.id, interval);
@@ -86,25 +125,56 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
       setBusy(false);
       return setError("Could not load the payment window. Please check your connection and try again.");
     }
-    new window.Razorpay({
+    // Monthly is a Razorpay subscription (auto-pay); yearly and catering's own billing are an order.
+    const subscriptionId = "razorpaySubscriptionId" in started ? started.razorpaySubscriptionId : null;
+    const window_ = "razorpaySubscriptionId" in started ? { subscription_id: started.razorpaySubscriptionId } : { amount: started.amountPaise, currency: "INR", order_id: started.razorpayOrderId };
+    // Razorpay's window can stay open after a decline for another try, so closing it says "not finished" only when nothing else was said.
+    let settled = false;
+    const checkout = new window.Razorpay({
       key: started.keyId,
-      amount: started.amountPaise,
-      currency: "INR",
       name: started.businessName,
       description: started.description,
-      order_id: started.razorpayOrderId,
+      ...window_,
       theme: { color: "#FF6900" },
-      handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+      handler: async (response: { razorpay_order_id?: string; razorpay_subscription_id?: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+        settled = true;
         const verified = await verifyCheckoutAction(response);
         if (!verified.ok) {
           setBusy(false);
           return setError(verified.error);
         }
-        router.push("/settings/subscription?paid=1");
+        if (!subscriptionId) {
+          router.push("/settings/subscription?paid=1");
+          return router.refresh();
+        }
+        // Never "charged" until ops has confirmed the payment. Ops has already recorded a mandate that failed.
+        setBusy(false);
+        setSetup(verified.failed ? { kind: "not_finished" } : verified.confirmed ? { kind: "on" } : { kind: "setting", checks: 0 });
         router.refresh();
       },
-      modal: { ondismiss: () => setBusy(false) },
-    }).open();
+      modal: {
+        ondismiss: () => {
+          setBusy(false);
+          if (!subscriptionId || settled) return;
+          setSetup({ kind: "not_finished" });
+          void reportAutoPayFailedAction(subscriptionId, "not_finished", null);
+        },
+      },
+    });
+    if (subscriptionId) {
+      // Razorpay can send the same failure twice (seen in test mode, 2026-10-23): report each payment once.
+      let lastFailed: string | undefined;
+      checkout.on("payment.failed", (response) => {
+        const paymentId = response.error?.metadata?.payment_id;
+        if (paymentId && paymentId === lastFailed) return;
+        lastFailed = paymentId;
+        settled = true;
+        const detail = response.error?.description ?? null;
+        setSetup({ kind: "declined", detail });
+        void reportAutoPayFailedAction(subscriptionId, "declined", detail);
+      });
+    }
+    checkout.open();
   }
 
   return (
@@ -112,7 +182,7 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
       <div className="flex flex-col gap-3">
         <Badge variant="orange" className="self-start">
           <Clock className="size-3.5" />
-          {interval === "ANNUAL" ? "1-Year Access" : "30-Day Access"}
+          {interval === "ANNUAL" ? "1-Year Access" : monthlyAutoPay ? "Auto-pay every 30 days" : "30-Day Access"}
         </Badge>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl" data-testid="subscribe-title">
           {heading.title}
@@ -184,8 +254,9 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
               <div className="flex flex-col gap-4 rounded-lg border border-border p-5">
                 <h2 className="text-xl font-semibold">{plan.name} Benefits</h2>
                 <ul className="flex flex-col gap-3">
-                  {(plan.highlights.length > 0 ? plan.highlights : plan.description ? [plan.description] : []).map((line) => (
-                    <li key={line} className="flex items-start gap-3 text-sm">
+                  {(plan.highlights.length > 0 ? plan.highlights : plan.description ? [plan.description] : []).map((line, i) => (
+                    // By position too: a plan saved before Ops dropped repeated lines can still list one twice (issue 91).
+                    <li key={`${i}-${line}`} className="flex items-start gap-3 text-sm">
                       <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" />
                       {line}
                     </li>
@@ -208,19 +279,54 @@ export function SubscribeClient({ plans, locked, lockReason, canPay, onlineBilli
                 </div>
               </dl>
 
+              {monthlyAutoPay && !setup && (
+                <p className="rounded-lg bg-secondary p-3 text-sm" data-testid="autopay-note">
+                  {alreadyOn
+                    ? `Auto-pay is on${autoPay?.nextChargeAt ? `. Next charge ${inrUpTo2(price.total)} on ${longDate(autoPay.nextChargeAt)}` : ""}. You can pause it in Settings → Subscription.`
+                    : waitUntil
+                      ? `${inrUpTo2(price.total)} every 30 days, auto-pay. You can set it up when your paid days end on ${longDate(waitUntil)}, so you keep the days you have paid for.`
+                      : `${inrUpTo2(price.total)} now, then every 30 days, auto-pay. Pause at any time in Settings → Subscription.`}
+                </p>
+              )}
+
               {current?.pendingPlanName && (
                 <p className="rounded-lg bg-secondary p-3 text-sm">
                   You will move to {current.pendingPlanName} when this period ends{current.periodEnd ? ` on ${longDate(current.periodEnd)}` : ""}.{" "}
-                  <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={async () => { await cancelDowngradeAction(); router.refresh(); }}>
-                    Cancel that change
-                  </button>
+                  {/* Ops refuses the undo once auto-pay is stopping for it (Task 8). */}
+                  {!autoPay ? (
+                    <button type="button" className="font-medium text-primary underline-offset-4 hover:underline" onClick={async () => { await cancelDowngradeAction(); router.refresh(); }}>
+                      Cancel that change
+                    </button>
+                  ) : null}
                 </p>
               )}
               {!onlineBilling && mode !== "downgrade" && <p className="rounded-lg bg-warning/10 p-3 text-sm text-warning">Online payment is not switched on yet. Please contact Platterly to activate your plan.</p>}
+              {setup && (setup.kind === "declined" || setup.kind === "not_finished") && (
+                <div role="alert" className="flex flex-col gap-2 rounded-lg bg-destructive/10 p-3 text-sm" data-testid="autopay-setup">
+                  <p>
+                    {setup.kind === "declined"
+                      ? "Your payment didn't go through, so you weren't charged and auto-pay isn't set up. Try again, or use another bank account or card."
+                      : "Auto-pay wasn't set up. If any money left your account, your bank returns it automatically."}
+                  </p>
+                  {setup.kind === "declined" && setup.detail && <p className="text-muted-foreground">{setup.detail}</p>}
+                  <Button type="button" variant="outline" size="sm" className="self-start" disabled={busy} onClick={pay}>
+                    Try again
+                  </Button>
+                </div>
+              )}
+              {setup && (setup.kind === "on" || setup.kind === "setting") && (
+                <p role="status" className="rounded-lg bg-secondary p-3 text-sm" data-testid="autopay-setup">
+                  {!settingUp
+                    ? `Auto-pay is on.${autoPay?.nextChargeAt ? ` Next charge ${inrUpTo2(price.total)} on ${longDate(autoPay.nextChargeAt)}.` : ""}`
+                    : setup.kind === "setting" && setup.checks < SETUP_CHECKS
+                      ? "Setting up auto-pay… this can take a minute."
+                      : "Auto-pay is still being set up. Settings → Subscription will show it once it is on."}
+                </p>
+              )}
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               {notice && <p role="status" className="text-sm text-success">{notice}</p>}
 
-              <Button type="button" className="w-full" disabled={busy || !canPay || (mode !== "downgrade" && !onlineBilling)} onClick={pay}>
+              <Button type="button" className="w-full" disabled={busy || alreadyOn || !!waitUntil || !canPay || (mode !== "downgrade" && !onlineBilling)} onClick={pay}>
                 {busy ? "Please wait…" : buttonLabel}
               </Button>
               <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground">

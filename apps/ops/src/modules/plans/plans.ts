@@ -60,7 +60,8 @@ const data = (input: PlanInput, clean: { code: string; name: string; entitlement
   priceMonthly: input.priceMonthly ?? null,
   priceAnnual: input.priceAnnual ?? null,
   gstPercent: input.gstPercent,
-  highlights: input.highlights.map((h) => h.trim()).filter(Boolean),
+  // Each line once: the plan pages key their lists by the line (issue 91).
+  highlights: [...new Set(input.highlights.map((h) => h.trim()).filter(Boolean))],
   entitlements: clean.entitlements as Prisma.InputJsonValue,
   isFeatured,
 });

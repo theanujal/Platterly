@@ -9,7 +9,7 @@ import { nextInvoiceNumber } from "./numbering";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
-import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
+import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchPaidChargeId, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
 import { recordRazorpayEvent } from "./events";
 
@@ -310,9 +310,16 @@ export async function verifyAutoPayCheckout(input: { businessId: string; product
   const payment = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId }, orderBy: { createdAt: "asc" } });
   if (!payment || payment.businessId !== input.businessId || payment.productKey !== input.productKey) throw new BillingError("We could not verify this payment.");
   const sub = await fetchRazorpaySubscription(creds, input.razorpaySubscriptionId, fetchImpl);
+  // Still "created": the mandate never went through, although the window signed a ₹0 payment ("Payment successful but
+  // e-Mandate failed" in test mode, 2026-10-23). No charge will come, so it is a setup not finished.
+  if (sub.status === "created") return failAutoPayCheckout({ businessId: input.businessId, productKey: input.productKey, razorpaySubscriptionId: sub.id, reason: "not_finished", detail: "Razorpay: the mandate was not authorised." });
   // Razorpay charges at once, so a paid setup has its cycle; without one, the webhook's first charge settles the payment.
   if (!sub.current_start || !sub.current_end) return payment;
-  return chargeAutoPay({ razorpaySubscriptionId: sub.id, razorpayPaymentId: input.razorpayPaymentId, periodStart: new Date(sub.current_start * 1000), periodEnd: new Date(sub.current_end * 1000) });
+  // Recorded under the invoice's payment, the one subscription.charged names too, so the webhook finds it and adds no second
+  // invoice. The window's own payment can be the ₹0 mandate (e-mandate, seen in test mode 2026-10-23).
+  const chargeId = await fetchPaidChargeId(creds, sub.id, fetchImpl);
+  if (!chargeId) return payment;
+  return chargeAutoPay({ razorpaySubscriptionId: sub.id, razorpayPaymentId: chargeId, periodStart: new Date(sub.current_start * 1000), periodEnd: new Date(sub.current_end * 1000) });
 }
 
 /**

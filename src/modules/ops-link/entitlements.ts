@@ -36,6 +36,8 @@ export interface EntitlementView {
   currentPeriodEnd: Date | null;
   /** A paid plan's period has ended and the 7-day payment grace is running: when it ends (the kitchen is warned, not locked). Null otherwise. */
   graceEndsAt?: Date | null;
+  /** How the paid plan is billed, for the yearly renewal reminder. */
+  interval?: "MONTHLY" | "ANNUAL" | null;
 }
 
 /** How long a brand-new kitchen runs on the trial defaults while it waits for its first snapshot from ops. */
@@ -55,7 +57,7 @@ export function flagOf(view: EntitlementView, key: string): boolean {
 }
 
 type SubscriptionRow = NonNullable<Awaited<ReturnType<typeof getCurrentSubscription>>>;
-type PlanLockInput = Pick<SubscriptionRow, "status" | "trialEndsAt" | "currentPeriodEnd">;
+type PlanLockInput = Pick<SubscriptionRow, "status" | "trialEndsAt" | "currentPeriodEnd"> & Partial<Pick<SubscriptionRow, "billingInterval">>;
 
 /** The plan rows, shaped as a view. No subscription at all is open (as before) but has no multiple-locations flag. */
 export function viewFromPlan(subscription: (PlanLockInput & { subscriptionPlan: SubscriptionRow["subscriptionPlan"] }) | null, now: Date = new Date()): EntitlementView {
@@ -69,7 +71,7 @@ export function viewFromPlan(subscription: (PlanLockInput & { subscriptionPlan: 
 
   const reason = billingLockReason(subscription, now);
   const status: SubscriptionStatus = reason === "ended" ? "CANCELLED" : reason ? "LOCKED" : subscription.status === "TRIALING" ? "TRIALING" : "ACTIVE";
-  return { source: "plan", status, locked: reason !== null, stale: false, planName: subscription.subscriptionPlan.name, values, lockReason: reason, trialEndsAt: subscription.trialEndsAt, currentPeriodEnd: subscription.currentPeriodEnd, graceEndsAt: billingGraceEndsAt(subscription, now) };
+  return { source: "plan", status, locked: reason !== null, stale: false, planName: subscription.subscriptionPlan.name, values, lockReason: reason, trialEndsAt: subscription.trialEndsAt, currentPeriodEnd: subscription.currentPeriodEnd, graceEndsAt: billingGraceEndsAt(subscription, now), interval: subscription.billingInterval ?? null };
 }
 
 export function viewFromSnapshot(snapshot: EntitlementSnapshot, now: Date = new Date()): EntitlementView {
@@ -86,6 +88,7 @@ export function viewFromSnapshot(snapshot: EntitlementSnapshot, now: Date = new 
     trialEndsAt: snapshot.trialEndsAt ? new Date(snapshot.trialEndsAt) : null,
     currentPeriodEnd: snapshot.currentPeriodEnd ? new Date(snapshot.currentPeriodEnd) : null,
     graceEndsAt: access.allowed && access.paymentGraceEndsAt ? new Date(access.paymentGraceEndsAt) : null,
+    interval: snapshot.interval,
   };
 }
 

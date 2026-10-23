@@ -87,6 +87,22 @@ export function GraceCard({ daysLeft, endsOn }: { daysLeft: number; endsOn: stri
   );
 }
 
+/** A yearly plan is paid once (monthly is auto-pay): in its last 30 days the owner is reminded to renew. Same green box as the trial card. */
+export function RenewalCard({ endsOn }: { endsOn: string }) {
+  return (
+    <div data-testid="renewal-card" className="flex flex-col gap-2.5 rounded-xl bg-gradient-to-br from-success to-success/85 p-3 text-white">
+      <div className="flex items-center gap-1.5">
+        <Sparkles className="size-3.5 shrink-0" />
+        <span className="text-xs font-semibold">Plan renews on {endsOn}</span>
+      </div>
+      <p className="text-xs leading-snug text-white/90">Your yearly plan is paid once. Renew before {endsOn} to carry on without a break.</p>
+      <Button size="md" className="w-full bg-white text-success hover:bg-white/90" render={<Link href="/subscribe" />} nativeButton={false}>
+        Renew now
+      </Button>
+    </div>
+  );
+}
+
 /**
  * The Super Admin's own words in the same green box (AJ, 2026-10-04): a title, some text and an optional button that
  * opens a page in Platterly or a secure outside address. Shown to every kitchen while it is switched on.

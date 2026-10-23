@@ -16,7 +16,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { GraceCard, NoticeBox, UpgradeCard, type SidebarNotice } from "@/components/app-shell/upgrade-card";
+import { GraceCard, NoticeBox, RenewalCard, UpgradeCard, type SidebarNotice } from "@/components/app-shell/upgrade-card";
 import { NAV_PERMISSIONS } from "@/components/app-shell/nav-permissions";
 import { NAV_GROUPS, type NavGroupId } from "@/components/app-shell/nav-groups";
 
@@ -100,9 +100,11 @@ interface AppSidebarProps {
   trial: { trialDaysLeft: number | null; trialTotalDays: number | null } | null;
   /** A paid plan's period has ended and the 7-day payment grace is running (AJ, 2026-10-12): it replaces every other box. */
   grace: { daysLeft: number; endsOn: string } | null;
+  /** A yearly plan in its last 30 days: the renewal reminder. */
+  renewal: { endsOn: string } | null;
 }
 
-export function AppSidebar({ organizationName, trial, notice, grace, allowedHrefs }: AppSidebarProps) {
+export function AppSidebar({ organizationName, trial, notice, grace, renewal, allowedHrefs }: AppSidebarProps) {
   const pathname = usePathname();
   const visible = <T extends NavItem>(items: readonly T[]) => items.filter((item) => !(item.href in NAV_PERMISSIONS) || allowedHrefs.includes(item.href));
   const finance = groupItem(FINANCE_ITEM, allowedHrefs);
@@ -143,9 +145,9 @@ export function AppSidebar({ organizationName, trial, notice, grace, allowedHref
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="gap-3">
-        {(grace || notice || trial) && (
+        {(grace || renewal || notice || trial) && (
           <div className="group-data-[collapsible=icon]:hidden">
-            {grace ? <GraceCard daysLeft={grace.daysLeft} endsOn={grace.endsOn} /> : notice ? <NoticeBox notice={notice} /> : trial && <UpgradeCard trialDaysLeft={trial.trialDaysLeft} trialTotalDays={trial.trialTotalDays} />}
+            {grace ? <GraceCard daysLeft={grace.daysLeft} endsOn={grace.endsOn} /> : renewal ? <RenewalCard endsOn={renewal.endsOn} /> : notice ? <NoticeBox notice={notice} /> : trial && <UpgradeCard trialDaysLeft={trial.trialDaysLeft} trialTotalDays={trial.trialTotalDays} />}
           </div>
         )}
       </SidebarFooter>

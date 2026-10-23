@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, CreditCard, Download, Gift, History, Receipt, Sparkles } from "lucide-react";
-import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
+import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getSubscriptionPageData } from "@/modules/subscriptions/billing-source";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 import { formatDate } from "@/lib/time/local-date";
+import { AutoPayButton } from "./autopay-button";
 
 export const metadata: Metadata = {
   title: "Subscription — Caterly",
@@ -25,6 +26,8 @@ function daysUntil(date: Date): number {
 
 // Raw enum values (TRIALING) read badly in a badge.
 const STATUS_LABEL: Record<string, string> = { TRIALING: "Trial Active", ACTIVE: "Active", CANCELLED: "Cancelled", EXPIRED: "Expired", PAST_DUE: "Past Due" };
+// What Razorpay last said about the monthly auto-pay (AutoPayStatus).
+const AUTO_PAY_LABEL: Record<string, string> = { ACTIVE: "On", PENDING: "Payment failed, retrying", PAUSED: "Paused", HALTED: "Stopped: set up again", CANCELLED: "Off" };
 const statusLabel = (status: string) => STATUS_LABEL[status] ?? status.charAt(0) + status.slice(1).toLowerCase().replaceAll("_", " ");
 
 // Laid out like AJ's Subscription reference (2026-09-30). Real payments (Chunk 20) are listed in their own panel;
@@ -38,6 +41,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
   // The plan checkout lands here with ?paid=1 once the payment is verified; the newest payment is the one just made.
   const justPaid = (await searchParams).paid ? payments[0] : undefined;
+  const canPay = await hasPermission({ tenant: ["edit"] }, organizationId);
+  const autoPay = current?.autoPay ?? null;
 
   return (
     <SettingsCard title="Subscription" description="Your current plan and subscription history.">
@@ -91,8 +96,14 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               <dl className="flex flex-col gap-2 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Payment Method:</dt>
-                  <dd className="font-medium">{trialing ? "Free Trial" : current.billingInterval ? "Razorpay (card, UPI or net banking)" : "Set by Platterly"}</dd>
+                  <dd className="font-medium">{trialing ? "Free Trial" : autoPay ? "Auto-pay every 30 days (Razorpay)" : current.billingInterval ? "Razorpay, paid once (card, UPI or net banking)" : "Set by Platterly"}</dd>
                 </div>
+                {autoPay && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Auto-pay:</dt>
+                    <dd className="font-medium" data-testid="autopay-status">{AUTO_PAY_LABEL[autoPay.status] ?? autoPay.status}{autoPay.nextChargeAt ? `, next charge ${formatDate(autoPay.nextChargeAt)}` : ""}</dd>
+                  </div>
+                )}
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Next Billing:</dt>
                   <dd className="font-medium">{trialing && current.trialEndsAt ? formatDate(current.trialEndsAt) : current.currentPeriodEnd ? formatDate(current.currentPeriodEnd) : "—"}</dd>
@@ -110,6 +121,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               <Sparkles data-icon="inline-start" />
               {trialing ? "Upgrade plan" : "Renew or change plan"}
             </Button>
+            {/* A waiting downgrade already stops the auto-pay at the end of this cycle (Task 8), so there is nothing to pause. */}
+            {canPay && (autoPay?.status === "ACTIVE" || autoPay?.status === "PAUSED") && !current.pendingPlanName && <AutoPayButton paused={autoPay.status === "PAUSED"} />}
 
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               {[

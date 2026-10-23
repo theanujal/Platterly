@@ -7,7 +7,7 @@ import { ValidationError } from "@/lib/errors";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { createPlan, deactivatePlan, updatePlan } from "@/modules/subscriptions/plan";
 import { savePlatformBillingProfile, type PlatformBillingInput } from "@/modules/subscriptions/platform-billing";
-import { cancelScheduledDowngrade, getPaymentInvoice, getSubscribeData, getSubscriptionPageData, scheduleDowngrade, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
+import { cancelScheduledDowngrade, getPaymentInvoice, getSubscribeData, getSubscriptionPageData, reportAutoPayFailed, scheduleDowngrade, setAutoPayPaused, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { opsBillingOn } from "../config";
 import { FIRST_SNAPSHOT_WINDOW_HOURS, getEntitlements, isLocked, lockedOrganizationIds } from "../entitlements";
@@ -205,8 +205,73 @@ describe("with OPS_BILLING on the screens ask ops", () => {
     const org = await makeKitchen({ sub: "none", gst: "29ABCDE1234F1Z5" });
     on();
     answers = { [`POST /api/products/catering/businesses/${org.businessId}/billing/checkout`]: { status: 200, body: { keyId: "rzp_k", razorpayOrderId: "order_1", amountPaise: 118000, businessName: "Cutover Kitchen", description: "Pro plan, 30 days" } } };
-    expect(await startCheckout(org.id, "plan_pro", "MONTHLY", "user-1")).toMatchObject({ keyId: "rzp_k", razorpayOrderId: "order_1", amountPaise: 118000 });
-    expect(JSON.parse(requests[0].body)).toEqual({ planId: "plan_pro", interval: "MONTHLY", buyer: { name: "Cutover Kitchen", addressLine1: "1 Main Rd", addressLine2: null, city: "Bengaluru", state: "Karnataka", postalCode: "560001", country: "India", gstin: "29ABCDE1234F1Z5" } });
+    expect(await startCheckout(org.id, "plan_pro", "ANNUAL", "user-1")).toMatchObject({ keyId: "rzp_k", razorpayOrderId: "order_1", amountPaise: 118000 });
+    expect(JSON.parse(requests[0].body)).toEqual({ planId: "plan_pro", interval: "ANNUAL", buyer: { name: "Cutover Kitchen", addressLine1: "1 Main Rd", addressLine2: null, city: "Bengaluru", state: "Karnataka", postalCode: "560001", country: "India", gstin: "29ABCDE1234F1Z5" } });
+  });
+
+  it("a monthly checkout asks ops for auto-pay and returns Razorpay's subscription", async () => {
+    const org = await makeKitchen({ sub: "none" });
+    on();
+    answers = { [`POST /api/products/catering/businesses/${org.businessId}/billing/checkout`]: { status: 200, body: { kind: "subscription", keyId: "rzp_k", razorpaySubscriptionId: "sub_1", amountPaise: 118000, businessName: "Cutover Kitchen", description: "Pro plan, monthly" } } };
+    expect(await startCheckout(org.id, "plan_pro", "MONTHLY", "user-1")).toMatchObject({ kind: "subscription", razorpaySubscriptionId: "sub_1" });
+    expect(JSON.parse(requests[0].body)).toMatchObject({ planId: "plan_pro", interval: "MONTHLY", autoPay: true });
+  });
+
+  it("verifies an auto-pay subscription's first payment with exactly its ids", async () => {
+    const org = await makeKitchen({ sub: "none" });
+    on();
+    const base = `/api/products/catering/businesses/${org.businessId}/billing`;
+    answers = { [`POST ${base}/verify`]: { status: 200, body: { ok: true } }, [`GET /api/products/catering/snapshots/${org.businessId}`]: { status: 200, body: snapshot(org.businessId, { version: 2 }) } };
+    const params = { razorpaySubscriptionId: "sub_1", razorpayPaymentId: "pay_1", signature: "b".repeat(64) };
+    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: false, failed: false });
+    expect(requests[0].path).toBe(`${base}/verify`);
+    expect(JSON.parse(requests[0].body)).toEqual(params);
+    // Confirmed only when ops says the first charge is paid; until then the page says "Setting up auto-pay…".
+    answers[`POST ${base}/verify`] = { status: 200, body: { ok: true, status: "PAID", invoiceNumber: "FP-2" } };
+    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: true, failed: false });
+    // Ops found the mandate never went through (a signed ₹0 payment): the page says auto-pay wasn't set up.
+    answers[`POST ${base}/verify`] = { status: 200, body: { ok: true, status: "FAILED", invoiceNumber: null } };
+    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: false, failed: true });
+  });
+
+  it("tells ops an auto-pay setup was declined or not finished, which Razorpay never does", async () => {
+    const org = await makeKitchen({ sub: "none" });
+    on();
+    const path = `/api/products/catering/businesses/${org.businessId}/billing/verify`;
+    answers = { [`POST ${path}`]: { status: 200, body: { ok: true, status: "FAILED", invoiceNumber: null } } };
+    await reportAutoPayFailed(org.id, "sub_1", "declined", "Your bank declined this payment");
+    await reportAutoPayFailed(org.id, "sub_1", "not_finished", null);
+    expect(requests.map((r) => JSON.parse(r.body))).toEqual([
+      { razorpaySubscriptionId: "sub_1", failed: { reason: "declined", detail: "Your bank declined this payment" } },
+      { razorpaySubscriptionId: "sub_1", failed: { reason: "not_finished", detail: null } },
+    ]);
+  });
+
+  it("pauses and resumes auto-pay through ops, and refuses with the flag off", async () => {
+    const org = await makeKitchen({ sub: "none" });
+    await expect(setAutoPayPaused(org.id, true)).rejects.toBeInstanceOf(ValidationError);
+    expect(requests).toHaveLength(0);
+    on();
+    const base = `/api/products/catering/businesses/${org.businessId}/billing/autopay`;
+    const snap = `GET /api/products/catering/snapshots/${org.businessId}`;
+    answers = { [`POST ${base}/pause`]: { status: 200, body: { ok: true } }, [`POST ${base}/resume`]: { status: 200, body: { ok: true } }, [snap]: { status: 200, body: snapshot(org.businessId) } };
+    await setAutoPayPaused(org.id, true);
+    await setAutoPayPaused(org.id, false);
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([`POST ${base}/pause`, snap, `POST ${base}/resume`, snap]);
+  });
+
+  it("the Settings page gets auto-pay's status and next charge as a date", async () => {
+    const org = await makeKitchen({ sub: "none" });
+    on();
+    await storeSnapshot(org.id, snapshot(org.businessId));
+    const nextChargeAt = "2026-11-20T10:00:00.000Z";
+    answers = {
+      "GET /api/products/catering/billing/plans": { status: 200, body: { plans: [offer("plan_pro", "Ops Pro", 1000, 10000)] } },
+      [`GET /api/products/catering/businesses/${org.businessId}/billing`]: { status: 200, body: billingView("plan_pro", { subscription: { ...billingView("plan_pro").subscription, autoPay: { status: "ACTIVE", nextChargeAt } } }) },
+    };
+    const page = await getSubscriptionPageData(org.id);
+    expect(page.current?.autoPay).toEqual({ status: "ACTIVE", nextChargeAt: new Date(nextChargeAt) });
+    expect(page.history.every((h) => h.autoPay === null)).toBe(true);
   });
 
   it("shows ops's own message for a refusal, a friendly one for an unknown business, and a generic one when ops fails", async () => {

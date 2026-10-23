@@ -30,6 +30,8 @@ let profileBefore: Awaited<ReturnType<typeof prisma.platformBillingProfile.findU
 /** Razorpay as the tests see it: every call recorded, subscriptions kept in `rz` so a test can set their dates and status. */
 let calls: { method: string; path: string; body: Record<string, unknown> | null }[] = [];
 let rz: Record<string, { status: string; current_start: number | null; current_end: number | null }> = {};
+/** The subscription's invoices; a paid one carries the real charge's payment id. */
+let inv: Record<string, { status: string; payment_id: string | null }[]> = {};
 let counter = 0;
 const realFetch = globalThis.fetch;
 function fakeRazorpay(): typeof fetch {
@@ -46,6 +48,8 @@ function fakeRazorpay(): typeof fetch {
       rz[id] = { status: "created", current_start: null, current_end: null };
       return json({ id, ...rz[id] });
     }
+    const invoices = path.match(/^\/invoices\?subscription_id=(sub_\w+)$/);
+    if (invoices) return json({ items: inv[invoices[1]] ?? [] });
     const m = path.match(/^\/subscriptions\/(sub_\w+)(?:\/(cancel|pause|resume))?$/);
     if (m && rz[m[1]]) {
       if (m[2]) rz[m[1]].status = { cancel: "cancelled", pause: "paused", resume: "active" }[m[2]]!;
@@ -110,6 +114,7 @@ beforeEach(async () => {
   await clean();
   calls = [];
   rz = {};
+  inv = {};
   counter = 0;
   process.env.RAZORPAY_KEY_ID = KEY_ID;
   process.env.RAZORPAY_KEY_SECRET = KEY_SECRET;
@@ -177,14 +182,37 @@ describe("auto-pay checkout and charges", () => {
   it("verifying the first charge: one payment, one invoice, Razorpay's dates, auto-pay ACTIVE", async () => {
     const { pro, biz } = await setup();
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
-    const { periodEnd } = cycle(a.razorpaySubscriptionId, new Date());
+    const cycleNow = cycle(a.razorpaySubscriptionId, new Date());
+    const { periodEnd } = cycleNow;
+    // E-mandate (Razorpay test mode, 2026-10-23): the window's payment is the ₹0 mandate; the charge is the invoice's payment.
+    inv[a.razorpaySubscriptionId] = [{ status: "paid", payment_id: "pay_charge" }];
     await expect(verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_1", signature: "0".repeat(64) })).rejects.toThrow(/could not verify/);
     const paid = await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_1", signature: subSig(a.razorpaySubscriptionId, "pay_1") });
-    expect(paid).toMatchObject({ status: "PAID", razorpayPaymentId: "pay_1" });
+    expect(paid).toMatchObject({ status: "PAID", razorpayPaymentId: "pay_charge" });
+    // The same charge's subscription.charged webhook finds it recorded: still one payment, one invoice.
+    await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_charge", ...cycleNow });
+    expect(await prisma.subscriptionPayment.count({ where: { razorpaySubscriptionId: a.razorpaySubscriptionId, status: "PAID" } })).toBe(1);
     expect(paid!.invoiceNumber).toBeTruthy();
     const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } });
     expect(sub).toMatchObject({ status: "ACTIVE", planId: pro.id, billingInterval: "MONTHLY", razorpaySubscriptionId: a.razorpaySubscriptionId, autoPay: "ACTIVE" });
     expect(sub.currentPeriodEnd!.getTime()).toBe(periodEnd.getTime());
+  });
+
+  it("a signed checkout whose mandate failed (subscription still created) is a setup not finished, not one on its way", async () => {
+    // Razorpay test mode, "Payment successful but e-Mandate failed" (2026-10-23): the window calls the success handler with a
+    // valid signature, but the payment is ₹0 and the subscription stays created, so no charge will ever come.
+    const { pro, biz } = await setup();
+    const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
+    const result = await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_m", signature: subSig(a.razorpaySubscriptionId, "pay_m") });
+    expect(result).toMatchObject({ status: "FAILED", failureReason: "not_finished" });
+    expect(await prisma.subscription.count({ where: { businessId: biz, razorpaySubscriptionId: a.razorpaySubscriptionId } })).toBe(0);
+    // Mandate taken, charge not yet in: still on its way.
+    const b = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
+    rz[b.razorpaySubscriptionId] = { status: "authenticated", current_start: null, current_end: null };
+    expect(await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: b.razorpaySubscriptionId, razorpayPaymentId: "pay_n", signature: subSig(b.razorpaySubscriptionId, "pay_n") })).toMatchObject({ status: "PENDING" });
+    // A cycle but no paid invoice yet: the webhook settles it.
+    cycle(b.razorpaySubscriptionId, new Date());
+    expect(await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: b.razorpaySubscriptionId, razorpayPaymentId: "pay_n", signature: subSig(b.razorpaySubscriptionId, "pay_n") })).toMatchObject({ status: "PENDING" });
   });
 
   it("a later charge is a new payment that renews the same subscription in place; the same charge twice changes nothing", async () => {

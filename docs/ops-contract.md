@@ -313,7 +313,7 @@ Every plan limit, the multiple-locations flag and the lock now ask one place, `g
 | 6a | Date rules inside the snapshot, ops cron, ops-to-product command outbox with retries. **Built.** | Contract and ops tests pass |
 | 6b | Ops plans, subscriptions, staff screens, snapshot issuance and pull; catering's daily pull and the `OPS_BILLING` flag. **Built** (the billing profile moves in 6d with invoices). | A plan change in ops changes a kitchen's limits |
 | 6c | One-time import from catering, with dry run and reconciliation. **Built and applied to the dev data** (`npm run ops:import-catering`). | Rehearsed, reconciled, catering unchanged |
-| 6d | Ops billing API (section 8.1), Razorpay checkout, webhook, invoice numbering and snapshots. **Built.** | Tested with mocked Razorpay (platform keys are not set yet) |
+| 6d | Ops billing API (section 8.1), Razorpay checkout, webhook, invoice numbering and snapshots. **Built.** Monthly auto-pay (Razorpay Subscriptions) added 2026-10. | Tested with mocked Razorpay, and one-time payments in Razorpay test mode |
 | 6e | Catering cutover behind `OPS_BILLING`: Settings, `/subscribe`, sign-up trial, `/super` plan screens point to ops. **Built; the flag is off.** | Full suite green with the flag on and off |
 
 AJ's answers (2026-10-05): only dev and test data exists; the 24 dev businesses with no owner email stay on their plan rows and get no ops subscription.
@@ -360,11 +360,15 @@ Platterly's own Razorpay keys (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORP
 | `GET billing/plans` | Plans on sale for the product, GST worked out |
 | `GET businesses/{id}/billing` | Current subscription, history, paid payments, whether online payment is on |
 | `POST businesses/{id}/billing/checkout` | `{planId, interval, buyer}`: creates the Razorpay order (total with GST, in paise) and a PENDING payment that remembers the buyer's name, address and GSTIN |
-| `POST businesses/{id}/billing/verify` | Checks Razorpay Checkout's signature and confirms the payment once |
+| `POST businesses/{id}/billing/verify` | Checks Razorpay Checkout's signature and confirms the payment once. `{razorpaySubscriptionId, failed: {reason, detail}}` reports an auto-pay setup the checkout window saw declined or not finished |
 | `POST` / `DELETE businesses/{id}/billing/downgrade` | Schedules or cancels a lower plan that starts at the next payment |
 | `GET businesses/{id}/billing/payments/{paymentId}` | The frozen invoice (numbers, GST split, seller and buyer as they were), so the product prints it with its own design |
+| `POST businesses/{id}/billing/autopay/pause` | "Pause subscription": Razorpay stops charging; the paid days run out as usual |
+| `POST businesses/{id}/billing/autopay/resume` | "Resume": auto-pay on again (refused once the paid days have ended) |
 
-**Razorpay webhook:** `POST /api/webhooks/razorpay` on the ops host (events `payment.captured`, `payment.failed`). Any failure to verify answers the same 401; a valid event is always answered 200 so Razorpay stops retrying; a captured amount that is not the order's total is ignored.
+**Monthly auto-pay (2026-10).** A checkout with `autoPay: true` and `interval: "MONTHLY"` answers `{ kind: "subscription", razorpaySubscriptionId, ... }` instead of an order; the product opens Razorpay with `subscription_id` and verifies with `razorpaySubscriptionId`. The first charge is taken at once and starts a fresh 30 days, so catering offers it to a kitchen on the same plan only once its paid days have ended. Verify answers `status: "PAID"` when that charge is confirmed; otherwise ops waits for the webhook. Every later charge reaches ops by Razorpay's `subscription.charged` webhook. `BillingView.subscription.autoPay` says `{ status, nextChargeAt }`. All additive: the contract stays version 1, and a product that never sends `autoPay` keeps getting orders.
+
+**Razorpay webhook:** `POST /api/webhooks/razorpay` on the ops host (events `payment.captured`, `payment.failed`, and the `subscription.*` events for auto-pay). Each signed event is kept in the payment log (`razorpay_event`) before it is applied, and an event id is applied once. Any failure to verify answers the same 401; a valid event is always answered 200 so Razorpay stops retrying; a captured amount that is not the order's total is ignored.
 
 **Confirming a payment** (checkout verify or webhook, whichever is first; the other changes nothing):
 - one payment is one period (30 days or 365) and exactly one invoice, even under concurrent calls;

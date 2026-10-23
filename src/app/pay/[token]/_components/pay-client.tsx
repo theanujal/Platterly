@@ -10,7 +10,7 @@ import { claimUpiAction, startCheckoutAction, verifyCheckoutAction } from "../ac
 
 declare global {
   interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void; on: (event: string, handler: () => void) => void };
+    Razorpay?: new (options: Record<string, unknown>) => { open: () => void; on: (event: string, handler: (response: { error?: { description?: string; metadata?: { payment_id?: string } } }) => void) => void };
   }
 }
 

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { getSubscribeData } from "@/modules/subscriptions/billing-source";
+import { opsBillingOn } from "@/modules/ops-link/config";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { SubscribeClient } from "./_components/subscribe-client";
 
@@ -49,9 +50,10 @@ export default async function SubscribePage() {
           lockReason={data.lockReason}
           canPay={canPay}
           onlineBilling={data.onlineBilling}
+          autoPayBilling={opsBillingOn()}
           current={
             paid
-              ? { planId: paid.planId, planName: paid.planName, priceMonthly: paid.priceMonthly ?? 0, periodEnd: paid.currentPeriodEnd?.toISOString() ?? null, pendingPlanName: paid.pendingPlanName, pendingInterval: paid.pendingInterval }
+              ? { planId: paid.planId, planName: paid.planName, priceMonthly: paid.priceMonthly ?? 0, periodEnd: paid.currentPeriodEnd?.toISOString() ?? null, pendingPlanName: paid.pendingPlanName, pendingInterval: paid.pendingInterval, autoPay: paid.autoPay ? { status: paid.autoPay.status, nextChargeAt: paid.autoPay.nextChargeAt?.toISOString() ?? null } : null }
               : null
           }
         />

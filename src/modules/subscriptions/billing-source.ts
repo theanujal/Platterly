@@ -1,5 +1,5 @@
 import "server-only";
-import type { BillingView, Buyer, OrderCheckoutAnswer, PlanOffer } from "@platterly/contract";
+import type { AutoPayFailure, AutoPayStatus, BillingVerifyRequest, BillingView, Buyer, CheckoutAnswer, PlanOffer } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
 import type { BillingInterval } from "@/generated/prisma/enums";
@@ -35,6 +35,8 @@ export interface SubscriptionView {
   pendingPlanId: string | null;
   pendingPlanName: string | null;
   pendingInterval: BillingInterval | null;
+  /** Monthly auto-pay (Ops only); null for yearly, hand-assigned plans and catering's own billing. */
+  autoPay: { status: AutoPayStatus; nextChargeAt: Date | null } | null;
 }
 
 export interface PaymentView {
@@ -94,6 +96,7 @@ async function fromRow(row: Row | null): Promise<SubscriptionView | null> {
     pendingPlanId: row.pendingPlanId,
     pendingPlanName: pending?.name ?? null,
     pendingInterval: row.pendingInterval,
+    autoPay: null,
   };
 }
 
@@ -135,6 +138,7 @@ async function opsSubscriptionView(view: BillingView["subscription"], plans: Sel
     pendingPlanId: view.pending?.planId ?? null,
     pendingPlanName: view.pending?.planName ?? null,
     pendingInterval: view.pending?.interval ?? null,
+    autoPay: view.autoPay ? { status: view.autoPay.status, nextChargeAt: date(view.autoPay.nextChargeAt) } : null,
   };
 }
 
@@ -201,7 +205,7 @@ export async function getSubscriptionPageData(organizationId: string): Promise<S
       current,
       history: view.history.map((h) => ({
         id: h.id, status: h.status, planId: "", planName: h.planName, priceMonthly: null, priceAnnual: null, currency: "INR", limits: { maxUsers: null, maxEvents: null, maxOrders: null },
-        startDate: new Date(h.startDate), endDate: date(h.endDate), trialEndsAt: null, currentPeriodEnd: null, billingInterval: null, pendingPlanId: null, pendingPlanName: null, pendingInterval: null,
+        startDate: new Date(h.startDate), endDate: date(h.endDate), trialEndsAt: null, currentPeriodEnd: null, billingInterval: null, pendingPlanId: null, pendingPlanName: null, pendingInterval: null, autoPay: null,
       })),
       payments: view.payments.map((p) => ({ id: p.id, planName: p.planName, interval: p.interval, total: p.total, gstAmount: gst(p.total, p.planName), paidAt: date(p.paidAt), invoiceNumber: p.invoiceNumber })),
       historyInvoices: false,
@@ -214,17 +218,42 @@ export async function getSubscriptionPageData(organizationId: string): Promise<S
 
 /* ---------- actions ---------- */
 
-export async function startCheckout(organizationId: string, planId: string, interval: BillingInterval, actorUserId: string): Promise<OrderCheckoutAnswer> {
+export async function startCheckout(organizationId: string, planId: string, interval: BillingInterval, actorUserId: string): Promise<CheckoutAnswer> {
   if (!opsBillingOn()) return startSubscriptionCheckout(organizationId, planId, interval, actorUserId);
   const businessId = await businessIdOf(organizationId);
-  return opsBillingOk<OrderCheckoutAnswer>("POST", `${base(businessId)}/checkout`, { planId, interval, buyer: await buyerOf(organizationId) });
+  // Monthly is auto-pay: ops answers with a Razorpay subscription instead of an order.
+  return opsBillingOk<CheckoutAnswer>("POST", `${base(businessId)}/checkout`, { planId, interval, buyer: await buyerOf(organizationId), ...(interval === "MONTHLY" ? { autoPay: true } : {}) });
 }
 
-export async function verifyCheckout(organizationId: string, params: { razorpayOrderId: string; razorpayPaymentId: string; signature: string }) {
-  if (!opsBillingOn()) return verifySubscriptionCheckout(organizationId, params);
+/**
+ * `confirmed`: the payment is paid. Neither: an auto-pay's first charge is still on its way (ops waits for Razorpay's webhook).
+ * `failed`: ops found the auto-pay mandate never went through, although the window signed a ₹0 payment.
+ */
+export async function verifyCheckout(organizationId: string, params: Exclude<BillingVerifyRequest, { failed: unknown }>): Promise<{ confirmed: boolean; failed: boolean }> {
+  if (!opsBillingOn()) {
+    // Catering's own billing has only orders.
+    if (!("razorpayOrderId" in params)) throw new ValidationError("We could not verify this payment.");
+    await verifySubscriptionCheckout(organizationId, params);
+    return { confirmed: true, failed: false };
+  }
   const businessId = await businessIdOf(organizationId);
-  await opsBillingOk("POST", `${base(businessId)}/verify`, params);
+  const answer = await opsBillingOk<{ status: string | null }>("POST", `${base(businessId)}/verify`, params);
   // Ops pushes the new snapshot too, but asking for it now lifts the lock the moment the owner has paid.
+  await pullSnapshot(organizationId, businessId);
+  return { confirmed: answer.status === "PAID", failed: answer.status === "FAILED" };
+}
+
+/** The checkout window saw an auto-pay setup declined or left unfinished; Razorpay's webhook never says so, so ops hears it from here. */
+export async function reportAutoPayFailed(organizationId: string, razorpaySubscriptionId: string, reason: AutoPayFailure, detail: string | null) {
+  if (!opsBillingOn()) return;
+  await opsBillingOk("POST", `${base(await businessIdOf(organizationId))}/verify`, { razorpaySubscriptionId, failed: { reason, detail } });
+}
+
+/** "Pause subscription" / "Resume" (Ops billing only: catering's own billing has no auto-pay). */
+export async function setAutoPayPaused(organizationId: string, paused: boolean) {
+  if (!opsBillingOn()) throw new ValidationError("Auto-pay is not available.");
+  const businessId = await businessIdOf(organizationId);
+  await opsBillingOk("POST", `${base(businessId)}/autopay/${paused ? "pause" : "resume"}`);
   await pullSnapshot(organizationId, businessId);
 }
 

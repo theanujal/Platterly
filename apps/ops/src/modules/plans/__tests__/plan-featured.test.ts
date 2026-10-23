@@ -136,3 +136,10 @@ describe("featured plan", () => {
     expect(await marker()).toBeDefined();
   });
 });
+
+describe("plan highlights", () => {
+  it("are saved once each: a line typed twice would show twice and break the plan page's list (issue 91)", async () => {
+    const plan = await createPlan(input("sitetest-feat-a", { highlights: [" Same ", "Same", "", "Other"] }), null);
+    expect(plan.highlights).toEqual(["Same", "Other"]);
+  });
+});

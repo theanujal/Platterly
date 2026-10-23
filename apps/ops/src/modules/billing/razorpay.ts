@@ -79,6 +79,10 @@ export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpa
   call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes }, fetchImpl);
 
 export const fetchRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "GET", `/subscriptions/${id}`, undefined, fetchImpl);
+
+/** The payment of a subscription's paid invoice: its real charge (with e-mandate the checkout's own payment is only the ₹0 mandate). */
+export const fetchPaidChargeId = (creds: PlatformRazorpay, subscriptionId: string, fetchImpl: typeof fetch = fetch) =>
+  call<{ items: { status: string; payment_id: string | null }[] }>(creds, "GET", `/invoices?subscription_id=${encodeURIComponent(subscriptionId)}`, undefined, fetchImpl).then(({ items }) => items.find((i) => i.status === "paid" && i.payment_id)?.payment_id ?? null);
 export const cancelRazorpaySubscription = (creds: PlatformRazorpay, id: string, atCycleEnd: boolean, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/cancel`, { cancel_at_cycle_end: atCycleEnd ? 1 : 0 }, fetchImpl);
 export const pauseRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/pause`, { pause_at: "now" }, fetchImpl);
 export const resumeRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "POST", `/subscriptions/${id}/resume`, { resume_at: "now" }, fetchImpl);

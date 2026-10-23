@@ -44,7 +44,7 @@ export default async function PlansPage() {
                   </>
                 )}
               </div>
-              {p.highlights.length > 0 ? <div className="flex flex-wrap gap-1.5">{p.highlights.slice(0, 4).map((h) => <span key={h} className="inline-flex h-5 items-center rounded-full border border-border px-2.5 text-[11px] font-medium text-[#374151]">{h}</span>)}</div> : null}
+              {p.highlights.length > 0 ? <div className="flex flex-wrap gap-1.5">{p.highlights.slice(0, 4).map((h, i) => <span key={`${i}-${h}`} className="inline-flex h-5 items-center rounded-full border border-border px-2.5 text-[11px] font-medium text-[#374151]">{h}</span>)}</div> : null}
               <div className="mt-auto flex items-center justify-between border-t border-border pt-4 text-sm">
                 <span className="text-muted-foreground">{p._count.subscriptions} {p._count.subscriptions === 1 ? "business" : "businesses"}</span>
                 <Link href={`/plans/${p.id}`} className="font-medium text-accent-foreground hover:underline">Edit</Link>
