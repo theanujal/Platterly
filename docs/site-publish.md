@@ -15,9 +15,9 @@ How a text change made in Ops (Website) reaches platterly.in. Contract: `docs/op
 | Item | Setting |
 |---|---|
 | Shared secret | `openssl rand -hex 24`. The same value is `SITE_SECRET` in Ops' environment and in the hook's. |
-| Hook environment | `SITE_SECRET`, `OPS_CONTENT_URL=https://ops.platterly.in/api/site/content`, `OPS_RESULT_URL=https://ops.platterly.in/api/site/publish-result`, `SITE_REPO_DIR` (a checkout of the repository on `main`), `SITE_WEB_ROOT=/var/www/platterly-site`. Optional `SITE_HOOK_PORT` (default 3300). |
-| Run it | `node scripts/site-deploy-hook.mjs` under systemd or pm2, so it restarts on its own. It listens on 127.0.0.1 only. |
-| Nginx, site | `root /var/www/platterly-site/current;` for platterly.in (the site uses trailing slashes: `try_files $uri $uri/ =404;`). |
+| Hook environment | `SITE_SECRET`, `OPS_CONTENT_URL=https://ops.platterly.in/api/site/content`, `OPS_RESULT_URL=https://ops.platterly.in/api/site/publish-result`, `SITE_REPO_DIR` (a checkout of the repository on `main`), `SITE_WEB_ROOT=/srv/platterly/site`. Optional `SITE_HOOK_PORT` (default 3300). |
+| Run it | `node scripts/site-deploy-hook.mjs` under systemd (`deploy/systemd/platterly-site-hook.service`), so it restarts on its own. It listens on 127.0.0.1 only. |
+| Nginx, site | `root /srv/platterly/site/current;` for platterly.in (the site uses trailing slashes: `try_files $uri $uri/ =404;`). |
 | Nginx, hook | A TLS-only `location = /deploy` (for example on a private host name) that proxies to `http://127.0.0.1:3300`. Ops' `SITE_DEPLOY_HOOK_URL` is its public address. The hook rejects anything without a valid signature, but keep the address unlisted. |
 | Ops environment | `SITE_SECRET`, `SITE_DEPLOY_HOOK_URL`. Without both, Publish is switched off and `/api/site/*` answers 404. |
 | Pictures | Set `SITE_MEDIA_DIR` in Ops to a folder that survives deploys and is in the backups, for example `/var/lib/platterly-ops/site-media` (the web user must be able to write it). Pictures are copied into each site build, so Nginx needs nothing extra. |

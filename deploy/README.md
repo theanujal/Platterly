@@ -22,6 +22,10 @@ Nothing here is needed until go-live. The scripts are tested with stand-ins (`ba
    `deploy.sh` and `rollback.sh` run as root, because they restart services and reload Nginx. The code is fetched, built and migrated as
    `platterly`, with that app's env file loaded (`as_app` in `lib.sh`), so the build sees `NEXT_PUBLIC_*` and Prisma sees `DATABASE_URL`.
 7. Cron: copy `deploy/cron/platterly.cron` to `/etc/cron.d/platterly` and set `MAILTO`.
+8. Marketing site: clone the repository to `/srv/platterly/site-repo` as `platterly`, copy `deploy/env/site-hook.env.example` to
+   `/srv/platterly/env/site-hook.env` (`chmod 600`, `SITE_SECRET` from `openssl rand -hex 24`), and install `deploy/systemd/platterly-site-hook.service`.
+   In `ops.env` set the same `SITE_SECRET` and `SITE_DEPLOY_HOOK_URL=http://127.0.0.1:3300/` (same server, so no public address is needed).
+   Then press Publish in Ops (`docs/site-publish.md`).
 
 ## Every release
 `deploy.sh catering` (or `ops`) builds the idle slot, runs the migration guard, backs up the database, runs migrations, starts the slot, waits for

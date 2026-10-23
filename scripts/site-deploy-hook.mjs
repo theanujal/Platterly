@@ -3,7 +3,7 @@
 //
 //   SITE_SECRET=... OPS_CONTENT_URL=https://ops.platterly.in/api/site/content \
 //   OPS_RESULT_URL=https://ops.platterly.in/api/site/publish-result \
-//   SITE_REPO_DIR=/srv/platterly/repo SITE_WEB_ROOT=/var/www/platterly-site \
+//   SITE_REPO_DIR=/srv/platterly/site-repo SITE_WEB_ROOT=/srv/platterly/site \
 //   node scripts/site-deploy-hook.mjs
 //
 // Nginx serves SITE_WEB_ROOT/current (a symlink). Each build lands in SITE_WEB_ROOT/releases/<timestamp> and the symlink moves

@@ -1,0 +1,22 @@
+# The marketing site's publish hook (scripts/site-deploy-hook.mjs, docs/site-publish.md). Ops' Publish button calls it on 127.0.0.1:3300;
+# it rebuilds apps/site in its own clone and moves /srv/platterly/site/current, which Nginx serves for platterly.in.
+# Install: cp deploy/systemd/platterly-site-hook.service /etc/systemd/system/ && systemctl daemon-reload && systemctl enable --now platterly-site-hook
+[Unit]
+Description=Platterly marketing site publish hook
+After=network.target
+
+[Service]
+Type=simple
+User=platterly
+Group=platterly
+EnvironmentFile=/srv/platterly/env/site-hook.env
+WorkingDirectory=/srv/platterly/site-repo
+ExecStart=/usr/bin/node scripts/site-deploy-hook.mjs
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
