@@ -41,20 +41,25 @@ async function clean() {
   await prisma.product.deleteMany({ where: { key: KEY } });
 }
 
+const ENV = { RAZORPAY_KEY_ID: "rzp_test_key", RAZORPAY_KEY_SECRET: "razorpay_key_secret", RAZORPAY_WEBHOOK_SECRET: WEBHOOK_SECRET };
+
 beforeAll(() => {
-  savedEnv.RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
+  for (const k of Object.keys(ENV)) savedEnv[k] = process.env[k];
 });
 afterAll(async () => {
   await clean();
-  if (savedEnv.RAZORPAY_WEBHOOK_SECRET === undefined) delete process.env.RAZORPAY_WEBHOOK_SECRET;
-  else process.env.RAZORPAY_WEBHOOK_SECRET = savedEnv.RAZORPAY_WEBHOOK_SECRET;
+  for (const [k, v] of Object.entries(savedEnv)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
 });
 beforeEach(async () => {
   await clean();
   applied.count = 0;
   applied.fail = false;
   applied.storedFirst = false;
-  process.env.RAZORPAY_WEBHOOK_SECRET = WEBHOOK_SECRET;
+  // The webhook only answers when Razorpay is set up; CI has no keys in its environment, so the test sets all three.
+  Object.assign(process.env, ENV);
 });
 
 describe("the Razorpay payment log", () => {
