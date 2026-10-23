@@ -153,6 +153,9 @@ describe("the Razorpay client", () => {
 
 const subSig = (subId: string, payId: string) => createHmac("sha256", KEY_SECRET).update(`${payId}|${subId}`).digest("hex");
 /** Razorpay has charged: the subscription's current cycle is [start, start + 30 days). */
+/** Sets the business's subscription period end, so a test controls the time of day the plan ends. */
+const pinPeriodEnd = (businessId: string, end: Date) => prisma.subscription.updateMany({ where: { businessId, productKey: KEY }, data: { currentPeriodEnd: end } });
+
 const cycle = (subId: string, start: Date) => {
   rz[subId] = { status: "active", current_start: secs(start), current_end: secs(new Date(start.getTime() + 30 * DAY)) };
   return { periodStart: new Date(secs(start) * 1000), periodEnd: new Date(rz[subId].current_end! * 1000) };
@@ -487,10 +490,11 @@ describe("renewal reminders", () => {
     const { pro, biz } = await setup();
     const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
     const paid = await confirmPayment(razorpayOrderId, "pay_y");
-    const end = paid!.periodEnd!.getTime();
-    // IST calendar days. `at(d, h)` is h o'clock IST, d calendar days before the period end's IST day.
+    // IST calendar days. `at(d, h)` is h o'clock IST, d calendar days before the period end's IST day. The end is pinned to 2 pm IST
+    // so the test doesn't depend on the time of day it runs (#97).
     const IST = 5.5 * 3_600_000;
-    const endDay = Math.floor((end + IST) / DAY);
+    const endDay = Math.floor((paid!.periodEnd!.getTime() + IST) / DAY);
+    await pinPeriodEnd(biz, new Date(endDay * DAY - IST + 14 * 3_600_000));
     const at = (daysBefore: number, hourIst: number) => new Date((endDay - daysBefore) * DAY - IST + hourIst * 3_600_000);
     for (const [d, h] of [[40, 9], [29, 9], [28, 9], [6, 9], [5, 9], [1, 9], [0, 7], [0, 9], [0, 10]]) await sendRenewalReminders(at(d, h), KEY);
     const logs = await prisma.messageLog.findMany({ where: { businessId: biz, template: "plan_renewal_due" }, orderBy: [{ createdAt: "asc" }, { channel: "asc" }] });
@@ -500,7 +504,7 @@ describe("renewal reminders", () => {
     const other = businessId();
     await prisma.business.create({ data: { id: other, name: "AutoPayTest Monthly", ownerEmail: "m@example.test", products: { create: { productKey: KEY } } } });
     const a = await startAutoPayCheckout({ businessId: other, productKey: KEY, planId: pro.id, buyer });
-    const first = cycle(a.razorpaySubscriptionId, new Date());
+    const first = cycle(a.razorpaySubscriptionId, new Date(Math.floor((Date.now() + IST) / DAY) * DAY - IST + 14 * 3_600_000));
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_m1", ...first });
     const mEnd = Math.floor((first.periodEnd.getTime() + IST) / DAY);
     const mAt = (daysBefore: number, hourIst: number) => new Date((mEnd - daysBefore) * DAY - IST + hourIst * 3_600_000);
@@ -508,5 +512,18 @@ describe("renewal reminders", () => {
     const mine = await prisma.messageLog.findMany({ where: { businessId: other, channel: "EMAIL", template: { in: ["autopay_upcoming", "autopay_today", "plan_renewal_due"] } }, orderBy: { createdAt: "asc" } });
     const lastPaid = await prisma.subscriptionPayment.findFirstOrThrow({ where: { razorpaySubscriptionId: a.razorpaySubscriptionId, status: "PAID" }, orderBy: { createdAt: "desc" } });
     expect(mine.map((l) => [l.template, (l.variables as { amount?: number }).amount])).toEqual([["autopay_upcoming", Number(lastPaid.total)], ["autopay_today", Number(lastPaid.total)]]);
+  });
+
+  it("a plan paid by hand that ends before 8 am IST gets its last reminder the day before, by day (#97)", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
+    const paid = await confirmPayment(razorpayOrderId, "pay_y2");
+    const IST = 5.5 * 3_600_000;
+    const endDay = Math.floor((paid!.periodEnd!.getTime() + IST) / DAY);
+    await pinPeriodEnd(biz, new Date(endDay * DAY - IST + 2 * 3_600_000)); // bought at 2 am IST, so it ends at 2 am
+    const at = (daysBefore: number, hourIst: number) => new Date((endDay - daysBefore) * DAY - IST + hourIst * 3_600_000);
+    for (const [d, h] of [[2, 9], [1, 7], [1, 9], [1, 23], [0, 1]]) await sendRenewalReminders(at(d, h), KEY);
+    const logs = await prisma.messageLog.findMany({ where: { businessId: biz, template: "plan_renewal_due" }, orderBy: [{ createdAt: "asc" }, { channel: "asc" }] });
+    expect(logs.map((l) => [(l.variables as { daysLeft: number }).daysLeft, l.channel])).toEqual([[2, "EMAIL"], [1, "EMAIL"], [1, "WHATSAPP"]]);
   });
 });

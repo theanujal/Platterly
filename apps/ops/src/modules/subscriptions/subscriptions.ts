@@ -149,7 +149,8 @@ const istHour = (d: Date) => new Date(d.getTime() + IST_OFFSET).getUTCHours();
  *   auto-pay on: 7 days before, "we will charge"; on the day from 8 am, "charging today". A charge before 8 am moves the
  *                period on, so that day only gets the payment confirmation.
  *   paid by hand (monthly, yearly, paused or halted auto-pay, or a downgrade waiting): 7 days before and on the day; yearly also
- *                30 days and 1 day before, by email only.
+ *                30 days and 1 day before, by email only. A plan that ends before 8 am gets these a day early, so the one "on the day"
+                goes out the day before from 8 am rather than never.
  * A plan assigned by hand (no billing interval) gets none. The key holds the period end and the stage, so each goes once a
  * cycle. After the end, the grace notices take over.
  */
@@ -163,11 +164,15 @@ export async function sendRenewalReminders(now: Date = new Date(), productKey?: 
     const end = sub.currentPeriodEnd!;
     const yearly = sub.billingInterval === "ANNUAL";
     const daysLeft = istDay(end) - istDay(now);
-    const stage = daysLeft === 0 ? (istHour(now) >= 8 ? 0 : null) : daysLeft === 1 ? (yearly ? 1 : null) : daysLeft <= 7 ? 7 : yearly && daysLeft <= 30 ? 30 : null;
+    const autoPayOn = !yearly && sub.autoPay === "ACTIVE" && !sub.pendingPlanId;
+    // Paid by hand: a plan that ends before 8 am IST counts its stages a day early, so the last reminder goes out by day the day before
+    // instead of never (#97). The message still gives the real days left.
+    const d = autoPayOn ? daysLeft : istDay(new Date(end.getTime() - 8 * 3_600_000)) - istDay(now);
+    const stage = d < 0 ? null : d === 0 ? (istHour(now) >= 8 ? 0 : null) : d === 1 ? (yearly ? 1 : null) : d <= 7 ? 7 : yearly && d <= 30 ? 30 : null;
     if (stage === null) continue;
     const endsOn = new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeZone: "Asia/Kolkata" }).format(end);
     const base = { businessId: sub.businessId, productKey: sub.productKey };
-    if (!yearly && sub.autoPay === "ACTIVE" && !sub.pendingPlanId) {
+    if (autoPayOn) {
       const lastPaid = sub.razorpaySubscriptionId ? await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: sub.razorpaySubscriptionId, status: "PAID" }, orderBy: { createdAt: "desc" }, select: { total: true } }) : null;
       const amount = lastPaid ? Number(lastPaid.total) : priceBreakdown(Number(sub.plan.priceMonthly ?? 0), Number(sub.plan.gstPercent)).total;
       const template = stage === 0 ? "autopay_today" : "autopay_upcoming";
