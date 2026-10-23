@@ -16,7 +16,8 @@ import { isReservedPathSegment } from "@/lib/routing/reserved-words";
  * kind of request, not just a browser page load.
  *
  * Entry point (AJ, 2026-10-03): opening `catering.platterly.in/` shows the kitchen sign-in / sign-up page
- * straight away. The URL stays `/` (a rewrite). The old address `/kitchenlogin` redirects there (a temporary,
+ * straight away: `src/app/page.tsx` is that same page. Not a rewrite here: behind `next start -H 127.0.0.1` Next 16
+ * sees the rewrite's origin (localhost) as foreign and proxies it to itself over https, a 500. The old address `/kitchenlogin` redirects there (a temporary,
  * 307 redirect, so a bookmark never gets stuck if the root ever changes); the wizard under it stays put.
  *
  * Indexing (AJ, 2026-10-01): the only indexable page is a kitchen's own
@@ -49,9 +50,6 @@ export function proxy(request: NextRequest) {
     const proto = request.headers.get("x-forwarded-proto") ?? request.nextUrl.protocol.replace(":", "");
     const target = new URL(`/${request.nextUrl.search}`, `${proto}://${requestHost(request.headers)}`);
     return withIndexing(NextResponse.redirect(target, 307), false);
-  }
-  if (kind === "catering" && pathname === "/") {
-    return withIndexing(NextResponse.rewrite(new URL("/kitchenlogin", request.url)), false);
   }
   // An API route is never served on a bare or unknown host (only the uptime check is).
   // `/api/ops/*` is the exception: Platterly Ops calls it by whatever address the server has (127.0.0.1 on one machine),
