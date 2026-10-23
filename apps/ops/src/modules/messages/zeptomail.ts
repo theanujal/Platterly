@@ -36,10 +36,19 @@ export async function sendEmail(params: SendEmailParams, fetchImpl: typeof fetch
         htmlbody: params.html,
       }),
     });
-    const body = (await response.json().catch(() => null)) as { request_id?: string; message?: string } | null;
-    if (!response.ok) return { status: "failed", reason: `ZeptoMail ${response.status}: ${body?.message ?? "request rejected"}` };
+    const body = (await response.json().catch(() => null)) as ZeptoBody | null;
+    if (!response.ok) return { status: "failed", reason: `ZeptoMail ${response.status}: ${rejectionReason(body)}` };
     return { status: "sent", providerMessageId: body?.request_id ?? null };
   } catch (error) {
     return { status: "failed", reason: error instanceof Error ? error.message : "Network error" };
   }
+}
+
+type ZeptoBody = { request_id?: string; message?: string; error?: { message?: string; details?: { code?: string; message?: string }[] } };
+
+// ZeptoMail puts its reason in an error object, e.g. {"error":{"message":"Resource Limit Exhausted.","details":[{"code":"LE_102","message":"Credit exhausted"}]}}.
+function rejectionReason(body: ZeptoBody | null): string {
+  const detail = body?.error?.details?.[0];
+  const extra = detail?.message ? ` (${[detail.code, detail.message].filter(Boolean).join(": ")})` : "";
+  return (body?.error?.message ?? body?.message ?? "request rejected") + extra;
 }
