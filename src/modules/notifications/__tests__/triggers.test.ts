@@ -3,8 +3,9 @@ import { prisma } from "@/lib/db";
 import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { recordStatusChange } from "@/modules/menu-approvals/status-history";
-import { onNewLead, runDueNotifications } from "@/modules/notifications/triggers";
+import { kitchenWhatsAppPhone, onNewLead, runDueNotifications } from "@/modules/notifications/triggers";
 import { setSetting } from "@/lib/settings/settings";
+import { normalizePhone } from "@/lib/phone";
 import { setChannelActive, setChannelMessages } from "@/modules/notifications/channel-settings";
 
 const orgIds: string[] = [];
@@ -65,6 +66,14 @@ describe("notification triggers (Chunk 16)", () => {
     const all = await prisma.notification.findMany({ where: { organizationId: t.org.id, channel: "WHATSAPP" } });
     expect(all.map((n) => [n.event, n.recipientPhone])).toEqual([["order.new_alert", "+918860756024"]]);
     expect(JSON.stringify(all[0].payload)).toContain("whatsappParams");
+  });
+
+  it("WhatsApp goes to the business's mobile number, and falls back to the owner's signup phone", async () => {
+    const t = await makeTeam();
+    await prisma.user.update({ where: { id: t.owner.id }, data: { phone: "08860756024" } });
+    expect(await kitchenWhatsAppPhone(t.org.id)).toBe(normalizePhone("08860756024"));
+    await prisma.organization.update({ where: { id: t.org.id }, data: { contactPhone: "+919812345678" } });
+    expect(await kitchenWhatsAppPhone(t.org.id)).toBe("+919812345678");
   });
 
   it("WhatsApp is on by default and stops while the kitchen has it set to Inactive (AJ, 2026-10-13)", async () => {

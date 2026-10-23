@@ -145,7 +145,7 @@ export type AlertSeverity = (typeof ALERT_SEVERITIES)[number];
 export type EventData =
   // `backfill: true` marks a business that already existed when the product was linked to ops: ops records it but raises no "signed up" alert.
   | { type: "business.signed_up"; data: { businessName: string; ownerName: string; ownerEmail: string; backfill?: boolean } }
-  | { type: "business.updated"; data: { businessName?: string; ownerName?: string } }
+  | { type: "business.updated"; data: { businessName?: string; ownerName?: string; contactPhone?: string } }
   | { type: "usage.reported"; data: { periodStart: string; counts: Record<string, number> } }
   | { type: "alert.raised"; data: { severity: AlertSeverity; code: string; message: string } }
   | { type: "owner.changed"; data: { ownerEmail: string } }
@@ -174,13 +174,16 @@ export function parseEvent(input: unknown): ParseResult<ProductEvent> {
       return ok({ ...base, type, data: { businessName, ownerName, ownerEmail, ...(data.backfill ? { backfill: true } : {}) } });
     }
     case "business.updated": {
-      // At least one field, and only the fields that changed. Sent when a business is renamed in onboarding or settings.
+      // At least one field, and only the fields that changed. Sent when a business is renamed in onboarding or settings, and
+      // by the scheduled job when the number the kitchen's WhatsApp goes to changes (Ops sends billing WhatsApps to it).
       const businessName = data.businessName === undefined ? undefined : shortText(data.businessName, 200);
       const ownerName = data.ownerName === undefined ? undefined : shortText(data.ownerName, 200);
+      const contactPhone = data.contactPhone === undefined ? undefined : shortText(data.contactPhone, 16);
       if (businessName === null || ownerName === null) return fail("businessName and ownerName must be short text");
-      if (businessName === undefined && ownerName === undefined) return fail("business.updated needs businessName or ownerName");
+      if (contactPhone !== undefined && (contactPhone === null || !/^\+?\d{8,15}$/.test(contactPhone))) return fail("contactPhone must be a phone number");
+      if (businessName === undefined && ownerName === undefined && contactPhone === undefined) return fail("business.updated needs businessName, ownerName or contactPhone");
       if (businessName !== undefined && !businessName.trim()) return fail("businessName must not be empty");
-      return ok({ ...base, type, data: { ...(businessName !== undefined ? { businessName } : {}), ...(ownerName !== undefined ? { ownerName } : {}) } });
+      return ok({ ...base, type, data: { ...(businessName !== undefined ? { businessName } : {}), ...(ownerName !== undefined ? { ownerName } : {}), ...(contactPhone !== undefined ? { contactPhone } : {}) } });
     }
     case "usage.reported": {
       if (!isIsoDate(data.periodStart)) return fail("periodStart must be an ISO date");

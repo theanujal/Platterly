@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { opsBillingOn, opsLink } from "./config";
 import { usageCounts } from "./directory";
 import { emitEvent, enqueueEvent, runDueOutbox } from "./outbox";
+import { kitchenWhatsAppPhone } from "@/modules/notifications/triggers";
 import { pullDueSnapshots } from "./pull";
 
 /** Everything here is fire-and-forget: a problem with ops is logged and never reaches the kitchen's request. */
@@ -69,11 +70,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * The scheduled part: send what is due, tell ops about any business it has not heard of yet (this also covers every
  * business that existed before the link was switched on; a business with no known owner email is skipped until it has one),
- * report each known business's usage (once a day as a backstop, and again within a minute of any total changing, so Ops stays current
- * without a hook in every order action), and pull any snapshot that has gone stale (the backup to ops's pushes).
+ * send the number the kitchen's WhatsApp goes to whenever it changes (Ops sends billing WhatsApps to it), report each known
+ * business's usage (once a day as a backstop, and again within a minute of any total changing, so Ops stays current without
+ * a hook in every order action), and pull any snapshot that has gone stale (the backup to ops's pushes).
  */
-export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promise<{ sent: number; signedUp: number; usage: number; pulled: number }> {
-  if (!opsLink()) return { sent: 0, signedUp: 0, usage: 0, pulled: 0 };
+export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promise<{ sent: number; signedUp: number; phones: number; usage: number; pulled: number }> {
+  if (!opsLink()) return { sent: 0, signedUp: 0, phones: 0, usage: 0, pulled: 0 };
   try {
     let signedUp = 0;
     const known = new Set((await prisma.opsOutbox.findMany({ where: { dedupeKey: { startsWith: "signed_up:" } }, select: { dedupeKey: true } })).map((r) => r.dedupeKey));
@@ -87,6 +89,21 @@ export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promi
         signedUp += 1;
         known.add(`signed_up:${org.businessId}`);
       }
+    }
+
+    // The number the kitchen's WhatsApp goes to, sent whenever it differs from the last one sent (Ops sends billing WhatsApps
+    // to it). Covers businesses from before this existed, onboarding, Settings and the signup-phone fallback, with no hooks.
+    // ponytail: one lookup per business per run; batch the query if there are ever thousands of businesses.
+    let phones = 0;
+    const lastPhone = new Map<string, string>();
+    for (const row of await prisma.opsOutbox.findMany({ where: { dedupeKey: { startsWith: "phone:" } }, orderBy: { createdAt: "desc" }, distinct: ["businessId"], select: { businessId: true, dedupeKey: true } })) {
+      lastPhone.set(row.businessId, row.dedupeKey!.split(":")[2]);
+    }
+    for (const org of orgs) {
+      if (!known.has(`signed_up:${org.businessId}`)) continue;
+      const phone = await kitchenWhatsAppPhone(org.id);
+      if (!phone || phone === lastPhone.get(org.businessId)) continue;
+      if (await enqueueEvent({ type: "business.updated", businessId: org.businessId, dedupeKey: `phone:${org.businessId}:${phone}:${now.getTime()}`, data: { contactPhone: phone } })) phones += 1;
     }
 
     let usage = 0;
@@ -114,9 +131,9 @@ export async function runOpsLinkJobs(now: Date = new Date(), limit = 200): Promi
 
     const sent = await runDueOutbox(now);
     const pulled = await pullDueSnapshots(now);
-    return { sent, signedUp, usage, pulled };
+    return { sent, signedUp, phones, usage, pulled };
   } catch (error) {
     console.error("[ops-link] scheduled job failed:", error);
-    return { sent: 0, signedUp: 0, usage: 0, pulled: 0 };
+    return { sent: 0, signedUp: 0, phones: 0, usage: 0, pulled: 0 };
   }
 }

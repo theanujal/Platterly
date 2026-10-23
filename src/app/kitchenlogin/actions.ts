@@ -24,16 +24,17 @@ const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/
  */
 /**
  * "Skip for now" (AJ, 2026-10-13): keeps whatever the person typed so far instead of throwing it away, so it shows in
- * Settings, then marks the wizard as left so it is never shown again. Nothing here blocks the skip: a field that is
- * missing or not valid yet (phone, GST number, numbering) is simply not saved. Onboarding stays "not complete", so the
- * Dashboard nudge remains.
+ * Settings, then marks the wizard as left so it is never shown again. Only the mobile number blocks the skip, because
+ * every WhatsApp goes to it (Sharath, 2026-10-23). Any other field that is missing or not valid yet (GST number,
+ * numbering) is simply not saved. Onboarding stays "not complete", so the Dashboard nudge remains.
  */
 export async function skipOnboardingAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
 
-  const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
   const mobileNumber = stringField(formData, "mobileNumber");
-  const phone = mobileNumber && isValidPhone(normalizePhone(mobileNumber)) ? normalizePhone(mobileNumber) : undefined;
+  if (!mobileNumber || !isValidPhone(normalizePhone(mobileNumber))) return { ok: false, error: "Enter a valid mobile number to skip for now." };
+  const phone = normalizePhone(mobileNumber);
+  const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } });
   const nextValue = Number.parseInt(stringField(formData, "orderNumberNextValue") ?? "", 10);
   const padding = Number.parseInt(stringField(formData, "orderNumberPadding") ?? "", 10);
   const numberingOk = Number.isInteger(nextValue) && nextValue >= 1 && Number.isInteger(padding) && padding >= 1 && padding <= 10;

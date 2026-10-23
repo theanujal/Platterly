@@ -122,8 +122,10 @@ export async function notifyCustomer(params: { organizationId: string; event: st
   if (params.email) await notify({ organizationId: params.organizationId, channel: "EMAIL", event: params.event, recipient: { email: params.email }, payload });
 }
 
-/** The one number the kitchen's WhatsApp messages go to: the owner's phone, taken at signup. */
+/** The one number the kitchen's WhatsApp messages go to: the business's mobile number from onboarding, else the owner's signup phone (Sharath, 2026-10-23). */
 export async function kitchenWhatsAppPhone(organizationId: string): Promise<string | null> {
+  const org = await prisma.organization.findUnique({ where: { id: organizationId }, select: { contactPhone: true } });
+  if (org?.contactPhone) return normalizePhone(org.contactPhone);
   const owner = await prisma.member.findFirst({ where: { organizationId, role: "owner", disabledAt: null }, orderBy: { createdAt: "asc" }, select: { user: { select: { phone: true } } } });
   return owner?.user.phone ? normalizePhone(owner.user.phone) : null;
 }

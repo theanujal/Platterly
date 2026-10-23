@@ -336,6 +336,13 @@ describe("events", () => {
     expect(parseEvent({ ...base, type: "message.requested", data: { template: "welcome_owner", variables: { name: "Asha", n: 3 } } }).ok).toBe(true);
   });
 
+  it("business.updated can carry only the WhatsApp number, and refuses a malformed one", () => {
+    const ok = parseEvent({ ...base, type: "business.updated", data: { contactPhone: "+919812345678" } });
+    expect(ok.ok && ok.value.type === "business.updated" && ok.value.data).toEqual({ contactPhone: "+919812345678" });
+    expect(parseEvent({ ...base, type: "business.updated", data: { contactPhone: "call me" } }).ok).toBe(false);
+    expect(parseEvent({ ...base, type: "business.updated", data: {} }).ok).toBe(false);
+  });
+
   it("parses the optional backfill flag on sign-up", () => {
     const data = { businessName: "Spice Co", ownerName: "Asha", ownerEmail: "o@x.in" };
     const parsed = parseEvent({ ...base, type: "business.signed_up", data: { ...data, backfill: true } });

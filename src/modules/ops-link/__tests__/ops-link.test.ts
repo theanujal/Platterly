@@ -501,6 +501,24 @@ describe("events to ops", () => {
     expect(received.filter((r) => JSON.parse(r.body).businessId === org.businessId)).toHaveLength(0);
   });
 
+  it("the scheduled job tells ops the WhatsApp number, once, and again when it changes", async () => {
+    const org = await makeOrg();
+    await prisma.organization.update({ where: { id: org.id }, data: { contactPhone: "+919812345678" } });
+    const phones = async () => {
+      await runOpsLinkJobs(new Date(), 1000);
+      while ((await runDueOutbox(new Date(), 50)) > 0);
+      const mine = received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === org.businessId && e.type === "business.updated");
+      received = [];
+      return mine.map((e) => e.data.contactPhone);
+    };
+    expect(await phones()).toEqual(["+919812345678"]);
+    expect(await phones()).toEqual([]);
+    await prisma.organization.update({ where: { id: org.id }, data: { contactPhone: "+919800000001" } });
+    expect(await phones()).toEqual(["+919800000001"]);
+    await prisma.organization.update({ where: { id: org.id }, data: { contactPhone: "+919812345678" } });
+    expect(await phones()).toEqual(["+919812345678"]);
+  });
+
   it("a business with no owner email is neither announced nor reported on", async () => {
     const org = await makeOrg({ ownerEmail: null });
     await runOpsLinkJobs(new Date(), 1000);
@@ -511,6 +529,6 @@ describe("events to ops", () => {
 
   it("the scheduled job does nothing while the link is off", async () => {
     delete process.env.OPS_BASE_URL;
-    expect(await runOpsLinkJobs()).toEqual({ sent: 0, signedUp: 0, usage: 0, pulled: 0 });
+    expect(await runOpsLinkJobs()).toEqual({ sent: 0, signedUp: 0, phones: 0, usage: 0, pulled: 0 });
   });
 });
