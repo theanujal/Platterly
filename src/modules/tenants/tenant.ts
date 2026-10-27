@@ -175,6 +175,15 @@ export const activateTenant = (id: string, actorUserId?: string) =>
 export const deactivateTenant = (id: string, actorUserId: string) =>
   setStatus(id, "DEACTIVATED", "tenant.deactivate", actorUserId);
 
+/**
+ * Whether the business has the details the onboarding wizard asks for. A kitchen that pressed "Skip for now" and then filled
+ * them in Settings counts as finished too: the Dashboard's "finish your profile" banner follows the details, not the wizard.
+ */
+export function isProfileComplete(org: { name: string; contactPhone: string | null; addressLine1: string | null; city: string | null; state: string | null; postalCode: string | null; country: string | null }): boolean {
+  const required = [org.name === "Unnamed Business" ? "" : org.name, org.contactPhone, org.addressLine1, org.city, org.state, org.postalCode, org.country];
+  return required.every((value) => Boolean(value?.trim()));
+}
+
 /** Marks the onboarding wizard's final step as complete. Deliberately kept
  * separate from `updateTenant` so a later Settings save can never
  * accidentally set (or the wizard's Skip button never accidentally avoid

@@ -13,6 +13,7 @@ import {
   listPublishedTenantSlugs,
   SlugTakenError,
   InvalidSlugError,
+  isProfileComplete,
 } from "@/modules/tenants/tenant";
 
 const cleanupOrgIds: string[] = [];
@@ -229,5 +230,21 @@ describe("getPublishedTenantBySlug / listPublishedTenantSlugs (Chunk 8 Group 8.3
     const slugs = (await listPublishedTenantSlugs()).map((t) => t.slug);
     expect(slugs).toContain(publishedNewSlug);
     expect(slugs).not.toContain(unclaimed.slug);
+  });
+});
+
+describe("isProfileComplete (Dashboard's \"finish your profile\" banner)", () => {
+  const full = { name: "Bhandarys Kitchen", contactPhone: "+919900000000", addressLine1: "138, 4th Cross", city: "Bengaluru", state: "Karnataka", postalCode: "560078", country: "India" };
+
+  it("counts a profile filled in Settings after skipping the setup wizard as finished", () => {
+    expect(isProfileComplete(full)).toBe(true);
+  });
+
+  it("is not finished while the sign-up placeholder name or any required detail is missing", () => {
+    expect(isProfileComplete({ ...full, name: "Unnamed Business" })).toBe(false);
+    for (const key of ["contactPhone", "addressLine1", "city", "state", "postalCode", "country"] as const) {
+      expect(isProfileComplete({ ...full, [key]: null })).toBe(false);
+      expect(isProfileComplete({ ...full, [key]: "  " })).toBe(false);
+    }
   });
 });

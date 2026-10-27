@@ -2,8 +2,8 @@ import Link from "next/link";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// Chunk 4/5 — shown on every Dashboard visit until the caterer finishes (or
-// explicitly skipped and never returned to) the onboarding wizard. Points
+// Chunk 4/5 — shown on every Dashboard visit until the caterer finishes the
+// onboarding wizard or fills the same details in Settings (isProfileComplete). Points
 // at Settings, not back at the one-time wizard — Settings has the same
 // fields. Only one call site exists, so this stays a bespoke banner rather
 // than a generic components/ui/ primitive until a second consumer needs one.

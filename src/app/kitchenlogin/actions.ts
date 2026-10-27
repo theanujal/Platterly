@@ -26,7 +26,7 @@ const ALLOWED_LOGO_TYPES: Record<string, string> = { "image/png": "png", "image/
  * "Skip for now" (AJ, 2026-10-13): keeps whatever the person typed so far instead of throwing it away, so it shows in
  * Settings, then marks the wizard as left so it is never shown again. Only the mobile number blocks the skip, because
  * every WhatsApp goes to it (Sharath, 2026-10-23). Any other field that is missing or not valid yet (GST number,
- * numbering) is simply not saved. Onboarding stays "not complete", so the Dashboard nudge remains.
+ * numbering) is simply not saved. Onboarding stays "not complete", so the Dashboard nudge remains until the details are filled in Settings.
  */
 export async function skipOnboardingAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireActiveOrganization, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { slugify } from "@/modules/tenants/slug";
+import { isProfileComplete } from "@/modules/tenants/tenant";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { getDashboardSnapshot, redactDashboardSnapshot } from "./_data";
 import { getTenantTimeZone } from "@/lib/settings/timezone";
@@ -89,7 +90,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </p>
       )}
 
-      {!organization.onboardingCompletedAt && canClaimLink && <OnboardingNudgeBanner />}
+      {!organization.onboardingCompletedAt && !isProfileComplete(organization) && canClaimLink && <OnboardingNudgeBanner />}
 
       <KpiTiles
         showOrders={canViewOrders}
