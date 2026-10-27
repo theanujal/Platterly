@@ -69,6 +69,8 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
     formData.set("orderNumberPadding", values.orderNumberPadding);
     if (logo) {
       formData.set("logo", logo);
+    } else if (!values.logoUrl) {
+      formData.set("removeLogo", "true");
     }
 
     const result = await updateBusinessProfileAction(formData);
@@ -224,7 +226,7 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
       <SettingsSection icon={Palette} title="Brand Identity">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="logo">Logo</Label>
-          <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} maxSizeMB={4} />
+          <ImageDropzone id="logo" value={values.logoUrl} onFileSelect={setLogo} onRemove={() => setField("logoUrl", null)} maxSizeMB={4} />
         </div>
       </SettingsSection>
 

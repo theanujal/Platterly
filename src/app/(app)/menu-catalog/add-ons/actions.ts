@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { duplicateAddOn, setAddOnActive, createAddOn, updateAddOn, deleteAddOn, type AddOnInput } from "@/modules/addons/addon";
-import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm } from "@/lib/storage/catalog-image";
 import type { AddOnType, AddOnPriceType } from "@/generated/prisma/enums";
 import { stringField, toErrorResult } from "@/lib/form-data";
 
@@ -46,11 +46,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const menuIds = formData.getAll("menuIds").filter((v): v is string => typeof v === "string" && v !== "");
   if (!appliesToAllMenus && menuIds.length === 0) throw new Error("Choose at least one menu, or tick All menus.");
 
-  let image = existingImage;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    image = await uploadCatalogImage(organizationId, "add-ons", file);
-  }
+  const image = await catalogImageFromForm(organizationId, "add-ons", formData, existingImage);
 
   return {
     name,

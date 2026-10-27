@@ -17,7 +17,7 @@ import type {
 export interface MenuItemInput {
   name: string;
   description?: string;
-  image?: string;
+  image?: string | null;
   /** "library" (copied from Platterly's catalog) or "upload" (the kitchen's own file). Left out, a new picture counts as an upload. */
   imageSource?: "library" | "upload";
   foodType: FoodType;
@@ -134,6 +134,7 @@ export async function updateMenuItem(
       image: input.image,
       // a different picture is one the kitchen just uploaded; the same one keeps whatever it was
       ...(input.image && input.image !== before.image ? { imageSource: input.imageSource ?? "upload" } : {}),
+      ...(input.image === null ? { imageSource: null } : {}),
       foodType: input.foodType,
       price: input.price,
       isActive: input.isActive ?? before.isActive,

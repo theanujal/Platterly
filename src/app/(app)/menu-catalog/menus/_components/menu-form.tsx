@@ -113,6 +113,7 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
     formData.set("child5To10PricingType", values.child5To10PricingType);
     formData.set("child5To10PriceValue", values.child5To10PriceValue);
     if (image) formData.set("image", image);
+    else if (!values.imageUrl) formData.set("removeImage", "true");
     for (const row of rows) {
       const max = Number.parseInt(row.max, 10);
       formData.append("categoryAssignment", JSON.stringify({ categoryId: row.categoryId, maxSelection: Number.isNaN(max) ? null : max }));
@@ -146,7 +147,7 @@ export function MenuForm({ initialValues, categories, assignedCategories, onSubm
         <DescriptionField id="menu-description" label="Menu Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.menu} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="menu-image">Menu Image</Label>
-          <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+          <ImageDropzone id="menu-image" value={values.imageUrl} onFileSelect={setImage} onRemove={() => setField("imageUrl", null)} maxSizeMB={4} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="menu-type">Menu Type</Label>

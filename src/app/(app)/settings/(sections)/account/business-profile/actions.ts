@@ -90,6 +90,8 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
   };
   if (logoUrl) {
     input.logo = logoUrl;
+  } else if (formData.get("removeLogo") === "true") {
+    input.logo = null;
   }
 
   await updateTenant(organizationId, input, session.user.id);

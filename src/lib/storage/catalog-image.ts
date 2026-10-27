@@ -52,3 +52,18 @@ export async function uploadCatalogImage(
   const uploaded = await getStorageDriver().upload(key, webp, "image/webp");
   return uploaded.url;
 }
+
+/**
+ * The image an Add/Edit form saves: a newly picked file, null when the person pressed Remove image (`removeImage`), or
+ * else the one it already had. The old file stays in storage, as it does when an image is replaced: a duplicate may share it.
+ */
+export async function catalogImageFromForm(
+  organizationId: string,
+  kind: Parameters<typeof uploadCatalogImage>[1],
+  formData: FormData,
+  existingImage: string | undefined,
+): Promise<string | null | undefined> {
+  const file = formData.get("image");
+  if (file instanceof File && file.size > 0) return uploadCatalogImage(organizationId, kind, file);
+  return formData.get("removeImage") === "true" ? null : existingImage;
+}

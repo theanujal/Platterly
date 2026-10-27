@@ -37,6 +37,9 @@ describe("where a food item's picture came from", () => {
     expect(same.imageSource).toBe("library"); // edited, but the picture is the same one
     const changed = await updateMenuItem(org.id, library.id, { name: "From Library", foodType: "VEGETARIAN", price: 12, image: "/uploads/mine.png" }, user.id);
     expect(changed.imageSource).toBe("upload");
+    // Remove image: no picture and no source.
+    const removed = await updateMenuItem(org.id, library.id, { name: "From Library", foodType: "VEGETARIAN", price: 12, image: null }, user.id);
+    expect([removed.image, removed.imageSource]).toEqual([null, null]);
   });
 
   it("a duplicate of a library-picture dish stays 'library', and a duplicate of an upload counts as an upload", async () => {

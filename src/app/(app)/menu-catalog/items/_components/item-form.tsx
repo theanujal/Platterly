@@ -199,6 +199,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
     formData.set("tasteProfile", values.tasteProfile);
     formData.set("keyIngredients", values.keyIngredients);
     if (image) formData.set("image", image);
+    else if (!values.imageUrl) formData.set("removeImage", "true");
 
     const result = await onSubmit(formData);
     setPending(false);
@@ -233,7 +234,7 @@ export function ItemForm({ initialValues, categories, menus, onSubmit, onSuccess
         <DescriptionField id="item-description" label="Item Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.item} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="item-image">Image</Label>
-          <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+          <ImageDropzone id="item-image" value={values.imageUrl} onFileSelect={setImage} onRemove={() => setField("imageUrl", null)} maxSizeMB={4} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="item-food-type">Veg / Non-Veg</Label>

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { duplicateEventType, setEventTypeActive, createEventType, updateEventType, deleteEventType, reorderEventTypes, type EventTypeInput } from "@/modules/events/event-type";
-import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm } from "@/lib/storage/catalog-image";
 import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -12,11 +12,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
-  let image = existingImage;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    image = await uploadCatalogImage(organizationId, "event-types", file);
-  }
+  const image = await catalogImageFromForm(organizationId, "event-types", formData, existingImage);
 
   const minGuestsRaw = stringField(formData, "minGuests");
   const minGuests = minGuestsRaw ? Number.parseInt(minGuestsRaw, 10) : null;

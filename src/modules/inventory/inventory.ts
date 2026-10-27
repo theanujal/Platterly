@@ -12,7 +12,7 @@ export interface InventoryItemInput {
   name: string;
   category: string;
   description?: string;
-  image?: string;
+  image?: string | null;
   unit: string;
   lowStockThreshold?: number;
   costPerUnit?: number;

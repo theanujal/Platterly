@@ -23,7 +23,7 @@ export interface TenantProfileInput {
   country?: string;
   // Chunk 4 Group 4.2 — self-serve onboarding's business-profile fields,
   // extending the same Organization row rather than a separate table.
-  logo?: string;
+  logo?: string | null;
   businessDescription?: string;
   websiteUrl?: string;
   instagramUrl?: string;

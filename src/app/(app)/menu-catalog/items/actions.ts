@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveOrganization, requirePermission, canSee, requireSensitive } from "@/lib/auth/require-session";
 import { duplicateMenuItem, setMenuItemActive, createMenuItem, updateMenuItem, deleteMenuItem, type MenuItemInput } from "@/modules/menus/item";
-import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm } from "@/lib/storage/catalog-image";
 import { importFoodItems } from "@/modules/menus/import/import";
 import { addCatalogItems } from "@/modules/menus/catalog/catalog";
 import { saveRecipe, deleteRecipe, setRecipeStatus } from "@/modules/recipes/recipe";
@@ -42,11 +42,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     price = existingId ? Number((await prisma.menuItem.findFirstOrThrow({ where: { id: existingId, organizationId }, select: { price: true } })).price) : 0;
   }
 
-  let image = existingImage;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    image = await uploadCatalogImage(organizationId, "items", file);
-  }
+  const image = await catalogImageFromForm(organizationId, "items", formData, existingImage);
 
   return {
     name,

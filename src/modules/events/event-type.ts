@@ -8,7 +8,7 @@ export class EventTypeInUseError extends Error {}
 export interface EventTypeInput {
   name: string;
   description?: string;
-  image?: string;
+  image?: string | null;
   minGuests?: number | null;
   isActive?: boolean;
   /** Chunk 9 Group 9.1 — a curated icon-name key (see src/lib/event-type-icons.ts), not a free-form upload. */

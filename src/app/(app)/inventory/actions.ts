@@ -16,7 +16,7 @@ import { lowStockError } from "@/modules/inventory/options";
 import { confirmBatchCost, listBatches, setBatchStatus, stockPosition } from "@/modules/inventory/batches";
 import { importInventoryItems } from "@/modules/inventory/import/import";
 import { addIngredientsFromCatalog } from "@/modules/inventory/catalog/catalog";
-import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm } from "@/lib/storage/catalog-image";
 import type { InventoryTransactionType } from "@/generated/prisma/enums";
 import { numberField, stringField, toErrorResult } from "@/lib/form-data";
 
@@ -38,11 +38,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const unit = stringField(formData, "unit");
   if (!unit) throw new Error("Unit is required.");
 
-  let image = existingImage;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    image = await uploadCatalogImage(organizationId, "inventory", file);
-  }
+  const image = await catalogImageFromForm(organizationId, "inventory", formData, existingImage);
 
   return {
     name,

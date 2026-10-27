@@ -7,7 +7,7 @@ import type { AddOnType, AddOnPriceType } from "@/generated/prisma/enums";
 export interface AddOnInput {
   name: string;
   description?: string;
-  image?: string;
+  image?: string | null;
   type: AddOnType;
   priceType: AddOnPriceType;
   price: number;

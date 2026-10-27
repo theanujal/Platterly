@@ -69,6 +69,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
     formData.set("icon", values.icon);
     for (const id of values.menuIds) formData.append("menuIds", id);
     if (image) formData.set("image", image);
+    else if (!values.imageUrl) formData.set("removeImage", "true");
 
     const result = await onSubmit(formData);
     setPending(false);
@@ -103,7 +104,7 @@ export function EventTypeForm({ initialValues, availableMenus, onSubmit, onSucce
       <DescriptionField id="event-description" label="Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.eventType} />
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="event-image">Event Image</Label>
-        <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+        <ImageDropzone id="event-image" value={values.imageUrl} onFileSelect={setImage} onRemove={() => setField("imageUrl", null)} maxSizeMB={4} />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-1.5">

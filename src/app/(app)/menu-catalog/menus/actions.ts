@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireActiveOrganization, requirePermission, canSee } from "@/lib/auth/require-session";
 import { duplicateMenu, setMenuActive, createMenu, updateMenu, deleteMenu, reorderMenuCategoryAssignments, reorderMenus, type MenuInput } from "@/modules/menus/menu";
-import { uploadCatalogImage } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm } from "@/lib/storage/catalog-image";
 import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 import { stringField, toErrorResult } from "@/lib/form-data";
 
@@ -33,9 +33,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     if (!name) throw new Error("Name is required.");
     const menuType = stringField(formData, "menuType") as FoodType | undefined;
     if (menuType !== "VEGETARIAN" && menuType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
-    let image = existingImage;
-    const file = formData.get("image");
-    if (file instanceof File && file.size > 0) image = await uploadCatalogImage(organizationId, "menus", file);
+    const image = await catalogImageFromForm(organizationId, "menus", formData, existingImage);
     const categoryAssignments = formData.getAll("categoryAssignment").flatMap((raw) => {
       if (typeof raw !== "string") return [];
       const parsed = JSON.parse(raw) as { categoryId?: unknown; maxSelection?: unknown };
@@ -56,11 +54,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const pricePerPlate = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
   if (Number.isNaN(pricePerPlate) || pricePerPlate < 0) throw new Error("A valid, non-negative Price Per Plate is required.");
 
-  let image = existingImage;
-  const file = formData.get("image");
-  if (file instanceof File && file.size > 0) {
-    image = await uploadCatalogImage(organizationId, "menus", file);
-  }
+  const image = await catalogImageFromForm(organizationId, "menus", formData, existingImage);
 
   const childUnder5Chargeable = formData.get("childUnder5Chargeable") === "true";
   const childUnder5PriceRaw = stringField(formData, "childUnder5Price");

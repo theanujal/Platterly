@@ -8,7 +8,7 @@ import type { FoodType, ChildPricingType } from "@/generated/prisma/enums";
 export interface MenuInput {
   name: string;
   description?: string;
-  image?: string;
+  image?: string | null;
   menuType: FoodType;
   pricePerPlate: number;
   isActive?: boolean;

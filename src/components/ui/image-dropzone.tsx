@@ -9,6 +9,8 @@ export interface ImageDropzoneProps {
   /** Existing/uploaded image URL, if any. Ignored once a new file is picked (the new file's own preview takes over). */
   value: string | null
   onFileSelect: (file: File | null) => void
+  /** The person pressed Remove image: the caller clears its saved image (`value`) too. A newly picked file is always cleared. */
+  onRemove?: () => void
   accept?: string
   /** Caption text only — real size/type limits are enforced wherever each call site already does it, not here. */
   maxSizeMB?: number
@@ -28,7 +30,8 @@ export function ImageDropzone({
   id,
   value,
   onFileSelect,
-  accept = "image/png,image/jpeg,image/webp",
+  onRemove,
+  accept ="image/png,image/jpeg,image/webp",
   maxSizeMB = 4,
   error,
   className,
@@ -109,6 +112,20 @@ export function ImageDropzone({
           onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
         />
       </div>
+      {/* Remove sits outside the click-to-upload area, so it never opens the file picker. */}
+      {displayUrl && (previewUrl || onRemove) && (
+        <button
+          type="button"
+          className="self-start text-xs font-medium text-destructive hover:underline"
+          onClick={() => {
+            if (inputRef.current) inputRef.current.value = ""
+            handleFile(null)
+            onRemove?.()
+          }}
+        >
+          Remove image
+        </button>
+      )}
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { uploadCatalogImage, InvalidImageError } from "@/lib/storage/catalog-image";
+import { catalogImageFromForm, uploadCatalogImage, InvalidImageError } from "@/lib/storage/catalog-image";
 
 const orgId = `img-test-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -33,5 +33,20 @@ describe("uploadCatalogImage", () => {
   it("rejects other types and files over 4MB", async () => {
     await expect(uploadCatalogImage(orgId, "items", new File([new Uint8Array([1])], "x.gif", { type: "image/gif" }))).rejects.toThrow(InvalidImageError);
     await expect(uploadCatalogImage(orgId, "items", new File([new Uint8Array(4 * 1024 * 1024 + 1)], "big.webp", { type: "image/webp" }))).rejects.toThrow(/4MB/);
+  });
+});
+
+describe("catalogImageFromForm", () => {
+  it("keeps the old image, clears it on Remove image, and a new file wins over both", async () => {
+    const form = (entries: [string, string | File][]) => {
+      const data = new FormData();
+      for (const [key, value] of entries) data.set(key, value);
+      return data;
+    };
+    expect(await catalogImageFromForm(orgId, "items", form([]), "/uploads/old.webp")).toBe("/uploads/old.webp");
+    expect(await catalogImageFromForm(orgId, "items", form([["removeImage", "true"]]), "/uploads/old.webp")).toBeNull();
+    const png = await sharp({ create: { width: 10, height: 10, channels: 3, background: "#000" } }).png().toBuffer();
+    const fresh = await catalogImageFromForm(orgId, "items", form([["image", new File([new Uint8Array(png)], "x.png", { type: "image/png" })], ["removeImage", "true"]]), "/uploads/old.webp");
+    expect(fresh).toMatch(new RegExp(`^/uploads/organizations/${orgId}/catalog/items/.+\\.webp$`));
   });
 });

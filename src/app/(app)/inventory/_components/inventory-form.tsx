@@ -104,6 +104,7 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
     }
     if (locations) formData.set("kitchenId", values.kitchenId);
     if (image) formData.set("image", image);
+    else if (!values.imageUrl) formData.set("removeImage", "true");
 
     const result = await onSubmit(formData);
     setPending(false);
@@ -125,7 +126,7 @@ export function InventoryForm({ initialValues, creating, suppliers, locations, o
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="inv-image">Item Image</Label>
-          <ImageDropzone id="inv-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+          <ImageDropzone id="inv-image" value={values.imageUrl} onFileSelect={setImage} onRemove={() => setField("imageUrl", null)} maxSizeMB={4} />
         </div>
 
         <div className="flex flex-col gap-1.5">

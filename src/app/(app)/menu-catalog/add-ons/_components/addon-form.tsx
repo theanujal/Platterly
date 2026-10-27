@@ -92,6 +92,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
     if (!values.appliesToAllMenus) for (const id of values.menuIds) formData.append("menuIds", id);
     formData.set("isActive", String(values.isActive));
     if (image) formData.set("image", image);
+    else if (!values.imageUrl) formData.set("removeImage", "true");
 
     const result = await onSubmit(formData);
     setPending(false);
@@ -120,7 +121,7 @@ export function AddOnForm({ initialValues, availableMenus, onSubmit, onSuccess, 
         <DescriptionField id="addon-description" label="Description" value={values.description} onChange={(v) => setField("description", v)} max={DESCRIPTION_MAX.addOn} />
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="addon-image">Image</Label>
-          <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} maxSizeMB={4} />
+          <ImageDropzone id="addon-image" value={values.imageUrl} onFileSelect={setImage} onRemove={() => setField("imageUrl", null)} maxSizeMB={4} />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">
