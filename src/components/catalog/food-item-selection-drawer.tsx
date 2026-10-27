@@ -54,7 +54,7 @@ function FoodTypeBadge({ foodType }: { foodType: "VEGETARIAN" | "NON_VEGETARIAN"
 function Thumb({ src, alt }: { src: string | null; alt: string }) {
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element -- catalog uploads are plain /uploads files, same as the rest of the app
-    <img src={src} alt={alt} className="size-11 shrink-0 rounded-lg object-cover" />
+    <img src={src} alt={alt} loading="lazy" className="size-11 shrink-0 rounded-lg object-cover" />
   ) : (
     <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
       <UtensilsCrossed className="size-5" />
@@ -243,7 +243,7 @@ export function FoodItemSelectionDrawer({
           <div className="flex items-center gap-3">
             {data?.image ? (
               // eslint-disable-next-line @next/next/no-img-element -- catalog uploads are plain /uploads files, same as the rest of the app
-              <img src={data.image} alt="" className="size-16 shrink-0 rounded-lg object-cover" />
+              <img src={data.image} alt="" loading="lazy" className="size-16 shrink-0 rounded-lg object-cover" />
             ) : (
               <span className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <UtensilsCrossed className="size-6" />

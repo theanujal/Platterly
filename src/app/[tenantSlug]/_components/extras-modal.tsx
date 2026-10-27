@@ -132,7 +132,7 @@ function ExtrasBody({ addOns, guests, days, addOnIds, onDone, busy = false }: Om
                         <span className="relative block aspect-[16/9] overflow-hidden rounded-lg bg-muted">
                           {addOn.image ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={addOn.image} alt="" className="size-full object-cover" />
+                            <img src={addOn.image} alt="" loading="lazy" className="size-full object-cover" />
                           ) : (
                             <span className="flex size-full items-center justify-center">
                               <GroupIcon className="size-8 text-muted-foreground" />

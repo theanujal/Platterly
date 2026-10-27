@@ -41,7 +41,7 @@ export function ApprovedMenuCard({ view, orderNumber = null, title = "Approved M
           <li key={menu.name} className="flex items-center gap-3">
             {menu.image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={menu.image} alt="" className="size-14 shrink-0 rounded-lg object-cover" />
+              <img src={menu.image} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover" />
             ) : (
               <span className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-muted">
                 <UtensilsCrossed className="size-6 text-muted-foreground" />

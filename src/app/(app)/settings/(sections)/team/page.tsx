@@ -109,7 +109,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                   <li key={member.id} className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
                     {member.user.image ? (
                       // eslint-disable-next-line @next/next/no-img-element -- a user-supplied avatar URL, not a static asset
-                      <img src={member.user.image} alt="" className="size-10 shrink-0 rounded-full object-cover" />
+                      <img src={member.user.image} alt="" loading="lazy" className="size-10 shrink-0 rounded-full object-cover" />
                     ) : (
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-medium text-primary">
                         {member.user.name.charAt(0).toUpperCase()}

@@ -31,7 +31,7 @@ export function PhotoForm({ c }: { c: PhotoView }) {
       {c.photoUrl ? (
         // The picture is the product's own file, shown as it is: not optimised, not cached by Ops.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={c.photoUrl} alt={`A kitchen's photo of ${c.name}`} className="h-44 w-full rounded-lg bg-muted object-cover sm:w-72" />
+        <img src={c.photoUrl} alt={`A kitchen's photo of ${c.name}`} loading="lazy" className="h-44 w-full rounded-lg bg-muted object-cover sm:w-72" />
       ) : (
         <div className="flex h-44 w-full items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground sm:w-72">No picture</div>
       )}

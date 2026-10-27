@@ -137,7 +137,7 @@ export function DishesSection({ menuName, sections, guests, isCustomMenu, itemId
         <div className="flex min-w-0 flex-1 basis-64 items-center gap-4">
           {item.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt="" className="size-16 shrink-0 rounded-xl object-cover sm:size-[4.5rem]" />
+            <img src={item.image} alt="" loading="lazy" className="size-16 shrink-0 rounded-xl object-cover sm:size-[4.5rem]" />
           ) : (
             <div className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted sm:size-[4.5rem]">
               <UtensilsCrossed className="size-6 text-muted-foreground" />

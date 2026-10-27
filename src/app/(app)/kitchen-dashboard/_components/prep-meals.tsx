@@ -113,7 +113,7 @@ export function PrepMeals({ meals, guests, extraPercent, isMultiOrder }: { meals
                   <span className="flex min-w-0 items-center gap-3">
                     {item.image ? (
                       // eslint-disable-next-line @next/next/no-img-element -- catalog uploads are plain /uploads files, same as the rest of the app
-                      <img src={item.image} alt="" className="size-9 shrink-0 rounded-md object-cover" />
+                      <img src={item.image} alt="" loading="lazy" className="size-9 shrink-0 rounded-md object-cover" />
                     ) : (
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                         <ImageOff className="size-4" />

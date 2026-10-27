@@ -48,7 +48,7 @@ export function MenuSection({ menus, choice, listOpen, onChoose, onChange, onCan
           {pickedMenu ? (
             pickedMenu.image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={pickedMenu.image} alt="" className="size-16 shrink-0 rounded-lg object-cover" />
+              <img src={pickedMenu.image} alt="" loading="lazy" className="size-16 shrink-0 rounded-lg object-cover" />
             ) : (
               <span className="flex size-16 shrink-0 items-center justify-center rounded-lg bg-muted">
                 <UtensilsCrossed className="size-6 text-muted-foreground" />
@@ -111,7 +111,7 @@ export function MenuSection({ menus, choice, listOpen, onChoose, onChange, onCan
                 <div className="relative shrink-0">
                   {menu.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={menu.image} alt="" className="aspect-[2/1] w-full object-cover" />
+                    <img src={menu.image} alt="" loading="lazy" className="aspect-[2/1] w-full object-cover" />
                   ) : (
                     <div className="flex aspect-[2/1] w-full items-center justify-center bg-muted">
                       <UtensilsCrossed className="size-7 text-muted-foreground" />
@@ -189,7 +189,7 @@ export function MenuSection({ menus, choice, listOpen, onChoose, onChange, onCan
               <div className="grid grid-cols-1 gap-6 md:grid-cols-[30%_minmax(0,1fr)]">
                 {details.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={details.image} alt={details.name} className="aspect-4/3 w-full rounded-lg object-cover" />
+                  <img src={details.image} alt={details.name} loading="lazy" className="aspect-4/3 w-full rounded-lg object-cover" />
                 ) : (
                   <div className="flex aspect-4/3 w-full items-center justify-center rounded-lg bg-muted">
                     <UtensilsCrossed className="size-10 text-muted-foreground" />

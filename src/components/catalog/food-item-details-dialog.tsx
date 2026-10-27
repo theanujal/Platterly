@@ -49,7 +49,7 @@ export function FoodItemDetailsDialog({ item, categoryName, open, onOpenChange, 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-[30%_minmax(0,1fr)]">
           {item.image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image} alt={item.name} className="aspect-square w-full rounded-lg object-cover" />
+            <img src={item.image} alt={item.name} loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
           ) : (
             <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-muted">
               <UtensilsCrossed className="size-10 text-muted-foreground" />

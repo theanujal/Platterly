@@ -23,7 +23,7 @@ export function CatalogCardMedia({ src, icon: Icon = ImageOff, overlay }: { src:
     <div className="relative">
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element -- catalog uploads are plain /uploads files, same as the rest of the app
-        <img src={src} alt="" className="aspect-video w-full object-cover" />
+        <img src={src} alt="" loading="lazy" className="aspect-video w-full object-cover" />
       ) : (
         <div className="flex aspect-video w-full items-center justify-center bg-muted text-muted-foreground">
           <Icon className="size-7" />
@@ -86,7 +86,7 @@ export function CatalogCardBody({
 export function CatalogListThumb({ src, icon: Icon = ImageOff, className }: { src: string | null; icon?: LucideIcon; className?: string }) {
   return src ? (
     // eslint-disable-next-line @next/next/no-img-element -- catalog uploads are plain /uploads files, same as the rest of the app
-    <img src={src} alt="" className={cn("size-11 shrink-0 rounded-lg object-cover", className)} />
+    <img src={src} alt="" loading="lazy" className={cn("size-11 shrink-0 rounded-lg object-cover", className)} />
   ) : (
     <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground", className)}>
       <Icon className="size-5" />
