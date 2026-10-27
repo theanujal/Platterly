@@ -40,4 +40,4 @@ How plans end and how refunds work is set out in our [Cancellation and Refund Po
 
 ## 8. Contact
 
-[hello@platterly.in](mailto:hello@platterly.in). Fragen Network Private Limited, Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka.
+[hello@platterly.in](mailto:hello@platterly.in). Fragen Network Private Limited, Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka 560078.

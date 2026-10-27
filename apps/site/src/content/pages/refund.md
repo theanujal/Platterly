@@ -40,4 +40,4 @@ For any question about an invoice or a payment, email [hello@platterly.in](mailt
 
 ## 7. Contact
 
-Fragen Network Private Limited, Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka. [hello@platterly.in](mailto:hello@platterly.in)
+Fragen Network Private Limited, Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka 560078. [hello@platterly.in](mailto:hello@platterly.in)

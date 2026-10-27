@@ -86,7 +86,7 @@ If we change this policy in a way that matters, we will update the date above an
 
 Fragen Network Private Limited
 
-Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka
+Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka 560078
 
 Grievance contact: [hello@platterly.in](mailto:hello@platterly.in)
 

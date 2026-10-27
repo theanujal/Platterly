@@ -70,6 +70,6 @@ These terms are governed by the laws of India. The courts at Bangalore, India ha
 
 Fragen Network Private Limited
 
-Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka
+Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka 560078
 
 [hello@platterly.in](mailto:hello@platterly.in) · [platterly.in](https://platterly.in)

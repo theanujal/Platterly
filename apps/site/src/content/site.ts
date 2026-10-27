@@ -21,7 +21,7 @@ export const pageLinks = (path: string) => ({ alternates: { canonical: path }, o
 /** The company behind Platterly, as named in the policies. */
 export const COMPANY = {
   legalName: "Fragen Network Private Limited",
-  address: "Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka",
+  address: "Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka 560078",
   grievanceEmail: "hello@platterly.in",
   jurisdiction: "Bangalore, India",
   lastUpdated: "27 October 2026",
@@ -43,7 +43,7 @@ export const CONTACT: { email: string; phone: string; whatsapp: string; hours: s
   phone: "",
   whatsapp: "",
   hours: ["Monday to Saturday, 10 am to 6 pm IST"],
-  addressLines: ["Fragen Network Private Limited", "Rani Nivas, 138, 4th Cross Main, Gaurav Nagar", "Kothanoor Village, JP Nagar 7th Phase", "Bengaluru, Karnataka"],
+  addressLines: ["Fragen Network Private Limited", "Rani Nivas, 138, 4th Cross Main, Gaurav Nagar", "Kothanoor Village, JP Nagar 7th Phase", "Bengaluru, Karnataka 560078"],
   /** Typical reply time, shown on the forms. */
   reply: "We usually reply within one working day.",
 };
