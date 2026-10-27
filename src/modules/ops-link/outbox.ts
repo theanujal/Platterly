@@ -57,6 +57,11 @@ export async function attemptDelivery(eventId: string, now: Date = new Date(), f
   if (!config) return "skipped";
   const row = await prisma.opsOutbox.findUnique({ where: { eventId } });
   if (!row || row.status !== "PENDING") return "skipped";
+  // One business's events go out in order: sent ahead of a pending business.signed_up, ops would answer 202 "unknown business"
+  // and the event would count as sent and be lost (the welcome email, a rename). It waits; the scheduled job sends oldest first.
+  // ponytail: held rows still take slots in runDueOutbox's batch of 50; skip them in its query if a backlog ever builds up.
+  const earlier = await prisma.opsOutbox.count({ where: { businessId: row.businessId, status: "PENDING", createdAt: { lt: row.createdAt } } });
+  if (earlier > 0) return "skipped";
   const claimed = await prisma.opsOutbox.updateMany({
     where: { eventId, status: "PENDING", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
     data: { nextAttemptAt: new Date(now.getTime() + CLAIM_LOCK_MS), attempts: { increment: 1 } },

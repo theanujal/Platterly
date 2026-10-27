@@ -450,6 +450,25 @@ describe("events to ops", () => {
     expect(received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === noEmail.businessId)).toHaveLength(0);
   });
 
+  it("holds a business's later events until its sign-up is through, so a failed sign-up never loses the welcome email", async () => {
+    const org = await makeOrg();
+    const types = () => received.map((r) => JSON.parse(r.body)).filter((e) => e.businessId === org.businessId).map((e) => e.type);
+    respondWith = 503;
+    await emitBusinessSignedUp(org.id);
+    respondWith = 200;
+    process.env.OPS_BILLING = "1";
+    try {
+      await emitWelcomeRequested(org.id);
+    } finally {
+      delete process.env.OPS_BILLING;
+    }
+    expect(types()).toEqual(["business.signed_up"]);
+    const signedUp = await prisma.opsOutbox.findUniqueOrThrow({ where: { dedupeKey: `signed_up:${org.businessId}` } });
+    await runDueOutbox(new Date(signedUp.nextAttemptAt!.getTime() + 1000));
+    expect(types()).toEqual(["business.signed_up", "business.signed_up", "message.requested"]);
+    expect(await prisma.opsOutbox.count({ where: { businessId: org.businessId, status: "SENT" } })).toBe(2);
+  });
+
   it("sends nothing for a business with no known email", async () => {
     const org = await makeOrg({ ownerEmail: null });
     await emitBusinessSignedUp(org.id);
