@@ -1,5 +1,9 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
+
+// The staff email is slow (a real mail server can take seconds): the visitor's form must not wait for it.
+const sendEmail = vi.hoisted(() => vi.fn(() => new Promise((r) => setTimeout(r, 2000))));
+vi.mock("@/modules/messages/zeptomail", () => ({ sendEmail }));
 import { createEnquiry, EnquiryError, listEnquiries, parseEnquiry, updateEnquiry } from "../enquiries";
 import { OPTIONS, POST } from "@/app/api/public/enquiries/route";
 
@@ -47,8 +51,16 @@ describe("validation", () => {
 
 describe("the public endpoint", () => {
   it("stores the lead, tells staff once, and answers with CORS for the site's own origin only", async () => {
+    const savedStaff = process.env.STAFF_NOTIFY_EMAILS;
+    process.env.STAFF_NOTIFY_EMAILS = "staff@example.test";
+    const started = Date.now();
     const response = await post(talk);
+    expect(Date.now() - started).toBeLessThan(1500);
+    if (savedStaff === undefined) delete process.env.STAFF_NOTIFY_EMAILS;
+    else process.env.STAFF_NOTIFY_EMAILS = savedStaff;
     expect(response.status).toBe(200);
+    // Staff are still emailed, just not before the visitor gets their answer.
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "staff@example.test", subject: "Platterly Ops: New demo request" }));
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://platterly.in");
     const { id } = await response.json();
     const row = await prisma.enquiry.findUniqueOrThrow({ where: { id } });

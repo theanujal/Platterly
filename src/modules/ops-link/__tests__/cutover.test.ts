@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { newId, signedHeaders, verifyRequest, type EntitlementSnapshot } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { ValidationError } from "@/lib/errors";
@@ -29,8 +29,8 @@ const planIds: string[] = [];
 let server: Server;
 let baseUrl = "";
 let requests: { method: string; path: string; body: string; headers: Record<string, string | string[] | undefined> }[] = [];
-// How the stand-in answers: a map "METHOD path-prefix" -> { status, body }. Anything not listed is a 500.
-let answers: Record<string, { status: number; body: unknown }> = {};
+// How the stand-in answers: a map "METHOD path-prefix" -> { status, body, delayMs }. Anything not listed is a 500.
+let answers: Record<string, { status: number; body: unknown; delayMs?: number }> = {};
 let unsigned = false;
 
 function on() {
@@ -50,10 +50,11 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
-    req.on("end", () => {
+    req.on("end", async () => {
       requests.push({ method: req.method!, path: req.url!, body, headers: req.headers });
       const key = Object.keys(answers).find((k) => `${req.method} ${req.url}`.startsWith(k));
       const answer = key ? answers[key] : { status: 500, body: { error: "unexpected" } };
+      if (answer.delayMs) await new Promise((r) => setTimeout(r, answer.delayMs));
       const text = JSON.stringify(answer.body);
       res.writeHead(answer.status, unsigned ? { "content-type": "application/json" } : signedHeaders(COMMAND_SECRET, newId("command"), text));
       res.end(text);
@@ -413,16 +414,21 @@ describe("sign-up", () => {
     return user;
   }
 
-  it("with the flag on a new kitchen gets no local subscription (ops starts its trial), and ops is told about it", async () => {
+  it("with the flag on a new kitchen gets no local subscription (ops starts its trial), and ops is told about it without the sign-up waiting", async () => {
     on();
-    answers = { "POST /api/products/events": { status: 200, body: { ok: true } } };
+    // Ops is slow to answer (it starts the trial and sends the welcome email first): sign-up must not wait for it.
+    answers = { "POST /api/products/events": { status: 200, body: { ok: true }, delayMs: 2000 } };
     const user = await newUser();
+    const started = Date.now();
     const { organizationId } = await provisionTenantForNewUser(user.id);
+    expect(Date.now() - started).toBeLessThan(1500);
     orgIds.push(organizationId!);
     expect(await prisma.subscription.count({ where: { organizationId: organizationId! } })).toBe(0);
     const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId! } });
-    const events = requests.filter((r) => r.path === "/api/products/events").map((r) => JSON.parse(r.body));
-    expect(events.find((e) => e.type === "business.signed_up" && e.businessId === org.businessId)).toMatchObject({ data: { ownerEmail: user.email } });
+    // Both still reach ops, the sign-up first and then the welcome email request.
+    const events = () => requests.filter((r) => r.path === "/api/products/events").map((r) => JSON.parse(r.body));
+    await vi.waitFor(() => expect(events().map((e) => e.type)).toEqual(["business.signed_up", "message.requested"]), { timeout: 8000 });
+    expect(events()[0]).toMatchObject({ businessId: org.businessId, data: { ownerEmail: user.email } });
     // It can still use the product while ops catches up.
     expect(await isLocked(organizationId!)).toBe(false);
   });

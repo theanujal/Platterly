@@ -269,6 +269,8 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+  // A business page lists its own activity by subject.
+  @@index([subject, createdAt])
   @@map("audit_log")
 }
 

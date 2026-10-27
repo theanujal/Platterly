@@ -1,4 +1,6 @@
 import { Search } from "lucide-react";
+import { Suspense } from "react";
+import { NavigationProgress } from "@/components/navigation-progress";
 import { formatWhen, inputClass } from "@/components/ui";
 import { getSelectedProduct, listSwitcherProducts } from "@/lib/selected-product";
 import { requireStaff } from "@/lib/session";
@@ -16,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const nav = { unread, newLeads, productName: selected?.name ?? null, staffName: staff.name, staffEmail: staff.email };
   return (
     <div className="flex min-h-screen">
+      <Suspense><NavigationProgress /></Suspense>
       <aside className="hidden w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar p-4 lg:flex">
         <div className="mb-4 px-3">
           <p className="text-base font-bold">Platterly</p>

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { Suspense } from "react";
 import { requireActiveOrganization, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { getActiveNotice } from "@/modules/subscriptions/platform-notice";
@@ -22,6 +23,7 @@ import { LocationSwitcher } from "@/components/app-shell/location-switcher";
 import { getActiveLocation } from "@/modules/locations/active-location";
 import { listLocations } from "@/modules/locations/locations";
 import { GlobalSearch } from "@/components/app-shell/global-search";
+import { NavigationProgress } from "@/components/app-shell/navigation-progress";
 
 function daysUntil(date: Date): number {
   return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 86400000));
@@ -88,6 +90,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <SensitiveAccessProvider flags={sensitive}>
     <SidebarProvider defaultOpen={defaultOpen}>
+      <Suspense><NavigationProgress /></Suspense>
       <AppSidebar organizationName={organization.name} trial={trial} notice={notice} grace={grace} renewal={renewal} allowedHrefs={allowedHrefs} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">

@@ -78,7 +78,22 @@ test("Businesses: full-width cards and list, filters, and a detail page with tab
   await expect(page.getByRole("menuitem", { name: "Email owner" })).toHaveAttribute("href", "mailto:owner@e2e.example");
   await page.keyboard.press("Escape");
 
+  // A slow business page: the click shows the loading bar at once, so it never looks dead, and the bar goes when the page arrives.
+  const bizPage = /\/businesses\/biz_[^?]+\?_rsc=/;
+  await page.route(bizPage, async (route) => {
+    if (!route.request().headers()["next-router-prefetch"]) await new Promise((r) => setTimeout(r, 1500));
+    await route.continue();
+  });
   await page.getByRole("link", { name: NAME, exact: true }).click();
+  await expect(page.getByRole("progressbar", { name: "Loading page" })).toBeVisible({ timeout: 500 });
+  await expect(page.getByRole("heading", { name: NAME })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Loading page" })).toHaveCount(0);
+  await page.unroute(bizPage);
+  // Back on the list the finished click is forgotten: no bar.
+  await page.goBack();
+  await expect(page.getByRole("link", { name: NAME, exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Loading page" })).toHaveCount(0);
+  await page.goForward();
   await expect(page.getByRole("heading", { name: NAME })).toBeVisible();
   const tabs = page.getByRole("navigation", { name: "Sections" });
   for (const tab of ["Subscription", "Usage", "Activity", "Messages", "Overview"]) {

@@ -44,7 +44,9 @@ export async function notify(input: NotifyInput, db: Db = prisma): Promise<boole
 export async function notifySafely(input: NotifyInput): Promise<void> {
   try {
     const created = await notify(input);
-    if (created && input.severity && input.severity !== "INFO") await emailStaff(input);
+    // The email goes out in the background: whoever caused the notification (a visitor sending the site's form, say) never
+    // waits for the mail server. The row above is already saved, so a slow or failed email loses nothing.
+    if (created && input.severity && input.severity !== "INFO") void emailStaff(input).catch((error) => console.error("[ops notifications] could not email staff", input.kind, error));
   } catch (error) {
     console.error("[ops notifications] could not notify", input.kind, error);
   }

@@ -96,8 +96,9 @@ export async function provisionTenantForNewUser(
     await assignPlan(organization.id, trialPlan.id, userId);
   }
   // Tells Platterly Ops this business exists (does nothing until the ops link is configured; never fails the sign-up).
-  await emitBusinessSignedUp(organization.id);
-  await emitWelcomeRequested(organization.id);
+  // Not awaited: ops answers only after starting the trial and sending the welcome email, which the new kitchen should
+  // not sit through. Both calls catch their own errors, and the outbox retries any event that did not get through.
+  void emitBusinessSignedUp(organization.id).then(() => emitWelcomeRequested(organization.id));
 
   return { organizationId: organization.id };
 }
