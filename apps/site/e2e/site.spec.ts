@@ -99,7 +99,7 @@ test("the policies, About and the new pages are in the footer and each has one h
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(heading);
   }
   await page.goto("/refund/");
-  await expect(page.getByText("Plans do not renew automatically").first()).toBeVisible();
+  await expect(page.getByText("Monthly plans renew automatically").first()).toBeVisible();
 });
 
 test("policy pages: a contents list that follows you, the company named, and the no-refund rule", async ({ page }) => {
@@ -114,6 +114,11 @@ test("policy pages: a contents list that follows you, the company named, and the
   await expect(page.getByText("The courts at Bangalore, India have exclusive jurisdiction")).toBeVisible();
   await page.goto("/refund/");
   await expect(page.getByText("Payments for Platterly plans are not refundable.")).toBeVisible();
+  await expect(page.getByText(/draft|lawyer/i)).toHaveCount(0);
+  await expect(page.getByText("within 7 working days of approving it")).toBeVisible();
+  await page.goto("/contact/");
+  await expect(page.getByText("JP Nagar 7th Phase")).toBeVisible();
+  await expect(page.getByText("Monday to Saturday, 10 am to 6 pm IST")).toBeVisible();
   await page.goto("/cookie-policy/");
   await expect(page.getByRole("table").first()).toBeVisible();
   await expect(page.getByText("does not use advertising, analytics or tracking cookies")).toBeVisible();

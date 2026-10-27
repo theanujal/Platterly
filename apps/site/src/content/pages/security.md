@@ -1,7 +1,7 @@
 ---
 title: Security
 summary: How we protect your business's information in Caterly by Platterly, and how to tell us if you find a problem.
-updated: 2026-10-08
+updated: 2026-10-27
 ---
 
 Your customers, menus and payments are the heart of your business. This page explains, in plain language, what we do to protect them today. It describes what is true now; we will not claim certifications we do not hold.

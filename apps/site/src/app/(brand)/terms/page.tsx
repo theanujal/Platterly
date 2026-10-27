@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   ...pageLinks("/terms/"),
 };
 
-/** DRAFT for legal review before launch. The text is in src/content/pages/terms.md. */
+/** The text is in src/content/pages/terms.md. */
 export default async function Page() {
   return <ContentPage page={await getPage("terms")} />;
 }

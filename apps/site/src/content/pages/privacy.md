@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy
 summary: How Platterly collects, uses, stores and protects personal information.
-updated: 2026-10-05
+updated: 2026-10-27
 ---
 
 This policy explains what personal information Fragen Network Private Limited ("Platterly", "we", "us") collects when you visit platterly.in or use Caterly by Platterly at catering.platterly.in, how we use it, and the choices you have.
@@ -86,7 +86,7 @@ If we change this policy in a way that matters, we will update the date above an
 
 Fragen Network Private Limited
 
-Bangalore, India
+Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka
 
 Grievance contact: [hello@platterly.in](mailto:hello@platterly.in)
 

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   ...pageLinks("/refund/"),
 };
 
-/** DRAFT for legal review before launch. The text is in src/content/pages/refund.md. */
+/** The text is in src/content/pages/refund.md. */
 export default async function Page() {
   return <ContentPage page={await getPage("refund")} />;
 }

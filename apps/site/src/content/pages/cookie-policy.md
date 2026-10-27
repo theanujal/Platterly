@@ -1,7 +1,7 @@
 ---
 title: Cookie Policy
 summary: What cookies and similar storage Platterly uses, why, and how you can control them.
-updated: 2026-10-08
+updated: 2026-10-27
 ---
 
 This policy explains how Fragen Network Private Limited ("Platterly", "we", "us") uses cookies and similar technologies on platterly.in and in Caterly by Platterly at catering.platterly.in. It should be read with our [Privacy Policy](/privacy/).
@@ -46,4 +46,4 @@ If we change how we use cookies, we will update this page and its date. A change
 
 ## 8. Contact
 
-Questions about this policy: [hello@platterly.in](mailto:hello@platterly.in). Fragen Network Private Limited, Bangalore, India.
+Questions about this policy: [hello@platterly.in](mailto:hello@platterly.in). Fragen Network Private Limited, Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka.

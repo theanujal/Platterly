@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   ...pageLinks("/security/"),
 };
 
-/** DRAFT for legal review before launch. The text is in src/content/pages/security.md. */
+/** The text is in src/content/pages/security.md. */
 export default async function Page() {
   return <ContentPage page={await getPage("security")} />;
 }

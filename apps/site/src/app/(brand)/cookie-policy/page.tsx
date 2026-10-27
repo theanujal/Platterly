@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   ...pageLinks("/cookie-policy/"),
 };
 
-/** DRAFT for legal review before launch. The text is in src/content/pages/cookie-policy.md. */
+/** The text is in src/content/pages/cookie-policy.md. */
 export default async function Page() {
   return <ContentPage page={await getPage("cookie-policy")} />;
 }

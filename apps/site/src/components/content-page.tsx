@@ -50,7 +50,7 @@ export function ContentPage({ page }: { page: PageDoc }) {
           <ButtonLink href="/contact/">Contact us</ButtonLink>
         </div>
         <p className="mt-6 text-sm text-slate-gray">
-          This page is a draft written for review by a lawyer before launch. See also our <Link className="underline underline-offset-4" href="/privacy/">Privacy Policy</Link>, <Link className="underline underline-offset-4" href="/terms/">Terms</Link> and <Link className="underline underline-offset-4" href="/refund/">Cancellation and Refund</Link> pages.
+          See also our <Link className="underline underline-offset-4" href="/privacy/">Privacy Policy</Link>, <Link className="underline underline-offset-4" href="/terms/">Terms</Link> and <Link className="underline underline-offset-4" href="/refund/">Cancellation and Refund</Link> pages.
         </p>
       </section>
     </>

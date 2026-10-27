@@ -1,7 +1,7 @@
 ---
 title: Terms and Conditions
 summary: The rules for using Platterly and Caterly by Platterly.
-updated: 2026-10-05
+updated: 2026-10-27
 ---
 
 These terms are an agreement between you and Fragen Network Private Limited ("Platterly", "we", "us"). They apply when you visit platterly.in or create or use an account on Caterly by Platterly. By creating an account or using the service you agree to them.
@@ -21,7 +21,9 @@ Caterly by Platterly is web software that helps catering businesses manage custo
 
 - New accounts start with a free trial of 7 days with full access. No card is needed to start.
 - After the trial, continued use needs a paid plan. Prices are shown on the Catering page and in your account, in Indian rupees. GST at the applicable rate is added at checkout.
-- A plan is paid for a month or a year in advance. **Plans do not renew automatically**; when the period ends you choose whether to pay again to continue.
+- A plan is paid for a month or a year in advance.
+- **Monthly plans renew automatically.** When you first pay, you approve an auto-pay mandate with Razorpay, and the plan price is charged every 30 days until you pause it in Settings → Subscription. Pausing stops future charges; you keep access until the end of the 30 days already paid for.
+- **Yearly plans do not renew automatically.** We remind you by email before the year ends, and you choose whether to pay again to continue. See the [Cancellation and Refund Policy](/refund/).
 - When the free trial ends, the account is paused until you pay for a plan. When a paid period ends, you have 7 days to pay for the next one; if payment has not been received after 7 days, the account is paused. A paused account keeps its data and is available again as soon as you pay.
 - We may change prices for future periods. A price change never affects a period you have already paid for.
 - We issue a GST invoice for every payment. **Payments are not refundable**, except where the law requires it; see the [Refund Policy](/refund/).
@@ -68,6 +70,6 @@ These terms are governed by the laws of India. The courts at Bangalore, India ha
 
 Fragen Network Private Limited
 
-Bangalore, India
+Rani Nivas, 138, 4th Cross Main, Gaurav Nagar, Kothanoor Village, JP Nagar 7th Phase, Bengaluru, Karnataka
 
 [hello@platterly.in](mailto:hello@platterly.in) · [platterly.in](https://platterly.in)
