@@ -57,6 +57,17 @@ export async function removeExpenseAttachment(organizationId: string, attachment
   await audit({ organizationId, actorUserId, action: "expense.attachment.remove", recordType: "Expense", recordId: attachment.expenseId, before: { fileName: attachment.fileName } });
 }
 
+/**
+ * A receipt's bytes for a signed-in member of its own kitchen (#99), or null when it isn't this kitchen's or the file is
+ * gone. Receipts are never served from the public /uploads/ folder; `/expenses/files/<id>` calls this instead.
+ */
+export async function readExpenseAttachment(organizationId: string, attachmentId: string) {
+  const attachment = await prisma.expenseAttachment.findFirst({ where: { id: attachmentId, organizationId }, select: { key: true, fileName: true, contentType: true } });
+  if (!attachment) return null;
+  const bytes = await getStorageDriver().read(attachment.key).catch(() => null);
+  return bytes && { ...attachment, bytes };
+}
+
 /** Removes the stored files of attachments whose rows are already gone (an expense was deleted). */
 export async function deleteStoredFiles(keys: string[]) {
   await Promise.all(keys.map((key) => getStorageDriver().delete(key)));

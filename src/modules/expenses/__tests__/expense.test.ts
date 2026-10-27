@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { createOrder } from "@/modules/orders/order";
 import { createCustomer } from "@/modules/customers/customer";
 import { computeProfitability } from "../profitability";
-import { AttachmentError, MAX_ATTACHMENTS_PER_EXPENSE, addExpenseAttachment, removeExpenseAttachment } from "../attachment";
+import { AttachmentError, MAX_ATTACHMENTS_PER_EXPENSE, addExpenseAttachment, deleteStoredFiles, readExpenseAttachment, removeExpenseAttachment } from "../attachment";
 import { createRecurringExpense, deleteRecurringExpense, generateDueRecurringExpenses, listRecurringExpenses, setRecurringExpenseActive, updateRecurringExpense, RecurringExpenseError } from "../recurring";
 import { ExpenseError, createExpense, deleteExpense, getOrderProfitability, listExpenses, listOrderExpenses, listOrderOptions, listProfitability, updateExpense } from "../expense";
 
@@ -200,6 +200,19 @@ describe("expense attachments", () => {
     await removeExpenseAttachment(org.id, a.id, actor.id);
     expect(stored(a.key)).toBe(false);
     expect(await prisma.expenseAttachment.count({ where: { expenseId: exp.id } })).toBe(0);
+  });
+
+  it("hands a receipt only to its own kitchen, and nothing once the file is gone (#99)", async () => {
+    const { org, order } = await makeOrder();
+    const { org: other } = await makeOrder();
+    const exp = await createExpense(org.id, order.id, { category: "FOOD", amount: 100, spentAt: day });
+    const a = await addExpenseAttachment(org.id, exp.id, pdf("bill.pdf"));
+    const file = await readExpenseAttachment(org.id, a.id);
+    expect(file).toMatchObject({ fileName: "bill.pdf", contentType: "application/pdf" });
+    expect(file?.bytes.subarray(0, 8).toString()).toBe("%PDF-1.7");
+    expect(await readExpenseAttachment(other.id, a.id)).toBeNull();
+    await deleteStoredFiles([a.key]);
+    expect(await readExpenseAttachment(org.id, a.id)).toBeNull();
   });
 
   it("refuses the wrong type, an oversize or empty file, and a sixth file", async () => {

@@ -211,7 +211,7 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
   await accountsContext.close();
 });
 
-test("receipts attach to an expense, show in the table, and can be removed", async ({ page }) => {
+test("receipts attach to an expense, show in the table, and can be removed", async ({ page, request }) => {
   test.setTimeout(180_000);
   const email = `e2e-receipts-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -263,10 +263,14 @@ test("receipts attach to an expense, show in the table, and can be removed", asy
   await expect(card.getByTestId("expense-file")).toHaveCount(2);
   const link = card.getByRole("link", { name: "fresh-mart.pdf" });
   const href = await link.getAttribute("href");
-  expect(href).toMatch(/^\/uploads\/organizations\/.+\/expenses\/.+\.pdf$/);
+  // Receipts are private (#99): the link is the app's own route, which needs the kitchen's login.
+  expect(href).toMatch(/^\/expenses\/files\/[^/]+$/);
   const file = await page.request.get(href!);
   expect(file.status()).toBe(200);
+  expect(file.headers()["cache-control"]).toBe("private, no-store");
   expect((await file.body()).subarray(0, 4).toString()).toBe("%PDF");
+  // Signed out (`request` shares no cookies with the page): sent to sign in, no file.
+  expect((await request.get(href!, { maxRedirects: 0 })).status()).toBe(307);
 
   // Remove one from the edit popup
   await card.getByRole("button", { name: "Edit Food expense" }).click();

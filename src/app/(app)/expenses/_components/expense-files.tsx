@@ -9,7 +9,7 @@ export function ExpenseFiles({ attachments }: { attachments?: ExpenseAttachmentD
       {attachments.map((a) => {
         const Icon = a.contentType === "application/pdf" ? FileText : ImageIcon;
         return (
-          <a key={a.id} href={a.url} target="_blank" rel="noreferrer" data-testid="expense-file" className="flex max-w-40 items-center gap-1.5 text-sm text-primary hover:underline">
+          <a key={a.id} href={`/expenses/files/${a.id}`} target="_blank" rel="noreferrer" data-testid="expense-file" className="flex max-w-40 items-center gap-1.5 text-sm text-primary hover:underline">
             <Icon className="size-3.5 shrink-0" />
             <span className="truncate">{a.fileName}</span>
           </a>

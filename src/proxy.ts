@@ -40,6 +40,10 @@ export function proxy(request: NextRequest) {
   const kind = hostKind(requestHost(request.headers));
   const { pathname } = request.nextUrl;
 
+  // Expense receipts are private (#99): only `/expenses/files/<id>` serves them, after a login check. Nginx refuses the
+  // folder on the server; this does the same where Next.js serves `public/uploads` itself (dev).
+  if (/^\/uploads\/organizations\/[^/]+\/expenses\//.test(pathname)) return withIndexing(new NextResponse("Not found", { status: 404 }), false);
+
   // The platform admin is Platterly Ops, its own app (apps/ops). This app serves nothing on the ops host, only the uptime check.
   if (kind === "ops") {
     if (pathname === "/api/health") return withIndexing(NextResponse.next(), false);
