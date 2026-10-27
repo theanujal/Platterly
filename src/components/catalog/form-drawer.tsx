@@ -176,7 +176,9 @@ export function DrawerForm({
           <Button type="button" variant="outline" onClick={() => (guard ? guard.confirmDiscard(onCancel) : onCancel())}>
             Cancel
           </Button>
-          <Button type="submit" disabled={pending}>
+          {/* An edit drawer (they all say "Save changes") can't save until something changed, so a stray click never
+              rewrites a record with what it already held (#14). Add, import and picker drawers keep their own rules. */}
+          <Button type="submit" disabled={pending || (submitLabel === "Save changes" && !dirty)}>
             {pending ? "Saving…" : submitLabel}
           </Button>
         </div>
