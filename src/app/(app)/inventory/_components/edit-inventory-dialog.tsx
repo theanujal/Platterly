@@ -24,7 +24,7 @@ export function EditInventoryDialog({ open, onOpenChange, itemId, initialValues,
         suppliers={suppliers}
         locations={locations}
         submitLabel="Save changes"
-        onSubmit={(formData) => updateInventoryItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}
+        onSubmit={(formData) => updateInventoryItemAction(itemId, formData)}
         onCancel={() => onOpenChange(false)}
         onSuccess={() => {
           onOpenChange(false);

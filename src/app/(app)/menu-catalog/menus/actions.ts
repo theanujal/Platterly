@@ -26,14 +26,14 @@ async function keptPricing(organizationId: string, existingId?: string): Promise
   };
 }
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<MenuInput> {
+async function buildInput(organizationId: string, formData: FormData, existingId?: string): Promise<MenuInput> {
   const mayPrice = await canSee("menuPrices", organizationId);
   if (!mayPrice) {
     const name = stringField(formData, "name");
     if (!name) throw new Error("Name is required.");
     const menuType = stringField(formData, "menuType") as FoodType | undefined;
     if (menuType !== "VEGETARIAN" && menuType !== "NON_VEGETARIAN") throw new Error("Menu Type is required.");
-    const image = await catalogImageFromForm(organizationId, "menus", formData, existingImage);
+    const image = await catalogImageFromForm(organizationId, "menus", formData);
     const categoryAssignments = formData.getAll("categoryAssignment").flatMap((raw) => {
       if (typeof raw !== "string") return [];
       const parsed = JSON.parse(raw) as { categoryId?: unknown; maxSelection?: unknown };
@@ -54,7 +54,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const pricePerPlate = typeof priceRaw === "string" ? Number.parseFloat(priceRaw) : NaN;
   if (Number.isNaN(pricePerPlate) || pricePerPlate < 0) throw new Error("A valid, non-negative Price Per Plate is required.");
 
-  const image = await catalogImageFromForm(organizationId, "menus", formData, existingImage);
+  const image = await catalogImageFromForm(organizationId, "menus", formData);
 
   const childUnder5Chargeable = formData.get("childUnder5Chargeable") === "true";
   const childUnder5PriceRaw = stringField(formData, "childUnder5Price");
@@ -114,13 +114,12 @@ export async function createMenuAction(formData: FormData): Promise<ActionResult
 
 export async function updateMenuAction(
   id: string,
-  existingImage: string | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage, id);
+    const input = await buildInput(organizationId, formData, id);
     await updateMenu(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);

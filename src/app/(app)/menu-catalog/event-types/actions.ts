@@ -8,11 +8,11 @@ import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string): Promise<EventTypeInput> {
+async function buildInput(organizationId: string, formData: FormData): Promise<EventTypeInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
-  const image = await catalogImageFromForm(organizationId, "event-types", formData, existingImage);
+  const image = await catalogImageFromForm(organizationId, "event-types", formData);
 
   const minGuestsRaw = stringField(formData, "minGuests");
   const minGuests = minGuestsRaw ? Number.parseInt(minGuestsRaw, 10) : null;
@@ -44,13 +44,12 @@ export async function createEventTypeAction(formData: FormData): Promise<ActionR
 
 export async function updateEventTypeAction(
   id: string,
-  existingImage: string | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ eventTypes: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage);
+    const input = await buildInput(organizationId, formData);
     await updateEventType(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);

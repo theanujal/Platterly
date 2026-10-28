@@ -10,7 +10,7 @@ import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<AddOnInput> {
+async function buildInput(organizationId: string, formData: FormData, existingId?: string): Promise<AddOnInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
@@ -46,7 +46,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const menuIds = formData.getAll("menuIds").filter((v): v is string => typeof v === "string" && v !== "");
   if (!appliesToAllMenus && menuIds.length === 0) throw new Error("Choose at least one menu, or tick All menus.");
 
-  const image = await catalogImageFromForm(organizationId, "add-ons", formData, existingImage);
+  const image = await catalogImageFromForm(organizationId, "add-ons", formData);
 
   return {
     name,
@@ -77,13 +77,12 @@ export async function createAddOnAction(formData: FormData): Promise<ActionResul
 
 export async function updateAddOnAction(
   id: string,
-  existingImage: string | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage, id);
+    const input = await buildInput(organizationId, formData, id);
     await updateAddOn(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);

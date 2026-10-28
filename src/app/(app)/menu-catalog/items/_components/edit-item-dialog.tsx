@@ -24,7 +24,7 @@ export function EditItemDialog({ open, onOpenChange, itemId, initialValues, cate
         menus={menus}
         initialValues={initialValues}
         submitLabel="Save changes"
-        onSubmit={(formData) => updateMenuItemAction(itemId, initialValues.imageUrl ?? undefined, formData)}
+        onSubmit={(formData) => updateMenuItemAction(itemId, formData)}
         onCancel={() => onOpenChange(false)}
         onSuccess={() => {
           onOpenChange(false);

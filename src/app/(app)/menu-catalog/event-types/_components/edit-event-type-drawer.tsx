@@ -22,7 +22,7 @@ export function EditEventTypeDrawer({ open, onOpenChange, eventTypeId, initialVa
         availableMenus={availableMenus}
         initialValues={initialValues}
         submitLabel="Save changes"
-        onSubmit={(formData) => updateEventTypeAction(eventTypeId, initialValues.imageUrl ?? undefined, formData)}
+        onSubmit={(formData) => updateEventTypeAction(eventTypeId, formData)}
         onCancel={() => onOpenChange(false)}
         onSuccess={() => {
           onOpenChange(false);

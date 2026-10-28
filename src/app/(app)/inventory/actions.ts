@@ -30,7 +30,7 @@ function dateField(formData: FormData, name: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string): Promise<InventoryItemInput> {
+async function buildInput(organizationId: string, formData: FormData): Promise<InventoryItemInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Item name is required.");
   const category = stringField(formData, "category");
@@ -38,7 +38,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
   const unit = stringField(formData, "unit");
   if (!unit) throw new Error("Unit is required.");
 
-  const image = await catalogImageFromForm(organizationId, "inventory", formData, existingImage);
+  const image = await catalogImageFromForm(organizationId, "inventory", formData);
 
   return {
     name,
@@ -86,14 +86,13 @@ export async function createInventoryItemAction(formData: FormData): Promise<Act
 
 export async function updateInventoryItemAction(
   id: string,
-  existingImage: string | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ inventory: ["edit"] }, organizationId);
   await assertInventoryItemAtMyLocation(organizationId, session.user.id, id);
   try {
-    const input = await buildInput(organizationId, formData, existingImage);
+    const input = await buildInput(organizationId, formData);
     // The item's cost per unit is a supplier cost (Sensitive data, AJ 2026-10-17): without that right a submitted cost is ignored and the saved one stays.
     if (!(await canSee("supplierCosts", organizationId))) input.costPerUnit = (await prisma.inventory.findFirstOrThrow({ where: { id, organizationId }, select: { costPerUnit: true } })).costPerUnit?.toNumber() ?? undefined;
     // ...and cannot move an item to another location or make it shared.

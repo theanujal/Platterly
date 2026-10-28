@@ -103,6 +103,15 @@ test("create a Live Counter (Per Plate) and a Special Add-on (Fixed), then edit 
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(page.getByText(`${liveCounterName} Updated`)).toBeVisible();
 
+  // Saving an edit without picking a new picture keeps the saved one; the form no longer sends it (#107).
+  await page.getByRole("button", { name: `Actions for ${specialAddonName}` }).click();
+  await page.getByRole("menuitem", { name: "Edit Add-on" }).click();
+  await page.getByLabel("Price", { exact: true }).fill("5500");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await expect(page.getByText("₹5,500.00 flat")).toBeVisible();
+  await expect(page.locator('img[src$=".webp"]')).toBeVisible();
+
   // --- The 3-dot menu also duplicates, deactivates and deletes (AJ, 2026-09-30) ---
   const updatedName = `${liveCounterName} Updated`;
   await page.getByRole("button", { name: `Actions for ${updatedName}`, exact: true }).click();

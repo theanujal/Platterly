@@ -22,7 +22,7 @@ export function EditAddOnDialog({ open, onOpenChange, addOnId, initialValues, av
         initialValues={initialValues}
         availableMenus={availableMenus}
         submitLabel="Save changes"
-        onSubmit={(formData) => updateAddOnAction(addOnId, initialValues.imageUrl ?? undefined, formData)}
+        onSubmit={(formData) => updateAddOnAction(addOnId, formData)}
         onCancel={() => onOpenChange(false)}
         onSuccess={() => {
           onOpenChange(false);

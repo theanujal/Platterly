@@ -30,7 +30,7 @@ export function EditMenuDialog({ open, onOpenChange, menuId, initialValues, cate
         categories={categories}
         assignedCategories={assignedCategories}
         submitLabel="Save changes"
-        onSubmit={(formData) => updateMenuAction(menuId, initialValues.imageUrl ?? undefined, formData)}
+        onSubmit={(formData) => updateMenuAction(menuId, formData)}
         onCancel={() => onOpenChange(false)}
         onSuccess={() => {
           onOpenChange(false);

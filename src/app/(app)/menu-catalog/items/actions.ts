@@ -25,7 +25,7 @@ import { stringField, toErrorResult } from "@/lib/form-data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
-async function buildInput(organizationId: string, formData: FormData, existingImage?: string, existingId?: string): Promise<MenuItemInput> {
+async function buildInput(organizationId: string, formData: FormData, existingId?: string): Promise<MenuItemInput> {
   const name = stringField(formData, "name");
   if (!name) throw new Error("Name is required.");
 
@@ -42,7 +42,7 @@ async function buildInput(organizationId: string, formData: FormData, existingIm
     price = existingId ? Number((await prisma.menuItem.findFirstOrThrow({ where: { id: existingId, organizationId }, select: { price: true } })).price) : 0;
   }
 
-  const image = await catalogImageFromForm(organizationId, "items", formData, existingImage);
+  const image = await catalogImageFromForm(organizationId, "items", formData);
 
   return {
     name,
@@ -84,13 +84,12 @@ export async function createMenuItemAction(formData: FormData): Promise<ActionRe
 
 export async function updateMenuItemAction(
   id: string,
-  existingImage: string | undefined,
   formData: FormData,
 ): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
   await requirePermission({ menus: ["edit"] }, organizationId);
   try {
-    const input = await buildInput(organizationId, formData, existingImage, id);
+    const input = await buildInput(organizationId, formData, id);
     await updateMenuItem(organizationId, id, input, session.user.id);
   } catch (error) {
     return toErrorResult(error);
