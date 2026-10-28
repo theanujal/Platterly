@@ -41,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             logo: `${SITE.url}/platterly-logo.png`,
             email: SITE.contactEmail,
             contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: SITE.contactEmail, areaServed: "IN" },
+            sameAs: SITE.social,
           }}
         />
         {children}

@@ -10,6 +10,8 @@ export const SITE = {
   contactEmail: "hello@platterly.in",
   tagline: "Software built for the food business.",
   description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
+  /** Real social profiles only; they become the Organization's `sameAs`. TODO: add Instagram. */
+  social: ["https://www.facebook.com/platterlyindia", "https://www.linkedin.com/company/platterlyindia"],
 } as const;
 
 /** Sharing defaults. A page's own `openGraph` replaces the layout's whole object (Next merges metadata shallowly), so pages spread this. */
