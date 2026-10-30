@@ -11,6 +11,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** A monthly plan buys 30 days, an annual plan 365 (the paywall promises "30-Day Premium Access"). */
 export const INTERVAL_DAYS: Record<BillingInterval, number> = { MONTHLY: 30, ANNUAL: 365 };
 
+/** A yearly plan is paid once, so its renew buttons and the /subscribe page open only in its last 30 days (AJ, 2026-10-30). */
+export const YEARLY_RENEWAL_WINDOW_DAYS = 30;
+export function yearlyRenewalOpen(interval: BillingInterval | null, periodEnd: Date | null, now: Date = new Date()): boolean {
+  if (interval !== "ANNUAL" || !periodEnd) return true;
+  return periodEnd.getTime() - now.getTime() <= YEARLY_RENEWAL_WINDOW_DAYS * DAY_MS;
+}
+
 export interface PriceBreakdown {
   amount: number;
   gstPercent: number;

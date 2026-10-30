@@ -1,8 +1,11 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { newId, signedHeaders } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { registerProduct, rotateSecrets } from "@/modules/registry/products";
 import { receiveEvent } from "../events";
+
+const sendEmail = vi.hoisted(() => vi.fn(async () => ({ status: "skipped" as const, reason: "ZeptoMail is not configured." })));
+vi.mock("@/modules/messages/zeptomail", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/modules/messages/zeptomail")>()), sendEmail }));
 
 const A = "evtesta";
 const B = "evtestb";
@@ -47,6 +50,23 @@ describe("receiveEvent", () => {
     expect(business.ownerEmail).toBe("asha@example.com");
     expect(business.products.map((p) => p.productKey)).toEqual([A]);
     expect(await prisma.notification.count({ where: { businessId: business.id, kind: "business.signed_up", severity: "INFO" } })).toBe(1);
+  });
+
+  it("emails staff once about a brand-new business, and not about a backfilled one", async () => {
+    process.env.STAFF_NOTIFY_EMAILS = "hello@platterly.in";
+    sendEmail.mockClear();
+    try {
+      expect((await send(signup({}, "EvTest Staff Mail Co"))).status).toBe(200);
+      await vi.waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
+      expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: "hello@platterly.in", subject: "Platterly Ops: New business signed up" }));
+
+      sendEmail.mockClear();
+      expect((await send(event("business.signed_up", { businessName: "EvTest Staff Mail Old", ownerName: "Asha", ownerEmail: "old2@example.com", backfill: true }))).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(sendEmail).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.STAFF_NOTIFY_EMAILS;
+    }
   });
 
   it("accepts the same event twice but applies it once (a retry reuses the event id)", async () => {

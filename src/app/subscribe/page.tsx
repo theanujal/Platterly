@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { requireActiveOrganization, hasPermission } from "@/lib/auth/require-session";
 import { getSubscribeData } from "@/modules/subscriptions/billing-source";
+import { yearlyRenewalOpen } from "@/modules/subscriptions/billing-math";
 import { opsBillingOn } from "@/modules/ops-link/config";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { SubscribeClient } from "./_components/subscribe-client";
@@ -24,6 +26,8 @@ export default async function SubscribePage() {
   const { plans } = data;
   const current = data.subscription;
   const paid = current?.status === "ACTIVE" && !data.locked ? current : null;
+  // A yearly plan is paid once: until its last 30 days there is nothing to buy here, so the page sends the kitchen back to its subscription.
+  if (paid && !yearlyRenewalOpen(paid.billingInterval, paid.currentPeriodEnd)) redirect("/settings/subscription");
 
   return (
     <div className="relative min-h-svh bg-accent/60">

@@ -3,11 +3,13 @@ import Link from "next/link";
 import { CalendarDays, CreditCard, Download, Gift, History, Receipt, Sparkles } from "lucide-react";
 import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { getSubscriptionPageData } from "@/modules/subscriptions/billing-source";
+import { yearlyRenewalOpen } from "@/modules/subscriptions/billing-math";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoBox, PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 import { formatDate } from "@/lib/time/local-date";
 import { AutoPayButton } from "./autopay-button";
+import { CancelSubscriptionButton } from "./cancel-subscription-button";
 
 export const metadata: Metadata = {
   title: "Subscription — Caterly",
@@ -41,6 +43,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const trialing = current?.status === "TRIALING" && current.trialEndsAt;
   // The plan checkout lands here with ?paid=1 once the payment is verified; the newest payment is the one just made.
   const justPaid = (await searchParams).paid ? payments[0] : undefined;
+  // A yearly plan is paid once: its button stays off until the last 30 days, when renewing opens (the sidebar card shows then too).
+  const yearly = !trialing && current?.billingInterval === "ANNUAL" && !yearlyRenewalOpen(current.billingInterval, current.currentPeriodEnd);
   const canPay = await hasPermission({ tenant: ["edit"] }, organizationId);
   const autoPay = current?.autoPay ?? null;
 
@@ -117,12 +121,27 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               </dl>
             </div>
 
-            <Button size="md" className="self-start" render={<Link href="/subscribe" />} nativeButton={false} data-testid="manage-plan">
-              <Sparkles data-icon="inline-start" />
-              {trialing ? "Upgrade plan" : "Renew or change plan"}
-            </Button>
+            {yearly ? (
+              <>
+                <Button size="md" className="self-start" disabled data-testid="manage-plan">
+                  <Sparkles data-icon="inline-start" />
+                  Upgrade plan
+                </Button>
+                {current.currentPeriodEnd && <p className="-mt-1 text-xs text-muted-foreground">Your yearly plan is paid until {formatDate(current.currentPeriodEnd)}.</p>}
+              </>
+            ) : (
+              <Button size="md" className="self-start" render={<Link href="/subscribe" />} nativeButton={false} data-testid="manage-plan">
+                <Sparkles data-icon="inline-start" />
+                {trialing ? "Upgrade plan" : "Renew or upgrade plan"}
+              </Button>
+            )}
             {/* A waiting downgrade already stops the auto-pay at the end of this cycle (Task 8), so there is nothing to pause. */}
-            {canPay && (autoPay?.status === "ACTIVE" || autoPay?.status === "PAUSED") && !current.pendingPlanName && <AutoPayButton paused={autoPay.status === "PAUSED"} />}
+            {canPay && (autoPay?.status === "ACTIVE" || autoPay?.status === "PAUSED") && !current.pendingPlanName && (
+              <div className="flex flex-wrap gap-2">
+                <AutoPayButton paused={autoPay.status === "PAUSED"} />
+                <CancelSubscriptionButton paused={autoPay.status === "PAUSED"} paidUntil={current.currentPeriodEnd ? formatDate(current.currentPeriodEnd) : null} />
+              </div>
+            )}
 
             <dl className="grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
               {[

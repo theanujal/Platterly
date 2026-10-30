@@ -611,14 +611,14 @@ export async function expireSubscription(email: string): Promise<void> {
 }
 
 /** Chunk 20: what a successful payment leaves behind, without going through Razorpay. */
-export async function activatePaidPlan(email: string, planCode: string, daysFromNow: number): Promise<void> {
+export async function activatePaidPlan(email: string, planCode: string, daysFromNow: number, interval: "MONTHLY" | "ANNUAL" = "MONTHLY"): Promise<void> {
   await pool.query(
     `WITH org AS (SELECT m."organizationId" AS id FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1),
           ended AS (UPDATE subscription SET status = 'CANCELLED', "endDate" = now() WHERE "endDate" IS NULL AND "organizationId" IN (SELECT id FROM org))
      INSERT INTO subscription (id, "organizationId", "subscriptionPlanId", status, "startDate", "billingInterval", "currentPeriodEnd", "updatedAt")
-     SELECT 'sub_' || substr(md5(random()::text), 1, 10), org.id, p.id, 'ACTIVE', now(), 'MONTHLY', now() + ($3 || ' days')::interval, now()
+     SELECT 'sub_' || substr(md5(random()::text), 1, 10), org.id, p.id, 'ACTIVE', now(), $4::"BillingInterval", now() + ($3 || ' days')::interval, now()
      FROM org, subscription_plan p WHERE p.code = $2`,
-    [email, planCode, String(daysFromNow)],
+    [email, planCode, String(daysFromNow), interval],
   );
 }
 

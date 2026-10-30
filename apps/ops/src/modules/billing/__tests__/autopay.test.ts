@@ -7,8 +7,9 @@ import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { cancelRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, pauseRazorpaySubscription, resumeRazorpaySubscription, verifySubscriptionSignature, type PlatformRazorpay } from "../razorpay";
-import { cancelScheduledDowngrade, chargeAutoPay, confirmPayment, failAutoPayCheckout, getBillingView, pauseAutoPay, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout } from "../billing";
+import { cancelAutoPay, cancelScheduledDowngrade, chargeAutoPay, confirmPayment, failAutoPayCheckout, getBillingView, pauseAutoPay, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout } from "../billing";
 import { sendGraceNotices, sendRenewalReminders, sweepExpired } from "@/modules/subscriptions/subscriptions";
+import { POST as cancelPOST } from "@/app/api/products/[productKey]/businesses/[businessId]/billing/autopay/cancel/route";
 import { POST as pausePOST } from "@/app/api/products/[productKey]/businesses/[businessId]/billing/autopay/pause/route";
 import { POST as webhookPOST } from "@/app/api/webhooks/razorpay/route";
 
@@ -443,6 +444,60 @@ describe("pause and resume", () => {
     const path = `/api/products/${KEY}/businesses/${biz}/billing/autopay/pause`;
     expect((await pausePOST(route(path, "POST", undefined, "wrong"), params({ productKey: KEY, businessId: biz }))).status).toBe(401);
     expect((await pausePOST(route(path, "POST"), params({ productKey: KEY, businessId: biz }))).status).toBe(200);
+  });
+});
+
+describe("cancel subscription", () => {
+  it("stops charges now for good, keeps the paid days, and tells staff once", async () => {
+    const { biz, subId, first } = await onAutoPay();
+    await cancelAutoPay(biz, KEY);
+    expect(calls.at(-1)).toEqual({ method: "POST", path: `/subscriptions/${subId}/cancel`, body: { cancel_at_cycle_end: 0 } });
+    const view = (await getBillingView(biz, KEY)).subscription!;
+    expect(view.autoPay).toEqual({ status: "CANCELLED", nextChargeAt: null });
+    expect(view.currentPeriodEnd).toBe(first.periodEnd.toISOString());
+    expect(await prisma.notification.count({ where: { businessId: biz, kind: "autopay.cancelled" } })).toBe(1);
+    expect(await mails(biz)).not.toContain("downgrade_approval");
+    await expect(cancelAutoPay(biz, KEY)).rejects.toThrow(/not on/);
+    await expect(resumeAutoPay(biz, KEY)).rejects.toThrow(/not paused/);
+    await hook("subscription.cancelled", { id: subId, status: "cancelled" });
+    expect(await prisma.notification.count({ where: { businessId: biz, kind: "autopay.cancelled" } })).toBe(1);
+  });
+
+  it("a paused subscription can be cancelled too", async () => {
+    const { biz, subId } = await onAutoPay();
+    await pauseAutoPay(biz, KEY);
+    await cancelAutoPay(biz, KEY);
+    expect(rz[subId].status).toBe("cancelled");
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay!.status).toBe("CANCELLED");
+  });
+
+  it("is refused while a lower plan is waiting, since auto-pay already stops at the end of the cycle", async () => {
+    const { lite, biz } = await onAutoPay();
+    await scheduleDowngrade({ businessId: biz, productKey: KEY, planId: lite.id, interval: "MONTHLY" });
+    await expect(cancelAutoPay(biz, KEY)).rejects.toThrow(/lower plan is already waiting/);
+  });
+
+  it("changes nothing when Razorpay cannot stop it, so the kitchen can try again", async () => {
+    const { biz } = await onAutoPay();
+    const down = (async () => new Response("{}", { status: 500 })) as unknown as typeof fetch;
+    await expect(cancelAutoPay(biz, KEY, down)).rejects.toThrow();
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay!.status).toBe("ACTIVE");
+    expect(await prisma.notification.count({ where: { businessId: biz, kind: "autopay.cancelled" } })).toBe(0);
+  });
+
+  it("a yearly plan has no auto-pay to cancel", async () => {
+    const { pro, biz } = await setup();
+    const { razorpayOrderId } = await startCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "ANNUAL", buyer });
+    await confirmPayment(razorpayOrderId, "pay_yc");
+    await expect(cancelAutoPay(biz, KEY)).rejects.toThrow(/no auto-pay/);
+  });
+
+  it("the cancel route is signed by the product and scoped to its business", async () => {
+    const { biz } = await onAutoPay();
+    const path = `/api/products/${KEY}/businesses/${biz}/billing/autopay/cancel`;
+    expect((await cancelPOST(route(path, "POST", undefined, "wrong"), params({ productKey: KEY, businessId: biz }))).status).toBe(401);
+    expect((await cancelPOST(route(path, "POST"), params({ productKey: KEY, businessId: biz }))).status).toBe(200);
+    expect((await getBillingView(biz, KEY)).subscription!.autoPay!.status).toBe("CANCELLED");
   });
 });
 

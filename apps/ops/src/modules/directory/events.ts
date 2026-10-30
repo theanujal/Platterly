@@ -1,5 +1,5 @@
 import "server-only";
-import { notify } from "@/modules/notifications/notifications";
+import { emailStaff, notify } from "@/modules/notifications/notifications";
 import { CONTRACT_VERSION, HEADERS, parseEvent, verifyRequest, type ProductEvent, type SignedTarget } from "@platterly/contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -98,6 +98,8 @@ export async function receiveEvent(rawBody: string, headers: Headers, target: Si
     });
     // A new business starts on the product's trial plan. After the event is safely recorded, and never able to fail it.
     if (result.trial) {
+      // Staff are emailed once the signup is committed; a slow mail server never holds the product's request.
+      if (event.type === "business.signed_up") void emailStaff({ title: "New business signed up", body: `${event.data.businessName} signed up (${event.data.ownerEmail}).`, severity: "INFO" }).catch(() => undefined);
       try {
         await startTrial(event.businessId, event.productKey);
       } catch (error) {

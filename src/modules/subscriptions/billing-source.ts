@@ -257,6 +257,14 @@ export async function setAutoPayPaused(organizationId: string, paused: boolean) 
   await pullSnapshot(organizationId, businessId);
 }
 
+/** "Cancel subscription" (Ops billing only): Razorpay stops charging now, for good; the paid days run out as usual. */
+export async function cancelAutoPay(organizationId: string) {
+  if (!opsBillingOn()) throw new ValidationError("Auto-pay is not available.");
+  const businessId = await businessIdOf(organizationId);
+  await opsBillingOk("POST", `${base(businessId)}/autopay/cancel`);
+  await pullSnapshot(organizationId, businessId);
+}
+
 export async function scheduleDowngrade(organizationId: string, planId: string, interval: BillingInterval, actorUserId: string) {
   if (!opsBillingOn()) return localSchedule(organizationId, planId, interval, actorUserId);
   await opsBillingOk("POST", `${base(await businessIdOf(organizationId))}/downgrade`, { planId, interval });

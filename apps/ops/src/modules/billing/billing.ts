@@ -219,7 +219,7 @@ async function settle(payment: PaymentToSettle, razorpayPaymentId: string, now: 
   } catch (error) {
     console.error("[billing] could not issue a snapshot after payment", payment.id, error);
   }
-  await notifySafely({ productKey, businessId, kind: "payment.received", title: "Payment received", body: `${payment.plan.name}: ₹${Number(payment.total).toLocaleString("en-IN")} (invoice ${invoiceNumber}).`, link: `/payments/${payment.id}`, dedupeKey: `payment_received:${payment.id}` });
+  await notifySafely({ productKey, businessId, kind: "payment.received", title: "Payment received", body: `${payment.plan.name}: ₹${Number(payment.total).toLocaleString("en-IN")} (invoice ${invoiceNumber}).`, link: `/payments/${payment.id}`, dedupeKey: `payment_received:${payment.id}`, emailStaff: true });
   await tellOwner({
     businessId,
     productKey,
@@ -400,6 +400,21 @@ export async function pauseAutoPay(businessId: string, productKey: string, fetch
   await pauseRazorpaySubscription(creds, id, fetchImpl);
   await setAutoPay(current, "PAUSED");
   await audit({ actorUserId: null, action: "billing.autopay_paused", subject: businessId, detail: { productKey, razorpaySubscriptionId: id } });
+}
+
+/**
+ * "Cancel subscription": Razorpay stops charging now and the auto-pay cannot be resumed (the kitchen sets it up again from the plans page).
+ * The paid days keep working, then the 7-day grace and the lock, exactly as after a pause. Unlike staff's own stop, a Razorpay failure is
+ * raised so the kitchen is told and can try again; nothing changes here until Razorpay has stopped it.
+ */
+export async function cancelAutoPay(businessId: string, productKey: string, fetchImpl: typeof fetch = fetch) {
+  const { current, creds, id } = await currentAutoPay(businessId, productKey);
+  if (current.autoPay !== "ACTIVE" && current.autoPay !== "PAUSED") throw new BillingError("Auto-pay is not on.");
+  if (current.pendingPlanId) throw new BillingError("A lower plan is already waiting, so auto-pay stops at the end of this cycle.");
+  await cancelRazorpaySubscription(creds, id, false, fetchImpl);
+  await setAutoPay(current, "CANCELLED");
+  await audit({ actorUserId: null, action: "billing.autopay_cancelled", subject: businessId, detail: { productKey, razorpaySubscriptionId: id } });
+  await notifySafely({ productKey, businessId, kind: "autopay.cancelled", title: "A business cancelled its subscription", body: `${current.plan.name}: auto-pay was cancelled. Access runs until the paid days end.`, link: `/businesses/${businessId}`, dedupeKey: `autopay_cancelled:${current.id}:${current.currentPeriodEnd?.getTime() ?? 0}`, emailStaff: true });
 }
 
 /** "Resume": the next charge is on the usual date. Razorpay's resume after the paid days ended is untested, so that is refused. */

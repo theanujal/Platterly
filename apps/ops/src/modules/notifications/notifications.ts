@@ -7,8 +7,8 @@ import { sendEmail } from "@/modules/messages/zeptomail";
 
 /**
  * What staff are told (replaces Alerts). Anything that happens to a business or product that someone should know about writes
- * one row here: the bell, the Notifications page and the Overview's "Needs attention" read them. A warning or a critical one is
- * also emailed to STAFF_NOTIFY_EMAILS (comma separated) when set and ZeptoMail is configured; mail trouble never loses the row.
+ * one row here: the bell, the Notifications page and the Overview's "Needs attention" read them. A warning or a critical one (or any that asks for it:
+ * a payment received, a new business) is also emailed to STAFF_NOTIFY_EMAILS (comma separated) when set and ZeptoMail is configured; mail trouble never loses the row.
  */
 export type Severity = "INFO" | "WARNING" | "CRITICAL";
 
@@ -22,6 +22,8 @@ export interface NotifyInput {
   link?: string | null;
   /** One notification per fact: a repeat with the same key adds nothing. */
   dedupeKey?: string;
+  /** Email staff even when the severity is INFO (a payment received, a new business). Warnings and critical ones are always emailed. */
+  emailStaff?: boolean;
 }
 
 type Db = Pick<PrismaClient, "notification"> | Prisma.TransactionClient;
@@ -46,7 +48,7 @@ export async function notifySafely(input: NotifyInput): Promise<void> {
     const created = await notify(input);
     // The email goes out in the background: whoever caused the notification (a visitor sending the site's form, say) never
     // waits for the mail server. The row above is already saved, so a slow or failed email loses nothing.
-    if (created && input.severity && input.severity !== "INFO") void emailStaff(input).catch((error) => console.error("[ops notifications] could not email staff", input.kind, error));
+    if (created && (input.emailStaff || (input.severity && input.severity !== "INFO"))) void emailStaff(input).catch((error) => console.error("[ops notifications] could not email staff", input.kind, error));
   } catch (error) {
     console.error("[ops notifications] could not notify", input.kind, error);
   }
@@ -55,7 +57,7 @@ export async function notifySafely(input: NotifyInput): Promise<void> {
 export async function emailStaff(input: Pick<NotifyInput, "title" | "body" | "link" | "severity">): Promise<void> {
   const to = (process.env.STAFF_NOTIFY_EMAILS ?? "").split(",").map((e) => e.trim()).filter(Boolean);
   if (to.length === 0) return;
-  const html = renderEmail({ tag: "Ops", eyebrow: input.severity === "CRITICAL" ? "Needs attention now" : "Needs attention", title: input.title, greeting: "", bodyHtml: `<p>${input.body.replace(/[<>&]/g, "")}</p>` });
+  const html = renderEmail({ tag: "Ops", eyebrow: input.severity === "CRITICAL" ? "Needs attention now" : input.severity === "WARNING" ? "Needs attention" : "For your information", title: input.title, greeting: "", bodyHtml: `<p>${input.body.replace(/[<>&]/g, "")}</p>` });
   for (const address of to) await sendEmail({ to: address, subject: `Platterly Ops: ${input.title}`, html }).catch(() => undefined);
 }
 

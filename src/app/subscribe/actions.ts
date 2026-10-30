@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { userMessage } from "@/lib/errors";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import type { BillingInterval } from "@/generated/prisma/enums";
-import { cancelScheduledDowngrade, reportAutoPayFailed, scheduleDowngrade, setAutoPayPaused, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
+import { cancelAutoPay, cancelScheduledDowngrade, reportAutoPayFailed, scheduleDowngrade, setAutoPayPaused, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
 
 // Paying for a plan is the owner's call (`tenant: edit`), the same people who can change the business profile.
 // Each action states its own check, so the guard is visible where the action is.
@@ -56,6 +56,19 @@ export async function setAutoPayPausedAction(paused: boolean) {
     await setAutoPayPaused(organizationId, paused);
   } catch (error) {
     return { ok: false as const, error: userMessage(error, paused ? "Could not pause the subscription." : "Could not resume the subscription.") };
+  }
+  revalidatePath("/settings/subscription");
+  revalidatePath("/subscribe");
+  return { ok: true as const };
+}
+
+export async function cancelAutoPayAction() {
+  const { organizationId } = await requireActiveOrganization({ allowLocked: true });
+  await requirePermission({ tenant: ["edit"] }, organizationId);
+  try {
+    await cancelAutoPay(organizationId);
+  } catch (error) {
+    return { ok: false as const, error: userMessage(error, "Could not cancel the subscription.") };
   }
   revalidatePath("/settings/subscription");
   revalidatePath("/subscribe");

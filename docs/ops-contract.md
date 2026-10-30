@@ -366,6 +366,7 @@ Platterly's own Razorpay keys (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORP
 | `GET businesses/{id}/billing/payments/{paymentId}` | The frozen invoice (numbers, GST split, seller and buyer as they were), so the product prints it with its own design |
 | `POST businesses/{id}/billing/autopay/pause` | "Pause subscription": Razorpay stops charging; the paid days run out as usual |
 | `POST businesses/{id}/billing/autopay/resume` | "Resume": auto-pay on again (refused once the paid days have ended) |
+| `POST businesses/{id}/billing/autopay/cancel` | "Cancel subscription": Razorpay stops charging now and it cannot be resumed (set up again from the plans page); the paid days run out as usual. Refused while a lower plan is waiting. Staff are notified and emailed |
 
 **Monthly auto-pay (2026-10).** A checkout with `autoPay: true` and `interval: "MONTHLY"` answers `{ kind: "subscription", razorpaySubscriptionId, ... }` instead of an order; the product opens Razorpay with `subscription_id` and verifies with `razorpaySubscriptionId`. The first charge is taken at once and starts a fresh 30 days, so catering offers it to a kitchen on the same plan only once its paid days have ended. Verify answers `status: "PAID"` when that charge is confirmed; otherwise ops waits for the webhook. Every later charge reaches ops by Razorpay's `subscription.charged` webhook. `BillingView.subscription.autoPay` says `{ status, nextChargeAt }`. All additive: the contract stays version 1, and a product that never sends `autoPay` keeps getting orders.
 
