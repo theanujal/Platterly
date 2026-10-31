@@ -7,6 +7,7 @@ const TABS = [
   { href: "/site", label: "Publish" },
   { href: "/site/notice", label: "Notice bar" },
   { href: "/site/contact", label: "Contact" },
+  { href: "/site/scripts", label: "Scripts" },
   { href: "/site/releases", label: "What's new" },
   { href: "/site/posts", label: "Blog" },
   { href: "/site/pages", label: "Legal pages" },

@@ -78,3 +78,96 @@ test("the blog and What's new come from the Ops content too", async ({ page }) =
   await page.goto("/whats-new/");
   await expect(page.getByRole("heading", { name: "Fixture release" })).toBeVisible();
 });
+
+test.describe("scripts: what Ops saved runs by kind, in its place, and only after the visitor chooses", () => {
+  type W = { __fixtureAnalytics?: number; __fixtureMarketing?: number; __fixtureOff?: number; __where?: string[] };
+  const read = <K extends keyof W>(page: import("@playwright/test").Page, key: K) => page.evaluate((k) => (window as unknown as W)[k as keyof W] ?? 0, key);
+  const cookie = (page: import("@playwright/test").Page, name: string) => page.evaluate((n) => document.cookie.includes(`${n}=1`), name);
+
+  test("the notice names each tool by kind, essential scripts already ran in their places, nothing else did", async ({ page }) => {
+    await page.goto("/");
+    const notice = page.getByTestId("cookie-notice");
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText("Fixture Analytics (counts visits)");
+    await expect(notice).toContainText("Fixture Pixel (measures our adverts)");
+    await expect(notice).not.toContainText("Fixture Off");
+    await expect(notice).not.toContainText("Fixture head");
+    // Head, start of body and footer each ran where the box said.
+    await expect.poll(() => page.evaluate(() => [...((window as unknown as W).__where ?? [])].sort())).toEqual(["body:true", "footer:true", "head:HEAD"]);
+    expect(await read(page, "__fixtureAnalytics")).toBe(0);
+    expect(await read(page, "__fixtureMarketing")).toBe(0);
+    expect(await read(page, "__fixtureOff")).toBe(0);
+  });
+
+  test("Accept all runs both kinds in their places, is remembered, and the switched-off script never runs", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("cookie-accept").click();
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    await expect.poll(() => read(page, "__fixtureAnalytics")).toBe(1);
+    await expect.poll(() => read(page, "__fixtureMarketing")).toBe(1);
+    expect(await cookie(page, "_ga_fixture")).toBe(true);
+    expect(await cookie(page, "_fbp_fixture")).toBe(true);
+    // The pixel's <noscript> block is not run: no image appears.
+    await expect(page.locator("img[src*='example.test']")).toHaveCount(0);
+    expect(await read(page, "__fixtureOff")).toBe(0);
+
+    await page.goto("/about/");
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    await expect.poll(() => read(page, "__fixtureAnalytics")).toBe(1);
+    await expect.poll(() => read(page, "__fixtureMarketing")).toBe(1);
+  });
+
+  test("a visitor can accept analytics and decline marketing", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("cookie-analytics").check();
+    await page.getByTestId("cookie-save").click();
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    await expect.poll(() => read(page, "__fixtureAnalytics")).toBe(1);
+    expect(await read(page, "__fixtureMarketing")).toBe(0);
+    expect(await cookie(page, "_fbp_fixture")).toBe(false);
+    await page.goto("/contact/");
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    await expect.poll(() => read(page, "__fixtureAnalytics")).toBe(1);
+    expect(await read(page, "__fixtureMarketing")).toBe(0);
+  });
+
+  test("Decline all runs nothing, is remembered, and Cookie settings in the footer asks again", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("cookie-decline").click();
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    expect(await read(page, "__fixtureAnalytics")).toBe(0);
+    expect(await read(page, "__fixtureMarketing")).toBe(0);
+
+    await page.goto("/contact/");
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    expect(await read(page, "__fixtureAnalytics")).toBe(0);
+
+    await page.getByTestId("cookie-settings").click();
+    await expect(page.getByTestId("cookie-notice")).toBeVisible();
+    await page.getByTestId("cookie-accept").click();
+    await expect.poll(() => read(page, "__fixtureMarketing")).toBe(1);
+  });
+
+  test("changing from Accept to Decline removes both tools' cookies and stops their scripts", async ({ page }) => {
+    await page.goto("/");
+    await page.getByTestId("cookie-accept").click();
+    await expect.poll(() => cookie(page, "_ga_fixture")).toBe(true);
+    await expect.poll(() => cookie(page, "_fbp_fixture")).toBe(true);
+    await page.getByTestId("cookie-settings").click();
+    await page.getByTestId("cookie-decline").click();
+    await page.waitForLoadState("load");
+    await expect.poll(() => cookie(page, "_ga_fixture")).toBe(false);
+    expect(await cookie(page, "_fbp_fixture")).toBe(false);
+    expect(await read(page, "__fixtureAnalytics")).toBe(0);
+    expect(await read(page, "__fixtureMarketing")).toBe(0);
+  });
+
+  test("the Cookie Policy lists the same tools, and not the one that is off or the essential ones", async ({ page }) => {
+    await page.goto("/cookie-policy/");
+    const row = (name: string) => page.getByRole("row", { name });
+    await expect(row(/Fixture Analytics.*Analytics.*counts visits.*_ga/)).toBeVisible();
+    await expect(row(/Fixture Pixel.*Marketing.*measures our adverts.*_fbp/)).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Fixture Off" })).toHaveCount(0);
+    await expect(page.getByRole("cell", { name: "Fixture head" })).toHaveCount(0);
+  });
+});

@@ -121,7 +121,7 @@ test("policy pages: a contents list that follows you, the company named, and the
   await expect(page.getByText("Monday to Saturday, 10 am to 6 pm IST")).toBeVisible();
   await page.goto("/cookie-policy/");
   await expect(page.getByRole("table").first()).toBeVisible();
-  await expect(page.getByText("does not use advertising, analytics or tracking cookies")).toBeVisible();
+  await expect(page.getByText("uses analytics and marketing cookies only if you accept them")).toBeVisible();
 });
 
 test("search files: the sitemap lists every page and robots allows the site", async ({ request }) => {
@@ -488,4 +488,12 @@ test("home: the platform band shows what is live and what is next, and only Cate
   const dots = band.getByRole("group", { name: "Choose a product" }).getByRole("button");
   await dots.nth(1).click();
   await expect(dots.nth(1)).toHaveAttribute("aria-current", "true");
+});
+
+test("with no analytics script from Ops, there is no cookie notice and no Cookie settings link", async ({ page }) => {
+  for (const path of ["/", "/privacy/", "/cookie-policy/"]) {
+    await page.goto(path);
+    await expect(page.getByTestId("cookie-notice")).toHaveCount(0);
+    await expect(page.getByTestId("cookie-settings")).toHaveCount(0);
+  }
 });

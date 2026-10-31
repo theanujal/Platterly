@@ -7,8 +7,8 @@ import { ensureCateringProduct } from "@/modules/plans/__tests__/catering-produc
 import { GET as getContent } from "@/app/api/site/content/route";
 import { POST as postResult } from "@/app/api/site/publish-result/route";
 import {
-  SiteContentError, buildBundle, cleanContact, cleanLegal, cleanNotice, cleanPost, cleanRelease, postCategories, renameCategory,
-  saveLegalPage, saveSiteContact, saveSiteNotice, saveSitePost, saveSiteRelease, deleteSitePost,
+  SiteContentError, buildBundle, cleanScript, cleanContact, cleanLegal, cleanNotice, cleanPost, cleanRelease, postCategories, renameCategory,
+  saveLegalPage, saveSiteScript, deleteSiteScript, listSiteScripts, setSiteScriptEnabled, saveSiteContact, saveSiteNotice, saveSitePost, saveSiteRelease, deleteSitePost,
 } from "../site-content";
 import { SitePublishError, publishSite, siteStatus } from "../publish";
 
@@ -70,6 +70,82 @@ describe("validation", () => {
     expect(() => cleanPost({ ...post, tags: "a,b,c,d,e,f,g" })).toThrow(/at most 6/);
     expect(cleanPost({ ...post, tags: "Kitchen, kitchen ,Kitchen" }).tags).toEqual(["Kitchen", "kitchen"]);
     expect(() => cleanLegal({ slug: "about", title: "t", summary: "s", updated: "2026-10-08", body: "b" })).toThrow(/Unknown page/);
+  });
+});
+
+const GA = `<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-TEST123"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-TEST123');
+</script>`;
+const GTM_HEAD = `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s);j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-TEST12');</script>`;
+const GTM_BODY = `<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-TEST12" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>`;
+
+const script = (over: Partial<Parameters<typeof cleanScript>[0]> = {}) => ({ id: "", name: "Google Analytics", kind: "analytics" as const, placement: "head" as const, enabled: true, code: GA, cookies: "_ga, _gid", description: "counts visits", ...over });
+
+describe("scripts", () => {
+  it("accepts Google's snippets as given, in any kind and place", () => {
+    expect(cleanScript(script()).cookies).toBe("_ga, _gid");
+    expect(cleanScript(script({ code: `${GTM_HEAD}\n${GTM_BODY}`, placement: "body" })).placement).toBe("body");
+    expect(cleanScript(script({ kind: "marketing", placement: "footer", code: "<style>.x{color:red}</style>", cookies: "" })).kind).toBe("marketing");
+  });
+
+  it("refuses anything that is not a script, noscript or style block, and code that never runs", () => {
+    expect(() => cleanScript(script({ code: "" }))).toThrow(SiteContentError);
+    expect(() => cleanScript(script({ code: "G-TEST123" }))).toThrow(/exactly as the tool gives it/);
+    expect(() => cleanScript(script({ code: `${GA}<img src=x onerror=alert(1)>` }))).toThrow(/exactly as the tool gives it/);
+    expect(() => cleanScript(script({ code: `<div>hi</div>${GA}` }))).toThrow(/exactly as the tool gives it/);
+    expect(() => cleanScript(script({ code: GTM_BODY }))).toThrow(/never runs/);
+    expect(() => cleanScript(script({ code: `<script>${"x".repeat(21_000)}</script>` }))).toThrow(/at most/);
+  });
+
+  it("checks the kind, the place, the name and the cookie list", () => {
+    expect(() => cleanScript(script({ kind: "ads" as never }))).toThrow(/Essential, Analytics or Marketing/);
+    expect(() => cleanScript(script({ placement: "middle" as never }))).toThrow(/Head, Start of body or Footer/);
+    expect(() => cleanScript(script({ name: " " }))).toThrow(/Name is required/);
+    expect(() => cleanScript(script({ cookies: "_ga; document.cookie" }))).toThrow(/Cookie names/);
+    expect(() => cleanScript(script({ cookies: Array.from({ length: 16 }, (_, i) => `c${i}`).join(",") }))).toThrow(/at most 15/);
+  });
+
+  it("adds, edits and deletes scripts, giving each an address from its name, and keeps the code out of the audit", async () => {
+    expect((await buildBundle()).scripts).toBeNull();
+    const ga = await saveSiteScript(script(), null);
+    const clarity = await saveSiteScript(script({ name: "Microsoft Clarity", code: "<script>window.clarity=1</script>", cookies: "_clck, _clsk", enabled: false }), null);
+    const twin = await saveSiteScript(script({ name: "Google Analytics" }), null);
+    expect([ga.id, clarity.id, twin.id]).toEqual(["google-analytics", "microsoft-clarity", "google-analytics-2"]);
+    expect((await buildBundle()).scripts?.map((s) => s.id)).toEqual(["google-analytics", "microsoft-clarity", "google-analytics-2"]);
+
+    await saveSiteScript(script({ id: clarity.id, name: "Microsoft Clarity", code: "<script>window.clarity=2</script>", enabled: true }), null);
+    expect((await listSiteScripts()).find((s) => s.id === "microsoft-clarity")).toMatchObject({ enabled: true, code: "<script>window.clarity=2</script>" });
+    await expect(saveSiteScript(script({ id: "nope" }), null)).rejects.toThrow(/no longer exists/);
+
+    const rows = await prisma.auditLog.findMany({ where: { action: "site.script.saved" } });
+    expect(JSON.stringify(rows)).not.toContain("G-TEST123");
+
+    await deleteSiteScript("google-analytics-2", null);
+    expect((await listSiteScripts()).map((s) => s.id)).toEqual(["google-analytics", "microsoft-clarity"]);
+  });
+
+  it("the switch turns one script on or off, and editing the rest of it keeps the switch where it is", async () => {
+    const ga = await saveSiteScript(script(), null);
+    await setSiteScriptEnabled(ga.id, false, null);
+    expect((await buildBundle()).scripts?.[0].enabled).toBe(false);
+    const edit = { ...script({ id: ga.id, description: "counts visitors" }), enabled: undefined };
+    await saveSiteScript(edit, null);
+    expect((await listSiteScripts())[0]).toMatchObject({ enabled: false, description: "counts visitors" });
+    await setSiteScriptEnabled(ga.id, true, null);
+    expect((await listSiteScripts())[0].enabled).toBe(true);
+    await expect(setSiteScriptEnabled("nope", true, null)).rejects.toThrow(/no longer exists/);
+    const row = await prisma.auditLog.findFirst({ where: { action: "site.script.toggled" }, orderBy: { createdAt: "desc" } });
+    expect(row?.subject).toBe(ga.id);
+  });
+
+  it("allows at most 20 scripts", async () => {
+    for (let i = 0; i < 20; i += 1) await saveSiteScript(script({ name: `Tool ${i}` }), null);
+    await expect(saveSiteScript(script({ name: "One more" }), null)).rejects.toThrow(/At most 20/);
   });
 });
 

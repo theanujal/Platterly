@@ -6,7 +6,7 @@ import { RichEditor, type LibraryPicture } from "@/components/rich-editor";
 import { useFormAction } from "@/lib/use-form-action";
 import { SITE_LIMITS } from "@/modules/site-content/limits";
 import {
-  publishSiteAction, renameCategoryAction, saveAltAction, saveContactAction, saveLegalAction, savePostAction, saveNoticeAction, saveReleaseAction, type SiteFormState,
+  publishSiteAction, renameCategoryAction, saveAltAction, saveContactAction, saveLegalAction, savePostAction, saveNoticeAction, saveReleaseAction, saveScriptAction, type SiteFormState,
 } from "./actions";
 
 const areaClass = `${inputClass} h-auto py-2`;
@@ -114,6 +114,47 @@ export function ContactForm({ values }: { values: { email: string; phone: string
       </Card>
       <Feedback state={{ error: state.error }} />
       <SaveCancel pending={pending} cancel={cancel} />
+    </form>
+  );
+}
+
+export interface ScriptValues { id: string; name: string; kind: string; placement: string; enabled: boolean; code: string; cookies: string; description: string }
+
+/** One script box. The Name and Code are what matter; Kind decides whether the visitor is asked first. */
+export function ScriptForm({ values, isNew, compact = false }: { values: ScriptValues; isNew: boolean; compact?: boolean }) {
+  const { state, onSubmit, pending } = useFormAction(saveScriptAction, {});
+  const k = values.id || "new";
+  // Inside the narrow side list the fields stack in one column; the Add form beside it uses two.
+  const two = compact ? "" : "sm:grid-cols-2";
+  const span = compact ? "" : "sm:col-span-2";
+  return (
+    <form onSubmit={onSubmit} className="grid gap-4">
+      <input type="hidden" name="id" value={values.id} />
+      <Card>
+        <div className={`grid gap-4 ${two}`}>
+          <Field label="Name" htmlFor={`name-${k}`} hint="Shown in the cookie notice, such as Google Analytics."><input id={`name-${k}`} name="name" maxLength={SITE_LIMITS.scriptName} defaultValue={values.name} className={inputClass} /></Field>
+          <Field label="Kind" htmlFor={`kind-${k}`} hint="Analytics and Marketing run only after a visitor accepts that kind. Essential runs for everyone, so use it only for what the site needs.">
+            <select id={`kind-${k}`} name="kind" defaultValue={values.kind} className={inputClass}><option value="analytics">Analytics</option><option value="marketing">Marketing</option><option value="essential">Essential</option></select>
+          </Field>
+          <Field label="Where on the page" htmlFor={`placement-${k}`} hint="Head is inside <head>. Start of body is right after <body> opens. Footer is the very end of the page.">
+            <select id={`placement-${k}`} name="placement" defaultValue={values.placement} className={inputClass}><option value="head">Head</option><option value="body">Start of body</option><option value="footer">Footer</option></select>
+          </Field>
+          <Field label="What it does" htmlFor={`description-${k}`} hint="One line the visitor reads, such as counts visits."><input id={`description-${k}`} name="description" maxLength={SITE_LIMITS.scriptDescription} defaultValue={values.description} className={inputClass} /></Field>
+          <div className={span}>
+            <Field label="Cookies it sets" htmlFor={`cookies-${k}`} hint="Names, or the start of a name, separated by commas. Removed when a visitor declines. Google: _ga, _gid, _gat, _gcl. Microsoft Clarity: _clck, _clsk, CLID, ANONCHK, MR, SM. Meta Pixel: _fbp, _fbc.">
+              <input id={`cookies-${k}`} name="cookies" defaultValue={values.cookies} className={inputClass} />
+            </Field>
+          </div>
+          <div className={span}>
+            <Field label="Code" htmlFor={`code-${k}`} hint="Paste the snippet exactly as the tool gives it: <script> or <style> blocks. A <noscript> block may come with it but is never run.">
+              <textarea id={`code-${k}`} name="code" rows={10} spellCheck={false} maxLength={SITE_LIMITS.scriptCode} defaultValue={values.code} className={`${areaClass} font-mono text-xs`} />
+            </Field>
+          </div>
+          {isNew ? <label className={`flex items-center gap-2 text-sm font-medium ${span}`}><input type="checkbox" name="enabled" defaultChecked={values.enabled} className="size-4 accent-[#ff6900]" /> Turn this script on</label> : null}
+        </div>
+      </Card>
+      <Feedback state={state} />
+      <div><Button type="submit" disabled={pending}>{pending ? "Saving…" : isNew ? "Add script" : "Save"}</Button></div>
     </form>
   );
 }

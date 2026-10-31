@@ -18,10 +18,23 @@ import { type OpsPlan, type PricingData, pricingFromPlans } from "@/lib/pricing"
 const PAGES_DIR = join(process.cwd(), "src", "content", "pages");
 const POSTS_DIR = join(process.cwd(), "src", "content", "posts");
 
+export interface SiteScript {
+  id: string;
+  name: string;
+  kind: "essential" | "analytics" | "marketing";
+  placement: "head" | "body" | "footer";
+  enabled: boolean;
+  code: string;
+  cookies: string;
+  description: string;
+}
+
 interface OpsBundle {
   version: number;
   notice: { enabled: boolean; text: string; linkLabel: string; linkHref: string } | null;
   contact: Contact | null;
+  /** Absent when Ops predates scripts or none was ever saved. */
+  scripts?: SiteScript[] | null;
   releases: Release[];
   posts: Omit<PostDoc, "readingMinutes">[];
   pages: PageDoc[];
@@ -54,6 +67,11 @@ export async function getPricing(): Promise<PricingData> {
 
 export async function getContact(): Promise<Contact> {
   return (await fromOps())?.contact ?? CONTACT;
+}
+
+/** The scripts AJ switched on in Ops (Website, Scripts). They are never in this repo's files: no Ops content, no scripts. */
+export async function getScripts(): Promise<SiteScript[]> {
+  return ((await fromOps())?.scripts ?? []).filter((s) => s.enabled && s.code.trim());
 }
 
 export async function getPage(slug: string): Promise<PageDoc> {

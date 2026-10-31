@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy
 summary: How Platterly collects, uses, stores and protects personal information.
-updated: 2026-10-27
+updated: 2026-10-31
 ---
 
 This policy explains what personal information Fragen Network Private Limited ("Platterly", "we", "us") collects when you visit platterly.in or use Caterly by Platterly at catering.platterly.in, how we use it, and the choices you have.
@@ -35,6 +35,7 @@ For the information a business customer gives us to run their account, Platterly
 - Technical data such as IP address, browser, device type and approximate location (city) when you visit a caterer's public page. The IP address, city and browser details of these visits are deleted after 90 days.
 - Records of important actions in an account (who changed what and when), kept so the account owner can review them.
 - Cookies that keep you signed in and remember simple choices such as whether the sidebar is open. See section 7.
+- On this marketing website (platterly.in) only, and only if you accept analytics in the cookie notice: the pages you view, how you arrived, your browser and device type, your approximate location and a cookie identifier, collected by the analytics and marketing tools listed in our Cookie Policy. Nothing is collected by them unless you accept.
 
 ## 3. How we use it
 
@@ -43,6 +44,7 @@ For the information a business customer gives us to run their account, Platterly
 - To send messages about your account and service, such as verification codes, receipts, trial and plan reminders, and notices of changes.
 - To send messages on a caterer's behalf, when the caterer asks us to (for example a link to approve a menu).
 - To understand how the product is used and improve it, using summary figures rather than individual customers' content.
+- To understand how visitors use this marketing website and which pages help, using analytics tools, and to measure and reach people interested in Platterly using marketing tools, only if you accept them.
 - To prevent fraud and abuse, and to meet legal duties.
 
 We send marketing messages about Platterly only where you have agreed, and every such message tells you how to stop them.
@@ -51,7 +53,7 @@ We send marketing messages about Platterly only where you have agreed, and every
 
 We do not sell personal information. We share it only with:
 
-- **Service providers** that help us run Platterly under contract and only for that purpose: payment processing (Razorpay), email delivery (Zoho ZeptoMail), message delivery for WhatsApp where a caterer or Platterly uses it, hosting and infrastructure, and error monitoring.
+- **Service providers** that help us run Platterly under contract and only for that purpose: payment processing (Razorpay), email delivery (Zoho ZeptoMail), message delivery for WhatsApp where a caterer or Platterly uses it, hosting and infrastructure, error monitoring, and the analytics and marketing providers listed in our Cookie Policy, only if you accept them on platterly.in. They may process that data on servers outside India.
 - **The caterer** whose account holds the information, which is theirs to use and manage.
 - **Authorities**, where the law requires it or to protect the rights and safety of people or of Platterly.
 - A buyer or successor, if Platterly is ever merged or sold, with the same protections for your information.
@@ -68,7 +70,7 @@ To use a right, or to raise a complaint, write to our grievance contact below. W
 
 ## 7. Cookies
 
-Caterly by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. This marketing website does not use advertising or tracking cookies. If that changes, we will update this page and ask for your consent first.
+Caterly by Platterly uses only the cookies it needs to work: a session cookie that keeps you signed in (secure and not readable by scripts) and small preference cookies. On this marketing website, we use analytics and marketing cookies, but only if you accept them in the cookie notice; you can change your choice at any time with **Cookie settings** in the footer. We do not use analytics or marketing tools inside Caterly by Platterly. See our [Cookie Policy](/cookie-policy/) for the cookies and how long they last. If this changes, we will update this page and ask for your consent first.
 
 ## 8. Security
 

@@ -14,10 +14,19 @@ export const SITE_LIMITS = {
   metaDescription: 160,
   postBody: 40_000,
   pageBody: 60_000,
+  scriptCode: 20_000,
+  scriptName: 60,
+  scriptDescription: 200,
+  scriptCount: 20,
 } as const;
 
 export const COLOURWAYS = ["sunrise", "blossom", "citrus", "dusk"] as const;
 export const RELEASE_KINDS = ["new", "improved"] as const;
+/** Essential runs at once; Analytics and Marketing wait for the visitor to accept that kind. */
+export const SCRIPT_KINDS = ["essential", "analytics", "marketing"] as const;
+export const SCRIPT_PLACEMENTS = ["head", "body", "footer"] as const;
+export type ScriptKind = (typeof SCRIPT_KINDS)[number];
+export type ScriptPlacement = (typeof SCRIPT_PLACEMENTS)[number];
 
 /** The policy pages the site has. Their addresses are fixed, so only their text can change. */
 export const LEGAL_SLUGS = [

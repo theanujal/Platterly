@@ -18,15 +18,17 @@ function envValue(name: string): string {
 const pool = new pg.Pool({ connectionString: envValue("DATABASE_URL") });
 let notice: { value: unknown } | undefined;
 let changed: { value: unknown } | undefined;
+let scripts: { value: unknown } | undefined;
 
 test.beforeAll(async () => {
   execFileSync("node", ["scripts/create-staff.mjs", "E2E Site Staff", EMAIL], { cwd: root, env: { ...process.env, OPS_STAFF_PASSWORD: PASSWORD, DATABASE_URL: envValue("DATABASE_URL") }, stdio: "pipe" });
   // The spec edits the live notice bar of the dev database, so it puts the original back afterwards.
   notice = (await pool.query("select value from site_setting where key = 'notice'")).rows[0];
   changed = (await pool.query("select value from site_setting where key = 'changed'")).rows[0];
+  scripts = (await pool.query("select value from site_setting where key = 'scripts'")).rows[0];
 });
 test.afterAll(async () => {
-  for (const [key, row] of [["notice", notice], ["changed", changed]] as const) {
+  for (const [key, row] of [["notice", notice], ["changed", changed], ["scripts", scripts]] as const) {
     if (row) await pool.query("update site_setting set value = $2 where key = $1", [key, JSON.stringify(row.value)]);
     else await pool.query("delete from site_setting where key = $1", [key]);
   }
@@ -108,4 +110,62 @@ test("staff edit the notice bar, add an update and a post with categories, and s
     await expect(page.getByText("Publishing is not set up on this server yet")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish to the site" })).toBeDisabled();
   }
+});
+
+test("staff add scripts as separate boxes, are refused bad code, switch one off from the list and delete one", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await page.goto("/site/scripts");
+
+  const add = page.locator("form").filter({ has: page.getByRole("button", { name: "Add script" }) });
+  await add.getByLabel("Name").fill("E2E Analytics");
+  await add.getByLabel("Code").fill("<div>not a script</div>");
+  await add.getByRole("button", { name: "Add script" }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("exactly as the tool gives it");
+
+  await add.getByLabel("Code").fill("<script>window.e2e=1</script>");
+  await add.getByLabel("Cookies it sets").fill("_e2e, bad name!");
+  await add.getByRole("button", { name: "Add script" }).click();
+  await expect(page.locator("p[role=alert]")).toContainText("Cookie names");
+
+  await add.getByLabel("Cookies it sets").fill("_e2e");
+  await add.getByLabel("Kind").selectOption("marketing");
+  await add.getByLabel("Where on the page").selectOption("footer");
+  await add.getByLabel("Turn this script on").check();
+  await add.getByRole("button", { name: "Add script" }).click();
+  await expect(page.locator("p[role=status]")).toContainText("Saved");
+  await page.reload();
+
+  const box = page.getByTestId("script-e2e-analytics");
+  await expect(box).toContainText("Marketing");
+  await expect(box).toContainText("Footer");
+  const sw = box.getByRole("switch");
+  await expect(sw).toHaveAttribute("aria-checked", "true");
+  // The list sits beside the Add form on a wide screen.
+  const addBox = await add.boundingBox();
+  const listBox = await box.boundingBox();
+  expect(listBox!.x).toBeGreaterThan(addBox!.x + addBox!.width - 1);
+
+  // The switch changes the script without opening the accordion.
+  await sw.click();
+  await expect(sw).toHaveAttribute("aria-checked", "false");
+  await expect(box).not.toHaveAttribute("open", "");
+  await page.reload();
+  await expect(page.getByTestId("script-e2e-analytics").getByRole("switch")).toHaveAttribute("aria-checked", "false");
+
+  // Editing the rest keeps the switch where it was; the edit form has no second on/off control.
+  await box.locator("summary").click();
+  await expect(box.getByLabel("Turn this script on")).toHaveCount(0);
+  await box.getByLabel("What it does").fill("measures advert clicks");
+  await box.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(box.locator("p[role=status]")).toContainText("Saved");
+  await page.reload();
+  await expect(page.getByTestId("script-e2e-analytics").getByRole("switch")).toHaveAttribute("aria-checked", "false");
+
+  await page.getByTestId("script-e2e-analytics").locator("summary").click();
+  await page.getByRole("button", { name: "Delete this script" }).click();
+  await expect(page.getByText("E2E Analytics")).toHaveCount(0);
 });

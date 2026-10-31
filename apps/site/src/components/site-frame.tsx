@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 import { AnnouncementBar } from "@/components/announcement-bar";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
-import { getNotice } from "@/lib/content";
+import { CookieConsent } from "@/components/cookie-consent";
+import { getNotice, getScripts } from "@/lib/content";
 
-/** The notice bar, the header, the page and the footer. */
+/** The notice bar, the header, the page, the footer and, the cookie notice while a script needs a choice. */
 export async function SiteFrame({ children, announcement = false }: { children: ReactNode; announcement?: boolean }) {
   const notice = announcement ? await getNotice() : null;
+  const scripts = await getScripts();
   return (
     <>
       {notice && <AnnouncementBar notice={notice} />}
@@ -14,7 +16,8 @@ export async function SiteFrame({ children, announcement = false }: { children: 
       <main id="main" className="overflow-x-clip">
         {children}
       </main>
-      <Footer />
+      <Footer cookieSettings={scripts.some((s) => s.kind !== "essential")} />
+      <CookieConsent scripts={scripts} />
     </>
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CookieSettingsButton } from "@/components/cookie-consent";
 import { COMPANY, SITE } from "@/content/site";
 
 const HEAD = "text-lg font-medium text-cloud";
@@ -15,7 +16,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /** Calendly's footer: one big dark rounded panel inset from the page edge, the sign-off line and logo on the left, grouped links on the right, a rule, then the legal row. */
-export function Footer() {
+export function Footer({ cookieSettings = false }: { cookieSettings?: boolean }) {
   return (
     <footer className="px-3 pb-3 pt-20 sm:px-6 md:pt-28">
       <div className="rounded-[28px] bg-ink-navy text-cloud sm:rounded-[40px]">
@@ -73,6 +74,7 @@ export function Footer() {
                   {label}
                 </Link>
               ))}
+              {cookieSettings && <CookieSettingsButton />}
             </nav>
             <p>
               © {new Date().getFullYear()} Platterly, a product of {COMPANY.legalName}. All rights reserved.

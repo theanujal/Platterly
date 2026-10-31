@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireStaff } from "@/lib/session";
 import { MediaError, deleteMedia, updateMediaAlt } from "@/modules/site-content/media";
 import {
-  SiteContentError, deleteSitePost, deleteSiteRelease, renameCategory, saveLegalPage, saveSiteContact, saveSiteNotice, saveSitePost, saveSiteRelease,
+  SiteContentError, deleteSitePost, deleteSiteRelease, renameCategory, saveLegalPage, deleteSiteScript, saveSiteContact, saveSiteNotice, saveSitePost, saveSiteRelease, saveSiteScript, setSiteScriptEnabled,
 } from "@/modules/site-content/site-content";
 import { SitePublishError, publishSite } from "@/modules/site-content/publish";
 
@@ -34,6 +34,24 @@ export const saveNoticeAction = async (_prev: SiteFormState, f: FormData) =>
 
 export const saveContactAction = async (_prev: SiteFormState, f: FormData) =>
   run("Saved. Publish to put it on the site.", (id) => saveSiteContact({ email: text(f, "email"), phone: text(f, "phone"), whatsapp: text(f, "whatsapp"), hours: text(f, "hours"), addressLines: text(f, "addressLines"), reply: text(f, "reply") }, id), ["/site", "/site/contact"]);
+
+export const saveScriptAction = async (_prev: SiteFormState, f: FormData) =>
+  run("Saved. Publish to put it on the site.", (id) => saveSiteScript({
+    id: text(f, "id"), name: text(f, "name"), kind: text(f, "kind") as never, placement: text(f, "placement") as never, enabled: f.has("enabled") ? f.get("enabled") === "on" : undefined,
+    code: text(f, "code"), cookies: text(f, "cookies"), description: text(f, "description"),
+  }, id), ["/site", "/site/scripts"]);
+
+/** The on/off switch on a script's row. Returns the saved state so the switch can show what really happened. */
+export async function toggleScriptAction(id: string, enabled: boolean): Promise<SiteFormState> {
+  return run(enabled ? "On. Publish to put it on the site." : "Off. Publish to take it off the site.", (staffId) => setSiteScriptEnabled(id, enabled, staffId), ["/site", "/site/scripts"]);
+}
+
+export async function deleteScriptAction(formData: FormData) {
+  const staff = await requireStaff();
+  await deleteSiteScript(text(formData, "id"), staff.id);
+  revalidatePath("/site/scripts");
+  revalidatePath("/site");
+}
 
 export const saveReleaseAction = async (_prev: SiteFormState, f: FormData) =>
   run("Saved. Publish to put it on the site.", (id) => saveSiteRelease({ id: text(f, "id"), date: text(f, "date"), title: text(f, "title"), body: text(f, "body"), kind: text(f, "kind") }, id), ["/site", "/site/releases"]);

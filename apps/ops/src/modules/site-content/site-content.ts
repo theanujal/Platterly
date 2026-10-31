@@ -1,7 +1,7 @@
 import "server-only";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { COLOURWAYS, LEGAL_SLUGS, RELEASE_KINDS, SITE_LIMITS } from "./limits";
+import { COLOURWAYS, LEGAL_SLUGS, RELEASE_KINDS, SCRIPT_KINDS, SCRIPT_PLACEMENTS, SITE_LIMITS, type ScriptKind, type ScriptPlacement } from "./limits";
 import { isMediaName } from "./media";
 
 /**
@@ -116,6 +116,94 @@ export async function saveSiteContact(input: Parameters<typeof cleanContact>[0],
   await markSiteChanged();
   await audit({ actorUserId: staffId, action: "site.contact.saved", subject: "contact" });
   return value;
+}
+
+// ---- Scripts (analytics, marketing and other tags) ----
+/**
+ * Tags AJ pastes from Google, Microsoft Clarity, Meta and the like. Each is its own box: a name, a kind, a place on the page and
+ * its own switch. The site runs an Essential tag at once and an Analytics or Marketing tag only after the visitor accepts that kind.
+ * They are kept as one list in a site setting (no table), and the code itself stays out of the audit trail.
+ */
+export interface SiteScript {
+  id: string;
+  name: string;
+  kind: ScriptKind;
+  placement: ScriptPlacement;
+  enabled: boolean;
+  code: string;
+  /** Cookie names (or the start of a name) the tag sets, comma separated: Decline removes them. */
+  cookies: string;
+  /** One line shown in the cookie notice and the Cookie Policy. */
+  description: string;
+}
+/** `enabled` is left out when editing an existing script: its switch on the list is the one place that changes it. */
+export type ScriptInput = Omit<SiteScript, "id" | "enabled"> & { id: string; enabled?: boolean };
+
+/** Only <script>, <noscript> and <style> blocks (and comments) may be pasted: anything else would end up on every page of the site. */
+const CODE_BLOCKS = /^(?:\s*<(script|noscript|style)\b[\s\S]*?<\/\1\s*>\s*)+$/i;
+const COOKIE_NAME = /^[A-Za-z0-9_.-]{1,40}$/;
+
+export function cleanScript(input: ScriptInput & { enabled: boolean }): SiteScript {
+  const name = required(input.name, "Name", SITE_LIMITS.scriptName);
+  if (!(SCRIPT_KINDS as readonly string[]).includes(input.kind)) throw new SiteContentError("Choose Essential, Analytics or Marketing.");
+  if (!(SCRIPT_PLACEMENTS as readonly string[]).includes(input.placement)) throw new SiteContentError("Choose Head, Start of body or Footer.");
+  const code = required(input.code, "Code", SITE_LIMITS.scriptCode);
+  const withoutComments = code.replace(/<!--[\s\S]*?-->/g, "").trim();
+  if (!CODE_BLOCKS.test(withoutComments)) throw new SiteContentError("Paste the code exactly as the tool gives it: <script>, <noscript> or <style> blocks, and nothing else.");
+  if (!/<(script|style)\b/i.test(withoutComments)) throw new SiteContentError("The code needs a <script> or <style> block. A <noscript> block alone never runs, because the site only runs code once a visitor has chosen.");
+  const cookies = input.cookies.split(",").map((c) => c.trim()).filter(Boolean);
+  if (cookies.length > 15) throw new SiteContentError("List at most 15 cookie names.");
+  if (cookies.some((c) => !COOKIE_NAME.test(c))) throw new SiteContentError("Cookie names can use letters, numbers, dots, hyphens and underscores only, separated by commas.");
+  return {
+    id: input.id.trim() ? slug(input.id) : "",
+    name, kind: input.kind, placement: input.placement, enabled: input.enabled, code,
+    cookies: cookies.join(", "),
+    description: optional(input.description, "Description", SITE_LIMITS.scriptDescription),
+  };
+}
+
+export async function listSiteScripts(): Promise<SiteScript[]> {
+  const row = await prisma.siteSetting.findUnique({ where: { key: "scripts" } });
+  const items = (row?.value as { items?: SiteScript[] } | null)?.items;
+  return Array.isArray(items) ? items : [];
+}
+async function writeScripts(items: SiteScript[]) {
+  await prisma.siteSetting.upsert({ where: { key: "scripts" }, create: { key: "scripts", value: { items: JSON.parse(JSON.stringify(items)) } }, update: { value: { items: JSON.parse(JSON.stringify(items)) } } });
+  await markSiteChanged();
+}
+/** An empty id adds a new script (its address comes from the name); a known id replaces it. */
+export async function saveSiteScript(input: ScriptInput, staffId: string | null): Promise<SiteScript> {
+  const items = await listSiteScripts();
+  const known = input.id.trim() ? items.findIndex((i) => i.id === input.id.trim()) : -1;
+  if (input.id.trim() && known < 0) throw new SiteContentError("That script no longer exists.");
+  const value = cleanScript({ ...input, enabled: input.enabled ?? (known >= 0 ? items[known].enabled : false) });
+  if (known >= 0) {
+    items[known] = value;
+  } else {
+    if (items.length >= SITE_LIMITS.scriptCount) throw new SiteContentError(`At most ${SITE_LIMITS.scriptCount} scripts.`);
+    const base = value.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "script";
+    let id = base;
+    for (let n = 2; items.some((i) => i.id === id); n += 1) id = `${base}-${n}`;
+    value.id = id;
+    items.push(value);
+  }
+  await writeScripts(items);
+  await audit({ actorUserId: staffId, action: "site.script.saved", subject: value.id, detail: { name: value.name, kind: value.kind, placement: value.placement, enabled: value.enabled, codeLength: value.code.length } });
+  return value;
+}
+/** The switch on the list: turns one script on or off without touching the rest of it. */
+export async function setSiteScriptEnabled(id: string, enabled: boolean, staffId: string | null) {
+  const items = await listSiteScripts();
+  const at = items.findIndex((i) => i.id === id);
+  if (at < 0) throw new SiteContentError("That script no longer exists.");
+  items[at] = { ...items[at], enabled };
+  await writeScripts(items);
+  await audit({ actorUserId: staffId, action: "site.script.toggled", subject: id, detail: { enabled } });
+}
+export async function deleteSiteScript(id: string, staffId: string | null) {
+  const items = await listSiteScripts();
+  await writeScripts(items.filter((i) => i.id !== id));
+  await audit({ actorUserId: staffId, action: "site.script.deleted", subject: id });
 }
 
 // ---- What's new ----
@@ -260,6 +348,8 @@ export interface SiteContentBundle {
   generatedAt: string;
   notice: SiteNotice | null;
   contact: SiteContact | null;
+  /** Null until a script was ever saved; the site then runs none. */
+  scripts: SiteScript[] | null;
   releases: { id: string; date: string; title: string; body: string; kind: string }[];
   posts: { slug: string; title: string; excerpt: string; date: string; author: string; tags: string[]; colourway: string; body: string; metaTitle: string | null; metaDescription: string | null; ogImage: string | null }[];
   /** The library's picture names. The site build copies the ones its content refers to. */
@@ -271,9 +361,10 @@ export interface SiteContentBundle {
 
 /** An empty section is sent as null/[] only when nothing was ever saved, so the site can tell "not set up" from "set empty". */
 export async function buildBundle(now = new Date()): Promise<SiteContentBundle> {
-  const [notice, contact, releases, allPosts, pages, media, noticeRow, contactRow, planRows] = await Promise.all([
+  const [notice, contact, releases, allPosts, pages, media, noticeRow, contactRow, scripts, scriptsRow, planRows] = await Promise.all([
     getSiteNotice(), getSiteContact(), listSiteReleases(), listSitePosts(), listLegalPages(), prisma.siteMedia.findMany({ select: { name: true } }),
     prisma.siteSetting.findUnique({ where: { key: "notice" } }), prisma.siteSetting.findUnique({ where: { key: "contact" } }),
+    listSiteScripts(), prisma.siteSetting.findUnique({ where: { key: "scripts" } }),
     prisma.plan.findMany({ where: { productKey: "catering", isActive: true, OR: [{ isTrial: true }, { priceMonthly: { not: null } }] }, orderBy: [{ isTrial: "desc" }, { priceMonthly: "asc" }] }),
   ]);
   return {
@@ -281,6 +372,7 @@ export async function buildBundle(now = new Date()): Promise<SiteContentBundle> 
     generatedAt: now.toISOString(),
     notice: noticeRow ? notice : null,
     contact: contactRow ? contact : null,
+    scripts: scriptsRow ? scripts : null,
     releases: releases.map(({ id, date, title, body, kind }) => ({ id, date, title, body, kind })),
     // A draft, or a post scheduled for later, is not in the bundle until it is due.
     posts: allPosts.filter((p) => p.status === "PUBLISHED" && (!p.publishAt || p.publishAt.getTime() <= now.getTime())).map(({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage }) => ({ slug: s, title, excerpt, date, author, tags, colourway, body, metaTitle, metaDescription, ogImage })),
