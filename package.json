@@ -17,6 +17,10 @@
     "db:studio": "prisma studio",
     "db:seed-catalog": "node scripts/seed-catalog.ts",
     "db:seed-dev-plan": "node scripts/seed-dev-plan.ts",
+    "dev:all": "node scripts/local/dev-all.mjs",
+    "smoke:local": "node scripts/local/smoke.mjs",
+    "mail-sink": "node scripts/local/mail-sink.mjs",
+    "seed:local": "node scripts/local/seed.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "db:backup": "bash scripts/backup-db.sh",
     "cron:local": "node scripts/cron-local.mjs"

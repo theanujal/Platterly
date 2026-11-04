@@ -1,0 +1,72 @@
+/*
+ * Platterly design tokens, copied from the catering app's src/app/globals.css (the Platterly design system, RULES.md rule 6).
+ * Only the tokens the Account prototype uses; the values are identical, so the two apps look like one product.
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --muted: #f3f4f6;
+  --muted-foreground: #475569;
+  --primary: #ff6900;
+  --primary-foreground: #ffffff;
+  --accent: #fff7ed;
+  --accent-foreground: #9a3412;
+  --border: #e5e7eb;
+  --input: #878d98;
+  --ring: #ff6900;
+  --destructive: #dc2626;
+  --success: #15803d;
+  --warning: #b45309;
+  --info: #2563eb;
+  --radius: 0.625rem;
+  --sidebar: #fff7ed;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #ff6900;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #ffedd5;
+  --sidebar-accent-foreground: #9a3412;
+  --sidebar-border: #fed7aa;
+  --ring-card: 0 0 0 1px rgba(17, 24, 39, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

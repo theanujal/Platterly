@@ -126,3 +126,52 @@ jobs:
       - run: npm run test
 
       - run: npm run build
+
+  # Platform (apps/platform) has its own install and its own database; it shares only packages/contract and
+  # packages/platform-contract. The migration guard for it runs in the first job (npm run check:migrations).
+  platform:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: platterly_platform_app
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: platterly_platform
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: apps/platform
+
+    env:
+      DATABASE_URL: postgresql://platterly_platform_app:ci_only_password@localhost:5432/platterly_platform?schema=public
+      ROOT_DOMAIN: localhost:3300
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/platform/package-lock.json
+
+      - run: npm ci
+
+      - run: npx prisma migrate deploy
+
+      - run: npm run lint
+
+      - run: npm run typecheck
+
+      - run: npm run test
+
+      - run: npm run build

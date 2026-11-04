@@ -1,0 +1,1 @@
+-- Empty baseline: Platform starts with no tables. Later phases add them, one migration each.

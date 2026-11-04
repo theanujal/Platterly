@@ -1,11 +1,13 @@
 // Fails when a NEW migration (one not in migrations-baseline.txt) can remove or rewrite existing data,
 // unless the file carries an explicit approval line: `-- data-safe-approved: <why no data is lost>`.
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dir = join(here, "..", "prisma", "migrations");
+// The catering app's migrations and the Platform app's (apps/platform). Ops has its own database and is not covered here.
+// A name in migrations-baseline.txt is exempt; Platform has none, so every Platform migration is checked.
+const DIRS = [join(here, "..", "prisma", "migrations"), join(here, "..", "apps", "platform", "prisma", "migrations")];
 
 export const RISKY = [
   [/\bDROP\s+TABLE\b/i, "drops a table"],
@@ -28,13 +30,16 @@ export function findProblems(sql) {
   return RISKY.filter(([re]) => re.test(code)).map(([, why]) => why);
 }
 
-export function check() {
+export function check(dirs = DIRS) {
   const baseline = new Set(readFileSync(join(here, "migrations-baseline.txt"), "utf8").split("\n").filter(Boolean));
   const failures = [];
-  for (const name of readdirSync(dir)) {
-    if (name === "migration_lock.toml" || baseline.has(name)) continue;
-    const problems = findProblems(readFileSync(join(dir, name, "migration.sql"), "utf8"));
-    if (problems.length) failures.push({ name, problems });
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      if (name === "migration_lock.toml" || baseline.has(name)) continue;
+      const problems = findProblems(readFileSync(join(dir, name, "migration.sql"), "utf8"));
+      if (problems.length) failures.push({ name, problems });
+    }
   }
   return failures;
 }

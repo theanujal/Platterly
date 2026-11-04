@@ -1,0 +1,60 @@
+// Platform database. Holds the Account, identity links, the Store and the product integrations (docs/platform-foundation-plan.md).
+// Never a product's orders, menus or customers, and never Ops billing data. This is the empty baseline: the tables arrive in later
+// phases (F3 onward), each as its own migration.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// F3.1.1 identity tables. Provider-neutral: no credential, password or provider-specific column.
+// The CHECK constraints (email, status, kind, non-blank values) exist only in the migration SQL: Prisma cannot express them.
+// `users.status` is stored only; enforcing "disabled" at sign-in and audited reactivation are later work.
+
+model User {
+  id              String    @id(map: "users_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email           String    @unique(map: "users_email_key")
+  status          String    @default("active")
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  identities     UserIdentity[]
+  legacyMappings LegacyMapping[]
+
+  @@map("users")
+}
+
+model UserIdentity {
+  id        String   @id(map: "user_identities_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  provider  String
+  subject   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "user_identities_user_id_fkey")
+
+  @@unique([provider, subject], map: "user_identities_provider_subject_key")
+  @@unique([userId, provider], map: "user_identities_user_id_provider_key")
+  @@map("user_identities")
+}
+
+model LegacyMapping {
+  id           String   @id(map: "legacy_mappings_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  sourceSystem String   @map("source_system")
+  kind         String
+  legacyId     String   @map("legacy_id")
+  batchId      String   @map("batch_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "legacy_mappings_user_id_fkey")
+
+  @@unique([sourceSystem, kind, legacyId], map: "legacy_mappings_source_system_kind_legacy_id_key")
+  @@unique([userId, sourceSystem, kind], map: "legacy_mappings_user_id_source_system_kind_key")
+  @@map("legacy_mappings")
+}
