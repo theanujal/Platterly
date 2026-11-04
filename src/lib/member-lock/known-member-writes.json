@@ -1,0 +1,10 @@
+{
+  "_comment": "F8.2.4a baseline: every existing non-test source file under src/ that writes the Caterly member table directly (Prisma or raw SQL), with the count of each write operation as of 2026-11-04. The guard in __tests__/member-write-guard.test.ts fails when a file not listed here, or a higher count, appears. It does not require these to use withMemberLock (that is F8.2.4b). Scope limits: it scans src/ only (not apps/, packages/, scripts/ or e2e/) and cannot see Better Auth's own writes to member.",
+  "src/modules/team/team.ts": {
+    "update": 3,
+    "delete": 1
+  },
+  "src/modules/tenants/auto-provision.ts": {
+    "create": 1
+  }
+}
