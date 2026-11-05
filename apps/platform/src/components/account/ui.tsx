@@ -31,3 +31,13 @@ export function PageHeader({ title, lede, action }: { title: string; lede: strin
     </header>
   );
 }
+
+/** Marks a screen or section whose content is sample data or whose controls are not connected to anything yet. */
+export function PlaceholderNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="pa-placeholder" role="note">
+      <Badge tone="warning">Placeholder</Badge>
+      <span>{children}</span>
+    </p>
+  );
+}

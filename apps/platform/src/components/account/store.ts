@@ -8,7 +8,7 @@ import { INITIAL_STATE, parseStored, reduce, type AccountState, type Action } fr
  * mirrored to sessionStorage (so it survives a reload of the tab). It is a per-tab convenience for a prototype with mock
  * data: nothing is sent anywhere, and storage being blocked only means the state resets on reload.
  */
-const KEY = "platterly-account-prototype";
+const KEY = "platterly-account-prototype-v2";
 let state: AccountState = INITIAL_STATE;
 let loaded = false;
 const listeners = new Set<() => void>();

@@ -9,9 +9,9 @@ import { Avatar, Badge, type Tone } from "./ui";
 export const STATUS_TONE: Record<BusinessStatus, Tone> = { active: "success", trial: "info", setup: "warning" };
 export const LINK_TONE: Record<ProductLinkStatus, Tone> = { active: "success", trial: "info", none: "neutral" };
 
-export function BusinessCard({ business, link, selected }: { business: Business; link: ProductLink; selected: boolean }) {
+export function BusinessCard({ business, link }: { business: Business; link: ProductLink }) {
   return (
-    <article className={`pa-card pa-business${selected ? " is-selected" : ""}`} aria-label={business.name} data-selected={selected}>
+    <article className="pa-card pa-business" aria-label={business.name}>
       <div className="pa-business-top">
         <Avatar label={initials(business.name)} size="lg" />
         <div className="pa-business-id">
@@ -27,25 +27,14 @@ export function BusinessCard({ business, link, selected }: { business: Business;
       </div>
       <dl className="pa-facts">
         <div>
+          <dt>Your role</dt>
+          <dd>{business.role}</dd>
+        </div>
+        <div>
           <dt>Caterly</dt>
           <dd>{LINK_LABEL[link.status]}</dd>
         </div>
-        <div>
-          <dt>Team</dt>
-          <dd>{business.members} members</dd>
-        </div>
       </dl>
-      <div className="pa-card-foot">
-        {selected ? (
-          <span className="pa-selected-mark">
-            <Icon name="check" size={16} /> Selected
-          </span>
-        ) : (
-          <button type="button" className="pa-btn pa-btn-outline" aria-label={`Switch to ${business.name}`} onClick={() => dispatch({ type: "selectBusiness", id: business.id })}>
-            Switch to this business
-          </button>
-        )}
-      </div>
     </article>
   );
 }
@@ -97,10 +86,10 @@ function LaunchDialog({ business, onClose }: { business: Business; onClose: () =
   );
 }
 
-export function CaterlyCard({ business, link }: { business: Business; link: ProductLink }) {
+export function CaterlyCard({ business, link, selected = false }: { business: Business; link: ProductLink; selected?: boolean }) {
   const [launching, setLaunching] = useState(false);
   return (
-    <article className="pa-card pa-product" aria-label="Caterly">
+    <article className={`pa-card pa-product${selected ? " is-selected" : ""}`} aria-label="Caterly" data-selected={selected}>
       <div className="pa-product-top">
         <span className="pa-product-mark">
           <Icon name="utensils" size={22} />
@@ -120,7 +109,7 @@ export function CaterlyCard({ business, link }: { business: Business; link: Prod
       </div>
       <div className="pa-card-foot">
         {link.status === "none" ? (
-          <button type="button" className="pa-btn pa-btn-outline" onClick={() => dispatch({ type: "setUpCaterly", businessId: business.id })}>
+          <button type="button" className="pa-btn pa-btn-outline" onClick={() => dispatch({ type: "setUpCaterly" })}>
             <Icon name="plus" size={16} /> Set up Caterly
           </button>
         ) : (
@@ -134,10 +123,10 @@ export function CaterlyCard({ business, link }: { business: Business; link: Prod
   );
 }
 
-export function RivoCard() {
+export function RivoCard({ selected = false }: { selected?: boolean }) {
   const { rivoNotify } = useAccount();
   return (
-    <article className="pa-card pa-product pa-product-soon" aria-label="Rivo">
+    <article className={`pa-card pa-product pa-product-soon${selected ? " is-selected" : ""}`} aria-label="Rivo" data-selected={selected}>
       <div className="pa-product-top">
         <span className="pa-product-mark pa-product-mark-soon">
           <Icon name="layers" size={22} />

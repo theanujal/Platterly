@@ -2,103 +2,43 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { BUSINESSES, initials, LANGUAGES, MOCK_USER, STATUS_LABEL, TIMEZONES, type Profile } from "@/lib/account/mock-data";
-import { selectedBusiness } from "@/lib/account/state";
-import { BusinessCard, CaterlyCard, RivoCard, STATUS_TONE } from "./cards";
+import { BUSINESS, initials, LANGUAGES, MOCK_USER, SAMPLE_DEVICES, TIMEZONES, type Profile } from "@/lib/account/mock-data";
+import { selectedProduct } from "@/lib/account/state";
+import { BusinessCard, CaterlyCard, RivoCard } from "./cards";
 import { Icon } from "./icons";
 import { AccountShell } from "./shell";
 import { dispatch, useAccount } from "./store";
-import { Avatar, Badge, PageHeader } from "./ui";
+import { Avatar, Badge, PageHeader, PlaceholderNote } from "./ui";
 
 export function OverviewView() {
   const account = useAccount();
-  const current = selectedBusiness(account);
-  const link = account.caterly[current.id];
+  const product = selectedProduct(account);
   const { profile } = account;
 
   return (
     <AccountShell>
-      <PageHeader title={`Welcome back, ${MOCK_USER.firstName}`} lede="One Platterly account for all your businesses and products." />
+      <PageHeader title={`Welcome back, ${MOCK_USER.firstName}`} lede="Your Platterly products, in one place." />
 
-      <section className="pa-workspace" aria-label="Current business">
-        <Avatar label={initials(current.name)} size="xl" />
-        <div className="pa-workspace-id">
-          <span className="pa-eyebrow">You are working in</span>
-          <h2>{current.name}</h2>
-          <p>
-            {current.type} · {current.city}
-          </p>
+      <section aria-labelledby="ov-profile" className="pa-narrow">
+        <div className="pa-section-head">
+          <h2 id="ov-profile">Your profile</h2>
+          <Link href="/profile" className="pa-link">
+            Edit <Icon name="chevronRight" size={14} />
+          </Link>
         </div>
-        <dl className="pa-workspace-facts">
+        <div className="pa-card pa-profile-sum">
+          <Avatar label={initials(profile.fullName)} size="lg" round />
           <div>
-            <dt>Status</dt>
-            <dd>
-              <Badge tone={STATUS_TONE[current.status]}>{STATUS_LABEL[current.status]}</Badge>
-            </dd>
+            <h3>{profile.fullName}</h3>
+            <p className="pa-line">
+              <Icon name="mail" size={14} /> {profile.email}
+            </p>
+            <p className="pa-line">
+              <Icon name="phone" size={14} /> {profile.phone}
+            </p>
           </div>
-          <div>
-            <dt>Your role</dt>
-            <dd>{current.role}</dd>
-          </div>
-          <div>
-            <dt>Team</dt>
-            <dd>{current.members} members</dd>
-          </div>
-          <div>
-            <dt>Caterly</dt>
-            <dd>{link.status === "none" ? "Not set up" : link.status === "trial" ? "On trial" : "Active"}</dd>
-          </div>
-        </dl>
+        </div>
       </section>
-
-      <div className="pa-two-col">
-        <section aria-labelledby="ov-biz">
-          <div className="pa-section-head">
-            <h2 id="ov-biz">My Businesses</h2>
-            <Link href="/businesses" className="pa-link">
-              Manage <Icon name="chevronRight" size={14} />
-            </Link>
-          </div>
-          <ul className="pa-mini-list">
-            {BUSINESSES.map((b) => (
-              <li key={b.id}>
-                <button type="button" className={`pa-mini${b.id === current.id ? " is-selected" : ""}`} aria-label={b.id === current.id ? `${b.name}, selected` : `Switch to ${b.name}`} onClick={() => dispatch({ type: "selectBusiness", id: b.id })}>
-                  <Avatar label={initials(b.name)} size="md" />
-                  <span className="pa-mini-text">
-                    <span className="pa-mini-name">{b.name}</span>
-                    <span className="pa-mini-sub">
-                      {b.type} · {b.city}
-                    </span>
-                  </span>
-                  <Badge tone={STATUS_TONE[b.status]}>{STATUS_LABEL[b.status]}</Badge>
-                  {b.id === current.id && <Icon name="check" size={16} className="pa-mini-tick" />}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        <section aria-labelledby="ov-profile">
-          <div className="pa-section-head">
-            <h2 id="ov-profile">Your profile</h2>
-            <Link href="/profile" className="pa-link">
-              Edit <Icon name="chevronRight" size={14} />
-            </Link>
-          </div>
-          <div className="pa-card pa-profile-sum">
-            <Avatar label={initials(profile.fullName)} size="lg" round />
-            <div>
-              <h3>{profile.fullName}</h3>
-              <p className="pa-line">
-                <Icon name="mail" size={14} /> {profile.email}
-              </p>
-              <p className="pa-line">
-                <Icon name="phone" size={14} /> {profile.phone}
-              </p>
-            </div>
-          </div>
-        </section>
-      </div>
 
       <section aria-labelledby="ov-products">
         <div className="pa-section-head">
@@ -108,40 +48,37 @@ export function OverviewView() {
           </Link>
         </div>
         <div className="pa-grid-2">
-          <CaterlyCard business={current} link={link} />
-          <RivoCard />
+          <CaterlyCard business={BUSINESS} link={account.caterly} selected={product.id === "caterly"} />
+          <RivoCard selected={product.id === "rivo"} />
         </div>
       </section>
     </AccountShell>
   );
 }
 
-export function BusinessesView() {
+export function BusinessView() {
   const account = useAccount();
   return (
     <AccountShell>
-      <PageHeader title="My Businesses" lede="Every business you belong to, under one sign-in. Switch between them at any time." />
-      <ul className="pa-grid-3" aria-label="Businesses">
-        {BUSINESSES.map((b) => (
-          <li key={b.id}>
-            <BusinessCard business={b} link={account.caterly[b.id]} selected={b.id === account.selectedBusinessId} />
-          </li>
-        ))}
-      </ul>
-      <p className="pa-foot-note">Creating a new business, inviting people and changing roles will be added here. They are not part of this prototype.</p>
+      <PageHeader title="My Business" lede="The business behind your Platterly account. Each sign-in has one business." />
+      <PlaceholderNote>The business, its status and your role are invented sample data. No business exists behind this page yet.</PlaceholderNote>
+      <div className="pa-business-wrap">
+        <BusinessCard business={BUSINESS} link={account.caterly} />
+      </div>
+      <p className="pa-foot-note">One sign-in holds one business. A second kitchen needs another email address. Editing business details and handing the Admin role to someone else will be added here. They are not part of this prototype.</p>
     </AccountShell>
   );
 }
 
 export function ProductsView() {
   const account = useAccount();
-  const current = selectedBusiness(account);
+  const product = selectedProduct(account);
   return (
     <AccountShell>
-      <PageHeader title="My Products" lede={`Products available to ${current.name}. Switch business in the sidebar to see another one.`} />
+      <PageHeader title="My Products" lede={`Products available to ${BUSINESS.name}. Use the switcher in the sidebar to choose the product you are working in. Now: ${product.name}.`} />
       <div className="pa-grid-2">
-        <CaterlyCard business={current} link={account.caterly[current.id]} />
-        <RivoCard />
+        <CaterlyCard business={BUSINESS} link={account.caterly} selected={product.id === "caterly"} />
+        <RivoCard selected={product.id === "rivo"} />
       </div>
     </AccountShell>
   );
@@ -183,7 +120,6 @@ export function ProfileView() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Profile>(account.profile);
   const [saved, setSaved] = useState(false);
-  const [notice, setNotice] = useState("");
   const shown = editing ? draft : account.profile;
   const set = (key: keyof Profile) => (v: string) => setDraft((d) => ({ ...d, [key]: v }));
 
@@ -201,7 +137,7 @@ export function ProfileView() {
 
   return (
     <AccountShell>
-      <PageHeader title="Profile" lede="Your personal details and account settings. They apply to every business and product." />
+      <PageHeader title="My Profile" lede="Your personal details and account settings. They apply to every business and product." />
 
       <section className="pa-card pa-profile-head" aria-label="Account holder">
         <Avatar label={initials(account.profile.fullName)} size="xl" round />
@@ -262,21 +198,91 @@ export function ProfileView() {
             <Icon name="shield" size={16} /> Security
           </h2>
         </div>
-        {[
-          { label: "Password", hint: "Change the password you use to sign in.", action: "Change password" },
-          { label: "Two-step verification", hint: "Add a second check when you sign in.", action: "Set up" },
-          { label: "Signed-in devices", hint: "See and sign out the devices using your account.", action: "Review" },
-        ].map((row) => (
+        <div className="pa-switch-row">
+          <div>
+            <span className="pa-row-label">Password, two-step verification and signed-in devices</span>
+            <span className="pa-hint">These settings have their own page.</span>
+          </div>
+          <Link href="/security" className="pa-btn pa-btn-outline">
+            Open Security
+          </Link>
+        </div>
+      </section>
+    </AccountShell>
+  );
+}
+
+const SECURITY_ROWS = [
+  { label: "Password", hint: "Change the password you use to sign in.", action: "Change password", state: "Not connected" },
+  { label: "Two-step verification", hint: "Add a second check when you sign in.", action: "Set up", state: "Not set up (sample)" },
+  { label: "Recovery email", hint: "Where we send a code if you are locked out.", action: "Change recovery email", state: "Not connected" },
+];
+
+export function SecurityView() {
+  const account = useAccount();
+  const [notice, setNotice] = useState("");
+  const say = (what: string) => setNotice(`${what} is not connected yet. Nothing was changed.`);
+
+  return (
+    <AccountShell>
+      <PageHeader title="Security" lede="How you sign in to Platterly and where you are signed in. These settings apply to every business and product." />
+      <PlaceholderNote>This page shows the layout only. Sign-in is not built yet, so no password, verification or session can be changed, and the devices below are invented sample data.</PlaceholderNote>
+
+      <section className="pa-card pa-form" aria-labelledby="sc-signin">
+        <div className="pa-section-head">
+          <h2 id="sc-signin">
+            <Icon name="lock" size={16} /> Sign-in
+          </h2>
+        </div>
+        <div className="pa-switch-row">
+          <div>
+            <span className="pa-row-label">Email</span>
+            <span className="pa-hint">{account.profile.email}</span>
+          </div>
+          <Badge tone="success">Verified</Badge>
+        </div>
+        {SECURITY_ROWS.map((row) => (
           <div className="pa-switch-row" key={row.label}>
             <div>
               <span className="pa-row-label">{row.label}</span>
               <span className="pa-hint">{row.hint}</span>
             </div>
-            <button type="button" className="pa-btn pa-btn-outline" onClick={() => setNotice(`${row.label} is not connected in this prototype.`)}>
-              {row.action}
-            </button>
+            <div className="pa-row-actions">
+              <Badge tone="neutral">{row.state}</Badge>
+              <button type="button" className="pa-btn pa-btn-outline" onClick={() => say(row.label)}>
+                {row.action}
+              </button>
+            </div>
           </div>
         ))}
+      </section>
+
+      <section className="pa-card pa-form" aria-labelledby="sc-devices">
+        <div className="pa-section-head">
+          <h2 id="sc-devices">
+            <Icon name="shield" size={16} /> Signed-in devices
+          </h2>
+          <button type="button" className="pa-btn pa-btn-outline" onClick={() => say("Signing out of all devices")}>
+            <Icon name="logout" size={15} /> Sign out everywhere
+          </button>
+        </div>
+        <ul className="pa-sessions" aria-label="Signed-in devices (sample)">
+          {SAMPLE_DEVICES.map((d) => (
+            <li className="pa-session" key={d.id}>
+              <span className="pa-session-text">
+                <span className="pa-row-label">{d.label}</span>
+                <span className="pa-hint">{d.detail}</span>
+              </span>
+              {d.current ? (
+                <Badge tone="success">This device</Badge>
+              ) : (
+                <button type="button" className="pa-btn pa-btn-outline" onClick={() => say(`Signing out ${d.label}`)}>
+                  Sign out
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
         {notice && (
           <p className="pa-saved pa-saved-muted" role="status">
             {notice}

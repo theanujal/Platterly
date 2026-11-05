@@ -4,8 +4,10 @@
  * organisation) so the screens can later read the same fields from the Platform services.
  */
 export type BusinessStatus = "active" | "trial" | "setup";
-export type CentralRole = "Owner" | "Admin" | "Manager" | "Member";
+/** One central role exists: the Business Admin (decision C5). Employees and their roles live inside each product. */
+export type CentralRole = "Admin";
 
+/** An account holds exactly one business (decision D15: one business per user per product, no list, no switcher). */
 export type Business = {
   id: string;
   name: string;
@@ -13,8 +15,13 @@ export type Business = {
   city: string;
   status: BusinessStatus;
   role: CentralRole;
-  members: number;
 };
+
+export type ProductId = "caterly" | "rivo";
+export const PRODUCTS: { id: ProductId; name: string; initial: string }[] = [
+  { id: "caterly", name: "Caterly", initial: "C" },
+  { id: "rivo", name: "Rivo", initial: "R" },
+];
 
 export type ProductLinkStatus = "active" | "trial" | "none";
 export type ProductLink = { status: ProductLinkStatus; detail: string };
@@ -38,17 +45,18 @@ export const MOCK_USER = {
   } satisfies Profile,
 };
 
-export const BUSINESSES: Business[] = [
-  { id: "spice-route", name: "Spice Route Caterers", type: "Wedding and event catering", city: "Mumbai", status: "active", role: "Owner", members: 8 },
-  { id: "saffron-co", name: "Saffron & Co. Events", type: "Corporate catering", city: "Pune", status: "trial", role: "Owner", members: 3 },
-  { id: "little-basil", name: "Little Basil Cloud Kitchen", type: "Cloud kitchen", city: "Bengaluru", status: "setup", role: "Admin", members: 2 },
-];
+export const BUSINESS: Business = { id: "spice-route", name: "Spice Route Caterers", type: "Wedding and event catering", city: "Mumbai", status: "setup", role: "Admin" };
 
-export const INITIAL_CATERLY: Record<string, ProductLink> = {
-  "spice-route": { status: "active", detail: "Caterly Pro, renews 14 Jan 2027" },
-  "saffron-co": { status: "trial", detail: "Free trial, 12 days left" },
-  "little-basil": { status: "none", detail: "Not set up for this business" },
-};
+/** Caterly starts as not set up, so the whole activation path (set up, then open) can be shown. */
+export const INITIAL_CATERLY: ProductLink = { status: "none", detail: "Not set up for this business" };
+
+/** Sample "signed-in devices" for the Security page layout. Nothing here is a real session. */
+export type SampleDevice = { id: string; label: string; detail: string; current: boolean };
+export const SAMPLE_DEVICES: SampleDevice[] = [
+  { id: "d1", label: "Chrome on a laptop", detail: "Mumbai · active now", current: true },
+  { id: "d2", label: "Safari on a phone", detail: "Mumbai · last active 2 days ago", current: false },
+  { id: "d3", label: "Chrome on a tablet", detail: "Pune · last active 3 weeks ago", current: false },
+];
 
 export const TIMEZONES = ["Asia/Kolkata (IST, UTC+5:30)", "Asia/Dubai (GST, UTC+4)", "Asia/Singapore (SGT, UTC+8)", "Europe/London (UTC+0)"];
 export const LANGUAGES = ["English (India)", "English (UK)"];
