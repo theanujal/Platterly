@@ -78,7 +78,7 @@ describe.skipIf(credentials === null)("platform database (isolated test database
       expect(names).toContain("20261101000000_baseline");
       const tables = (await target.publicRelations()).filter((name) => name !== "_prisma_migrations").sort();
       expect(tables).toEqual([...expectedPublicTables(names)].sort());
-      expect(tables).toHaveLength(3);
+      expect(tables).toHaveLength(expectedPublicTables(names).length);
     }));
 
   it("db-test-checks: cannot read the catering or Ops databases' tables", () =>

@@ -36,6 +36,24 @@ export const STAGE2_ALLOWED_PORTS: readonly number[] = [55433];
 export const BASELINE_MIGRATION = "20261101000000_baseline";
 export const IDENTITY_MIGRATION = "20261104190000_identity_tables";
 export const IDENTITY_TABLES = ["legacy_mappings", "user_identities", "users"] as const;
+// F3.2.1 organisation schema (third migration). Tables and the functions its triggers call; the objects the guard inventory must allow.
+export const ORG_MIGRATION = "20261106150000_organisation_schema";
+export const ORG_TABLES = ["audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events"] as const;
+export const ORG_FUNCTIONS = [
+  "audit_logs_append_only",
+  "membership_product_slots_event_required",
+  "membership_product_slots_immutable",
+  "organisation_admin_floor_check",
+  "organisation_members_before_delete",
+  "organisation_members_before_update",
+  "organisation_members_establish",
+  "organisation_members_floor_trigger",
+  "organisation_products_established",
+  "organisation_products_last_link",
+  "organisations_before_insert",
+  "organisations_before_update",
+  "organisations_floor_trigger",
+] as const;
 export const STAGE2_DIR = path.join(homedir(), ".platterly", "stage2");
 export const PLATFORM_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const REPO_ROOT = path.resolve(PLATFORM_ROOT, "..", "..");
@@ -365,12 +383,28 @@ export const INVENTORY_POLICY: InventoryPolicy = {
     "table:public.users",
     "table:public.user_identities",
     "table:public.legacy_mappings",
+    ...["audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events"].map((t) => `table:public.${t}`),
+    ...[
+      "audit_logs_append_only",
+      "membership_product_slots_event_required",
+      "membership_product_slots_immutable",
+      "organisation_admin_floor_check",
+      "organisation_members_before_delete",
+      "organisation_members_before_update",
+      "organisation_members_establish",
+      "organisation_members_floor_trigger",
+      "organisation_products_established",
+      "organisation_products_last_link",
+      "organisations_before_insert",
+      "organisations_before_update",
+      "organisations_floor_trigger",
+    ].map((f) => `function:public.${f}`),
   ],
 };
 
 // What the identity tables should be, given the migrations applied to a database.
 export function expectedPublicTables(appliedMigrations: readonly string[]): string[] {
-  return appliedMigrations.includes(IDENTITY_MIGRATION) ? [...IDENTITY_TABLES] : [];
+  return [...(appliedMigrations.includes(IDENTITY_MIGRATION) ? IDENTITY_TABLES : []), ...(appliedMigrations.includes(ORG_MIGRATION) ? ORG_TABLES : [])];
 }
 
 export function findUnsettled(runs: readonly Row[]): Row[] {

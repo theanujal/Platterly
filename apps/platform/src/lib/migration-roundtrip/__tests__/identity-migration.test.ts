@@ -110,10 +110,12 @@ describe("identity migration against the Prisma schema (text only)", () => {
     expect(schema).toContain('@default(dbgenerated("gen_random_uuid()")) @db.Uuid');
     expect(schema).toContain('status          String    @default("active")');
     expect(schema).toContain("@default(now()) @updatedAt @map(\"updated_at\") @db.Timestamptz(3)");
-    expect(schema.match(/@db\.Timestamptz\(3\)/g)).toHaveLength(5);
+    // The identity models are the first three; later migrations add their own models below them.
+    const identityModels = schema.slice(0, schema.indexOf("// F3.2.1 organisation schema"));
+    expect(identityModels.match(/@db\.Timestamptz\(3\)/g)).toHaveLength(5);
     expect(schema).not.toMatch(/@db\.Timestamp\(/);
-    expect(schema.match(/onDelete: Restrict, onUpdate: Restrict/g)).toHaveLength(2);
-    expect(schema).not.toMatch(/Cascade|SetNull/);
+    expect(identityModels.match(/onDelete: Restrict, onUpdate: Restrict/g)).toHaveLength(2);
+    expect(identityModels).not.toMatch(/Cascade|SetNull/);
     for (const column of ["email_verified_at", "created_at", "updated_at", "user_id", "source_system", "legacy_id", "batch_id"]) expect(schema).toContain(`@map("${column}")`);
   });
 
@@ -133,7 +135,7 @@ describe("identity rollback (text only)", () => {
   });
 
   it("passes the static rollback check against the forward migration", () => {
-    expect(checkDownSql(down, up)).toEqual({ ok: true, tables: ["legacy_mappings", "user_identities", "users"] });
+    expect(checkDownSql(down, up)).toEqual({ ok: true, tables: ["legacy_mappings", "user_identities", "users"], functions: [] });
   });
 });
 
@@ -141,7 +143,8 @@ describe("migration folders (text only)", () => {
   const names = readdirSync(migrationsDir).filter((n) => n !== "migration_lock.toml").sort();
 
   it("sorts the identity migration after the baseline", () => {
-    expect(names).toEqual(["20261101000000_baseline", NAME]);
+    expect(names.slice(0, 2)).toEqual(["20261101000000_baseline", NAME]);
+    expect(names.slice(2)).toEqual(["20261106150000_organisation_schema"]);
   });
 
   it("fits the history check when the history is built from these exact files", () => {

@@ -349,6 +349,10 @@ describe("expected tables by applied migration", () => {
     expect(expectedPublicTables(["20261101000000_baseline"])).toEqual([]);
     expect(expectedPublicTables([])).toEqual([]);
     expect(expectedPublicTables(["20261101000000_baseline", "20261104190000_identity_tables"])).toEqual(["legacy_mappings", "user_identities", "users"]);
+    expect(expectedPublicTables(["20261101000000_baseline", "20261104190000_identity_tables", "20261106150000_organisation_schema"])).toEqual([
+      "legacy_mappings", "user_identities", "users",
+      "audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events",
+    ]);
   });
 });
 

@@ -18,7 +18,11 @@ const EXPECTED_STEPS: Record<string, string[]> = {
   "start:db-test": ["preconditions", "tables-and-history", "db-test-checks", "complete"],
 };
 
-describe.skipIf(credentials === null)("R4 final read-only verification (isolated test database)", () => {
+// R4 verifies the identity-era state recorded by runs 1 to 3 (snapshot B, the run chain). It runs only while the identity migration is the last one;
+// the organisation migration has its own round trip (org-roundtrip.db.test.ts) and constraint tests.
+const onlyIdentityMigrations = migrationFolders().length <= 2;
+
+describe.skipIf(credentials === null || !onlyIdentityMigrations)("R4 final read-only verification (isolated test database)", () => {
   const creds = credentials as Credentials;
   let target: GuardedTarget;
   let run: RunSequence;

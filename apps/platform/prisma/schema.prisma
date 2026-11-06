@@ -25,6 +25,8 @@ model User {
 
   identities     UserIdentity[]
   legacyMappings LegacyMapping[]
+  memberships    OrganisationMember[]
+  creationRequests OrganisationCreationRequest[]
 
   @@map("users")
 }
@@ -57,4 +59,164 @@ model LegacyMapping {
   @@unique([sourceSystem, kind, legacyId], map: "legacy_mappings_source_system_kind_legacy_id_key")
   @@unique([userId, sourceSystem, kind], map: "legacy_mappings_user_id_source_system_kind_key")
   @@map("legacy_mappings")
+}
+
+// F3.2.1 organisation schema (approved by AJ: C16 prerequisite 4, SD-1 to SD-7). The CHECK constraints, the partial unique index
+// "organisation_members_one_active_admin_key", and every function and trigger exist only in the migration SQL: Prisma cannot express them.
+
+model Organisation {
+  id                String   @id(map: "organisations_pkey")
+  name              String
+  status            String   @default("active")
+  ownershipLocked   Boolean  @default(false) @map("ownership_locked")
+  membershipVersion BigInt   @default(0) @map("membership_version")
+  outboxSequence    BigInt   @default(0) @map("outbox_sequence")
+  adminEstablished  Boolean  @default(false) @map("admin_established")
+  linkEstablished   Boolean  @default(false) @map("link_established")
+  importBatchId     String?  @map("import_batch_id")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members          OrganisationMember[]
+  products         OrganisationProduct[]
+  creationRequests OrganisationCreationRequest[]
+  unlinks          OrganisationProductUnlink[]
+
+  @@map("organisations")
+}
+
+model OrganisationMember {
+  id             String   @id(map: "organisation_members_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String   @map("organisation_id")
+  userId         String   @map("user_id") @db.Uuid
+  centralRole    String   @map("central_role")
+  status         String   @default("active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "organisation_members_organisation_id_fkey")
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "organisation_members_user_id_fkey")
+  slots        MembershipProductSlot[]
+
+  @@unique([organisationId, userId], map: "organisation_members_organisation_id_user_id_key")
+  @@unique([id, organisationId, userId], map: "organisation_members_id_organisation_id_user_id_key")
+  @@index([userId], map: "organisation_members_user_id_idx")
+  @@map("organisation_members")
+}
+
+model OrganisationProduct {
+  organisationId String   @map("organisation_id")
+  productKey     String   @map("product_key")
+  status         String   @default("active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "organisation_products_organisation_id_fkey")
+  slots        MembershipProductSlot[]
+
+  @@id([organisationId, productKey], map: "organisation_products_pkey")
+  @@map("organisation_products")
+}
+
+model MembershipProductSlot {
+  slotId         String   @id(map: "membership_product_slots_pkey") @default(dbgenerated("gen_random_uuid()")) @map("slot_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  productKey     String   @map("product_key")
+  organisationId String   @map("organisation_id")
+  memberId       String   @map("member_id") @db.Uuid
+  allocatedAt    DateTime @default(now()) @map("allocated_at") @db.Timestamptz(3)
+
+  product OrganisationProduct @relation(fields: [organisationId, productKey], references: [organisationId, productKey], onDelete: Cascade, onUpdate: Restrict, map: "membership_product_slots_organisation_id_product_key_fkey")
+  member  OrganisationMember  @relation(fields: [memberId, organisationId, userId], references: [id, organisationId, userId], onDelete: NoAction, onUpdate: Restrict, map: "membership_product_slots_member_id_organisation_id_user_id_fkey")
+
+  @@unique([userId, productKey], map: "membership_product_slots_user_id_product_key_key")
+  @@unique([memberId, productKey], map: "membership_product_slots_member_id_product_key_key")
+  @@index([organisationId, productKey], map: "membership_product_slots_organisation_id_product_key_idx")
+  @@map("membership_product_slots")
+}
+
+model OrganisationCreationRequest {
+  id             String   @id(map: "organisation_creation_requests_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  idempotencyKey String   @map("idempotency_key")
+  requestHash    String   @map("request_hash")
+  organisationId String   @map("organisation_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "organisation_creation_requests_user_id_fkey")
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "organisation_creation_requests_organisation_id_fkey")
+
+  @@unique([userId, idempotencyKey], map: "organisation_creation_requests_user_id_idempotency_key_key")
+  @@index([organisationId], map: "organisation_creation_requests_organisation_id_idx")
+  @@map("organisation_creation_requests")
+}
+
+model OrganisationProductUnlink {
+  id                   String    @id(map: "organisation_product_unlinks_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId       String    @map("organisation_id")
+  productKey           String    @map("product_key")
+  unlinkedAt           DateTime  @default(now()) @map("unlinked_at") @db.Timestamptz(3)
+  organisationSequence BigInt    @map("organisation_sequence")
+  unlinkedBy           String    @map("unlinked_by")
+  relinkedAt           DateTime? @map("relinked_at") @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "organisation_product_unlinks_organisation_id_fkey")
+
+  @@index([organisationId, productKey], map: "organisation_product_unlinks_organisation_id_product_key_idx")
+  @@map("organisation_product_unlinks")
+}
+
+// Append-only (triggers). No foreign key to organisations, so the history survives a manual organisation deletion.
+model AuditLog {
+  id            String   @id(map: "audit_logs_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  organisationId String? @map("organisation_id")
+  action        String
+  subjectType   String?  @map("subject_type")
+  subjectId     String?  @map("subject_id")
+  initiatorKind String   @map("initiator_kind")
+  initiatorRef  String   @map("initiator_ref")
+  executorKind  String   @map("executor_kind")
+  executorRef   String   @map("executor_ref")
+  outcome       String
+  reasonCode    String?  @map("reason_code")
+  reason        String?
+  caseRef       String?  @map("case_ref")
+  approval      Json?    @db.JsonB
+  before        Json?    @db.JsonB
+  after         Json?    @db.JsonB
+  payload       Json     @default("{}") @db.JsonB
+  requestId     String?  @map("request_id")
+
+  @@index([organisationId, occurredAt], map: "audit_logs_organisation_id_occurred_at_idx")
+  @@index([subjectType, subjectId], map: "audit_logs_subject_type_subject_id_idx")
+  @@index([action, occurredAt], map: "audit_logs_action_occurred_at_idx")
+  @@map("audit_logs")
+}
+
+// No foreign key to organisations either (same reason).
+model OutboxEvent {
+  id                 String    @id(map: "outbox_events_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  eventId            String    @map("event_id") @db.Uuid
+  organisationId     String    @map("organisation_id")
+  productKey         String    @map("product_key")
+  eventType          String    @map("event_type")
+  payload            Json      @db.JsonB
+  sequence           BigInt
+  status             String    @default("pending")
+  attempts           Int       @default(0)
+  nextAttemptAt      DateTime  @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  lockedUntil        DateTime? @map("locked_until") @db.Timestamptz(3)
+  lastError          String?   @map("last_error")
+  deliveredAt        DateTime? @map("delivered_at") @db.Timestamptz(3)
+  resolution         String?
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolvedBy         String?   @map("resolved_by")
+  resolutionEvidence Json?     @map("resolution_evidence") @db.JsonB
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([eventId], map: "outbox_events_event_id_key")
+  @@unique([organisationId, productKey, sequence], map: "outbox_events_organisation_id_product_key_sequence_key")
+  @@index([status, nextAttemptAt], map: "outbox_events_status_next_attempt_at_idx")
+  @@map("outbox_events")
 }
