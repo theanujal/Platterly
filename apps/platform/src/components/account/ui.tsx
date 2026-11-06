@@ -32,7 +32,7 @@ export function PageHeader({ title, lede, action }: { title: string; lede: strin
   );
 }
 
-/** Marks a screen or section whose content is sample data or whose controls are not connected to anything yet. */
+/** Marks a section whose controls depend on something that is not built yet. */
 export function PlaceholderNote({ children }: { children: ReactNode }) {
   return (
     <p className="pa-placeholder" role="note">

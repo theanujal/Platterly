@@ -1,7 +1,7 @@
 import { SecurityView } from "@/components/account/views";
-import { requireAccountHost } from "@/lib/account/guard";
+import { requireAccountSignIn } from "@/lib/account/guard";
 
 export default async function Page() {
-  await requireAccountHost();
+  await requireAccountSignIn("/security");
   return <SecurityView />;
 }

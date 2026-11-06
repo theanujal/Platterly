@@ -4,11 +4,11 @@ import { useSyncExternalStore } from "react";
 import { INITIAL_STATE, parseStored, reduce, type AccountState, type Action } from "@/lib/account/state";
 
 /**
- * Client-side store for the Account prototype. The state lives in this module (so it survives moving between pages) and is
- * mirrored to sessionStorage (so it survives a reload of the tab). It is a per-tab convenience for a prototype with mock
- * data: nothing is sent anywhere, and storage being blocked only means the state resets on reload.
+ * Client-side store for the product switcher. The choice lives in this module (so it survives moving between pages) and is
+ * mirrored to sessionStorage (so it survives a reload of the tab). It is a per-tab convenience, not data: nothing is sent
+ * anywhere, and storage being blocked only means the choice resets on reload.
  */
-const KEY = "platterly-account-prototype-v2";
+const KEY = "platterly-account-product-v3";
 let state: AccountState = INITIAL_STATE;
 let loaded = false;
 const listeners = new Set<() => void>();

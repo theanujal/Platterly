@@ -16,6 +16,8 @@ One app serving three hosts: `auth.localhost:3300`, `account.localhost:3300` and
 - `npm run smoke:local` checks every health address. `npm run seed:local` seeds the catering library and dev plan (Platform has no tables yet).
 - Database: create role `platterly_platform_app` (LOGIN CREATEDB) and database `platterly_platform` owned by it, then copy `.env.example` to `.env`. `npx prisma migrate deploy` applies the migrations.
 - Sessions are host-only: nothing here ever sets a cookie `Domain`.
+- **Sign-in (F4):** needs `IDENTITY_DATABASE_URL`, `AUTH_SECRET` and the mail variables (see `.env.example`), then `npm run identity:migrate`. The auth host (`auth.localhost:3300`) runs the identity provider and its pages (`/sign-in`, `/sign-up`, `/verify`, `/forgot`, `/reset`); the Account signs in through `/auth/start`. Codes go to the mail sink at http://localhost:3600/.
+- Sign-in tests: `IDENTITY_TEST_DATABASE_URL` and `PLATFORM_F4_TEST_DATABASE_URL` enable the database tests; `e2e/auth.spec.ts` needs the dev server running with those variables and `AUTH_RATE_LIMIT_OFF=1`.
 
 ## Why `src/instrumentation.ts` exists
 It is a temporary one-line stub (approved by AJ, 2026-11-01). The bundler root is the repository root (so shared packages can be imported), and with it Next.js loaded the catering app's `src/instrumentation.ts`, which imports Sentry code Platform does not have; every page answered 500. The stub lives only in `apps/platform`. Caterly's Sentry and instrumentation are untouched. Platform's own monitoring replaces it in phase `F10.2.2`.

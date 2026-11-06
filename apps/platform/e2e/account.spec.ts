@@ -1,48 +1,79 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 
-/** Account prototype (sample data, no sign-in). One business per account; the sidebar switches PRODUCT, not business. Every test starts in a fresh browser context, so the state starts from the initial mock data. */
-const BIZ = "Spice Route Caterers";
+/**
+ * Account, connected to real data. In the RUNNING app there is no sign-in yet (F4), so every screen shows its "not signed in" state: those tests
+ * hit the real server with nothing intercepted. The data states (a business, no business, no access, an error) are shown by intercepting the
+ * browser's request to /api/account/overview with a test-side response. That intercept lives only in this file; the running app has no way to
+ * be given a user. Set ACCOUNT_SHOTS=<dir> to also save a screenshot of each screen and state.
+ */
+const SHOTS = process.env.ACCOUNT_SHOTS;
+const shot = async (page: Page, name: string) => {
+  if (!SHOTS) return;
+  mkdirSync(SHOTS, { recursive: true });
+  await page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true });
+};
 
+const PAGES = [
+  { path: "/", h1: "Welcome back" },
+  { path: "/business", h1: "My Business" },
+  { path: "/products", h1: "My Products" },
+  { path: "/profile", h1: "My Profile" },
+  { path: "/security", h1: "Security" },
+];
 const switcher = (page: Page) => page.getByRole("button", { name: /Switch product/ });
 const nav = (page: Page) => page.getByRole("navigation", { name: "Account" });
+const OVERVIEW = "**/api/account/overview";
+const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
-async function pickInSwitcher(page: Page, product: string) {
-  await switcher(page).click();
-  await page.getByRole("listbox", { name: "Your products" }).getByRole("button", { name: new RegExp(product) }).click();
-}
+const USER = { id: "11111111-1111-4111-8111-111111111111", email: "owner@kitchen.test", emailVerified: true };
+const BIZ = { id: "biz_" + "a".repeat(32), name: "Test Kitchen Co", status: "active", role: "Admin" };
+const okBody = (products = { caterly: "linked", rivo: "none" }, business = BIZ) => ({ status: "ok", overview: { user: USER, business: { state: "ok", business, products } } });
 
-test.describe("Account overview", () => {
-  test("the home page shows the welcome, the profile summary and My Products, with no business section", async ({ page }) => {
-    await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "Welcome back, Meera" })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2, name: "Your profile" })).toBeVisible();
-    await expect(page.getByText("meera.kapoor@example.com").first()).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2, name: "My Products" })).toBeVisible();
-    await expect(page.getByRole("article", { name: "Caterly" })).toBeVisible();
-    await expect(page.getByRole("article", { name: "Rivo" })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(2);
-    await expect(page.getByRole("region", { name: "Your business" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "My Business" })).toHaveCount(0);
-    for (const label of ["Overview", "Products", "Profile", "Security"]) await expect(nav(page).getByRole("link", { name: label })).toBeVisible();
-    await expect(nav(page).getByRole("link", { name: "Business" })).toHaveCount(0);
-    await expect(nav(page).getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByText(/Prototype with sample data/)).toBeVisible();
+test.describe("Running app: not signed in (no intercept)", () => {
+  for (const p of PAGES) {
+    test(`${p.path} shows its heading, the layout and a "not signed in" panel, and no invented person`, async ({ page }) => {
+      await page.goto(p.path);
+      await expect(page.getByRole("heading", { level: 1, name: p.h1 })).toBeVisible();
+      await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
+      await expect(page.locator(".pa-acct-chip")).toContainText("Not signed in");
+      await expect(page.getByText(/Meera|Kapoor|Spice Route|example\.com|Sample data|sample data/)).toHaveCount(0);
+      await expect(page.getByText("Read-only for now")).toBeVisible();
+      for (const label of ["Overview", "Products", "Profile", "Security"]) await expect(nav(page).getByRole("link", { name: label })).toBeVisible();
+      await expect(nav(page).getByRole("link", { name: "Business" })).toHaveCount(0);
+      await shot(page, `running-app${p.path === "/" ? "-overview" : p.path.replace("/", "-")}`);
+    });
+  }
+
+  test("the API answers 401 with no body details, and no header, cookie or query string can name a user", async ({ request }) => {
+    const bare = await request.get("/api/account/overview");
+    expect(bare.status()).toBe(401);
+    expect(await bare.json()).toEqual({ status: "unauthenticated" });
+    expect(bare.headers()["cache-control"]).toBe("no-store");
+    for (const attempt of [
+      { url: "/api/account/overview?userId=11111111-1111-4111-8111-111111111111&organisationId=biz_x" },
+      { url: "/api/account/overview", headers: { "x-user-id": "11111111-1111-4111-8111-111111111111", authorization: "Bearer test", "x-test-session": "1" } },
+      { url: "/api/account/overview", headers: { cookie: "session=1; platterly_session=1; userId=11111111-1111-4111-8111-111111111111" } },
+    ]) {
+      expect((await request.get(attempt.url, { headers: attempt.headers })).status(), JSON.stringify(attempt)).toBe(401);
+    }
   });
 
-  test("there is no business list and no business switcher anywhere", async ({ page }) => {
-    for (const path of ["/", "/business", "/products", "/profile", "/security"]) {
-      await page.goto(path);
-      await expect(page.getByRole("button", { name: /Switch business/ })).toHaveCount(0);
-      await expect(page.getByRole("listbox", { name: "Your businesses" })).toHaveCount(0);
-      await expect(page.getByText(/Saffron|Little Basil/)).toHaveCount(0);
-    }
+  test("the page never calls anything else and makes no write request", async ({ page }) => {
+    const calls: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname.startsWith("/api/")) calls.push(`${r.method()} ${new URL(r.url()).pathname}`);
+    });
+    for (const p of PAGES) await page.goto(p.path);
+    expect([...new Set(calls)]).toEqual(["GET /api/account/overview"]);
   });
 });
 
 test.describe("Product switcher", () => {
-  test("shows the business and the current product, lists the products, switches and closes on Escape", async ({ page }) => {
+  test("lists the products, switches, closes on Escape, and the choice survives moving between pages and a reload", async ({ page }) => {
     await page.goto("/");
-    await expect(switcher(page)).toContainText(BIZ);
+    await expect(switcher(page)).toContainText("Not signed in");
     await expect(switcher(page)).toContainText("Caterly");
     await switcher(page).click();
     const list = page.getByRole("listbox", { name: "Your products" });
@@ -51,195 +82,134 @@ test.describe("Product switcher", () => {
     await expect(list.getByRole("option", { name: /Rivo/ })).toContainText("Coming soon");
     await page.keyboard.press("Escape");
     await expect(list).toBeHidden();
-    await pickInSwitcher(page, "Rivo");
+    await switcher(page).click();
+    await list.getByRole("button", { name: /Rivo/ }).click();
     await expect(switcher(page)).toContainText("Rivo");
-    await expect(page.getByRole("article", { name: "Rivo" })).toHaveAttribute("data-selected", "true");
-    await expect(page.getByRole("article", { name: "Caterly" })).toHaveAttribute("data-selected", "false");
-  });
-
-  test("the chosen product survives moving between pages and a reload of the tab", async ({ page }) => {
-    await page.goto("/products");
-    await pickInSwitcher(page, "Rivo");
-    await nav(page).getByRole("link", { name: "Profile" }).click();
-    await expect(page).toHaveURL(/\/profile$/);
+    await nav(page).getByRole("link", { name: "Security" }).click();
     await expect(switcher(page)).toContainText("Rivo");
     await page.reload();
     await expect(switcher(page)).toContainText("Rivo");
   });
 });
 
-test.describe("My Business", () => {
-  test("shows the one business with its type, status and role, and says the data is placeholder data", async ({ page }) => {
+test.describe("Data states (the browser's request is intercepted; the running app cannot be given a user)", () => {
+  test("a business: overview, business, products, profile and security show the real fields and nothing invented", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: USER.email })).toBeVisible();
+    await expect(page.locator(".pa-acct-chip")).toContainText(USER.email);
+    await expect(switcher(page)).toContainText(BIZ.name);
+    await expect(page.getByRole("article", { name: "Caterly" })).toContainText(`For ${BIZ.name}`);
+    await expect(page.getByRole("article", { name: "Caterly" })).toContainText("Linked");
+    await expect(page.getByRole("article", { name: "Rivo" })).toContainText("Coming soon");
+    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(2);
+    await shot(page, "data-overview");
+
     await page.goto("/business");
-    await expect(page.getByRole("heading", { level: 1, name: "My Business" })).toBeVisible();
-    await expect(page.getByRole("note")).toContainText("invented sample data");
-    const card = page.getByRole("article", { name: BIZ });
-    await expect(page.getByRole("article")).toHaveCount(1);
-    await expect(card).toContainText("Wedding and event catering");
-    await expect(card).toContainText("Setup pending");
-    await expect(card).toContainText("Admin");
-    await expect(page.getByText(/A second kitchen needs another email/)).toBeVisible();
-    await expect(nav(page).getByRole("link", { name: "Business" })).toHaveCount(0);
-  });
+    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("Admin");
+    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("1 product linked");
+    await expect(page.getByText(/Mumbai|catering$/)).toHaveCount(0);
+    await shot(page, "data-business");
 
-  test("the old plural address no longer exists", async ({ request }) => {
-    expect((await request.get("http://account.localhost:3300/businesses")).status()).toBe(404);
-  });
-});
-
-test.describe("My Products", () => {
-  test("shows Caterly as available for the business and Rivo as a clearly labelled upcoming product", async ({ page }) => {
     await page.goto("/products");
-    const caterly = page.getByRole("article", { name: "Caterly" });
-    await expect(caterly).toContainText("Available");
-    await expect(caterly).toContainText(`For ${BIZ}`);
-    await expect(caterly).toContainText("Not set up for this business");
-    const rivo = page.getByRole("article", { name: "Rivo" });
-    await expect(rivo).toContainText("Coming soon");
-    await expect(rivo).toContainText("Not available to any business yet");
-    await expect(rivo.getByRole("button", { name: "Open Rivo" })).toHaveCount(0);
-  });
-
-  test("Set up Caterly puts the business on a trial; Open Caterly then walks through the launch steps and ends on a clear prototype note", async ({ page }) => {
-    await page.goto("/products");
-    const caterly = page.getByRole("article", { name: "Caterly" });
-    await expect(caterly.getByRole("button", { name: "Open Caterly" })).toHaveCount(0);
-    await caterly.getByRole("button", { name: "Set up Caterly" }).click();
-    await expect(caterly).toContainText("On trial");
-    await caterly.getByRole("button", { name: "Open Caterly" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("Opening Caterly");
-    await expect(dialog).toContainText(`for ${BIZ}`);
-    await expect(dialog.getByRole("heading", { name: "Caterly is ready" })).toBeVisible();
-    await expect(dialog).toContainText("sign-in is not connected yet");
-    await dialog.getByRole("button", { name: "Done" }).click();
-    await expect(dialog).toBeHidden();
-    await expect(page).toHaveURL(/\/products$/);
-  });
-
-  test("a launch can be cancelled with Escape before it finishes", async ({ page }) => {
-    await page.goto("/products");
-    await page.getByRole("button", { name: "Set up Caterly" }).click();
-    await page.getByRole("button", { name: "Open Caterly" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toBeHidden();
-  });
-
-  test("the Caterly status shows in the switcher and on the overview after set up", async ({ page }) => {
-    await page.goto("/products");
-    await page.getByRole("button", { name: "Set up Caterly" }).click();
+    await expect(page.getByRole("article", { name: "Caterly" })).toHaveAttribute("data-selected", "true");
     await switcher(page).click();
-    await expect(page.getByRole("listbox", { name: "Your products" }).getByRole("option", { name: /Caterly/ })).toContainText("On trial");
-    await page.keyboard.press("Escape");
-    await nav(page).getByRole("link", { name: "Overview" }).click();
-    await expect(page.getByRole("article", { name: "Caterly" })).toContainText("On trial");
+    await page.getByRole("listbox", { name: "Your products" }).getByRole("button", { name: /Rivo/ }).click();
+    await expect(page.getByRole("article", { name: "Rivo" })).toHaveAttribute("data-selected", "true");
+    await shot(page, "data-products");
+
+    await page.goto("/profile");
+    await expect(page.getByLabel("Email")).toHaveValue(USER.email);
+    await expect(page.getByLabel("Full name")).toHaveValue("");
+    await expect(page.getByLabel("Full name")).toHaveAttribute("placeholder", "Not stored yet");
+    await expect(page.getByText("Verified", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit" })).toBeDisabled();
+    await shot(page, "data-profile");
+
+    await page.goto("/security");
+    await expect(page.getByText(USER.email).first()).toBeVisible();
+    await expect(page.getByText("Chrome on a laptop")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeDisabled();
+    await shot(page, "data-security");
   });
 
-  test("Notify me for Rivo is a toggle that keeps its state across pages", async ({ page }) => {
+  test("every control that would write is disabled and says why", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody({ caterly: "none", rivo: "none" })));
     await page.goto("/products");
-    const rivo = page.getByRole("article", { name: "Rivo" });
-    await rivo.getByRole("button", { name: "Notify me" }).click();
-    await expect(rivo.getByRole("button", { name: "We will let you know" })).toHaveAttribute("aria-pressed", "true");
-    await nav(page).getByRole("link", { name: "Overview" }).click();
-    await expect(page.getByRole("article", { name: "Rivo" }).getByRole("button", { name: "We will let you know" })).toBeVisible();
-    await page.getByRole("article", { name: "Rivo" }).getByRole("button", { name: "We will let you know" }).click();
-    await expect(page.getByRole("article", { name: "Rivo" }).getByRole("button", { name: "Notify me" })).toBeVisible();
-  });
-});
-
-test.describe("Profile", () => {
-  test("shows the details read-only, edits them locally, cancels without keeping changes, and saves", async ({ page }) => {
-    await page.goto("/profile");
-    const name = page.getByLabel("Full name");
-    await expect(name).toHaveValue("Meera Kapoor");
-    await expect(name).toBeDisabled();
-    await expect(page.getByLabel("Email")).toBeDisabled();
-
-    await page.getByRole("button", { name: "Edit" }).click();
-    await expect(name).toBeEnabled();
-    await expect(page.getByLabel("Email")).toBeDisabled();
-    await name.fill("Someone Else");
-    await page.getByRole("button", { name: "Cancel" }).click();
-    await expect(name).toHaveValue("Meera Kapoor");
-
-    await page.getByRole("button", { name: "Edit" }).click();
-    await name.fill("Meera K. Kapoor");
-    await page.getByLabel("Phone").fill("+91 98765 43210");
-    await page.getByLabel("Time zone").selectOption({ label: "Asia/Dubai (GST, UTC+4)" });
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByRole("status")).toContainText("Saved in this browser tab only");
-    await expect(name).toHaveValue("Meera K. Kapoor");
-    await expect(name).toBeDisabled();
-    await expect(page.getByRole("heading", { level: 2, name: "Meera K. Kapoor" })).toBeVisible();
-
-    await nav(page).getByRole("link", { name: "Overview" }).click();
-    await expect(page.getByRole("heading", { name: "Meera K. Kapoor" })).toBeVisible();
-    await expect(page.getByText("+91 98765 43210")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Set up Caterly/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: /Notify me/ })).toBeDisabled();
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+    await page.goto("/products");
+    await expect(page.getByRole("button", { name: /Open Caterly/ })).toBeDisabled();
   });
 
-  test("an empty name is not saved, preferences toggle, and security settings live on their own page", async ({ page }) => {
-    await page.goto("/profile");
-    await page.getByRole("button", { name: "Edit" }).click();
-    await page.getByLabel("Full name").fill("   ");
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByLabel("Full name")).toHaveValue("Meera Kapoor");
-
-    const updates = page.getByRole("switch", { name: "Product updates" });
-    await expect(updates).toBeChecked();
-    await updates.uncheck();
-    await expect(updates).not.toBeChecked();
-    await expect(page.getByRole("switch", { name: "Security alerts" })).toBeDisabled();
-
-    await page.getByRole("link", { name: "Open Security" }).click();
-    await expect(page).toHaveURL(/\/security$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
+  test("a suspended business and link are labelled as suspended", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody({ caterly: "suspended", rivo: "none" }, { ...BIZ, status: "suspended" })));
+    await page.goto("/business");
+    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("Suspended");
   });
-});
 
-test.describe("Account header", () => {
-  test("names the current page, says the data is sample data, and shows the account holder on every page", async ({ page }) => {
-    const pages: [string, string][] = [["/", "Overview"], ["/products", "My Products"], ["/profile", "My Profile"], ["/security", "Security"]];
-    for (const [path, title] of pages) {
-      await page.goto(path);
-      const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
-      await expect(crumbs).toContainText("Account");
-      await expect(crumbs.locator("[aria-current=page]")).toHaveText(title);
-      await expect(page.locator(".pa-topbar").getByText("Sample data")).toBeVisible();
-      await expect(page.locator(".pa-topbar").getByRole("link", { name: "Your profile" })).toBeVisible();
+  test("no business: every business page shows the empty state, the profile still shows", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 200, { status: "ok", overview: { user: USER, business: { state: "none" } } }));
+    for (const p of ["/business", "/products"]) {
+      await page.goto(p);
+      await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     }
-  });
-});
-
-test.describe("Security", () => {
-  test("loads with a placeholder note, the sign-in rows and sample devices, and is marked current in the navigation", async ({ page }) => {
-    await page.goto("/security");
-    await expect(page.getByRole("heading", { level: 1, name: "Security" })).toBeVisible();
-    await expect(nav(page).getByRole("link", { name: "Security" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByRole("note")).toContainText("Sign-in is not built yet");
-    await expect(page.getByText("meera.kapoor@example.com").first()).toBeVisible();
-    for (const row of ["Password", "Two-step verification", "Recovery email"]) await expect(page.getByText(row, { exact: true })).toBeVisible();
-    const devices = page.getByRole("list", { name: "Signed-in devices (sample)" }).getByRole("listitem");
-    await expect(devices).toHaveCount(3);
-    await expect(devices.first()).toContainText("This device");
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: USER.email })).toBeVisible();
+    await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
+    await expect(switcher(page)).toContainText("No business yet");
+    await shot(page, "state-empty-overview");
+    await page.goto("/profile");
+    await expect(page.getByLabel("Email")).toHaveValue(USER.email);
   });
 
-  test("every action says it is not connected and changes nothing", async ({ page }) => {
-    await page.goto("/security");
-    await page.getByRole("button", { name: "Change password" }).click();
-    await expect(page.getByRole("status")).toContainText("Password is not connected yet. Nothing was changed.");
-    await page.getByRole("button", { name: "Sign out everywhere" }).click();
-    await expect(page.getByRole("status")).toContainText("Signing out of all devices is not connected yet");
-    await page.getByRole("button", { name: "Sign out", exact: true }).first().click();
-    await expect(page.getByRole("status")).toContainText("is not connected yet");
-    await expect(page.getByRole("list", { name: "Signed-in devices (sample)" }).getByRole("listitem")).toHaveCount(3);
+  test("forbidden: a former Admin sees a no-access panel and no business details", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 200, { status: "ok", overview: { user: USER, business: { state: "forbidden", reason: "member_disabled" } } }));
+    await page.goto("/business");
+    await expect(page.getByRole("region", { name: "You no longer have access to this business" })).toBeVisible();
+    await expect(page.getByText("Your Admin access to the business has ended.")).toBeVisible();
+    await expect(page.getByText(BIZ.name)).toHaveCount(0);
+    await shot(page, "state-forbidden-business");
   });
 
+  test("error: a server error and a network failure both show a generic message", async ({ page }) => {
+    await page.route(OVERVIEW, (r) => json(r, 500, { status: "error" }));
+    await page.goto("/profile");
+    await expect(page.getByRole("region", { name: "We could not load your account" })).toBeVisible();
+    await expect(page.locator(".pa-acct-chip")).toContainText("Account unavailable");
+    await shot(page, "state-error-profile");
+    await page.unroute(OVERVIEW);
+    await page.route(OVERVIEW, (r) => r.abort());
+    await page.goto("/profile");
+    await expect(page.getByRole("region", { name: "We could not load your account" })).toBeVisible();
+    await page.unroute(OVERVIEW);
+    await page.route(OVERVIEW, (r) => r.fulfill({ status: 200, contentType: "application/json", body: "not json" }));
+    await page.goto("/profile");
+    await expect(page.getByRole("region", { name: "We could not load your account" })).toBeVisible();
+  });
+
+  test("loading: the page shows a loading panel until the answer arrives", async ({ page }) => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await page.route(OVERVIEW, async (r) => {
+      await gate;
+      await json(r, 200, okBody());
+    });
+    await page.goto("/business");
+    await expect(page.getByRole("status", { name: "Loading your account" })).toBeVisible();
+    await shot(page, "state-loading-business");
+    release();
+    await expect(page.getByRole("article", { name: BIZ.name })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Loading your account" })).toHaveCount(0);
+  });
 });
 
 test.describe("Host routing is unchanged", () => {
-  test("the auth and store hosts still answer with their placeholder and not the Account", async ({ page }) => {
-    for (const kind of ["auth", "store"]) {
+  test("the auth host still answers with its placeholder and not the Account (the store host has its own spec, store.spec.ts)", async ({ page }) => {
+    for (const kind of ["auth"]) {
       await page.goto(`http://${kind}.localhost:3300/`);
       await expect(page.getByText(`Platterly ${kind}`, { exact: true })).toBeVisible();
       await expect(page.getByRole("heading", { name: /Welcome back/ })).toHaveCount(0);
@@ -260,26 +230,30 @@ test.describe("Host routing is unchanged", () => {
   });
 });
 
+test.describe("Account API host routing", () => {
+  test("the overview API answers 404 off the account host", async ({ request }) => {
+    for (const host of ["auth.localhost:3300", "store.localhost:3300", "localhost:3300"]) {
+      expect((await request.get(`http://${host}/api/account/overview`)).status(), host).toBe(404);
+    }
+  });
+});
+
 test.describe("Phone layout", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test("has a bottom navigation, no sideways scrolling on any page, and a working product switcher", async ({ page }) => {
-    for (const path of ["/", "/products", "/profile", "/security"]) {
-      await page.goto(path);
-      await expect(nav(page).getByRole("link", { name: "Products" })).toBeVisible();
-      await expect(nav(page).getByRole("link", { name: "Security" })).toBeVisible();
-      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(overflow, `horizontal overflow on ${path}`).toBeLessThanOrEqual(0);
-      const box = await nav(page).boundingBox();
-      expect(box!.y + box!.height).toBeGreaterThan(844 - 2);
+  test("has a bottom navigation and no sideways scrolling, signed out and with a business", async ({ page }) => {
+    for (const mode of ["signed-out", "business"]) {
+      if (mode === "business") await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+      for (const p of ["/", "/products", "/profile", "/security"]) {
+        await page.goto(p);
+        await expect(nav(page).getByRole("link", { name: "Products" })).toBeVisible();
+        await expect(nav(page).getByRole("link", { name: "Security" })).toBeVisible();
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        expect(overflow, `horizontal overflow on ${p} (${mode})`).toBeLessThanOrEqual(0);
+        const box = await nav(page).boundingBox();
+        expect(box!.y + box!.height).toBeGreaterThan(844 - 2);
+      }
     }
-    await page.goto("/products");
-    await pickInSwitcher(page, "Rivo");
-    await expect(page.getByRole("article", { name: "Rivo" })).toHaveAttribute("data-selected", "true");
-    // The Next.js dev-mode indicator (bottom-right, next.config.ts) sits over the last tab and eats taps in `next dev` only,
-    // so the last tab is activated by keyboard here. It does not exist in a production build.
-    await nav(page).getByRole("link", { name: "Profile" }).focus();
-    await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(/\/profile$/);
+    await shot(page, "phone-products-business");
   });
 });

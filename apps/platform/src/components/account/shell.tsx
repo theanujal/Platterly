@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { BUSINESS, initials, LINK_LABEL, PRODUCTS } from "@/lib/account/mock-data";
+import { initials, LINK_LABEL, PRODUCTS } from "@/lib/account/catalogue";
 import { selectedProduct } from "@/lib/account/state";
+import { AccountDataProvider, useAccountData } from "./data";
 import { Icon, type IconName } from "./icons";
 import { dispatch, useAccount } from "./store";
-import { Avatar, Badge } from "./ui";
+import { Avatar } from "./ui";
 import "./account.css";
 
 /** `prefix` is the leading "My " of a page name; it is hidden on a phone so five tabs fit the bottom bar. */
@@ -22,10 +23,19 @@ const NAV: { href: string; prefix?: string; label: string; title: string; icon: 
 
 const isActive = (href: string, pathname: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
-/** The Account header: where you are, a plain statement that the data is sample data, and who the account holder is. */
+/** Who the shell says is signed in, from the real data: the email, a placeholder while loading, or "Not signed in". */
+function useWho() {
+  const data = useAccountData();
+  if (data.phase === "ready") return { label: initials(data.overview.user.email), name: data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified" };
+  if (data.phase === "unauthenticated") return { label: "?", name: "Not signed in", sub: "Sign in to see your account" };
+  if (data.phase === "error") return { label: "!", name: "Account unavailable", sub: "Could not load" };
+  return { label: "…", name: "Loading", sub: "" };
+}
+
+/** The Account header: where you are and who the account holder is. */
 function AccountHeader() {
   const pathname = usePathname();
-  const { profile } = useAccount();
+  const who = useWho();
   const here = NAV.find((item) => isActive(item.href, pathname));
   return (
     <header className="pa-topbar">
@@ -35,10 +45,9 @@ function AccountHeader() {
         <span aria-current="page">{here?.title ?? "Account"}</span>
       </nav>
       <div className="pa-topbar-right">
-        <Badge tone="warning">Sample data</Badge>
         <Link href="/profile" className="pa-acct-chip" aria-label="Your profile">
-          <Avatar label={initials(profile.fullName)} size="sm" round />
-          <span className="pa-acct-chip-name">{profile.fullName}</span>
+          <Avatar label={who.label} size="sm" round />
+          <span className="pa-acct-chip-name">{who.name}</span>
         </Link>
       </div>
     </header>
@@ -49,10 +58,13 @@ function AccountHeader() {
 function ProductSwitcher() {
   const account = useAccount();
   const current = selectedProduct(account);
+  const data = useAccountData();
+  const caption = data.phase === "ready" ? (data.overview.business.state === "ok" ? data.overview.business.business.name : data.overview.business.state === "none" ? "No business yet" : "No access") : data.phase === "unauthenticated" ? "Not signed in" : data.phase === "loading" ? "Loading" : "Unavailable";
+  const caterlyLink = data.phase === "ready" && data.overview.business.state === "ok" ? LINK_LABEL[data.overview.business.products.caterly] : "—";
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const listId = useId();
-  const sub = (id: string) => (id === "caterly" ? LINK_LABEL[account.caterly.status] : "Coming soon");
+  const sub = (id: string) => (id === "caterly" ? caterlyLink : "Coming soon");
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +85,7 @@ function ProductSwitcher() {
       <button type="button" className="pa-switcher-btn" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-label={`Product: ${current.name}. Switch product`} onClick={() => setOpen((v) => !v)}>
         <Avatar label={current.initial} size="sm" />
         <span className="pa-switcher-text">
-          <span className="pa-switcher-cap">{BUSINESS.name}</span>
+          <span className="pa-switcher-cap">{caption}</span>
           <span className="pa-switcher-name">{current.name}</span>
         </span>
         <Icon name="chevronDown" size={16} className="pa-switcher-chev" />
@@ -106,8 +118,17 @@ function ProductSwitcher() {
 }
 
 export function AccountShell({ children }: { children: ReactNode }) {
+  return (
+    <AccountDataProvider>
+      <ShellFrame>{children}</ShellFrame>
+    </AccountDataProvider>
+  );
+}
+
+function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { profile } = useAccount();
+  const who = useWho();
+  const signedIn = useAccountData().phase === "ready";
 
   return (
     <div className="pa-root">
@@ -135,13 +156,20 @@ export function AccountShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="pa-side-foot">
           <Link href="/profile" className="pa-user" aria-label="Your profile">
-            <Avatar label={initials(profile.fullName)} size="sm" round />
+            <Avatar label={who.label} size="sm" round />
             <span className="pa-user-text">
-              <span className="pa-user-name">{profile.fullName}</span>
-              <span className="pa-user-mail">{profile.email}</span>
+              <span className="pa-user-name">{who.name}</span>
+              <span className="pa-user-mail">{who.sub}</span>
             </span>
           </Link>
-          <p className="pa-proto-note">Prototype with sample data. Nothing is saved to a server.</p>
+          {signedIn && (
+            <form method="post" action="/auth/signout">
+              <button type="submit" className="pa-btn pa-btn-outline">
+                <Icon name="logout" size={15} /> Sign out
+              </button>
+            </form>
+          )}
+          <p className="pa-proto-note">Read-only for now. Changes are not available yet.</p>
         </div>
       </aside>
       <div className="pa-content">

@@ -16,11 +16,13 @@ const SRC = fileURLToPath(new URL("../../../", import.meta.url));
 const TABLE_ACCESS_ALLOWED = ["modules/users/", "lib/db.ts", "lib/migration-roundtrip/"];
 
 /**
- * Production code that may import `mintProviderEmailAssertion`. EMPTY ON PURPOSE: the Foundation Plan names no module path for the F4.2.2
- * token-validation code (the F4.2.2 row gives no file), so none is allowed yet. A path is added here only when AJ approves where that code lives.
+ * Production code that may import `mintProviderEmailAssertion`: ONLY the code that validates the provider's tokens. The Foundation Plan names no
+ * path for it (the F4.2.2 row gives no file); it was placed at `modules/auth/oidc-client.ts` on 2026-11-06 when AJ told the F4 work to start.
+ * That location is NOT separately confirmed by AJ: moving it means changing this one line. A path is added here only for code that has already
+ * verified signature, issuer, audience, expiry, nonce and the provider's own email_verified claim.
  * Tests under modules/users/__tests__/ are always allowed.
  */
-export const PRODUCTION_MINT_IMPORTERS: string[] = [];
+export const PRODUCTION_MINT_IMPORTERS: string[] = ["modules/auth/oidc-client.ts"];
 
 const MINT = "mintProviderEmailAssertion";
 const ASSERTION_MODULE_FILE = "modules/users/provider-assertion.ts";
@@ -76,8 +78,15 @@ describe("identity-link static guards", () => {
     expect(findViolations(tree)).toEqual([]);
   });
 
-  it("no production importer of mintProviderEmailAssertion is allowed yet (the F4.2.2 path is not established)", () => {
-    expect(PRODUCTION_MINT_IMPORTERS).toEqual([]);
+  it("exactly one production importer of mintProviderEmailAssertion is allowed: the OIDC client that validates the provider's tokens", () => {
+    expect(PRODUCTION_MINT_IMPORTERS).toEqual(["modules/auth/oidc-client.ts"]);
+    const client = tree["modules/auth/oidc-client.ts"];
+    expect(client).toBeDefined();
+    // The assertion is minted only after the token checks: the mint call comes after signature, issuer, audience, nonce and email_verified.
+    const at = (needle: string) => client.indexOf(needle);
+    for (const check of ["jwtVerify", "issuer:", "audience:", "equal(claims.nonce", "email_verified !== true"]) expect(at(check), check).toBeGreaterThan(-1);
+    const mintAt = client.lastIndexOf(MINT);
+    for (const check of ["jwtVerify", "equal(claims.nonce", "email_verified !== true"]) expect(at(check), `${check} must precede the mint`).toBeLessThan(mintAt);
   });
 
   it("the service imports only the verifier from provider-assertion, never the minting function", () => {
@@ -125,12 +134,13 @@ describe("identity-link static guards", () => {
   it("a production file is allowed to import the minting function only once it is added to the allowlist", () => {
     const files = { "modules/auth/validate-token.ts": `import { ${MINT} } from "@/modules/users/provider-assertion";` };
     expect(findViolations(files).length).toBeGreaterThan(0);
+    const before = [...PRODUCTION_MINT_IMPORTERS];
     PRODUCTION_MINT_IMPORTERS.push("modules/auth/validate-token.ts");
     try {
       expect(findViolations(files)).toEqual([]);
     } finally {
       PRODUCTION_MINT_IMPORTERS.pop();
     }
-    expect(PRODUCTION_MINT_IMPORTERS).toEqual([]);
+    expect(PRODUCTION_MINT_IMPORTERS).toEqual(before);
   });
 });

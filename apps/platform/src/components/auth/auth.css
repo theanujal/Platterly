@@ -1,0 +1,99 @@
+/* Auth host pages. Class names start with pl-auth-. Buttons and fields reuse the Account's pa- classes; tokens come from app/globals.css. */
+.pl-auth {
+  display: grid;
+  place-items: start center;
+  min-height: 100vh;
+  padding: 10vh 16px 48px;
+  background: var(--sidebar);
+}
+.pl-auth-box {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.pl-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  color: var(--foreground);
+}
+.pl-auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--ring-card);
+}
+.pl-auth-card h1 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.pl-auth-lede {
+  color: var(--muted-foreground);
+}
+.pl-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pl-auth-form .pa-btn {
+  width: 100%;
+  height: 42px;
+}
+.pl-auth-error,
+.pl-auth-ok {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.pl-auth-error {
+  background: #fef2f2;
+  color: var(--destructive);
+}
+.pl-auth-ok {
+  background: #f0fdf4;
+  color: var(--success);
+}
+.pl-auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.pl-auth-links a,
+.pl-auth-link-btn {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+.pl-auth-links a:hover,
+.pl-auth-link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.pl-auth-link-btn:disabled {
+  color: var(--muted-foreground);
+  cursor: default;
+}
+.pl-auth-code input {
+  letter-spacing: 0.4em;
+  font-size: 20px;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .pl-auth {
+    padding-top: 6vh;
+  }
+}

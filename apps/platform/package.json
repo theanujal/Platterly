@@ -12,12 +12,18 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "identity:migrate": "node scripts/identity-migrate.mjs"
   },
   "dependencies": {
+    "@better-auth/core": "1.7.15",
+    "@better-auth/oauth-provider": "1.7.15",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "better-auth": "1.7.15",
+    "better-call": "1.4.4",
     "dotenv": "^17.4.2",
+    "jose": "6.2.3",
     "next": "16.4.3",
     "pg": "^8.23.1",
     "react": "19.2.8",
