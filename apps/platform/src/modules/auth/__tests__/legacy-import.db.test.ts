@@ -16,7 +16,7 @@ describe.skipIf(!testUrl)("F4.1.3 import of Caterly users", () => {
     await h.pool.query("drop schema if exists legacy_src cascade; create schema legacy_src;");
     source = new Pool({ connectionString: testUrl, max: 2, options: "-c search_path=legacy_src" });
     await source.query(`create table "user" (id text primary key, name text not null, email text not null, "emailVerified" boolean not null default false, image text,
-      "createdAt" timestamptz not null, "updatedAt" timestamptz not null, "isSuperAdmin" boolean not null default false, "firstName" text)`);
+      "createdAt" timestamptz not null, "updatedAt" timestamptz not null, "isSuperAdmin" boolean not null default false, "firstName" text, "lastName" text, phone text)`);
     await source.query(`create table account (id text primary key, "accountId" text not null, "providerId" text not null, "userId" text not null references "user"(id),
       password text, "createdAt" timestamptz not null, "updatedAt" timestamptz not null)`);
   }, 60_000);
@@ -31,7 +31,7 @@ describe.skipIf(!testUrl)("F4.1.3 import of Caterly users", () => {
   });
 
   async function seed(id: string, email: string, o: { verified?: boolean; password?: string | null; superAdmin?: boolean } = {}) {
-    await source.query(`insert into "user" values ($1,$2,$3,$4,null,$5,$5,$6,'F')`, [id, `Name ${id}`, email, o.verified ?? true, NOW, o.superAdmin ?? false]);
+    await source.query(`insert into "user" values ($1,$2,$3,$4,null,$5,$5,$6,'F','L','+919800000001')`, [id, `Name ${id}`, email, o.verified ?? true, NOW, o.superAdmin ?? false]);
     if (o.password !== null)
       await source.query(`insert into account values ($1,$2,'credential',$2,$3,$4,$4)`, [`acc_${id}`, id, await hashPassword(o.password ?? `pw-for-${id}-xx`), NOW]);
   }
@@ -76,7 +76,9 @@ describe.skipIf(!testUrl)("F4.1.3 import of Caterly users", () => {
     const hash = (await h.pool.query("select password from account")).rows[0].password as string;
     const text = JSON.stringify(report);
     for (const secret of ["kitchen.test", hash, hash.slice(0, 16), "Name c1"]) expect(text.toLowerCase()).not.toContain(secret.toLowerCase());
-    expect((await h.pool.query(`select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'user' and column_name in ('isSuperAdmin','firstName')`)).rows[0].count).toBe("0");
+    expect((await h.pool.query(`select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'user' and column_name = 'isSuperAdmin'`)).rows[0].count).toBe("0");
+    // The common details are copied: first name, last name and phone.
+    expect((await h.pool.query('select "firstName", "lastName", phone from "user"')).rows).toEqual([{ firstName: "F", lastName: "L", phone: "+919800000001" }]);
   });
 
   it("running it again changes nothing", async () => {

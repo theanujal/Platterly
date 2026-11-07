@@ -19,7 +19,7 @@ const shot = async (page: Page, name: string) => {
 /** Text typed before the page is interactive is lost when it becomes interactive, so every fill waits for the page's ready marker first. */
 async function fill(page: Page, label: string, value: string, options?: { exact?: boolean }) {
   await page.locator('[data-hydrated="true"]').waitFor();
-  await page.getByLabel(label, options).fill(value);
+  await page.getByLabel(label, label === "Password" ? { exact: true, ...options } : options).fill(value);
 }
 let counter = 0;
 const newEmail = () => `e2e-${Date.now()}-${counter++}@auth.test`;
@@ -42,7 +42,10 @@ async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   await page.goto(startPath);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
-  await fill(page, "Full name", "E2E Person");
+  await fill(page, "First name", ("E2E Person").split(" ")[0]);
+  await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
+  await fill(page, "Phone", "9800000123");
+  await fill(page, "Confirm password", PASSWORD);
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
@@ -66,7 +69,10 @@ test.describe("Sign-in journey", () => {
     await shot(page, "f4-2-sign-in-page");
     await page.getByRole("link", { name: "Create an account" }).click();
     await shot(page, "f4-3-sign-up-page");
-    await fill(page, "Full name", "E2E Person");
+    await fill(page, "First name", ("E2E Person").split(" ")[0]);
+    await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", PASSWORD);
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -159,7 +165,10 @@ test.describe("Sign-in safety", () => {
     const to = newEmail();
     await page.goto("/");
     await page.getByRole("link", { name: "Create an account" }).click();
-    await fill(page, "Full name", "Unverified");
+    await fill(page, "First name", ("Unverified").split(" ")[0]);
+    await fill(page, "Last name", ("Unverified").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", PASSWORD);
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -178,7 +187,10 @@ test.describe("Sign-in safety", () => {
     const mailCount = async () => ((await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[] }[]).filter((m) => m.to.includes(to)).length;
     await page.goto("/");
     await page.getByRole("link", { name: "Create an account" }).click();
-    await fill(page, "Full name", "Never Verified");
+    await fill(page, "First name", ("Never Verified").split(" ")[0]);
+    await fill(page, "Last name", ("Never Verified").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", PASSWORD);
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -201,7 +213,10 @@ test.describe("Sign-in safety", () => {
     const to = newEmail();
     await page.goto("/");
     await page.getByRole("link", { name: "Create an account" }).click();
-    await fill(page, "Full name", "Wrong Code");
+    await fill(page, "First name", ("Wrong Code").split(" ")[0]);
+    await fill(page, "Last name", ("Wrong Code").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", PASSWORD);
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -215,7 +230,10 @@ test.describe("Sign-in safety", () => {
   test("a short password is refused before anything is sent", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("link", { name: "Create an account" }).click();
-    await fill(page, "Full name", "Short Pass");
+    await fill(page, "First name", ("Short Pass").split(" ")[0]);
+    await fill(page, "Last name", ("Short Pass").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", "short1");
     await fill(page, "Email", newEmail());
     await fill(page, "Password", "short1");
     await page.getByRole("button", { name: "Create account" }).click();
@@ -237,7 +255,10 @@ test.describe("Sign-in safety", () => {
     const to = newEmail();
     await page.goto("/auth/start?next=//evil.test/steal");
     await page.getByRole("link", { name: "Create an account" }).click();
-    await fill(page, "Full name", "Next Test");
+    await fill(page, "First name", ("Next Test").split(" ")[0]);
+    await fill(page, "Last name", ("Next Test").split(" ").slice(1).join(" ") || "Tester");
+    await fill(page, "Phone", "9800000123");
+    await fill(page, "Confirm password", PASSWORD);
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();

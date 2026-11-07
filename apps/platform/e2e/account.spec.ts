@@ -30,6 +30,9 @@ const OVERVIEW = "**/api/account/overview";
 const withPlaceholderSession = (context: BrowserContext) => context.addCookies([{ name: "platterly_account_session", value: "placeholder", url: "http://account.localhost:3300" }]);
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
+/** The profile screen reads its own stored details from /api/account/profile; these tests answer that call with a test-side profile too. */
+const PROFILE = { name: "Owner Kitchen", firstName: "Owner", lastName: "Kitchen", email: "owner@kitchen.test", emailVerified: true, phone: "+919800000123", timeZone: "Asia/Kolkata", notifyProductUpdates: false };
+const mockProfile = (page: Page) => page.route("**/api/account/profile", (r) => json(r, 200, { status: "ok", profile: PROFILE, timeZones: ["Asia/Kolkata", "Asia/Dubai"] }));
 const USER = { id: "11111111-1111-4111-8111-111111111111", email: "owner@kitchen.test", emailVerified: true };
 const BIZ = { id: "biz_" + "a".repeat(32), name: "Test Kitchen Co", status: "active", role: "Admin" };
 const okBody = (products = { caterly: "linked", rivo: "none" }, business = BIZ) => ({ status: "ok", overview: { user: USER, business: { state: "ok", business, products, team: [] } } });
@@ -132,12 +135,14 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByRole("article", { name: "Rivo", exact: true })).toHaveAttribute("data-selected", "true");
     await shot(page, "data-products");
 
+    await mockProfile(page);
     await page.goto("/profile");
     await expect(page.getByLabel("Email")).toHaveValue(USER.email);
-    await expect(page.getByLabel("Full name")).toHaveValue("");
-    await expect(page.getByLabel("Full name")).toHaveAttribute("placeholder", "Not stored yet");
+    await expect(page.getByLabel("First name")).toHaveValue("Owner");
+    await expect(page.getByLabel("Last name")).toHaveValue("Kitchen");
+    await expect(page.getByLabel("Phone")).toHaveValue("+91 98000 00123");
     await expect(page.getByText("Verified", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Edit" })).toBeEnabled();
     await shot(page, "data-profile");
 
     await page.goto("/security");
@@ -174,6 +179,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     await expect(switcher(page)).toContainText("No business yet");
     await shot(page, "state-empty-overview");
+    await mockProfile(page);
     await page.goto("/profile");
     await expect(page.getByLabel("Email")).toHaveValue(USER.email);
   });
@@ -255,6 +261,7 @@ test.describe("Phone layout", () => {
 
   test("has a bottom navigation and no sideways scrolling, with no business and with a business", async ({ page, context }) => {
     await withPlaceholderSession(context);
+    await mockProfile(page);
     for (const mode of ["no-business", "business"]) {
       await page.unroute(OVERVIEW).catch(() => {});
       await page.route(OVERVIEW, (r) => json(r, 200, mode === "business" ? okBody() : { status: "ok", overview: { user: USER, business: { state: "none" } } }));

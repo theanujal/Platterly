@@ -41,7 +41,7 @@ test.afterAll(async () => {
 
 async function fill(page: Page, label: string, value: string, options?: { exact?: boolean }) {
   await page.locator('[data-hydrated="true"]').waitFor();
-  await page.getByLabel(label, options).fill(value);
+  await page.getByLabel(label, label === "Password" ? { exact: true, ...options } : options).fill(value);
 }
 async function codeFor(page: Page, to: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
@@ -57,7 +57,10 @@ async function codeFor(page: Page, to: string): Promise<string> {
 async function registerOnCentralPage(page: Page, to: string) {
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
-  await fill(page, "Full name", "Sso Person");
+  await fill(page, "First name", ("Sso Person").split(" ")[0]);
+  await fill(page, "Last name", ("Sso Person").split(" ").slice(1).join(" ") || "Tester");
+  await fill(page, "Phone", "9800000123");
+  await fill(page, "Confirm password", PASSWORD);
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD, { exact: true });
   await page.getByRole("button", { name: "Create account" }).click();
@@ -86,6 +89,9 @@ test("Caterly sends a signed-out visitor to the central page, which looks like C
   const session = await caterlySession(page);
   expect(session?.user?.email).toBe(to);
   expect(await userCount(to)).toBe(1);
+  // The common details given on the central sign-up page (first name, last name, phone) arrive in Caterly through userinfo.
+  const row = (await pool.query('select "firstName", "lastName", phone from "user" where email = $1', [to])).rows[0];
+  expect(row, "Caterly holds the same first name, last name and phone as the Account").toEqual({ firstName: "Sso", lastName: "Person", phone: "+919800000123" });
   const link = await pool.query(`select "accountId", "userId" from account where "providerId" = 'platterly' and "userId" = $1`, [session!.user!.id]);
   expect(link.rowCount, "the central identity is recorded as a linked account on the Caterly user").toBe(1);
 });

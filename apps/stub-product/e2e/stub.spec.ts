@@ -17,7 +17,7 @@ const newEmail = () => `stub-${Date.now()}-${counter++}@auth.test`;
 
 async function fill(page: Page, label: string, value: string, options?: { exact?: boolean }) {
   await page.locator('[data-hydrated="true"]').waitFor();
-  await page.getByLabel(label, options).fill(value);
+  await page.getByLabel(label, label === "Password" ? { exact: true, ...options } : options).fill(value);
 }
 async function codeFor(page: Page, to: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
@@ -33,7 +33,10 @@ async function codeFor(page: Page, to: string): Promise<string> {
 async function registerOnSignInPage(page: Page, to: string) {
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
-  await fill(page, "Full name", "Stub Person");
+  await fill(page, "First name", ("Stub Person").split(" ")[0]);
+  await fill(page, "Last name", ("Stub Person").split(" ").slice(1).join(" ") || "Tester");
+  await fill(page, "Phone", "9800000123");
+  await fill(page, "Confirm password", PASSWORD);
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();

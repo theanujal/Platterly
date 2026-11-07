@@ -4,6 +4,7 @@
 //   - The Caterly user id is kept as the identity user id (one id to reconcile with).
 //   - It never overwrites: a user that is already there (same id) is left alone, and a different user already holding the same email is reported
 //     as a conflict and skipped, together with its password.
+//   - First name, last name and phone are copied too (the common details every product collects); a person who has none stays without.
 //   - The email is lower-cased; `emailVerified` is copied as it is, so someone Caterly never verified still has to verify before signing in.
 //   - Only people and their password accounts are copied: no sessions, no social accounts, no Caterly roles or super-admin flag.
 //   - The report holds counts and ids only: no email address, no password, no hash.
@@ -12,7 +13,7 @@
 const cleanEmail = (e) => (typeof e === "string" ? e.trim().toLowerCase() : "");
 
 export async function importCaterlyUsers({ source, target, apply = false }) {
-  const users = (await source.query(`select id, name, email, "emailVerified", image, "createdAt", "updatedAt" from "user" order by id`)).rows;
+  const users = (await source.query(`select id, name, "firstName", "lastName", phone, email, "emailVerified", image, "createdAt", "updatedAt" from "user" order by id`)).rows;
   const accounts = (await source.query(`select id, "accountId", "userId", password, "createdAt", "updatedAt" from account where "providerId" = 'credential' and password is not null order by id`)).rows;
   const accountByUser = new Map(accounts.map((a) => [a.userId, a]));
 
@@ -52,8 +53,8 @@ export async function importCaterlyUsers({ source, target, apply = false }) {
         continue;
       } else {
         await client.query(
-          `insert into "user" (id, name, email, "emailVerified", image, "createdAt", "updatedAt") values ($1, $2, $3, $4, $5, $6, $7)`,
-          [u.id, u.name || email, email, u.emailVerified === true, u.image ?? null, u.createdAt, u.updatedAt],
+          `insert into "user" (id, name, "firstName", "lastName", phone, email, "emailVerified", image, "createdAt", "updatedAt") values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [u.id, u.name || email, u.firstName ?? null, u.lastName ?? null, u.phone ?? null, email, u.emailVerified === true, u.image ?? null, u.createdAt, u.updatedAt],
         );
         byId.add(u.id);
         byEmail.set(email, u.id);

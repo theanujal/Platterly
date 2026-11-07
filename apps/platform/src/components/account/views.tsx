@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { AccountShell } from "./shell";
 import { useAccount } from "./store";
 import { useEffect, useState } from "react";
+import { ProfileDetails } from "./profile-details";
 import { Avatar, Badge, PageHeader, PlaceholderNote } from "./ui";
 
 export function OverviewView() {
@@ -112,70 +113,14 @@ export function ProductsView() {
   );
 }
 
-function Field({ id, label, value, hint, placeholder }: { id: string; label: string; value: string; hint?: string; placeholder?: string }) {
-  return (
-    <div className="pa-field">
-      <label htmlFor={id}>{label}</label>
-      <input id={id} value={value} placeholder={placeholder} disabled readOnly />
-      {hint && <span className="pa-hint">{hint}</span>}
-    </div>
-  );
-}
-
-function Switch({ id, label, hint, checked, disabled }: { id: string; label: string; hint: string; checked: boolean; disabled?: boolean }) {
-  return (
-    <div className="pa-switch-row">
-      <div>
-        <label htmlFor={id}>{label}</label>
-        <span className="pa-hint">{hint}</span>
-      </div>
-      <input id={id} type="checkbox" role="switch" className="pa-switch" checked={checked} disabled={disabled} readOnly />
-    </div>
-  );
-}
-
 export function ProfileView() {
   return (
     <AccountShell>
       <PageHeader title="My Profile" lede="Your personal details and account settings. They apply to every business and product." />
       <DataGate>
-        {(overview) => (
+        {() => (
           <>
-            <section className="pa-card pa-profile-head" aria-label="Account holder">
-              <Avatar label={initials(overview.user.email)} size="xl" round />
-              <div className="pa-profile-head-text">
-                <h2>{overview.user.email}</h2>
-                <p className="pa-line">
-                  <Icon name="mail" size={14} /> {overview.user.email} {overview.user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
-                </p>
-              </div>
-            </section>
-
-            <section className="pa-card pa-form" aria-labelledby="pf-personal">
-              <div className="pa-section-head">
-                <h2 id="pf-personal">Personal information</h2>
-                <button type="button" className="pa-btn pa-btn-outline" disabled title="Editing needs write support, which is not built yet.">
-                  <Icon name="pencil" size={15} /> Edit
-                </button>
-              </div>
-              <div className="pa-form-grid">
-                <Field id="pf-name" label="Full name" value="" placeholder="Not stored yet" />
-                <Field id="pf-email" label="Email" value={overview.user.email} hint="Changing your email will need a code sent to the new address. Not available yet." />
-                <Field id="pf-phone" label="Phone" value="" placeholder="Not stored yet" />
-                <Field id="pf-tz" label="Time zone" value="" placeholder="Not stored yet" />
-                <Field id="pf-lang" label="Language" value="" placeholder="Not stored yet" />
-              </div>
-            </section>
-
-            <section className="pa-card pa-form" aria-labelledby="pf-prefs">
-              <div className="pa-section-head">
-                <h2 id="pf-prefs">
-                  <Icon name="bell" size={16} /> Notifications
-                </h2>
-              </div>
-              <Switch id="pf-updates" label="Product updates" hint="Notification choices are not stored yet." checked={false} disabled />
-              <Switch id="pf-alerts" label="Security alerts" hint="Always on. We email you about sign-ins and changes to your account." checked disabled />
-            </section>
+            <ProfileDetails />
 
             <section className="pa-card pa-form" aria-labelledby="pf-security">
               <div className="pa-section-head">

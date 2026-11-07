@@ -72,7 +72,7 @@ describe.skipIf(!testUrl)("F4.2.3 back-channel logout", () => {
   async function person() {
     const to = email();
     const jar = new Jar();
-    await call(h, jar, "POST", "/api/auth/sign-up/email", { email: to, password: PASSWORD, name: "Test Person" });
+    await call(h, jar, "POST", "/api/auth/sign-up/email", { email: to, password: PASSWORD, name: "Test Person", firstName: "Test", lastName: "Person", phone: "+919800000001" });
     const otp = [...h.codes].reverse().find((c) => c.to === to)!.otp;
     await call(h, jar, "POST", "/api/auth/email-otp/verify-email", { email: to, otp });
     return to;

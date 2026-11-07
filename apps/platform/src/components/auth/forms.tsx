@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { isValidPhoneNumber } from "libphonenumber-js/max";
+import { PhoneField } from "../phone-field";
 import "../account/account.css";
 import "./auth.css";
 import { useProductBrand } from "./brand";
@@ -258,21 +260,29 @@ export function SignUpForm() {
   const themed = useProductBrand()?.theme === "caterly";
   const hydrated = useHydrated();
   const { carry } = useQuery();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError("");
+    if (!firstName.trim() || !lastName.trim()) return setError("Enter your first and last name.");
+    if (!phone || !isValidPhoneNumber(phone)) return setError("Enter a valid phone number.");
     if (password.length < PASSWORD_MIN) return setError(`Choose a password of at least ${PASSWORD_MIN} characters.`);
+    if (password !== confirm) return setError("The two passwords do not match.");
     setBusy(true);
-    const res = await post("/sign-up/email", { name: name.trim(), email, password });
+    const first = firstName.trim();
+    const last = lastName.trim();
+    const res = await post("/sign-up/email", { name: `${first} ${last}`, firstName: first, lastName: last, phone, email, password });
     setBusy(false);
     if (res.status === 200) return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
-    setError(res.status === 429 ? BUSY : res.status === 400 || res.status === 422 ? "Check your details: a valid email and a password of at least 8 characters." : GENERIC);
+    setError(res.status === 429 ? BUSY : res.status === 400 || res.status === 422 ? "Check your details: your name, a valid phone number and email, and a password of at least 8 characters." : GENERIC);
   }
 
   return (
@@ -289,9 +299,15 @@ export function SignUpForm() {
     >
       <form className="pl-auth-form" method="post" onSubmit={submit}>
         {error && <Error_>{error}</Error_>}
-        <Field id="name" label="Full name" value={name} onChange={setName} autoComplete="name" />
+        <Field id="firstName" label="First name" value={firstName} onChange={setFirstName} autoComplete="given-name" maxLength={40} />
+        <Field id="lastName" label="Last name" value={lastName} onChange={setLastName} autoComplete="family-name" maxLength={40} />
         <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" />
+        <div className="pa-field">
+          <label htmlFor="phone">Phone</label>
+          <PhoneField id="phone" value={phone} onChange={setPhone} />
+        </div>
         <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint={`At least ${PASSWORD_MIN} characters.`} />
+        <Field id="confirmPassword" label="Confirm password" type="password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
         <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !hydrated}>
           {busy ? "Creating…" : "Create account"}
         </button>

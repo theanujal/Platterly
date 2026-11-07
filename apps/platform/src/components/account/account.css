@@ -1060,3 +1060,39 @@ a.pa-btn {
 .pa-team-row { display: flex; align-items: center; gap: 12px; }
 .pa-team-who { display: grid; flex: 1; min-width: 0; }
 .pa-team-who .pa-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pa-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* The phone field (PhoneField): flag and country, then the number, in one bordered box like the other fields. */
+.pa-field .pa-phone {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: #fff;
+  --PhoneInputCountryFlag-height: 0.8125rem;
+}
+.pa-field .pa-phone:focus-within {
+  border-color: var(--ring, var(--input));
+  outline: 2px solid color-mix(in srgb, var(--ring, #888) 40%, transparent);
+}
+.pa-field .pa-phone input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+.pa-field .pa-phone:has(input:disabled) {
+  border-color: var(--border);
+  background: var(--muted);
+}

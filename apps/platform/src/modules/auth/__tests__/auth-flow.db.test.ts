@@ -45,7 +45,7 @@ describe.skipIf(!testUrl || !platformUrl)("F4 sign-in against the real identity 
     h.sendFails.value = false;
   });
 
-  const signUp = (jar: Jar, to: string, password = PASSWORD) => call(h, jar, "POST", "/api/auth/sign-up/email", { email: to, password, name: "Test Person" });
+  const signUp = (jar: Jar, to: string, password = PASSWORD) => call(h, jar, "POST", "/api/auth/sign-up/email", { email: to, password, name: "Test Person", firstName: "Test", lastName: "Person", phone: "+919800000001" });
   const verify = async (jar: Jar, to: string) => call(h, jar, "POST", "/api/auth/email-otp/verify-email", { email: to, otp: lastCode(h, to, "email-verification")!.otp });
   const signIn = (jar: Jar, to: string, password = PASSWORD) => call(h, jar, "POST", "/api/auth/sign-in/email", { email: to, password });
   const registered = async (to = email()) => {

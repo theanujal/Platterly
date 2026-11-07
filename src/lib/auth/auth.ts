@@ -204,6 +204,8 @@ export const auth = betterAuth({
           mapProfileToUser: (profile: Record<string, unknown>) => ({
             firstName: typeof profile.given_name === "string" ? profile.given_name : undefined,
             lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,
+            // The phone every product collects at sign-up, kept once in the Platterly Account and sent here as the standard phone_number claim.
+            phone: typeof profile.phone_number === "string" ? profile.phone_number : undefined,
           }),
         },
       ],

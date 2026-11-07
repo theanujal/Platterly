@@ -241,7 +241,8 @@
   width: 100%;
   gap: 16px;
 }
-.pl-cat .pa-field input {
+.pl-cat .pa-field input,
+.pl-cat .pa-field .pa-phone {
   background: transparent;
 }
 .pl-cat .pl-auth-links,

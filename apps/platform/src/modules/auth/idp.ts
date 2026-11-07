@@ -3,7 +3,9 @@ import { betterAuth } from "better-auth";
 import { emailOTP, jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import type { Pool } from "pg";
+import { APIError } from "better-auth/api";
 import { trustedOrigins } from "@/lib/routing/hosts";
+import { normalizePhone } from "@/modules/account/phone";
 import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
 import { identityPool } from "./identity-db";
 import { otpEmail, sendAuthEmail, type OtpKind } from "./mailer";
@@ -26,6 +28,29 @@ export function createIdp(options: IdpOptions = {}) {
     secret,
     database: options.pool ?? identityPool(),
     trustedOrigins: trustedOrigins(),
+    // The common details every product collects at sign-up (the same fields Caterly's own sign-up had). The display name is first + last.
+    user: {
+      additionalFields: {
+        firstName: { type: "string", required: false, input: true },
+        lastName: { type: "string", required: false, input: true },
+        phone: { type: "string", required: false, input: true },
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            const u = user as typeof user & { firstName?: unknown; lastName?: unknown; phone?: unknown };
+            const first = typeof u.firstName === "string" ? u.firstName.trim().replace(/\s+/g, " ") : "";
+            const last = typeof u.lastName === "string" ? u.lastName.trim().replace(/\s+/g, " ") : "";
+            const phone = typeof u.phone === "string" ? normalizePhone(u.phone) : null;
+            if (!first || !last || first.length > 40 || last.length > 40 || /[\u0000-\u001f<>]/.test(first + last)) throw new APIError("BAD_REQUEST", { message: "Enter your first and last name." });
+            if (!phone) throw new APIError("BAD_REQUEST", { message: "Enter a valid phone number." });
+            return { data: { ...user, firstName: first, lastName: last, phone, name: `${first} ${last}` } };
+          },
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD.minLength,
@@ -78,6 +103,17 @@ export function createIdp(options: IdpOptions = {}) {
         consentPage: "/consent",
         scopes: [...ACCOUNT_SCOPES],
         allowDynamicClientRegistration: false,
+        // Products read the common details from userinfo (with the profile scope): first and last name, and the phone.
+        customUserInfoClaims: ({ user, scopes }) => {
+          const u = user as Record<string, unknown>;
+          const claims: Record<string, string> = {};
+          if (scopes.includes("profile")) {
+            if (typeof u.firstName === "string" && u.firstName) claims.given_name = u.firstName;
+            if (typeof u.lastName === "string" && u.lastName) claims.family_name = u.lastName;
+            if (typeof u.phone === "string" && u.phone) claims.phone_number = u.phone;
+          }
+          return claims;
+        },
       }),
     ],
   });
@@ -86,11 +122,11 @@ export function createIdp(options: IdpOptions = {}) {
 export type Idp = ReturnType<typeof createIdp>;
 
 declare global {
-  var __idp: Idp | undefined;
+  var __idp2: Idp | undefined;
 }
 
 /** One provider instance per server process. */
 export function idp(): Idp {
-  if (!globalThis.__idp) globalThis.__idp = createIdp();
-  return globalThis.__idp;
+  if (!globalThis.__idp2) globalThis.__idp2 = createIdp();
+  return globalThis.__idp2;
 }
