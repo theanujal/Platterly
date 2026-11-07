@@ -29,7 +29,7 @@ test("Contact shows the Ops details: email, phone, WhatsApp, hours and address",
 });
 
 test("Catering pricing shows the trial and the priced plans from Ops, and no plan without a price", async ({ page }) => {
-  await page.goto("/catering/");
+  await page.goto("/caterly/");
   const pricing = page.locator("section", { has: page.getByRole("heading", { name: "Simple plans for growing caterers" }) });
   await expect(pricing.getByRole("heading", { level: 3 })).toHaveText(["Free Trial", "Fixture Basic", "Fixture Plus"]);
   await expect(pricing).toContainText("for 14 days");
@@ -52,7 +52,7 @@ test("Catering pricing shows the trial and the priced plans from Ops, and no pla
 });
 
 test("the pricing offers in the page data follow the Ops plans", async ({ page }) => {
-  await page.goto("/catering/");
+  await page.goto("/caterly/");
   const offers = await page.evaluate(() => {
     const ld = [...document.querySelectorAll('script[type="application/ld+json"]')].map((s) => JSON.parse(s.textContent ?? "{}"));
     return (ld.find((d) => d["@type"] === "SoftwareApplication")?.offers ?? []).map((o: { name: string; price: string }) => `${o.name}=${o.price}`);
@@ -62,7 +62,7 @@ test("the pricing offers in the page data follow the Ops plans", async ({ page }
 
 test("the pricing cards fit a phone: one column, nothing wider than the screen", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/catering/");
+  await page.goto("/caterly/");
   const pricing = page.locator("#pricing");
   await pricing.scrollIntoViewIfNeeded();
   const cards = pricing.getByRole("heading", { level: 3 });

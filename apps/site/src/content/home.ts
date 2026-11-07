@@ -33,10 +33,10 @@ export const HOME_CHAPTER = {
   title: "Meet Caterly by Platterly.",
   subtitle: "A better way to run your catering business",
   items: [
-    { id: "events", icon: "calendar", title: "Events and calendar", text: "See how busy each day is, with every booked event and order where it belongs, including multi-day events.", card: "calendar", href: "/catering/#features" },
-    { id: "menus", icon: "book", title: "Menus customers approve", text: "Plan each meal, watch the price build, and send a link your customer approves with no login.", card: "approval", href: "/catering/#features" },
-    { id: "kitchen", icon: "chef", title: "A board for the kitchen", text: "Approved menus land on a board the team moves from Pending to In Preparation to Ready.", card: "kitchen", href: "/catering/#features" },
-    { id: "payments", icon: "wallet", title: "Payments and invoices", text: "Track advances and balances on the order, and issue the invoice from the same page.", card: "payment", href: "/catering/#features" },
+    { id: "events", icon: "calendar", title: "Events and calendar", text: "See how busy each day is, with every booked event and order where it belongs, including multi-day events.", card: "calendar", href: "/caterly/#features" },
+    { id: "menus", icon: "book", title: "Menus customers approve", text: "Plan each meal, watch the price build, and send a link your customer approves with no login.", card: "approval", href: "/caterly/#features" },
+    { id: "kitchen", icon: "chef", title: "A board for the kitchen", text: "Approved menus land on a board the team moves from Pending to In Preparation to Ready.", card: "kitchen", href: "/caterly/#features" },
+    { id: "payments", icon: "wallet", title: "Payments and invoices", text: "Track advances and balances on the order, and issue the invoice from the same page.", card: "payment", href: "/caterly/#features" },
   ],
 } as const;
 

@@ -17,7 +17,7 @@ export const PLATFORM = {
   accent: "More is on the way.",
   copy: "Platterly is building a growing set of products that help food businesses manage, operate and grow. Caterly is the first. Here is what is live, and what is next in line.",
   cards: [
-    { id: "catering", name: "Caterly by Platterly", text: "Manage customers, events, menus, orders, the kitchen and payments in one place.", icon: "chef", colourway: "sunrise", status: "live", href: "/catering/" },
+    { id: "catering", name: "Caterly by Platterly", text: "Manage customers, events, menus, orders, the kitchen and payments in one place.", icon: "chef", colourway: "sunrise", status: "live", href: "/caterly/" },
     { id: "rivo", name: "Rivo", text: "Review management software for food businesses: gather customer reviews and keep your name growing.", icon: "star", colourway: "dusk", status: "soon" },
     { id: "more", name: "More tools for food businesses", text: "New products to help you do more with less effort will appear here.", icon: "layers", colourway: "citrus", status: "soon" },
   ] satisfies PlatformCard[],

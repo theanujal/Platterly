@@ -10,8 +10,8 @@ export const SITE = {
   contactEmail: "hello@platterly.in",
   tagline: "Software built for the food business.",
   description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
-  /** Real social profiles only; they become the Organization's `sameAs`. TODO: add Instagram. */
-  social: ["https://www.facebook.com/platterlyindia", "https://www.linkedin.com/company/platterlyindia"],
+  /** Real social profiles only; they become the Organization's `sameAs` and the footer's "Follow us" links. */
+  social: ["https://www.facebook.com/platterlyindia", "https://www.instagram.com/platterlyindia/", "https://www.linkedin.com/company/platterlyindia"],
 } as const;
 
 /** Sharing defaults. A page's own `openGraph` replaces the layout's whole object (Next merges metadata shallowly), so pages spread this. */
@@ -38,11 +38,11 @@ export const TESTIMONIALS: Testimonial[] = [];
 
 /**
  * How people can reach us. Anything left empty is simply not shown on the Contact page: nothing here is invented.
- * TODO(AJ): add the phone, WhatsApp number and opening hours when you have them.
+ * TODO(AJ): add the WhatsApp number when you have it (the phone is the business number, 2026-10-30).
  */
 export const CONTACT: { email: string; phone: string; whatsapp: string; hours: string[]; addressLines: string[]; reply: string } = {
   email: "hello@platterly.in",
-  phone: "",
+  phone: "+91 7624964646",
   whatsapp: "",
   hours: ["Monday to Saturday, 10 am to 6 pm IST"],
   addressLines: ["Fragen Network Private Limited", "Rani Nivas, 138, 4th Cross Main, Gaurav Nagar", "Kothanoor Village, JP Nagar 7th Phase", "Bengaluru, Karnataka 560078"],

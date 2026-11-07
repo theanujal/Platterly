@@ -17,7 +17,7 @@ import { pageLinks, SITE, TESTIMONIALS } from "@/content/site";
 export const metadata: Metadata = {
   title: "Caterly by Platterly | Software for catering businesses",
   description: "Run your catering business without the chaos. Customers, events, menus, orders, kitchen, delivery and payments in one workflow. Start free for 7 days.",
-  ...pageLinks("/catering/"),
+  ...pageLinks("/caterly/"),
 };
 
 export default async function CateringPage() {
@@ -33,7 +33,7 @@ export default async function CateringPage() {
     name: "Caterly by Platterly",
     applicationCategory: "BusinessApplication",
     operatingSystem: "Web",
-    url: `${SITE.url}/catering/`,
+    url: `${SITE.url}/caterly/`,
     description: CATERING.hero.copy,
     offers: PRICING.plans.map((plan) => ({ "@type": "Offer", name: plan.per.startsWith("per month") ? `${plan.name} (monthly)` : plan.name, price: plan.price.replace(/[^\d]/g, ""), priceCurrency: "INR" })),
   };

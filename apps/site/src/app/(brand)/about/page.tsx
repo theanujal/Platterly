@@ -50,7 +50,7 @@ export default function AboutPage() {
               </h2>
             </Reveal>
             <Reveal className="mt-12 grid gap-4 md:grid-cols-2" delay={100}>
-              <Link href="/catering/" className="lift flex items-center gap-5 rounded-[28px] bg-paper p-8 hover:shadow-product">
+              <Link href="/caterly/" className="lift flex items-center gap-5 rounded-[28px] bg-paper p-8 hover:shadow-product">
                 <ProductTile product={CATERING_PRODUCT} className="size-14 !rounded-2xl" iconClass="size-7" />
                 <span>
                   <span className="h-sub block !text-2xl">{CATERING_PRODUCT.name}</span>

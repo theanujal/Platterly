@@ -7,7 +7,7 @@ export const dynamic = "force-static";
 /** Pages whose words live in the code, with the day their copy last changed. Update the date when you change a page's text. */
 const CODE_PAGES: Record<string, string> = {
   "": "2026-10-12",
-  catering: "2026-10-17",
+  caterly: "2026-10-17",
   about: "2026-10-08",
   "talk-to-us": "2026-10-12",
   contact: "2026-10-12",
@@ -26,7 +26,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${SITE.url}/${path}${path ? "/" : ""}`,
       ...(updated ? { lastModified: updated } : {}),
       changeFrequency: "monthly" as const,
-      priority: path === "" ? 1 : path === "catering" ? 0.9 : 0.5,
+      priority: path === "" ? 1 : path === "caterly" ? 0.9 : 0.5,
     })),
     ...posts.map((p) => ({ url: `${SITE.url}/blog/${p.slug}/`, lastModified: p.date, changeFrequency: "yearly" as const, priority: 0.6 })),
   ];

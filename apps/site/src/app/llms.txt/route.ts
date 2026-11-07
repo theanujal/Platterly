@@ -14,7 +14,7 @@ Caterly by Platterly is for wedding, corporate, party and outdoor caterers. A ca
 
 ## Main pages
 
-- [Caterly by Platterly](${SITE.url}/catering/): features, how it works and pricing
+- [Caterly by Platterly](${SITE.url}/caterly/): features, how it works and pricing
 - [About Platterly](${SITE.url}/about/): who we are and how we build
 - [Talk to us](${SITE.url}/talk-to-us/): tell us about your business and we call back to show how it fits
 - [Contact us](${SITE.url}/contact/): questions or account help, ${SITE.contactEmail}

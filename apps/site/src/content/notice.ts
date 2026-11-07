@@ -5,5 +5,5 @@ export const NOTICE: Notice = {
   enabled: true,
   text: "Introducing Caterly by Platterly, built to run your catering business from enquiry to event.",
   linkLabel: "Learn more",
-  linkHref: "/catering/",
+  linkHref: "/caterly/",
 };

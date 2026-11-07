@@ -35,7 +35,7 @@ export default function HomePage() {
           </p>
           <div style={d(240)} className="enter mt-9 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center">
             <ButtonLink href={SITE.appUrl}>Get started for free</ButtonLink>
-            <ButtonLink href="/catering" variant="outline">
+            <ButtonLink href="/caterly" variant="outline">
               Explore Caterly <ArrowRight className="size-5" aria-hidden />
             </ButtonLink>
           </div>
