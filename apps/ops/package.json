@@ -13,6 +13,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "ops:create-staff": "node scripts/create-staff.mjs",
+    "platform-reader": "node scripts/platform-reader.mjs",
     "ops:import-catering": "node scripts/import-catering.mjs",
     "ops:import-site": "node scripts/import-site-content.mjs",
     "postinstall": "prisma generate"

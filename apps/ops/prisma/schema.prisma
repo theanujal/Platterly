@@ -324,6 +324,22 @@ model ProductNotice {
   @@map("product_notice")
 }
 
+// The secret the platform ("platform-reader") signs its product-list requests with, and Ops signs the answer with. One row.
+// AES-256-GCM encrypted like the product secrets; `Previous` stays valid during a rotation. `listVersion` only goes up, and only
+// when the list of products changes (`listHash` is what it was when it last did).
+model PlatformReader {
+  id             String    @id @default("default")
+  secret         String
+  secretPrevious String?
+  rotatedAt      DateTime?
+  listVersion    Int       @default(0)
+  listHash       String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("platform_reader")
+}
+
 // The running invoice number of one product (one counter per product, so numbering follows the product, not the whole
 // platform). `lastNumber` is the highest number issued; the next invoice takes lastNumber + 1, atomically.
 model InvoiceCounter {

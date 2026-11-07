@@ -1,0 +1,36 @@
+import { describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
+import { proxy } from "../proxy";
+
+/** The proxy sends a request with no session cookie to /sign-in, except for the routes that answer for themselves. */
+function through(path: string) {
+  const res = proxy(new NextRequest(`http://ops.localhost:3200${path}`));
+  const passed = res.headers.get("x-middleware-next") === "1";
+  return { passed, status: res.status, location: res.headers.get("location") };
+}
+
+describe("ops proxy: public routes", () => {
+  it("lets exactly /api/platform/products through without a session", () => {
+    expect(through("/api/platform/products")).toMatchObject({ passed: true });
+  });
+
+  it("sends every other route under /api/platform to sign-in, however it is written", () => {
+    for (const path of ["/api/platform", "/api/platform/", "/api/platform/other", "/api/platform/products/", "/api/platform/products/x", "/api/platform/products-extra", "/api/platformx", "/api/platform/../x"]) {
+      const result = through(path);
+      expect(result.passed, path).toBe(false);
+      expect(result.location, path).toMatch(/\/sign-in$/);
+    }
+  });
+
+  it("keeps the other public prefixes working", () => {
+    for (const path of ["/sign-in", "/api/auth/get-session", "/api/health", "/api/products/events", "/api/webhooks/razorpay", "/api/cron", "/api/site/x", "/api/public/enquiries"]) {
+      expect(through(path).passed, path).toBe(true);
+    }
+  });
+
+  it("still sends a private page to sign-in without a session, and lets it through with one", () => {
+    expect(through("/settings/products")).toMatchObject({ passed: false });
+    const withSession = proxy(new NextRequest("http://ops.localhost:3200/settings/products", { headers: { cookie: "ops.session_token=abc" } }));
+    expect(withSession.headers.get("x-middleware-next")).toBe("1");
+  });
+});
