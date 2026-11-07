@@ -459,6 +459,8 @@ model Subscription {
   // A downgrade chosen mid-period starts at the next payment, never now.
   pendingPlanId          String?
   pendingInterval        BillingInterval?
+  // The owner chose to stop renewing: the paid period runs out as usual (grace and all) but no renewal reminders or grace notices are sent. Cleared by reactivating or by the next payment.
+  cancelledAt            DateTime?
   // Monthly auto-pay (Razorpay Subscriptions): the Razorpay subscription and its last known state. Null for yearly and hand-assigned plans.
   razorpaySubscriptionId String?            @unique
   autoPay                AutoPayStatus?
@@ -515,6 +517,8 @@ model SubscriptionPayment {
   paidAt                 DateTime?
   // Why an auto-pay setup failed, as the owner's checkout window reported it ("declined", or "not finished"). Shown in Ops.
   failureReason          String?
+  // Upgrade credit: the value (before GST) of the unused days of the plan this payment replaced, already taken off `amount`. Null when there was none.
+  creditAmount           Decimal?        @db.Decimal(10, 2)
   // The business's name, address and GSTIN as the product sent them at checkout, kept so a payment confirmed later by
   // Razorpay's webhook (when no product is involved) can still print the right buyer on the invoice.
   buyer                  Json?

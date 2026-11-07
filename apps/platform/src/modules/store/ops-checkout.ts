@@ -61,3 +61,25 @@ export async function verifyStoreCheckout(input: { businessId: string; opsProduc
   if (!got.ok) return got;
   return { ok: true, answer: { status: typeof got.answer.status === "string" ? got.answer.status : null, invoiceNumber: typeof got.answer.invoiceNumber === "string" ? got.answer.invoiceNumber : null } };
 }
+
+/** What a plan would cost this business now, from Ops: the plan price, any upgrade credit for unused days, GST, and the total. The Store only shows these figures. */
+export type StoreQuote = { planName: string; interval: "MONTHLY" | "ANNUAL"; planPrice: number; credit: number; creditDays: number; creditLabel: string | null; amount: number; gstPercent: number; gstAmount: number; total: number };
+
+export async function quoteStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL" }, deps: Deps = {}): Promise<CheckoutResult<StoreQuote>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "quote", { planId: input.planId, interval: input.interval }, deps);
+  if (!got.ok) return got;
+  const a = got.answer;
+  const numbers = ["planPrice", "credit", "creditDays", "amount", "gstPercent", "gstAmount", "total"] as const;
+  if (typeof a.planName !== "string" || (a.interval !== "MONTHLY" && a.interval !== "ANNUAL") || numbers.some((k) => typeof a[k] !== "number" || !Number.isFinite(a[k] as number))) return { ok: false, reason: "bad_answer" };
+  return { ok: true, answer: a as unknown as StoreQuote };
+}
+
+export type SubscriptionChange = "downgrade" | "undo-downgrade" | "cancel" | "reactivate";
+
+/** Schedule a lower plan for the end of the paid period, take that back, stop renewal, or take the stop back. Ops does the work; the answer is just ok. */
+export async function changeStoreSubscription(input: { businessId: string; opsProductKey: string; change: SubscriptionChange; planId?: string; interval?: "MONTHLY" | "ANNUAL" }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const body = input.change === "downgrade" ? { planId: input.planId, interval: input.interval } : {};
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, input.change, body, deps);
+  if (!got.ok) return got;
+  return got.answer.ok === true ? { ok: true, answer: { ok: true } } : { ok: false, reason: "bad_answer" };
+}

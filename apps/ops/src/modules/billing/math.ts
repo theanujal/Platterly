@@ -23,6 +23,17 @@ export function priceBreakdown(price: number, gstPercent: number): PriceBreakdow
   return { amount, gstPercent, gstAmount, total: round2(amount + gstAmount) };
 }
 
+/**
+ * Upgrade credit: the value, before GST, of the days still unused on the plan being replaced. It is what the last payment bought (before GST), spread over
+ * its paid period, for the days left from `now` to the end of the current period. Never more than what was paid, never negative, rounded to paise.
+ */
+export function unusedCredit(input: { paidAmount: number; periodStart: Date; periodEnd: Date; currentPeriodEnd: Date; now: Date }): { credit: number; daysLeft: number } {
+  const total = input.periodEnd.getTime() - input.periodStart.getTime();
+  const left = Math.min(Math.max(input.currentPeriodEnd.getTime() - input.now.getTime(), 0), total);
+  if (total <= 0 || left <= 0 || input.paidAmount <= 0) return { credit: 0, daysLeft: 0 };
+  return { credit: Math.min(round2((input.paidAmount * left) / total), round2(input.paidAmount)), daysLeft: Math.ceil(left / DAY_MS) };
+}
+
 export function periodEndFrom(start: Date, interval: Interval): Date {
   return new Date(start.getTime() + INTERVAL_DAYS[interval] * DAY_MS);
 }
@@ -104,4 +115,6 @@ export interface InvoiceSnapshot {
   buyer: { name: string; addressLine1: string | null; addressLine2: string | null; city: string | null; state: string | null; postalCode: string | null; country: string | null; gstin: string | null };
   gst: { kind: GstKind; lines: GstLine[] };
   highlights: string[];
+  /** Present when an upgrade credit was taken off: the full plan price, and the credit (both before GST). The payment's own `amount` is the price less the credit, and GST is on that. */
+  credit?: { planPrice: number; amount: number; label: string };
 }

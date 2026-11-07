@@ -101,7 +101,7 @@ export async function sweepExpired(now: Date = new Date(), productKey?: string):
 export async function sendGraceNotices(now: Date = new Date(), productKey?: string): Promise<number> {
   const graceStart = new Date(now.getTime() - PAID_GRACE_DAYS * DAY);
   const subs = await prisma.subscription.findMany({
-    where: { endDate: null, status: "ACTIVE", currentPeriodEnd: { lte: now, gt: graceStart }, ...(productKey ? { productKey } : {}) },
+    where: { endDate: null, status: "ACTIVE", cancelledAt: null, currentPeriodEnd: { lte: now, gt: graceStart }, ...(productKey ? { productKey } : {}) },
     select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true, autoPay: true },
   });
   let sent = 0;
@@ -156,7 +156,7 @@ const istHour = (d: Date) => new Date(d.getTime() + IST_OFFSET).getUTCHours();
  */
 export async function sendRenewalReminders(now: Date = new Date(), productKey?: string): Promise<number> {
   const subs = await prisma.subscription.findMany({
-    where: { endDate: null, status: "ACTIVE", billingInterval: { not: null }, currentPeriodEnd: { gt: now, lte: new Date(now.getTime() + 31 * DAY) }, ...(productKey ? { productKey } : {}) },
+    where: { endDate: null, status: "ACTIVE", cancelledAt: null, billingInterval: { not: null }, currentPeriodEnd: { gt: now, lte: new Date(now.getTime() + 31 * DAY) }, ...(productKey ? { productKey } : {}) },
     select: { id: true, businessId: true, productKey: true, currentPeriodEnd: true, billingInterval: true, autoPay: true, pendingPlanId: true, razorpaySubscriptionId: true, plan: { select: { name: true, priceMonthly: true, gstPercent: true } } },
   });
   let sent = 0;

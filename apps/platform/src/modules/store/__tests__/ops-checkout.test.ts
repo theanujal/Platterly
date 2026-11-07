@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
-import { opsCheckoutConfigured, startStoreCheckout, verifyStoreCheckout } from "../ops-checkout";
+import { changeStoreSubscription, opsCheckoutConfigured, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout } from "../ops-checkout";
 import { opsKeyFor, readBuyer } from "../purchase";
 
 const SECRET = "billing-secret-0123456789abcdef0123456789abcdef";
@@ -71,6 +71,41 @@ describe("Store: buy calls to Ops", () => {
     expect(result).toEqual({ ok: true, answer: { status: "PAID", invoiceNumber: "FPSR-26-11-1" } });
     expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "verify")}`);
     expect(JSON.parse(seen.body!)).toEqual({ razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "sig" });
+  });
+});
+
+describe("Store: price quote and plan changes", () => {
+  const quote = { planName: "Max", interval: "ANNUAL", planPrice: 20000, credit: 2000, creditDays: 73, creditLabel: "Credit for 73 unused days of Pro", amount: 18000, gstPercent: 18, gstAmount: 3240, total: 21240 };
+
+  it("asks Ops for the price of a plan and returns its figures, credit included", async () => {
+    const { fetchImpl, seen } = ops({ body: quote });
+    const result = await quoteStoreCheckout({ businessId: BIZ, opsProductKey: "catering", planId: "plan_2", interval: "ANNUAL" }, { env, fetchImpl });
+    expect(result).toEqual({ ok: true, answer: quote });
+    expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "quote")}`);
+    expect(JSON.parse(seen.body!)).toEqual({ planId: "plan_2", interval: "ANNUAL" });
+    expect(seen.signedOk).toBe(true);
+  });
+
+  it("refuses a quote with missing or non-numeric figures", async () => {
+    for (const body of [{ ...quote, total: "21240" }, { ...quote, credit: undefined }, { ...quote, interval: "WEEKLY" }, { planName: "x" }]) {
+      expect(await quoteStoreCheckout({ businessId: BIZ, opsProductKey: "catering", planId: "p", interval: "ANNUAL" }, { env, fetchImpl: ops({ body }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+    }
+  });
+
+  it("sends each plan change to its own route; only a downgrade carries a plan", async () => {
+    for (const change of ["downgrade", "undo-downgrade", "cancel", "reactivate"] as const) {
+      const { fetchImpl, seen } = ops({ body: { ok: true } });
+      const result = await changeStoreSubscription({ businessId: BIZ, opsProductKey: "catering", change, planId: "plan_1", interval: "MONTHLY" }, { env, fetchImpl });
+      expect(result, change).toEqual({ ok: true, answer: { ok: true } });
+      expect(seen.url, change).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", change)}`);
+      expect(JSON.parse(seen.body!), change).toEqual(change === "downgrade" ? { planId: "plan_1", interval: "MONTHLY" } : {});
+    }
+  });
+
+  it("a 400 from Ops carries its message; an answer that is not ok is refused", async () => {
+    const asked = { businessId: BIZ, opsProductKey: "catering", change: "cancel" as const };
+    expect(await changeStoreSubscription(asked, { env, fetchImpl: ops({ status: 400, body: { error: "There is no paid plan to cancel." } }).fetchImpl })).toEqual({ ok: false, reason: "rejected", message: "There is no paid plan to cancel." });
+    expect(await changeStoreSubscription(asked, { env, fetchImpl: ops({ body: { ok: false } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
   });
 });
 

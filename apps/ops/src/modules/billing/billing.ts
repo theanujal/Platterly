@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 import { nextInvoiceNumber } from "./numbering";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
-import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
+import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, unusedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
 import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchPaidChargeId, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
 import { recordRazorpayEvent } from "./events";
@@ -75,6 +75,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
       trialEndsAt: iso(current.trialEndsAt),
       currentPeriodEnd: iso(current.currentPeriodEnd),
       pending: current.pendingPlanId && pendingPlan ? { planId: current.pendingPlanId, planName: pendingPlan.name, interval: current.pendingInterval } : null,
+      cancelledAt: iso(current.cancelledAt),
       autoPay: current.autoPay ? { status: current.autoPay, nextChargeAt: current.autoPay === "ACTIVE" && !current.pendingPlanId ? iso(current.currentPeriodEnd) : null } : null,
     },
     history: subs.map((s) => ({ id: s.id, planName: s.plan.name, status: s.status, startDate: s.startDate.toISOString(), endDate: iso(s.endDate) })),
@@ -82,14 +83,58 @@ export async function getBillingView(businessId: string, productKey: string): Pr
   };
 }
 
+export interface CheckoutQuote {
+  planName: string;
+  interval: Interval;
+  /** The plan's price before GST, then the credit for unused days of the plan it replaces (0 when none), then what is charged. */
+  planPrice: number;
+  credit: number;
+  creditDays: number;
+  creditLabel: string | null;
+  amount: number;
+  gstPercent: number;
+  gstAmount: number;
+  total: number;
+}
+
+/**
+ * What a purchase of this plan would cost this business right now. Only an upgrade from a paid, running plan gets a credit: the days still unused on the
+ * plan it replaces, valued at what the last payment for it bought. The same plan again (a renewal), a trial and a plan assigned by hand get none.
+ * Checkout works this out again itself and never trusts a number from the caller.
+ */
+export async function quoteCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval }, now: Date = new Date()): Promise<CheckoutQuote> {
+  await requireBusiness(input.businessId, input.productKey);
+  const plan = (await listSellablePlans(input.productKey)).find((candidate) => candidate.id === input.planId);
+  if (!plan) throw new BillingError("That plan is not available.");
+  const price = priceFor(plan, input.interval);
+  let credit = 0;
+  let creditDays = 0;
+  let creditLabel: string | null = null;
+  const current = await prisma.subscription.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, endDate: null }, include: { plan: { select: { name: true, priceMonthly: true } } } });
+  // Only an upgrade (a dearer plan, by monthly price) is credited; buying a cheaper plan outright starts it at its own price.
+  const dearer = !!current && plan.monthly.amount > Number(current.plan.priceMonthly ?? 0);
+  if (current && dearer && current.status === "ACTIVE" && current.planId !== input.planId && current.currentPeriodEnd && current.currentPeriodEnd > now) {
+    const last = await prisma.subscriptionPayment.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, status: "PAID", periodEnd: { not: null }, periodStart: { not: null } }, orderBy: { periodEnd: "desc" } });
+    if (last?.periodStart && last.periodEnd && last.planId === current.planId) {
+      const found = unusedCredit({ paidAmount: Number(last.amount), periodStart: last.periodStart, periodEnd: last.periodEnd, currentPeriodEnd: current.currentPeriodEnd, now });
+      credit = Math.min(found.credit, price.amount);
+      creditDays = found.daysLeft;
+      if (credit > 0) creditLabel = `Credit for ${creditDays} unused ${creditDays === 1 ? "day" : "days"} of ${current.plan.name}`;
+    }
+  }
+  const net = priceBreakdown(Math.round((price.amount - credit) * 100) / 100, price.gstPercent);
+  return { planName: plan.name, interval: input.interval, planPrice: price.amount, credit, creditDays, creditLabel, amount: net.amount, gstPercent: net.gstPercent, gstAmount: net.gstAmount, total: net.total };
+}
+
 /** Starts a Razorpay Checkout for one period of a plan. A PENDING payment is written first so the webhook can find it. */
 export async function startCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval; buyer: Buyer }, fetchImpl: typeof fetch = fetch): Promise<OrderCheckoutAnswer> {
   const business = await requireBusiness(input.businessId, input.productKey);
   const creds = platformRazorpay();
   if (!creds) throw new BillingError("Online payment is not switched on yet. Please contact Platterly.");
-  const plan = (await listSellablePlans(input.productKey)).find((candidate) => candidate.id === input.planId);
-  if (!plan) throw new BillingError("That plan is not available.");
-  const price = priceFor(plan, input.interval);
+  // The price is worked out here, from Ops's own records, with any upgrade credit taken off; nothing about money comes from the caller.
+  const quote = await quoteCheckout({ businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: input.interval });
+  if (quote.total < 1) throw new BillingError("The credit from your current plan covers this plan. Please contact Platterly to switch.");
+  const price = { amount: quote.amount, gstPercent: quote.gstPercent, gstAmount: quote.gstAmount, total: quote.total };
 
   const { razorpayOrderId } = await createRazorpayOrder(creds, { amountRupees: price.total, receipt: `sub-${input.businessId.slice(4, 24)}`, notes: { businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: input.interval } }, fetchImpl);
   const payment = await prisma.subscriptionPayment.create({
@@ -103,12 +148,13 @@ export async function startCheckout(input: { businessId: string; productKey: str
       gstPercent: price.gstPercent,
       gstAmount: price.gstAmount,
       total: price.total,
+      creditAmount: quote.credit > 0 ? quote.credit : null,
       razorpayOrderId,
       buyer: input.buyer as unknown as Prisma.InputJsonValue,
     },
   });
   await audit({ actorUserId: null, action: "billing.checkout_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: input.planId, interval: input.interval, total: price.total } });
-  return { kind: "order", keyId: creds.keyId, razorpayOrderId, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${plan.name} plan, ${input.interval === "ANNUAL" ? "1 year" : "30 days"}` };
+  return { kind: "order", keyId: creds.keyId, razorpayOrderId, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${quote.planName} plan, ${input.interval === "ANNUAL" ? "1 year" : "30 days"}` };
 }
 
 /** Checkout's own signature check, then the same confirmation the webhook does. Only the caller's own payment counts. */
@@ -201,8 +247,13 @@ async function settle(payment: PaymentToSettle, razorpayPaymentId: string, now: 
     const autoPayFields = autoPay ? { razorpaySubscriptionId: autoPay.razorpaySubscriptionId, autoPay: "ACTIVE" as const } : { razorpaySubscriptionId: null, autoPay: null };
     // The number is taken here, with the payment's own update, so a failure leaves no gap in the product's numbering.
     invoiceNumber = formatInvoiceNumber(prefix, buyer.name, now, await nextInvoiceNumber(tx, productKey));
+    // An upgrade credit is part of the frozen invoice: the full plan price, the credit and what was charged.
+    if (payment.creditAmount && Number(payment.creditAmount) > 0) {
+      const previousPlan = previous ? await tx.plan.findUnique({ where: { id: previous.planId }, select: { name: true } }) : null;
+      snapshot.credit = { planPrice: Math.round((Number(payment.amount) + Number(payment.creditAmount)) * 100) / 100, amount: Number(payment.creditAmount), label: previousPlan ? `Credit for unused days of ${previousPlan.name}` : "Credit for unused days of your previous plan" };
+    }
     if (renewing) {
-      await tx.subscription.update({ where: { id: previous!.id }, data: { status: "ACTIVE", currentPeriodEnd: periodEnd, billingInterval: interval, pendingPlanId: null, pendingInterval: null, ...autoPayFields } });
+      await tx.subscription.update({ where: { id: previous!.id }, data: { status: "ACTIVE", currentPeriodEnd: periodEnd, billingInterval: interval, pendingPlanId: null, pendingInterval: null, cancelledAt: null, ...autoPayFields } });
     } else {
       await tx.subscription.updateMany({ where: { businessId, productKey, endDate: null }, data: { status: "CANCELLED", endDate: now } });
       await tx.subscription.create({ data: { id: newSubscriptionId(), businessId, productKey, planId, status: "ACTIVE", startDate: now, billingInterval: interval, currentPeriodEnd: periodEnd, ...autoPayFields } });
@@ -454,6 +505,30 @@ export async function cancelScheduledDowngrade(businessId: string, productKey: s
   if (current.razorpaySubscriptionId && current.autoPay === "ACTIVE") throw new BillingError("Auto-pay for your current plan already stops at the end of this period, so this change can't be undone. When the period ends, choose any plan to set up auto-pay again.");
   await prisma.subscription.update({ where: { id: current.id }, data: { pendingPlanId: null, pendingInterval: null } });
   await audit({ actorUserId: null, action: "billing.downgrade_cancelled", subject: businessId, detail: { productKey } });
+}
+
+/**
+ * Stop renewing. The paid days run out as usual (the grace after them too); what stops is the nagging: no renewal reminders or grace notices, because the
+ * owner has said they are leaving. An auto-pay still running stops at the end of the paid period. Nothing is refunded. Reactivating, or paying again, undoes it.
+ */
+export async function cancelSubscription(businessId: string, productKey: string, now: Date = new Date()) {
+  await requireBusiness(businessId, productKey);
+  const current = await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
+  if (!current || current.status !== "ACTIVE") throw new BillingError("There is no paid plan to cancel.");
+  if (current.cancelledAt) return;
+  if (current.razorpaySubscriptionId && current.autoPay && current.autoPay !== "CANCELLED") await stopAutoPay({ businessId, productKey, razorpaySubscriptionId: current.razorpaySubscriptionId }, true);
+  await prisma.subscription.update({ where: { id: current.id }, data: { cancelledAt: now, pendingPlanId: null, pendingInterval: null } });
+  await audit({ actorUserId: null, action: "billing.subscription_cancelled", subject: businessId, detail: { productKey, planId: current.planId, periodEnd: current.currentPeriodEnd?.toISOString() ?? null } });
+}
+
+/** Takes the cancel back while the paid period still runs. Once it has ended, the business simply buys again. */
+export async function reactivateSubscription(businessId: string, productKey: string, now: Date = new Date()) {
+  await requireBusiness(businessId, productKey);
+  const current = await prisma.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
+  if (!current || current.status !== "ACTIVE" || !current.cancelledAt) throw new BillingError("There is no cancelled plan to reactivate.");
+  if (!current.currentPeriodEnd || current.currentPeriodEnd <= now) throw new BillingError("This plan has already ended. Choose a plan to start again.");
+  await prisma.subscription.update({ where: { id: current.id }, data: { cancelledAt: null } });
+  await audit({ actorUserId: null, action: "billing.subscription_reactivated", subject: businessId, detail: { productKey, planId: current.planId } });
 }
 
 /** The frozen invoice for one paid payment, so the product can print it with its own design. */

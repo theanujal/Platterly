@@ -2,12 +2,18 @@ import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { newId, platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
+import { newId, platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer, type PlatformBillingAction } from "@platterly/contract";
 import { prisma } from "@/lib/db";
+import { unusedCredit } from "@/modules/billing/math";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { POST as checkoutPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/checkout/route";
 import { POST as verifyPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/verify/route";
+import { POST as quotePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/quote/route";
+import { POST as downgradePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/downgrade/route";
+import { POST as undoDowngradePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/undo-downgrade/route";
+import { POST as cancelPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/cancel/route";
+import { POST as reactivatePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/reactivate/route";
 
 // The Store's buy calls (Platform to Ops). Runs against the dev database with its own product and business, removed afterwards; Razorpay is a stand-in.
 const KEY = "plrbuy";
@@ -44,11 +50,11 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const call = (action: "checkout" | "verify", biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
+const call = (action: PlatformBillingAction, biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
   const text = JSON.stringify(body);
   const url = `http://127.0.0.1:3200${platformCheckoutPath(biz, key, action)}`;
   const request = new Request(url, { method: "POST", headers: secret === null ? {} : signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", url) }), body: text });
-  const handler = action === "checkout" ? checkoutPOST : verifyPOST;
+  const handler = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, downgrade: downgradePOST, "undo-downgrade": undoDowngradePOST, cancel: cancelPOST, reactivate: reactivatePOST }[action];
   return handler(request, { params: Promise.resolve({ businessId: biz, productKey: key }) });
 };
 const razorpaySig = (orderId: string, paymentId: string) => createHmac("sha256", KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
@@ -88,10 +94,12 @@ beforeEach(async () => {
   await prisma.product.update({ where: { key: KEY }, data: { manifest } });
   await prisma.platformBillingProfile.upsert({ where: { id: "platform" }, create: { id: "platform", legalName: "Platterly Pvt Ltd", state: "Karnataka", stateCode: "29", gstin: "29AAAAA0000A1Z5", invoicePrefix: "FP" }, update: { legalName: "Platterly Pvt Ltd", state: "Karnataka", stateCode: "29", gstin: "29AAAAA0000A1Z5", invoicePrefix: "FP" } });
   await prisma.business.create({ data: { id: BIZ, name: "PlrBuy Spice Route", ownerEmail: "o@example.test", ownerName: "O", products: { create: { productKey: KEY } } } });
+  await createPlan({ productKey: KEY, code: "max", name: "Max", isTrial: false, priceMonthly: 2000, priceAnnual: 20000, gstPercent: 18, highlights: [], entitlements: { maxCustomers: 1000 } }, null);
   await createPlan({ productKey: KEY, code: "pro", name: "Pro", isTrial: false, priceMonthly: 1000, priceAnnual: 10000, gstPercent: 18, highlights: [], entitlements: { maxCustomers: 100 } }, null);
 });
 afterEach(clean);
 
+const planIdOf = async (code: string) => (await prisma.plan.findFirstOrThrow({ where: { productKey: KEY, code } })).id;
 const planId = async () => (await prisma.plan.findFirstOrThrow({ where: { productKey: KEY, code: "pro" } })).id;
 
 describe("Store buy calls: who may make them", () => {
@@ -171,5 +179,130 @@ describe("Store buy calls: checkout and verify", () => {
   it("a bad body is a plain 400", async () => {
     expect((await call("checkout", BIZ, { planId: "x" })).status).toBe(400);
     expect((await call("verify", BIZ, { nonsense: true })).status).toBe(400);
+  });
+});
+
+const DAYS = 86_400_000;
+/** Pays for a plan through the Store's own calls, as the Store does. */
+async function pay(code: string, interval: "MONTHLY" | "ANNUAL", paymentId: string) {
+  const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf(code), interval, buyer })).json()) as { razorpayOrderId: string };
+  const ok = await call("verify", BIZ, { razorpayOrderId: checkout.razorpayOrderId, razorpayPaymentId: paymentId, signature: razorpaySig(checkout.razorpayOrderId, paymentId) });
+  expect(ok.status).toBe(200);
+  return checkout.razorpayOrderId;
+}
+
+describe("upgrade credit: the arithmetic", () => {
+  const start = new Date("2026-01-01T00:00:00Z");
+  const end = new Date(start.getTime() + 365 * DAYS);
+  it("values the unused days of what was paid, never more than was paid and never below zero", () => {
+    const at = (daysUsed: number) => unusedCredit({ paidAmount: 10000, periodStart: start, periodEnd: end, currentPeriodEnd: end, now: new Date(start.getTime() + daysUsed * DAYS) });
+    expect(at(0)).toEqual({ credit: 10000, daysLeft: 365 });
+    expect(at(292)).toEqual({ credit: 2000, daysLeft: 73 });
+    expect(at(365)).toEqual({ credit: 0, daysLeft: 0 });
+    expect(at(400)).toEqual({ credit: 0, daysLeft: 0 });
+    expect(at(-30).credit).toBe(10000);
+    expect(unusedCredit({ paidAmount: 0, periodStart: start, periodEnd: end, currentPeriodEnd: end, now: start })).toEqual({ credit: 0, daysLeft: 0 });
+  });
+  it("rounds to paise", () => {
+    const r = unusedCredit({ paidAmount: 999.99, periodStart: start, periodEnd: end, currentPeriodEnd: end, now: new Date(start.getTime() + 100 * DAYS) });
+    expect(r.credit).toBe(Math.round(r.credit * 100) / 100);
+    expect(r.credit).toBeLessThan(999.99);
+  });
+});
+
+describe("Store buy calls: upgrade credit, downgrade, cancel", () => {
+  it("a first purchase has no credit: the quote is the plan's own price with GST", async () => {
+    const res = await call("quote", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ planName: "Pro", planPrice: 10000, credit: 0, creditDays: 0, creditLabel: null, amount: 10000, gstAmount: 1800, total: 11800 });
+  });
+
+  it("an upgrade part-way through a paid year takes the unused days off before GST, charges the net, and freezes the credit on the invoice", async () => {
+    await pay("pro", "ANNUAL", "pay_a");
+    const quote = (await (await call("quote", BIZ, { planId: await planIdOf("max"), interval: "ANNUAL" })).json()) as { planPrice: number; credit: number; creditDays: number; creditLabel: string; amount: number; gstAmount: number; total: number };
+    // Paid a moment ago for a full year: nearly all of the 10,000 comes back as credit.
+    expect(quote.planPrice).toBe(20000);
+    expect(quote.credit).toBeGreaterThan(9990);
+    expect(quote.credit).toBeLessThanOrEqual(10000);
+    expect(quote.creditDays).toBeGreaterThanOrEqual(364);
+    expect(quote.creditLabel).toMatch(/^Credit for \d+ unused days of Pro$/);
+    expect(quote.amount).toBeCloseTo(20000 - quote.credit, 2);
+    expect(quote.gstAmount).toBeCloseTo(quote.amount * 0.18, 2);
+    expect(quote.total).toBeCloseTo(quote.amount * 1.18, 2);
+
+    const orderId = await pay("max", "ANNUAL", "pay_b");
+    const paid = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: orderId } });
+    expect(Number(paid.creditAmount)).toBeGreaterThan(9990);
+    expect(Number(paid.amount) + Number(paid.creditAmount)).toBeCloseTo(20000, 2);
+    expect(Number(paid.total)).toBeCloseTo(Number(paid.amount) * 1.18, 2);
+    const credit = (paid.invoiceSnapshot as { credit?: { planPrice: number; amount: number; label: string } }).credit;
+    expect(credit).toMatchObject({ planPrice: 20000, label: "Credit for unused days of Pro" });
+    expect(credit!.amount).toBe(Number(paid.creditAmount));
+  });
+
+  it("the same plan again (a renewal) and a cheaper plan get no credit", async () => {
+    await pay("max", "ANNUAL", "pay_c");
+    for (const code of ["max", "pro"]) expect(((await (await call("quote", BIZ, { planId: await planIdOf(code), interval: "ANNUAL" })).json()) as { credit: number }).credit, code).toBe(0);
+  });
+
+  it("a bad quote or downgrade body is a plain 400, and an unknown plan is refused", async () => {
+    expect((await call("quote", BIZ, { planId: "x" })).status).toBe(400);
+    expect((await call("quote", BIZ, { planId: "nope", interval: "ANNUAL" })).status).toBe(400);
+    expect((await call("downgrade", BIZ, { interval: "ANNUAL" })).status).toBe(400);
+  });
+
+  it("a downgrade is scheduled for the end of the paid period and can be undone; it needs a paid plan", async () => {
+    expect((await call("downgrade", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL" })).status).toBe(400);
+    await pay("max", "ANNUAL", "pay_d");
+    const ok = await call("downgrade", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL" });
+    expect(ok.status).toBe(200);
+    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } });
+    expect(sub).toMatchObject({ status: "ACTIVE", pendingPlanId: await planIdOf("pro"), pendingInterval: "ANNUAL" });
+    expect(sub.planId).toBe(await planIdOf("max"));
+    expect((await call("undo-downgrade", BIZ, {})).status).toBe(200);
+    expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } })).pendingPlanId).toBeNull();
+  });
+
+  it("cancel keeps the plan ACTIVE to the end of its paid days and stops the reminders; reactivate takes it back; paying again clears it too", async () => {
+    expect((await call("cancel", BIZ, {})).status).toBe(400);
+    await pay("pro", "ANNUAL", "pay_e");
+    expect((await call("reactivate", BIZ, {})).status).toBe(400);
+    expect((await call("cancel", BIZ, {})).status).toBe(200);
+    expect((await call("cancel", BIZ, {})).status).toBe(200);
+    let sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } });
+    expect(sub.status).toBe("ACTIVE");
+    expect(sub.cancelledAt).not.toBeNull();
+    const { sendRenewalReminders, sendGraceNotices } = await import("@/modules/subscriptions/subscriptions");
+    await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: new Date(Date.now() + 5 * DAYS) } });
+    expect(await sendRenewalReminders(new Date(), KEY)).toBe(0);
+    await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: new Date(Date.now() - 1 * DAYS) } });
+    expect(await sendGraceNotices(new Date(), KEY)).toBe(0);
+    await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: new Date(Date.now() + 100 * DAYS) } });
+
+    expect((await call("reactivate", BIZ, {})).status).toBe(200);
+    sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } });
+    expect(sub.cancelledAt).toBeNull();
+
+    await call("cancel", BIZ, {});
+    await pay("max", "ANNUAL", "pay_f");
+    expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } })).cancelledAt).toBeNull();
+  });
+
+  it("a cancel whose paid days have already run out cannot be reactivated", async () => {
+    await pay("pro", "ANNUAL", "pay_g");
+    await call("cancel", BIZ, {});
+    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } });
+    await prisma.subscription.update({ where: { id: sub.id }, data: { currentPeriodEnd: new Date(Date.now() - DAYS) } });
+    expect((await call("reactivate", BIZ, {})).status).toBe(400);
+  });
+
+  it("the billing view tells the Store about a cancel (which also drops a scheduled downgrade)", async () => {
+    const { getBillingView } = await import("@/modules/billing/billing");
+    await pay("max", "ANNUAL", "pay_h");
+    await call("downgrade", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL" });
+    await call("cancel", BIZ, {});
+    const view = await getBillingView(BIZ, KEY);
+    expect(view.subscription?.cancelledAt).not.toBeNull();
+    expect(view.subscription?.pending).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import "server-only";
-import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, requestTarget, signedHeaders, verifyRequest } from "@platterly/contract";
-import { BillingError, startCheckout, verifyCheckout } from "@/modules/billing/billing";
+import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
+import { BillingError, cancelScheduledDowngrade, cancelSubscription, quoteCheckout, reactivateSubscription, scheduleDowngrade, startCheckout, verifyCheckout } from "@/modules/billing/billing";
 import { RazorpayError } from "@/modules/billing/razorpay";
 
 /**
@@ -15,11 +15,11 @@ export function platformBillingSecrets(env: NodeJS.ProcessEnv = process.env): { 
 }
 
 /**
- * POST /api/platform/businesses/{businessId}/products/{productKey}/billing/{checkout|verify}. Signed request in (route-bound, so a signature for one
+ * POST /api/platform/businesses/{businessId}/products/{productKey}/billing/{checkout|verify|quote|downgrade|undo-downgrade|cancel|reactivate}. Signed request in (route-bound, so a signature for one
  * business's route is no good for another's), signed answer out carrying the request's id. Anything wrong with the signature looks the same: 401. Platform has
  * already checked that the signed-in person may buy for this business; Ops checks that the business really is registered for the product (an unknown pair is 404).
  */
-export async function handlePlatformBillingPost(request: Request, params: { businessId: string; productKey: string; action: "checkout" | "verify" }): Promise<Response> {
+export async function handlePlatformBillingPost(request: Request, params: { businessId: string; productKey: string; action: PlatformBillingAction }): Promise<Response> {
   const unauthorized = Response.json({ error: "unauthorized" }, { status: 401 });
   if (process.env.NODE_ENV === "production" && request.headers.get("x-forwarded-proto") !== "https") return unauthorized;
   const secrets = platformBillingSecrets();
@@ -49,6 +49,25 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       // One-time payments only for now (auto-pay is not offered in the Store yet): `autoPay` is ignored, so monthly is a 30-day order as well.
       const { autoPay: _ignored, ...checkout } = parsed.value;
       return reply(200, await startCheckout({ businessId, productKey, ...checkout }));
+    }
+    if (action === "quote" || action === "downgrade") {
+      const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
+      if (typeof o.planId !== "string" || !o.planId || o.planId.length > 80 || (o.interval !== "MONTHLY" && o.interval !== "ANNUAL")) return reply(400, { error: "planId and interval (MONTHLY or ANNUAL) are required" });
+      if (action === "quote") return reply(200, await quoteCheckout({ businessId, productKey, planId: o.planId, interval: o.interval }));
+      await scheduleDowngrade({ businessId, productKey, planId: o.planId, interval: o.interval });
+      return reply(200, { ok: true });
+    }
+    if (action === "undo-downgrade") {
+      await cancelScheduledDowngrade(businessId, productKey);
+      return reply(200, { ok: true });
+    }
+    if (action === "cancel") {
+      await cancelSubscription(businessId, productKey);
+      return reply(200, { ok: true });
+    }
+    if (action === "reactivate") {
+      await reactivateSubscription(businessId, productKey);
+      return reply(200, { ok: true });
     }
     const parsed = parseBillingVerifyRequest(json);
     if (!parsed.ok) return reply(400, { error: parsed.error });

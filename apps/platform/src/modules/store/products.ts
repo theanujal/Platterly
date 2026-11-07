@@ -48,7 +48,14 @@ export function applyBilling(products: SampleProduct[], billing: PlatformBusines
       return {
         ...product,
         status: "SUBSCRIBED" as const,
-        subscription: { planId: sub.plan.id, planName: sub.plan.name, interval: sub.billingInterval ?? "MONTHLY", nextRenewal: sub.currentPeriodEnd?.slice(0, 10) ?? "" },
+        subscription: {
+          planId: sub.plan.id,
+          planName: sub.plan.name,
+          interval: sub.billingInterval ?? "MONTHLY",
+          nextRenewal: sub.currentPeriodEnd?.slice(0, 10) ?? "",
+          ...(sub.pending ? { pending: { planId: sub.pending.planId, planName: sub.pending.planName, interval: sub.pending.interval ?? "MONTHLY" } } : {}),
+          ...(sub.cancelledAt ? { cancelledAt: sub.cancelledAt.slice(0, 10) } : {}),
+        },
       };
     }
     return product;

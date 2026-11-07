@@ -30,7 +30,7 @@ export interface SampleProduct {
   status: ProductStatus;
   plans: PlanOffer[];
   /** Present when SUBSCRIBED. `nextRenewal` is an ISO date, or empty when Ops holds no period end (a hand-assigned plan). */
-  subscription?: { planId: string; interval: Interval; nextRenewal: string; /** The plan's name from Ops, used when the plan is not on sale (a hand-assigned or retired plan). */ planName?: string };
+  subscription?: { planId: string; interval: Interval; nextRenewal: string; /** The plan's name from Ops, used when the plan is not on sale (a hand-assigned or retired plan). */ planName?: string; /** A lower plan scheduled for the end of the paid period. */ pending?: { planId: string; planName: string; interval: Interval }; /** ISO date the owner chose to stop renewing; the paid days still run out. */ cancelledAt?: string };
   /** Present when TRIAL. ISO date. */
   trialEndsAt?: string;
 }

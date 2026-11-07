@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Buyer, PlanOffer } from "@platterly/contract";
 import { inr, longDate, type Interval } from "@/modules/store/format";
 import { checkBuyer, type BuyerField } from "@/modules/store/buyer-check";
+import type { StoreQuote } from "@/modules/store/ops-checkout";
 import { changeKind, type ChangeKind, type SampleProduct } from "@/modules/store/sample-catalogue";
 import { openRazorpay, type RazorpayOrder } from "./razorpay";
 import "./store.css";
@@ -36,6 +38,12 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [invoice, setInvoice] = useState<string | null>(null);
+  // The price Ops works out for this business (credit for unused days on an upgrade), and the plan changes (downgrade, undo, cancel, reactivate).
+  const router = useRouter();
+  const [quote, setQuote] = useState<StoreQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [changing, setChanging] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
 
   const kind = chosen?.kind;
   const steps = ["Choose plan", kind === "downgrade" ? "Confirm downgrade" : "Confirm payment", "Confirmation"];
@@ -43,19 +51,55 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
   const price = chosen && (chosen.interval === "ANNUAL" ? chosen.plan.annual : chosen.plan.monthly);
 
   function choose(plan: PlanOffer) {
-    setChosen({ plan, interval, kind: changeKind(product, plan) });
+    const kind = changeKind(product, plan);
+    setChosen({ plan, interval, kind });
     setStep("confirm");
+    setQuote(null);
+    setQuoteError(null);
+    setPayError(null);
+    // Live purchases show Ops's own price, with any credit for unused days. A downgrade charges nothing today, so it has no quote.
+    if (live && kind !== "downgrade") {
+      void fetch("/api/store/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: plan.id, interval }) })
+        .then(async (res) => (res.ok ? setQuote((await res.json()) as StoreQuote) : setQuoteError("We could not work out your price just now. Please go back and try again.")))
+        .catch(() => setQuoteError("We could not work out your price just now. Please go back and try again."));
+    }
+  }
+
+  /** Downgrade (at the end of the paid period), undo it, stop renewal, or take that back: one call to Ops through the Store, then the page reloads its data. */
+  async function change(kindOfChange: "downgrade" | "undo-downgrade" | "cancel" | "reactivate", plan?: PlanOffer): Promise<boolean> {
+    setChanging(true);
+    setChangeError(null);
+    try {
+      const res = await fetch("/api/store/change", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ change: kindOfChange, productKey: product.key, planId: plan?.id, interval: chosen?.interval ?? interval }) });
+      const answer = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) {
+        setChangeError(answer.message ?? "We could not make that change just now. Please try again in a few minutes.");
+        return false;
+      }
+      router.refresh();
+      return true;
+    } catch {
+      setChangeError("Something went wrong. Please try again.");
+      return false;
+    } finally {
+      setChanging(false);
+    }
   }
   async function confirm(event: React.FormEvent) {
     event.preventDefault();
     const found = checkBuyer(buyer);
     setErrors(found);
     if (Object.keys(found).length) return;
-    // A downgrade and every prototype run are still samples; a purchase in live mode is a real one-time payment.
-    if (!live || !chosen || chosen.kind === "downgrade") {
+    if (!live || !chosen) {
       setStep("done");
       return;
     }
+    // A live downgrade is scheduled with Ops for the end of the paid period; nothing is charged. A live purchase is a real one-time payment.
+    if (chosen.kind === "downgrade") {
+      if (await change("downgrade", chosen.plan)) setStep("done");
+      return;
+    }
+    if (!quote) return;
     setPaying(true);
     setPayError(null);
     try {
@@ -92,7 +136,7 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
       <header className="ps-head">
         <h1>Manage your {product.name} subscription</h1>
         <p className="ps-lede">Choose a plan, confirm your payment and you are done. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Payment is a real one-time payment through Razorpay (test mode until launch). Downgrades are not switched on yet." : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Payments are real one-time payments through Razorpay (test mode until launch). A downgrade starts when your paid days end." : "Prototype with sample data. Nothing is saved or charged."}</p>
       </header>
 
       <ol className="ps-steps" aria-label="Progress">
@@ -106,6 +150,19 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
           {sub && currentPlan && (
             <p className="ps-current">You are on <strong>{currentPlan.name}</strong>, billed {sub.interval === "ANNUAL" ? "yearly" : "monthly"}. Next renewal: {longDate(sub.nextRenewal)}.</p>
           )}
+          {live && sub?.pending && (
+            <div className="ps-current" role="status">
+              A downgrade to <strong>{sub.pending.planName}</strong> ({sub.pending.interval === "ANNUAL" ? "yearly" : "monthly"}) is scheduled for {longDate(sub.nextRenewal)}.{" "}
+              <button type="button" className="ps-linkbtn" disabled={changing} onClick={() => void change("undo-downgrade")}>Undo downgrade</button>
+            </div>
+          )}
+          {live && sub?.cancelledAt && (
+            <div className="ps-current" role="status">
+              You stopped renewal on {longDate(sub.cancelledAt)}. Your plan stays active until {longDate(sub.nextRenewal)}.{" "}
+              <button type="button" className="ps-linkbtn" disabled={changing} onClick={() => void change("reactivate")}>Reactivate</button>
+            </div>
+          )}
+          {changeError && step === "plans" && <p className="ps-error" role="alert">{changeError}</p>}
           {product.status === "TRIAL" && <p className="ps-current">Your trial ends on {longDate(product.trialEndsAt!)}. Choose a plan to keep going.</p>}
           {product.plans.some((p) => p.annual) && (
             <div className="ps-toggle" role="group" aria-label="Billing frequency">
@@ -160,12 +217,12 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
           </details>
           {sub && (
             <div className="ps-cancel">
-              {cancelling === null && <button type="button" className="ps-linkbtn" onClick={() => setCancelling("ask")}>Cancel subscription</button>}
+              {cancelling === null && !(live && sub.cancelledAt) && <button type="button" className="ps-linkbtn" onClick={() => setCancelling("ask")}>Cancel subscription</button>}
               {cancelling === "ask" && (
                 <div role="alertdialog" aria-label="Cancel subscription" className="ps-confirmbox">
-                  <p>Cancel your {product.name} subscription? Auto-pay stops now and the days you have paid for run out as usual, until {longDate(sub.nextRenewal)}.</p>
+                  <p>{live ? `Stop renewing your ${product.name} subscription? It stays active until ${longDate(sub.nextRenewal)}. Nothing is refunded, and you can reactivate any time before then.` : `Cancel your ${product.name} subscription? Auto-pay stops now and the days you have paid for run out as usual, until ${longDate(sub.nextRenewal)}.`}</p>
                   <button type="button" className="ps-secondary" onClick={() => setCancelling(null)}>Keep subscription</button>
-                  <button type="button" className="ps-danger" onClick={() => setCancelling("done")}>Yes, cancel</button>
+                  <button type="button" className="ps-danger" disabled={changing} onClick={async () => { if (!live) return setCancelling("done"); setCancelling((await change("cancel")) ? null : "ask"); }}>{live ? "Yes, stop renewal" : "Yes, cancel"}</button>
                 </div>
               )}
               {cancelling === "done" && <p className="ps-ok" role="status">Sample only: nothing was cancelled.</p>}
@@ -199,13 +256,14 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
                 {kind !== "downgrade" && (
                   <div className="ps-payblock" role="group" aria-label="Payment">
                     {live ? <p className="ps-hint">You pay once, by card, UPI or net banking, through Razorpay. Your plan starts as soon as the payment is confirmed.</p> : <p className="ps-sample-pay" role="note">Sample payment. No card or UPI is used and no money moves. Real Razorpay checkout comes in a later step.</p>}
-                    <p>Amount to pay today: <strong>{inr(price.total)}</strong></p>
+                    <p>Amount to pay today: <strong>{live && quote ? inr(quote.total) : live ? "Working out your price..." : inr(price.total)}</strong></p>
+                    {quoteError && <p className="ps-error" role="alert">{quoteError}</p>}
                   </div>
                 )}
-                {payError && <p className="ps-error" role="alert">{payError}</p>}
+                {(payError ?? changeError) && <p className="ps-error" role="alert">{payError ?? changeError}</p>}
                 <div className="ps-actions">
                   <button type="button" className="ps-secondary" onClick={() => setStep("plans")} disabled={paying}>Back</button>
-                  <button type="submit" className="ps-cta" disabled={paying}>{kind === "downgrade" ? "Schedule downgrade" : paying ? "Please wait..." : live ? `Pay ${inr(price.total)}` : "Simulate successful payment"}</button>
+                  <button type="submit" className="ps-cta" disabled={paying || changing || (live && kind !== "downgrade" && !quote)}>{kind === "downgrade" ? (changing ? "Please wait..." : "Schedule downgrade") : paying ? "Please wait..." : live ? (quote ? `Pay ${inr(quote.total)}` : "Pay") : "Simulate successful payment"}</button>
                 </div>
               </form>
             )}
@@ -214,12 +272,12 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
                 <h2>{kind === "downgrade" ? "Downgrade scheduled" : kind === "upgrade" ? "Upgrade confirmed" : "Order confirmed"}</h2>
                 <p>
                   {kind === "downgrade"
-                    ? `You move to ${chosen.plan.name} on ${longDate(sub!.nextRenewal)}. Until then you keep ${currentPlan!.name}, and nothing is charged today.`
+                    ? `You move to ${chosen.plan.name} on ${longDate(sub!.nextRenewal)}. Until then you keep ${currentPlan?.name ?? sub!.planName ?? "your current plan"}, and nothing is charged today.`
                     : live
-                      ? `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} paid. Your plan is now active.`
+                      ? `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr((quote ?? price).total)} paid. Your plan is now active.`
                       : `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} would be charged today.`}
                 </p>
-                {live && kind !== "downgrade" ? <p role="status">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>}
+                {live && kind === "downgrade" ? <p role="status">You can undo this from the plans page until then.</p> : live ? <p role="status">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>}
                 <Link className="ps-cta" href="/">Back to Store</Link>
               </section>
             )}
@@ -228,9 +286,20 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
             <h2>{product.name} {chosen.plan.name}</h2>
             <p className="ps-desc">{chosen.interval === "ANNUAL" ? "Billed once a year" : "Billed every month"}</p>
             <dl>
-              <div><dt>Plan price</dt><dd data-testid="amount">{inr(price.amount)}</dd></div>
-              <div><dt>GST ({price.gstPercent}%)</dt><dd data-testid="gst">{inr(price.gstAmount)}</dd></div>
-              <div className="ps-sum-total"><dt>{kind === "downgrade" ? "Total from " + longDate(sub!.nextRenewal) : "Total today"}</dt><dd data-testid="total">{kind === "downgrade" ? inr(price.total) : inr(price.total)}</dd></div>
+              {live && quote && kind !== "downgrade" ? (
+                <>
+                  <div><dt>Plan price</dt><dd data-testid="amount">{inr(quote.planPrice)}</dd></div>
+                  {quote.credit > 0 && <div><dt>{quote.creditLabel ?? "Credit for unused days"}</dt><dd data-testid="credit">&minus;{inr(quote.credit)}</dd></div>}
+                  <div><dt>GST ({quote.gstPercent}%)</dt><dd data-testid="gst">{inr(quote.gstAmount)}</dd></div>
+                  <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(quote.total)}</dd></div>
+                </>
+              ) : (
+                <>
+                  <div><dt>Plan price</dt><dd data-testid="amount">{inr(price.amount)}</dd></div>
+                  <div><dt>GST ({price.gstPercent}%)</dt><dd data-testid="gst">{inr(price.gstAmount)}</dd></div>
+                  <div className="ps-sum-total"><dt>{kind === "downgrade" ? "Total from " + longDate(sub!.nextRenewal) : "Total today"}</dt><dd data-testid="total">{inr(price.total)}</dd></div>
+                </>
+              )}
             </dl>
             {kind === "downgrade" && <p className="ps-hint">No charge today. This plan starts at your next renewal.</p>}
           </aside>

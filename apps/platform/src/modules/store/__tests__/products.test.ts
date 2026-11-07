@@ -28,6 +28,13 @@ describe("Store: a business's real subscriptions on the products", () => {
     expect(applyBilling([product("rivo")], billing("catering", sub({})))[0].status).toBe("NONE");
   });
 
+  it("a scheduled downgrade and a cancel come through, so the Manage page can show and undo them", () => {
+    const [p] = applyBilling([product("caterly")], billing("catering", sub({ pending: { planId: "plan_lite", planName: "Lite", interval: "MONTHLY" }, cancelledAt: "2026-11-08T10:00:00.000Z" })));
+    expect(p.subscription?.pending).toEqual({ planId: "plan_lite", planName: "Lite", interval: "MONTHLY" });
+    expect(p.subscription?.cancelledAt).toBe("2026-11-08");
+    expect(applyBilling([product("caterly")], billing("catering", sub({})))[0].subscription).not.toHaveProperty("pending");
+  });
+
   it("a paid plan with no period end still shows, with an empty renewal date", () => {
     const [p] = applyBilling([product("caterly")], billing("catering", sub({ currentPeriodEnd: null })));
     expect(p.subscription?.nextRenewal).toBe("");

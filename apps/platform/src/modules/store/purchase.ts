@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
 import { loadAccountOverview } from "@/modules/account/overview";
 import { checkBuyer } from "./buyer-check";
-import { startStoreCheckout, verifyStoreCheckout, type CheckoutFailure } from "./ops-checkout";
+import { changeStoreSubscription, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout, type CheckoutFailure, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { STORE_KEY_FOR_OPS_KEY } from "./products";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
@@ -57,4 +57,37 @@ export async function finishPurchase(session: Session | null, input: { productKe
   const signature = text(input.signature, 200);
   if (!productKey || !razorpayOrderId || !razorpayPaymentId || !signature) return { ok: false, reason: "bad_request" };
   return verifyStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), razorpayOrderId, razorpayPaymentId, signature });
+}
+
+const planAndInterval = (input: { productKey?: unknown; planId?: unknown; interval?: unknown }) => {
+  const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
+  const planId = text(input.planId, 80);
+  const interval: "MONTHLY" | "ANNUAL" | null = input.interval === "MONTHLY" ? "MONTHLY" : input.interval === "ANNUAL" ? "ANNUAL" : null;
+  return productKey && planId && interval ? { productKey, planId, interval } : null;
+};
+
+/** The price of a plan for the signed-in person's own business, with any upgrade credit, as Ops works it out. */
+export async function quotePurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown }): Promise<PurchaseResult<StoreQuote>> {
+  const who = await buyerBusiness(session);
+  if (!who.ok) return who;
+  const wanted = planAndInterval(input);
+  if (!wanted) return { ok: false, reason: "bad_request" };
+  return quoteStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(wanted.productKey), planId: wanted.planId, interval: wanted.interval });
+}
+
+const CHANGES: readonly SubscriptionChange[] = ["downgrade", "undo-downgrade", "cancel", "reactivate"];
+
+/** Downgrade at the end of the paid period, undo it, cancel (stop renewal) or reactivate, for the signed-in person's own business. */
+export async function changePlan(session: Session | null, input: { change?: unknown; productKey?: unknown; planId?: unknown; interval?: unknown }): Promise<PurchaseResult<{ ok: true }>> {
+  const who = await buyerBusiness(session);
+  if (!who.ok) return who;
+  const change = CHANGES.find((c) => c === input.change);
+  const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
+  if (!change || !productKey) return { ok: false, reason: "bad_request" };
+  if (change === "downgrade") {
+    const wanted = planAndInterval(input);
+    if (!wanted) return { ok: false, reason: "bad_request" };
+    return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change, planId: wanted.planId, interval: wanted.interval });
+  }
+  return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change });
 }

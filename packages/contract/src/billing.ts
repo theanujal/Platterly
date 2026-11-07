@@ -144,6 +144,8 @@ export interface BillingView {
     trialEndsAt: string | null;
     currentPeriodEnd: string | null;
     pending: { planId: string; planName: string; interval: BillingInterval | null } | null;
+    /** When the owner chose to stop renewing (the paid period still runs out as usual). Absent from an older ops. */
+    cancelledAt?: string | null;
     /** Monthly auto-pay; null (or absent, from an older ops) for yearly and hand-assigned plans. `nextChargeAt` only while it is on. */
     autoPay?: { status: AutoPayStatus; nextChargeAt: string | null } | null;
   } | null;
