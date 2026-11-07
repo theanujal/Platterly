@@ -39,6 +39,9 @@ export const IDENTITY_TABLES = ["legacy_mappings", "user_identities", "users"] a
 // F3.2.1 organisation schema (third migration). Tables and the functions its triggers call; the objects the guard inventory must allow.
 export const ORG_MIGRATION = "20261106150000_organisation_schema";
 export const ORG_TABLES = ["audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events"] as const;
+// The read-only Caterly team list (fifth migration): one new table, no functions. The guard inventory must allow it, and only once the migration is applied.
+export const TEAM_MIGRATION = "20261107170000_organisation_team_members";
+export const TEAM_TABLES = ["organisation_team_members"] as const;
 export const ORG_FUNCTIONS = [
   "audit_logs_append_only",
   "membership_product_slots_event_required",
@@ -384,6 +387,7 @@ export const INVENTORY_POLICY: InventoryPolicy = {
     "table:public.user_identities",
     "table:public.legacy_mappings",
     ...["audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events"].map((t) => `table:public.${t}`),
+    ...TEAM_TABLES.map((t) => `table:public.${t}`),
     ...[
       "audit_logs_append_only",
       "membership_product_slots_event_required",
@@ -404,7 +408,7 @@ export const INVENTORY_POLICY: InventoryPolicy = {
 
 // What the identity tables should be, given the migrations applied to a database.
 export function expectedPublicTables(appliedMigrations: readonly string[]): string[] {
-  return [...(appliedMigrations.includes(IDENTITY_MIGRATION) ? IDENTITY_TABLES : []), ...(appliedMigrations.includes(ORG_MIGRATION) ? ORG_TABLES : [])];
+  return [...(appliedMigrations.includes(IDENTITY_MIGRATION) ? IDENTITY_TABLES : []), ...(appliedMigrations.includes(ORG_MIGRATION) ? ORG_TABLES : []), ...(appliedMigrations.includes(TEAM_MIGRATION) ? TEAM_TABLES : [])];
 }
 
 export function findUnsettled(runs: readonly Row[]): Row[] {

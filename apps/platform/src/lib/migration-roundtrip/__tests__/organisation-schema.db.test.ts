@@ -230,7 +230,8 @@ describe.skipIf(credentials === null)("F3.2.1 organisation schema constraints an
       const [o1, o2] = [await org(), await org()];
       const [u1, u2] = [await user(), await user()];
       const m1 = await member(o1, u1);
-      const m2 = await member(o2, u1);
+      // One person is the active Admin of at most one business (20261107160000), so this person's second membership is a disabled one: the slot rules under test are the same.
+      const m2 = await member(o2, u1, "disabled");
       const m3 = await member(o2, u2, "disabled");
       await product(o1);
       await product(o2);

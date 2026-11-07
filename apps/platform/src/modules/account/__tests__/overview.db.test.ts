@@ -34,7 +34,7 @@ function readOnly(tx: Tx): AccountDb {
         return Reflect.get(target, prop, receiver);
       },
     });
-  return { user: guard(tx.user), organisationMember: guard(tx.organisationMember), organisationProduct: guard(tx.organisationProduct) } as unknown as AccountDb;
+  return { user: guard(tx.user), organisationMember: guard(tx.organisationMember), organisationProduct: guard(tx.organisationProduct), organisationTeamMember: guard(tx.organisationTeamMember) } as unknown as AccountDb;
 }
 
 describe.skipIf(credentials === null)("Account data layer against the real database", () => {
@@ -109,7 +109,7 @@ describe.skipIf(credentials === null)("Account data layer against the real datab
       const org = await business(tx, id, "Spice Route Caterers");
       const o = okOverview(await loadAccountOverview(readOnly(tx), testSession(id)));
       expect(o.user.emailVerified).toBe(true);
-      expect(o.business).toEqual({ state: "ok", business: { id: org, name: "Spice Route Caterers", status: "active", role: "Admin" }, products: { caterly: "linked", rivo: "none" } });
+      expect(o.business).toEqual({ state: "ok", business: { id: org, name: "Spice Route Caterers", status: "active", role: "Admin" }, products: { caterly: "linked", rivo: "none" }, team: [] });
     }));
 
   it("a suspended business and a suspended link are reported as such; unknown product keys are not shown", () =>

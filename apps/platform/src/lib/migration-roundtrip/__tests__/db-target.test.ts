@@ -354,6 +354,15 @@ describe("expected tables by applied migration", () => {
       "audit_logs", "membership_product_slots", "organisation_creation_requests", "organisation_members", "organisation_product_unlinks", "organisation_products", "organisations", "outbox_events",
     ]);
   });
+
+  it("adds the Caterly team table only once its own migration is applied, and the guard allows exactly that table", () => {
+    const upToOrg = ["20261101000000_baseline", "20261104190000_identity_tables", "20261106150000_organisation_schema"];
+    expect(expectedPublicTables(upToOrg)).not.toContain("organisation_team_members");
+    expect(expectedPublicTables([...upToOrg, "20261107160000_one_business_per_admin"])).not.toContain("organisation_team_members");
+    expect(expectedPublicTables([...upToOrg, "20261107160000_one_business_per_admin", "20261107170000_organisation_team_members"])).toContain("organisation_team_members");
+    expect(INVENTORY_POLICY.allowedObjects).toContain("table:public.organisation_team_members");
+    expect(INVENTORY_POLICY.allowedObjects.filter((o) => o.includes("team"))).toEqual(["table:public.organisation_team_members"]);
+  });
 });
 
 describe("dependency check: the TOAST exception is narrow", () => {

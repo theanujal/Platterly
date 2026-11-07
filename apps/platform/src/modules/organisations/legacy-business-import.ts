@@ -1,5 +1,6 @@
 import { isId } from "@platterly/contract";
 import type { Prisma } from "@/generated/prisma/client";
+import { findUserIdByEmail } from "../users/standing";
 import { createOrganisation } from "./create";
 import type { Context } from "./errors";
 
@@ -51,12 +52,12 @@ export async function importCaterlyBusinesses(
       continue;
     }
     const email = emailOf.get(owner.userId);
-    const user = email ? await tx.user.findFirst({ where: { email }, select: { id: true } }) : null;
-    if (!user) {
+    const userId = email ? await findUserIdByEmail(tx, email) : null;
+    if (!userId) {
       report.waitingForFirstSignIn.push(org.id);
       continue;
     }
-    const result = await createOrganisation(tx, ctx, { userId: user.id, idempotencyKey: `caterly-${org.id}`, name: org.name, productKey: PRODUCT_KEY, organisationId: org.businessId });
+    const result = await createOrganisation(tx, ctx, { userId, idempotencyKey: `caterly-${org.id}`, name: org.name, productKey: PRODUCT_KEY, organisationId: org.businessId });
     if (!result.ok) {
       report.refused.push({ organisationId: org.id, code: result.code });
       continue;

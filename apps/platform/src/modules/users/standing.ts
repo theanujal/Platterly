@@ -17,3 +17,9 @@ export async function getAccountUser(tx: Pick<Prisma.TransactionClient, "user">,
   const row = await tx.user.findUnique({ where: { id: userId }, select: { id: true, email: true, status: true, emailVerifiedAt: true } });
   return row === null ? null : { id: row.id, email: row.email, status: row.status, emailVerified: row.emailVerifiedAt !== null };
 }
+
+/** The id of the Platform user whose sign-in email is exactly this, or null. Read-only; the Caterly business import uses it to find a business owner's person. */
+export async function findUserIdByEmail(tx: Pick<Prisma.TransactionClient, "user">, email: string): Promise<string | null> {
+  const row = await tx.user.findFirst({ where: { email }, select: { id: true } });
+  return row?.id ?? null;
+}

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { checkHistory } from "../../../lib/migration-roundtrip/history";
-import { Credentials, GuardedTarget, IDENTITY_TABLES, ORG_TABLES, RunSequence, loadCredentials, migrationFolders, openGuarded, type ScenarioQuery } from "../../../lib/migration-roundtrip/__tests__/db-target";
+import { Credentials, GuardedTarget, IDENTITY_TABLES, ORG_TABLES, TEAM_TABLES, RunSequence, loadCredentials, migrationFolders, openGuarded, type ScenarioQuery } from "../../../lib/migration-roundtrip/__tests__/db-target";
 import { EMAIL_TRIM_CODES, normaliseEmail } from "../email";
 
 // Run 2 of 4 (constraint tests): real PostgreSQL behaviour of the identity tables. Every case runs inside a transaction that is rolled back,
@@ -60,7 +60,7 @@ describe.skipIf(credentials === null)("R2 identity constraints on a real Postgre
     run.step("preconditions", async () => {
       const verdict = checkHistory(await target.migrationRows(), migrationFolders());
       expect(verdict.ok ? [] : verdict.problems).toEqual([]);
-      expect(await target.publicRelations()).toEqual(["_prisma_migrations", ...IDENTITY_TABLES, ...ORG_TABLES].sort());
+      expect(await target.publicRelations()).toEqual(["_prisma_migrations", ...IDENTITY_TABLES, ...ORG_TABLES, ...TEAM_TABLES].sort());
       expect(await target.identityCounts()).toEqual({ legacy_mappings: 0, user_identities: 0, users: 0 });
     }));
 

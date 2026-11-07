@@ -47,12 +47,16 @@ describe.skipIf(credentials === null)("F3.2.2 organisation services against the 
   const key = () => `idem-key-${Date.now()}-${keyCounter++}`;
   const create = async (tx: Tx, userId: string, productKey = "alpha", name = "Acme Catering") => ok(await createOrganisation(tx, ctx, { userId, idempotencyKey: key(), name, productKey })).organisationId;
 
-  /** A person holding a product in ANOTHER business, seeded directly (a service transaction may change only one organisation). */
+  /**
+   * A person holding a product in ANOTHER business, seeded directly (a service transaction may change only one organisation). The membership is a disabled one:
+   * a disabled member keeps the slot (C8), and one person can be the ACTIVE Admin of only one business (20261107160000), so this is how a person comes to hold
+   * a product elsewhere while the slot rule is the one under test.
+   */
   const seedHolding = async (tx: Tx, userId: string, productKey: string) => {
     const orgId = `biz_${randomBytes(16).toString("hex")}`;
     await tx.organisation.create({ data: { id: orgId, name: "Elsewhere" } });
     await tx.organisationProduct.create({ data: { organisationId: orgId, productKey } });
-    const m = await tx.organisationMember.create({ data: { organisationId: orgId, userId, centralRole: "admin", status: "active" }, select: { id: true } });
+    const m = await tx.organisationMember.create({ data: { organisationId: orgId, userId, centralRole: "admin", status: "disabled" }, select: { id: true } });
     const slot = await tx.membershipProductSlot.create({ data: { userId, productKey, organisationId: orgId, memberId: m.id }, select: { slotId: true } });
     await writeAudit(tx, { action: "slot.allocated", outcome: "done", initiator: ctx.initiator, executor: ctx.executor, organisationId: orgId, subject: { type: "slot", id: slot.slotId } });
   };
