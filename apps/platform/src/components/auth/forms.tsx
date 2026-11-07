@@ -22,11 +22,11 @@ function providerQuery(params: URLSearchParams): string {
   return kept.toString();
 }
 
-async function post(path: string, body: unknown): Promise<{ status: number; code?: string }> {
+async function post(path: string, body: unknown): Promise<{ status: number; code?: string; twoFactorRedirect?: boolean }> {
   try {
     const res = await fetch(`/api/auth${path}`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
-    const json = (await res.json().catch(() => ({}))) as { code?: string };
-    return { status: res.status, code: json.code };
+    const json = (await res.json().catch(() => ({}))) as { code?: string; twoFactorRedirect?: boolean };
+    return { status: res.status, code: json.code, twoFactorRedirect: json.twoFactorRedirect === true };
   } catch {
     return { status: 0 };
   }
@@ -190,6 +190,35 @@ export function SignInForm() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
+  // Two-step verification: after a right password, a person who has it is asked for a code before any session exists.
+  const [step, setStep] = useState<"password" | "code">("password");
+  const [code, setCode] = useState("");
+  const [useBackup, setUseBackup] = useState(false);
+  const [trust, setTrust] = useState(false);
+
+  function finish() {
+    // Came from the Account: hand the signed query back to the provider, which finishes the code flow. Came directly: just say so.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full navigation to the provider's API route, not a Next page
+    if (carry.includes("sig=")) window.location.assign(`/api/auth/oauth2/authorize?${carry}`);
+    else setDone(true);
+  }
+
+  async function submitCode(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const res = await post(useBackup ? "/two-factor/verify-backup-code" : "/two-factor/verify-totp", { code: code.trim(), trustDevice: trust });
+    setBusy(false);
+    if (res.status === 200) return finish();
+    if (res.status === 429) return setError(BUSY);
+    // A lost or expired first step (the short-lived cookie is gone): start over from the password.
+    if (res.status === 401 && res.code === "INVALID_TWO_FACTOR_COOKIE") {
+      setStep("password");
+      setPassword("");
+      return setError("Your sign-in timed out. Please sign in again.");
+    }
+    setError(res.status === 401 || res.status === 400 ? (useBackup ? "That backup code is not right, or it was already used." : "That code is not right. Check the code in your authenticator app.") : GENERIC);
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -197,13 +226,11 @@ export function SignInForm() {
     setError("");
     const res = await post("/sign-in/email", { email, password });
     setBusy(false);
-    if (res.status === 200) {
-      // Came from the Account: hand the signed query back to the provider, which finishes the code flow. Came directly: just say so.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full navigation to the provider's API route, not a Next page
-      if (carry.includes("sig=")) window.location.assign(`/api/auth/oauth2/authorize?${carry}`);
-      else setDone(true);
+    if (res.status === 200 && res.twoFactorRedirect) {
+      setStep("code");
       return;
     }
+    if (res.status === 200) return finish();
     if (res.status === 403 && res.code === "EMAIL_NOT_VERIFIED") {
       // The provider sends no code on a refused sign-in, and someone who never got one (an imported person) would otherwise wait for nothing. Ask for a fresh
       // one first; if it is held back by the resend limit, the code from the last minute is still valid, so the page's message stays true.
@@ -219,6 +246,27 @@ export function SignInForm() {
         <a className="pa-btn pa-btn-primary" href={`${window.location.protocol}//${window.location.host.replace(/^auth\./, "account.")}/auth/start`}>
           Go to my Account
         </a>
+      </AuthCard>
+    );
+  if (step === "code")
+    return (
+      <AuthCard title="Two-step verification" lede={useBackup ? "Enter one of your backup codes." : "Enter the 6-digit code from your authenticator app."}>
+        <form className="pl-auth-form" method="post" onSubmit={submitCode}>
+          {error && <Error_>{error}</Error_>}
+          <Field id="code" label={useBackup ? "Backup code" : "Authentication code"} value={code} onChange={setCode} autoComplete="one-time-code" inputMode={useBackup ? undefined : "numeric"} maxLength={useBackup ? 24 : 6} />
+          <div className="pl-terms">
+            <input id="trust" type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
+            <label htmlFor="trust">Trust this device for 30 days</label>
+          </div>
+          <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !hydrated}>
+            {busy ? "Checking…" : "Verify and sign in"}
+          </button>
+        </form>
+        <p className="pl-auth-links">
+          <button type="button" className="pa-link" onClick={() => (setUseBackup(!useBackup), setCode(""), setError(""))}>
+            {useBackup ? "Use my authenticator app" : "Use a backup code"}
+          </button>
+        </p>
       </AuthCard>
     );
   return (

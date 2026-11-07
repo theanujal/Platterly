@@ -10,6 +10,7 @@ import { AccountShell } from "./shell";
 import { useAccount } from "./store";
 import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
+import { TwoFactor } from "./two-factor";
 import { ChangePassword } from "./change-password";
 import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
@@ -151,7 +152,6 @@ export function ProfileView() {
 }
 
 const SECURITY_ROWS = [
-  { label: "Two-step verification", hint: "Add a second check when you sign in.", action: "Set up" },
   { label: "Recovery email", hint: "Where we send a code if you are locked out.", action: "Change recovery email" },
 ];
 
@@ -248,7 +248,7 @@ export function SecurityView() {
       <DataGate>
         {(overview) => (
           <>
-            <PlaceholderNote>Your email and your signed-in devices are real. Changing your password is real. Two-step verification and a recovery email are not built yet.</PlaceholderNote>
+            <PlaceholderNote>Your email and your signed-in devices are real. Changing your password is real. A recovery email is not built yet.</PlaceholderNote>
 
             <section className="pa-card pa-form" aria-labelledby="sc-signin">
               <div className="pa-section-head">
@@ -264,6 +264,7 @@ export function SecurityView() {
                 {overview.user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
               </div>
               <ChangePassword />
+              <TwoFactor />
               {SECURITY_ROWS.map((row) => (
                 <div className="pa-switch-row" key={row.label}>
                   <div>

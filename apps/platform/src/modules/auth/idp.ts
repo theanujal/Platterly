@@ -1,6 +1,6 @@
 import "server-only";
 import { betterAuth } from "better-auth";
-import { emailOTP, jwt } from "better-auth/plugins";
+import { emailOTP, jwt, twoFactor } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import type { Pool } from "pg";
 import { APIError, createAuthMiddleware } from "better-auth/api";
@@ -122,6 +122,9 @@ export function createIdp(options: IdpOptions = {}) {
           await sendOtp(email, otp, type);
         },
       }),
+      // Two-step verification: an authenticator app (TOTP) plus backup codes. Off for everyone until they turn it on in the Account. A person who has it
+      // is asked for a code after the password; "remember this device" skips the code on that browser for 30 days.
+      twoFactor({ issuer: "Platterly" }),
       jwt(),
       oauthProvider({
         loginPage: "/sign-in",
@@ -147,11 +150,11 @@ export function createIdp(options: IdpOptions = {}) {
 export type Idp = ReturnType<typeof createIdp>;
 
 declare global {
-  var __idp3: Idp | undefined;
+  var __idp4: Idp | undefined;
 }
 
 /** One provider instance per server process. */
 export function idp(): Idp {
-  if (!globalThis.__idp3) globalThis.__idp3 = createIdp();
-  return globalThis.__idp3;
+  if (!globalThis.__idp4) globalThis.__idp4 = createIdp();
+  return globalThis.__idp4;
 }

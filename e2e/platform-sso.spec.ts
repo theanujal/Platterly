@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { Pool } from "pg";
 import { cleanupInviteeUser, cleanupOnboardingTestUser } from "./db";
 import { signOutFromMenu, signUpCaterer } from "./auth-helpers";
+import { totpFromUri } from "../apps/platform/src/modules/auth/__tests__/totp-util";
 
 /**
  * Caterly as a sign-in client of Platterly's central identity (F8.1.1 / F8.1.3), end to end in a real browser against the running Caterly, Platform
@@ -234,6 +235,40 @@ test("an invitee with no Caterly account signs in centrally, comes back to the i
   const joined = await pool.query(`select "organizationId" from member where "userId" = $1`, [session.user!.id]);
   expect(joined.rows.map((r) => r.organizationId), "joined the inviter's business and has no business of their own").toEqual([owner.org]);
   await context.close();
+});
+
+test("a person with two-step verification is asked for the code on the central page when signing in to Caterly, and then lands in Caterly", async ({ page }) => {
+  test.setTimeout(90_000);
+  const to = newEmail();
+  created.push(to);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, to);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  // Turn on two-step verification at the Account (single sign-on signs the person in there).
+  await page.goto(`${ACCOUNT}/security`);
+  await page.getByRole("button", { name: "Set up" }).click();
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Continue" }).click();
+  const secret = (await page.locator("code").first().textContent())!.trim();
+  const codeNow = () => totpFromUri(`otpauth://totp/x?secret=${secret}`);
+  await page.getByLabel("6-digit code").fill(codeNow());
+  await page.getByRole("button", { name: "Turn on" }).click();
+  await expect(page.getByText("Two-step verification is on.")).toBeVisible();
+  await page.getByRole("button", { name: "I have saved them" }).click();
+  // Switching it on ends the person's other sessions, Caterly's included; the next Caterly visit goes to the central page and asks for the code.
+  await page.goto(`${ACCOUNT}/profile`);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await page.goto(`${CATERLY}/`);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await fill(page, "Email", to);
+  await fill(page, "Password", PASSWORD, { exact: true });
+  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  await expect(page.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
+  await fill(page, "Authentication code", codeNow());
+  await page.getByRole("button", { name: "Verify and sign in" }).click();
+  await expect(page).toHaveURL(/catering\.localhost:3000\/(dashboard|kitchenlogin\/onboarding)/);
+  expect((await caterlySession(page))?.user?.email).toBe(to);
 });
 
 test("?legacy=1 still shows Caterly's own email-and-password form", async ({ page }) => {
