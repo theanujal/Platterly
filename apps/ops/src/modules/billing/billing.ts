@@ -400,6 +400,7 @@ export async function pauseAutoPay(businessId: string, productKey: string, fetch
   await pauseRazorpaySubscription(creds, id, fetchImpl);
   await setAutoPay(current, "PAUSED");
   await audit({ actorUserId: null, action: "billing.autopay_paused", subject: businessId, detail: { productKey, razorpaySubscriptionId: id } });
+  await notifySafely({ productKey, businessId, kind: "autopay.paused", title: "A business paused its subscription", body: `${current.plan.name}: auto-pay was paused. Access runs until the paid days end.`, link: `/businesses/${businessId}`, emailStaff: true });
 }
 
 /**

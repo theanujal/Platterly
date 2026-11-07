@@ -421,6 +421,7 @@ describe("pause and resume", () => {
     await resumeAutoPay(biz, KEY);
     expect(rz[subId].status).toBe("active");
     expect((await mails(biz)).filter((t) => t.startsWith("autopay_"))).toEqual(["autopay_paused", "autopay_resumed"]);
+    expect(await prisma.notification.count({ where: { businessId: biz, kind: "autopay.paused" } })).toBe(1);
   });
 
   it("a yearly or hand-assigned plan has no auto-pay to pause", async () => {
