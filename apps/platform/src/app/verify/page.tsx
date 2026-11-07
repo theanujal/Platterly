@@ -1,12 +1,15 @@
 import { Suspense } from "react";
 import { VerifyForm } from "@/components/auth/forms";
+import { Branded } from "@/components/auth/branded";
 import { requireHost } from "@/modules/auth/host";
 
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireHost("auth");
   return (
-    <Suspense>
-      <VerifyForm />
-    </Suspense>
+    <Branded searchParams={searchParams}>
+      <Suspense>
+        <VerifyForm />
+      </Suspense>
+    </Branded>
   );
 }

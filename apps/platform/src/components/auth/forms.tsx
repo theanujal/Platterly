@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
 import "../account/account.css";
 import "./auth.css";
+import { useProductBrand } from "./brand";
+import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, ShieldCheckIcon, TrendingUpIcon, UtensilsCrossedIcon } from "./theme-icons";
 
 // F4.1.1 / F4.1.2 pages on the auth host. They talk only to the identity provider's own endpoints (same origin, /api/auth/*). Messages are the same
 // whether or not an address is registered (no enumeration), and never say more than "check your details" for a wrong password.
@@ -35,32 +37,123 @@ const useHydrated = () => useSyncExternalStore(noop, () => true, () => false);
 const GENERIC = "Something went wrong. Please try again in a moment.";
 const BUSY = "Too many attempts. Please wait a minute and try again.";
 
-export function AuthCard({ title, lede, children }: { title: string; lede?: string; children: ReactNode }) {
+const CATERLY_FEATURES = [
+  { Icon: QrCodeIcon, label: "QR-code digital menus, ready in minutes" },
+  { Icon: UtensilsCrossedIcon, label: "Real-time order & kitchen management" },
+  { Icon: ShieldCheckIcon, label: "Multi-branch, multi-role access control" },
+  { Icon: TrendingUpIcon, label: "Reporting that grows with your business" },
+];
+
+/** Caterly's own split-screen sign-in (orange brand panel, form beside it), so signing in through the central page looks like signing in to Caterly. */
+function CaterlyShell({ title, lede, footer, children, hydrated, icon }: { title: string; lede?: string; footer?: ReactNode; children: ReactNode; hydrated: boolean; icon: string | null }) {
+  return (
+    <div className="pl-cat" data-hydrated={hydrated} data-theme="caterly">
+      <aside className="pl-cat-panel">
+        <div className="pl-cat-brand">
+          <ChefHatIcon size={32} />
+          <span>Caterly</span>
+          <small>by Platterly</small>
+        </div>
+        <div className="pl-cat-pitch">
+          <p className="pl-cat-headline">Run your catering business from one place</p>
+          <p className="pl-cat-sub">From enquiry to payment — quotations, menus, kitchen, and billing, all in one dashboard built for Indian caterers.</p>
+        </div>
+        <ul className="pl-cat-features">
+          {CATERLY_FEATURES.map(({ Icon, label }) => (
+            <li key={label}>
+              <span className="pl-cat-feature-icon">
+                <Icon size={16} />
+              </span>
+              {label}
+            </li>
+          ))}
+        </ul>
+      </aside>
+      <main className="pl-cat-main">
+        <div className="pl-cat-col">
+          <div className="pl-cat-head">
+            {icon && (
+              // eslint-disable-next-line @next/next/no-img-element -- Caterly's registered mark, only ever served from Caterly's own address
+              <img className="pl-cat-mark" src={icon} alt="Caterly by Platterly" width={56} height={56} />
+            )}
+            <h1 id="auth-title">{title}</h1>
+            {lede && <p className="pl-cat-lede">{lede}</p>}
+          </div>
+          {children}
+          {footer && <p className="pl-cat-footer">{footer}</p>}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export function AuthCard({ title, lede, footer, children }: { title: string; lede?: string; footer?: ReactNode; children: ReactNode }) {
   const hydrated = useHydrated();
+  const brand = useProductBrand();
+  if (brand?.theme === "caterly")
+    return (
+      <CaterlyShell title={title} lede={lede} footer={footer} hydrated={hydrated} icon={brand.icon}>
+        {children}
+      </CaterlyShell>
+    );
   return (
     <main className="pl-auth" data-hydrated={hydrated}>
       <div className="pl-auth-box">
-        <div className="pl-auth-brand">
-          <span className="pa-brand-mark" aria-hidden="true">
-            P
-          </span>
-          <span className="pa-brand-name">Platterly</span>
+        <div className="pl-auth-brand" data-product={brand ? "branded" : "platterly"}>
+          {brand ? (
+            <>
+              {brand.icon ? (
+                // eslint-disable-next-line @next/next/no-img-element -- a product's registered logo, only ever served from that product's own address
+                <img className="pl-auth-logo" src={brand.icon} alt="" width={40} height={40} />
+              ) : (
+                <span className="pl-auth-logo pl-auth-logo-initial" aria-hidden="true">
+                  {brand.name.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span className="pl-auth-product">{brand.name}</span>
+            </>
+          ) : (
+            <>
+              <span className="pa-brand-mark" aria-hidden="true">
+                P
+              </span>
+              <span className="pa-brand-name">Platterly</span>
+            </>
+          )}
         </div>
         <section className="pl-auth-card" aria-labelledby="auth-title">
           <h1 id="auth-title">{title}</h1>
           {lede && <p className="pl-auth-lede">{lede}</p>}
           {children}
+          {footer && <p className="pl-auth-links">{footer}</p>}
         </section>
+        {brand && <p className="pl-auth-powered">Signing in with your Platterly account</p>}
       </div>
     </main>
   );
 }
 
 function Field({ id, label, type = "text", value, onChange, autoComplete, inputMode, maxLength, hint }: { id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; inputMode?: "numeric" | "email"; maxLength?: number; hint?: string }) {
+  const themed = useProductBrand()?.theme === "caterly";
+  const [shown, setShown] = useState(false);
+  const icon = themed && (type === "email" || type === "password");
+  const input = <input id={id} name={id} type={type === "password" && shown ? "text" : type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} maxLength={maxLength} required />;
   return (
     <div className="pa-field">
       <label htmlFor={id}>{label}</label>
-      <input id={id} name={id} type={type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} maxLength={maxLength} required />
+      {icon ? (
+        <div className="pl-cat-input">
+          <span className="pl-cat-input-icon">{type === "email" ? <MailIcon /> : <LockIcon />}</span>
+          {input}
+          {type === "password" && (
+            <button type="button" className="pl-cat-reveal" onClick={() => setShown((v) => !v)} aria-pressed={shown} aria-label={shown ? "Hide text" : "Show text"}>
+              {shown ? <EyeOffIcon /> : <EyeIcon />}
+            </button>
+          )}
+        </div>
+      ) : (
+        input
+      )}
       {hint && <span className="pa-hint">{hint}</span>}
     </div>
   );
@@ -84,6 +177,8 @@ const withCarry = (path: string, carry: string, extra: Record<string, string> = 
 };
 
 export function SignInForm() {
+  const brand = useProductBrand();
+  const themed = brand?.theme === "caterly";
   const hydrated = useHydrated();
   const { params, carry, email: preset } = useQuery();
   const [email, setEmail] = useState(preset);
@@ -123,26 +218,44 @@ export function SignInForm() {
       </AuthCard>
     );
   return (
-    <AuthCard title="Sign in" lede="Use your Platterly account.">
+    <AuthCard
+      title={themed ? "Welcome back" : brand ? `Sign in to ${brand.name}` : "Sign in"}
+      lede={themed ? "Sign in to manage your catering business" : "Use your Platterly account."}
+      footer={
+        themed ? (
+          <>
+            New to Platterly? <Link href={withCarry("/sign-up", carry)}>Create an account</Link>
+          </>
+        ) : undefined
+      }
+    >
       <form className="pl-auth-form" method="post" onSubmit={submit}>
         {params.get("verified") && <p className="pl-auth-ok">Your email is verified. You can sign in now.</p>}
         {params.get("reset") && <p className="pl-auth-ok">Your password was changed. Sign in with the new one.</p>}
         {error && <Error_>{error}</Error_>}
         <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" />
         <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" />
+        {themed && (
+          <Link className="pl-cat-forgot" href={withCarry("/forgot", carry)}>
+            Forgot password?
+          </Link>
+        )}
         <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !hydrated}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "Signing in…" : themed ? "Sign in to your account" : "Sign in"}
         </button>
       </form>
-      <p className="pl-auth-links">
-        <Link href={withCarry("/forgot", carry)}>Forgot your password?</Link>
-        <Link href={withCarry("/sign-up", carry)}>Create an account</Link>
-      </p>
+      {!themed && (
+        <p className="pl-auth-links">
+          <Link href={withCarry("/forgot", carry)}>Forgot your password?</Link>
+          <Link href={withCarry("/sign-up", carry)}>Create an account</Link>
+        </p>
+      )}
     </AuthCard>
   );
 }
 
 export function SignUpForm() {
+  const themed = useProductBrand()?.theme === "caterly";
   const hydrated = useHydrated();
   const { carry } = useQuery();
   const [name, setName] = useState("");
@@ -163,7 +276,17 @@ export function SignUpForm() {
   }
 
   return (
-    <AuthCard title="Create your account" lede="One account for every Platterly product.">
+    <AuthCard
+      title="Create your account"
+      lede={themed ? "Start your free 7-day trial" : "One account for every Platterly product."}
+      footer={
+        themed ? (
+          <>
+            Already have an account? <Link href={withCarry("/sign-in", carry)}>Sign in</Link>
+          </>
+        ) : undefined
+      }
+    >
       <form className="pl-auth-form" method="post" onSubmit={submit}>
         {error && <Error_>{error}</Error_>}
         <Field id="name" label="Full name" value={name} onChange={setName} autoComplete="name" />
@@ -173,10 +296,12 @@ export function SignUpForm() {
           {busy ? "Creating…" : "Create account"}
         </button>
       </form>
-      <p className="pl-auth-links">
-        <span className="pa-muted">Already have an account?</span>
-        <Link href={withCarry("/sign-in", carry)}>Sign in</Link>
-      </p>
+      {!themed && (
+        <p className="pl-auth-links">
+          <span className="pa-muted">Already have an account?</span>
+          <Link href={withCarry("/sign-in", carry)}>Sign in</Link>
+        </p>
+      )}
     </AuthCard>
   );
 }
