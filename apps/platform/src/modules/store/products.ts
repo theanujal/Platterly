@@ -2,6 +2,7 @@ import "server-only";
 import type { PlatformBusinessBilling } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
+import { describeSubscription } from "./status";
 import { loadAccountOverview } from "@/modules/account/overview";
 import { fetchOpsBilling, fetchOpsCatalogue, opsCatalogueConfigured } from "./ops-catalogue";
 import { inr } from "./format";
@@ -38,15 +39,19 @@ export const storeKeyFor = (opsKey: string) => STORE_KEY_FOR_OPS_KEY[opsKey] ?? 
  * Puts a business's real subscriptions on the products. Ops keys the product `catering`; the Store calls it `caterly` (see storeKeyFor). Only a live
  * subscription counts: a trial is TRIAL, an ACTIVE or PAST_DUE paid plan is SUBSCRIBED, and a locked or cancelled one is shown as not subscribed.
  */
-export function applyBilling(products: SampleProduct[], billing: PlatformBusinessBilling): SampleProduct[] {
+export function applyBilling(products: SampleProduct[], billing: PlatformBusinessBilling, now: Date = new Date()): SampleProduct[] {
   const byKey = new Map(billing.products.map((b) => [storeKeyFor(b.productKey), b.billing.subscription]));
   return products.map((product) => {
     const sub = byKey.get(product.key);
     if (!sub) return product;
-    if (sub.status === "TRIALING") return { ...product, status: "TRIAL" as const, trialEndsAt: (sub.trialEndsAt ?? sub.currentPeriodEnd ?? sub.startDate).slice(0, 10) };
+    const display = describeSubscription(sub, now);
+    if (sub.status === "TRIALING" && display.state === "trial") return { ...product, status: "TRIAL" as const, trialEndsAt: (sub.trialEndsAt ?? sub.currentPeriodEnd ?? sub.startDate).slice(0, 10), display };
+    // A trial that has ended, a lock, and a plan past its grace are shown as not subscribed, with the reason on the card.
+    if (display.state === "trial_ended" || display.state === "locked") return { ...product, display };
     if (sub.status === "ACTIVE" || sub.status === "PAST_DUE") {
       return {
         ...product,
+        display,
         status: "SUBSCRIBED" as const,
         subscription: {
           planId: sub.plan.id,

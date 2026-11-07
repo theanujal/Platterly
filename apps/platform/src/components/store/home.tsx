@@ -57,7 +57,7 @@ export function StoreHome({ products, bundles, live = false, business = null, bi
         )}
         {tab === "NONE" && (
           <CardList empty="No unsubscribed products." products={products.filter((p) => p.status === "NONE" && byName(p.name))}>
-            {(p) => <ProductCard key={p.key} product={p} lines={[p.tagline]} action="View plans" />}
+            {(p) => <ProductCard key={p.key} product={p} lines={[...(p.display ? [p.display.detail] : []), p.tagline]} action={p.display ? "Choose a plan" : "View plans"} />}
           </CardList>
         )}
         {tab === "BUNDLES" && <Bundles bundles={bundles.filter((b) => byName(b.name))} products={products} />}
@@ -82,7 +82,7 @@ function Subscribed({ products }: { products: SampleProduct[] }) {
         return (
           <ProductCard
             product={p}
-            lines={[current?.name ?? sub.planName ?? "Your plan", `Next renewal date: ${longDate(sub.nextRenewal)}`, ...(amount === undefined ? [] : [`Renewal amount: ${inr(amount)} / ${sub.interval === "ANNUAL" ? "year" : "month"}`])]}
+            lines={[current?.name ?? sub.planName ?? "Your plan", ...(p.display && p.display.state !== "active" ? [p.display.detail] : []), `Next renewal date: ${longDate(sub.nextRenewal)}`, ...(amount === undefined ? [] : [`Renewal amount: ${inr(amount)} / ${sub.interval === "ANNUAL" ? "year" : "month"}`])]}
             action="Manage"
           />
         );

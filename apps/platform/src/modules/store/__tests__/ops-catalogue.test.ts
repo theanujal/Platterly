@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLATFORM_PLANS_PATH, platformBillingPath, signedHeaders, verifyRequest, requestTarget, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
-import { fetchOpsBilling, fetchOpsCatalogue, opsCatalogueConfigured } from "../ops-catalogue";
+import { fetchOpsBilling, fetchOpsCatalogue, fetchOpsInvoice, opsCatalogueConfigured } from "../ops-catalogue";
 
 const SECRET = "test-reader-secret-0123456789abcdef0123456789abcdef";
 const env = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_READER_SECRET: SECRET } as unknown as NodeJS.ProcessEnv;
@@ -105,5 +105,31 @@ describe("Store: one business's billing from Ops", () => {
     expect(await fetchOpsBilling(BIZ, { env, fetchImpl: answer({ error: "not_found" }, 404) })).toEqual({ ok: false, reason: "not_found" });
     expect(await fetchOpsBilling(BIZ, { env, fetchImpl: answer({ businessId: BIZ, generatedAt: "2026-11-07T10:00:00.000Z", products: [{ productKey: "caterly", name: "C", billing: { onlineBillingAvailable: true, subscription: null, history: [{}], payments: [] } }] }) })).toEqual({ ok: false, reason: "bad_answer" });
     expect(await fetchOpsBilling(BIZ, { env: {} as unknown as NodeJS.ProcessEnv })).toEqual({ ok: false, reason: "not_configured" });
+  });
+});
+
+describe("Store: an invoice PDF from Ops", () => {
+  const pdf = Buffer.from("%PDF-1.3\nfake").toString("base64");
+  const BIZ = `biz_${"a".repeat(32)}`;
+
+  it("asks for one payment of one business and product, and returns the verified PDF", async () => {
+    const { fetchImpl, seen } = ops({ body: { fileName: "FPA-26-11-269.pdf", pdfBase64: pdf } });
+    const result = await fetchOpsInvoice(BIZ, "catering", "pay_abc", { env, fetchImpl });
+    expect(result.ok && result.fileName).toBe("FPA-26-11-269.pdf");
+    expect(result.ok && result.pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(seen.url).toBe(`http://ops.test/api/platform/businesses/${BIZ}/products/catering/billing/payments/pay_abc/invoice`);
+    expect(seen.signedOk).toBe(true);
+  });
+
+  it("refuses an answer that is not a PDF, has an unsafe file name, or is unsigned, tampered or for another request", async () => {
+    const notPdf = Buffer.from("<html>hi</html>").toString("base64");
+    expect(await fetchOpsInvoice(BIZ, "catering", "pay_abc", { env, fetchImpl: ops({ body: { fileName: "a.pdf", pdfBase64: notPdf } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+    expect(await fetchOpsInvoice(BIZ, "catering", "pay_abc", { env, fetchImpl: ops({ body: { fileName: "../../etc/passwd", pdfBase64: pdf } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+    expect(await fetchOpsInvoice(BIZ, "catering", "pay_abc", { env, fetchImpl: ops({ body: { fileName: "Caterly.pdf", pdfBase64: pdf }, tamper: true }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+    expect(await fetchOpsInvoice(BIZ, "catering", "pay_abc", { env, fetchImpl: ops({ body: { fileName: "a.pdf", pdfBase64: pdf }, wrongId: true }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+  });
+
+  it("a payment Ops does not know for that business is not_found", async () => {
+    expect(await fetchOpsInvoice(BIZ, "catering", "pay_other", { env, fetchImpl: ops({ status: 404 }).fetchImpl })).toEqual({ ok: false, reason: "not_found" });
   });
 });

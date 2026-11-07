@@ -5,6 +5,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { newId, platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer, type PlatformBillingAction } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { unusedCredit } from "@/modules/billing/math";
+import { failPayment } from "@/modules/billing/billing";
+import { renderPaymentInvoice } from "@/modules/billing/invoice-pdf";
+import { buildBusinessBilling } from "./../platform-plans";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { POST as checkoutPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/checkout/route";
@@ -304,5 +307,46 @@ describe("Store buy calls: upgrade credit, downgrade, cancel", () => {
     const view = await getBillingView(BIZ, KEY);
     expect(view.subscription?.cancelledAt).not.toBeNull();
     expect(view.subscription?.pending).toBeNull();
+  });
+});
+
+describe("Platform reads: invoice PDF and unfinished payments", () => {
+  const pdfText = (bytes: ArrayBuffer) => Buffer.from(bytes).subarray(0, 5).toString("latin1");
+
+  it("renders a paid invoice as a PDF named by its number, only for its own business and product", async () => {
+    const orderId = await pay("pro", "ANNUAL", "pay_i1");
+    const paid = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: orderId } });
+    const invoice = await renderPaymentInvoice(paid.id, { businessId: BIZ, productKey: KEY });
+    expect(invoice?.fileName).toBe(`${paid.invoiceNumber}.pdf`);
+    expect(pdfText(invoice!.bytes)).toBe("%PDF-");
+    expect(await renderPaymentInvoice(paid.id, { businessId: OTHER, productKey: KEY })).toBeNull();
+    expect(await renderPaymentInvoice(paid.id, { businessId: BIZ, productKey: "other" })).toBeNull();
+    expect(await renderPaymentInvoice("pay_unknown", { businessId: BIZ, productKey: KEY })).toBeNull();
+  });
+
+  it("an upgrade invoice with a credit renders, and is longer than the same invoice without the credit line", async () => {
+    await pay("pro", "ANNUAL", "pay_i2");
+    const upgraded = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: await pay("max", "ANNUAL", "pay_i3") } });
+    expect(Number(upgraded.creditAmount)).toBeGreaterThan(0);
+    const withCredit = await renderPaymentInvoice(upgraded.id, { businessId: BIZ, productKey: KEY });
+    expect(pdfText(withCredit!.bytes)).toBe("%PDF-");
+    const snapshot = upgraded.invoiceSnapshot as { credit?: unknown };
+    await prisma.subscriptionPayment.update({ where: { id: upgraded.id }, data: { invoiceSnapshot: { ...snapshot, credit: undefined } as never } });
+    const without = await renderPaymentInvoice(upgraded.id, { businessId: BIZ, productKey: KEY });
+    expect(withCredit!.bytes.byteLength).toBeGreaterThan(without!.bytes.byteLength);
+  });
+
+  it("the Platform's billing read lists unfinished payments: a started one as PENDING, a failed one as FAILED, and a paid one not at all", async () => {
+    const started = (await (await call("checkout", BIZ, { planId: await planId(), interval: "ANNUAL", buyer })).json()) as { razorpayOrderId: string };
+    const failed = (await (await call("checkout", BIZ, { planId: await planId(), interval: "MONTHLY", buyer })).json()) as { razorpayOrderId: string };
+    await failPayment(failed.razorpayOrderId);
+    await pay("pro", "ANNUAL", "pay_i4");
+    const billing = await buildBusinessBilling(BIZ);
+    const attempts = billing!.products.find((p) => p.productKey === KEY)!.attempts!;
+    const byOrder = async (orderId: string) => (await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: orderId } })).id;
+    expect(attempts.map((a) => a.status).sort()).toEqual(["FAILED", "PENDING"]);
+    expect(attempts.find((a) => a.status === "PENDING")).toMatchObject({ id: await byOrder(started.razorpayOrderId), planName: "Pro", interval: "ANNUAL", total: 11800 });
+    expect(attempts.find((a) => a.status === "FAILED")).toMatchObject({ id: await byOrder(failed.razorpayOrderId), interval: "MONTHLY", total: 1180 });
+    expect(billing!.products[0].billing.payments).toHaveLength(1);
   });
 });

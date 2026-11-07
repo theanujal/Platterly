@@ -1,5 +1,6 @@
 import type { PlanOffer, PriceView } from "@platterly/contract";
 import type { Interval } from "./format";
+import type { SubscriptionDisplay } from "./status";
 
 /**
  * Sample data for the Store prototype (docs/store-first-slice-design.md, section 9). Invented products, plans and figures,
@@ -33,6 +34,8 @@ export interface SampleProduct {
   subscription?: { planId: string; interval: Interval; nextRenewal: string; /** The plan's name from Ops, used when the plan is not on sale (a hand-assigned or retired plan). */ planName?: string; /** A lower plan scheduled for the end of the paid period. */ pending?: { planId: string; planName: string; interval: Interval }; /** ISO date the owner chose to stop renewing; the paid days still run out. */ cancelledAt?: string };
   /** Present when TRIAL. ISO date. */
   trialEndsAt?: string;
+  /** Real mode: how the subscription reads to a person (Payment due, Locked, Ending...), worked out from Ops's dates. Absent in the prototype. */
+  display?: SubscriptionDisplay;
 }
 
 export const SAMPLE_PRODUCTS: SampleProduct[] = [

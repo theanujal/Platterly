@@ -130,13 +130,25 @@ export const platformBillingPath = (businessId: string) => `/api/platform/busine
 export const PLATFORM_BILLING_ACTIONS = ["checkout", "verify", "quote", "downgrade", "undo-downgrade", "cancel", "reactivate"] as const;
 export type PlatformBillingAction = (typeof PLATFORM_BILLING_ACTIONS)[number];
 export const platformCheckoutPath = (businessId: string, productKey: string, action: PlatformBillingAction) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/${action}`;
+/**
+ * A paid invoice as a PDF, for the Platform's Invoices page (a signed GET with the read-only platform-reader secret; the answer is signed JSON
+ * `{ fileName, pdfBase64 }`). Scoped to one business and product, so a payment id from another business is a 404.
+ */
+export const platformInvoicePath = (businessId: string, productKey: string, paymentId: string) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/payments/${paymentId}/invoice`;
+export const PLATFORM_INVOICE_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/payments\/[A-Za-z0-9_-]{1,64}\/invoice$/;
 export const PLATFORM_CHECKOUT_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/(?:checkout|verify|quote|downgrade|undo-downgrade|cancel|reactivate)$/;
 export const PLATFORM_BILLING_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/billing$/;
 
 export interface PlatformBusinessBilling {
   businessId: string;
   generatedAt: string;
-  products: { productKey: string; name: string; billing: BillingView }[];
+  products: {
+    productKey: string;
+    name: string;
+    billing: BillingView;
+    /** Payments that did not complete (newest first, at most 20): started and abandoned, or failed. Paid ones are in `billing.payments`. Absent from an older Ops. */
+    attempts?: { id: string; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number; status: "PENDING" | "FAILED"; createdAt: string; failureReason: string | null }[];
+  }[];
 }
 
 const nullableIso = (v: unknown) => v === null || isIsoDate(v);

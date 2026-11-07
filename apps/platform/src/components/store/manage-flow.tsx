@@ -150,6 +150,7 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
           {sub && currentPlan && (
             <p className="ps-current">You are on <strong>{currentPlan.name}</strong>, billed {sub.interval === "ANNUAL" ? "yearly" : "monthly"}. Next renewal: {longDate(sub.nextRenewal)}.</p>
           )}
+          {live && product.display && ["payment_due", "ended_in_grace", "locked", "trial_ended"].includes(product.display.state) && <p className="ps-warn" role="alert"><strong>{product.display.label}.</strong> {product.display.detail}</p>}
           {live && sub?.pending && (
             <div className="ps-current" role="status">
               A downgrade to <strong>{sub.pending.planName}</strong> ({sub.pending.interval === "ANNUAL" ? "yearly" : "monthly"}) is scheduled for {longDate(sub.nextRenewal)}.{" "}

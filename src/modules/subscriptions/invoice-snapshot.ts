@@ -8,4 +8,6 @@ export interface InvoiceSnapshot {
   buyer: Party & { name: string };
   gst: { kind: GstKind; lines: GstLine[] };
   highlights: string[];
+  /** Present on an invoice for an upgrade that was credited: the full plan price, the credit and its label (all before GST). `amount` on the payment is the price less the credit. */
+  credit?: { planPrice: number; amount: number; label: string };
 }

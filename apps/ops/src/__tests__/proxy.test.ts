@@ -30,6 +30,14 @@ describe("ops proxy: public routes", () => {
     }
   });
 
+  it("lets exactly the invoice read for one business, product and payment through, and nothing near it", () => {
+    const biz = `biz_${"a".repeat(32)}`;
+    expect(through(`/api/platform/businesses/${biz}/products/catering/billing/payments/pay_abc123/invoice`).passed).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/products/catering/billing/payments/pay_abc123`, `/api/platform/businesses/${biz}/products/catering/billing/payments/pay_abc123/invoice/x`, `/api/platform/businesses/${biz}/products/catering/billing/payments//invoice`, `/api/platform/businesses/biz_x/products/catering/billing/payments/pay_abc123/invoice`, `/api/platform/businesses/${biz}/products/catering/billing/payments/pa y/invoice`]) {
+      expect(through(path).passed, path).toBe(false);
+    }
+  });
+
   it("keeps the other public prefixes working", () => {
     for (const path of ["/sign-in", "/api/auth/get-session", "/api/health", "/api/products/events", "/api/webhooks/razorpay", "/api/cron", "/api/site/x", "/api/public/enquiries"]) {
       expect(through(path).passed, path).toBe(true);

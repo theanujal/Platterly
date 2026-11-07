@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, platformBillingPath, PLATFORM_PLANS_PATH, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
+import { newId, platformInvoicePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, platformBillingPath, PLATFORM_PLANS_PATH, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
 import { signPullRequest, verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -51,4 +51,19 @@ export async function fetchOpsBilling(businessId: string, deps: Deps = {}): Prom
   const parsed = parsePlatformBusinessBilling(got.json);
   if (!parsed.ok || parsed.value.businessId !== businessId) return { ok: false, reason: "bad_answer" };
   return { ok: true, billing: parsed.value };
+}
+
+export type InvoiceResult = { ok: true; fileName: string; pdf: Buffer } | { ok: false; reason: OpsReadFailure | "not_found" };
+
+/**
+ * One paid invoice as a PDF, from Ops's frozen record (signed read; the answer is signed JSON carrying the file as base64). The caller must already have
+ * checked that the signed-in person may see this business's billing, and Ops answers only for a payment that belongs to that business and product.
+ */
+export async function fetchOpsInvoice(businessId: string, opsProductKey: string, paymentId: string, deps: Deps = {}): Promise<InvoiceResult> {
+  const got = await signedOpsGet(platformInvoicePath(businessId, opsProductKey, paymentId), deps);
+  if (!got.ok) return got;
+  const { fileName, pdfBase64 } = got.json;
+  if (typeof fileName !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(fileName) || typeof pdfBase64 !== "string") return { ok: false, reason: "bad_answer" };
+  const pdf = Buffer.from(pdfBase64, "base64");
+  return pdf.subarray(0, 5).toString("latin1") === "%PDF-" ? { ok: true, fileName, pdf } : { ok: false, reason: "bad_answer" };
 }

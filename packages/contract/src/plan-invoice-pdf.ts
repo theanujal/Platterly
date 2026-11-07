@@ -37,6 +37,8 @@ export interface PlanInvoiceData {
   features: string[];
   /** Money is already formatted ("Rs. 3,000.00"): the standard PDF font has no rupee glyph. */
   amount: string;
+  /** An upgrade credit taken off the amount before GST ("Credit for unused days of Pro", shown as a negative). When set, `amount` is the full plan price and the taxes are on what is left. */
+  creditLine?: { label: string; amount: string };
   taxLines: { label: string; amount: string }[];
   total: string;
   totalLabel: string;
@@ -299,7 +301,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   }
 
   // ---------- Payment Summary ----------
-  const summaryRows = 1 + data.taxLines.length;
+  const summaryRows = 1 + (data.creditLine ? 1 : 0) + data.taxLines.length;
   const noteLines = wrap(data.paymentNote, width - 70, "normal", 8.5);
   const summaryHeight = 30 + summaryRows * 24 + 46 + 14 + noteLines.length * 11 + 14;
   ensure(summaryHeight + 50);
@@ -316,6 +318,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
     rowY += 24;
   };
   line(labels.amountLabel, data.amount);
+  if (data.creditLine) line(data.creditLine.label, data.creditLine.amount);
   for (const tax of data.taxLines) line(tax.label, tax.amount);
   fill(ORANGE_TINT);
   doc.roundedRect(left + 8, rowY - 6, width - 16, 36, 6, 6, "F");
