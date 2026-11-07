@@ -237,3 +237,21 @@ model OrganisationTeamMember {
   @@unique([organisationId, legacyMemberId], map: "organisation_team_members_organisation_id_legacy_member_id_key")
   @@map("organisation_team_members")
 }
+
+// F6.1.1 product registry: where Platform Core reaches a product and the two signing secrets (AES-256-GCM, see modules/integrations/secret-box.ts).
+// `outbound` = Platform signs, product verifies. `inbound` = product signs, Platform verifies. The `Previous` pair stays valid during a rotation.
+model ProductIntegration {
+  key                    String    @id(map: "product_integrations_pkey")
+  name                   String
+  baseUrl                String    @map("base_url")
+  status                 String    @default("current")
+  outboundSecret         String    @map("outbound_secret")
+  outboundSecretPrevious String?   @map("outbound_secret_previous")
+  inboundSecret          String    @map("inbound_secret")
+  inboundSecretPrevious  String?   @map("inbound_secret_previous")
+  secretsRotatedAt       DateTime? @map("secrets_rotated_at") @db.Timestamptz(3)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("product_integrations")
+}
