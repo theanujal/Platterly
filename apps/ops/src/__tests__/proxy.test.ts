@@ -22,6 +22,14 @@ describe("ops proxy: public routes", () => {
     }
   });
 
+  it("lets exactly the Store's checkout and verify calls through for one business and product, and nothing else near them", () => {
+    const biz = `biz_${"a".repeat(32)}`;
+    for (const action of ["checkout", "verify"]) expect(through(`/api/platform/businesses/${biz}/products/catering/billing/${action}`).passed, action).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/products/catering/billing`, `/api/platform/businesses/${biz}/products/catering/billing/checkout/x`, `/api/platform/businesses/${biz}/products/catering/billing/other`, `/api/platform/businesses/biz_short/products/catering/billing/checkout`, `/api/platform/businesses/${biz}/products/Catering/billing/checkout`, `/api/platform/businesses/${biz}/products/catering/billing/checkout/`]) {
+      expect(through(path).passed, path).toBe(false);
+    }
+  });
+
   it("keeps the other public prefixes working", () => {
     for (const path of ["/sign-in", "/api/auth/get-session", "/api/health", "/api/products/events", "/api/webhooks/razorpay", "/api/cron", "/api/site/x", "/api/public/enquiries"]) {
       expect(through(path).passed, path).toBe(true);

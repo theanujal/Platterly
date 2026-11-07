@@ -69,4 +69,14 @@ test.describe("Store sign-in", () => {
     await expect(page.getByRole("heading", { name: "Set up your business first" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel subscription" })).toHaveCount(0);
   });
+
+  test("the Store's pay routes refuse a signed-out caller, another site's page, and any host but the Store", async ({ request }) => {
+    for (const path of ["/api/store/checkout", "/api/store/verify"]) {
+      // Signed out, from the Store's own page: 401. From another site: 403 before anything else is looked at. On the Account host: not there.
+      expect((await request.post(`${STORE}${path}`, { headers: { origin: STORE }, data: {} })).status(), path).toBe(401);
+      expect((await request.post(`${STORE}${path}`, { headers: { origin: "https://evil.example" }, data: {} })).status(), path).toBe(403);
+      expect((await request.post(`${STORE}${path}`, { data: {} })).status(), `${path} without an origin`).toBe(403);
+      expect((await request.post(`${ACCOUNT}${path}`, { headers: { origin: ACCOUNT }, data: {} })).status(), `${path} on the account host`).toBe(404);
+    }
+  });
 });

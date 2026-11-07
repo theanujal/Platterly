@@ -6,6 +6,7 @@ import type { Buyer, PlanOffer } from "@platterly/contract";
 import { inr, longDate, type Interval } from "@/modules/store/format";
 import { checkBuyer, type BuyerField } from "@/modules/store/buyer-check";
 import { changeKind, type ChangeKind, type SampleProduct } from "@/modules/store/sample-catalogue";
+import { openRazorpay, type RazorpayOrder } from "./razorpay";
 import "./store.css";
 
 type Step = "plans" | "confirm" | "done";
@@ -31,6 +32,10 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
   const [buyer, setBuyer] = useState<Buyer>(EMPTY);
   const [errors, setErrors] = useState<Partial<Record<BuyerField, string>>>({});
   const [cancelling, setCancelling] = useState<"ask" | "done" | null>(null);
+  // Real payment (live mode): `paying` while Ops and Razorpay are being talked to; `payError` is plain text for the person; `invoice` comes back from Ops.
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [invoice, setInvoice] = useState<string | null>(null);
 
   const kind = chosen?.kind;
   const steps = ["Choose plan", kind === "downgrade" ? "Confirm downgrade" : "Confirm payment", "Confirmation"];
@@ -41,12 +46,44 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
     setChosen({ plan, interval, kind: changeKind(product, plan) });
     setStep("confirm");
   }
-  function confirm(event: React.FormEvent) {
+  async function confirm(event: React.FormEvent) {
     event.preventDefault();
     const found = checkBuyer(buyer);
     setErrors(found);
     if (Object.keys(found).length) return;
-    setStep("done");
+    // A downgrade and every prototype run are still samples; a purchase in live mode is a real one-time payment.
+    if (!live || !chosen || chosen.kind === "downgrade") {
+      setStep("done");
+      return;
+    }
+    setPaying(true);
+    setPayError(null);
+    try {
+      const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, buyer }) });
+      const order = (await started.json().catch(() => ({}))) as Partial<RazorpayOrder> & { error?: string; message?: string; fields?: Partial<Record<BuyerField, string>> };
+      if (!started.ok) {
+        if (order.fields) setErrors(order.fields);
+        setPayError(order.message ?? (order.fields ? "Please check the details marked below." : "We could not start your payment. Please try again in a few minutes."));
+        return;
+      }
+      const paid = await openRazorpay(order as RazorpayOrder, { name: buyer.name });
+      if (!paid) {
+        setPayError("Your payment was not completed, so you have not been charged. You can try again.");
+        return;
+      }
+      const verified = await fetch("/api/store/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, razorpayOrderId: paid.razorpay_order_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature }) });
+      const result = (await verified.json().catch(() => ({}))) as { invoiceNumber?: string | null; message?: string };
+      if (!verified.ok) {
+        setPayError(result.message ?? "Your payment went through but we could not confirm it yet. Please do not pay again; it will show here shortly, or contact support.");
+        return;
+      }
+      setInvoice(result.invoiceNumber ?? null);
+      setStep("done");
+    } catch {
+      setPayError("Something went wrong. If money left your account, please do not pay again: contact support with the time of the payment.");
+    } finally {
+      setPaying(false);
+    }
   }
 
   return (
@@ -55,7 +92,7 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
       <header className="ps-head">
         <h1>Manage your {product.name} subscription</h1>
         <p className="ps-lede">Choose a plan, confirm your payment and you are done. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Payment is not connected yet: nothing is saved or charged." : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Payment is a real one-time payment through Razorpay (test mode until launch). Downgrades are not switched on yet." : "Prototype with sample data. Nothing is saved or charged."}</p>
       </header>
 
       <ol className="ps-steps" aria-label="Progress">
@@ -161,13 +198,14 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
                 </div>
                 {kind !== "downgrade" && (
                   <div className="ps-payblock" role="group" aria-label="Payment">
-                    <p className="ps-sample-pay" role="note">Sample payment. No card or UPI is used and no money moves. Real Razorpay checkout comes in a later step.</p>
+                    {live ? <p className="ps-hint">You pay once, by card, UPI or net banking, through Razorpay. Your plan starts as soon as the payment is confirmed.</p> : <p className="ps-sample-pay" role="note">Sample payment. No card or UPI is used and no money moves. Real Razorpay checkout comes in a later step.</p>}
                     <p>Amount to pay today: <strong>{inr(price.total)}</strong></p>
                   </div>
                 )}
+                {payError && <p className="ps-error" role="alert">{payError}</p>}
                 <div className="ps-actions">
-                  <button type="button" className="ps-secondary" onClick={() => setStep("plans")}>Back</button>
-                  <button type="submit" className="ps-cta">{kind === "downgrade" ? "Schedule downgrade" : "Simulate successful payment"}</button>
+                  <button type="button" className="ps-secondary" onClick={() => setStep("plans")} disabled={paying}>Back</button>
+                  <button type="submit" className="ps-cta" disabled={paying}>{kind === "downgrade" ? "Schedule downgrade" : paying ? "Please wait..." : live ? `Pay ${inr(price.total)}` : "Simulate successful payment"}</button>
                 </div>
               </form>
             )}
@@ -177,9 +215,11 @@ export function ManageFlow({ product, live = false }: { product: SampleProduct; 
                 <p>
                   {kind === "downgrade"
                     ? `You move to ${chosen.plan.name} on ${longDate(sub!.nextRenewal)}. Until then you keep ${currentPlan!.name}, and nothing is charged today.`
-                    : `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} would be charged today.`}
+                    : live
+                      ? `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} paid. Your plan is now active.`
+                      : `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} would be charged today.`}
                 </p>
-                <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>
+                {live && kind !== "downgrade" ? <p role="status">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>}
                 <Link className="ps-cta" href="/">Back to Store</Link>
               </section>
             )}

@@ -121,6 +121,15 @@ export function parsePlatformPlanCatalogue(input: unknown): ParseResult<Platform
  * person is a member with the right to view billing before it asks. The path carries the business id, so it is part of the signature.
  */
 export const platformBillingPath = (businessId: string) => `/api/platform/businesses/${businessId}/billing`;
+/**
+ * The Store's buy calls (Platform to Ops, signed with the platform-billing secret, which is separate from the read-only platform-reader secret):
+ * POST .../checkout starts a payment for a plan and interval, POST .../verify confirms what Razorpay Checkout returned. Same bodies as the
+ * product billing API (`parseCheckoutRequest`, `parseBillingVerifyRequest`). The business and product are in the path, so a signature for one
+ * business's route is no good for another's.
+ */
+export type PlatformBillingAction = "checkout" | "verify";
+export const platformCheckoutPath = (businessId: string, productKey: string, action: PlatformBillingAction) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/${action}`;
+export const PLATFORM_CHECKOUT_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/(?:checkout|verify)$/;
 export const PLATFORM_BILLING_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/billing$/;
 
 export interface PlatformBusinessBilling {
