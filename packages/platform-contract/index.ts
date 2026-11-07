@@ -4,3 +4,6 @@ export * from "./src/sequence";
 export * from "./src/claims";
 export * from "./src/links";
 export * from "./src/signing";
+export * from "./src/tokens";
+export * from "./src/receive";
+export * from "./src/pull";

@@ -8,5 +8,8 @@ Shared shapes, parsers and signing helpers for the Platform <-> product channel:
 - `claims`: the minimal ID-token claims (`sub`, email, verified, name, `membership_version`) and organisation-claim shapes.
 - `links`: the `organisation.link` command a product receives and the answer it gives.
 - `signing`: route-bound HMAC signing for this channel. It reuses `packages/contract` (`v2`, `<timestamp>.<METHOD>.<path+query>.<body>`, 300 s window) and refuses a request that is not bound to a route.
+- `tokens`: `validateIdToken` (jose): signature from the provider's keys (EdDSA, ES256, RS256 only), issuer, one audience, expiry, issued-at, this sign-in's nonce and the claim shape, then verified email. Identity only: roles and memberships never come from a token.
+- `receive`: `receiveEvent`, the receiving side of a delivery in the one correct order: route-bound signature over the raw body, parse, signed event id equals the body's, then the sequence guard (`apply` false for a duplicate or older event).
+- `pull`: `signPullRequest` (route-bound GET, query included), `signPullResponse` and `verifyPullResponse` (answer signed with the request's id, so it cannot be swapped for another).
 
 Like `packages/contract` it is a plain folder, not an npm workspace, and parsers never throw on bad input: they return `{ ok, value | error }`. Pure TypeScript, no database. Product code is not part of this package. Tests: `npm run test` at the repository root (picked up from `packages/**`).
