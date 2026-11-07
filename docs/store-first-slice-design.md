@@ -161,3 +161,23 @@ Each step ends with one Playwright spec run alone, and AJ's review before the ne
 - **Plan features** are always shown on each card (no show/hide). "Compare plans in detail" is still collapsible.
 - **Header and footer on every Store page:** header with the logo link, Help and a "Sample account" chip (stands in for sign-in); footer with Contact us (hello@platterly.in, +91 7624964646) on the left, Talk to our sales on the right, and a link row: Platterly.in, Terms of Service, Privacy Policy, Security, Refunds. Links go to `https://platterly.in/...` and work once the marketing site is deployed.
 - **Open decision (AJ):** the plan puts upgrade, downgrade and cancel in the Account's Subscriptions page (F13.1.1) and the subscription overview in F13.3.1. The prototype has them in the Store. Decide whether Manage stays in the Store or moves to Account, and whether the Store-first ordering stands, before real data is wired in.
+
+### 9.8 Current state (2026-11-07; supersedes 9.1 to 9.7 where they differ)
+
+The prototype is now a working first slice of M2 (F12, F13.2 and F14 of `docs/platform-foundation-plan.md`), built ahead of M1 on AJ's go-ahead. It is local only.
+
+| Area | State |
+|---|---|
+| Access | **The Store is never public (AJ).** Every page needs sign-in (central sign-in, single sign-on with the Account), `robots.txt` disallows all, `noindex` on every response. The "Sample account" chip is gone: the header shows the signed-in person with Sign out. |
+| Business | The person's business comes from their Platform membership (organisation id = Ops business id). A person with no business sees "set up your business first" and no purchase screen. |
+| Data | Plans and prices from Ops. The home page shows the business's real subscriptions (subscribed, on trial, not subscribed) with a status line: Payment due (7-day grace), Ended, Locked, Trial ended. These states are derived from Ops's dates (`modules/store/status.ts`); `PAST_DUE` stays unused (AJ). Sample data remains only when Ops is not configured. Bundles are empty in live mode. |
+| Buying | **Real one-time Razorpay payment** (test keys). Platform calls Ops with a separate platform-billing secret; Ops creates the order, then checks Razorpay's signature, issues the invoice and activates the plan. GST details are kept on each payment (no saved profile yet, so no prefill). The form is not prefilled. |
+| Upgrade | Ops prices it with a **credit for the unused days** (last payment, before GST, only for a dearer plan); the Manage page shows plan price, credit, GST and total from Ops's quote. The credit is frozen on the invoice. |
+| Downgrade | Scheduled with Ops for the end of the paid period; no charge; shown on the plans page with Undo. |
+| Cancel | Stops renewal (reminders and grace notices stop), access runs to the end of the paid days, no refund; Reactivate on the plans page; paying again also clears it. |
+| Manage lives in | **The Store** (the open decision in 9.7 is closed for now). The Account's Invoices and Payments pages are read-only. |
+| Account pages | `/invoices` (GST PDF download, with a credit line when an upgrade was credited) and `/payments` (paid, failed, unfinished, subscription state), from Ops. |
+| Still sample or not built | Coupons (field disabled), bundle checkout, add-ons, refunds, saved billing profile and GST prefill, monthly auto-pay in the Store (one-time only), Account overview billing summary, Store links on the marketing site. |
+| Dependencies not yet in place (M1) | Only businesses already in the Platform can use it (activation F8.2.2, registry F6.1.1, events F6.2 are not built), so today that is two businesses. |
+| Tests | `e2e/store-sso.spec.ts` (5) and `e2e/billing.spec.ts` (2) pass; **6 tests in `e2e/store.spec.ts` that check sample plan data still fail** against the live catalogue and need rewriting. Razorpay's own window cannot be driven in Playwright, so a purchase is tried by hand. |
+
