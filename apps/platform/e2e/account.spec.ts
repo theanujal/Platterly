@@ -32,7 +32,7 @@ const json = (route: Route, status: number, body: unknown) => route.fulfill({ st
 
 const USER = { id: "11111111-1111-4111-8111-111111111111", email: "owner@kitchen.test", emailVerified: true };
 const BIZ = { id: "biz_" + "a".repeat(32), name: "Test Kitchen Co", status: "active", role: "Admin" };
-const okBody = (products = { caterly: "linked", rivo: "none" }, business = BIZ) => ({ status: "ok", overview: { user: USER, business: { state: "ok", business, products } } });
+const okBody = (products = { caterly: "linked", rivo: "none" }, business = BIZ) => ({ status: "ok", overview: { user: USER, business: { state: "ok", business, products, team: [] } } });
 
 test.describe("Running app: signed out (no intercept)", () => {
   for (const p of PAGES) {
@@ -113,9 +113,9 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByRole("heading", { level: 3, name: USER.email })).toBeVisible();
     await expect(page.locator(".pa-acct-chip")).toContainText(USER.email);
     await expect(switcher(page)).toContainText(BIZ.name);
-    await expect(page.getByRole("article", { name: "Caterly" })).toContainText(`For ${BIZ.name}`);
-    await expect(page.getByRole("article", { name: "Caterly" })).toContainText("Linked");
-    await expect(page.getByRole("article", { name: "Rivo" })).toContainText("Coming soon");
+    await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText(`For ${BIZ.name}`);
+    await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText("Linked");
+    await expect(page.getByRole("article", { name: "Rivo", exact: true })).toContainText("Coming soon");
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(2);
     await shot(page, "data-overview");
 
@@ -126,10 +126,10 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await shot(page, "data-business");
 
     await page.goto("/products");
-    await expect(page.getByRole("article", { name: "Caterly" })).toHaveAttribute("data-selected", "true");
+    await expect(page.getByRole("article", { name: "Caterly", exact: true })).toHaveAttribute("data-selected", "true");
     await switcher(page).click();
     await page.getByRole("listbox", { name: "Your products" }).getByRole("button", { name: /Rivo/ }).click();
-    await expect(page.getByRole("article", { name: "Rivo" })).toHaveAttribute("data-selected", "true");
+    await expect(page.getByRole("article", { name: "Rivo", exact: true })).toHaveAttribute("data-selected", "true");
     await shot(page, "data-products");
 
     await page.goto("/profile");
