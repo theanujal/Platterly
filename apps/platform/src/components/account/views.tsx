@@ -10,11 +10,12 @@ import { AccountShell } from "./shell";
 import { useAccount } from "./store";
 import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
+import { RecoveryEmail } from "./recovery-email";
 import { TwoFactor } from "./two-factor";
 import { ChangePassword } from "./change-password";
 import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
-import { Avatar, Badge, PageHeader, PlaceholderNote } from "./ui";
+import { Avatar, Badge, PageHeader } from "./ui";
 
 export function OverviewView() {
   const account = useAccount();
@@ -151,10 +152,6 @@ export function ProfileView() {
   );
 }
 
-const SECURITY_ROWS = [
-  { label: "Recovery email", hint: "Where we send a code if you are locked out.", action: "Change recovery email" },
-];
-
 type Device = { id: string; label: string; lastActive: string; current: boolean };
 type DevicesState = { phase: "loading" } | { phase: "error" } | { phase: "ready"; devices: Device[] };
 
@@ -248,8 +245,6 @@ export function SecurityView() {
       <DataGate>
         {(overview) => (
           <>
-            <PlaceholderNote>Your email and your signed-in devices are real. Changing your password is real. A recovery email is not built yet.</PlaceholderNote>
-
             <section className="pa-card pa-form" aria-labelledby="sc-signin">
               <div className="pa-section-head">
                 <h2 id="sc-signin">
@@ -265,20 +260,7 @@ export function SecurityView() {
               </div>
               <ChangePassword />
               <TwoFactor />
-              {SECURITY_ROWS.map((row) => (
-                <div className="pa-switch-row" key={row.label}>
-                  <div>
-                    <span className="pa-row-label">{row.label}</span>
-                    <span className="pa-hint">{row.hint}</span>
-                  </div>
-                  <div className="pa-row-actions">
-                    <Badge tone="neutral">Not available yet</Badge>
-                    <button type="button" className="pa-btn pa-btn-outline" disabled title="Not built yet.">
-                      {row.action}
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <RecoveryEmail />
             </section>
 
             <Devices />

@@ -13,7 +13,7 @@ import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, Shiel
 // F4.1.1 / F4.1.2 pages on the auth host. They talk only to the identity provider's own endpoints (same origin, /api/auth/*). Messages are the same
 // whether or not an address is registered (no enumeration), and never say more than "check your details" for a wrong password.
 const PASSWORD_MIN = 8;
-const OWN_PARAMS = ["email", "verified", "sent", "reset"];
+const OWN_PARAMS = ["email", "verified", "sent", "reset", "recovery"];
 
 /** The provider's signed sign-in query (`sig`, `exp`, ...), without this page's own parameters, so it can be handed back to the provider unchanged. */
 function providerQuery(params: URLSearchParams): string {
@@ -471,6 +471,22 @@ export function ForgotForm() {
     setError(res.status === 429 ? BUSY : GENERIC);
   }
 
+  // "I cannot reach this email": send the same reset code to the person's recovery email, if they set one. The answer and the next page are the same either way.
+  async function viaRecovery() {
+    if (!email.trim()) return setError("Enter your email first.");
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/recovery/send", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ email }) });
+      if (res.ok) return void window.location.assign(withCarry("/reset", carry, { email, sent: "1", recovery: "1" }));
+      setError(res.status === 429 ? BUSY : GENERIC);
+    } catch {
+      setError(GENERIC);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <AuthCard title="Reset your password" lede="Enter your email and we will send you a code.">
       <form className="pl-auth-form" method="post" onSubmit={submit}>
@@ -481,6 +497,9 @@ export function ForgotForm() {
         </button>
       </form>
       <p className="pl-auth-links">
+        <button type="button" className="pa-link" disabled={busy || !hydrated} onClick={viaRecovery}>
+          I cannot reach this email: use my recovery email
+        </button>
         <Link href={withCarry("/sign-in", carry)}>Back to sign in</Link>
       </p>
     </AuthCard>
@@ -510,7 +529,7 @@ export function ResetForm() {
   return (
     <AuthCard title="Choose a new password" lede="Enter the code we emailed you and your new password. Other devices will be signed out.">
       <form className="pl-auth-form" method="post" onSubmit={submit}>
-        {params.get("sent") && <p className="pl-auth-ok">If that address has an account, a code is on its way.</p>}
+        {params.get("sent") && <p className="pl-auth-ok">{params.get("recovery") ? "If that account has a recovery email, a code is on its way to it." : "If that address has an account, a code is on its way."}</p>}
         {error && <Error_>{error}</Error_>}
         <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" />
         <div className="pl-auth-code">

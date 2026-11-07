@@ -4,6 +4,7 @@ import { emailOTP, jwt, twoFactor } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import type { Pool } from "pg";
 import { APIError, createAuthMiddleware } from "better-auth/api";
+import { recoveryDelivery } from "@/modules/account/recovery-email";
 import { recordSignIn } from "@/modules/account/sign-in-history";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
@@ -119,7 +120,9 @@ export function createIdp(options: IdpOptions = {}) {
         sendVerificationOnSignUp: true,
         overrideDefaultEmailVerification: true,
         async sendVerificationOTP({ email, otp, type }) {
-          await sendOtp(email, otp, type);
+          // The recovery-email reset route sends a password-reset code to the person's verified recovery address instead of the main one (only for that type).
+          const redirect = type === "forget-password" ? recoveryDelivery.getStore() : undefined;
+          await sendOtp(redirect?.to ?? email, otp, type);
         },
       }),
       // Two-step verification: an authenticator app (TOTP) plus backup codes. Off for everyone until they turn it on in the Account. A person who has it
@@ -150,11 +153,11 @@ export function createIdp(options: IdpOptions = {}) {
 export type Idp = ReturnType<typeof createIdp>;
 
 declare global {
-  var __idp4: Idp | undefined;
+  var __idp6: Idp | undefined;
 }
 
 /** One provider instance per server process. */
 export function idp(): Idp {
-  if (!globalThis.__idp4) globalThis.__idp4 = createIdp();
-  return globalThis.__idp4;
+  if (!globalThis.__idp6) globalThis.__idp6 = createIdp();
+  return globalThis.__idp6;
 }

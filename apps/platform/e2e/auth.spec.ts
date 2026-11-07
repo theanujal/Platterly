@@ -271,6 +271,8 @@ test.describe("Sign-in safety", () => {
     await page.getByRole("button", { name: "Create account" }).click();
     await fill(page, "Verification code", await codeFor(page, to));
     await page.getByRole("button", { name: "Verify email" }).click();
+    // Wait for the sign-in page itself: a field filled while the page is still changing is lost.
+    await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL("http://account.localhost:3300/");
