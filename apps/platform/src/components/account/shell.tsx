@@ -26,7 +26,7 @@ const isActive = (href: string, pathname: string) => (href === "/" ? pathname ==
 /** Who the shell says is signed in, from the real data: the email, a placeholder while loading, or "Not signed in". */
 function useWho() {
   const data = useAccountData();
-  if (data.phase === "ready") return { label: initials(data.overview.user.email), name: data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified" };
+  if (data.phase === "ready") return { label: initials(data.overview.user.name ?? data.overview.user.email), name: data.overview.user.name ?? data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified" };
   if (data.phase === "unauthenticated") return { label: "?", name: "Not signed in", sub: "Sign in to see your account" };
   if (data.phase === "error") return { label: "!", name: "Account unavailable", sub: "Could not load" };
   return { label: "…", name: "Loading", sub: "" };

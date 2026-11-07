@@ -16,7 +16,7 @@ export type BusinessSection =
   | { state: "forbidden"; reason: "member_disabled" | "member_removed" }
   | { state: "ok"; business: BusinessSummary; products: Record<ProductKey, LinkState>; team: TeamMemberView[] };
 
-export type AccountUserView = { id: string; email: string; emailVerified: boolean };
+export type AccountUserView = { id: string; email: string; emailVerified: boolean; /** The person's full name, when the Account holds one; screens fall back to the email. */ name?: string };
 export type AccountOverview = { user: AccountUserView; business: BusinessSection };
 
 export type OverviewResult = { status: "ok"; overview: AccountOverview } | { status: "unauthenticated" } | { status: "error" };

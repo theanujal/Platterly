@@ -12,10 +12,11 @@ export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
   );
 }
 
-export function Avatar({ label, size = "md", round = false }: { label: string; size?: "sm" | "md" | "lg" | "xl"; round?: boolean }) {
+export function Avatar({ label, size = "md", round = false, photo }: { label: string; size?: "sm" | "md" | "lg" | "xl"; round?: boolean; photo?: string }) {
   return (
     <span className={`pa-avatar pa-avatar-${size}${round ? " pa-avatar-round" : ""}`} aria-hidden="true">
-      {label}
+      {/* eslint-disable-next-line @next/next/no-img-element -- a private, same-origin picture; nothing to optimise */}
+      {photo ? <img src={photo} alt="" className="pa-avatar-img" /> : label}
     </span>
   );
 }

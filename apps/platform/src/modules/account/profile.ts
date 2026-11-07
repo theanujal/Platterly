@@ -3,7 +3,7 @@ import { normalizePhone } from "./phone";
 
 // Account profile: name (in the provider's user table), phone, time zone and the product-updates choice (in accountProfile). Every query is scoped to
 // the caller's own provider user id, taken from the verified session by the route, never from the request body.
-export type Profile = { name: string; firstName: string; lastName: string; email: string; emailVerified: boolean; phone: string; timeZone: string; notifyProductUpdates: boolean };
+export type Profile = { photoVersion: string | null; name: string; firstName: string; lastName: string; email: string; emailVerified: boolean; phone: string; timeZone: string; notifyProductUpdates: boolean };
 export type ProfileInput = { firstName?: unknown; lastName?: unknown; phone?: unknown; timeZone?: unknown; notifyProductUpdates?: unknown };
 export type ProfileErrors = Partial<Record<"firstName" | "lastName" | "phone" | "timeZone" | "notifyProductUpdates", string>>;
 
@@ -47,12 +47,12 @@ export function validateProfile(input: ProfileInput): { ok: true; clean: Clean }
 
 export async function getProfile(pool: Pool, userId: string): Promise<Profile | null> {
   const { rows } = await pool.query(
-    'select u."name", u."firstName", u."lastName", u."email", u."emailVerified", u."phone", p."timeZone", p."notifyProductUpdates" from "user" u left join "accountProfile" p on p."userId" = u."id" where u."id" = $1',
+    'select u."name", u."firstName", u."lastName", u."email", u."emailVerified", u."phone", p."timeZone", p."notifyProductUpdates", case when p."photoKey" is not null then floor(extract(epoch from p."photoUpdatedAt") * 1000)::bigint::text end as "photoVersion" from "user" u left join "accountProfile" p on p."userId" = u."id" where u."id" = $1',
     [userId],
   );
   const r = rows[0];
   if (!r) return null;
-  return { name: r.name, firstName: r.firstName ?? "", lastName: r.lastName ?? "", email: r.email, emailVerified: r.emailVerified, phone: r.phone ?? "", timeZone: r.timeZone ?? DEFAULT_TIME_ZONE, notifyProductUpdates: r.notifyProductUpdates ?? false };
+  return { photoVersion: r.photoVersion ?? null, name: r.name, firstName: r.firstName ?? "", lastName: r.lastName ?? "", email: r.email, emailVerified: r.emailVerified, phone: r.phone ?? "", timeZone: r.timeZone ?? DEFAULT_TIME_ZONE, notifyProductUpdates: r.notifyProductUpdates ?? false };
 }
 
 /** Saves the fields given (already validated). Returns the profile as stored, or null when the person does not exist. */

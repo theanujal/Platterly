@@ -1105,3 +1105,22 @@ a.pa-btn {
   height: 100%;
   padding: 0;
 }
+
+.pa-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.pa-avatar:has(.pa-avatar-img) {
+  overflow: hidden;
+  padding: 0;
+}
+.pa-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

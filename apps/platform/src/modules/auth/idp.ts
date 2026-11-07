@@ -3,7 +3,8 @@ import { betterAuth } from "better-auth";
 import { emailOTP, jwt } from "better-auth/plugins";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import type { Pool } from "pg";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { recordSignIn } from "@/modules/account/sign-in-history";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
 import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
@@ -21,12 +22,13 @@ export function createIdp(options: IdpOptions = {}) {
   const production = process.env.NODE_ENV === "production";
   const sendOtp = options.sendOtp ?? (async (to, otp, kind) => sendAuthEmail(otpEmail(to, otp, kind)));
 
+  const pool = options.pool ?? identityPool();
   return betterAuth({
     appName: "Platterly",
     baseURL: options.baseURL ?? authOrigin(),
     basePath: "/api/auth",
     secret,
-    database: options.pool ?? identityPool(),
+    database: pool,
     trustedOrigins: trustedOrigins(),
     // The common details every product collects at sign-up (the same fields Caterly's own sign-up had). The display name is first + last.
     user: {
@@ -37,6 +39,14 @@ export function createIdp(options: IdpOptions = {}) {
       },
     },
     databaseHooks: {
+      // Every new session is a sign-in: it goes in that person's own history (device label and time only).
+      session: {
+        create: {
+          after: async (session) => {
+            await recordSignIn(pool, { userId: session.userId, outcome: "signed_in", userAgent: session.userAgent });
+          },
+        },
+      },
       user: {
         create: {
           before: async (user) => {
@@ -50,6 +60,21 @@ export function createIdp(options: IdpOptions = {}) {
           },
         },
       },
+    },
+    hooks: {
+      // A refused password for a real person is recorded too. The answer to the caller is unchanged (nothing here says whether the address exists).
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-in/email" || !(ctx.context.returned instanceof APIError)) return;
+        try {
+          const body = ctx.body as { email?: unknown } | undefined;
+          if (typeof body?.email !== "string") return;
+          const found = await ctx.context.internalAdapter.findUserByEmail(body.email.toLowerCase());
+          // Only a refused PASSWORD counts (a refusal for an unverified email is not a wrong-password attempt).
+          if (found && ctx.context.returned.status === "UNAUTHORIZED") await recordSignIn(pool, { userId: found.user.id, outcome: "wrong_password", userAgent: ctx.headers?.get("user-agent") });
+        } catch {
+          /* history never changes the sign-in answer */
+        }
+      }),
     },
     emailAndPassword: {
       enabled: true,
@@ -122,11 +147,11 @@ export function createIdp(options: IdpOptions = {}) {
 export type Idp = ReturnType<typeof createIdp>;
 
 declare global {
-  var __idp2: Idp | undefined;
+  var __idp3: Idp | undefined;
 }
 
 /** One provider instance per server process. */
 export function idp(): Idp {
-  if (!globalThis.__idp2) globalThis.__idp2 = createIdp();
-  return globalThis.__idp2;
+  if (!globalThis.__idp3) globalThis.__idp3 = createIdp();
+  return globalThis.__idp3;
 }

@@ -6,9 +6,15 @@ import { PhoneField } from "../phone-field";
 import { Icon } from "./icons";
 import { Avatar, Badge } from "./ui";
 
-type Profile = { name: string; firstName: string; lastName: string; email: string; emailVerified: boolean; phone: string; timeZone: string; notifyProductUpdates: boolean };
+type Profile = { photoVersion: string | null; name: string; firstName: string; lastName: string; email: string; emailVerified: boolean; phone: string; timeZone: string; notifyProductUpdates: boolean };
 type Errors = Partial<Record<"firstName" | "lastName" | "phone" | "timeZone" | "notifyProductUpdates", string>>;
 type State = { phase: "loading" } | { phase: "error" } | { phase: "ready"; profile: Profile; timeZones: string[] };
+
+const PHOTO_MESSAGES: Record<string, string> = {
+  too_large: "That photo is too large. Choose one up to 2 MB.",
+  not_an_image: "That file is not a JPEG, PNG or WebP picture.",
+  empty: "That file is empty.",
+};
 
 async function patch(payload: Record<string, unknown>): Promise<{ ok: true; profile: Profile } | { ok: false; errors?: Errors }> {
   try {
@@ -100,16 +106,54 @@ export function ProfileDetails() {
     }
   }
 
+  async function sendPhoto(file: File | undefined) {
+    if (!file) return;
+    setNotice(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account/photo", { method: "PUT", credentials: "same-origin", body: file });
+      const body = (await res.json().catch(() => null)) as { status?: string; version?: string } | null;
+      if (res.ok && body?.version) setState({ phase: "ready", profile: { ...profile, photoVersion: body.version }, timeZones });
+      else setNotice({ kind: "failed", text: PHOTO_MESSAGES[body?.status ?? ""] ?? "We could not save your photo. Nothing was changed." });
+    } catch {
+      setNotice({ kind: "failed", text: "We could not save your photo. Nothing was changed." });
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function dropPhoto() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/account/photo", { method: "DELETE", credentials: "same-origin" });
+      if (res.ok) setState({ phase: "ready", profile: { ...profile, photoVersion: null }, timeZones });
+      else setNotice({ kind: "failed", text: "We could not remove your photo. Nothing was changed." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const shownName = profile.name || profile.email;
   return (
     <>
       <section className="pa-card pa-profile-head" aria-label="Account holder">
-        <Avatar label={initials(shownName)} size="xl" round />
+        <Avatar label={initials(shownName)} size="xl" round photo={profile.photoVersion ? `/api/account/photo?v=${profile.photoVersion}` : undefined} />
         <div className="pa-profile-head-text">
           <h2>{shownName}</h2>
           <p className="pa-line">
             <Icon name="mail" size={14} /> {profile.email} {profile.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
           </p>
+          <div className="pa-form-actions">
+            <label className="pa-btn pa-btn-outline" htmlFor="pf-photo">
+              {profile.photoVersion ? "Change photo" : "Add photo"}
+            </label>
+            <input id="pf-photo" type="file" accept="image/jpeg,image/png,image/webp" className="pa-visually-hidden" disabled={busy} onChange={(e) => { void sendPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+            {profile.photoVersion && (
+              <button type="button" className="pa-btn pa-btn-outline" disabled={busy} onClick={dropPhoto}>
+                Remove photo
+              </button>
+            )}
+          </div>
+          <span className="pa-hint">JPEG, PNG or WebP, up to 2 MB.</span>
         </div>
       </section>
 

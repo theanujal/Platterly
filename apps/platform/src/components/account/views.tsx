@@ -9,7 +9,9 @@ import { Icon } from "./icons";
 import { AccountShell } from "./shell";
 import { useAccount } from "./store";
 import { useEffect, useState } from "react";
+import { DataRights } from "./data-rights";
 import { ChangePassword } from "./change-password";
+import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
 import { Avatar, Badge, PageHeader, PlaceholderNote } from "./ui";
 
@@ -31,9 +33,9 @@ export function OverviewView() {
                 </Link>
               </div>
               <div className="pa-card pa-profile-sum">
-                <Avatar label={initials(overview.user.email)} size="lg" round />
+                <Avatar label={initials(overview.user.name ?? overview.user.email)} size="lg" round />
                 <div>
-                  <h3>{overview.user.email}</h3>
+                  <h3>{overview.user.name ?? overview.user.email}</h3>
                   <p className="pa-line">
                     <Icon name="mail" size={14} /> {overview.user.emailVerified ? "Email verified" : "Email not verified"}
                   </p>
@@ -122,6 +124,8 @@ export function ProfileView() {
         {() => (
           <>
             <ProfileDetails />
+
+            <DataRights />
 
             <section className="pa-card pa-form" aria-labelledby="pf-security">
               <div className="pa-section-head">
@@ -277,6 +281,7 @@ export function SecurityView() {
             </section>
 
             <Devices />
+            <SignInHistory />
           </>
         )}
       </DataGate>

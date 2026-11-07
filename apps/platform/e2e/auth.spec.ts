@@ -91,15 +91,15 @@ test.describe("Sign-in journey", () => {
 
     // Back on the Account, signed in, with the person's real email and no business yet.
     await expect(page).toHaveURL("http://account.localhost:3300/");
-    await expect(page.getByRole("heading", { level: 3, name: to })).toBeVisible();
-    await expect(page.locator(".pa-acct-chip")).toContainText(to);
+    await expect(page.getByRole("heading", { level: 3, name: "E2E Person" })).toBeVisible();
+    await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
     await expect(page.getByText("Email verified").first()).toBeVisible();
     await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     await expect(page.getByRole("region", { name: "You are not signed in" })).toHaveCount(0);
     await shot(page, "f4-5-account-signed-in");
     for (const p of ["/business", "/products", "/profile", "/security"]) {
       await page.goto(p);
-      await expect(page.locator(".pa-acct-chip")).toContainText(to);
+      await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
     }
     await shot(page, "f4-6-security-signed-in");
 
@@ -320,7 +320,7 @@ test.describe("Password reset", () => {
     await fill(page, "Password", "a brand new pass 5");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL("http://account.localhost:3300/");
-    await expect(page.locator(".pa-acct-chip")).toContainText(to);
+    await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
   });
 });
 
@@ -332,7 +332,7 @@ async function signInSecondDevice(browser: Browser, to: string) {
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.locator(".pa-acct-chip")).toContainText(to);
+  await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
   return { context, page };
 }
 
@@ -378,7 +378,7 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     const otherContext = await browser.newContext({ baseURL: "http://account.localhost:3300" });
     const other = { context: otherContext, page: await otherContext.newPage() };
     await registerAndSignIn(other.page, b);
-    await expect(other.page.locator(".pa-acct-chip")).toContainText(b);
+    await expect(other.page.locator(".pa-acct-chip")).toContainText("E2E Person");
     const theirs = (await (await other.page.request.get("/api/account/sessions")).json()).devices[0].id as string;
     const post = (data: unknown, origin = "http://account.localhost:3300") => page.request.post("/api/account/sessions/revoke", { headers: { origin }, data });
     expect((await post({ id: theirs })).status(), "another person's session id").toBe(404);
