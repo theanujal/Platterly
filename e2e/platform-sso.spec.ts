@@ -21,7 +21,15 @@ let counter = 0;
 const newEmail = () => `sso-${Date.now()}-${counter++}@auth.test`;
 const created: string[] = [];
 test.afterEach(async () => {
-  for (const email of created.splice(0)) await cleanupOnboardingTestUser(email);
+  const emails = created.splice(0);
+  for (const email of emails) await cleanupOnboardingTestUser(email);
+  // The people registered on the central page live in the identity database too. When its address is given (source ~/.platterly/f4dev/env.sh gives
+  // IDENTITY_DATABASE_URL, but also points DATABASE_URL at Platform's database, so pass only the one variable: IDENTITY_DATABASE_URL=... npx playwright test ...),
+  // remove them as well so the central database keeps only real accounts.
+  if (process.env.IDENTITY_DATABASE_URL && emails.length) {
+    const identity = new Pool({ connectionString: process.env.IDENTITY_DATABASE_URL, max: 1 });
+    await identity.query('delete from "user" where email = any($1)', [emails]).finally(() => identity.end());
+  }
 });
 test.afterAll(async () => {
   await pool.end();
@@ -129,13 +137,43 @@ test("signing out at the Account ends the Caterly session through the back-chann
   await expect.poll(async () => (await caterlySession(page))?.user?.email ?? null, { message: "the Caterly session ended without the person visiting Caterly" }).toBeNull();
 });
 
-test("a Caterly user who only shares the email is NOT linked by email: the central sign-in is refused and no second user appears", async ({ page, request }) => {
+/** A Caterly user made through a separate request context (so the browser under test is not signed in to Caterly by the sign-up call). */
+async function makeCaterlyUser(request: import("@playwright/test").APIRequestContext, email: string, verified: boolean): Promise<string> {
+  const made = await request.post(`${CATERLY}/api/auth/sign-up/email`, { headers: { origin: CATERLY }, data: { name: "Existing Person", firstName: "Existing", lastName: "Person", email, password: "correct-horse-battery" } });
+  expect(made.ok()).toBe(true);
+  await pool.query('update "user" set "emailVerified" = $2 where email = $1', [email, verified]);
+  return (await pool.query('select id from "user" where email = $1', [email])).rows[0].id as string;
+}
+const platterlyLinks = async (userId: string) => (await pool.query(`select "accountId" from account where "userId" = $1 and "providerId" = 'platterly'`, [userId])).rows.map((r) => r.accountId as string);
+
+test("first sign-in links an existing Caterly user by VERIFIED email, once; from then on the central id alone is used", async ({ page, request }) => {
   const to = newEmail();
   created.push(to);
-  // Made through a separate request context, so this browser is not signed in to Caterly by the sign-up call.
-  const made = await request.post(`${CATERLY}/api/auth/sign-up/email`, { headers: { origin: CATERLY }, data: { name: "Existing Person", firstName: "Existing", lastName: "Person", email: to, password: "correct-horse-battery" } });
-  expect(made.ok()).toBe(true);
+  const existing = await makeCaterlyUser(request, to, true);
+  expect(await platterlyLinks(existing)).toEqual([]);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, to);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  expect((await caterlySession(page))!.user!.id, "signed in as the EXISTING Caterly user, not a new one").toBe(existing);
   expect(await userCount(to)).toBe(1);
+  const links = await platterlyLinks(existing);
+  expect(links, "exactly one link was recorded").toHaveLength(1);
+  // Sign out, then sign in again: the recorded link finds the same user (no email matching involved any more).
+  await page.getByRole("button", { name: "Close" }).click();
+  await signOutFromMenu(page);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await fill(page, "Email", to);
+  await fill(page, "Password", PASSWORD, { exact: true });
+  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  expect((await caterlySession(page))!.user!.id).toBe(existing);
+  expect(await platterlyLinks(existing)).toEqual(links);
+});
+
+test("a Caterly user whose email is NOT verified is not linked by email: the central sign-in is refused and no second user appears", async ({ page, request }) => {
+  const to = newEmail();
+  created.push(to);
+  const existing = await makeCaterlyUser(request, to, false);
   await page.goto(`${CATERLY}/`);
   await registerOnCentralPage(page, to);
   await expect(page).toHaveURL(/catering\.localhost:3000\/\?error=/);
@@ -143,8 +181,21 @@ test("a Caterly user who only shares the email is NOT linked by email: the centr
   await expect(page.locator("[data-sso-problem]")).toBeVisible();
   expect(await userCount(to), "still exactly one Caterly user").toBe(1);
   expect(await caterlySession(page)).toBeNull();
-  const linked = await pool.query(`select 1 from account a join "user" u on u.id = a."userId" where u.email = $1 and a."providerId" = 'platterly'`, [to]);
-  expect(linked.rowCount).toBe(0);
+  expect(await platterlyLinks(existing)).toEqual([]);
+});
+
+test("a Caterly user already linked to a DIFFERENT central identity is not handed to someone else who shares the email: refused, link unchanged", async ({ page, request }) => {
+  const to = newEmail();
+  created.push(to);
+  const existing = await makeCaterlyUser(request, to, true);
+  await pool.query(`insert into account (id, "accountId", "providerId", "userId", "createdAt", "updatedAt") values ($1, 'someone-else', 'platterly', $2, now(), now())`, [`pre-${existing}`, existing]);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, to);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/\?error=/);
+  await expect(page.locator("[data-sso-problem]")).toBeVisible();
+  expect(await caterlySession(page)).toBeNull();
+  expect(await userCount(to)).toBe(1);
+  expect(await platterlyLinks(existing), "still only the original link").toEqual(["someone-else"]);
 });
 
 test("?legacy=1 still shows Caterly's own email-and-password form", async ({ page }) => {

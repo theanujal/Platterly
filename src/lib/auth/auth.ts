@@ -47,10 +47,13 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  // Single sign-in (PLATFORM_SSO=1): a person is matched to a Caterly user ONLY through the account row that records their central identity (provider
-  // "platterly", account id = the central subject), never by email. Without this, Better Auth would link a central sign-in to any Caterly user that merely
-  // shares the email address. An unlinked match fails safely ("account not linked") instead.
-  ...(platformSsoEnabled() ? { account: { accountLinking: { disableImplicitLinking: true } } } : {}),
+  // Single sign-in (PLATFORM_SSO=1). A person is matched to a Caterly user in two steps, and only the first is by email:
+  //  1. The FIRST central sign-in of someone who already has a Caterly user links them when the central email is verified (the provider only lets a verified
+  //     address sign in, and says so in userinfo) AND the Caterly user's email is verified AND that Caterly user is not already linked to a different central
+  //     identity (see the account hook below). The link is recorded once as an account row: provider "platterly", account id = the central subject.
+  //  2. From then on the account row alone decides: the central subject finds the Caterly user, whatever either email later becomes.
+  // Anything else (an unverified address on either side, an already-linked user) is refused as "account not linked" and creates no second user.
+  ...(platformSsoEnabled() ? { account: { accountLinking: { enabled: true, requireLocalEmailVerified: true, trustedProviders: [] as string[] } } } : {}),
   user: {
     additionalFields: {
       /**
@@ -96,6 +99,21 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
+    // Single sign-in only: one Caterly user can be linked to ONE central identity. If an email match would add a second, different central identity to a user
+    // who already has one (for example a reused mailbox), the link is refused rather than handing that kitchen to the new person.
+    ...(platformSsoEnabled()
+      ? {
+          account: {
+            create: {
+              before: async (account: { providerId: string; accountId: string; userId: string }) => {
+                if (account.providerId !== PLATFORM_PROVIDER_ID) return;
+                const other = await prisma.account.findFirst({ where: { userId: account.userId, providerId: PLATFORM_PROVIDER_ID, NOT: { accountId: account.accountId } }, select: { id: true } });
+                if (other) return false;
+              },
+            },
+          },
+        }
+      : {}),
     user: {
       create: {
         /**
