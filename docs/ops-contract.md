@@ -1,6 +1,6 @@
 # Ops ↔ Product Contract (draft v1)
 
-Status: **v1 approved by AJ on 2026-10-05 (open questions answered, see section 13). No code is written against it yet.**
+Status: **v1 approved by AJ on 2026-10-05 (open questions answered, see section 13). Implemented: catering, Ops, the signed commands and the billing, library and report calls are built and in use.**
 
 Ops is the control plane. A product (catering today; restaurant, reviews and others later) is a data plane with its own app and its own database. They talk only through this contract. Ops never reads a product database, and a product never reads the ops database.
 

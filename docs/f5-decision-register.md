@@ -323,6 +323,49 @@ Audited and not F5 decisions: W1 C1 (`F8.2.4` split into 4a and 4b, a Caterly-ph
 | Approved plan documents | F5 handover (AJ) | "Approved plan documents are changed only by an AJ-approved documentation task; proposals go in the draft." C15 (2026-11-05) is the approved approach for that task |
 | Git | F5 handover (AJ) | "No Git staging, commit, push, fetch or pull without fresh explicit approval" |
 
+### 2.7 Gate B-2 decisions (AJ, 2026-11-05)
+Evidence: AJ's explicit decision stated in the project conversation on 2026-11-05 (direct, not relayed). The wording below is recorded as given. This section is a documentation record only: it does not implement anything and authorises no implementation.
+
+| ID | Decision (as recorded) | Note |
+|---|---|---|
+| **D1 (plan): identity provider** | **Better Auth is the selected identity provider for Platterly.** AJ selected "Option A: Proceed with Better Auth" and explicitly approves proceeding without completing the Logto comparison first | The Gate B-2 review (`docs/gate-b2-decision-review-d1-d2.md`) described this as Option A and as an exception to the plan as written |
+| D1 exception | `F2.1.4` (Logto evaluation and comparison) is **deferred** by this explicit exception. It is not completed and is not cancelled | Deferred, not completed |
+| D1 basis | The existing Better Auth spike evidence (`docs/identity-spike-results.md` and the follow-up reports) remains the technical basis for the selection | Evidence, not a new test |
+| D1 limits | This decision does **not** mean that Logto was evaluated or that Logto was found technically unsuitable. Logto remains untested (E1 not given) | |
+| **D2 (plan): session policy** | **Approved at policy level by AJ on 2026-11-05, with technical values delegated to design** (the five points below). It was open when D1 was recorded; this row was updated on AJ's approval | Policy approved. **No numeric value is set by this entry** |
+
+**D2 policy as approved (AJ, 2026-11-05).** Wording as given:
+| # | Approved policy | Delegated to technical design |
+|---|---|---|
+| D2.1 | **Product sessions:** a product session must not outlive the identity-provider session | Account and product session lifetimes are finalised in the relevant technical design |
+| D2.2 | **Session expiry:** both idle expiry and absolute expiry must be defined | Exact durations and renewal behaviour |
+| D2.3 | **Provider outage:** AJ confirms the proposed **24-hour** extension for existing sessions during ordinary identity-provider outages. **No new logins** are allowed during an outage | None (the 24-hour value is the plan's proposal, now confirmed). Its scope stays ordinary outages only, not identity database recovery (AJ, earlier decision 5) |
+| D2.4 | **Fresh authentication** is required for sensitive actions, particularly starting and cancelling ownership transfers (C14) | The exact time window |
+| D2.5 | **Token lifetimes:** ID, access and refresh token lifetimes | Delegated to `F4.2.2` and the relevant integration design, including `F8.1.3`, within the approved security boundaries |
+
+**Existing constraints cross-referenced (not newly approved here).** Each is recorded elsewhere and is unchanged: no cookie cache initially (AJ decision, `docs/identity-spike-followup-report.md` status table item 2); revocation respects the existing five-minute maximum bound (plan Part 1 section 4 and the revocation design); RP-initiated logout and back-channel logout remain required (plan `F4.2.3`, `F8.1.3`); user-level revoke and "sign out everywhere" remain required (plan `F4.3.1`); identity database restoration invalidates provider sessions (AJ decision 6, `.claude/HANDOVER-2026-11-02.md`); and break-glass authority for the Business Admin **remains open under Decision M** (plan Part 1 section 10, Revision 11 note R11-7).
+
+**F0.1.5 closure exception (AJ, 2026-11-05).** AJ explicitly approved: "F0.1.5 (Gate B-2 closure) may be closed based on the completed D1 and D2 decisions, without completing F2.1.4 or F2.1.5." This is a specific AJ-approved exception to the original roadmap acceptance dependency.
+| Item | Record |
+|---|---|
+| D1 | Better Auth selected |
+| D2 | Session policy approved at policy level, with technical values delegated to design |
+| **F0.1.5** (Gate B-2 closure) | **Closed by explicit AJ exception on 2026-11-05**, based on D1 and D2 being decided |
+| `F2.1.4` | **Deferred, not complete** |
+| `F2.1.5` | **Not complete** |
+| Original dependencies | The original relationships stay recorded, unchanged, for historical traceability: `F0.1.5` on `F2.1.5` on `F2.1.4`; `F3.1.2` and `F4.1.1` on `F0.1.5` (plan Part 3 section 6). The exception does not rewrite them and does **not** retrospectively complete either F2 task |
+| Where the status is recorded | The Foundation Plan's task tables have **no separate status field** (the F0.1.5 row has Depends, Tasks and Done-when columns only), so no roadmap field was changed. The closure is recorded here and in `docs/gate-b2-decision-review-d1-d2.md`. STATUS was not touched by this entry |
+| Limits | Closing `F0.1.5` does **not**: authorise `F3.1.2` implementation (`F3.1.2` must still be reviewed against its own dependencies, `F3.1.1` and `F0.1.5`, and its own implementation approval; `F3.1.1` is accepted in stages and not marked complete as a whole); authorise `F3.2.1` or any other `F3.2` task; satisfy any of the five C16 prerequisites; resolve O-F421, Decision M or any other open policy question; or authorise any change to Caterly |
+
+**Distinctions preserved by this entry.**
+- `F2.1.4` is deferred, not completed. `F2.1.5` is **not** automatically completed. No `F2` task is marked complete.
+- The roadmap dependency chain (`F0.1.5` on `F2.1.5` on `F2.1.4`) is **not rewritten** and no roadmap sequencing or task dependency is changed. Whether `F0.1.5` could close while `F2.1.5` is not complete was a separate approval; AJ gave it on 2026-11-05 (the exception above).
+- D1 and D2 are both decided at policy level, and `F0.1.5` was closed on 2026-11-05 by AJ's explicit exception (above). The closure is the exception's effect, not a consequence of D1 and D2 alone, and it leaves `F2.1.4` deferred and `F2.1.5` not complete.
+- Exact session durations, renewal behaviour, the fresh-authentication window and the token lifetimes are technical design work. No numeric value is invented here. `F4.2.2`, `F8.1.3` and every other implementation task remain not started and are not marked complete.
+- D1 and D2 approval is **not** implementation authorisation. Decision M, C7 and every other open ownership question remain open.
+- No `F4` task is completed or authorised by this decision, and `F3.2.1` is **not** authorised. All other implementation gates and prerequisites (the five C16 prerequisites, W1 C10, the release process) are unchanged.
+- The conditions listed in the Gate B-2 review (section 5, item 4) are carried as stated there; this decision does not separately confirm or amend them.
+
 ---
 
 ## 3. Superseded items
@@ -422,3 +465,6 @@ All other entries in section 2 carry their wording as recorded in a project reco
 |---|---|---|
 | 2026-11-05 | File created from the decisions recorded in the 2026-11-05 review conversation | AJ approved Step 1 only |
 | 2026-11-05 | Correction-only update after the evidence audit: evidence classes and relay dates (Business Admin model clarification and section 2.4 marked R+O with unknown original dates; H-source caveats); quotation accuracy (A3, Y2-B, Y2.5, X5 terminology, R-C4, X4, "Preserve" lines for C9 to C13); numbering distinctions (policy series, W1 C1 to C10, CL tests, two D1 references); added Gate B-1 scope S2 and `F8.3.2` removal, Caterly boundaries and standing handover rules (sections 2.1, 2.6); added relevant W1 baseline decisions (section 2.5); preserved the C7 historical claim rules and marked the three-claim capacity superseded (section 5.1). No approved decision changed | AJ authorised a correction-only update |
+| 2026-11-05 | Added section 2.7: D1 (plan), identity provider, recorded as Better Auth selected, with `F2.1.4` deferred by explicit exception and `F2.1.5` not automatically completed; D2 (plan) recorded as open. No other section changed | AJ's explicit decision (Option A) and authorisation to edit this file |
+| 2026-11-05 | Section 2.7 updated: D2 (plan), session policy, recorded as approved at policy level with technical values delegated to design (five points, D2.1 to D2.5), existing session constraints cross-referenced, and the closure statement revised. D1 entry unchanged. No other section changed | AJ's explicit approval of the D2 policy and authorisation to edit this file |
+| 2026-11-05 | Section 2.7 updated: F0.1.5 (Gate B-2 closure) recorded as closed by explicit AJ exception, based on D1 and D2 being decided, with `F2.1.4` deferred, `F2.1.5` not complete and the original dependencies left unchanged; roadmap status location recorded (no separate status field). D1 and D2 entries unchanged. No other section changed | AJ's explicit approval of the exception and authorisation to edit this file |

@@ -342,7 +342,7 @@ D5 (open; blocks `F4.1.1`), D1 and D2 (Gate B-2; block `F3.1.2`, F4 and real fre
 - [ ] The confirmations in section 9 recorded and the three plan deviations written into Revision 10
 - [x] F8.2.3b report accepted (AJ, 2026-11-04; local scratch snapshot only, see `docs/member-duplicate-audit-results.md`). Other boxes stay unticked
 - [x] F8.2.4a (accepted by AJ, 2026-11-04; limitations in the acceptance note above): helper tests pass on the scratch database; `git diff` shows no change to existing Caterly files; default `npm run test` still skips them
-- [ ] Platform migrations apply cleanly to `platterly_platform_test` from scratch; up, down, up round trip passes; `check:migrations` passes
+- [x] Platform migrations apply cleanly to `platterly_platform_test` from scratch; up, down, up round trip passes; `check:migrations` passes (F3.1.1, recorded complete with documented limitations on 2026-11-06 on AJ's instruction; evidence: the accepted Stage 2 runs 1 to 4 of 2026-11-04, migration checksums re-verified unchanged on 2026-11-06, `check:migrations` re-run and passed; see `.claude/STATUS.md`). Other boxes stay unticked
 - [ ] Slot unique rule fails at the database for all four roles; disabled keeps the slot; removal frees it
 - [ ] Owner-invariant tests pass, including concurrent demote, concurrent remove, five concurrent add-owner, a test that skips the lock, and transfer at full cap
 - [ ] O1 idempotency tests pass (same key, different keys, changed hash, rollback)
