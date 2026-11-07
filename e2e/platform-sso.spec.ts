@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { expect, test, type Page } from "@playwright/test";
 import { Pool } from "pg";
-import { cleanupOnboardingTestUser } from "./db";
-import { signOutFromMenu } from "./auth-helpers";
+import { cleanupInviteeUser, cleanupOnboardingTestUser } from "./db";
+import { signOutFromMenu, signUpCaterer } from "./auth-helpers";
 
 /**
  * Caterly as a sign-in client of Platterly's central identity (F8.1.1 / F8.1.3), end to end in a real browser against the running Caterly, Platform
@@ -20,8 +20,12 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 let counter = 0;
 const newEmail = () => `sso-${Date.now()}-${counter++}@auth.test`;
 const created: string[] = [];
+const invitees: string[] = [];
 test.afterEach(async () => {
-  const emails = created.splice(0);
+  // Invitees join someone else's business: remove only their own rows (never the shared business) before the owner's cleanup below.
+  const invited = invitees.splice(0);
+  for (const email of invited) await cleanupInviteeUser(email);
+  const emails = [...created.splice(0), ...invited];
   for (const email of emails) await cleanupOnboardingTestUser(email);
   // The people registered on the central page live in the identity database too. When its address is given (source ~/.platterly/f4dev/env.sh gives
   // IDENTITY_DATABASE_URL, but also points DATABASE_URL at Platform's database, so pass only the one variable: IDENTITY_DATABASE_URL=... npx playwright test ...),
@@ -197,6 +201,32 @@ test("a Caterly user already linked to a DIFFERENT central identity is not hande
   expect(await caterlySession(page)).toBeNull();
   expect(await userCount(to)).toBe(1);
   expect(await platterlyLinks(existing), "still only the original link").toEqual(["someone-else"]);
+});
+
+test("an invitee with no Caterly account signs in centrally, comes back to the invitation (not onboarding), and joins the INVITER's business", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const ownerEmail = `e2e-owner-${Date.now()}@example.test`;
+  const invitee = newEmail();
+  created.push(ownerEmail);
+  invitees.push(invitee);
+  // The owner has a business (made through the old form, which still works); an invitation for the invitee is written straight to the database.
+  await signUpCaterer(page, ownerEmail);
+  const owner = (await pool.query(`select u.id as "userId", m."organizationId" as org, o.name from "user" u join member m on m."userId" = u.id join organization o on o.id = m."organizationId" where u.email = $1`, [ownerEmail])).rows[0];
+  const invitationId = `inv-${Date.now()}`;
+  await pool.query(`insert into invitation (id, "organizationId", email, role, status, "expiresAt", "createdAt", "inviterId") values ($1, $2, $3, 'staff', 'pending', now() + interval '2 days', now(), $4)`, [invitationId, owner.org, invitee, owner.userId]);
+
+  const context = await browser.newContext();
+  const inviteePage = await context.newPage();
+  await inviteePage.goto(`${CATERLY}/invitations/${invitationId}/accept`);
+  await registerOnCentralPage(inviteePage, invitee);
+  // Back on the invitation (which accepts itself on load), not Caterly's onboarding wizard: straight to the Dashboard, signed in as the invitee.
+  await expect(inviteePage).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  const session = (await caterlySession(inviteePage))!;
+  expect(session.user?.email).toBe(invitee);
+  expect(await platterlyLinks(session.user!.id)).toHaveLength(1);
+  const joined = await pool.query(`select "organizationId" from member where "userId" = $1`, [session.user!.id]);
+  expect(joined.rows.map((r) => r.organizationId), "joined the inviter's business and has no business of their own").toEqual([owner.org]);
+  await context.close();
 });
 
 test("?legacy=1 still shows Caterly's own email-and-password form", async ({ page }) => {
