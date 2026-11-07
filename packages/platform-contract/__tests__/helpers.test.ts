@@ -215,3 +215,47 @@ describe("validateLogoutToken matrix", () => {
     expect(await validateLogoutToken("abc.def", base(real.jwks))).toEqual({ ok: false, reason: "malformed" });
   });
 });
+
+import { validateIdentityToken } from "../index";
+
+describe("validateIdentityToken (what the provider issues today: identity only)", () => {
+  async function identityToken(privateKey: Parameters<SignJWT["sign"]>[0], patch: Record<string, unknown> = {}, o: { aud?: string; exp?: number; iat?: number; iss?: string } = {}) {
+    const payload: Record<string, unknown> = { sub: "usr_1", sid: "sess_1", nonce: NONCE, auth_time: nowS - 5, acr: "1", ...patch };
+    for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
+    return new SignJWT(payload).setProtectedHeader({ alg: "EdDSA", kid: "k1" }).setIssuer(o.iss ?? ISS).setAudience(o.aud ?? AUD).setIssuedAt(o.iat ?? nowS - 5).setExpirationTime(o.exp ?? nowS + 300).sign(privateKey);
+  }
+  const o = (jwks: Awaited<ReturnType<typeof keys>>["jwks"]) => ({ key: jwks, issuer: ISS, audience: AUD, nonce: NONCE, now: NOW });
+
+  it("accepts a token with no email, name or membership_version, and returns sub, sid and nothing else", async () => {
+    const k = await keys();
+    const r = await validateIdentityToken(await identityToken(k.privateKey), o(k.jwks));
+    expect(r).toEqual({ ok: true, claims: { iss: ISS, aud: AUD, sub: "usr_1", sid: "sess_1", exp: nowS + 300, iat: nowS - 5, nonce: NONCE } });
+  });
+  it("accepts a token without sid", async () => {
+    const k = await keys();
+    expect(await validateIdentityToken(await identityToken(k.privateKey, { sid: undefined }), o(k.jwks))).toMatchObject({ ok: true });
+  });
+  it("the strict validator still refuses the same token (it needs the full claim set)", async () => {
+    const k = await keys();
+    expect(await validateIdToken(await identityToken(k.privateKey), o(k.jwks))).toEqual({ ok: false, reason: "invalid_claims" });
+  });
+  const cases: [string, (k: Awaited<ReturnType<typeof keys>>) => Promise<string>, string][] = [
+    ["wrong issuer", (k) => identityToken(k.privateKey, {}, { iss: "https://evil.test" }), "wrong_issuer"],
+    ["wrong audience", (k) => identityToken(k.privateKey, {}, { aud: "other" }), "wrong_audience"],
+    ["expired", (k) => identityToken(k.privateKey, {}, { exp: nowS - 120 }), "expired"],
+    ["issued in the future", (k) => identityToken(k.privateKey, {}, { iat: nowS + 600, exp: nowS + 900 }), "not_yet_valid"],
+    ["wrong nonce", (k) => identityToken(k.privateKey, { nonce: "other" }), "wrong_nonce"],
+    ["no nonce", (k) => identityToken(k.privateKey, { nonce: undefined }), "wrong_nonce"],
+    ["a mistyped sid", (k) => identityToken(k.privateKey, { sid: 5 }), "invalid_claims"],
+  ];
+  for (const [name, make, reason] of cases)
+    it(`refuses: ${name}`, async () => {
+      const k = await keys();
+      expect(await validateIdentityToken(await make(k), o(k.jwks))).toEqual({ ok: false, reason });
+    });
+  it("refuses a token signed by another key", async () => {
+    const real = await keys();
+    const attacker = await keys();
+    expect((await validateIdentityToken(await identityToken(attacker.privateKey), o(real.jwks))).ok).toBe(false);
+  });
+});
