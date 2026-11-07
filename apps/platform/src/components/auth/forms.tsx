@@ -105,7 +105,12 @@ export function SignInForm() {
       else setDone(true);
       return;
     }
-    if (res.status === 403 && res.code === "EMAIL_NOT_VERIFIED") return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
+    if (res.status === 403 && res.code === "EMAIL_NOT_VERIFIED") {
+      // The provider sends no code on a refused sign-in, and someone who never got one (an imported person) would otherwise wait for nothing. Ask for a fresh
+      // one first; if it is held back by the resend limit, the code from the last minute is still valid, so the page's message stays true.
+      await post("/email-otp/send-verification-otp", { email, type: "email-verification" }).catch(() => null);
+      return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
+    }
     setError(res.status === 429 ? BUSY : res.status === 401 || res.status === 400 ? "The email or password is not right. Check them and try again." : GENERIC);
   }
 

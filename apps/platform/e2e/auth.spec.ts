@@ -173,6 +173,30 @@ test.describe("Sign-in safety", () => {
     expect((await page.request.get("http://account.localhost:3300/api/account/overview")).status()).toBe(401);
   });
 
+  test("an unverified person who signs in is sent a fresh code, so someone who never got one (an imported user) can still verify", async ({ page }) => {
+    const to = newEmail();
+    const mailCount = async () => ((await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[] }[]).filter((m) => m.to.includes(to)).length;
+    await page.goto("/");
+    await page.getByRole("link", { name: "Create an account" }).click();
+    await fill(page, "Full name", "Never Verified");
+    await fill(page, "Email", to);
+    await fill(page, "Password", PASSWORD);
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    await codeFor(page, to);
+    expect(await mailCount()).toBe(1);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await fill(page, "Email", to);
+    await fill(page, "Password", PASSWORD);
+    await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+    await expect.poll(mailCount, { message: "a second code is sent when they sign in", timeout: 8000 }).toBe(2);
+    await fill(page, "Verification code", await codeFor(page, to));
+    await page.getByRole("button", { name: "Verify email" }).click();
+    await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+  });
+
   test("a wrong code is refused with a clear message", async ({ page }) => {
     const to = newEmail();
     await page.goto("/");
