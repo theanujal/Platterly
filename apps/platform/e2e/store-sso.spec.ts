@@ -9,18 +9,22 @@ const STORE = "http://store.localhost:3300";
 const ACCOUNT = "http://account.localhost:3300";
 
 test.describe("Store sign-in", () => {
-  test("the Store home is public and offers Sign in; a signed-out visit to Manage is sent to the central sign-in page", async ({ page }) => {
-    await page.goto(`${STORE}/`);
-    await expect(page.getByRole("banner").getByRole("link", { name: "Sign in" })).toBeVisible();
-    await page.goto(`${STORE}/manage/caterly`);
-    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  test("the Store is never public: a signed-out visit to the home or Manage is sent to the central sign-in page, and crawlers are told to stay away", async ({ page, request }) => {
+    for (const path of ["/", "/manage/caterly"]) {
+      await page.goto(`${STORE}${path}`);
+      await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+    }
+    const robots = await request.get(`${STORE}/robots.txt`);
+    expect(await robots.text()).toMatch(/Disallow: \//);
+    expect((await request.get(`${STORE}/`, { maxRedirects: 0 })).headers()["x-robots-tag"]).toContain("noindex");
   });
 
   test("signing in through the Store signs the person in to the Account with no second prompt, and Sign out ends both", async ({ page, context }) => {
     // Register and sign in through the Store: this also creates the central (auth host) session.
     await registerAndSignIn(page, newEmail(), `${STORE}/manage/caterly`, "Store Person");
     await expect(page).toHaveURL(`${STORE}/manage/caterly`);
-    await expect(page.getByRole("heading", { level: 1, name: "Manage your Caterly subscription" })).toBeVisible();
+    // A new person has no business yet, so Manage asks them to set one up first (the purchase screen needs a business).
+    await expect(page.getByRole("heading", { level: 1, name: "Set up your business first" })).toBeVisible();
     await expect(page.getByRole("banner")).toContainText("Store Person");
 
     // Single sign-on: the Account opens without asking for credentials.
@@ -37,7 +41,7 @@ test.describe("Store sign-in", () => {
     // Signing out of the Store ends the central session, so the Account needs a sign-in again.
     await page.goto(`${STORE}/`);
     await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
-    await expect(page.getByRole("banner").getByRole("link", { name: "Sign in" })).toBeVisible();
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     await page.goto(`${ACCOUNT}/`);
     await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   });
@@ -48,5 +52,21 @@ test.describe("Store sign-in", () => {
     await page.goto(`${STORE}/manage/caterly`);
     await expect(page).toHaveURL(`${STORE}/manage/caterly`);
     await expect(page.getByRole("banner")).toContainText("Account Person");
+  });
+
+  test("a person with no business yet sees a clear message on the Store home and on Manage, not someone else's subscriptions or a purchase screen", async ({ page }) => {
+    await registerAndSignIn(page, newEmail(), `${STORE}/`, "No Business");
+    await expect(page).toHaveURL(`${STORE}/`);
+    await expect(page.getByRole("alert").filter({ hasText: "You have not set up a business yet" })).toBeVisible();
+    // A click before the page is interactive is lost, so click until the tab is really selected.
+    const subscribed = page.getByRole("tab", { name: "Subscribed products", exact: true });
+    await expect(async () => {
+      await subscribed.click();
+      await expect(subscribed).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
+    }).toPass();
+    await expect(page.getByText("No subscribed products match.")).toBeVisible();
+    await page.goto(`${STORE}/manage/caterly`);
+    await expect(page.getByRole("heading", { name: "Set up your business first" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Cancel subscription" })).toHaveCount(0);
   });
 });

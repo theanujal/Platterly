@@ -136,3 +136,4 @@
 .ps-signin, .ps-signout { color: var(--foreground); font: inherit; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
 .ps-signin:hover, .ps-signout:hover { text-decoration: underline; }
 .ps-header-nav form { margin: 0; }
+.ps-warn { margin: 12px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: var(--foreground); }

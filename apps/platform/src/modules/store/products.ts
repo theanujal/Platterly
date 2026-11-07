@@ -1,16 +1,30 @@
 import "server-only";
-import { fetchOpsCatalogue, opsCatalogueConfigured } from "./ops-catalogue";
+import type { PlatformBusinessBilling } from "@platterly/contract";
+import { prisma } from "@/lib/db";
+import type { Session } from "@/lib/session";
+import { loadAccountOverview } from "@/modules/account/overview";
+import { fetchOpsBilling, fetchOpsCatalogue, opsCatalogueConfigured } from "./ops-catalogue";
 import { inr } from "./format";
 import { SAMPLE_BUNDLES, SAMPLE_PRODUCTS, type SampleBundle, type SampleProduct } from "./sample-catalogue";
 
 /**
  * Where the Store gets its products. With Ops configured (OPS_BASE_URL and OPS_PLATFORM_READER_SECRET) the plans and prices are the real ones from Ops and
  * a failure is shown as "not available", never replaced by sample prices. Without it the prototype sample data is used (local and test runs).
- * Real mode knows plans only: the business's own subscriptions are not read yet (F12.1.1), so every product shows as not subscribed, and there are no bundles.
+ * Real mode also finds the signed-in person's business (their Platform membership; the Platform business id is the Ops business id) and reads that business's
+ * subscriptions from Ops, so each product shows as subscribed, on trial or not subscribed. There are no bundles in real mode.
  */
+export type StoreBusiness = { state: "none" } | { state: "forbidden" } | { state: "ok"; id: string; name: string };
 export type StoreProducts =
   | { source: "sample"; products: SampleProduct[]; bundles: SampleBundle[] }
-  | { source: "ops"; products: SampleProduct[]; bundles: SampleBundle[] }
+  | {
+      source: "ops";
+      products: SampleProduct[];
+      bundles: SampleBundle[];
+      /** The business the signed-in person belongs to (item 2). `none`: they have not created one yet; `forbidden`: their membership no longer gives access. */
+      business: StoreBusiness;
+      /** `unavailable`: Ops could not be read for this business, so the products below show no subscription rather than a guessed one. */
+      billing: "ok" | "unavailable" | "not_applicable";
+    }
   | { source: "unavailable" };
 
 /**
@@ -20,7 +34,28 @@ export type StoreProducts =
 export const STORE_KEY_FOR_OPS_KEY: Record<string, string> = { catering: "caterly" };
 export const storeKeyFor = (opsKey: string) => STORE_KEY_FOR_OPS_KEY[opsKey] ?? opsKey;
 
-export async function loadStoreProducts(): Promise<StoreProducts> {
+/**
+ * Puts a business's real subscriptions on the products. Ops keys the product `catering`; the Store calls it `caterly` (see storeKeyFor). Only a live
+ * subscription counts: a trial is TRIAL, an ACTIVE or PAST_DUE paid plan is SUBSCRIBED, and a locked or cancelled one is shown as not subscribed.
+ */
+export function applyBilling(products: SampleProduct[], billing: PlatformBusinessBilling): SampleProduct[] {
+  const byKey = new Map(billing.products.map((b) => [storeKeyFor(b.productKey), b.billing.subscription]));
+  return products.map((product) => {
+    const sub = byKey.get(product.key);
+    if (!sub) return product;
+    if (sub.status === "TRIALING") return { ...product, status: "TRIAL" as const, trialEndsAt: (sub.trialEndsAt ?? sub.currentPeriodEnd ?? sub.startDate).slice(0, 10) };
+    if (sub.status === "ACTIVE" || sub.status === "PAST_DUE") {
+      return {
+        ...product,
+        status: "SUBSCRIBED" as const,
+        subscription: { planId: sub.plan.id, planName: sub.plan.name, interval: sub.billingInterval ?? "MONTHLY", nextRenewal: sub.currentPeriodEnd?.slice(0, 10) ?? "" },
+      };
+    }
+    return product;
+  });
+}
+
+export async function loadStoreProducts(session: Session | null = null): Promise<StoreProducts> {
   if (!opsCatalogueConfigured()) return { source: "sample", products: SAMPLE_PRODUCTS, bundles: SAMPLE_BUNDLES };
   const result = await fetchOpsCatalogue();
   if (!result.ok) return { source: "unavailable" };
@@ -30,5 +65,14 @@ export async function loadStoreProducts(): Promise<StoreProducts> {
       const from = Math.min(...p.plans.map((plan) => plan.monthly.total));
       return { key: storeKeyFor(p.productKey), name: p.name, tagline: `Plans from ${inr(from)} a month, GST included.`, status: "NONE", plans: p.plans };
     });
-  return { source: "ops", products, bundles: [] };
+
+  const overview = await loadAccountOverview(prisma, session);
+  const section = overview.status === "ok" ? overview.overview.business : null;
+  if (!section || section.state === "none") return { source: "ops", products, bundles: [], business: { state: "none" }, billing: "not_applicable" };
+  if (section.state === "forbidden") return { source: "ops", products, bundles: [], business: { state: "forbidden" }, billing: "not_applicable" };
+  const business: StoreBusiness = { state: "ok", id: section.business.id, name: section.business.name };
+  const billing = await fetchOpsBilling(business.id);
+  // A business Ops has no record of (not_found) simply has no subscriptions; any other failure is "unavailable", never a guess.
+  if (!billing.ok) return { source: "ops", products, bundles: [], business, billing: billing.reason === "not_found" ? "ok" : "unavailable" };
+  return { source: "ops", products: applyBilling(products, billing.billing), bundles: [], business, billing: "ok" };
 }

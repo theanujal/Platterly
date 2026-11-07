@@ -1,6 +1,8 @@
 import { headers } from "next/headers";
 import { requireAccountSignIn } from "@/lib/account/guard";
 import { OverviewView } from "@/components/account/views";
+import { getSession } from "@/lib/session";
+import { requireStoreSignIn } from "@/lib/store/guard";
 import { StoreFrame } from "@/components/store/frame";
 import { StoreHome } from "@/components/store/home";
 import { loadStoreProducts } from "@/modules/store/products";
@@ -18,8 +20,9 @@ export default async function Home() {
     return <OverviewView />;
   }
   if (kind === "store") {
-    const data = await loadStoreProducts();
-    return <StoreFrame>{data.source === "unavailable" ? <StoreUnavailable /> : <StoreHome products={data.products} bundles={data.bundles} live={data.source === "ops"} />}</StoreFrame>;
+    await requireStoreSignIn("/");
+    const data = await loadStoreProducts(await getSession());
+    return <StoreFrame>{data.source === "unavailable" ? <StoreUnavailable /> : <StoreHome products={data.products} bundles={data.bundles} live={data.source === "ops"} business={data.source === "ops" ? data.business : null} billing={data.source === "ops" ? data.billing : "ok"} />}</StoreFrame>;
   }
   return <main>Platterly {kind}</main>;
 }

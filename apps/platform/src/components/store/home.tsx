@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { inr, longDate } from "@/modules/store/format";
 import type { SampleBundle, SampleProduct } from "@/modules/store/sample-catalogue";
+import type { StoreBusiness } from "@/modules/store/products";
 import "./store.css";
 
 type Tab = "SUBSCRIBED" | "TRIAL" | "NONE" | "BUNDLES";
@@ -15,7 +16,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 /** The Store home (prototype): the business's products by status, plus bundles. Sample data; nothing is saved or charged. */
-export function StoreHome({ products, bundles, live = false }: { products: SampleProduct[]; bundles: SampleBundle[]; live?: boolean }) {
+export function StoreHome({ products, bundles, live = false, business = null, billing = "ok" }: { products: SampleProduct[]; bundles: SampleBundle[]; live?: boolean; business?: StoreBusiness | null; billing?: "ok" | "unavailable" | "not_applicable" }) {
   // Open on the first tab that has products (real mode starts with nothing subscribed).
   const [tab, setTab] = useState<Tab>(() => ((["SUBSCRIBED", "TRIAL", "NONE"] as const).find((s) => products.some((p) => p.status === s)) ?? "SUBSCRIBED"));
   const [query, setQuery] = useState("");
@@ -27,8 +28,12 @@ export function StoreHome({ products, bundles, live = false }: { products: Sampl
       <header className="ps-head">
         <h1>Your products</h1>
         <p className="ps-lede">See what your business subscribes to, or add another product. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Your own subscriptions and payment are not connected yet." : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-note" role="note">{live ? (business?.state === "ok" ? `Showing ${business.name}. Plans, prices and your subscriptions are live from Platterly. Payment is not connected yet.` : "Plans and prices are live from Platterly. Payment is not connected yet.") : "Prototype with sample data. Nothing is saved or charged."}</p>
       </header>
+
+      {live && business?.state === "none" && <p className="ps-warn" role="alert">You have not set up a business yet. Create it in your Account first; your subscriptions will show here.</p>}
+      {live && business?.state === "forbidden" && <p className="ps-warn" role="alert">Your access to your business has ended, so its subscriptions are not shown.</p>}
+      {live && billing === "unavailable" && <p className="ps-warn" role="alert">We could not load your subscriptions just now. The plans below show no subscription until we can; please try again in a few minutes.</p>}
 
       <div className="ps-tabbar">
         <div role="tablist" aria-label="Products" className="ps-toggle ps-tabs">
@@ -71,12 +76,13 @@ function Subscribed({ products }: { products: SampleProduct[] }) {
     <CardList empty="No subscribed products match." products={products}>
       {(p) => {
         const sub = p.subscription!;
-        const current = p.plans.find((plan) => plan.id === sub.planId)!;
-        const amount = (sub.interval === "ANNUAL" ? current.annual : current.monthly)!.total;
+        // A plan that is not on sale any more (or was assigned by hand) is not in the list: show its name and leave the amount out.
+        const current = p.plans.find((plan) => plan.id === sub.planId);
+        const amount = current ? (sub.interval === "ANNUAL" ? current.annual : current.monthly)?.total : undefined;
         return (
           <ProductCard
             product={p}
-            lines={[current.name, `Next renewal date: ${longDate(sub.nextRenewal)}`, `Renewal amount: ${inr(amount)} / ${sub.interval === "ANNUAL" ? "year" : "month"}`]}
+            lines={[current?.name ?? sub.planName ?? "Your plan", `Next renewal date: ${longDate(sub.nextRenewal)}`, ...(amount === undefined ? [] : [`Renewal amount: ${inr(amount)} / ${sub.interval === "ANNUAL" ? "year" : "month"}`])]}
             action="Manage"
           />
         );

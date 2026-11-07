@@ -6,4 +6,4 @@ export type Interval = "MONTHLY" | "ANNUAL";
 export const isInterval = (value: unknown): value is Interval => value === "MONTHLY" || value === "ANNUAL";
 
 /** 18 Apr 2027. Dates in the sample data are ISO calendar dates, shown without any time zone shift. */
-export const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+export const longDate = (iso: string) => !iso ? "—" : new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
