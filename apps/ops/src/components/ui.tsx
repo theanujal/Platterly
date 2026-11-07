@@ -61,7 +61,7 @@ export function Field({ label, htmlFor, hint, children }: { label: string; htmlF
   );
 }
 
-export const inputClass = "h-10 w-full rounded-lg border border-border bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
+export const inputClass = "h-10 w-full rounded-lg border border-[#c2c2c3] bg-white px-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20";
 
 export function Table({ head, children }: { head: string[]; children: ReactNode }) {
   return (

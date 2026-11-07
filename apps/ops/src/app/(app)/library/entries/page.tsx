@@ -51,8 +51,8 @@ export default async function LibraryEntriesPage({ searchParams }: { searchParam
         <Link href="/library" className="text-sm text-muted-foreground hover:underline">Back to Library review</Link>
         <form className="ml-auto flex items-center gap-2" action="/library/entries">
           <input type="hidden" name="kind" value={kind} />
-          <input name="q" defaultValue={q} placeholder="Search name, category or other name" aria-label="Search the library" className="h-9 w-64 rounded-lg border border-border bg-white px-3 text-sm" />
-          <select name="show" defaultValue={show} aria-label="Show" className="h-9 rounded-lg border border-border bg-white px-2 text-sm">
+          <input name="q" defaultValue={q} placeholder="Search name, category or other name" aria-label="Search the library" className="h-9 w-64 rounded-lg border border-[#c2c2c3] bg-white px-3 text-sm" />
+          <select name="show" defaultValue={show} aria-label="Show" className="h-9 rounded-lg border border-[#c2c2c3] bg-white px-2 text-sm">
             <option value="all">All</option>
             <option value="hidden">Hidden only</option>
           </select>
