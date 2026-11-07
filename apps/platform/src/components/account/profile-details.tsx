@@ -186,7 +186,7 @@ export function ProfileDetails() {
           <div className="pa-field">
             <label htmlFor="pf-email">Email</label>
             <input id="pf-email" value={profile.email} disabled readOnly />
-            <span className="pa-hint">Changing your email needs a code sent to the new address. Use the Security page.</span>
+            <span className="pa-hint">To change your email, use the Security page. It needs a code sent to the new address.</span>
           </div>
           <div className="pa-field">
             <label htmlFor="pf-phone">Phone</label>

@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
 import { RecoveryEmail } from "./recovery-email";
 import { TwoFactor } from "./two-factor";
+import { ChangeEmail } from "./change-email";
 import { ChangePassword } from "./change-password";
 import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
@@ -258,6 +259,7 @@ export function SecurityView() {
                 </div>
                 {overview.user.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
               </div>
+              <ChangeEmail />
               <ChangePassword />
               <TwoFactor />
               <RecoveryEmail />
