@@ -1,0 +1,33 @@
+{
+  "name": "platterly-stub-product",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platterly stub product (F6.3.3): a second, minimal consumer of the Platform contracts (OIDC sign-in, back-channel logout, signed events). It proves the contracts before Caterly changes, and is the reference a real second product (Rivo) copies. Local only; never deployed. Plan: docs/platform-foundation-plan.md.",
+  "scripts": {
+    "dev": "next dev -p 3500",
+    "build": "next build",
+    "start": "next start -p 3500",
+    "lint": "eslint",
+    "typecheck": "next typegen && tsc --noEmit",
+    "test": "vitest run",
+    "db:migrate": "node scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.3",
+    "next": "16.4.3",
+    "pg": "^8.23.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.4",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "typescript": "^5",
+    "vitest": "^5.0.0"
+  }
+}
