@@ -46,6 +46,7 @@ async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");
   await fill(page, "Confirm password", PASSWORD);
+  await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
@@ -73,6 +74,7 @@ test.describe("Sign-in journey", () => {
     await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", PASSWORD);
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -169,6 +171,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Last name", ("Unverified").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", PASSWORD);
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -191,6 +194,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Last name", ("Never Verified").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", PASSWORD);
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -217,6 +221,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Last name", ("Wrong Code").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", PASSWORD);
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
@@ -234,6 +239,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Last name", ("Short Pass").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", "short1");
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", newEmail());
     await fill(page, "Password", "short1");
     await page.getByRole("button", { name: "Create account" }).click();
@@ -259,6 +265,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Last name", ("Next Test").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
     await fill(page, "Confirm password", PASSWORD);
+    await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();

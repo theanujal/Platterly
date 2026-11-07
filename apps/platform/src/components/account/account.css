@@ -1096,3 +1096,12 @@ a.pa-btn {
   border-color: var(--border);
   background: var(--muted);
 }
+/* The phone field's country list is an invisible overlay on the flag; keep it invisible when the field is read-only too. */
+.pa-field .pa-phone select,
+.pa-field .pa-phone select:disabled {
+  opacity: 0;
+  border: 0;
+  background: transparent;
+  height: 100%;
+  padding: 0;
+}

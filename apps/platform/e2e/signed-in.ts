@@ -33,6 +33,7 @@ export async function registerAndSignIn(page: Page, to: string, startPath = "/",
   await fill(page, "Last name", (name).split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");
   await fill(page, "Confirm password", PASSWORD);
+  await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();

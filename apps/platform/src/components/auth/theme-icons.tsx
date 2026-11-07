@@ -16,6 +16,12 @@ export const ChefHatIcon = ({ size = 32 }: P) => (
     <path d="M6 17h12" />
   </Svg>
 );
+export const UserIcon = ({ size = 16 }: P) => (
+  <Svg size={size}>
+    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </Svg>
+);
 export const QrCodeIcon = ({ size = 16 }: P) => (
   <Svg size={size}>
     <rect width="5" height="5" x="3" y="3" rx="1" />

@@ -169,7 +169,6 @@ function ShellFrame({ children }: { children: ReactNode }) {
               </button>
             </form>
           )}
-          <p className="pa-proto-note">Read-only for now. Changes are not available yet.</p>
         </div>
       </aside>
       <div className="pa-content">

@@ -8,7 +8,7 @@ import { PhoneField } from "../phone-field";
 import "../account/account.css";
 import "./auth.css";
 import { useProductBrand } from "./brand";
-import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, ShieldCheckIcon, TrendingUpIcon, UtensilsCrossedIcon } from "./theme-icons";
+import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, ShieldCheckIcon, TrendingUpIcon, UserIcon, UtensilsCrossedIcon } from "./theme-icons";
 
 // F4.1.1 / F4.1.2 pages on the auth host. They talk only to the identity provider's own endpoints (same origin, /api/auth/*). Messages are the same
 // whether or not an address is registered (no enumeration), and never say more than "check your details" for a wrong password.
@@ -135,17 +135,19 @@ export function AuthCard({ title, lede, footer, children }: { title: string; led
   );
 }
 
-function Field({ id, label, type = "text", value, onChange, autoComplete, inputMode, maxLength, hint }: { id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; inputMode?: "numeric" | "email"; maxLength?: number; hint?: string }) {
+function Field({ id, label, type = "text", value, onChange, autoComplete, inputMode, maxLength, hint, star, user }: { star?: boolean; user?: boolean; id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; inputMode?: "numeric" | "email"; maxLength?: number; hint?: string }) {
   const themed = useProductBrand()?.theme === "caterly";
   const [shown, setShown] = useState(false);
-  const icon = themed && (type === "email" || type === "password");
+  const icon = themed && (type === "email" || type === "password" || user);
   const input = <input id={id} name={id} type={type === "password" && shown ? "text" : type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} maxLength={maxLength} required />;
   return (
     <div className="pa-field">
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id} className={star ? "pl-req" : undefined}>
+        {label}
+      </label>
       {icon ? (
         <div className="pl-cat-input">
-          <span className="pl-cat-input-icon">{type === "email" ? <MailIcon /> : <LockIcon />}</span>
+          <span className="pl-cat-input-icon">{user ? <UserIcon /> : type === "email" ? <MailIcon /> : <LockIcon />}</span>
           {input}
           {type === "password" && (
             <button type="button" className="pl-cat-reveal" onClick={() => setShown((v) => !v)} aria-pressed={shown} aria-label={shown ? "Hide text" : "Show text"}>
@@ -256,7 +258,7 @@ export function SignInForm() {
   );
 }
 
-export function SignUpForm() {
+export function SignUpForm({ termsUrl, privacyUrl }: { termsUrl: string; privacyUrl: string }) {
   const themed = useProductBrand()?.theme === "caterly";
   const hydrated = useHydrated();
   const { carry } = useQuery();
@@ -266,6 +268,7 @@ export function SignUpForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -276,6 +279,7 @@ export function SignUpForm() {
     if (!phone || !isValidPhoneNumber(phone)) return setError("Enter a valid phone number.");
     if (password.length < PASSWORD_MIN) return setError(`Choose a password of at least ${PASSWORD_MIN} characters.`);
     if (password !== confirm) return setError("The two passwords do not match.");
+    if (!accepted) return setError("Please accept the Terms and Conditions and the Privacy Policy to continue.");
     setBusy(true);
     const first = firstName.trim();
     const last = lastName.trim();
@@ -299,15 +303,32 @@ export function SignUpForm() {
     >
       <form className="pl-auth-form" method="post" onSubmit={submit}>
         {error && <Error_>{error}</Error_>}
-        <Field id="firstName" label="First name" value={firstName} onChange={setFirstName} autoComplete="given-name" maxLength={40} />
-        <Field id="lastName" label="Last name" value={lastName} onChange={setLastName} autoComplete="family-name" maxLength={40} />
-        <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" />
+        <div className="pl-name-row">
+          <Field id="firstName" label="First name" value={firstName} onChange={setFirstName} autoComplete="given-name" maxLength={40} star user />
+          <Field id="lastName" label="Last name" value={lastName} onChange={setLastName} autoComplete="family-name" maxLength={40} star user />
+        </div>
+        <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" star />
         <div className="pa-field">
-          <label htmlFor="phone">Phone</label>
+          <label htmlFor="phone" className="pl-req">
+            Phone
+          </label>
           <PhoneField id="phone" value={phone} onChange={setPhone} />
         </div>
-        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint={`At least ${PASSWORD_MIN} characters.`} />
-        <Field id="confirmPassword" label="Confirm password" type="password" value={confirm} onChange={setConfirm} autoComplete="new-password" />
+        <Field id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="new-password" hint={`At least ${PASSWORD_MIN} characters.`} star />
+        <Field id="confirmPassword" label="Confirm password" type="password" value={confirm} onChange={setConfirm} autoComplete="new-password" star />
+        <div className="pl-terms">
+          <input id="terms" type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+          <label htmlFor="terms">
+            I accept the{" "}
+            <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+              Terms and Conditions
+            </a>{" "}
+            and{" "}
+            <a href={privacyUrl} target="_blank" rel="noopener noreferrer">
+              Privacy Policy
+            </a>
+          </label>
+        </div>
         <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !hydrated}>
           {busy ? "Creating…" : "Create account"}
         </button>

@@ -310,3 +310,36 @@
     width: 50%;
   }
 }
+
+/* Sign-up: required marks, first and last name side by side, and the terms line (as on Caterly's own sign-up). */
+/* The red star is drawn by CSS, so it is not part of the label's text. */
+.pl-req::after {
+  content: " *";
+  color: var(--destructive, #dc2626);
+}
+.pl-name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.pl-name-row .pa-field {
+  min-width: 0;
+}
+.pl-terms {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.pl-terms input {
+  margin-top: 3px;
+}
+.pl-terms a {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.pl-terms a:hover {
+  text-decoration: underline;
+}

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { newEmail, registerAndSignIn } from "./signed-in";
 
 /** Account profile editing, as a really signed-in person (nothing intercepted). Needs the F4 launcher, the identity database and the mail sink. */
@@ -40,6 +42,11 @@ test("a signed-in person edits first name, last name, phone and time zone, the c
   await expect(page.getByLabel("Time zone")).toHaveValue("Asia/Dubai");
   await expect(page.getByRole("heading", { name: "Asha Rao Nair" })).toBeVisible();
 
+  if (process.env.ACCOUNT_SHOTS) {
+    mkdirSync(process.env.ACCOUNT_SHOTS, { recursive: true });
+    await page.setViewportSize({ width: 1100, height: 1000 });
+    await page.screenshot({ path: path.join(process.env.ACCOUNT_SHOTS, "profile.png"), fullPage: true });
+  }
   // Product updates start off, and the choice is stored.
   const updates = page.getByRole("switch", { name: "Product updates" });
   await expect(updates).not.toBeChecked();
