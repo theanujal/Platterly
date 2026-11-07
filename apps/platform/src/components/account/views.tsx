@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { initials } from "@/lib/account/catalogue";
 import { selectedProduct } from "@/lib/account/state";
-import { BusinessCard, CaterlyCard, RivoCard } from "./cards";
+import { BusinessCard, CaterlyCard, RivoCard, TeamCard } from "./cards";
 import { BusinessGate, DataGate } from "./data";
 import { Icon } from "./icons";
 import { AccountShell } from "./shell";
@@ -97,10 +97,13 @@ export function ProductsView() {
         {(overview) => (
           <BusinessGate overview={overview}>
             {(b) => (
-              <div className="pa-grid-2">
-                <CaterlyCard business={b.business} link={b.products.caterly} selected={product.id === "caterly"} />
-                <RivoCard selected={product.id === "rivo"} />
-              </div>
+              <>
+                <div className="pa-grid-2">
+                  <CaterlyCard business={b.business} link={b.products.caterly} selected={product.id === "caterly"} />
+                  <RivoCard selected={product.id === "rivo"} />
+                </div>
+                {b.products.caterly !== "none" ? <TeamCard product="Caterly" team={b.team} /> : null}
+              </>
             )}
           </BusinessGate>
         )}

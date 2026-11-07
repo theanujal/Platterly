@@ -1,8 +1,9 @@
 import { createHash, randomBytes } from "node:crypto";
+import { isId } from "@platterly/contract";
 import type { Prisma } from "@/generated/prisma/client";
 import { writeAudit } from "../audit/write-audit";
 import { getUserStanding } from "../users/standing";
-import { swapAdminRows, isRefusal } from "./admin";
+import { swapAdminRows, isRefusal, isAdminElsewhere } from "./admin";
 import { InvalidInputError, assertProductKey, type Context, type Result } from "./errors";
 import { lockOrganisation } from "./lock";
 import { allocateSlot, slotsTakenElsewhere } from "./slots";
@@ -19,7 +20,8 @@ function checkName(name: string) {
   return n;
 }
 
-export type CreateOrganisationInput = { userId: string; idempotencyKey: string; name: string; productKey: string };
+/** `organisationId` adopts an existing business id (a Caterly `businessId`, so Platform and Ops agree on one id); without it a new one is minted. */
+export type CreateOrganisationInput = { userId: string; idempotencyKey: string; name: string; productKey: string; organisationId?: string };
 export type CreatedOrganisation = { organisationId: string; created: boolean };
 
 /**
@@ -48,9 +50,11 @@ export async function createOrganisation(tx: Prisma.TransactionClient, ctx: Cont
   const earlier = await replay();
   if (earlier) return earlier;
 
+  if (await isAdminElsewhere(tx, input.userId)) return refuse(tx, ctx, action, null, "already_admin_elsewhere");
   if ((await slotsTakenElsewhere(tx, "", input.productKey, [input.userId])) > 0) return refuse(tx, ctx, action, null, "slot_taken", { people: 1 });
 
-  const organisationId = mintOrganisationId();
+  if (input.organisationId !== undefined && !isId("business", input.organisationId)) throw new InvalidInputError("an adopted business id must look like biz_ followed by 32 hex characters");
+  const organisationId = input.organisationId ?? mintOrganisationId();
   await tx.organisation.create({ data: { id: organisationId, name }, select: { id: true } });
   await lockOrganisation(tx, organisationId);
   // Claim the idempotency key. A concurrent request with the same key waits here on the first one's uncommitted row; if that commits, this

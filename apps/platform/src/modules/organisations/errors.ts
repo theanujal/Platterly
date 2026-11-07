@@ -10,6 +10,7 @@ export type RefusalCode =
   | "idempotency_conflict"
   | "admin_mismatch"
   | "admin_exists"
+  | "already_admin_elsewhere"
   | "same_admin"
   | "former_admin_reappointment_not_decided"
   | "product_not_linked"

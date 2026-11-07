@@ -81,6 +81,7 @@ model Organisation {
   products         OrganisationProduct[]
   creationRequests OrganisationCreationRequest[]
   unlinks          OrganisationProductUnlink[]
+  teamMembers      OrganisationTeamMember[]
 
   @@map("organisations")
 }
@@ -219,4 +220,20 @@ model OutboxEvent {
   @@unique([organisationId, productKey, sequence], map: "outbox_events_organisation_id_product_key_sequence_key")
   @@index([status, nextAttemptAt], map: "outbox_events_status_next_attempt_at_idx")
   @@map("outbox_events")
+}
+
+// Read-only team list for the Account Business page: non-owner members copied from Caterly. Not Platform members (no sign-in, no permission, no slot).
+model OrganisationTeamMember {
+  id             String   @id(map: "organisation_team_members_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String   @map("organisation_id")
+  legacyMemberId String   @map("legacy_member_id")
+  name           String
+  email          String
+  role           String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "organisation_team_members_organisation_id_fkey")
+
+  @@unique([organisationId, legacyMemberId], map: "organisation_team_members_organisation_id_legacy_member_id_key")
+  @@map("organisation_team_members")
 }

@@ -7,7 +7,7 @@ import { CATALOGUE_KEYS, type AccountOverview, type BusinessSection, type LinkSt
 // Account read-only data layer. Identity comes ONLY from the `session` argument (the authenticated-session interface); nothing here takes an
 // organisation id from the caller, so a request can only ever see the business its own membership points at (isolation by construction). Every
 // read of organisation data goes through the F3.2.3 permission map (`org.view`). No write is made here.
-export type AccountDb = Pick<Prisma.TransactionClient, "user" | "organisationMember" | "organisationProduct">;
+export type AccountDb = Pick<Prisma.TransactionClient, "user" | "organisationMember" | "organisationProduct" | "organisationTeamMember">;
 
 const RANK: Record<string, number> = { active: 0, disabled: 1, removed: 2 };
 
@@ -34,7 +34,8 @@ export async function loadAccountOverview(db: AccountDb, session: Session | null
         const links = await db.organisationProduct.findMany({ where: { organisationId: chosen.organisationId }, select: { productKey: true, status: true } });
         const products = Object.fromEntries(CATALOGUE_KEYS.map((k) => [k, "none"])) as Record<ProductKey, LinkState>;
         for (const l of links) if ((CATALOGUE_KEYS as readonly string[]).includes(l.productKey)) products[l.productKey as ProductKey] = l.status === "active" ? "linked" : "suspended";
-        business = { state: "ok", business: { id: chosen.organisation.id, name: chosen.organisation.name, status: chosen.organisation.status === "suspended" ? "suspended" : "active", role: "Admin" }, products };
+        const team = await db.organisationTeamMember.findMany({ where: { organisationId: chosen.organisationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, email: true, role: true } });
+        business = { state: "ok", business: { id: chosen.organisation.id, name: chosen.organisation.name, status: chosen.organisation.status === "suspended" ? "suspended" : "active", role: "Admin" }, products, team };
       }
     }
     const overview: AccountOverview = { user: { id: user.id, email: user.email, emailVerified: user.emailVerified }, business };

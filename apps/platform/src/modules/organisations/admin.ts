@@ -13,7 +13,13 @@ import { refuse, queueMembership } from "./support";
 // invented here. (The proposal's step 4 would promote the row; that waits for P6.)
 export type AdminTx = Pick<Prisma.TransactionClient, "organisationMember">;
 export type AdminSwap = { previous: { memberId: string; userId: string } | null; current: { memberId: string; userId: string } };
-export type SwapRefusal = { refused: "admin_mismatch" | "admin_exists" | "same_admin" | "former_admin_reappointment_not_decided"; detail?: Record<string, string> };
+export type SwapRefusal = { refused: "admin_mismatch" | "admin_exists" | "already_admin_elsewhere" | "same_admin" | "former_admin_reappointment_not_decided"; detail?: Record<string, string> };
+
+/** One person is the active Admin of at most one business (AJ, 2026-11-07); a second business needs a different sign-in. The database enforces it too. */
+export async function isAdminElsewhere(tx: AdminTx, userId: string, exceptOrganisationId?: string): Promise<boolean> {
+  const row = await tx.organisationMember.findFirst({ where: { userId, centralRole: "admin", status: "active", ...(exceptOrganisationId ? { organisationId: { not: exceptOrganisationId } } : {}) }, select: { id: true } });
+  return row !== null;
+}
 
 /** Demote the expected previous Admin first, then insert the new one (the unique index forbids two active Admins even inside the transaction). */
 export async function swapAdminRows(tx: AdminTx, organisationId: string, expectedPreviousMemberId: string | null, newUserId: string): Promise<AdminSwap | SwapRefusal> {
@@ -24,6 +30,7 @@ export async function swapAdminRows(tx: AdminTx, organisationId: string, expecte
     return { refused: "admin_mismatch" };
   }
   if (active && active.userId === newUserId) return { refused: "same_admin" };
+  if (await isAdminElsewhere(tx, newUserId, organisationId)) return { refused: "already_admin_elsewhere" };
   const existing = await tx.organisationMember.findUnique({ where: { organisationId_userId: { organisationId, userId: newUserId } }, select: { id: true } });
   if (existing) return { refused: "former_admin_reappointment_not_decided" };
   if (active) await tx.organisationMember.update({ where: { id: active.id }, data: { status: "disabled" }, select: { id: true } });

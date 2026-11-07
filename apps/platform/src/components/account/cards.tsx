@@ -1,7 +1,7 @@
 "use client";
 
 import { initials, LINK_LABEL, STATUS_LABEL } from "@/lib/account/catalogue";
-import type { BusinessSummary, LinkState, ProductKey } from "@/modules/account/types";
+import type { BusinessSummary, LinkState, ProductKey, TeamMemberView } from "@/modules/account/types";
 import { Icon } from "./icons";
 import { Avatar, Badge, type Tone } from "./ui";
 
@@ -99,3 +99,33 @@ export function RivoCard({ selected = false }: { selected?: boolean }) {
   );
 }
 
+
+const roleLabel = (role: string) => role.charAt(0).toUpperCase() + role.slice(1);
+
+/** Read-only list of the other people a product shows for this business. They are not Platform members and cannot sign in to manage it here. */
+export function TeamCard({ product, team }: { product: string; team: TeamMemberView[] }) {
+  return (
+    <article className="pa-card pa-business" aria-label={`${product} team`}>
+      <div className="pa-business-id">
+        <h3>{product} team</h3>
+        <p>Other people listed in {product} for this business. Read-only: they are not Platform members.</p>
+      </div>
+      {team.length === 0 ? (
+        <p className="pa-muted">No other people are listed.</p>
+      ) : (
+        <ul className="pa-team-list">
+          {team.map((m) => (
+            <li key={m.id} className="pa-team-row">
+              <Avatar label={initials(m.name)} size="sm" />
+              <span className="pa-team-who">
+                <strong>{m.name}</strong>
+                <span className="pa-muted">{m.email}</span>
+              </span>
+              <span className="pa-chip">{roleLabel(m.role)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
