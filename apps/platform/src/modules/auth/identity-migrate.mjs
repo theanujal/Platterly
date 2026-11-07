@@ -5,6 +5,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 export const ACCOUNT_CLIENT_ID = "platterly-account";
+export const STORE_CLIENT_ID = "platterly-store";
 export const ACCOUNT_SCOPES = ["openid", "email", "profile"];
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
@@ -54,11 +55,20 @@ export async function migrateIdentity(pool, dir) {
  * @param {string} origin
  */
 export async function registerAccountClient(pool, redirectUri, origin) {
+  await registerFirstPartyClient(pool, ACCOUNT_CLIENT_ID, "Platterly Account", redirectUri, origin);
+}
+
+/** The Store is the second first-party client: same rules as the Account, its own client id and its own exact redirect address. */
+export async function registerStoreClient(pool, redirectUri, origin) {
+  await registerFirstPartyClient(pool, STORE_CLIENT_ID, "Platterly Store", redirectUri, origin);
+}
+
+async function registerFirstPartyClient(pool, clientId, name, redirectUri, origin) {
   await pool.query(
     `insert into "oauthClient" ("id", "clientId", "name", "redirectUris", "scopes", "skipConsent", "requirePKCE", "tokenEndpointAuthMethod", "grantTypes", "responseTypes", "applicationType", "disabled", "enableEndSession", "postLogoutRedirectUris", "subjectType", "createdAt", "updatedAt")
-     values ($1, $1, 'Platterly Account', $2::jsonb, $3::jsonb, true, true, 'none', '["authorization_code"]'::jsonb, '["code"]'::jsonb, 'web', false, true, $4::jsonb, 'public', now(), now())
+     values ($1, $1, $5, $2::jsonb, $3::jsonb, true, true, 'none', '["authorization_code"]'::jsonb, '["code"]'::jsonb, 'web', false, true, $4::jsonb, 'public', now(), now())
      on conflict ("clientId") do update set "redirectUris" = excluded."redirectUris", "scopes" = excluded."scopes", "skipConsent" = true, "requirePKCE" = true, "tokenEndpointAuthMethod" = 'none',
        "grantTypes" = excluded."grantTypes", "responseTypes" = excluded."responseTypes", "disabled" = false, "postLogoutRedirectUris" = excluded."postLogoutRedirectUris", "updatedAt" = now()`,
-    [ACCOUNT_CLIENT_ID, JSON.stringify([redirectUri]), JSON.stringify(ACCOUNT_SCOPES), JSON.stringify([`${origin}/`])],
+    [clientId, JSON.stringify([redirectUri]), JSON.stringify(ACCOUNT_SCOPES), JSON.stringify([`${origin}/`]), name],
   );
 }

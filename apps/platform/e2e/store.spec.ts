@@ -1,7 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
+import { newEmail, registerAndSignIn } from "./signed-in";
 
-/** Store prototype (docs/store-first-slice-design.md, section 9): sample products, plans and bundles; no sign-in, no real payment. */
+/** Store prototype (docs/store-first-slice-design.md, section 9): sample products, plans and bundles; no real payment. Home is public; Manage needs sign-in (see store-sso.spec.ts). */
 const STORE = "http://store.localhost:3300";
+
+/** Registers a new person and signs in through the central page; resolves once the Store page is back on screen. */
+async function signInToStore(page: Page, path: string) {
+  await registerAndSignIn(page, newEmail(), `${STORE}${path}`);
+  await expect(page).toHaveURL(`${STORE}${path}`);
+}
 
 const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
 const article = (page: Page, name: string) => page.getByRole("article", { name, exact: true });
@@ -64,6 +71,10 @@ test.describe("Store home", () => {
 });
 
 test.describe("Manage a product", () => {
+  test.beforeEach(async ({ page }) => {
+    await signInToStore(page, "/manage/caterly");
+  });
+
   test("lists every plan of the product and labels each one Current plan, Upgrade or Downgrade", async ({ page }) => {
     await page.goto(`${STORE}/manage/caterly`);
     await expect(page.getByRole("heading", { level: 1, name: "Manage your Caterly subscription" })).toBeVisible();
@@ -179,13 +190,15 @@ test.describe("Manage a product", () => {
 });
 
 test.describe("Store header and footer", () => {
-  test("every Store page has a header with the logo link, Help and the sample account, and a footer with contact, sales and legal links", async ({ page }) => {
+  test("every Store page has a header with the logo link, Help and the signed-in person, and a footer with contact, sales and legal links", async ({ page }) => {
+    await signInToStore(page, "/manage/caterly");
     for (const path of ["/", "/manage/caterly", "/manage/nope"]) {
       await page.goto(`${STORE}${path}`);
       const header = page.getByRole("banner");
       await expect(header.getByRole("link", { name: "Platterly Store home" })).toHaveAttribute("href", "/");
       await expect(header.getByRole("link", { name: "Help" })).toHaveAttribute("href", "https://platterly.in/contact/");
-      await expect(header).toContainText("Sample account");
+      await expect(header).toContainText("E2E Person");
+      await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
       const footer = page.getByRole("contentinfo");
       await expect(footer.getByRole("link", { name: "hello@platterly.in" })).toHaveAttribute("href", "mailto:hello@platterly.in");
       await expect(footer.getByRole("link", { name: "+91 7624964646" })).toHaveAttribute("href", "tel:+917624964646");
@@ -202,7 +215,7 @@ test.describe("Store header and footer", () => {
   });
 
   test("the footer sits at the bottom of a short page, and the header and footer fit a phone without sideways scrolling", async ({ page }) => {
-    await page.goto(`${STORE}/manage/nope`);
+    await signInToStore(page, "/manage/nope");
     const box = await page.getByRole("contentinfo").boundingBox();
     const height = await page.evaluate(() => window.innerHeight);
     expect(box!.y + box!.height).toBeGreaterThanOrEqual(height - 1);

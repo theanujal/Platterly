@@ -1,5 +1,6 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { COOKIES } from "@/modules/auth/config";
 import { resolveAccountSession } from "@/modules/auth/account-session";
 import { identityPool } from "@/modules/auth/identity-db";
@@ -20,7 +21,8 @@ export async function getSessionRef(): Promise<SessionRef | null> {
   try {
     const secret = process.env.AUTH_SECRET;
     if (!secret || !process.env.IDENTITY_DATABASE_URL) return null;
-    const value = (await cookies()).get(COOKIES.accountSession)?.value;
+    const store = hostKind(requestHost(await headers())) === "store";
+    const value = (await cookies()).get(store ? COOKIES.storeSession : COOKIES.accountSession)?.value;
     if (!value) return null;
     return await resolveAccountSession(identityPool(), secret, value);
   } catch {

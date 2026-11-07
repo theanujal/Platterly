@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { ACCOUNT_CLIENT_ID } from "./config";
+import { ACCOUNT_CLIENT_ID, STORE_CLIENT_ID } from "./config";
 
 /** How a product shows up on the central sign-in pages (option B: one Platterly page, branded per product). */
 export type ProductBrand = { name: string; icon: string | null; /** A look the central pages can wear for this product (`caterly`: Caterly's split-screen sign-in), or null for the plain branded card. */ theme: ProductTheme | null };
@@ -15,7 +15,7 @@ const CLIENT_ID = /^[A-Za-z0-9_.-]{1,100}$/;
  * and the name is plain text.
  */
 export async function productBrand(pool: Pool, clientId: string | null | undefined): Promise<ProductBrand | null> {
-  if (!clientId || clientId === ACCOUNT_CLIENT_ID || !CLIENT_ID.test(clientId)) return null;
+  if (!clientId || clientId === ACCOUNT_CLIENT_ID || clientId === STORE_CLIENT_ID || !CLIENT_ID.test(clientId)) return null;
   const { rows } = await pool.query('select "name", "icon", "disabled", "redirectUris", "metadata" from "oauthClient" where "clientId" = $1', [clientId]);
   const row = rows[0] as { name: string | null; icon: string | null; disabled: boolean | null; redirectUris: unknown; metadata: unknown } | undefined;
   const name = row?.name?.trim();

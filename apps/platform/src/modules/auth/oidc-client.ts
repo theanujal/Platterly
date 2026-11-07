@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import { findOrCreateBySubject, type IdentityLinkClient } from "../users/identity-link";
 import { mintProviderEmailAssertion } from "../users/provider-assertion";
-import { ACCOUNT_CLIENT_ID, ACCOUNT_SCOPES, IDP_PROVIDER, accountRedirectUri, authOrigin, safeNextPath } from "./config";
+import { ACCOUNT_SCOPES, IDP_PROVIDER, SURFACES, authOrigin, safeNextPath, type Surface } from "./config";
 import { randomToken, seal, unseal } from "./cookies";
 
 // The Account as a first-party OIDC client (F7.1.1 / F4.2.2): authorization-code flow with PKCE (S256), state, nonce, and full ID-token validation
@@ -14,7 +14,8 @@ const TX_SECONDS = 600;
 
 export type Transaction = { state: string; nonce: string; verifier: string; next: string; exp: number };
 
-export function beginSignIn(secret: string, nextPath: string | null | undefined, now: Date = new Date()) {
+export function beginSignIn(secret: string, nextPath: string | null | undefined, now: Date = new Date(), surface: Surface = "account") {
+  const { clientId, redirectUri } = SURFACES[surface];
   const state = randomToken();
   const nonce = randomToken();
   const verifier = randomToken(48);
@@ -24,8 +25,8 @@ export function beginSignIn(secret: string, nextPath: string | null | undefined,
   const url = new URL(`${ISSUER()}/oauth2/authorize`);
   url.search = new URLSearchParams({
     response_type: "code",
-    client_id: ACCOUNT_CLIENT_ID,
-    redirect_uri: accountRedirectUri(),
+    client_id: clientId,
+    redirect_uri: redirectUri(),
     scope: ACCOUNT_SCOPES.join(" "),
     state,
     nonce,
@@ -42,9 +43,10 @@ export type CompleteResult =
 const equal = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 export async function completeSignIn(
-  input: { secret: string; transactionCookie: string | undefined | null; params: URLSearchParams; handler: IdpHandler; now?: Date; linkClient?: IdentityLinkClient },
+  input: { secret: string; transactionCookie: string | undefined | null; params: URLSearchParams; handler: IdpHandler; now?: Date; linkClient?: IdentityLinkClient; surface?: Surface },
 ): Promise<CompleteResult> {
   const now = input.now ?? new Date();
+  const { clientId, redirectUri } = SURFACES[input.surface ?? "account"];
   const tx = unseal<Transaction>(input.transactionCookie, input.secret, "oidc-transaction");
   if (!tx || typeof tx.exp !== "number" || tx.exp * 1000 <= now.getTime() || ![tx.state, tx.nonce, tx.verifier].every((x) => typeof x === "string")) return { ok: false, reason: "bad_transaction" };
   const state = input.params.get("state");
@@ -58,8 +60,8 @@ export async function completeSignIn(
   const tokenResponse = await input.handler(
     new Request(`${ISSUER()}/oauth2/token`, {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: new URL(accountRedirectUri()).origin },
-      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: accountRedirectUri(), client_id: ACCOUNT_CLIENT_ID, code_verifier: tx.verifier }),
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: new URL(redirectUri()).origin },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: redirectUri(), client_id: clientId, code_verifier: tx.verifier }),
     }),
   );
   if (!tokenResponse.ok) return { ok: false, reason: "token_exchange_failed" };
@@ -70,7 +72,7 @@ export async function completeSignIn(
   try {
     const jwksResponse = await input.handler(new Request(`${ISSUER()}/jwks`));
     const jwks = createLocalJWKSet((await jwksResponse.json()) as Parameters<typeof createLocalJWKSet>[0]);
-    const verified = await jwtVerify(tokens.id_token, jwks, { issuer: ISSUER(), audience: ACCOUNT_CLIENT_ID, algorithms: ["EdDSA", "RS256", "ES256"], currentDate: now });
+    const verified = await jwtVerify(tokens.id_token, jwks, { issuer: ISSUER(), audience: clientId, algorithms: ["EdDSA", "RS256", "ES256"], currentDate: now });
     claims = verified.payload as typeof claims;
   } catch {
     return { ok: false, reason: "invalid_id_token" };

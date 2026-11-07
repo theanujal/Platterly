@@ -24,8 +24,10 @@ export const OTP = { length: 6, expiresInSeconds: 600, allowedAttempts: 5, resen
 export const PASSWORD = { minLength: 8, maxLength: 128 } as const;
 
 /** The one first-party client (F4.2.1): the Account. Public client, PKCE mandatory, exact redirect URI, first-party so no consent screen. */
-import { ACCOUNT_CLIENT_ID as CLIENT_ID } from "./identity-migrate.mjs";
+import { ACCOUNT_CLIENT_ID as CLIENT_ID, STORE_CLIENT_ID as STORE_ID } from "./identity-migrate.mjs";
 export const ACCOUNT_CLIENT_ID: string = CLIENT_ID;
+/** The second first-party client: the Store. Same rules as the Account. */
+export const STORE_CLIENT_ID: string = STORE_ID;
 export const ACCOUNT_SCOPES = ["openid", "email", "profile"] as const;
 /** The provider name the Platform `user_identities` table records for this identity provider. */
 export const IDP_PROVIDER = "platterly-idp";
@@ -33,6 +35,8 @@ export const IDP_PROVIDER = "platterly-idp";
 export const COOKIES = {
   /** Account-host session (host-only, set by the Account after the code flow). */
   accountSession: "platterly_account_session",
+  /** Store-host session (host-only). Same signed pointer to the identity-provider session as the Account's. */
+  storeSession: "platterly_store_session",
   /** The in-flight sign-in (state, nonce, PKCE verifier), account host, 10 minutes. */
   oidcTransaction: "platterly_account_oidc",
   /** Identity-provider cookies (auth host) get this prefix. */
@@ -41,8 +45,17 @@ export const COOKIES = {
 
 export const authOrigin = () => originFor("auth");
 export const accountOrigin = () => originFor("account");
+export const storeOrigin = () => originFor("store");
 export const ACCOUNT_REDIRECT_PATH = "/auth/callback";
 export const accountRedirectUri = () => `${accountOrigin()}${ACCOUNT_REDIRECT_PATH}`;
+export const storeRedirectUri = () => `${storeOrigin()}${ACCOUNT_REDIRECT_PATH}`;
+
+/** The two first-party surfaces that sign in through the central page. Each has its own client, host, redirect address and session cookie. */
+export type Surface = "account" | "store";
+export const SURFACES = {
+  account: { clientId: ACCOUNT_CLIENT_ID, origin: accountOrigin, redirectUri: accountRedirectUri, sessionCookie: COOKIES.accountSession },
+  store: { clientId: STORE_CLIENT_ID, origin: storeOrigin, redirectUri: storeRedirectUri, sessionCookie: COOKIES.storeSession },
+} as const;
 
 /** The Account may send people only to a path on its own host: one slash, no scheme, no second slash, no backslash. */
 export function safeNextPath(raw: string | null | undefined): string {

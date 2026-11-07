@@ -132,3 +132,7 @@
 .ps-footer-bottom nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .ps-footer-bottom p { margin: 0; }
 @media (max-width: 480px) { .ps-user span:last-child { display: none; } }
+
+.ps-signin, .ps-signout { color: var(--foreground); font: inherit; font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; }
+.ps-signin:hover, .ps-signout:hover { text-decoration: underline; }
+.ps-header-nav form { margin: 0; }
