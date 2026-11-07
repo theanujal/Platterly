@@ -1,12 +1,13 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 /**
- * Account, connected to real data. In the RUNNING app there is no sign-in yet (F4), so every screen shows its "not signed in" state: those tests
- * hit the real server with nothing intercepted. The data states (a business, no business, no access, an error) are shown by intercepting the
- * browser's request to /api/account/overview with a test-side response. That intercept lives only in this file; the running app has no way to
- * be given a user. Set ACCOUNT_SHOTS=<dir> to also save a screenshot of each screen and state.
+ * Account, connected to real data. A signed-out visitor to any Account page is sent to the sign-in page (the real sign-in journey is auth.spec.ts), and
+ * those tests hit the real server with nothing intercepted. The data states (a business, no business, no access, an error) are shown by intercepting
+ * the browser's request to /api/account/overview with a test-side response; the server step only checks that a session cookie is PRESENT (its value
+ * is not trusted there), so those tests carry a placeholder cookie. That intercept and cookie live only in this file; they give the running app no
+ * user. Set ACCOUNT_SHOTS=<dir> to also save a screenshot of each screen and state.
  */
 const SHOTS = process.env.ACCOUNT_SHOTS;
 const shot = async (page: Page, name: string) => {
@@ -25,23 +26,22 @@ const PAGES = [
 const switcher = (page: Page) => page.getByRole("button", { name: /Switch product/ });
 const nav = (page: Page) => page.getByRole("navigation", { name: "Account" });
 const OVERVIEW = "**/api/account/overview";
+/** Presence only: lets the server step render the page so the intercepted overview call decides what it shows. */
+const withPlaceholderSession = (context: BrowserContext) => context.addCookies([{ name: "platterly_account_session", value: "placeholder", url: "http://account.localhost:3300" }]);
 const json = (route: Route, status: number, body: unknown) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
 const USER = { id: "11111111-1111-4111-8111-111111111111", email: "owner@kitchen.test", emailVerified: true };
 const BIZ = { id: "biz_" + "a".repeat(32), name: "Test Kitchen Co", status: "active", role: "Admin" };
 const okBody = (products = { caterly: "linked", rivo: "none" }, business = BIZ) => ({ status: "ok", overview: { user: USER, business: { state: "ok", business, products } } });
 
-test.describe("Running app: not signed in (no intercept)", () => {
+test.describe("Running app: signed out (no intercept)", () => {
   for (const p of PAGES) {
-    test(`${p.path} shows its heading, the layout and a "not signed in" panel, and no invented person`, async ({ page }) => {
+    test(`${p.path} sends a signed-out visitor to the sign-in page and shows no Account content or invented person`, async ({ page }) => {
       await page.goto(p.path);
-      await expect(page.getByRole("heading", { level: 1, name: p.h1 })).toBeVisible();
-      await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
-      await expect(page.locator(".pa-acct-chip")).toContainText("Not signed in");
+      await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+      await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Account" })).toHaveCount(0);
       await expect(page.getByText(/Meera|Kapoor|Spice Route|example\.com|Sample data|sample data/)).toHaveCount(0);
-      await expect(page.getByText("Read-only for now")).toBeVisible();
-      for (const label of ["Overview", "Products", "Profile", "Security"]) await expect(nav(page).getByRole("link", { name: label })).toBeVisible();
-      await expect(nav(page).getByRole("link", { name: "Business" })).toHaveCount(0);
       await shot(page, `running-app${p.path === "/" ? "-overview" : p.path.replace("/", "-")}`);
     });
   }
@@ -60,20 +60,28 @@ test.describe("Running app: not signed in (no intercept)", () => {
     }
   });
 
-  test("the page never calls anything else and makes no write request", async ({ page }) => {
+  test("a signed-out visit makes no Account API call and no write request", async ({ page }) => {
     const calls: string[] = [];
     page.on("request", (r) => {
-      if (new URL(r.url()).pathname.startsWith("/api/")) calls.push(`${r.method()} ${new URL(r.url()).pathname}`);
+      const u = new URL(r.url());
+      if (u.host === "account.localhost:3300" && u.pathname.startsWith("/api/")) calls.push(`${r.method()} ${u.pathname}`);
     });
     for (const p of PAGES) await page.goto(p.path);
-    expect([...new Set(calls)]).toEqual(["GET /api/account/overview"]);
+    expect(calls).toEqual([]);
+  });
+
+  test("a stale or forged cookie shows the page shell, then the overview answer 401 sends the visitor to sign in", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    await page.goto("/profile");
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   });
 });
 
 test.describe("Product switcher", () => {
-  test("lists the products, switches, closes on Escape, and the choice survives moving between pages and a reload", async ({ page }) => {
+  test("lists the products, switches, closes on Escape, and the choice survives moving between pages and a reload", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     await page.goto("/");
-    await expect(switcher(page)).toContainText("Not signed in");
     await expect(switcher(page)).toContainText("Caterly");
     await switcher(page).click();
     const list = page.getByRole("listbox", { name: "Your products" });
@@ -93,6 +101,10 @@ test.describe("Product switcher", () => {
 });
 
 test.describe("Data states (the browser's request is intercepted; the running app cannot be given a user)", () => {
+  test.beforeEach(async ({ context }) => {
+    await withPlaceholderSession(context);
+  });
+
   test("a business: overview, business, products, profile and security show the real fields and nothing invented", async ({ page }) => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
 
@@ -241,9 +253,11 @@ test.describe("Account API host routing", () => {
 test.describe("Phone layout", () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test("has a bottom navigation and no sideways scrolling, signed out and with a business", async ({ page }) => {
-    for (const mode of ["signed-out", "business"]) {
-      if (mode === "business") await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+  test("has a bottom navigation and no sideways scrolling, with no business and with a business", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    for (const mode of ["no-business", "business"]) {
+      await page.unroute(OVERVIEW).catch(() => {});
+      await page.route(OVERVIEW, (r) => json(r, 200, mode === "business" ? okBody() : { status: "ok", overview: { user: USER, business: { state: "none" } } }));
       for (const p of ["/", "/products", "/profile", "/security"]) {
         await page.goto(p);
         await expect(nav(page).getByRole("link", { name: "Products" })).toBeVisible();

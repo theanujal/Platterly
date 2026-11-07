@@ -37,10 +37,9 @@ async function codeFor(page: Page, to: string): Promise<string> {
   throw new Error(`no code arrived for ${to}`);
 }
 
-/** From the Account's "Sign in" button to a registered, verified, signed-in person back on the Account. */
+/** From an Account page (a signed-out visit lands on the sign-in page) to a registered, verified, signed-in person back on the Account. */
 async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   await page.goto(startPath);
-  await page.getByRole("link", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
   await fill(page, "Full name", "E2E Person");
@@ -58,12 +57,11 @@ async function registerAndSignIn(page: Page, to: string, startPath = "/") {
 const cookiesFor = async (context: BrowserContext, host: string) => (await context.cookies()).filter((c) => c.domain === host || c.domain === `.${host}`);
 
 test.describe("Sign-in journey", () => {
-  test("not signed in -> register -> verify by emailed code -> sign in -> Account shows the real person -> sign out", async ({ page, context }) => {
+  test("signed-out visit goes to sign-in -> register -> verify by emailed code -> sign in -> Account shows the real person -> sign out", async ({ page, context }) => {
     const to = newEmail();
     await page.goto("/");
-    await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
-    await shot(page, "f4-1-account-not-signed-in");
-    await page.getByRole("link", { name: "Sign in" }).click();
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+    await expect(page.getByRole("region", { name: "You are not signed in" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await shot(page, "f4-2-sign-in-page");
     await page.getByRole("link", { name: "Create an account" }).click();
@@ -115,12 +113,12 @@ test.describe("Sign-in journey", () => {
     // Sign out: back to not signed in, the cookie is gone, and the old cookie no longer works.
     await page.goto("/");
     await page.getByRole("button", { name: "Sign out" }).click();
-    await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     expect((await cookiesFor(context, "account.localhost")).some((c) => c.name === "platterly_account_session")).toBe(false);
     await context.addCookies([mine]);
     expect((await page.request.get("/api/account/overview")).status(), "the signed-out session is dead even with its old cookie").toBe(401);
     await page.reload();
-    await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   });
 
   test("signing in again as the same person reuses the same Account user, and the page they asked for is where they land", async ({ page }) => {
@@ -131,7 +129,6 @@ test.describe("Sign-in journey", () => {
     const first = (await (await page.request.get("/api/account/overview")).json()).overview.user.id;
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.goto("/security");
-    await page.getByRole("link", { name: "Sign in" }).click();
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -146,7 +143,6 @@ test.describe("Sign-in safety", () => {
     await registerAndSignIn(page, to);
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in" }).click();
     const message = "The email or password is not right. Check them and try again.";
     await fill(page, "Email", to);
     await fill(page, "Password", "not the password 9");
@@ -162,7 +158,6 @@ test.describe("Sign-in safety", () => {
   test("someone who has not verified their email is sent to the verification page, not signed in", async ({ page }) => {
     const to = newEmail();
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in" }).click();
     await page.getByRole("link", { name: "Create an account" }).click();
     await fill(page, "Full name", "Unverified");
     await fill(page, "Email", to);
@@ -181,7 +176,6 @@ test.describe("Sign-in safety", () => {
   test("a wrong code is refused with a clear message", async ({ page }) => {
     const to = newEmail();
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in" }).click();
     await page.getByRole("link", { name: "Create an account" }).click();
     await fill(page, "Full name", "Wrong Code");
     await fill(page, "Email", to);
@@ -196,7 +190,6 @@ test.describe("Sign-in safety", () => {
 
   test("a short password is refused before anything is sent", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in" }).click();
     await page.getByRole("link", { name: "Create an account" }).click();
     await fill(page, "Full name", "Short Pass");
     await fill(page, "Email", newEmail());
@@ -259,7 +252,6 @@ test.describe("Password reset", () => {
     await registerAndSignIn(page, to);
     await page.getByRole("button", { name: "Sign out" }).click();
     await page.goto("/");
-    await page.getByRole("link", { name: "Sign in" }).click();
     await page.getByRole("link", { name: "Forgot your password?" }).click();
     await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
     await fill(page, "Email", to);
@@ -284,7 +276,6 @@ async function signInSecondDevice(browser: Browser, to: string) {
   const context = await browser.newContext({ baseURL: "http://account.localhost:3300", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1" });
   const page = await context.newPage();
   await page.goto("/");
-  await page.getByRole("link", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
@@ -319,7 +310,7 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     await page.reload();
     await expect(page.getByRole("list", { name: "Signed-in devices" }).getByRole("listitem")).toHaveCount(2);
     await page.getByRole("button", { name: "Sign out everywhere" }).click();
-    await expect(page.getByRole("region", { name: "You are not signed in" })).toBeVisible();
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     expect((await second.page.request.get("/api/account/overview")).status()).toBe(401);
     await second.context.close();
   });
