@@ -38,7 +38,7 @@ export interface SignUpOptions {
  */
 export async function signUpCaterer(page: Page, email: string, options: SignUpOptions = {}): Promise<void> {
   const { firstName = "E2E", lastName = "Tester", phone = "9800000099", closeClaimDialog = true } = options;
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill(firstName);
   await page.getByLabel("Last name").fill(lastName);

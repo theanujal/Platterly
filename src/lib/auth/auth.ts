@@ -13,7 +13,7 @@ import { sendEmail } from "@/lib/notifications/email/zeptomail";
 import { passwordResetEmail, verificationCodeEmail } from "@/lib/notifications/email/templates";
 import { isRateLimited } from "@/lib/rate-limit";
 import { APIError } from "better-auth/api";
-import { PLATFORM_CLIENT_ID, PLATFORM_PROVIDER_ID, platformIssuer, platformSsoEnabled } from "@/lib/platform/config";
+import { PLATFORM_CLIENT_ID, PLATFORM_PROVIDER_ID, platformIssuer } from "@/lib/platform/config";
 
 const OTP_EXPIRES_IN_SECONDS = 600;
 
@@ -47,13 +47,13 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
-  // Single sign-in (PLATFORM_SSO=1). A person is matched to a Caterly user in two steps, and only the first is by email:
+  // Single sign-in. A person is matched to a Caterly user in two steps, and only the first is by email:
   //  1. The FIRST central sign-in of someone who already has a Caterly user links them when the central email is verified (the provider only lets a verified
   //     address sign in, and says so in userinfo) AND the Caterly user's email is verified AND that Caterly user is not already linked to a different central
   //     identity (see the account hook below). The link is recorded once as an account row: provider "platterly", account id = the central subject.
   //  2. From then on the account row alone decides: the central subject finds the Caterly user, whatever either email later becomes.
   // Anything else (an unverified address on either side, an already-linked user) is refused as "account not linked" and creates no second user.
-  ...(platformSsoEnabled() ? { account: { accountLinking: { enabled: true, requireLocalEmailVerified: true, trustedProviders: [] as string[] } } } : {}),
+  account: { accountLinking: { enabled: true, requireLocalEmailVerified: true, trustedProviders: [] as string[] } },
   user: {
     additionalFields: {
       /**
@@ -99,21 +99,17 @@ export const auth = betterAuth({
     },
   },
   databaseHooks: {
-    // Single sign-in only: one Caterly user can be linked to ONE central identity. If an email match would add a second, different central identity to a user
-    // who already has one (for example a reused mailbox), the link is refused rather than handing that kitchen to the new person.
-    ...(platformSsoEnabled()
-      ? {
-          account: {
-            create: {
-              before: async (account: { providerId: string; accountId: string; userId: string }) => {
-                if (account.providerId !== PLATFORM_PROVIDER_ID) return;
-                const other = await prisma.account.findFirst({ where: { userId: account.userId, providerId: PLATFORM_PROVIDER_ID, NOT: { accountId: account.accountId } }, select: { id: true } });
-                if (other) return false;
-              },
-            },
-          },
-        }
-      : {}),
+    // One Caterly user can be linked to ONE central identity. If an email match would add a second, different central identity to a user who already has
+    // one (for example a reused mailbox), the link is refused rather than handing that kitchen to the new person.
+    account: {
+      create: {
+        before: async (account: { providerId: string; accountId: string; userId: string }) => {
+          if (account.providerId !== PLATFORM_PROVIDER_ID) return;
+          const other = await prisma.account.findFirst({ where: { userId: account.userId, providerId: PLATFORM_PROVIDER_ID, NOT: { accountId: account.accountId } }, select: { id: true } });
+          if (other) return false;
+        },
+      },
+    },
     user: {
       create: {
         /**
@@ -187,34 +183,31 @@ export const auth = betterAuth({
       },
     }),
     /**
-     * Central single sign-in (F8.1.1), only when PLATFORM_SSO=1. Caterly is an OIDC client of Platterly's identity provider: authorization code with PKCE,
-     * the ID token verified against the provider's keys with its nonce, and the person's email and name read from the provider's userinfo. The provider
-     * id "platterly" makes the callback address /api/auth/callback/platterly, and signing out here also ends the central session (RP-initiated logout).
-     * A first-time central person with no Caterly user gets one created (the same self-serve path as Caterly's own sign-up, including the tenant) until
-     * the central "activate Caterly" flow replaces it.
+     * Central single sign-in (F8.1.1). Caterly is an OIDC client of Platterly's identity provider: authorization code with PKCE, the ID token verified
+     * against the provider's keys with its nonce, and the person's email and name read from the provider's userinfo. The provider id "platterly" makes the
+     * callback address /api/auth/callback/platterly, and signing out here also ends the central session (RP-initiated logout). A first-time central person
+     * with no Caterly user gets one created (the same self-serve path as Caterly's own sign-up, including the tenant) until the central "activate Caterly"
+     * flow replaces it. The provider's discovery document is read when this server starts: if Platterly's sign-in is down at that moment the provider is
+     * skipped (logged) and central sign-in stays unavailable until Caterly is restarted, but Caterly itself still starts.
      */
-    ...(platformSsoEnabled()
-      ? [
-          genericOAuth({
-            config: [
-              {
-                providerId: PLATFORM_PROVIDER_ID,
-                clientId: PLATFORM_CLIENT_ID,
-                discoveryUrl: `${platformIssuer()}/.well-known/openid-configuration`,
-                scopes: ["openid", "email", "profile"],
-                pkce: true,
-                redirectURI: canonicalUrl(`/api/auth/callback/${PLATFORM_PROVIDER_ID}`),
-                postLogoutRedirectURI: canonicalUrl("/"),
-                requireIdTokenVerification: true,
-                mapProfileToUser: (profile: Record<string, unknown>) => ({
-                  firstName: typeof profile.given_name === "string" ? profile.given_name : undefined,
-                  lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,
-                }),
-              },
-            ],
+    genericOAuth({
+      config: [
+        {
+          providerId: PLATFORM_PROVIDER_ID,
+          clientId: PLATFORM_CLIENT_ID,
+          discoveryUrl: `${platformIssuer()}/.well-known/openid-configuration`,
+          scopes: ["openid", "email", "profile"],
+          pkce: true,
+          redirectURI: canonicalUrl(`/api/auth/callback/${PLATFORM_PROVIDER_ID}`),
+          postLogoutRedirectURI: canonicalUrl("/"),
+          requireIdTokenVerification: true,
+          mapProfileToUser: (profile: Record<string, unknown>) => ({
+            firstName: typeof profile.given_name === "string" ? profile.given_name : undefined,
+            lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,
           }),
-        ]
-      : []),
+        },
+      ],
+    }),
     // Must stay last — sets/reads cookies via Next.js's own cookies() API.
     nextCookies(),
   ],

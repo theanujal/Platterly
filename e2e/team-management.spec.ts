@@ -32,7 +32,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   const businessName = "Team Test HQ";
 
   // --- Owner signs up and completes onboarding ---
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill("Owner");
   await page.getByLabel("Last name").fill("Person");
@@ -104,7 +104,7 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   // --- Invitee accepts via a fresh, unauthenticated browser context ---
   const inviteeContext = await browser.newContext();
   const inviteePage = await inviteeContext.newPage();
-  await inviteePage.goto(`/invitations/${invitationId}/accept`);
+  await inviteePage.goto(`/invitations/${invitationId}/accept?legacy=1`);
 
   await expect(inviteePage.getByRole("heading", { name: "Create your account" })).toBeVisible();
   const emailField = inviteePage.getByLabel("Email");

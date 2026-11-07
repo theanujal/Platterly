@@ -6,11 +6,11 @@ import { signOutFromMenu } from "./auth-helpers";
 
 /**
  * Caterly as a sign-in client of Platterly's central identity (F8.1.1 / F8.1.3), end to end in a real browser against the running Caterly, Platform
- * (account.localhost:3300, auth.localhost:3300) and the local mail sink (3600). It only means anything when Caterly is running WITH the switch on, so it is
- * skipped unless PLATFORM_SSO_E2E=1 (start Caterly with PLATFORM_SSO=1 first; Caterly must be registered: apps/platform `node scripts/register-product-client.mjs caterly`).
- * With the switch off Caterly's own login is covered by kitchenlogin.spec.ts and the rest of the suite, which is unchanged.
+ * (account.localhost:3300, auth.localhost:3300) and the local mail sink (3600). Single sign-in is Caterly's login (there is no switch). The spec is skipped
+ * unless PLATFORM_SSO_E2E=1, because it needs the Platform and the mail sink running and Caterly registered there (apps/platform
+ * `node scripts/register-product-client.mjs caterly`). The old form is still reachable at `/?legacy=1` and is covered by kitchenlogin.spec.ts and the rest of the suite.
  */
-test.skip(process.env.PLATFORM_SSO_E2E !== "1", "needs Caterly running with PLATFORM_SSO=1");
+test.skip(process.env.PLATFORM_SSO_E2E !== "1", "needs the Platform (auth.localhost:3300) and the mail sink running");
 
 const SINK = "http://localhost:3600";
 const CATERLY = "http://catering.localhost:3000";
@@ -67,7 +67,7 @@ async function registerOnCentralPage(page: Page, to: string) {
 const caterlySession = async (page: Page) => (await (await page.request.get(`${CATERLY}/api/auth/get-session`)).json()) as { user?: { email: string; id: string } } | null;
 const userCount = async (email: string) => Number((await pool.query('select count(*) from "user" where email = $1', [email])).rows[0].count);
 
-test("Caterly sends a signed-out visitor to the central page, which looks like Caterly's own sign-in, and a new central person lands in their Caterly dashboard", async ({ page }) => {
+test("Caterly sends a signed-out visitor to the central page, which looks like Caterly's own sign-in, and a new central person starts Caterly's onboarding", async ({ page }) => {
   const to = newEmail();
   created.push(to);
   await page.goto(`${CATERLY}/`);
@@ -78,7 +78,7 @@ test("Caterly sends a signed-out visitor to the central page, which looks like C
   await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
   await expect(page.locator(".pl-cat-mark")).toHaveAttribute("src", `${CATERLY}/caterly-mark.svg`);
   await registerOnCentralPage(page, to);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   const session = await caterlySession(page);
   expect(session?.user?.email).toBe(to);
   expect(await userCount(to)).toBe(1);
@@ -91,7 +91,8 @@ test("signing in again uses the same Caterly user (matched by the linked account
   created.push(to);
   await page.goto(`${CATERLY}/`);
   await registerOnCentralPage(page, to);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  await page.goto(`${CATERLY}/dashboard`);
   const first = (await caterlySession(page))!.user!.id;
   // A fresh Dashboard opens the "Create Your Custom Link" dialog over the page; close it as Caterly's own sign-up helper does.
   await page.getByRole("button", { name: "Close" }).click();
@@ -119,7 +120,7 @@ test("single sign-on: already signed in at the Account, Caterly signs the person
     if (f === page.mainFrame() && /auth\.localhost:3300\/sign-in/.test(f.url())) signInPages.push(f.url());
   });
   await page.goto(`${CATERLY}/`);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   expect(signInPages, "the central sign-in page never showed").toEqual([]);
   expect((await caterlySession(page))?.user?.email).toBe(to);
 });
@@ -129,7 +130,7 @@ test("signing out at the Account ends the Caterly session through the back-chann
   created.push(to);
   await page.goto(`${CATERLY}/`);
   await registerOnCentralPage(page, to);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   expect((await caterlySession(page))?.user?.email).toBe(to);
   await page.goto(`${ACCOUNT}/`);
   await page.getByRole("button", { name: "Sign out" }).click();

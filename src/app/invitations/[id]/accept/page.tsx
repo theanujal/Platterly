@@ -3,9 +3,9 @@ import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
+import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { AuthLayout } from "@/app/kitchenlogin/_components/auth-layout";
 import { AuthGate } from "@/app/kitchenlogin/_components/auth-gate";
-import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
 import { AcceptButton } from "./_components/accept-button";
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
  * Reads the invitation directly instead, then branches on the current
  * session state.
  */
-export default async function AcceptInvitationPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AcceptInvitationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const { id } = await params;
   const invitation = await prisma.invitation.findUnique({
     where: { id },
@@ -46,7 +46,11 @@ export default async function AcceptInvitationPage({ params }: { params: Promise
   const session = await auth.api.getSession({ headers: await nextHeaders() });
   const callbackURL = `/invitations/${id}/accept`;
 
+  // Signing in or creating the account happens on Platterly's central sign-in page (Caterly's look), which sends the person back to this invitation.
+  // If they sign in with a different email than the invited one, the "Wrong account" screen below says so. `?legacy=1` keeps the old form (existing
+  // browser tests, emergency door).
   if (!session) {
+    if (((await searchParams) ?? {}).legacy !== "1") redirect(`/api/platform/sso/start?next=${encodeURIComponent(callbackURL)}`);
     return (
       <AuthLayout>
         <AuthGate initialMode="signup" callbackURL={callbackURL} lockedEmail={invitation.email} />

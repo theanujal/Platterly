@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-// Shown instead of the sign-in form when a central sign-in came back with a problem (PLATFORM_SSO=1 only), so the person is not sent round in a circle.
+// Shown instead of the sign-in form when a central sign-in came back with a problem so the person is not sent round in a circle.
 const NOT_LINKED = new Set(["account_not_linked", "unable_to_link_account", "account not linked", "unable to link account"]);
 
 export function SsoProblem({ code }: { code: string }) {

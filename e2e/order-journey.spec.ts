@@ -186,7 +186,7 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   // ===== Kitchen member: joins with one email code and lands on the Dashboard, nothing in between =====
   const kitchenContext = await browser.newContext();
   const kitchenPage = await kitchenContext.newPage();
-  await kitchenPage.goto(`/invitations/${invitationId}/accept`);
+  await kitchenPage.goto(`/invitations/${invitationId}/accept?legacy=1`);
   await kitchenPage.getByLabel("First name").fill("Kitchen");
   await kitchenPage.getByLabel("Last name").fill("Cook");
   await kitchenPage.getByLabel("Phone", { exact: true }).fill("9800000055");

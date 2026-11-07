@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
-import { PLATFORM_PROVIDER_ID, platformSsoEnabled, safeNextPath } from "@/lib/platform/config";
+import { PLATFORM_PROVIDER_ID, safeNextPath } from "@/lib/platform/config";
 
 // Starts a central sign-in: builds the authorization address (PKCE, state and nonce are made and remembered by Better Auth) and sends the browser there.
-// Off unless PLATFORM_SSO=1. `?next=` is a path on this site only (the invitation page uses it to come back to itself).
+// `?next=` is a path on this site only (the invitation page uses it to come back to itself). A person who has no Caterly user yet is created one and sent
+// to the onboarding wizard, as Caterly's own sign-up always did.
 export async function GET(request: Request) {
-  if (!platformSsoEnabled()) return new NextResponse("Not found", { status: 404 });
-  const next = safeNextPath(new URL(request.url).searchParams.get("next"));
+  const asked = new URL(request.url).searchParams.get("next");
+  const next = safeNextPath(asked);
+  // Someone sent here to come back to a page (an invitation) returns to it even when this is their first time; otherwise a new person starts onboarding.
+  const firstTime = asked && next === asked ? next : "/kitchenlogin/onboarding";
   const result = await auth.api.signInSocial({
-    body: { provider: PLATFORM_PROVIDER_ID, callbackURL: next, errorCallbackURL: "/", disableRedirect: true },
+    body: { provider: PLATFORM_PROVIDER_ID, callbackURL: next, newUserCallbackURL: firstTime, errorCallbackURL: "/", disableRedirect: true },
     headers: request.headers,
   });
   if (!result?.url) return NextResponse.redirect(new URL("/?legacy=1", request.url), 303);

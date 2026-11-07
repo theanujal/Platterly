@@ -38,7 +38,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // assertion on the first pass.
   const claimedSlug = `pw-test-${Date.now().toString().slice(-10)}`;
 
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill("Priya");
   await page.getByLabel("Last name").fill("Sharma");
@@ -209,7 +209,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
 });
 
 test("sign-in with the wrong password shows an inline error, not a crash", async ({ page }) => {
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByLabel("Email").fill("nobody@example.test");
   await page.getByLabel("Password", { exact: true }).fill("wrong-password-123");
   await page.getByRole("button", { name: "Sign in to your account" }).click();
@@ -226,7 +226,7 @@ test("Skip for now keeps what was typed, shows it in Settings, and Back from the
   cleanupEmails.push(email);
   const businessName = `Skip Kitchen ${Date.now().toString().slice(-6)}`;
 
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill("Skip");
   await page.getByLabel("Last name").fill("Tester");
@@ -268,7 +268,7 @@ test("creating an account without ticking the Terms stops with the browser's own
   let signUpRequests = 0;
   page.on("request", (request) => request.url().includes("/api/auth/sign-up") && signUpRequests++);
 
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill("No");
   await page.getByLabel("Email").fill(`e2e-noterms-${Date.now()}@example.test`);
@@ -312,7 +312,7 @@ test("the sign-up phone is already the business mobile, even if onboarding is ab
   const email = `e2e-onboard-leave-${Date.now()}@example.test`;
   cleanupEmails.push(email);
 
-  await page.goto("/kitchenlogin");
+  await page.goto("/?legacy=1");
   await page.getByRole("button", { name: "Create an account" }).click();
   await page.getByLabel("First name").fill("Leave");
   await page.getByLabel("Email").fill(email);

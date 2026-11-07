@@ -161,7 +161,7 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
 
   const accountsContext = await browser.newContext();
   const accounts = await accountsContext.newPage();
-  await accounts.goto(`/invitations/${invitationId}/accept`);
+  await accounts.goto(`/invitations/${invitationId}/accept?legacy=1`);
   await accounts.getByLabel("First name").fill("Accounts");
   await accounts.getByLabel("Last name").fill("Person");
   await accounts.getByLabel("Phone", { exact: true }).fill("9800000079");

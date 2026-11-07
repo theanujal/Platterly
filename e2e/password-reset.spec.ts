@@ -21,7 +21,7 @@ test("forgot password: code by email, new password, sign in with it; a wrong cod
   await signUpCaterer(page, email, { firstName: "Reset", lastName: "Tester", phone: "9800000033" });
 
   await context.clearCookies(); // signed out
-  await page.goto("/");
+  await page.goto("/?legacy=1");
   await page.getByRole("link", { name: "Forgot password?" }).click();
   await expect(page).toHaveURL(/\/kitchenlogin\/forgot-password$/);
 
@@ -45,6 +45,8 @@ test("forgot password: code by email, new password, sign in with it; a wrong cod
     await expect(page.getByRole("heading", { name: "Password changed" })).toBeVisible({ timeout: 45_000 });
 
   await page.getByText("Back to sign in").click();
+  // Caterly's own forgot-password flow changes Caterly's own password, so the new password is used on the old form (the central page has its own reset).
+  await page.goto("/?legacy=1");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill("brand-new-password-1");
   await page.getByRole("button", { name: "Sign in to your account" }).click();

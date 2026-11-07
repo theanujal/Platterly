@@ -5,7 +5,6 @@ import { auth } from "@/lib/auth/auth";
 import { AuthGate } from "./_components/auth-gate";
 import { SsoProblem } from "./_components/sso-problem";
 import { AuthLayout } from "./_components/auth-layout";
-import { platformSsoEnabled } from "@/lib/platform/config";
 
 // Chunk 4 — Caterer/Kitchen Admin sign-in and sign-up, served at the
 // reserved `/kitchenlogin` path from Chunk 1 Group 1.4.
@@ -18,18 +17,17 @@ export default async function KitchenAdminLoginPage({ searchParams }: { searchPa
   const session = await auth.api.getSession({ headers: await nextHeaders() });
 
   if (!session) {
-    // Central single sign-in (PLATFORM_SSO=1): a person who is not signed in goes to Platterly's sign-in page, which looks like this one, and comes back
-    // signed in. `?legacy=1` keeps the old email-and-password form reachable, and a failed attempt (`?error=`) shows why instead of looping.
-    if (platformSsoEnabled()) {
-      const query = (await searchParams) ?? {};
-      if (query.legacy !== "1") {
-        if (!query.error) redirect("/api/platform/sso/start");
-        return (
-          <AuthLayout>
-            <SsoProblem code={String(Array.isArray(query.error) ? query.error[0] : query.error)} />
-          </AuthLayout>
-        );
-      }
+    // Central single sign-in is the login: a person who is not signed in goes to Platterly's sign-in page, which looks like this one, and comes back
+    // signed in. `?legacy=1` still reaches the old email-and-password form (kept for the existing browser tests and as an emergency door), and a failed
+    // attempt (`?error=`) shows why instead of looping.
+    const query = (await searchParams) ?? {};
+    if (query.legacy !== "1") {
+      if (!query.error) redirect("/api/platform/sso/start");
+      return (
+        <AuthLayout>
+          <SsoProblem code={String(Array.isArray(query.error) ? query.error[0] : query.error)} />
+        </AuthLayout>
+      );
     }
     return (
       <AuthLayout>

@@ -1,5 +1,5 @@
 // Live check of single sign-in and sign-out with a REAL account, in a separate headless browser (nothing is stored; the password is asked for with hidden
-// input, so it never lands in a log or chat). Needs Platform on 3300, the mail sink not required, and Caterly running with PLATFORM_SSO=1.
+// input, so it never lands in a log or chat). Needs the Platform on 3300 and Caterly running.
 //   node scripts/check-caterly-sso-live.mjs kitchen@platterly.local
 // It signs in through Caterly, signs out at Caterly, signs in at the Account, opens Caterly, and signs out at the Account. NOTE: signing out at the Account
 // ends ALL of that person's Caterly sessions (that is how the back-channel works), so a Caterly tab you have open in your own browser will be signed out too.
