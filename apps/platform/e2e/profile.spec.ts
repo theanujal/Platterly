@@ -57,6 +57,18 @@ test("a signed-in person edits first name, last name, phone and time zone, the c
   await expect(page.getByRole("switch", { name: "Security alerts" })).toBeDisabled();
 });
 
+test("saving without touching the time zone works (the default zone is accepted)", async ({ page }) => {
+  await registerAndSignIn(page, newEmail(), "/profile");
+  await expect(page.getByRole("heading", { name: "My Profile" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("First name").fill("Plain");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Your details were saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("First name")).toHaveValue("Plain");
+  await expect(page.getByLabel("Time zone")).toHaveValue("Asia/Kolkata");
+});
+
 test("the profile API refuses a signed-out caller, a cross-site write, and ignores a body that names someone else", async ({ page, request }) => {
   expect((await request.get("/api/account/profile")).status()).toBe(401);
   expect((await request.patch("/api/account/profile", { data: { firstName: "X" } })).status()).toBe(403);

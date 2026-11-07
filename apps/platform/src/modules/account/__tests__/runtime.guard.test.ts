@@ -33,10 +33,15 @@ describe("no mock identity at runtime", () => {
 
   it("the session module takes identity only from the signed Account cookie: no other header, query string, fixture or default user", () => {
     const text = readFileSync(path.join(SRC, "lib/session/index.ts"), "utf8").replace(/\/\/.*$/gm, "");
-    expect(text).not.toMatch(/headers\(|searchParams|__tests__|fixture|x-user|authorization/i);
+    expect(text).not.toMatch(/searchParams|__tests__|fixture|x-user|authorization/i);
+    // The request's headers are read for ONE thing: the host, which only picks WHICH signed cookie to read (the Account's or the Store's). No header names a user.
+    const headerReads = [...text.matchAll(/headers\(/g)].length;
+    expect(headerReads, "headers() appears only as the host lookup").toBe([...text.matchAll(/requestHost\(await headers\(\)\)/g)].length);
+    expect(text).not.toMatch(/headers\(\)\s*\)?\s*\.get\(/);
     const envReads = [...text.matchAll(/process\.env\.(\w+)/g)].map((m) => m[1]).sort();
     expect([...new Set(envReads)]).toEqual(["AUTH_SECRET", "IDENTITY_DATABASE_URL"]);
     expect(text).toContain("COOKIES.accountSession");
+    expect(text).toContain("COOKIES.storeSession");
   });
 
   it("no runtime file imports a test fixture or a __tests__ folder", () => {

@@ -27,6 +27,26 @@ const OTP_EXPIRES_IN_SECONDS = 600;
  * are separate Prisma models referencing `organizationId` directly — Better
  * Auth doesn't model physical locations.
  */
+/**
+ * The person's details from the Account's userinfo, for every central sign-in. The same fields Better Auth's default reads, with ONE addition: when the
+ * Account's email differs from the email of the Caterly user already linked to this person AND a different Caterly user already holds the new address,
+ * the linked user's current email is kept for this sign-in. Without that, the refresh would collide on Caterly's unique email and the person could not sign
+ * in at all. Everything else (names, phone) still refreshes, and the email follows as soon as the clash is gone.
+ */
+async function fetchPlatterlyUserInfo(tokens: { accessToken?: string }): Promise<({ [key: string]: unknown; id: string; email: string; emailVerified: boolean; name?: string; image?: string }) | null> {
+  if (!tokens.accessToken) return null;
+  const discovery = (await (await fetch(`${platformIssuer()}/.well-known/openid-configuration`, { cache: "no-store" })).json().catch(() => null)) as { userinfo_endpoint?: string } | null;
+  if (!discovery?.userinfo_endpoint) return null;
+  const res = await fetch(discovery.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.accessToken}` }, cache: "no-store" });
+  if (!res.ok) return null;
+  const info = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!info || typeof info.sub !== "string" || typeof info.email !== "string") return null;
+  let email = info.email;
+  const linked = await prisma.account.findFirst({ where: { providerId: PLATFORM_PROVIDER_ID, accountId: info.sub }, select: { userId: true, user: { select: { email: true } } } });
+  if (linked && linked.user.email.toLowerCase() !== email.toLowerCase() && (await prisma.user.findFirst({ where: { email: email.toLowerCase(), NOT: { id: linked.userId } }, select: { id: true } }))) email = linked.user.email;
+  return { ...info, id: info.sub, email, emailVerified: info.email_verified === true, image: typeof info.picture === "string" ? info.picture : undefined, name: typeof info.name === "string" ? info.name : undefined };
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, { provider: "postgresql" }),
   // The app is served from several hosts (catering.*, ops.*), each with its
@@ -201,6 +221,11 @@ export const auth = betterAuth({
           redirectURI: canonicalUrl(`/api/auth/callback/${PLATFORM_PROVIDER_ID}`),
           postLogoutRedirectURI: canonicalUrl("/"),
           requireIdTokenVerification: true,
+          // The Account is the source of truth for the common details: at EVERY central sign-in Caterly's copy of the person's name, first name, last name,
+          // phone and email is refreshed from the Account's userinfo (an empty value never erases what Caterly has). This is how a change made in the Account
+          // reaches Caterly until push events exist.
+          overrideUserInfo: true,
+          getUserInfo: fetchPlatterlyUserInfo,
           mapProfileToUser: (profile: Record<string, unknown>) => ({
             firstName: typeof profile.given_name === "string" ? profile.given_name : undefined,
             lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,

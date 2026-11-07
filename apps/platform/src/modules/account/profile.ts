@@ -10,8 +10,21 @@ export type ProfileErrors = Partial<Record<"firstName" | "lastName" | "phone" | 
 export const DEFAULT_TIME_ZONE = "Asia/Kolkata";
 const NAME_MAX = 40;
 
+/** A real time zone name. Node's own list uses older names for some zones (it lists "Asia/Calcutta", not "Asia/Kolkata"), so validity is asked of Intl itself. */
+export function isTimeZone(value: string): boolean {
+  if (value.length > 64 || !/^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+)*$/.test(value)) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The zones offered in the list: the runtime's own, plus the default, which some runtimes name differently. */
 export function timeZones(): string[] {
-  return (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf("timeZone");
+  const list = (Intl as unknown as { supportedValuesOf(key: string): string[] }).supportedValuesOf("timeZone");
+  return list.includes(DEFAULT_TIME_ZONE) ? list : [...list, DEFAULT_TIME_ZONE].sort();
 }
 
 type Clean = { firstName?: string; lastName?: string; phone?: string; timeZone?: string; notifyProductUpdates?: boolean };
@@ -35,7 +48,7 @@ export function validateProfile(input: ProfileInput): { ok: true; clean: Clean }
     else clean.phone = phone;
   }
   if (input.timeZone !== undefined) {
-    if (typeof input.timeZone === "string" && timeZones().includes(input.timeZone)) clean.timeZone = input.timeZone;
+    if (typeof input.timeZone === "string" && isTimeZone(input.timeZone)) clean.timeZone = input.timeZone;
     else errors.timeZone = "Choose a time zone from the list.";
   }
   if (input.notifyProductUpdates !== undefined) {

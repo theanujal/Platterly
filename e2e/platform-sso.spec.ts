@@ -271,6 +271,121 @@ test("a person with two-step verification is asked for the code on the central p
   expect((await caterlySession(page))?.user?.email).toBe(to);
 });
 
+/** From a Caterly-started sign-in to a signed-in Caterly session: goes to Caterly, signs in on the central page with the password, comes back. */
+async function signInToCaterly(page: Page, email: string) {
+  await page.goto(`${CATERLY}/`);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await fill(page, "Email", email);
+  await fill(page, "Password", PASSWORD, { exact: true });
+  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  await expect(page).toHaveURL(/catering\.localhost:3000\//);
+}
+const caterlyRow = async (email: string) => (await pool.query('select name, "firstName", "lastName", phone, email from "user" where email = $1', [email])).rows[0];
+
+test("a name and phone changed in the Account reach Caterly at the next sign-in", async ({ page }) => {
+  test.setTimeout(90_000);
+  const to = newEmail();
+  created.push(to);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, to);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  expect(await caterlyRow(to)).toMatchObject({ firstName: "Sso", lastName: "Person", phone: "+919800000123", name: "Sso Person" });
+
+  await page.goto(`${ACCOUNT}/profile`);
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("First name").fill("Renu");
+  await page.getByLabel("Phone").fill("+91 98000 00999");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(page.getByText("Your details were saved.")).toBeVisible();
+  // Not pushed: Caterly still holds the old details until the person signs in there again.
+  expect(await caterlyRow(to)).toMatchObject({ firstName: "Sso", phone: "+919800000123" });
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await signInToCaterly(page, to);
+  expect(await caterlyRow(to)).toEqual({ name: "Renu Person", firstName: "Renu", lastName: "Person", phone: "+919800000999", email: to });
+  expect(await userCount(to), "still one Caterly user").toBe(1);
+});
+
+test("an Account that holds no phone never erases the phone Caterly already has", async ({ page }) => {
+  test.skip(!process.env.IDENTITY_DATABASE_URL, "needs IDENTITY_DATABASE_URL to empty the Account's phone");
+  test.setTimeout(90_000);
+  const to = newEmail();
+  created.push(to);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, to);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  const identity = new Pool({ connectionString: process.env.IDENTITY_DATABASE_URL, max: 1 });
+  try {
+    await identity.query('update "user" set phone = null where email = $1', [to]);
+  } finally {
+    await identity.end();
+  }
+  await pool.query(`update "user" set phone = '+919811111111' where email = $1`, [to]);
+  await page.goto(`${ACCOUNT}/profile`);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await signInToCaterly(page, to);
+  expect((await caterlyRow(to)).phone, "Caterly's own phone stays when the Account has none").toBe("+919811111111");
+});
+
+test("if another Caterly person already holds the new email, the person still signs in to Caterly, keeping their current Caterly address, and nobody else's data changes", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const oldEmail = newEmail();
+  const taken = newEmail();
+  created.push(oldEmail, taken);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, oldEmail);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  // A different person who exists only in Caterly holds the address the first person is about to move to.
+  const bystander = await makeCaterlyUser(request, taken, true);
+  await page.goto(`${ACCOUNT}/security`);
+  await page.getByRole("button", { name: "Change email" }).first().click();
+  await page.getByLabel("New email address").fill(taken);
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("6-digit code").fill(await codeFor(page, taken));
+  await page.getByRole("button", { name: "Confirm new email" }).click();
+  await expect(page.getByText("Your sign-in email was changed.")).toBeVisible();
+  await page.goto(`${ACCOUNT}/profile`);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.goto(`${CATERLY}/`);
+  await fill(page, "Email", taken);
+  await fill(page, "Password", PASSWORD, { exact: true });
+  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  // The person signs in normally. Caterly keeps their current address (the clash is not forced), the other person is untouched, and there is no second user.
+  await expect(page).toHaveURL(/catering\.localhost:3000\/(dashboard|kitchenlogin\/onboarding)/);
+  expect((await caterlySession(page))?.user?.email).toBe(oldEmail);
+  expect((await pool.query('select id from "user" where email = $1', [taken])).rows.map((r) => r.id), "the other person still holds the address").toEqual([bystander]);
+  expect(await userCount(oldEmail)).toBe(1);
+});
+
+test("an email changed in the Account reaches Caterly at the next sign-in", async ({ page }) => {
+  test.setTimeout(90_000);
+  const oldEmail = newEmail();
+  const next = newEmail();
+  created.push(oldEmail, next);
+  await page.goto(`${CATERLY}/`);
+  await registerOnCentralPage(page, oldEmail);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  await page.goto(`${ACCOUNT}/security`);
+  await page.getByRole("button", { name: "Change email" }).first().click();
+  await page.getByLabel("New email address").fill(next);
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await page.getByLabel("6-digit code").fill(await codeFor(page, next));
+  await page.getByRole("button", { name: "Confirm new email" }).click();
+  await expect(page.getByText("Your sign-in email was changed.")).toBeVisible();
+  expect(await userCount(oldEmail), "Caterly still has the old address until the next sign-in").toBe(1);
+  await page.goto(`${ACCOUNT}/profile`);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await signInToCaterly(page, next);
+  expect(await userCount(oldEmail)).toBe(0);
+  expect(await userCount(next), "the same Caterly user now has the new address").toBe(1);
+  expect((await caterlyRow(next)).firstName).toBe("Sso");
+});
+
 test("?legacy=1 still shows Caterly's own email-and-password form", async ({ page }) => {
   await page.goto(`${CATERLY}/?legacy=1`);
   await expect(page).toHaveURL(`${CATERLY}/?legacy=1`);

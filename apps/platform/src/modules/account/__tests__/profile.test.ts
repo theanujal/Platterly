@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateProfile } from "../profile";
+import { timeZones, validateProfile } from "../profile";
 
 describe("validateProfile", () => {
   it("tidies a name and a phone number", () => {
@@ -13,6 +13,11 @@ describe("validateProfile", () => {
     for (const bad of [{ firstName: "" }, { lastName: "  " }, { firstName: "x".repeat(41) }, { lastName: "<b>x</b>" }, { firstName: 5 }, { phone: "" }, { phone: "12ab" }, { phone: "123" }, { phone: 5 }, { timeZone: "Mars/Base" }, { timeZone: 1 }, { notifyProductUpdates: "yes" }]) {
       expect(validateProfile(bad).ok, JSON.stringify(bad)).toBe(false);
     }
+  });
+  it("accepts the default time zone by its modern name even where the runtime lists it as Asia/Calcutta", () => {
+    expect(validateProfile({ timeZone: "Asia/Kolkata" })).toEqual({ ok: true, clean: { timeZone: "Asia/Kolkata" } });
+    expect(timeZones()).toContain("Asia/Kolkata");
+    for (const bad of ["Asia/Nowhere", "../etc/passwd", "UTC; drop", "x".repeat(70), "Asia//Dubai", ""]) expect(validateProfile({ timeZone: bad }).ok, bad).toBe(false);
   });
   it("accepts a real time zone", () => {
     expect(validateProfile({ timeZone: "Asia/Dubai", notifyProductUpdates: true })).toEqual({ ok: true, clean: { timeZone: "Asia/Dubai", notifyProductUpdates: true } });
