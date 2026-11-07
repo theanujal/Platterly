@@ -28,9 +28,9 @@ describe("hostKind", () => {
 });
 
 describe("host helpers", () => {
-  it("prefers the host the visitor typed behind a proxy", () => {
+  it("trusts only the Host header, never a forwarded one", () => {
     const headers = (map: Record<string, string>) => ({ get: (name: string) => map[name] ?? null });
-    expect(requestHost(headers({ host: "127.0.0.1:3000", "x-forwarded-host": "catering.platterly.in" }))).toBe("catering.platterly.in");
+    expect(requestHost(headers({ host: "127.0.0.1:3000", "x-forwarded-host": "catering.platterly.in" }))).toBe("127.0.0.1:3000");
     expect(requestHost(headers({ host: "catering.localhost:3000" }))).toBe("catering.localhost:3000");
   });
 

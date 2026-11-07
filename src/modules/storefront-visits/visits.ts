@@ -36,7 +36,7 @@ export async function recordVisit(report: VisitReport, headers: Headers, now: Da
     referrer: short(report.referrer, 2000),
     embedded: report.embedded === true,
     ancestor: short(report.ancestor, 2000),
-    ownHost: headers.get("x-forwarded-host") ?? headers.get("host"),
+    ownHost: headers.get("host"),
   });
   const key = visitorKey(ip, ua, now, process.env.BETTER_AUTH_SECRET ?? "platterly");
 

@@ -29,11 +29,11 @@ export function hostKind(host: string | null | undefined, rootHostname: string =
 }
 
 /**
- * The host the visitor actually typed. Behind Nginx/Cloudflare the app can see an internal
- * `Host` (e.g. 127.0.0.1), so `X-Forwarded-Host` wins when the proxy sets it.
+ * The host the visitor actually typed. Only `Host` is trusted: Nginx sets it to the requested host
+ * (`proxy_set_header Host $host`), while `X-Forwarded-Host` is passed through from the client and can be forged.
  */
 export function requestHost(headers: { get(name: string): string | null }): string | null {
-  return headers.get("x-forwarded-host") ?? headers.get("host");
+  return headers.get("host");
 }
 
 /** `http` for a localhost root domain, `https` for a real one. */

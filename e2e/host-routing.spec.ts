@@ -69,6 +69,26 @@ test("a bare or unknown host serves no page and no API except the health check",
   expect((await page.request.get(`${BARE}/api/auth/get-session`, { headers: { "x-forwarded-host": "catering.localhost.evil.test" } })).status()).toBe(404);
 });
 
+test("a forged X-Forwarded-Host does not change which host a request is served as", async ({ page }) => {
+  // Bare host dressed up as the catering host: still a bare host, so no API
+  expect((await page.request.get(`${BARE}/api/auth/get-session`, { headers: { "x-forwarded-host": new URL(CATERING).host } })).status()).toBe(404);
+  expect((await page.request.get(`${BARE}/`, { headers: { "x-forwarded-host": new URL(CATERING).host, "sec-fetch-dest": "document" } })).status()).toBe(404);
+  // Ops host dressed up as the catering host: still the ops host, which this app does not serve
+  expect((await page.request.get(`${OPS}/api/auth/get-session`, { headers: { "x-forwarded-host": new URL(CATERING).host } })).status()).toBe(404);
+  // Catering host dressed up as ops or as an unexpected host: still the catering host
+  expect((await page.request.get(`${CATERING}/api/auth/get-session`, { headers: { "x-forwarded-host": new URL(OPS).host } })).status()).toBe(200);
+  expect((await page.request.get(`${CATERING}/api/auth/get-session`, { headers: { "x-forwarded-host": "evil.test" } })).status()).toBe(200);
+});
+
+test("direct access to the app, bypassing the proxy, cannot borrow a product host with a forged header", async ({ page }) => {
+  // Straight to the app by IP, the way a request that skips Nginx arrives: Host is the IP, so it is an unknown host
+  const direct = new URL(BARE).port ? `http://127.0.0.1:${new URL(BARE).port}` : "http://127.0.0.1";
+  const forged = { "x-forwarded-host": new URL(CATERING).host };
+  expect((await page.request.get(`${direct}/api/auth/get-session`, { headers: forged })).status()).toBe(404);
+  expect((await page.request.get(`${direct}/`, { headers: { ...forged, "sec-fetch-dest": "document" } })).status()).toBe(404);
+  expect((await page.request.get(`${direct}/api/health`)).status()).toBe(200);
+});
+
 test("the APIs answer on their own hosts", async ({ page }) => {
   expect((await page.request.get(`${CATERING}/api/health`)).status()).toBe(200);
   expect((await page.request.get(`${CATERING}/api/auth/get-session`)).status()).toBe(200);
