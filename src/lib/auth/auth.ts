@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { organization, emailOTP } from "better-auth/plugins";
+import { organization, emailOTP, genericOAuth } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
@@ -13,6 +13,7 @@ import { sendEmail } from "@/lib/notifications/email/zeptomail";
 import { passwordResetEmail, verificationCodeEmail } from "@/lib/notifications/email/templates";
 import { isRateLimited } from "@/lib/rate-limit";
 import { APIError } from "better-auth/api";
+import { PLATFORM_CLIENT_ID, PLATFORM_PROVIDER_ID, platformIssuer, platformSsoEnabled } from "@/lib/platform/config";
 
 const OTP_EXPIRES_IN_SECONDS = 600;
 
@@ -46,6 +47,10 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  // Single sign-in (PLATFORM_SSO=1): a person is matched to a Caterly user ONLY through the account row that records their central identity (provider
+  // "platterly", account id = the central subject), never by email. Without this, Better Auth would link a central sign-in to any Caterly user that merely
+  // shares the email address. An unlinked match fails safely ("account not linked") instead.
+  ...(platformSsoEnabled() ? { account: { accountLinking: { disableImplicitLinking: true } } } : {}),
   user: {
     additionalFields: {
       /**
@@ -163,6 +168,35 @@ export const auth = betterAuth({
         if (result.status !== "sent") console.log(`[dev-only] Email verification OTP for ${email}: ${otp} (${result.reason})`);
       },
     }),
+    /**
+     * Central single sign-in (F8.1.1), only when PLATFORM_SSO=1. Caterly is an OIDC client of Platterly's identity provider: authorization code with PKCE,
+     * the ID token verified against the provider's keys with its nonce, and the person's email and name read from the provider's userinfo. The provider
+     * id "platterly" makes the callback address /api/auth/callback/platterly, and signing out here also ends the central session (RP-initiated logout).
+     * A first-time central person with no Caterly user gets one created (the same self-serve path as Caterly's own sign-up, including the tenant) until
+     * the central "activate Caterly" flow replaces it.
+     */
+    ...(platformSsoEnabled()
+      ? [
+          genericOAuth({
+            config: [
+              {
+                providerId: PLATFORM_PROVIDER_ID,
+                clientId: PLATFORM_CLIENT_ID,
+                discoveryUrl: `${platformIssuer()}/.well-known/openid-configuration`,
+                scopes: ["openid", "email", "profile"],
+                pkce: true,
+                redirectURI: canonicalUrl(`/api/auth/callback/${PLATFORM_PROVIDER_ID}`),
+                postLogoutRedirectURI: canonicalUrl("/"),
+                requireIdTokenVerification: true,
+                mapProfileToUser: (profile: Record<string, unknown>) => ({
+                  firstName: typeof profile.given_name === "string" ? profile.given_name : undefined,
+                  lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,
+                }),
+              },
+            ],
+          }),
+        ]
+      : []),
     // Must stay last — sets/reads cookies via Next.js's own cookies() API.
     nextCookies(),
   ],

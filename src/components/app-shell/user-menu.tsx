@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon } from "lucide-react";
-import { authClient } from "@/lib/auth/client";
+import { signOutAndLeave } from "@/lib/auth/client-sign-out";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 /**
@@ -14,9 +14,7 @@ export function UserMenu({ fullName, email, initials, canOpenSettings }: { fullN
   const router = useRouter();
 
   async function signOut() {
-    await authClient.signOut();
-    router.push("/");
-    router.refresh();
+    await signOutAndLeave(router);
   }
 
   return (

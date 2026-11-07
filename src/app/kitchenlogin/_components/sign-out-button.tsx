@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { authClient } from "@/lib/auth/client";
+import { signOutAndLeave } from "@/lib/auth/client-sign-out";
 import { Button, type buttonVariants } from "@/components/ui/button";
 import { cn } from "cn";
 import type { VariantProps } from "class-variance-authority";
@@ -18,9 +18,7 @@ export function SignOutButton({ className, variant = "ghost", size = "sm" }: Sig
   const router = useRouter();
 
   async function handleSignOut() {
-    await authClient.signOut();
-    router.push("/");
-    router.refresh();
+    await signOutAndLeave(router);
   }
 
   return (
