@@ -4,6 +4,8 @@ import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { getSessionRef } from "@/lib/session";
 import { revokeAllDevices, revokeDevice } from "@/modules/account/devices";
 import { identityPool } from "@/modules/auth/identity-db";
+import { idp } from "@/modules/auth/idp";
+import { providerSessionEnder } from "@/modules/auth/provider-sessions";
 import { COOKIES } from "@/modules/auth/config";
 import { cookieOptions } from "@/modules/auth/cookies";
 
@@ -17,7 +19,9 @@ export async function POST(request: Request) {
   if (!ref) return Response.json({ status: "unauthenticated" }, { status: 401, headers });
   const body = (await request.json().catch(() => null)) as { id?: unknown; all?: unknown } | null;
   try {
-    const result = body?.all === true ? await revokeAllDevices(identityPool(), ref.sub) : typeof body?.id === "string" ? await revokeDevice(identityPool(), ref.sub, ref.sid, body.id) : null;
+    // Sessions end through the provider's own context so every product holding a token for them is sent a logout token (F4.2.3).
+    const ender = await providerSessionEnder(idp());
+    const result = body?.all === true ? await revokeAllDevices(identityPool(), ref.sub, ender) : typeof body?.id === "string" ? await revokeDevice(identityPool(), ref.sub, ref.sid, body.id, ender) : null;
     if (!result) return Response.json({ error: "bad_request" }, { status: 400, headers });
     if (!result.ok) return Response.json({ status: "not_found" }, { status: 404, headers });
     await auditAuthEvent({ action: "auth.sign_out", outcome: "done", userId: ref.session.userId, reasonCode: body?.all === true ? "all_sessions" : "one_session" });

@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { endAllSessions, endSession, listLiveSessions } from "../auth/session-store";
+import { endAllSessions, endSession, listLiveSessions, type SessionEnder } from "../auth/session-store";
 
 // F4.3.1 session list, revoke and sign out everywhere. User-level only and own-session only: every query is scoped to the caller's own provider user
 // id (taken from the verified session, never from the request), so nobody can see or end anybody else's session.
@@ -21,11 +21,11 @@ export async function listDevices(pool: Pool, providerUserId: string, currentSid
 export type RevokeResult = { ok: true; ended: number; signedOut: boolean } | { ok: false; reason: "not_found" };
 
 /** Ends one of the caller's own sessions. Another person's session id (or an unknown one) is "not found": the answer never reveals which. */
-export async function revokeDevice(pool: Pool, providerUserId: string, currentSid: string, targetSid: string): Promise<RevokeResult> {
-  if (!(await endSession(pool, targetSid, providerUserId))) return { ok: false, reason: "not_found" };
+export async function revokeDevice(pool: Pool, providerUserId: string, currentSid: string, targetSid: string, ender?: SessionEnder): Promise<RevokeResult> {
+  if (!(await endSession(pool, targetSid, providerUserId, ender))) return { ok: false, reason: "not_found" };
   return { ok: true, ended: 1, signedOut: targetSid === currentSid };
 }
 
-export async function revokeAllDevices(pool: Pool, providerUserId: string): Promise<RevokeResult> {
-  return { ok: true, ended: await endAllSessions(pool, providerUserId), signedOut: true };
+export async function revokeAllDevices(pool: Pool, providerUserId: string, ender?: SessionEnder): Promise<RevokeResult> {
+  return { ok: true, ended: await endAllSessions(pool, providerUserId, ender), signedOut: true };
 }

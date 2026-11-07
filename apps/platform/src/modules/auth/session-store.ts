@@ -22,10 +22,23 @@ export async function renewSession(pool: Pool, session: IdpSession, now: Date = 
   await pool.query('update "session" set "expiresAt" = $2, "updatedAt" = $3 where "id" = $1', [session.id, idleUntil < absoluteEnd ? idleUntil : absoluteEnd, now]);
 }
 
+/**
+ * How a session is deleted so the provider's own delete hooks run. A raw `delete from "session"` skips them, and then no product is told (F4.2.3):
+ * the provider sends each registered product a signed back-channel logout token only when the session goes through its adapter. Pass
+ * `(await idp().$context).internalAdapter`. Without one the row is deleted directly (tests of the session table alone).
+ */
+export type SessionEnder = { deleteSession(token: string): Promise<unknown>; deleteSessions(tokens: string[]): Promise<unknown> };
+
 /** Ends one session (sign out). Scoped to its owner so a caller can only end their own. */
-export async function endSession(pool: Pool, sid: string, userId: string): Promise<boolean> {
-  const { rowCount } = await pool.query('delete from "session" where "id" = $1 and "userId" = $2', [sid, userId]);
-  return rowCount === 1;
+export async function endSession(pool: Pool, sid: string, userId: string, ender?: SessionEnder): Promise<boolean> {
+  if (!ender) {
+    const { rowCount } = await pool.query('delete from "session" where "id" = $1 and "userId" = $2', [sid, userId]);
+    return rowCount === 1;
+  }
+  const { rows } = await pool.query('select "token" from "session" where "id" = $1 and "userId" = $2', [sid, userId]);
+  if (rows.length !== 1) return false;
+  await ender.deleteSession(rows[0].token as string);
+  return true;
 }
 
 export type DeviceRow = { id: string; userAgent: string | null; updatedAt: Date; createdAt: Date };
@@ -40,7 +53,13 @@ export async function listLiveSessions(pool: Pool, userId: string, now: Date = n
 }
 
 /** Ends every session of one person (sign out everywhere). Returns how many ended. */
-export async function endAllSessions(pool: Pool, userId: string): Promise<number> {
-  const { rowCount } = await pool.query('delete from "session" where "userId" = $1', [userId]);
-  return rowCount ?? 0;
+export async function endAllSessions(pool: Pool, userId: string, ender?: SessionEnder): Promise<number> {
+  if (!ender) {
+    const { rowCount } = await pool.query('delete from "session" where "userId" = $1', [userId]);
+    return rowCount ?? 0;
+  }
+  const { rows } = await pool.query('select "token" from "session" where "userId" = $1', [userId]);
+  if (rows.length === 0) return 0;
+  await ender.deleteSessions(rows.map((r) => r.token as string));
+  return rows.length;
 }

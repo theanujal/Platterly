@@ -165,3 +165,53 @@ describe("signed pull", () => {
     for (const body of ["nope", "[]", "5"]) expect(verifyPullResponse([SECRET], "p", signPullResponse(SECRET, "p", body, nowS), body, nowS).ok).toBe(false);
   });
 });
+
+import { BACKCHANNEL_LOGOUT_EVENT, LOGOUT_TOKEN_TYP, validateLogoutToken } from "../index";
+
+describe("validateLogoutToken matrix", () => {
+  async function logoutToken(privateKey: Parameters<SignJWT["sign"]>[0], patch: Record<string, unknown> = {}, o: { typ?: string | null; iss?: string; aud?: string; exp?: number; iat?: number } = {}) {
+    const payload: Record<string, unknown> = { sub: "usr_1", sid: "sess_1", jti: "jti_1", events: { [BACKCHANNEL_LOGOUT_EVENT]: {} }, ...patch };
+    for (const k of Object.keys(payload)) if (payload[k] === undefined) delete payload[k];
+    return new SignJWT(payload)
+      .setProtectedHeader({ alg: "EdDSA", kid: "k1", ...(o.typ === null ? {} : { typ: o.typ ?? LOGOUT_TOKEN_TYP }) })
+      .setIssuer(o.iss ?? ISS)
+      .setAudience(o.aud ?? AUD)
+      .setIssuedAt(o.iat ?? nowS - 5)
+      .setExpirationTime(o.exp ?? nowS + 120)
+      .sign(privateKey);
+  }
+  const base = (jwks: Awaited<ReturnType<typeof keys>>["jwks"]) => ({ key: jwks, issuer: ISS, audience: AUD, now: NOW });
+
+  it("accepts a good token and returns sub, sid and jti", async () => {
+    const k = await keys();
+    expect(await validateLogoutToken(await logoutToken(k.privateKey), base(k.jwks))).toEqual({ ok: true, sub: "usr_1", sid: "sess_1", jti: "jti_1", exp: nowS + 120 });
+  });
+  it("accepts sub only or sid only", async () => {
+    const k = await keys();
+    expect(await validateLogoutToken(await logoutToken(k.privateKey, { sid: undefined }), base(k.jwks))).toMatchObject({ ok: true, sub: "usr_1" });
+    expect(await validateLogoutToken(await logoutToken(k.privateKey, { sub: undefined }), base(k.jwks))).toMatchObject({ ok: true, sid: "sess_1" });
+  });
+  const cases: [string, (k: Awaited<ReturnType<typeof keys>>) => Promise<string>, string][] = [
+    ["an ID token replayed as a logout token (no logout+jwt type)", (k) => logoutToken(k.privateKey, {}, { typ: null }), "wrong_type"],
+    ["another type", (k) => logoutToken(k.privateKey, {}, { typ: "JWT" }), "wrong_type"],
+    ["no logout event", (k) => logoutToken(k.privateKey, { events: {} }), "missing_event"],
+    ["a nonce", (k) => logoutToken(k.privateKey, { nonce: "n" }), "nonce_present"],
+    ["neither sub nor sid", (k) => logoutToken(k.privateKey, { sub: undefined, sid: undefined }), "no_subject"],
+    ["no jti", (k) => logoutToken(k.privateKey, { jti: undefined }), "missing_jti"],
+    ["wrong issuer", (k) => logoutToken(k.privateKey, {}, { iss: "https://evil.test" }), "wrong_issuer"],
+    ["wrong audience", (k) => logoutToken(k.privateKey, {}, { aud: "other" }), "wrong_audience"],
+    ["expired", (k) => logoutToken(k.privateKey, {}, { exp: nowS - 120 }), "expired"],
+    ["issued in the future", (k) => logoutToken(k.privateKey, {}, { iat: nowS + 600, exp: nowS + 900 }), "not_yet_valid"],
+  ];
+  for (const [name, make, reason] of cases)
+    it(`refuses: ${name}`, async () => {
+      const k = await keys();
+      expect(await validateLogoutToken(await make(k), base(k.jwks))).toEqual({ ok: false, reason });
+    });
+  it("refuses a token signed by another key and garbage", async () => {
+    const real = await keys();
+    const attacker = await keys();
+    expect((await validateLogoutToken(await logoutToken(attacker.privateKey), base(real.jwks))).ok).toBe(false);
+    expect(await validateLogoutToken("abc.def", base(real.jwks))).toEqual({ ok: false, reason: "malformed" });
+  });
+});
