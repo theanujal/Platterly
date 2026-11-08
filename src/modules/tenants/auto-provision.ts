@@ -7,6 +7,9 @@ import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { emitBusinessSignedUp, emitWelcomeRequested } from "@/modules/ops-link/events";
 import { opsBillingOn } from "@/modules/ops-link/config";
+import { PLATFORM_PROVIDER_ID } from "@/lib/platform/config";
+import { takeCentralSubject } from "@/lib/platform/central-subject";
+import { hasPendingMembership } from "@/modules/platform-link/pending";
 
 /**
  * Runs immediately after a new caterer/kitchen-admin account is created
@@ -44,6 +47,12 @@ export async function provisionTenantForNewUser(
   if (pendingInvitation) {
     return { organizationId: null };
   }
+
+  // The Platform may already have made this person a member of a business (they were added before ever signing in to Caterly). They join it at their first
+  // central sign-in, so no tenant of their own is made. The person id is found from the sign-in just read (the account row does not exist yet) or from the account.
+  const linked = await prisma.account.findFirst({ where: { userId, providerId: PLATFORM_PROVIDER_ID }, select: { accountId: true } });
+  const subject = linked?.accountId ?? takeCentralSubject(user.email);
+  if (subject && (await hasPendingMembership(subject))) return { organizationId: null };
 
   const slug = await generatePlaceholderSlug();
   const now = new Date();

@@ -4,6 +4,8 @@ import { organization, emailOTP, genericOAuth } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
+import { rememberCentralSubject } from "@/lib/platform/central-subject";
+import { consumePendingMembership } from "@/modules/platform-link/pending";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { notify } from "@/lib/notifications/notify";
 import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
@@ -41,6 +43,7 @@ async function fetchPlatterlyUserInfo(tokens: { accessToken?: string }): Promise
   if (!res.ok) return null;
   const info = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!info || typeof info.sub !== "string" || typeof info.email !== "string") return null;
+  rememberCentralSubject(info.email, info.sub);
   let email = info.email;
   const linked = await prisma.account.findFirst({ where: { providerId: PLATFORM_PROVIDER_ID, accountId: info.sub }, select: { userId: true, user: { select: { email: true } } } });
   if (linked && linked.user.email.toLowerCase() !== email.toLowerCase() && (await prisma.user.findFirst({ where: { email: email.toLowerCase(), NOT: { id: linked.userId } }, select: { id: true } }))) email = linked.user.email;
@@ -127,6 +130,15 @@ export const auth = betterAuth({
           if (account.providerId !== PLATFORM_PROVIDER_ID) return;
           const other = await prisma.account.findFirst({ where: { userId: account.userId, providerId: PLATFORM_PROVIDER_ID, NOT: { accountId: account.accountId } }, select: { id: true } });
           if (other) return false;
+        },
+        // A person the Platform already made a member of a business joins it now, at their first central sign-in. Never lets a failure here break the sign-in.
+        after: async (account: { providerId: string; accountId: string; userId: string }) => {
+          if (account.providerId !== PLATFORM_PROVIDER_ID) return;
+          try {
+            await consumePendingMembership(account.userId, account.accountId);
+          } catch (error) {
+            console.error("pending membership was not applied", error instanceof Error ? error.message : "unknown");
+          }
         },
       },
     },

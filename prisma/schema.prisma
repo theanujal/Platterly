@@ -2970,6 +2970,54 @@ model OpsCommand {
   @@map("ops_command")
 }
 
+// Platform link (docs/platform-foundation-plan.md F8.2.2, F6.2.1): commands and events the Platform sends this product.
+// A repeated command id gets the same answer and runs once.
+model PlatformCommand {
+  commandId  String   @id
+  type       String
+  businessId String
+  result     Json
+  receivedAt DateTime @default(now())
+
+  @@index([receivedAt])
+  @@map("platform_command")
+}
+
+// The highest event sequence recorded for each business, so a duplicate or older event changes nothing.
+model PlatformEventState {
+  businessId   String   @id
+  lastSequence Int
+  updatedAt    DateTime @updatedAt
+
+  @@map("platform_event_state")
+}
+
+// Every event accepted from the Platform, kept whole so the membership consumer (F8.3.1) can apply it.
+model PlatformEvent {
+  eventId    String   @id
+  businessId String
+  sequence   Int
+  type       String
+  data       Json
+  receivedAt DateTime @default(now())
+
+  @@index([businessId, sequence])
+  @@map("platform_event")
+}
+
+// A person the Platform has made a member of a business before they have a Caterly user (they have not signed in to Caterly yet). At their first
+// central sign-in they join that business instead of getting a new tenant of their own. One row per person: a person holds one membership.
+model PlatformPendingMember {
+  subject    String   @id
+  businessId String
+  role       String
+  disabled   Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+
+  @@index([businessId])
+  @@map("platform_pending_member")
+}
+
 enum OpsOutboxStatus {
   PENDING
   SENT

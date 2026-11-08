@@ -6,5 +6,14 @@
   },
   "src/modules/tenants/auto-provision.ts": {
     "create": 1
+  },
+  "src/modules/platform-link/membership.ts": {
+    "create": 1,
+    "update": 2,
+    "updateMany": 1,
+    "deleteMany": 1
+  },
+  "src/modules/platform-link/pending.ts": {
+    "create": 1
   }
 }

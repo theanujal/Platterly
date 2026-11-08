@@ -70,6 +70,11 @@ export function memberLockKey(userId: string, organizationId: string): string {
   return `member:${userId}:${organizationId}`;
 }
 
+/** Takes the same per-pair lock as `withMemberLock`, inside a transaction the caller already has (it is released at its commit or rollback). */
+export async function lockMemberPair(tx: Pick<Prisma.TransactionClient, "$executeRaw">, userId: string, organizationId: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${memberLockKey(userId, organizationId)}, 0))`;
+}
+
 function isLockTimeout(e: unknown): boolean {
   const cause = (e as { meta?: { driverAdapterError?: { cause?: { code?: string } } } } | null)?.meta?.driverAdapterError?.cause;
   return cause?.code === LOCK_NOT_AVAILABLE;
