@@ -16,7 +16,7 @@ async function apply(client: PoolClient, event: PlatformEvent): Promise<void> {
       `insert into stub_business (business_id, status) values ($1, $2) on conflict (business_id) do update set status = excluded.status, updated_at = now()`,
       [event.businessId, event.data.status],
     );
-  } else {
+  } else if (event.type === "owner.changed") {
     await client.query(
       `insert into stub_business (business_id, status, owner_user_ids, billing_contact_email) values ($1, 'active', $2, $3)
        on conflict (business_id) do update set owner_user_ids = excluded.owner_user_ids, billing_contact_email = excluded.billing_contact_email, updated_at = now()`,

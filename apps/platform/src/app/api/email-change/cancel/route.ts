@@ -3,6 +3,7 @@ import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { writeAudit } from "@/modules/audit/write-audit";
 import { cancelChange } from "@/modules/account/email-change";
 import { platformEmailSync, platformUserIdForSubject } from "@/modules/users/email-sync";
+import { emitCurrentPersonProfile } from "@/modules/outbox/person-profile";
 import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
 import { idp } from "@/modules/auth/idp";
@@ -33,6 +34,7 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("email change cancel audit failed", error instanceof Error ? error.message : "unknown");
     }
+    await emitCurrentPersonProfile(result.userId);
     for (const to of [result.restoredEmail, result.newEmail]) {
       await sendAuthEmail({ to, subject: "A Platterly email change was cancelled", text: "The change of sign-in email on this Platterly account was cancelled. The sign-in email is back to the original address and everyone was signed out. If this was not you, contact Platterly support." }).catch((error) => console.error("email change cancel notice failed", error instanceof Error ? error.message : "unknown"));
     }

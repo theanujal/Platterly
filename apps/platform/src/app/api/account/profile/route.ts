@@ -4,6 +4,7 @@ import { getSessionRef } from "@/lib/session";
 import { writeAudit } from "@/modules/audit/write-audit";
 import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
+import { emitCurrentPersonProfile } from "@/modules/outbox/person-profile";
 import { getProfile, saveProfile, timeZones, validateProfile } from "@/modules/account/profile";
 
 // GET /api/account/profile: the signed-in person's own profile. PATCH: change first name, last name, phone, time zone and the product-updates choice. Account host only.
@@ -38,6 +39,7 @@ export async function PATCH(request: Request) {
     const profile = await saveProfile(identityPool(), ref.sub, checked.clean);
     if (!profile) return Response.json({ status: "unauthenticated" }, { status: 401, headers: NO_STORE });
     await audit(ref.session.userId, Object.keys(checked.clean));
+    await emitCurrentPersonProfile(ref.sub);
     return Response.json({ status: "ok", profile }, { headers: NO_STORE });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });

@@ -4,7 +4,7 @@ import { isSequence } from "./sequence";
 import { PLATFORM_CONTRACT_VERSION } from "./version";
 
 /** Events Platform Core sends a product (POST {product}/api/platform/events), through its outbox. */
-export const EVENT_TYPES = ["membership.changed", "organisation.status", "owner.changed"] as const;
+export const EVENT_TYPES = ["membership.changed", "organisation.status", "owner.changed", "person.profile"] as const;
 export type PlatformEventType = (typeof EVENT_TYPES)[number];
 
 /** Who a member is in the business. Roles are the product's own keys; the platform sends the key it has. */
@@ -16,6 +16,11 @@ export type OrganisationStatus = (typeof ORGANISATION_STATUSES)[number];
 
 export interface MembershipChangedData {
   userId: string;
+  /**
+   * The identity provider's person id (what a product's sign-in link stores). The Platform adds it when it SENDS the event, so a product that links people
+   * by that id can find the person; the outbox itself only holds the Platform user id. Optional in the contract so older senders and consumers still parse.
+   */
+  subject?: string;
   role: string;
   status: MembershipStatus;
   /** Goes up on every membership change in the business; the product's pull compares it (Part 1 section 4, layer 2). */
@@ -29,6 +34,21 @@ export interface OwnerChangedData {
   ownerUserIds: string[];
   /** Where the billing contact now is; email is never a join key. */
   billingContactEmail: string;
+}
+
+/**
+ * A person's common details changed in the Account (name, phone, sign-in email). Sent once per product the person holds a seat in, so the product's
+ * copy follows without waiting for the next sign-in. `subject` is the identity provider's person id (what a product's sign-in link stores); `userId` is
+ * the Platform's id for the same person. Nothing secret is carried.
+ */
+export interface PersonProfileData {
+  userId: string;
+  subject: string;
+  firstName: string;
+  lastName: string;
+  /** International format. An empty string means the person has none on file. */
+  phone: string;
+  email: string;
 }
 
 type EventBase = {
@@ -45,6 +65,7 @@ export type PlatformEvent = EventBase &
     | { type: "membership.changed"; data: MembershipChangedData }
     | { type: "organisation.status"; data: OrganisationStatusData }
     | { type: "owner.changed"; data: OwnerChangedData }
+    | { type: "person.profile"; data: PersonProfileData }
   );
 
 const shortText = (v: unknown, max = 200): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= max;
@@ -58,11 +79,21 @@ function parseData(type: PlatformEventType, input: unknown): ParseResult<Platfor
     if (!shortText(role, 64)) return fail("data.role is required");
     if (!MEMBERSHIP_STATUSES.includes(status as MembershipStatus)) return fail("data.status is not known");
     if (!isSequence(membershipVersion)) return fail("data.membershipVersion must be a whole number of 1 or more");
-    return ok({ userId, role, status: status as MembershipStatus, membershipVersion });
+    const subject = input.subject;
+    if (subject !== undefined && !isUserId(subject)) return fail("data.subject must be text when present");
+    return ok({ userId, ...(subject !== undefined ? { subject } : {}), role, status: status as MembershipStatus, membershipVersion });
   }
   if (type === "organisation.status") {
     if (!ORGANISATION_STATUSES.includes(input.status as OrganisationStatus)) return fail("data.status is not known");
     return ok({ status: input.status as OrganisationStatus });
+  }
+  if (type === "person.profile") {
+    const { userId, subject, firstName, lastName, phone, email } = input;
+    if (!isUserId(userId) || !isUserId(subject)) return fail("data.userId and data.subject are required");
+    if (!shortText(firstName, 80) || !shortText(lastName, 80)) return fail("data.firstName and data.lastName are required");
+    if (typeof phone !== "string" || phone.length > 32) return fail("data.phone must be text of at most 32 characters");
+    if (!shortText(email, 254) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("data.email must be an email address");
+    return ok({ userId, subject, firstName, lastName, phone, email });
   }
   const { ownerUserIds, billingContactEmail } = input;
   if (!Array.isArray(ownerUserIds) || ownerUserIds.length < 1 || ownerUserIds.length > 3 || !ownerUserIds.every(isUserId) || new Set(ownerUserIds).size !== ownerUserIds.length) return fail("data.ownerUserIds must be 1 to 3 different user ids");

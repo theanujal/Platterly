@@ -5,6 +5,7 @@ import { writeAudit } from "@/modules/audit/write-audit";
 import { confirmPassword } from "@/modules/account/confirm-password";
 import { confirmChange, emailChangeHold, HOLD_HOURS, normaliseEmail, pendingChange, startChange } from "@/modules/account/email-change";
 import { platformEmailSync, platformEmailTaken } from "@/modules/users/email-sync";
+import { emitCurrentPersonProfile } from "@/modules/outbox/person-profile";
 import { getProfile } from "@/modules/account/profile";
 import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
     const others = (await pool.query('select "token" from "session" where "userId" = $1 and "id" <> $2', [ref.sub, ref.sid])).rows.map((r) => r.token as string);
     if (others.length) await (await providerSessionEnder(idp())).deleteSessions(others);
     await audit(ref.session.userId, "account.email_changed");
+    await emitCurrentPersonProfile(ref.sub);
     await notify(done.oldEmail, done.newEmail, done.cancelToken);
     return Response.json({ status: "ok", email: done.newEmail, holdUntil: done.holdUntil.toISOString() }, { headers: NO_STORE });
   } catch {

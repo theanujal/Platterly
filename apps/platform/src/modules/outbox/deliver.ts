@@ -15,7 +15,7 @@ export const LEASE_MS = 60_000;
 export const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3_600_000, 12 * 3_600_000, 24 * 3_600_000] as const;
 export const DEAD_AFTER_MS = 7 * 24 * 3_600_000;
 
-export type DeliverableEvent = { id: string; eventId: string; organisationId: string; productKey: string; eventType: string; payload: unknown; sequence: bigint; attempts: number };
+export type DeliverableEvent = { id: string; eventId: string; organisationId: string; productKey: string; eventType: string; payload: unknown; sequence: bigint; attempts: number; createdAt: Date };
 export type SendResult = { ok: true } | { ok: false; error: string };
 /** Delivers one event to its product. It must be idempotent on `eventId` on the receiving side; a resend of the same row is harmless. */
 export type Sender = (event: DeliverableEvent) => Promise<SendResult>;
@@ -48,7 +48,7 @@ export async function claimNext(db: DeliveryDb, now: Date): Promise<Claim | null
     returning o.id, o.event_id, o.organisation_id, o.product_key, o.event_type, o.payload, o.sequence, o.attempts, o.locked_until, o.created_at`;
   if (rows.length === 0) return null;
   const r = rows[0];
-  return { event: { id: r.id, eventId: r.event_id, organisationId: r.organisation_id, productKey: r.product_key, eventType: r.event_type, payload: r.payload, sequence: BigInt(r.sequence), attempts: r.attempts }, leaseUntil: r.locked_until, createdAt: r.created_at };
+  return { event: { id: r.id, eventId: r.event_id, organisationId: r.organisation_id, productKey: r.product_key, eventType: r.event_type, payload: r.payload, sequence: BigInt(r.sequence), attempts: r.attempts, createdAt: r.created_at }, leaseUntil: r.locked_until, createdAt: r.created_at };
 }
 
 /** The delay before the next try after `attempts` failures, or null when the event would be retried after its 7 days are up (it dies instead). */

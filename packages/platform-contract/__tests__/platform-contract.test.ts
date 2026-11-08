@@ -22,8 +22,10 @@ describe("events: round trip", () => {
   it("parses each event type and returns what was sent", () => {
     const events = [
       membership(),
+      { ...membership(), data: { ...membership().data, subject: "sub_1" } },
       { ...baseEvent(), type: "organisation.status", data: { status: "suspended" } },
       { ...baseEvent(), type: "owner.changed", data: { ownerUserIds: ["usr_1", "usr_2"], billingContactEmail: "owner@example.com" } },
+      { ...baseEvent(), type: "person.profile", data: { userId: "usr_1", subject: "sub_1", firstName: "Asha", lastName: "Rao", phone: "+919876543210", email: "asha@example.com" } },
     ];
     for (const event of events) {
       const parsed = parsePlatformEvent(JSON.parse(JSON.stringify(event)));
@@ -49,6 +51,20 @@ describe("events: round trip", () => {
     expect(owners(["a", "b", "c", "d"])).toBe(false);
     expect(owners(["a", "a"])).toBe(false);
     expect(owners(["a"])).toBe(true);
+  });
+});
+
+describe("events: person.profile", () => {
+  const profile = (data: object) => parsePlatformEvent({ ...baseEvent(), type: "person.profile", data: { userId: "usr_1", subject: "sub_1", firstName: "Asha", lastName: "Rao", phone: "+919876543210", email: "asha@example.com", ...data } }).ok;
+  it("needs both ids, both names and a valid email; an empty phone is allowed, a long one is not", () => {
+    expect(profile({})).toBe(true);
+    expect(profile({ phone: "" })).toBe(true);
+    expect(profile({ phone: "9".repeat(33) })).toBe(false);
+    expect(profile({ subject: "" })).toBe(false);
+    expect(profile({ userId: undefined })).toBe(false);
+    expect(profile({ firstName: " " })).toBe(false);
+    expect(profile({ lastName: 5 })).toBe(false);
+    expect(profile({ email: "not-an-email" })).toBe(false);
   });
 });
 
