@@ -19,6 +19,43 @@ import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
 import { Avatar, Badge, PageHeader } from "./ui";
 
+/** The Overview's profile card: the stored name and phone from the Account's own profile, falling back to the email while loading or if the read fails. */
+function ProfileSummary({ email, emailVerified, fallbackName }: { email: string; emailVerified: boolean; fallbackName?: string }) {
+  const [profile, setProfile] = useState<{ name: string; phone: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/account/profile", { cache: "no-store", credentials: "same-origin" });
+        const body = (await res.json()) as { profile?: { name: string; phone: string } };
+        if (alive && res.ok && body.profile) setProfile({ name: body.profile.name, phone: body.profile.phone });
+      } catch {
+        /* the card keeps showing the email */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const name = profile?.name || fallbackName || email;
+  return (
+    <div className="pa-card pa-profile-sum">
+      <Avatar label={initials(name)} size="lg" round />
+      <div>
+        <h3>{name}</h3>
+        <p className="pa-line">
+          <Icon name="mail" size={14} /> {emailVerified ? "Email verified" : "Email not verified"}
+        </p>
+        {profile?.phone ? (
+          <p className="pa-line">
+            <Icon name="phone" size={14} /> {profile.phone}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function OverviewView() {
   const account = useAccount();
   const product = selectedProduct(account);
@@ -36,18 +73,7 @@ export function OverviewView() {
                   View <Icon name="chevronRight" size={14} />
                 </Link>
               </div>
-              <div className="pa-card pa-profile-sum">
-                <Avatar label={initials(overview.user.name ?? overview.user.email)} size="lg" round />
-                <div>
-                  <h3>{overview.user.name ?? overview.user.email}</h3>
-                  <p className="pa-line">
-                    <Icon name="mail" size={14} /> {overview.user.emailVerified ? "Email verified" : "Email not verified"}
-                  </p>
-                  <p className="pa-line">
-                    <Icon name="phone" size={14} /> Name and phone are not stored yet
-                  </p>
-                </div>
-              </div>
+              <ProfileSummary email={overview.user.email} emailVerified={overview.user.emailVerified} fallbackName={overview.user.name} />
             </section>
 
             <section aria-labelledby="ov-products">

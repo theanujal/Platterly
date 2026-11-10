@@ -16,7 +16,7 @@ export async function alertIfNewDevice(pool: Pool, userId: string, userAgent: st
     if (!(await getPreferences(pool, userId)).newSignInAlert) return false;
     const user = (await pool.query(`select "email" from "user" where "id" = $1`, [userId])).rows[0] as { email: string } | undefined;
     if (!user) return false;
-    await sendAuthEmail({ to: user.email, ...newSignInAlertEmail(label, now.toUTCString()) });
+    await sendAuthEmail({ to: user.email, ...newSignInAlertEmail(label, `${now.toLocaleString("en-GB", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })} IST`) });
     return true;
   } catch (error) {
     console.error("new sign-in alert failed", error instanceof Error ? error.message : "unknown");

@@ -110,6 +110,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
   });
 
   test("a business: overview, business, products, profile and security show the real fields and nothing invented", async ({ page }) => {
+    await mockProfile(page);
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     const sub = { productKey: "caterly", product: "Caterly", planName: "Premium", display: { state: "active", label: "Active", tone: "good", detail: "Renews on 12 Nov 2027." } };
     const invoice = (n: number) => ({ id: `pay_${n}`, productKey: "caterly", product: "Caterly", invoiceNumber: `FPA-26-11-${n}`, paidAt: `2026-11-0${n}T10:00:00.000Z`, planName: "Premium", interval: "ANNUAL", total: 47198.82 });
@@ -118,13 +119,17 @@ test.describe("Data states (the browser's request is intercepted; the running ap
 
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 3, name: USER.email })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 3, name: "Owner Kitchen" })).toBeVisible();
     await expect(page.locator(".pa-acct-chip")).toContainText(USER.email);
     await expect(switcher(page)).toContainText(BIZ.name);
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText(`For ${BIZ.name}`);
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText("Linked");
     await expect(page.getByRole("article", { name: "Rivo", exact: true })).toContainText("Coming soon");
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
+    // The profile card shows the stored name and phone, not a "not stored" note.
+    await expect(page.getByRole("heading", { name: "Owner Kitchen", level: 3 })).toBeVisible();
+    await expect(page.getByText("+919800000123")).toBeVisible();
+    await expect(page.getByText("not stored yet")).toHaveCount(0);
     // Subscriptions and the three newest invoices (the fourth is only on the Invoices page), each with a download.
     await expect(page.getByRole("article", { name: "Subscriptions" })).toContainText("Renews on 12 Nov 2027.");
     const latest = page.getByRole("article", { name: "Latest invoices" });

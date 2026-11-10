@@ -14,7 +14,8 @@ const MESSAGES: Record<string, string> = {
   too_many_tries: "Too many wrong codes. Start again.",
   nothing_pending: "There is no change waiting. Start again.",
   send_failed: "We could not send the code. Please try again in a moment.",
-  two_factor_required: "Enter the 6-digit code from your authenticator app.",
+  two_factor_required: "Enter the 6-digit code from your authenticator app, or a backup code.",
+  wrong_backup_code: "That backup code is not right, or it was already used.",
   wrong_two_factor: "That authenticator code is not right. Check the app and try again.",
 };
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
@@ -39,6 +40,8 @@ export function ChangeEmail() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [totp, setTotp] = useState("");
+  const [useBackup, setUseBackup] = useState(false);
+  const [backup, setBackup] = useState("");
   const [twoFactor, setTwoFactor] = useState(false);
 
   /** Whether two-step verification is on is read again every time the form opens, so turning it on in the same visit is noticed. */
@@ -65,10 +68,11 @@ export function ChangeEmail() {
     setBusy(true);
     const fail = (status: string) => setError(MESSAGES[status] ?? GENERIC);
     if (mode === "start") {
-      const r = await call({ action: "start", password, email, ...(twoFactor ? { totp } : {}) });
+      const r = await call({ action: "start", password, email, ...(twoFactor ? (useBackup ? { backupCode: backup.trim() } : { totp }) : {}) });
       if (r.ok) {
         setPassword("");
         setTotp("");
+        setBackup("");
         setMode("code");
       } else {
         if (r.status === "two_factor_required") setTwoFactor(true);
@@ -120,11 +124,24 @@ export function ChangeEmail() {
                 <label htmlFor="ce-password">Current password</label>
                 <input id="ce-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
-              {twoFactor && (
+              {twoFactor && !useBackup && (
                 <div className="pa-field">
                   <label htmlFor="ce-totp">Authenticator code</label>
                   <input id="ce-totp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))} />
                   <span className="pa-hint">Two-step verification is on, so we also need the code from your authenticator app.</span>
+                  <button type="button" className="pa-link" onClick={() => setUseBackup(true)}>
+                    Use a backup code instead
+                  </button>
+                </div>
+              )}
+              {twoFactor && useBackup && (
+                <div className="pa-field">
+                  <label htmlFor="ce-backup">Backup code</label>
+                  <input id="ce-backup" autoComplete="off" value={backup} onChange={(e) => setBackup(e.target.value)} />
+                  <span className="pa-hint">Each backup code works once. Using one here uses it up.</span>
+                  <button type="button" className="pa-link" onClick={() => setUseBackup(false)}>
+                    Use the authenticator app instead
+                  </button>
                 </div>
               )}
             </div>

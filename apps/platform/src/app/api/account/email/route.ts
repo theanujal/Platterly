@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   if (request.headers.get("origin") !== accountOrigin() || !(request.headers.get("content-type") ?? "").startsWith("application/json")) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
   const ref = await getSessionRef();
   if (!ref) return Response.json({ status: "unauthenticated" }, { status: 401, headers: NO_STORE });
-  const body = (await request.json().catch(() => null)) as { action?: unknown; password?: unknown; email?: unknown; code?: unknown; totp?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as { action?: unknown; password?: unknown; email?: unknown; code?: unknown; totp?: unknown; backupCode?: unknown } | null;
   const action = body?.action;
   if (action !== "start" && action !== "confirm") return Response.json({ error: "bad_request" }, { status: 400, headers: NO_STORE });
   const secret = process.env.AUTH_SECRET;
@@ -60,12 +60,19 @@ export async function POST(request: Request) {
       // When two-step verification is on, the authenticator code is needed too (checked against the person's own provider session).
       if ((await twoFactorStatus(pool, ref.sub)).enabled) {
         const totp = typeof body?.totp === "string" ? body.totp.trim() : "";
-        if (!/^\d{6}$/.test(totp)) return Response.json({ status: "two_factor_required" }, { status: 403, headers: NO_STORE });
+        const backupCode = typeof body?.backupCode === "string" ? body.backupCode.trim() : "";
+        if (!/^\d{6}$/.test(totp) && !(backupCode.length > 0 && backupCode.length <= 40)) return Response.json({ status: "two_factor_required" }, { status: 403, headers: NO_STORE });
         const provider = idp();
         const headers = await providerSessionHeaders(provider, pool, ref.sid, ref.sub);
         if (!headers) return Response.json({ status: "unauthenticated" }, { status: 401, headers: NO_STORE });
-        const good = await provider.api.verifyTOTP({ body: { code: totp }, headers }).then(() => true, () => false);
-        if (!good) return Response.json({ status: "wrong_two_factor" }, { status: 403, headers: NO_STORE });
+        // An authenticator code, or a backup code (AJ, 2026-11-10). A backup code works once and is used up by being accepted here.
+        if (backupCode && !/^\d{6}$/.test(totp)) {
+          const good = await provider.api.verifyBackupCode({ body: { code: backupCode, disableSession: true }, headers }).then(() => true, () => false);
+          if (!good) return Response.json({ status: "wrong_backup_code" }, { status: 403, headers: NO_STORE });
+        } else {
+          const good = await provider.api.verifyTOTP({ body: { code: totp }, headers }).then(() => true, () => false);
+          if (!good) return Response.json({ status: "wrong_two_factor" }, { status: 403, headers: NO_STORE });
+        }
       }
       // A change from earlier whose code ran out unused: its old address is told now, before it is replaced.
       for (const n of await claimExpiredNotices(pool, new Date(), ref.sub)) await sendNotYou(n.oldEmail);

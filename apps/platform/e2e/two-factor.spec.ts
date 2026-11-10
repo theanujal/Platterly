@@ -120,3 +120,22 @@ test("the two-step route refuses a signed-out caller, a cross-site caller and an
   expect((await post({ action: "confirm", code: "abc" })).status()).toBe(422);
   expect(await (await page.request.get("/api/account/two-factor")).json()).toMatchObject({ enabled: false });
 });
+
+test("changing the sign-in email accepts a backup code once, and refuses a wrong or used one", async ({ page }) => {
+  test.setTimeout(60_000);
+  const to = newEmail();
+  await registerAndSignIn(page, to, "/security");
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+  const { backup } = await turnOn(page);
+  const origin = "http://account.localhost:3300";
+  const start = (extra: Record<string, string>) =>
+    page.request.post("/api/account/email", { headers: { origin }, data: { action: "start", password: PASSWORD, email: newEmail(), ...extra } });
+  // No second step at all: refused.
+  expect((await start({})).status()).toBe(403);
+  // A wrong backup code is refused; a real one is accepted; the same one cannot be used again.
+  const wrong = await start({ backupCode: "0000-0000" });
+  expect(wrong.status()).toBe(403);
+  expect((await wrong.json()).status).toBe("wrong_backup_code");
+  expect((await start({ backupCode: backup[0].trim() })).status()).toBe(200);
+  expect((await start({ backupCode: backup[0].trim() })).status()).toBe(403);
+});
