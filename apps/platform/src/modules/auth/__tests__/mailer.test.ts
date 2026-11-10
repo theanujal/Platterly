@@ -38,4 +38,19 @@ describe("auth mailer (D5 is open: no production sender)", () => {
     expect(otpEmail("a@b.test", "123456", "change-email").text).toContain("new Platterly email");
     expect(otpEmail("a@b.test", "123456", "sign-in").subject).toContain("123456");
   });
+
+  it("mail guard: a real send to anyone but AJ is dropped quietly (nothing is fetched); AJ's address and the local sink still work", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const real = { ...ENV, ZEPTOMAIL_API_URL: "https://api.zeptomail.in/v1.1/email" };
+    await sendAuthEmail({ to: "someone@example.com", subject: "Your Platterly code: 123456", text: "t" }, real);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn.mock.calls[0].join(" ")).not.toContain("someone@example.com");
+    expect(warn.mock.calls[0].join(" ")).not.toContain("123456");
+    await sendAuthEmail({ to: "npjalota@gmail.com", subject: "s", text: "t" }, real);
+    await sendAuthEmail({ to: "someone@example.com", subject: "s", text: "t" }, ENV); // local sink
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
 });

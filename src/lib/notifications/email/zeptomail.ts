@@ -9,6 +9,8 @@ import "server-only";
  */
 const DEFAULT_API_URL = "https://api.zeptomail.in/v1.1/email";
 
+import { mailGuard } from "@platterly/contract";
+
 export interface SendEmailParams {
   to: string;
   subject: string;
@@ -23,9 +25,12 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   const token = process.env.ZEPTOMAIL_TOKEN;
   const from = process.env.ZEPTOMAIL_FROM;
   if (!token || !from) return { status: "skipped", reason: "ZeptoMail is not configured." };
+  const apiUrl = process.env.ZEPTOMAIL_API_URL ?? DEFAULT_API_URL;
+  const guard = mailGuard(params.to, apiUrl);
+  if (!guard.allowed) return { status: "skipped", reason: guard.reason };
 
   try {
-    const response = await fetch(process.env.ZEPTOMAIL_API_URL ?? DEFAULT_API_URL, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         accept: "application/json",

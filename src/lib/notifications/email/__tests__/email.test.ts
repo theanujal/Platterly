@@ -38,6 +38,7 @@ describe("sendEmail (ZeptoMail)", () => {
   });
 
   it("posts to the API and reports the request id", async () => {
+    vi.stubEnv("ZEPTOMAIL_API_URL", "http://127.0.0.1:3600/v1.1/email");
     vi.stubEnv("ZEPTOMAIL_TOKEN", "abc");
     vi.stubEnv("ZEPTOMAIL_FROM", "noreply@platterly.test");
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "req-1" }), { status: 200 }));
@@ -47,6 +48,21 @@ describe("sendEmail (ZeptoMail)", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.authorization).toBe("Zoho-enczapikey abc");
     expect(JSON.parse(init.body).to[0].email_address.address).toBe("a@b.test");
+  });
+
+  it("mail guard: a real send to anyone but AJ is skipped and nothing is fetched; AJ's address and the local sink still work", async () => {
+    vi.stubEnv("ZEPTOMAIL_TOKEN", "abc");
+    vi.stubEnv("ZEPTOMAIL_FROM", "noreply@platterly.test");
+    vi.stubEnv("ZEPTOMAIL_API_URL", "https://api.zeptomail.in/v1.1/email");
+    vi.stubEnv("MAIL_GUARD", "");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ request_id: "r" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await sendEmail({ to: "customer@example.com", subject: "s", html: "x" })).toMatchObject({ status: "skipped" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((await sendEmail({ to: "npjalota@gmail.com", subject: "s", html: "x" })).status).toBe("sent");
+    vi.stubEnv("ZEPTOMAIL_API_URL", "http://127.0.0.1:3600/v1.1/email");
+    expect((await sendEmail({ to: "customer@example.com", subject: "s", html: "x" })).status).toBe("sent");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("reports a rejected request as failed", async () => {

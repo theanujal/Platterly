@@ -5,6 +5,8 @@ import "server-only";
 // ZEPTOMAIL_API_URL / ZEPTOMAIL_TOKEN / ZEPTOMAIL_FROM say; with any of them missing it THROWS. (The identity provider sends in the background, so the person sees the same answer either way and uses
 // "Resend code"; the failure is logged on the server.) Locally the launcher points it at the mail sink (port 3600), so nothing leaves the machine. The wording below is a
 // plain placeholder for development, not a template anyone approved.
+import { mailGuard } from "@platterly/contract";
+
 export type AuthEmail = { to: string; subject: string; text: string };
 
 export class MailNotConfiguredError extends Error {}
@@ -17,6 +19,12 @@ export async function sendAuthEmail(mail: AuthEmail, env: Record<string, string 
   const token = env.ZEPTOMAIL_TOKEN;
   const from = env.ZEPTOMAIL_FROM;
   if (!url || !token || !from) throw new MailNotConfiguredError("auth email is not configured (D5 is open: no production sender is defined)");
+  // Before go-live a real send goes only to the allowed address; the local sink is never restricted. A blocked message is logged without its address and dropped.
+  const guard = mailGuard(mail.to, url, env);
+  if (!guard.allowed) {
+    console.warn(`[mail-guard] ${guard.reason} (subject: ${mail.subject.replace(/\d{6}/g, "******")})`);
+    return;
+  }
   const response = await fetch(url, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", authorization: token.startsWith("Zoho-enczapikey") ? token : `Zoho-enczapikey ${token}` },
