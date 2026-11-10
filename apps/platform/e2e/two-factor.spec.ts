@@ -1,6 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { totpFromUri } from "../src/modules/auth/__tests__/totp-util";
-import { PASSWORD, SINK, fill, newEmail, registerAndSignIn } from "./signed-in";
+import { PASSWORD, SINK, codeFor, fill, newEmail, registerAndSignIn } from "./signed-in";
 
 const codeNow = (secret: string) => totpFromUri(`otpauth://totp/x?secret=${secret}`);
 
@@ -138,4 +138,86 @@ test("changing the sign-in email accepts a backup code once, and refuses a wrong
   expect((await wrong.json()).status).toBe("wrong_backup_code");
   expect((await start({ backupCode: backup[0].trim() })).status()).toBe(200);
   expect((await start({ backupCode: backup[0].trim() })).status()).toBe(403);
+});
+
+/** A second browser that signs in with the authenticator code and ticks "Trust this device". Returns its page, signed in. */
+async function trustedBrowser(browser: Browser, to: string, secret: string): Promise<Page> {
+  const other = await (await browser.newContext()).newPage();
+  await other.goto("/security");
+  await passwordStep(other, to);
+  await expect(other.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
+  await other.getByLabel("Authentication code").fill(codeNow(secret));
+  await other.getByLabel(/^Trust this device/).check();
+  await other.getByRole("button", { name: "Verify and sign in" }).click();
+  await expect(other.getByRole("heading", { name: "Security" })).toBeVisible();
+  return other;
+}
+
+test("a password change ends every trusted device: the list is empty and the code is asked again", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const to = newEmail();
+  await registerAndSignIn(page, to, "/security");
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+  const { secret } = await turnOn(page);
+  const other = await trustedBrowser(browser, to, secret);
+  await page.goto("/devices");
+  await expect(page.getByRole("region", { name: "Trusted devices" }).getByRole("listitem")).toHaveCount(1);
+
+  await page.goto("/security");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await page.getByLabel("Current password").fill(PASSWORD);
+  await page.getByLabel("New password", { exact: true }).fill("a brand new pass 5");
+  await page.getByLabel("Confirm new password").fill("a brand new pass 5");
+  await page.getByRole("button", { name: "Save new password" }).click();
+  await expect(page.getByText(/Your password was changed/)).toBeVisible();
+
+  await page.goto("/devices");
+  await expect(page.getByRole("region", { name: "Trusted devices" }).getByText("No trusted devices.")).toBeVisible();
+  // The browser that was trusted is signed out and, with the new password, is asked for the code again.
+  await other.goto("/security");
+  await fill(other, "Email", to);
+  await fill(other, "Password", "a brand new pass 5");
+  await other.getByRole("button", { name: "Sign in" }).click();
+  await expect(other.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
+});
+
+test("a password reset by email code also ends every trusted device", async ({ page, browser }) => {
+  test.setTimeout(90_000);
+  const to = newEmail();
+  await registerAndSignIn(page, to, "/security");
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+  const { secret } = await turnOn(page);
+  const other = await trustedBrowser(browser, to, secret);
+  await page.goto("/devices");
+  await expect(page.getByRole("region", { name: "Trusted devices" }).getByRole("listitem")).toHaveCount(1);
+
+  // Forgot password, from a fresh browser with no session: code from the mail, new password.
+  const fresh = await (await browser.newContext()).newPage();
+  await fresh.goto("/security");
+  await fresh.getByRole("link", { name: "Forgot your password?" }).click();
+  await expect(fresh.getByRole("heading", { name: "Reset your password" })).toBeVisible();
+  await fill(fresh, "Email", to);
+  await fresh.getByRole("button", { name: "Send code" }).click();
+  await expect(fresh.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await fill(fresh, "Code", await codeFor(fresh, to), { exact: true });
+  await fill(fresh, "New password", "a brand new pass 5", { exact: true });
+  await fresh.getByRole("button", { name: "Change password" }).click();
+  await expect(fresh.getByText("Your password was changed. Sign in with the new one.")).toBeVisible();
+
+  // A reset ends every session, so the first browser signs in again (with the new password and a code) before it can look at its list.
+  await page.goto("/devices");
+  await fill(page, "Email", to);
+  await fill(page, "Password", "a brand new pass 5");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
+  await page.getByLabel("Authentication code").fill(codeNow(secret));
+  await page.getByRole("button", { name: "Verify and sign in" }).click();
+  await expect(page.getByRole("region", { name: "Trusted devices" }).getByText("No trusted devices.")).toBeVisible();
+  // The trusted browser must give the code again.
+  await other.context().clearCookies({ name: /session/ });
+  await other.goto("/security");
+  await fill(other, "Email", to);
+  await fill(other, "Password", "a brand new pass 5");
+  await other.getByRole("button", { name: "Sign in" }).click();
+  await expect(other.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
 });
