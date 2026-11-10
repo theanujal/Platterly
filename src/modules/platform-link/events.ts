@@ -3,7 +3,9 @@ import { receiveEvent, type PlatformEvent } from "@platterly/platform-contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { applyPersonProfile } from "./apply";
+import { onTenantStatusChanged } from "@/modules/notifications/triggers";
 import { applyMembership } from "./membership";
+import { applyOrganisationStatus } from "./organisation-status";
 
 export type PlatformEventOutcome = { status: 200; applied: boolean } | { status: 400 | 401 | 409; error: string };
 
@@ -13,7 +15,7 @@ export type PlatformEventOutcome = { status: 200; applied: boolean } | { status:
  * stored in ONE transaction and only if the sequence is higher, so two deliveries racing cannot both be recorded.
  *
  * Every event is RECORDED whole. `person.profile` is also APPLIED (the person's name, phone and email follow the Account) in the same transaction, so it
- * is recorded only if it was applied. `membership.changed` is applied too (see `membership.ts`). Status and owner events are still recorded only.
+ * is recorded only if it was applied. `membership.changed` is applied too (see `membership.ts`). `organisation.status` is applied too (see `organisation-status.ts`). Owner events are still recorded only.
  */
 export async function handlePlatformEvent(input: { secrets: readonly string[]; headers: Headers; rawBody: string; method: string; url: string }): Promise<PlatformEventOutcome> {
   const received = await receiveEvent({
@@ -24,7 +26,8 @@ export async function handlePlatformEvent(input: { secrets: readonly string[]; h
   if (!received.apply) return { status: 200, applied: false };
   const event: PlatformEvent = received.event;
   try {
-    return await record(event);
+    const done = await recordWithNotice(event);
+    return done;
   } catch (error) {
     if (error instanceof Refused) return { status: 409, error: error.message };
     throw error;
@@ -33,7 +36,18 @@ export async function handlePlatformEvent(input: { secrets: readonly string[]; h
 
 class Refused extends Error {}
 
-function record(event: PlatformEvent): Promise<PlatformEventOutcome> {
+/** Records and applies the event; a status change that really happened tells the team once the transaction has committed. */
+async function recordWithNotice(event: PlatformEvent): Promise<PlatformEventOutcome> {
+  const notice: { status?: "SUSPENDED" | "ACTIVE" } = {};
+  const outcome = await record(event, notice);
+  if (notice.status) {
+    const org = await prisma.organization.findUnique({ where: { businessId: event.businessId }, select: { id: true } });
+    if (org) await onTenantStatusChanged(org.id, notice.status);
+  }
+  return outcome;
+}
+
+function record(event: PlatformEvent, notice: { status?: "SUSPENDED" | "ACTIVE" }): Promise<PlatformEventOutcome> {
   return prisma.$transaction(async (tx) => {
     // One statement that only moves the sequence up: a racing delivery that is not higher inserts/updates nothing.
     const advanced = await tx.$executeRaw`INSERT INTO platform_event_state ("businessId", "lastSequence", "updatedAt") VALUES (${event.businessId}, ${event.sequence}, now())
@@ -44,6 +58,11 @@ function record(event: PlatformEvent): Promise<PlatformEventOutcome> {
       const result = await applyMembership(tx, event.businessId, event.data);
       // A refusal must roll back the sequence and the record too, so the same event can be sent again later.
       if (!result.ok) throw new Refused(result.error);
+    }
+    if (event.type === "organisation.status") {
+      const result = await applyOrganisationStatus(tx, event.businessId, event.data);
+      if (!result.ok) throw new Refused(result.error);
+      if (result.changedTo) notice.status = result.changedTo;
     }
     await tx.platformEvent.create({ data: { eventId: event.eventId, businessId: event.businessId, sequence: event.sequence, type: event.type, data: event.data as unknown as Prisma.InputJsonValue } });
     return { status: 200 as const, applied: true };

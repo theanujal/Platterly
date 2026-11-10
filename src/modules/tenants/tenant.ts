@@ -148,7 +148,7 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
 async function setStatus(id: string, status: TenantStatus, action: string, actorUserId?: string) {
   const before = await prisma.organization.findUniqueOrThrow({ where: { id } });
 
-  const after = await prisma.organization.update({ where: { id }, data: { status } });
+  const after = await prisma.organization.update({ where: { id }, data: { status, suspendedBy: null } });
 
   await audit({
     organizationId: id,
@@ -167,6 +167,9 @@ async function setStatus(id: string, status: TenantStatus, action: string, actor
 // `actorUserId` is absent when Platterly Ops suspends or reactivates a business (the audit entry then has no actor).
 export const suspendTenant = (id: string, actorUserId?: string) =>
   setStatus(id, "SUSPENDED", "tenant.suspend", actorUserId);
+
+/** Ops (billing lock, suspend, delete request) takes over a suspension the Platform placed, so a Platform "active" can no longer lift it. */
+export const claimSuspensionForOps = (id: string) => prisma.organization.updateMany({ where: { id, suspendedBy: { not: null } }, data: { suspendedBy: null } });
 
 export const activateTenant = (id: string, actorUserId?: string) =>
   setStatus(id, "ACTIVE", "tenant.activate", actorUserId);

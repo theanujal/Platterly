@@ -154,6 +154,8 @@ model Organization {
 
   // --- Chunk 3 Group 3.2: Super Admin tenant management (PRD §8) ---
   status          TenantStatus @default(ACTIVE)
+  // Set to 'platform' only when the Platform's organisation.status event suspended the business, so a later Platform 'active' lifts only its own suspension, never one placed by Ops (billing lock, delete request).
+  suspendedBy     String?
   ownerFirstName  String?
   ownerLastName   String?
   contactPhone    String?

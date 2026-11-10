@@ -14,6 +14,12 @@ const startedAt = new Date();
 const businessIds: string[] = [];
 const userIds: string[] = [];
 
+/** A business Caterly already has a row for (organisation.status refuses one it does not know). */
+const linkedBizId = async () => {
+  const id = bizId();
+  await prisma.organization.create({ data: { id: crypto.randomUUID(), businessId: id, createdAt: new Date(), name: "Linked", slug: `lk-${crypto.randomUUID().slice(0, 8)}` } });
+  return id;
+};
 const bizId = () => {
   const id = newId("business");
   businessIds.push(id);
@@ -119,7 +125,7 @@ describe("platform link: signature and switch", () => {
 
 describe("platform link: events", () => {
   it("records an event and moves the sequence up", async () => {
-    const businessId = bizId();
+    const businessId = await linkedBizId();
     const body = eventBody(businessId, 1);
     const res = await eventsPOST(eventRequest(body));
     expect(res.status).toBe(200);
@@ -129,7 +135,7 @@ describe("platform link: events", () => {
   });
 
   it("acknowledges a duplicate and an older event with 200 and changes nothing", async () => {
-    const businessId = bizId();
+    const businessId = await linkedBizId();
     const two = eventBody(businessId, 2);
     await eventsPOST(eventRequest(two));
     const dup = await eventsPOST(eventRequest(two));
@@ -141,7 +147,7 @@ describe("platform link: events", () => {
   });
 
   it("records only one of two deliveries of the same event that arrive together", async () => {
-    const businessId = bizId();
+    const businessId = await linkedBizId();
     const body = eventBody(businessId, 1);
     const results = await Promise.all([eventsPOST(eventRequest(body)), eventsPOST(eventRequest(body))]);
     const applied = await Promise.all(results.map(async (r) => (await r.json()).applied));

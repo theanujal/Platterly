@@ -9,7 +9,7 @@ import { canonicalUrl } from "@/lib/seo/canonical";
 import { setChannelProviderConnected } from "@/modules/notifications/channel-settings";
 import { onProviderDisconnected } from "@/modules/notifications/triggers";
 import { generatePlaceholderSlug } from "@/modules/tenants/slug";
-import { InvalidSlugError, SlugTakenError, activateTenant, overrideSlug, suspendTenant, updateTenant } from "@/modules/tenants/tenant";
+import { InvalidSlugError, SlugTakenError, activateTenant, claimSuspensionForOps, overrideSlug, suspendTenant, updateTenant } from "@/modules/tenants/tenant";
 import { CATERING_ENTITLEMENTS } from "./manifest";
 import { storeSnapshot } from "./snapshots";
 import { parseCommand } from "@platterly/contract";
@@ -90,6 +90,7 @@ async function execute(command: Command): Promise<CommandReply> {
       if (command.payload.confirmation.trim() !== org.name.trim()) return { status: 400, body: { ok: false, error: "confirmation_mismatch" } };
       if (org.status === "DEACTIVATED") return { status: 409, body: { ok: false, error: "deactivated" } };
       if (org.status !== "SUSPENDED") await suspendTenant(org.id);
+      else await claimSuspensionForOps(org.id);
       await audit({ organizationId: org.id, action: "tenant.delete_requested", recordType: "Organization", recordId: org.id, after: { retentionDays: command.payload.retentionDays } });
       return { status: 200, body: { ok: true, status: "SUSPENDED", dataRemoved: false } };
     }
@@ -102,6 +103,7 @@ async function execute(command: Command): Promise<CommandReply> {
     case "business.suspend":
       if (org.status === "DEACTIVATED") return { status: 409, body: { ok: false, error: "deactivated" } };
       if (org.status !== "SUSPENDED") await suspendTenant(org.id);
+      else await claimSuspensionForOps(org.id);
       return { status: 200, body: { ok: true, status: "SUSPENDED" } };
     case "business.reactivate":
       // Only a suspension can be lifted here; a deactivated business stays deactivated until its own screen says otherwise.
