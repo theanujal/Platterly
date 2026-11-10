@@ -5,6 +5,7 @@ import {
   PLATFORM_CONTRACT_VERSION,
   parseBusinessRenamed,
   parseBusinessRenamedAnswer,
+  parseBusinessStateSnapshot,
   parseIdTokenClaims,
   parseIssueClaimRequest,
   parseOrganisationLinkAnswer,
@@ -191,5 +192,20 @@ describe("business.renamed", () => {
   it("reads the answer", () => {
     expect(parseBusinessRenamedAnswer({ businessId: business, changed: false }).ok).toBe(true);
     expect(parseBusinessRenamedAnswer({ businessId: business }).ok).toBe(false);
+  });
+});
+
+describe("business state snapshot (pull)", () => {
+  const snap = (over: Record<string, unknown> = {}) => ({ businessId: business, status: "active", sequence: 4, membershipVersion: 2, members: [{ userId: "u1", subject: "sub-1", role: "admin", status: "active" }, { userId: "u2", subject: null, role: "admin", status: "removed" }], ...over });
+
+  it("reads a good snapshot, including a member the Platform has no person id for", () => {
+    const r = parseBusinessStateSnapshot(snap());
+    expect(r.ok && r.value.members.map((m) => m.subject)).toEqual(["sub-1", null]);
+  });
+
+  it("refuses a bad business id, status, sequence, or member", () => {
+    for (const bad of [{ businessId: "x" }, { status: "gone" }, { sequence: -1 }, { sequence: 1.5 }, { membershipVersion: "2" }, { members: "none" }, { members: [{ userId: "u", subject: 5, role: "admin", status: "active" }] }, { members: [{ userId: "u", subject: "s", role: "admin", status: "deleted" }] }]) {
+      expect(parseBusinessStateSnapshot(snap(bad)).ok, JSON.stringify(bad)).toBe(false);
+    }
   });
 });

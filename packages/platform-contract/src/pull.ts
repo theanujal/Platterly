@@ -1,4 +1,5 @@
 import { signedHeaders, verifyRequest, type VerifyResult } from "../../contract/src/signing";
+import { isId } from "../../contract/src/ids";
 import { fail, isRecord, ok, type ParseResult } from "../../contract/src/result";
 import { signPlatformRequest } from "./signing";
 
@@ -34,4 +35,45 @@ export function verifyPullResponse(secrets: readonly string[], requestId: string
   }
   if (!isRecord(json)) return { ...fail("pull answer refused: not_an_object"), reason: "not_an_object" };
   return ok(json);
+}
+
+/** Where a product asks the Platform for a business's current state (route-bound GET; the product signs with its answer secret). */
+export const PULL_STATE_PATH = "/api/products/state";
+
+export type PullMemberStatus = "active" | "disabled" | "removed";
+export type PullBusinessStatus = "active" | "suspended" | "closed";
+
+/**
+ * What the Platform says about one business RIGHT NOW (one consistent read): the business status, every member with the product-facing role and status,
+ * and the business's event `sequence` and `membershipVersion` at that moment. The product applies the differences with the same code that applies events,
+ * then treats every event up to `sequence` as seen. Names, phone and email are not here (they follow the Account through `person.profile`).
+ */
+export interface BusinessStateSnapshot {
+  businessId: string;
+  status: PullBusinessStatus;
+  sequence: number;
+  membershipVersion: number;
+  members: { userId: string; /** The identity provider's person id; null when the Platform has none for this person. */ subject: string | null; role: string; status: PullMemberStatus }[];
+}
+
+const STATUSES: readonly string[] = ["active", "suspended", "closed"];
+const MEMBER_STATUSES: readonly string[] = ["active", "disabled", "removed"];
+
+export function parseBusinessStateSnapshot(input: unknown): ParseResult<BusinessStateSnapshot> {
+  if (!isRecord(input)) return fail("the snapshot must be an object");
+  if (!isId("business", input.businessId)) return fail("businessId is not valid");
+  if (typeof input.status !== "string" || !STATUSES.includes(input.status)) return fail("status is not known");
+  if (typeof input.sequence !== "number" || !Number.isSafeInteger(input.sequence) || input.sequence < 0) return fail("sequence must be a whole number");
+  if (typeof input.membershipVersion !== "number" || !Number.isSafeInteger(input.membershipVersion) || input.membershipVersion < 0) return fail("membershipVersion must be a whole number");
+  if (!Array.isArray(input.members) || input.members.length > 500) return fail("members must be a list");
+  const members: BusinessStateSnapshot["members"] = [];
+  for (const m of input.members) {
+    if (!isRecord(m)) return fail("a member must be an object");
+    if (typeof m.userId !== "string" || !m.userId || m.userId.length > 100) return fail("member.userId is required");
+    if (m.subject !== null && (typeof m.subject !== "string" || !m.subject || m.subject.length > 100)) return fail("member.subject must be text or null");
+    if (typeof m.role !== "string" || !m.role || m.role.length > 64) return fail("member.role is required");
+    if (typeof m.status !== "string" || !MEMBER_STATUSES.includes(m.status)) return fail("member.status is not known");
+    members.push({ userId: m.userId, subject: m.subject, role: m.role, status: m.status as PullMemberStatus });
+  }
+  return ok({ businessId: input.businessId, status: input.status as PullBusinessStatus, sequence: input.sequence, membershipVersion: input.membershipVersion, members });
 }

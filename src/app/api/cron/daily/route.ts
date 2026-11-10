@@ -6,6 +6,7 @@ import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { scrubOldVisits } from "@/modules/storefront-visits/visits";
 import { runOpsLinkJobs } from "@/modules/ops-link/events";
 import { runDuePlatformOutbox } from "@/modules/platform-link/outbox";
+import { runDuePlatformPull } from "@/modules/platform-link/pull";
 import { runLibraryScanIfDue } from "@/modules/library/scan";
 
 /**
@@ -43,12 +44,17 @@ async function run(request: Request) {
     console.error("[platform-link] outbox run failed:", error);
     return 0;
   });
+  // The daily pull: ask the Platform for each business's membership and status and repair anything an event missed (once a day per business; never fails the cron).
+  const platformPull = await runDuePlatformPull(now).catch((error) => {
+    console.error("[platform-link] pull run failed:", error);
+    return { checked: 0, repaired: 0, failed: 0 };
+  });
   // The library scan: what kitchens added that Platterly's library lacks, for review in Ops. About once a day; never fails the cron.
   const libraryScan = await runLibraryScanIfDue(now).catch((error) => {
     console.error("[library] scan failed:", error);
     return { ran: false, scanned: 0, candidates: 0 };
   });
-  return NextResponse.json({ ranAt: now.toISOString(), opsLink, platformLink, notifications, recurringExpenses, visitsScrubbed, library: libraryScan });
+  return NextResponse.json({ ranAt: now.toISOString(), opsLink, platformLink, platformPull, notifications, recurringExpenses, visitsScrubbed, library: libraryScan });
 }
 
 export const GET = run;

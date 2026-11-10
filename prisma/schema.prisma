@@ -2987,9 +2987,11 @@ model PlatformCommand {
 
 // The highest event sequence recorded for each business, so a duplicate or older event changes nothing.
 model PlatformEventState {
-  businessId   String   @id
+  businessId   String    @id
   lastSequence Int
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime  @updatedAt
+  /// When Caterly last asked the Platform for this business's state (the daily pull); empty until the first pull.
+  lastPulledAt DateTime?
 
   @@map("platform_event_state")
 }
