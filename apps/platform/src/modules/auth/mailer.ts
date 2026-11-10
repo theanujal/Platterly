@@ -6,8 +6,10 @@ import "server-only";
 // "Resend code"; the failure is logged on the server.) Locally the launcher points it at the mail sink (port 3600), so nothing leaves the machine. The wording below is a
 // plain placeholder for development, not a template anyone approved.
 import { mailGuard } from "@platterly/contract";
+import { OTP } from "./config";
+import { otherCodeEmail, passwordResetEmail, verificationCodeEmail } from "./email-templates";
 
-export type AuthEmail = { to: string; subject: string; text: string };
+export type AuthEmail = { to: string; subject: string; text: string; /** The branded html; without it the text is sent as plain paragraphs. */ html?: string };
 
 export class MailNotConfiguredError extends Error {}
 export class MailDeliveryError extends Error {}
@@ -28,15 +30,16 @@ export async function sendAuthEmail(mail: AuthEmail, env: Record<string, string 
   const response = await fetch(url, {
     method: "POST",
     headers: { accept: "application/json", "content-type": "application/json", authorization: token.startsWith("Zoho-enczapikey") ? token : `Zoho-enczapikey ${token}` },
-    body: JSON.stringify({ from: { address: from, name: "Platterly" }, to: [{ email_address: { address: mail.to } }], subject: mail.subject, htmlbody: `<p style="white-space:pre-line">${escapeHtml(mail.text)}</p>` }),
+    body: JSON.stringify({ from: { address: from, name: "Platterly" }, to: [{ email_address: { address: mail.to } }], subject: mail.subject, htmlbody: mail.html ?? `<p style="white-space:pre-line">${escapeHtml(mail.text)}</p>` }),
   });
   if (!response.ok) throw new MailDeliveryError(`the mail service answered ${response.status}`);
 }
 
 export type OtpKind = "sign-in" | "email-verification" | "forget-password" | "change-email";
 
-/** The placeholder wording for each kind of code. The code itself is the only secret in the message. */
+/** The email for each kind of code, in the approved layout (see email-templates.ts: sign-up and reset are Caterly's approved emails, word for word). */
 export function otpEmail(to: string, otp: string, kind: OtpKind): AuthEmail {
-  const purpose = kind === "forget-password" ? "reset your Platterly password" : kind === "change-email" ? "confirm your new Platterly email address" : kind === "sign-in" ? "sign in to Platterly" : "verify your Platterly email address";
-  return { to, subject: `Your Platterly code: ${otp}`, text: `Use this code to ${purpose}:\n\n${otp}\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this message.` };
+  const minutes = OTP.expiresInSeconds / 60;
+  const rendered = kind === "email-verification" ? verificationCodeEmail(otp, minutes) : kind === "forget-password" ? passwordResetEmail(otp, minutes) : otherCodeEmail(kind, otp, minutes);
+  return { to, ...rendered };
 }

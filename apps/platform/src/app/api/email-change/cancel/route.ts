@@ -11,6 +11,7 @@ import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
 import { providerSessionEnder } from "@/modules/auth/provider-sessions";
 import { endAllSessions } from "@/modules/auth/session-store";
+import { emailChangeCancelledEmail } from "@/modules/auth/email-templates";
 
 // POST /api/email-change/cancel {"token": "...", "reason": {"code": "not_me" | "mistake" | "other", "note": "..."}}: the old address's cancel link. The token IS the
 // credential (256 random bits, only a hash is stored), so no session is needed. Valid only inside the 24-hour window, and only with a reason. It puts the old email
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     const reason = body?.reason as { code: "not_me" | "mistake" | "other"; note?: string };
     await notifyOps(pool, { userId: result.userId, reviewId: result.reviewId, oldEmail: result.restoredEmail, newEmail: result.newEmail, reason: reason.code, note: (reason.note ?? "").trim(), requestedAt: result.requestedAt }).catch(() => false);
     for (const to of [result.restoredEmail, result.newEmail]) {
-      await sendAuthEmail({ to, subject: "A Platterly email change was cancelled", text: "The change of sign-in email on this Platterly account was cancelled. The sign-in email is back to the original address and everyone was signed out. The account is on hold until Platterly has verified the owner, so signing in will not work until then. If this was not you, contact Platterly support." }).catch((error) => console.error("email change cancel notice failed", error instanceof Error ? error.message : "unknown"));
+      await sendAuthEmail({ to, ...emailChangeCancelledEmail() }).catch((error) => console.error("email change cancel notice failed", error instanceof Error ? error.message : "unknown"));
     }
     return Response.json({ status: "ok" }, { headers: NO_STORE });
   } catch {

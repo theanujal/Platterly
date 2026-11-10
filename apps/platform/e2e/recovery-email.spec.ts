@@ -78,7 +78,7 @@ test("the recovery route gives the same answer for everyone and mails nothing fo
   expect((await send(person, "http://evil.localhost:3300")).status()).toBe(403);
   expect((await request.post("http://account.localhost:3300/api/recovery/send", { headers: { origin: "http://account.localhost:3300" }, data: { email: person } })).status()).toBe(404);
   await page.waitForTimeout(800);
-  expect((await mails(page)).filter((m) => m.receivedAt > before && m.subject.startsWith("Your Platterly code")), "no reset code was mailed to anyone").toEqual([]);
+  expect((await mails(page)).filter((m) => m.receivedAt > before && /Account Verification|Reset Your Platterly Password|Confirm Your|Sign-in Code/.test(m.subject)), "no reset code was mailed to anyone").toEqual([]);
 });
 
 test("the recovery-email account route refuses a signed-out caller, a cross-site caller and an unknown action", async ({ page, request }) => {

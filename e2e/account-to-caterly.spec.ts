@@ -4,6 +4,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { Pool } from "pg";
 import { cleanupOnboardingTestUser } from "./db";
 
+/** The sign-in system's code emails (approved Caterly layout): the code is read from the email body, not the subject. */
+const CODE_SUBJECT = /Account Verification|Reset Your Platterly Password|Confirm Your New Platterly Email|Confirm Your Platterly Recovery Email|Sign-in Code/;
+
+
 /**
  * A change made in the Platterly Account shows in Caterly (AJ, 2026-11-10: "like Zoho, a central account"). One real person is registered through Caterly's
  * central sign-in, edits their name and phone in the Account, the Platform's outbox is run once by hand (nothing schedules it locally), and Caterly's
@@ -35,9 +39,9 @@ async function fill(page: Page, label: string, value: string) {
 }
 async function codeFor(page: Page, to: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
-    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string }[];
-    const mine = messages.filter((m) => m.to.includes(to)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
-    const code = mine?.subject.match(/\b(\d{6})\b/)?.[1];
+    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string; html: string }[];
+    const mine = messages.filter((m) => m.to.includes(to) && CODE_SUBJECT.test(m.subject)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const code = mine?.html.replace(/<[^>]*>/g, " ").match(/\b(\d{6})\b/)?.[1];
     if (code) return code;
     await page.waitForTimeout(250);
   }

@@ -9,6 +9,8 @@ import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
 import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
+import { OTP } from "@/modules/auth/config";
+import { otherCodeEmail, recoveryEmailChangedEmail } from "@/modules/auth/email-templates";
 
 // Recovery email for password reset. GET: the verified recovery address and any change waiting for its code. POST {action}: "start" {password, email} mails a
 // code to the new address; "confirm" {code} verifies it and switches it on; "remove" {password}. Account host, same-origin JSON only. The person's main
@@ -53,7 +55,7 @@ export async function POST(request: Request) {
       const started = await startRecovery(pool, secret, ref.sub, profile.email, body?.email);
       if (!started.ok) return Response.json({ status: started.reason }, { status: START_STATUS[started.reason], headers: NO_STORE });
       try {
-        await sendAuthEmail({ to: started.to, subject: `Your Platterly code: ${started.code}`, text: `Use this code to confirm this address as the recovery email for your Platterly account:\n\n${started.code}\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this message.` });
+        await sendAuthEmail({ to: started.to, ...otherCodeEmail("recovery-email", started.code, OTP.expiresInSeconds / 60) });
       } catch {
         return Response.json({ status: "send_failed" }, { status: 502, headers: NO_STORE });
       }
@@ -87,7 +89,7 @@ async function record(platformUserId: string, mainEmail: string, action: keyof t
     console.error("recovery email audit write failed", error instanceof Error ? error.message : "unknown");
   }
   try {
-    await sendAuthEmail({ to: mainEmail, subject: "Your Platterly recovery email changed", text: `${NOTICE[action]}\n\nIf this was not you, reset your password now and contact Platterly support.` });
+    await sendAuthEmail({ to: mainEmail, ...recoveryEmailChangedEmail(NOTICE[action]) });
   } catch (error) {
     console.error("recovery email notice failed", error instanceof Error ? error.message : "unknown");
   }

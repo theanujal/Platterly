@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, getTrialSubscriptionStatus } from "./db";
-import { fillWizardBusinessName, signInOnCentralPage, signOutFromMenu, signUpOnCentralPage } from "./auth-helpers";
+import { centralFill, codeFromSink, fillWizardBusinessName, signInOnCentralPage, signOutFromMenu, signUpCaterer, signUpOnCentralPage } from "./auth-helpers";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
@@ -252,4 +252,35 @@ test("the sign-up phone is already the business mobile, even if onboarding is ab
   // The field keeps the "+91" calling code, so the browser's own check passes; the server refuses it and says so.
   await expect(page.getByText("Enter a valid mobile number.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Profile" })).toHaveCount(0); // still editing, nothing was saved
+});
+
+test("forgot password happens on the central page, not in Caterly: reset code from Platterly, new password, back into Caterly", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  const email = `e2e-forgot-${Date.now()}@example.test`;
+  cleanupEmails.push(email);
+  await signUpCaterer(page, email);
+  await signOutFromMenu(page);
+  // The sign-in page is the central one in Caterly's look, and its "Forgot password?" link stays on the central host.
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await page.getByRole("link", { name: "Forgot password?" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/forgot\?/);
+  await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
+  await centralFill(page, "Email", email);
+  await page.getByRole("button", { name: "Send code" }).click();
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  // The reset code is Platterly's approved reset email, sent by the central system.
+  const code = await codeFromSink(page, email);
+  const sent = ((await (await page.request.get("http://localhost:3600/api/messages")).json()) as { to: string[]; subject: string }[]).filter((m) => m.to.includes(email));
+  expect(sent.some((m) => m.subject === "Reset Your Platterly Password")).toBe(true);
+  await centralFill(page, "Code", code);
+  await centralFill(page, "New password", "a brand new pass 5");
+  await page.getByRole("button", { name: "Change password" }).click();
+  await expect(page.getByText("Your password was changed. Sign in with the new one.")).toBeVisible();
+  await signInOnCentralPage(page, email, "a brand new pass 5");
+  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  // Caterly itself has no password reset: its own endpoints are gone.
+  const origin = "http://catering.localhost:3000";
+  for (const path of ["/api/auth/email-otp/reset-password", "/api/auth/forget-password/email-otp", "/api/auth/reset-password"]) {
+    expect((await request.post(path, { headers: { origin }, data: { email, otp: "123456", password: "x".repeat(10) } })).status(), path).not.toBe(200);
+  }
 });

@@ -31,12 +31,34 @@ describe("auth mailer (D5 is open: no production sender)", () => {
     await expect(sendAuthEmail({ to: "a@b.test", subject: "s", text: "t" }, ENV)).rejects.toBeInstanceOf(MailDeliveryError);
   });
 
-  it("each kind of code says what it is for and contains only the code as a secret", () => {
-    expect(otpEmail("a@b.test", "123456", "email-verification").text).toContain("verify your Platterly email");
-    expect(otpEmail("a@b.test", "123456", "forget-password").text).toContain("reset your Platterly password");
-    expect(otpEmail("a@b.test", "123456", "sign-in").text).toContain("sign in");
-    expect(otpEmail("a@b.test", "123456", "change-email").text).toContain("new Platterly email");
-    expect(otpEmail("a@b.test", "123456", "sign-in").subject).toContain("123456");
+  it("sign-up and reset use Caterly's approved emails word for word, in the branded layout, with the code in the body and nowhere in the subject", () => {
+    const verify = otpEmail("a@b.test", "123456", "email-verification");
+    expect(verify.subject).toBe("Platterly Account Verification");
+    expect(verify.html).toContain("Welcome to Platterly. Use the verification code below to complete your registration and activate your account.");
+    expect(verify.html).toContain("Dear Caterer,");
+    expect(verify.html).toContain("123456");
+    const reset = otpEmail("a@b.test", "123456", "forget-password");
+    expect(reset.subject).toBe("Reset Your Platterly Password");
+    expect(reset.html).toContain("We received a request to reset the password for your Platterly account. Use the code below to choose a new one.");
+    for (const kind of ["email-verification", "forget-password", "sign-in", "change-email"] as const) {
+      const mail = otpEmail("a@b.test", "123456", kind);
+      expect(mail.subject, kind).not.toContain("123456");
+      expect(mail.html, kind).toContain("123456");
+      expect(mail.html, kind).toContain("Platterly");
+      expect(mail.text, kind).toContain("123456");
+    }
+  });
+
+  it("the other code emails say what they are for", () => {
+    expect(otpEmail("a@b.test", "123456", "change-email").subject).toBe("Confirm Your New Platterly Email");
+    expect(otpEmail("a@b.test", "123456", "sign-in").subject).toBe("Your Platterly Sign-in Code");
+  });
+
+  it("an html email is sent as given; a plain one is escaped into paragraphs", async () => {
+    const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await sendAuthEmail({ to: "a@b.test", subject: "s", text: "t", html: "<h1>Hi</h1>" }, ENV);
+    expect(JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)).htmlbody).toBe("<h1>Hi</h1>");
   });
 
   it("mail guard: a real send to anyone but AJ is dropped quietly (nothing is fetched); AJ's address and the local sink still work", async () => {

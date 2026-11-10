@@ -9,6 +9,7 @@ import { sendAuthEmail } from "@/modules/auth/mailer";
 import { providerSessionEnder } from "@/modules/auth/provider-sessions";
 import { changePassword } from "@/modules/account/password";
 import { getProfile } from "@/modules/account/profile";
+import { passwordChangedEmail } from "@/modules/auth/email-templates";
 
 // POST /api/account/password  {"current": "...", "next": "..."}. Account host, same-origin JSON only. The person is whoever the verified session says.
 // The new password is never logged, audited or echoed. On success the person gets a security notice by email and every other session ends.
@@ -43,7 +44,7 @@ async function notify(providerUserId: string) {
   try {
     const profile = await getProfile(identityPool(), providerUserId);
     if (!profile) return;
-    await sendAuthEmail({ to: profile.email, subject: "Your Platterly password was changed", text: "The password for your Platterly account was just changed, and you were signed out on your other devices.\n\nIf this was not you, reset your password now and contact Platterly support." });
+    await sendAuthEmail({ to: profile.email, ...passwordChangedEmail() });
   } catch (error) {
     console.error("password-change notice failed", error instanceof Error ? error.message : "unknown");
   }

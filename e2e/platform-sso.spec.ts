@@ -5,6 +5,10 @@ import { cleanupInviteeUser, cleanupOnboardingTestUser } from "./db";
 import { signOutFromMenu, signUpCaterer } from "./auth-helpers";
 import { totpFromUri } from "../apps/platform/src/modules/auth/__tests__/totp-util";
 
+/** The sign-in system's code emails (approved Caterly layout): the code is read from the email body, not the subject. */
+const CODE_SUBJECT = /Account Verification|Reset Your Platterly Password|Confirm Your New Platterly Email|Confirm Your Platterly Recovery Email|Sign-in Code/;
+
+
 /**
  * Caterly as a sign-in client of Platterly's central identity (F8.1.1 / F8.1.3), end to end in a real browser against the running Caterly, Platform
  * (account.localhost:3300, auth.localhost:3300) and the local mail sink (3600). Single sign-in is Caterly's login (there is no switch). The spec is skipped
@@ -46,9 +50,9 @@ async function fill(page: Page, label: string, value: string, options?: { exact?
 }
 async function codeFor(page: Page, to: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
-    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string }[];
-    const mine = messages.filter((m) => m.to.includes(to)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
-    const code = mine?.subject.match(/\b(\d{6})\b/)?.[1];
+    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string; html: string }[];
+    const mine = messages.filter((m) => m.to.includes(to) && CODE_SUBJECT.test(m.subject)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const code = mine?.html.replace(/<[^>]*>/g, " ").match(/\b(\d{6})\b/)?.[1];
     if (code) return code;
     await page.waitForTimeout(250);
   }

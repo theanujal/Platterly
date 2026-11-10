@@ -11,6 +11,7 @@ import { ACCOUNT_COOKIE_MAX_AGE, cookieOptions } from "@/modules/auth/cookies";
 import { identityPool } from "@/modules/auth/identity-db";
 import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
+import { twoFactorChangedEmail } from "@/modules/auth/email-templates";
 
 // Two-step verification (authenticator app + backup codes) from the Account. GET: is it on. POST {action}: "start" {password} begins set-up and returns the
 // authenticator address and backup codes ONCE; "confirm" {code} proves the first code and switches it on; "backup_codes" {password} makes a fresh set;
@@ -91,7 +92,7 @@ async function record(platformUserId: string, providerUserId: string, action: st
   try {
     const profile = await getProfile(identityPool(), providerUserId);
     const on = action === "account.two_factor_enabled";
-    if (profile) await sendAuthEmail({ to: profile.email, subject: `Two-step verification was turned ${on ? "on" : "off"} on your Platterly account`, text: `Two-step verification was just turned ${on ? "on" : "off"} on your Platterly account.\n\nIf this was not you, reset your password now and contact Platterly support.` });
+    if (profile) await sendAuthEmail({ to: profile.email, ...twoFactorChangedEmail(on) });
   } catch (error) {
     console.error("two-factor notice failed", error instanceof Error ? error.message : "unknown");
   }

@@ -3,6 +3,10 @@ import { mkdirSync } from "node:fs";
 import { openSignUpFromProduct } from "./signed-in";
 import path from "node:path";
 
+/** The sign-in system's code emails (approved Caterly layout): the code is read from the email body, not the subject. */
+const CODE_SUBJECT = /Account Verification|Reset Your Platterly Password|Confirm Your New Platterly Email|Confirm Your Platterly Recovery Email|Sign-in Code/;
+
+
 /**
  * F4 sign-in, end to end in a real browser against the running Platform dev server (account.localhost:3300 and auth.localhost:3300), its identity
  * database and the local mail sink on port 3600 (no email leaves the machine). Nothing is intercepted and no user is faked: every test registers a
@@ -31,9 +35,9 @@ const newEmail = () => `e2e-${Date.now()}-${counter++}@auth.test`;
 async function codeFor(page: Page, to: string): Promise<string> {
   for (let i = 0; i < 40; i++) {
     const res = await page.request.get(`${SINK}/api/messages`);
-    const messages = (await res.json()) as { to: string[]; subject: string; receivedAt: string }[];
-    const mine = messages.filter((m) => m.to.includes(to)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
-    const code = mine?.subject.match(/\b(\d{6})\b/)?.[1];
+    const messages = (await res.json()) as { to: string[]; subject: string; receivedAt: string; html: string }[];
+    const mine = messages.filter((m) => m.to.includes(to) && CODE_SUBJECT.test(m.subject)).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const code = mine?.html.replace(/<[^>]*>/g, " ").match(/\b(\d{6})\b/)?.[1];
     if (code) return code;
     await page.waitForTimeout(250);
   }
@@ -223,7 +227,7 @@ test.describe("Sign-in safety", () => {
 
   test("an unverified person who signs in is sent a fresh code, so someone who never got one (an imported user) can still verify", async ({ page }) => {
     const to = newEmail();
-    const mailCount = async () => ((await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[] }[]).filter((m) => m.to.includes(to)).length;
+    const mailCount = async () => ((await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[] }[]).filter((m) => m.to.includes(to) && CODE_SUBJECT.test(m.subject)).length;
     await openSignUpFromProduct(page);
     await fill(page, "First name", ("Never Verified").split(" ")[0]);
     await fill(page, "Last name", ("Never Verified").split(" ").slice(1).join(" ") || "Tester");

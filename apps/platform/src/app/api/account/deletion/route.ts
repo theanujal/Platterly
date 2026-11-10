@@ -10,6 +10,7 @@ import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
 import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
+import { deletionRequestEmail } from "@/modules/auth/email-templates";
 
 // GET /api/account/deletion: whether a deletion request is pending. POST {"password", "reason"?}: ask for the account to be deleted (the password is asked
 // again). DELETE: withdraw a pending request. Staff review requests and delete by hand; nothing here deletes anything. A person who still has an active
@@ -71,7 +72,7 @@ export async function DELETE(request: Request) {
 async function notify(providerUserId: string) {
   try {
     const profile = await getProfile(identityPool(), providerUserId);
-    if (profile) await sendAuthEmail({ to: profile.email, subject: "We received your Platterly account deletion request", text: "We received a request to delete your Platterly account. Our team reviews every request and will contact you before anything is deleted.\n\nIf you did not ask for this, sign in and withdraw the request on your Profile page, then change your password." });
+    if (profile) await sendAuthEmail({ to: profile.email, ...deletionRequestEmail() });
   } catch (error) {
     console.error("deletion notice failed", error instanceof Error ? error.message : "unknown");
   }

@@ -15,6 +15,8 @@ import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
 import { providerSessionEnder } from "@/modules/auth/provider-sessions";
 import { endAllSessions } from "@/modules/auth/session-store";
+import { OTP } from "@/modules/auth/config";
+import { newSignInEmailWelcome, otherCodeEmail, signInEmailChangedEmail } from "@/modules/auth/email-templates";
 
 // Change of sign-in email. GET: any change waiting for its code, and whether two-step verification is on. POST {action}: "start" {password, email, totp?} mails a
 // code to the NEW address (the authenticator code is required when two-step verification is on); "confirm" {code} checks it, changes the email (identity and the
@@ -72,7 +74,7 @@ export async function POST(request: Request) {
       const started = await startChange(pool, secret, { id: ref.sub, email: profile.email }, body?.email);
       if (!started.ok) return Response.json({ status: started.reason }, { status: START_STATUS[started.reason], headers: NO_STORE });
       try {
-        await sendAuthEmail({ to: started.to, subject: `Your Platterly code: ${started.code}`, text: `Use this code to confirm this address as your new Platterly sign-in email:\n\n${started.code}\n\nIt expires in 10 minutes. If you did not ask for it, you can ignore this message.` });
+        await sendAuthEmail({ to: started.to, ...otherCodeEmail("change-email", started.code, OTP.expiresInSeconds / 60) });
       } catch {
         return Response.json({ status: "send_failed" }, { status: 502, headers: NO_STORE });
       }
@@ -96,12 +98,12 @@ export async function POST(request: Request) {
 async function notify(oldEmail: string, newEmail: string, cancelToken: string) {
   const link = `${accountOrigin()}/email-change/cancel?token=${encodeURIComponent(cancelToken)}`;
   try {
-    await sendAuthEmail({ to: oldEmail, subject: "Your Platterly sign-in email was changed", text: `The sign-in email for your Platterly account was just changed to ${newEmail}.\n\nIf this was you, there is nothing to do.\n\nIf this was NOT you, cancel the change within ${CANCEL_HOURS} hours with this link. You will be asked why, and the account will be put on hold until Platterly has verified you:\n\n${link}` });
+    await sendAuthEmail({ to: oldEmail, ...signInEmailChangedEmail(newEmail, link, CANCEL_HOURS) });
   } catch (error) {
     console.error("email change notice (old address) failed", error instanceof Error ? error.message : "unknown");
   }
   try {
-    await sendAuthEmail({ to: newEmail, subject: "This is now your Platterly sign-in email", text: "Your Platterly account now uses this address to sign in. You were signed out on all devices." });
+    await sendAuthEmail({ to: newEmail, ...newSignInEmailWelcome() });
   } catch (error) {
     console.error("email change notice (new address) failed", error instanceof Error ? error.message : "unknown");
   }

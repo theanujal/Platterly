@@ -1,6 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
+/** The sign-in system's code emails (approved Caterly layout): the code is read from the email body, not the subject. */
+const CODE_SUBJECT = /Account Verification|Reset Your Platterly Password|Confirm Your New Platterly Email|Confirm Your Platterly Recovery Email|Sign-in Code/;
+
+
 // Shared by the Account specs that need a really signed-in person: registers a new person through the pages, reads the 6-digit code from the local mail
 // sink (port 3600) and signs in. `@auth.test` people are removed by apps/platform/scripts/clean-test-people.mjs --apply.
 export const SINK = "http://localhost:3600";
@@ -33,9 +37,9 @@ export async function fill(page: Page, label: string, value: string, options?: {
 /** The newest 6-digit code mailed to this address, from the sink (retries while the background send finishes). `after` ignores older messages. */
 export async function codeFor(page: Page, to: string, after = ""): Promise<string> {
   for (let i = 0; i < 40; i++) {
-    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string }[];
-    const mine = messages.filter((m) => m.to.includes(to) && m.receivedAt > after).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
-    const code = mine?.subject.match(/\b(\d{6})\b/)?.[1];
+    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string; html: string }[];
+    const mine = messages.filter((m) => m.to.includes(to) && CODE_SUBJECT.test(m.subject) && m.receivedAt > after).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const code = mine?.html.replace(/<[^>]*>/g, " ").match(/\b(\d{6})\b/)?.[1];
     if (code) return code;
     await page.waitForTimeout(250);
   }
