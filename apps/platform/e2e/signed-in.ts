@@ -4,6 +4,8 @@ import { expect, type Page } from "@playwright/test";
 // sink (port 3600) and signs in. `@auth.test` people are removed by apps/platform/scripts/clean-test-people.mjs --apply.
 export const SINK = "http://localhost:3600";
 export const PASSWORD = "correct horse 7";
+/** A registered, plain-looking product to sign up from (sign-up is closed to anyone who does not start from a product). */
+const SIGN_UP_PRODUCT = "stub-product";
 let counter = 0;
 export const newEmail = () => `acct-${Date.now()}-${counter++}@auth.test`;
 
@@ -26,9 +28,9 @@ export async function codeFor(page: Page, to: string, after = ""): Promise<strin
 }
 
 export async function registerAndSignIn(page: Page, to: string, startPath = "/", name = "E2E Person") {
-  await page.goto(startPath);
-  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
-  await page.getByRole("link", { name: "Create an account" }).click();
+  // Sign-up is open only to a person who starts from a registered product (the rule of 2026-11-10), so the test person is created as if they came from one
+  // (the plain-looking stub product), verifies by the emailed code, and then signs in at the Account like any existing person.
+  await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
   await fill(page, "First name", (name).split(" ")[0]);
   await fill(page, "Last name", (name).split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");
@@ -41,6 +43,9 @@ export async function registerAndSignIn(page: Page, to: string, startPath = "/",
   await fill(page, "Verification code", await codeFor(page, to));
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+  await page.goto(startPath);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 }

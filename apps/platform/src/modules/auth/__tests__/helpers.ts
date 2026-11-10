@@ -3,8 +3,11 @@ import { registerAccountClient } from "../clients";
 import { IDENTITY_MIGRATIONS_DIR, migrateIdentity } from "../identity-db";
 import { createIdp, type Idp } from "../idp";
 import type { OtpKind } from "../mailer";
+import { PRODUCT_CLIENT_HEADER } from "../sign-up-gate";
 
 // Test harness for the identity provider against the isolated F4 test database (IDENTITY_TEST_DATABASE_URL). Tests are skipped without it.
+/** A registered product the harness creates, and the header every test call sends so sign-up is allowed (see sign-up-gate.ts). */
+export const TEST_PRODUCT = "gate-product";
 export const testUrl = process.env.IDENTITY_TEST_DATABASE_URL;
 
 export type Harness = { pool: Pool; idp: Idp; codes: { to: string; otp: string; kind: OtpKind }[]; sendFails: { value: boolean } };
@@ -16,6 +19,7 @@ export async function openHarness(): Promise<Harness> {
   await pool.query("drop schema public cascade; create schema public;");
   await migrateIdentity(pool, IDENTITY_MIGRATIONS_DIR);
   await registerAccountClient(pool);
+  await pool.query(`insert into "oauthClient" ("id", "clientId", "name", "disabled", "redirectUris", "createdAt", "updatedAt") values ('gate-product', 'gate-product', 'Gate Product', false, '["http://gate.localhost:3500/auth/callback"]'::jsonb, now(), now())`);
   const codes: Harness["codes"] = [];
   const sendFails = { value: false };
   const idp = createIdp({
@@ -54,8 +58,8 @@ export class Jar {
   }
 }
 
-export async function call(h: Harness, jar: Jar, method: string, path: string, body?: unknown, origin = "http://auth.localhost:3300"): Promise<Response> {
-  const headers: Record<string, string> = { origin, host: new URL(origin).host };
+export async function call(h: Harness, jar: Jar, method: string, path: string, body?: unknown, origin = "http://auth.localhost:3300", extraHeaders?: Record<string, string>): Promise<Response> {
+  const headers: Record<string, string> = { origin, host: new URL(origin).host, ...(extraHeaders ?? { [PRODUCT_CLIENT_HEADER]: TEST_PRODUCT }) };
   if (jar.header()) headers.cookie = jar.header();
   if (body !== undefined) headers["content-type"] = "application/json";
   const res = await h.idp.handler(new Request(`${origin}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: "manual" }));

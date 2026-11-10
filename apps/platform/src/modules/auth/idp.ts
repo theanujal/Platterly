@@ -9,7 +9,9 @@ import { recordSignIn } from "@/modules/account/sign-in-history";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
 import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
+import { isRegisteredProduct } from "./branding";
 import { identityPool } from "./identity-db";
+import { PRODUCT_CLIENT_HEADER } from "./sign-up-gate";
 import { otpEmail, sendAuthEmail, type OtpKind } from "./mailer";
 
 // The identity provider (D1: Better Auth), served on the auth host at /api/auth. It owns credentials, sessions and the OIDC endpoints.
@@ -63,6 +65,13 @@ export function createIdp(options: IdpOptions = {}) {
       },
     },
     hooks: {
+      // Sign-up only from a product: the form names the product it was opened for, and an unknown, first-party or missing one is refused (see sign-up-gate.ts).
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email") return;
+        if (!(await isRegisteredProduct(pool, ctx.headers?.get(PRODUCT_CLIENT_HEADER)))) {
+          throw new APIError("FORBIDDEN", { message: "Accounts are created when you first use a Platterly product.", code: "SIGN_UP_FROM_PRODUCT_ONLY" });
+        }
+      }),
       // A refused password for a real person is recorded too. The answer to the caller is unchanged (nothing here says whether the address exists).
       after: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/sign-in/email" || !(ctx.context.returned instanceof APIError)) return;

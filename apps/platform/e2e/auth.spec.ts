@@ -11,6 +11,8 @@ import path from "node:path";
 const SINK = "http://localhost:3600";
 const SHOTS = process.env.ACCOUNT_SHOTS;
 const PASSWORD = "correct horse 7";
+/** A registered, plain-looking product to sign up from (sign-up is closed to anyone who does not start from a product). */
+const SIGN_UP_PRODUCT = "stub-product";
 const shot = async (page: Page, name: string) => {
   if (!SHOTS) return;
   mkdirSync(SHOTS, { recursive: true });
@@ -39,9 +41,9 @@ async function codeFor(page: Page, to: string): Promise<string> {
 
 /** From an Account page (a signed-out visit lands on the sign-in page) to a registered, verified, signed-in person back on the Account. */
 async function registerAndSignIn(page: Page, to: string, startPath = "/") {
-  await page.goto(startPath);
-  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
-  await page.getByRole("link", { name: "Create an account" }).click();
+  // Sign-up is open only to a person who starts from a registered product (the rule of 2026-11-10), so the test person is created as if they came from one
+  // (the plain-looking stub product), verifies by the emailed code, and then signs in at the Account like any existing person.
+  await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
   await fill(page, "First name", ("E2E Person").split(" ")[0]);
   await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");
@@ -54,11 +56,39 @@ async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   await fill(page, "Verification code", await codeFor(page, to));
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+  await page.goto(startPath);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 
 const cookiesFor = async (context: BrowserContext, host: string) => (await context.cookies()).filter((c) => c.domain === host || c.domain === `.${host}`);
+
+test.describe("Sign-up only from a product", () => {
+  test("the Account and the Store offer no sign-up, a direct visit to the sign-up page is closed, and the request itself is refused without a product", async ({ page, request }) => {
+    for (const start of ["http://account.localhost:3300/", "http://store.localhost:3300/"]) {
+      await page.goto(start);
+      await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+      await expect(page.getByRole("link", { name: "Create an account" })).toHaveCount(0);
+    }
+    for (const closed of ["http://auth.localhost:3300/sign-up", "http://auth.localhost:3300/sign-up?client_id=platterly-account", "http://auth.localhost:3300/sign-up?client_id=platterly-store", "http://auth.localhost:3300/sign-up?client_id=no-such-product"]) {
+      await page.goto(closed);
+      await expect(page.getByRole("heading", { name: "Create your account from a product" })).toBeVisible();
+      await expect(page.getByLabel("Email")).toHaveCount(0);
+    }
+    const body = { email: newEmail(), password: PASSWORD, name: "No Product", firstName: "No", lastName: "Product", phone: "+919800000123" };
+    const refused = await request.post("http://auth.localhost:3300/api/auth/sign-up/email", { data: body, headers: { origin: "http://auth.localhost:3300" } });
+    expect(refused.status()).toBe(403);
+    expect((await refused.json()).code).toBe("SIGN_UP_FROM_PRODUCT_ONLY");
+  });
+
+  test("a product's own sign-up page shows the form", async ({ page }) => {
+    await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
+    await expect(page.getByLabel("Email")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
+  });
+});
 
 test.describe("Sign-in journey", () => {
   test("signed-out visit goes to sign-in -> register -> verify by emailed code -> sign in -> Account shows the real person -> sign out", async ({ page, context }) => {
@@ -68,7 +98,10 @@ test.describe("Sign-in journey", () => {
     await expect(page.getByRole("region", { name: "You are not signed in" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await shot(page, "f4-2-sign-in-page");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    // The Account offers no way to create an account (sign-up starts from a product), so the sign-up here is opened as a product would open it.
+    await expect(page.getByRole("link", { name: "Create an account" })).toHaveCount(0);
+    await expect(page.getByText("Accounts are created when you first use a Platterly product.")).toBeVisible();
+    await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
     await shot(page, "f4-3-sign-up-page");
     await fill(page, "First name", ("E2E Person").split(" ")[0]);
     await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
@@ -86,6 +119,9 @@ test.describe("Sign-in journey", () => {
     await page.getByRole("button", { name: "Verify email" }).click();
     await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
     await expect(page.getByLabel("Email")).toHaveValue(to);
+    await page.goto("/");
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+    await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
 

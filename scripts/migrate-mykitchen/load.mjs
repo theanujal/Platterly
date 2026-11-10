@@ -61,7 +61,7 @@ async function ensureOwner() {
     const password = randomBytes(18).toString("base64url") + "aA1!";
     const res = await fetch(`${APP_ORIGIN}/api/auth/sign-up/email`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin: APP_ORIGIN },
+      headers: { "content-type": "application/json", origin: APP_ORIGIN, "x-platterly-client": "caterly" }, // sign-up is open only to a person who came from a product (Caterly)
       body: JSON.stringify({ email, password, name: "Sudhir Bhandary", firstName: "Sudhir", lastName: "Bhandary", phone: normalizePhone(biz.contact_phone) }),
     });
     if (!res.ok) throw new Error(`Sign-up of the owner failed (${res.status}): ${await res.text()}`);

@@ -7,6 +7,7 @@ import { isValidPhoneNumber } from "libphonenumber-js/max";
 import { PhoneField } from "../phone-field";
 import "../account/account.css";
 import "./auth.css";
+import { PRODUCT_CLIENT_HEADER } from "@/modules/auth/sign-up-gate";
 import { useProductBrand } from "./brand";
 import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, ShieldCheckIcon, TrendingUpIcon, UserIcon, UtensilsCrossedIcon } from "./theme-icons";
 
@@ -22,9 +23,9 @@ function providerQuery(params: URLSearchParams): string {
   return kept.toString();
 }
 
-async function post(path: string, body: unknown): Promise<{ status: number; code?: string; twoFactorRedirect?: boolean }> {
+async function post(path: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<{ status: number; code?: string; twoFactorRedirect?: boolean }> {
   try {
-    const res = await fetch(`/api/auth${path}`, { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) });
+    const res = await fetch(`/api/auth${path}`, { method: "POST", headers: { "content-type": "application/json", ...extraHeaders }, credentials: "same-origin", body: JSON.stringify(body) });
     const json = (await res.json().catch(() => ({}))) as { code?: string; twoFactorRedirect?: boolean };
     return { status: res.status, code: json.code, twoFactorRedirect: json.twoFactorRedirect === true };
   } catch {
@@ -299,9 +300,20 @@ export function SignInForm() {
       {!themed && (
         <p className="pl-auth-links">
           <Link href={withCarry("/forgot", carry)}>Forgot your password?</Link>
-          <Link href={withCarry("/sign-up", carry)}>Create an account</Link>
+          {brand ? <Link href={withCarry("/sign-up", carry)}>Create an account</Link> : <span>Accounts are created when you first use a Platterly product.</span>}
         </p>
       )}
+    </AuthCard>
+  );
+}
+
+/** Shown instead of the sign-up form when the person did not start from a product (they came from the Account or the Store, or typed the address). */
+export function SignUpClosed() {
+  return (
+    <AuthCard title="Create your account from a product" lede="Platterly accounts are created when you first sign up to one of our products, such as Caterly. Open the product and choose Create an account there.">
+      <p className="pl-auth-links">
+        <Link href="/sign-in">Already have an account? Sign in</Link>
+      </p>
     </AuthCard>
   );
 }
@@ -309,7 +321,7 @@ export function SignInForm() {
 export function SignUpForm({ termsUrl, privacyUrl }: { termsUrl: string; privacyUrl: string }) {
   const themed = useProductBrand()?.theme === "caterly";
   const hydrated = useHydrated();
-  const { carry } = useQuery();
+  const { params, carry } = useQuery();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -331,7 +343,7 @@ export function SignUpForm({ termsUrl, privacyUrl }: { termsUrl: string; privacy
     setBusy(true);
     const first = firstName.trim();
     const last = lastName.trim();
-    const res = await post("/sign-up/email", { name: `${first} ${last}`, firstName: first, lastName: last, phone, email, password });
+    const res = await post("/sign-up/email", { name: `${first} ${last}`, firstName: first, lastName: last, phone, email, password }, { [PRODUCT_CLIENT_HEADER]: params.get("client_id") ?? "" });
     setBusy(false);
     if (res.status === 200) return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
     setError(res.status === 429 ? BUSY : res.status === 400 || res.status === 422 ? "Check your details: your name, a valid phone number and email, and a password of at least 8 characters." : GENERIC);

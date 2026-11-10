@@ -40,3 +40,8 @@ export async function productBrand(pool: Pool, clientId: string | null | undefin
   const theme = (PRODUCT_THEMES as readonly unknown[]).includes(wanted) ? (wanted as ProductTheme) : null;
   return { name, icon, theme };
 }
+
+/** True for a registered, enabled product's client id. The Account and the Store (first-party), an unknown or disabled client, and nothing at all are all false. */
+export async function isRegisteredProduct(pool: Pool, clientId: string | null | undefined): Promise<boolean> {
+  return (await productBrand(pool, clientId).catch(() => null)) !== null;
+}

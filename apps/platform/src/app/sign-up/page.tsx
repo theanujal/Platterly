@@ -1,7 +1,9 @@
 import { Suspense } from "react";
-import { SignUpForm } from "@/components/auth/forms";
+import { SignUpClosed, SignUpForm } from "@/components/auth/forms";
 import { Branded } from "@/components/auth/branded";
 import { requireHost } from "@/modules/auth/host";
+import { isRegisteredProduct } from "@/modules/auth/branding";
+import { identityPool } from "@/modules/auth/identity-db";
 import { ROOT_DOMAIN } from "@/lib/routing/hosts";
 
 // The Terms and Privacy pages live on the marketing site: localhost:3100 in dev, the apex domain in production.
@@ -9,11 +11,12 @@ const SITE = ROOT_DOMAIN.startsWith("localhost") ? "http://localhost:3100" : `ht
 
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireHost("auth");
+  // Sign-up is for a person who started from a registered product; anyone else (the Account, the Store, a typed address) sees the closed card.
+  const raw = (await searchParams).client_id;
+  const fromProduct = await isRegisteredProduct(identityPool(), Array.isArray(raw) ? raw[0] : raw);
   return (
     <Branded searchParams={searchParams}>
-      <Suspense>
-        <SignUpForm termsUrl={`${SITE}/terms/`} privacyUrl={`${SITE}/privacy/`} />
-      </Suspense>
+      <Suspense>{fromProduct ? <SignUpForm termsUrl={`${SITE}/terms/`} privacyUrl={`${SITE}/privacy/`} /> : <SignUpClosed />}</Suspense>
     </Branded>
   );
 }
