@@ -14,6 +14,10 @@ describe("ops proxy: public routes", () => {
     expect(through("/api/platform/products")).toMatchObject({ passed: true });
   });
 
+  it("lets exactly the two signed account-review calls through without a session", () => {
+    for (const path of ["/api/platform/account-reviews", "/api/platform/account-reviews/status"]) expect(through(path).passed, path).toBe(true);
+    for (const path of ["/api/platform/account-reviews/", "/api/platform/account-reviews/other", "/api/platform/account-reviews/status/x"]) expect(through(path).passed, path).toBe(false);
+  });
   it("sends every other route under /api/platform to sign-in, however it is written", () => {
     for (const path of ["/api/platform", "/api/platform/", "/api/platform/other", "/api/platform/products/", "/api/platform/products/x", "/api/platform/products-extra", "/api/platformx", "/api/platform/../x"]) {
       const result = through(path);

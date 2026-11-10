@@ -801,3 +801,23 @@ model Enquiry {
   @@index([status, createdAt])
   @@map("enquiry")
 }
+
+// An email change on a Platterly account was cancelled by the OLD address (AJ, 2026-11-10). The Platform has put the account on hold and keeps it there until
+// staff mark this review verified; the Platform asks Ops for the status when the held person tries to sign in. `reviewId` is the Platform's id for the change.
+model AccountReview {
+  id          String    @id @default(cuid())
+  reviewId    String    @unique
+  subject     String
+  oldEmail    String
+  newEmail    String
+  reason      String
+  note        String    @default("")
+  requestedAt DateTime
+  status      String    @default("OPEN")
+  clearedAt   DateTime?
+  clearedBy   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@map("account_review")
+}

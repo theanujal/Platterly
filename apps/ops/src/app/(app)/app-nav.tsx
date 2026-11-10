@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, BookOpenCheck, Building2, Crown, Globe, Inbox, LayoutDashboard, LogOut, Megaphone, Package, Receipt, BarChart3, Settings, type LucideIcon } from "lucide-react";
+import { Bell, BookOpenCheck, Building2, Crown, Globe, Inbox, LayoutDashboard, LogOut, Megaphone, Package, Receipt, BarChart3, Settings, ShieldCheck, type LucideIcon } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 
 interface Item {
@@ -18,6 +18,7 @@ const PLATFORM: Item[] = [
   { href: "/billing", label: "Billing", icon: Receipt },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/site", label: "Website", icon: Globe },
+  { href: "/account-reviews", label: "Account reviews", icon: ShieldCheck },
   { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
