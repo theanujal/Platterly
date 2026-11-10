@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, getTrialSubscriptionStatus, getLatestEmailOtp } from "./db";
-import { maskEmail } from "../src/lib/auth/mask-email";
-import { signOutFromMenu, verifyEmailViaOtp } from "./auth-helpers";
+import { cleanupOnboardingTestUser, getTrialSubscriptionStatus } from "./db";
+import { fillWizardBusinessName, signInOnCentralPage, signOutFromMenu, signUpOnCentralPage } from "./auth-helpers";
 
 /**
  * Chunk 4 — first real Playwright coverage in the repo. Runs against the
@@ -29,7 +28,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // round trip, each action slowed by launchOptions.slowMo (350ms, AJ's
   // standing "watch it run" preference), plus the sidebar shell's added
   // hydration weight on every /dashboard visit this test makes.
-  test.setTimeout(100_000);
+  test.setTimeout(150_000);
   const email = `e2e-${Date.now()}@example.test`;
   cleanupEmails.push(email);
   const businessName = "Playwright Test Catering";
@@ -38,36 +37,10 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // assertion on the first pass.
   const claimedSlug = `pw-test-${Date.now().toString().slice(-10)}`;
 
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Priya");
-  await page.getByLabel("Last name").fill("Sharma");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  // Password show/hide toggle (AJ's explicit ask, 2026-09-16) — flip it on
-  // and confirm the raw value is actually readable, not just that a click
-  // handler exists.
-  await page.getByRole("button", { name: "Show password" }).first().click();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveValue("correct-horse-battery");
-  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "text");
-  await page.getByRole("button", { name: "Hide password" }).first().click();
-  await expect(page.getByLabel("Password", { exact: true })).toHaveAttribute("type", "password");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-
-  // Email OTP verification (AJ's explicit ask, 2026-09-16) — sits between
-  // sign-up and onboarding for every new account. Delivery is log-only for
-  // now (real provider wiring is Chunk 16's job), so the test reads the
-  // plain-text code straight out of Better Auth's own `verification` table,
-  // the same way AJ would have to for now without a real inbox.
-  await expect(page).toHaveURL(/\/kitchenlogin\/verify-email/);
-  await expect(page.getByText(maskEmail(email))).toBeVisible();
-  const otp = await getLatestEmailOtp(email);
-  expect(otp).toMatch(/^\d{6}$/);
-  await page.getByLabel("Enter verification code").fill(otp!);
-  await page.getByRole("button", { name: "Verify Email" }).click();
+  // Sign-up, email verification and sign-in all happen on Platterly's central pages (Caterly sends a signed-out visitor there); the person comes back
+  // signed in, straight to the onboarding wizard.
+  await page.goto("/");
+  await signUpOnCentralPage(page, { email, firstName: "Priya", lastName: "Sharma", phone: "9800000099" });
 
   // Organization is already provisioned at signup — the wizard is reached
   // by an explicit client-side redirect to its own route, not by a
@@ -87,7 +60,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(firstName).toHaveAttribute("readonly", "");
   await expect(firstName).toBeEnabled();
   await expect(firstName).toHaveCSS("opacity", "1");
-  await page.getByLabel("Company / business name").fill(businessName);
+  await fillWizardBusinessName(page, businessName);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 2 of 5")).toBeVisible();
 
@@ -142,8 +115,9 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // just retrying.
   await expect(page.getByRole("heading", { name: "Your Platterly account is ready!" })).toBeVisible({ timeout: 10_000 });
 
-  // Confirm the trial subscription was actually created, not just the UI text.
-  expect(await getTrialSubscriptionStatus(email)).toBe("TRIALING");
+  // Confirm the trial subscription was actually created, not just the UI text. With OPS_BILLING on, Ops owns the subscription and Caterly keeps no
+  // local trial row (auto-provision.ts), so there is nothing to read here.
+  if (process.env.OPS_BILLING !== "1") expect(await getTrialSubscriptionStatus(email)).toBe("TRIALING");
 
   await page.getByRole("button", { name: "Take me to my Dashboard" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
@@ -177,12 +151,8 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   // this proves that restoration path lands on the Dashboard directly,
   // never back at the onboarding wizard.
   await signOutFromMenu(page);
-  await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
-  await expect(page).toHaveURL(/^https?:\/\/catering\.[^/]+\/$/); // signing out lands on the catering root
-
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByRole("button", { name: "Sign in to your account" }).click();
+  // Signing out of Caterly also ends the central session, and the browser lands on the central sign-in page.
+  await signInOnCentralPage(page, email);
 
   await expect(page).toHaveURL(/\/dashboard$/);
   // The custom-link popup still hasn't been satisfied, so it reopens here
@@ -208,16 +178,21 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await expect(page.getByLabel("GST rate (%)")).toHaveValue("12");
 });
 
-test("sign-in with the wrong password shows an inline error, not a crash", async ({ page }) => {
+test("Caterly has no sign-in door of its own: the legacy address, the old pages and the old endpoints are all gone", async ({ page, request }) => {
+  // The legacy address goes to the central sign-in like any signed-out visit.
   await page.goto("/?legacy=1");
-  await page.getByLabel("Email").fill("nobody@example.test");
-  await page.getByLabel("Password", { exact: true }).fill("wrong-password-123");
-  await page.getByRole("button", { name: "Sign in to your account" }).click();
-
-  // Next.js's own route announcer (#__next-route-announcer__) is also
-  // role="alert", so a bare role query is ambiguous — scope to our own
-  // error <p> by its actual text.
-  await expect(page.getByText("Invalid email or password")).toBeVisible();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  // The old forgot-password and verify-email pages no longer exist.
+  for (const path of ["/kitchenlogin/forgot-password", "/kitchenlogin/verify-email"]) expect((await request.get(path)).status(), path).toBe(404);
+  // A hand-written request to Caterly's own email-and-password endpoints is refused: there is no password here, only the central sign-in.
+  const origin = "http://catering.localhost:3000";
+  const post = (path: string, data: unknown) => request.post(path, { headers: { origin }, data });
+  const signIn = await post("/api/auth/sign-in/email", { email: "nobody@example.test", password: "wrong-password-123" });
+  expect(signIn.status()).toBe(400);
+  expect((await signIn.json()).code).toBe("EMAIL_PASSWORD_DISABLED");
+  const signUp = await post("/api/auth/sign-up/email", { email: `e2e-door-${Date.now()}@example.test`, password: "correct-horse-battery", name: "No Door" });
+  expect((await signUp.json()).code).toBe("EMAIL_PASSWORD_SIGN_UP_DISABLED");
+  expect((await post("/api/auth/email-otp/send-verification-otp", { email: "nobody@example.test", type: "email-verification" })).status()).toBe(404);
 });
 
 test("Skip for now keeps what was typed, shows it in Settings, and Back from the Dashboard never returns to the wizard", async ({ page }) => {
@@ -226,20 +201,11 @@ test("Skip for now keeps what was typed, shows it in Settings, and Back from the
   cleanupEmails.push(email);
   const businessName = `Skip Kitchen ${Date.now().toString().slice(-6)}`;
 
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Skip");
-  await page.getByLabel("Last name").fill("Tester");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000055");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
+  await page.goto("/");
+  await signUpOnCentralPage(page, { email, firstName: "Skip", lastName: "Tester", phone: "9800000055" });
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
 
-  await page.getByLabel("Company / business name").fill(businessName);
+  await fillWizardBusinessName(page, businessName);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Street address").fill("12 Skip Road");
   await page.getByLabel("City").fill("Pune");
@@ -264,64 +230,12 @@ test("Skip for now keeps what was typed, shows it in Settings, and Back from the
   await expect(page).toHaveURL(/\/dashboard$/);
 });
 
-test("creating an account without ticking the Terms stops with the browser's own message beside the checkbox and sends nothing", async ({ page }) => {
-  let signUpRequests = 0;
-  page.on("request", (request) => request.url().includes("/api/auth/sign-up") && signUpRequests++);
-
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("No");
-  await page.getByLabel("Email").fill(`e2e-noterms-${Date.now()}@example.test`);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000077");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-
-  // The hidden input sits over the checkbox (not at the top-left of the screen), so the browser's message appears beside it.
-  const box = page.getByRole("checkbox", { name: /I accept the Terms and Conditions and Privacy Policy/ });
-  const input = page.locator("input#signup-terms");
-  // The unticked box has a visible border: the input border colour, now 3.3:1 (AJ, 2026-10-14), not the old near-white one.
-  const borders = await box.evaluate((el) => {
-    const probe = (variable: string) => {
-      const p = document.createElement("span");
-      p.style.color = `var(${variable})`;
-      document.body.appendChild(p);
-      const c = getComputedStyle(p).color;
-      p.remove();
-      return c;
-    };
-    return { box: getComputedStyle(el).borderTopColor, muted: probe("--muted-foreground"), input: probe("--input") };
-  });
-  expect(borders.box).toBe(borders.input);
-  expect(borders.input).toBe("rgb(135, 141, 152)");
-  const boxRect = (await box.boundingBox())!;
-  const inputRect = (await input.boundingBox())!;
-  expect(Math.abs(inputRect.x - boxRect.x)).toBeLessThan(4);
-  expect(Math.abs(inputRect.y - boxRect.y)).toBeLessThan(4);
-
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  expect(await input.evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true);
-  expect(signUpRequests).toBe(0);
-  await expect(page.getByRole("link", { name: "Terms and Conditions" })).toHaveAttribute("href", /\/terms\/$/);
-  await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", /\/privacy\/$/);
-
-  await box.check();
-  expect(await input.evaluate((el: HTMLInputElement) => el.validity.valid)).toBe(true);
-});
-
 test("the sign-up phone is already the business mobile, even if onboarding is abandoned", async ({ page }) => {
   const email = `e2e-onboard-leave-${Date.now()}@example.test`;
   cleanupEmails.push(email);
 
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Leave");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000088");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: /I accept/ }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
+  await page.goto("/");
+  await signUpOnCentralPage(page, { email, firstName: "Leave", lastName: "Tester", phone: "9800000088" });
   await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
 
   // Leave the wizard without Skip or Finish (open the app directly), then look at Settings.

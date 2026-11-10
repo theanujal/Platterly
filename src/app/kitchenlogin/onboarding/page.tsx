@@ -30,7 +30,7 @@ export default async function OnboardingPage() {
     redirect("/");
   }
   if (!session.user.emailVerified) {
-    redirect("/kitchenlogin/verify-email?next=/kitchenlogin/onboarding");
+    redirect("/api/platform/sso/start?next=/kitchenlogin/onboarding");
   }
 
   const { organizationId } = await requireActiveOrganization();

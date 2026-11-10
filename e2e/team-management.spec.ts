@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser, setPushPromptState } from "./db";
-import { verifyEmailViaOtp } from "./auth-helpers";
+import { fillWizardBusinessName, signUpOnCentralPage } from "./auth-helpers";
 
 /**
  * Chunk 5 Group 5.2 — proves the invite/accept flow's real risk: that a
@@ -32,22 +32,13 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   const businessName = "Team Test HQ";
 
   // --- Owner signs up and completes onboarding ---
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill("Owner");
-  await page.getByLabel("Last name").fill("Person");
-  await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Phone", { exact: true }).fill("9800000099");
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, ownerEmail);
+  await page.goto("/");
+  await signUpOnCentralPage(page, { email: ownerEmail, firstName: "Owner", lastName: "Person", phone: "9800000099" });
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   // The "Stay updated" popup would sit over the page under test (as signUpCaterer does).
   await setPushPromptState(ownerEmail, "NEVER");
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
 
-  await page.getByLabel("Company / business name").fill(businessName);
+  await fillWizardBusinessName(page, businessName);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   // Every Contact & Address field is now mandatory (AJ, 2026-09-16).
   await page.getByLabel("Street address").fill("221B Baker Street");
@@ -104,21 +95,10 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   // --- Invitee accepts via a fresh, unauthenticated browser context ---
   const inviteeContext = await browser.newContext();
   const inviteePage = await inviteeContext.newPage();
-  await inviteePage.goto(`/invitations/${invitationId}/accept?legacy=1`);
+  await inviteePage.goto(`/invitations/${invitationId}/accept`);
 
-  await expect(inviteePage.getByRole("heading", { name: "Create your account" })).toBeVisible();
-  const emailField = inviteePage.getByLabel("Email");
-  await expect(emailField).toHaveValue(staffEmail);
-  await expect(emailField).toBeDisabled();
-
-  await inviteePage.getByLabel("First name").fill("Staff");
-  await inviteePage.getByLabel("Last name").fill("Person");
-  await inviteePage.getByLabel("Phone", { exact: true }).fill("9800000098");
-  await inviteePage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await inviteePage.getByLabel("Confirm password").fill("correct-horse-battery");
-  await inviteePage.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await inviteePage.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(inviteePage, staffEmail);
+  // The invitee creates their account on the central page (the invitation page sends a signed-out visitor there) and comes straight back to the invitation.
+  await signUpOnCentralPage(inviteePage, { email: staffEmail, firstName: "Staff", lastName: "Person", phone: "9800000098" });
 
   // No steps between verifying and the Dashboard: no onboarding wizard and no Accept click (AJ, 2026-10-01).
   await expect(inviteePage).toHaveURL(/\/dashboard$/);

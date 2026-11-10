@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
-import { AuthGate } from "./_components/auth-gate";
 import { SsoProblem } from "./_components/sso-problem";
 import { AuthLayout } from "./_components/auth-layout";
 
@@ -17,21 +16,14 @@ export default async function KitchenAdminLoginPage({ searchParams }: { searchPa
   const session = await auth.api.getSession({ headers: await nextHeaders() });
 
   if (!session) {
-    // Central single sign-in is the login: a person who is not signed in goes to Platterly's sign-in page, which looks like this one, and comes back
-    // signed in. `?legacy=1` still reaches the old email-and-password form (kept for the existing browser tests and as an emergency door), and a failed
-    // attempt (`?error=`) shows why instead of looping.
+    // Central single sign-in is the only way in (AJ, 2026-11-10): sign-in, sign-up, forgot-password and email verification all happen on Platterly's
+    // central pages, which look like Caterly's own. A person who is not signed in goes there and comes back signed in; a failed attempt (`?error=`) shows
+    // why instead of looping.
     const query = (await searchParams) ?? {};
-    if (query.legacy !== "1") {
-      if (!query.error) redirect("/api/platform/sso/start");
-      return (
-        <AuthLayout>
-          <SsoProblem code={String(Array.isArray(query.error) ? query.error[0] : query.error)} />
-        </AuthLayout>
-      );
-    }
+    if (!query.error) redirect("/api/platform/sso/start");
     return (
       <AuthLayout>
-        <AuthGate />
+        <SsoProblem code={String(Array.isArray(query.error) ? query.error[0] : query.error)} />
       </AuthLayout>
     );
   }

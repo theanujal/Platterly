@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupInviteeUser, cleanupOnboardingTestUser, getPendingInvitationId, seedOrderForBilling, setMemberRole, setSensitiveGrants } from "./db";
-import { signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
+import { signUpCaterer, signUpOnCentralPage } from "./auth-helpers";
 
 /**
  * Chunk 15: expenses and profitability. The Expenses tab on an order records what the event cost, shows
@@ -161,15 +161,9 @@ test("the Expenses page: order and company expenses, filters, and the Accounts t
 
   const accountsContext = await browser.newContext();
   const accounts = await accountsContext.newPage();
-  await accounts.goto(`/invitations/${invitationId}/accept?legacy=1`);
-  await accounts.getByLabel("First name").fill("Accounts");
-  await accounts.getByLabel("Last name").fill("Person");
-  await accounts.getByLabel("Phone", { exact: true }).fill("9800000079");
-  await accounts.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await accounts.getByLabel("Confirm password").fill("correct-horse-battery");
-  await accounts.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await accounts.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(accounts, accountsEmail);
+  await accounts.goto(`/invitations/${invitationId}/accept`);
+  // The invitee creates their account on the central page and comes straight back to the invitation.
+  await signUpOnCentralPage(accounts, { email: accountsEmail, firstName: "Accounts", lastName: "Person", phone: "9800000079" });
   await expect(accounts).toHaveURL(/\/dashboard$/);
   await setMemberRole(accountsEmail, "accounts");
 

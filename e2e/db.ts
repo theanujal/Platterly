@@ -15,7 +15,20 @@ import { MATRIX_MODULES } from "../src/lib/auth/role-matrix";
  */
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+/**
+ * The central identity database holds the test person too (Caterly signs everyone in through it). Removed when `IDENTITY_DATABASE_URL` is given (pass only that
+ * one variable: `source ~/.platterly/f4dev/env.sh` would also point DATABASE_URL at the Platform's database). Best effort; the Platform's cleanup script
+ * handles anything left (`node scripts/clean-test-people.mjs --apply`, only for @auth.test addresses).
+ */
+let identityPool: Pool | null = null;
+async function removeFromIdentity(email: string): Promise<void> {
+  if (!process.env.IDENTITY_DATABASE_URL) return;
+  identityPool ??= new Pool({ connectionString: process.env.IDENTITY_DATABASE_URL, max: 1 });
+  await identityPool.query('DELETE FROM "user" WHERE email = $1', [email]).catch(() => undefined);
+}
+
 export async function cleanupOnboardingTestUser(email: string): Promise<void> {
+  await removeFromIdentity(email);
   const { rows: userRows } = await pool.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [email]);
   const user = userRows[0];
   if (!user) return;
@@ -89,6 +102,7 @@ export async function getTrialSubscriptionStatus(email: string): Promise<string 
  * inviting owner's own `cleanupOnboardingTestUser` call.
  */
 export async function cleanupInviteeUser(email: string): Promise<void> {
+  await removeFromIdentity(email);
   const { rows: userRows } = await pool.query<{ id: string }>('SELECT id FROM "user" WHERE email = $1', [email]);
   const user = userRows[0];
   if (!user) return;

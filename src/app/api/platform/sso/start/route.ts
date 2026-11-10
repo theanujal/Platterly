@@ -14,7 +14,8 @@ export async function GET(request: Request) {
     body: { provider: PLATFORM_PROVIDER_ID, callbackURL: next, newUserCallbackURL: firstTime, errorCallbackURL: "/", disableRedirect: true },
     headers: request.headers,
   });
-  if (!result?.url) return NextResponse.redirect(new URL("/?legacy=1", request.url), 303);
+  // The central sign-in could not be started (for example Platterly's sign-in is down): say so on the sign-in page instead of sending the person round in a circle.
+  if (!result?.url) return NextResponse.redirect(new URL("/?error=provider_unavailable", request.url), 303);
   const response = NextResponse.redirect(result.url, 303);
   response.headers.set("cache-control", "no-store");
   return response;

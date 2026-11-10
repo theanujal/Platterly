@@ -4,8 +4,6 @@ import { headers as nextHeaders } from "next/headers";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
 import { SignOutButton } from "@/app/kitchenlogin/_components/sign-out-button";
-import { AuthLayout } from "@/app/kitchenlogin/_components/auth-layout";
-import { AuthGate } from "@/app/kitchenlogin/_components/auth-gate";
 import { AcceptButton } from "./_components/accept-button";
 
 export const metadata: Metadata = {
@@ -21,7 +19,7 @@ export const metadata: Metadata = {
  * Reads the invitation directly instead, then branches on the current
  * session state.
  */
-export default async function AcceptInvitationPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+export default async function AcceptInvitationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const invitation = await prisma.invitation.findUnique({
     where: { id },
@@ -47,20 +45,11 @@ export default async function AcceptInvitationPage({ params, searchParams }: { p
   const callbackURL = `/invitations/${id}/accept`;
 
   // Signing in or creating the account happens on Platterly's central sign-in page (Caterly's look), which sends the person back to this invitation.
-  // If they sign in with a different email than the invited one, the "Wrong account" screen below says so. `?legacy=1` keeps the old form (existing
-  // browser tests, emergency door).
-  if (!session) {
-    if (((await searchParams) ?? {}).legacy !== "1") redirect(`/api/platform/sso/start?next=${encodeURIComponent(callbackURL)}`);
-    return (
-      <AuthLayout>
-        <AuthGate initialMode="signup" callbackURL={callbackURL} lockedEmail={invitation.email} />
-      </AuthLayout>
-    );
-  }
+  // If they sign in with a different email than the invited one, the "Wrong account" screen below says so.
+  if (!session) redirect(`/api/platform/sso/start?next=${encodeURIComponent(callbackURL)}`);
 
-  if (!session.user.emailVerified) {
-    redirect(`/kitchenlogin/verify-email?next=${encodeURIComponent(callbackURL)}`);
-  }
+  // A central person's email is always verified; anyone else goes back through the central sign-in.
+  if (!session.user.emailVerified) redirect(`/api/platform/sso/start?next=${encodeURIComponent(callbackURL)}`);
 
   if (session.user.email.toLowerCase() !== invitation.email.toLowerCase()) {
     return (

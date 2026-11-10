@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId } from "./db";
-import { pickCalendarDate, selectOption, signOutFromMenu, signUpCaterer, verifyEmailViaOtp } from "./auth-helpers";
+import { pickCalendarDate, selectOption, signOutFromMenu, signUpCaterer, signUpOnCentralPage } from "./auth-helpers";
 import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
@@ -186,15 +186,9 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   // ===== Kitchen member: joins with one email code and lands on the Dashboard, nothing in between =====
   const kitchenContext = await browser.newContext();
   const kitchenPage = await kitchenContext.newPage();
-  await kitchenPage.goto(`/invitations/${invitationId}/accept?legacy=1`);
-  await kitchenPage.getByLabel("First name").fill("Kitchen");
-  await kitchenPage.getByLabel("Last name").fill("Cook");
-  await kitchenPage.getByLabel("Phone", { exact: true }).fill("9800000055");
-  await kitchenPage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await kitchenPage.getByLabel("Confirm password").fill("correct-horse-battery");
-  await kitchenPage.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await kitchenPage.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(kitchenPage, kitchenEmail);
+  await kitchenPage.goto(`/invitations/${invitationId}/accept`);
+  // The invitee creates their account on the central page and comes straight back to the invitation.
+  await signUpOnCentralPage(kitchenPage, { email: kitchenEmail, firstName: "Kitchen", lastName: "Cook", phone: "9800000055" });
   await expect(kitchenPage).toHaveURL(/\/dashboard$/);
 
   // The sidebar and Dashboard show the kitchen role only what it can use.

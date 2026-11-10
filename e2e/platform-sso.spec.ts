@@ -9,7 +9,7 @@ import { totpFromUri } from "../apps/platform/src/modules/auth/__tests__/totp-ut
  * Caterly as a sign-in client of Platterly's central identity (F8.1.1 / F8.1.3), end to end in a real browser against the running Caterly, Platform
  * (account.localhost:3300, auth.localhost:3300) and the local mail sink (3600). Single sign-in is Caterly's login (there is no switch). The spec is skipped
  * unless PLATFORM_SSO_E2E=1, because it needs the Platform and the mail sink running and Caterly registered there (apps/platform
- * `node scripts/register-product-client.mjs caterly`). The old form is still reachable at `/?legacy=1` and is covered by kitchenlogin.spec.ts and the rest of the suite.
+ * `node scripts/register-product-client.mjs caterly`). Caterly has no sign-in form of its own any more (the legacy door was removed on 2026-11-10); kitchenlogin.spec.ts proves it is gone.
  */
 test.skip(process.env.PLATFORM_SSO_E2E !== "1", "needs the Platform (auth.localhost:3300) and the mail sink running");
 
@@ -121,18 +121,21 @@ test("signing in again uses the same Caterly user (matched by the linked account
   expect(await userCount(to)).toBe(1);
 });
 
-test("single sign-on: already signed in at the Account, Caterly signs the person in with no sign-in page", async ({ page }) => {
+test("single sign-on: already signed in centrally, Caterly signs the person in with no sign-in page", async ({ page }) => {
   const to = newEmail();
   created.push(to);
-  await page.goto(`${ACCOUNT}/`);
+  // Sign-up only starts from a product, so the person registers through Caterly; then only Caterly's own session is dropped, leaving the central one.
+  await page.goto(`${CATERLY}/`);
   await registerOnCentralPage(page, to);
-  await expect(page).toHaveURL(`${ACCOUNT}/`);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  await page.context().clearCookies({ domain: "catering.localhost" });
+  expect(await caterlySession(page)).toBeNull();
   const signInPages: string[] = [];
   page.on("framenavigated", (f) => {
     if (f === page.mainFrame() && /auth\.localhost:3300\/sign-in/.test(f.url())) signInPages.push(f.url());
   });
   await page.goto(`${CATERLY}/`);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/(dashboard|kitchenlogin\/onboarding)/);
   expect(signInPages, "the central sign-in page never showed").toEqual([]);
   expect((await caterlySession(page))?.user?.email).toBe(to);
 });
@@ -150,12 +153,17 @@ test("signing out at the Account ends the Caterly session through the back-chann
   await expect.poll(async () => (await caterlySession(page))?.user?.email ?? null, { message: "the Caterly session ended without the person visiting Caterly" }).toBeNull();
 });
 
-/** A Caterly user made through a separate request context (so the browser under test is not signed in to Caterly by the sign-up call). */
-async function makeCaterlyUser(request: import("@playwright/test").APIRequestContext, email: string, verified: boolean): Promise<string> {
-  const made = await request.post(`${CATERLY}/api/auth/sign-up/email`, { headers: { origin: CATERLY }, data: { name: "Existing Person", firstName: "Existing", lastName: "Person", email, password: "correct-horse-battery" } });
-  expect(made.ok()).toBe(true);
-  await pool.query('update "user" set "emailVerified" = $2 where email = $1', [email, verified]);
-  return (await pool.query('select id from "user" where email = $1', [email])).rows[0].id as string;
+/**
+ * A Caterly person who existed before central sign-in (like an imported kitchen owner): a user with a business of their own, written straight to Caterly's
+ * database, because Caterly no longer has a sign-up of its own to make one. Removed by `cleanupOnboardingTestUser`.
+ */
+async function makeCaterlyUser(_request: import("@playwright/test").APIRequestContext, email: string, verified: boolean): Promise<string> {
+  const userId = `legacy-${crypto.randomUUID()}`;
+  const orgId = `legacy-org-${crypto.randomUUID()}`;
+  await pool.query(`insert into "user" (id, name, email, "emailVerified", "firstName", "lastName", "updatedAt") values ($1, 'Existing Person', $2, $3, 'Existing', 'Person', now())`, [userId, email, verified]);
+  await pool.query(`insert into organization (id, name, slug, "createdAt") values ($1, 'Legacy Kitchen', $2, now())`, [orgId, `legacy-${orgId.slice(-12)}`]);
+  await pool.query(`insert into member (id, "organizationId", "userId", role, "createdAt") values ($1, $2, $3, 'owner', now())`, [`legacy-m-${crypto.randomUUID()}`, orgId, userId]);
+  return userId;
 }
 const platterlyLinks = async (userId: string) => (await pool.query(`select "accountId" from account where "userId" = $1 and "providerId" = 'platterly'`, [userId])).rows.map((r) => r.accountId as string);
 
@@ -347,8 +355,9 @@ test("if another Caterly person already holds the new email, the person still si
   await page.getByLabel("6-digit code").fill(await codeFor(page, taken));
   await page.getByRole("button", { name: "Confirm new email" }).click();
   await expect(page.getByText("Your sign-in email was changed.")).toBeVisible();
+  // Changing the email signs the person out of every device, this one too.
   await page.goto(`${ACCOUNT}/profile`);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.goto(`${CATERLY}/`);
   await fill(page, "Email", taken);
   await fill(page, "Password", PASSWORD, { exact: true });
@@ -377,22 +386,13 @@ test("an email changed in the Account reaches Caterly at the next sign-in", asyn
   await page.getByRole("button", { name: "Confirm new email" }).click();
   await expect(page.getByText("Your sign-in email was changed.")).toBeVisible();
   expect(await userCount(oldEmail), "Caterly still has the old address until the next sign-in").toBe(1);
+  // Changing the email signs the person out of every device, this one too.
   await page.goto(`${ACCOUNT}/profile`);
-  await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await signInToCaterly(page, next);
   expect(await userCount(oldEmail)).toBe(0);
   expect(await userCount(next), "the same Caterly user now has the new address").toBe(1);
   expect((await caterlyRow(next)).firstName).toBe("Sso");
-});
-
-test("?legacy=1 still shows Caterly's own email-and-password form", async ({ page }) => {
-  await page.goto(`${CATERLY}/?legacy=1`);
-  await expect(page).toHaveURL(`${CATERLY}/?legacy=1`);
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByLabel("Email")).toBeVisible();
-  await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
 });
 
 test("the back-channel endpoint refuses anything that is not a valid logout token from the provider", async ({ request }) => {

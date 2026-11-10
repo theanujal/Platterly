@@ -1,25 +1,63 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { getLatestEmailOtp, setPushPromptState } from "./db";
+import { setPushPromptState } from "./db";
 
 /**
- * Every sign-up (fresh caterer or invited teammate) now lands on
- * `/kitchenlogin/verify-email` before reaching its real destination (AJ's
- * explicit ask, 2026-09-16). Delivery is log-only for now, so this reads
- * the plain-text code straight out of Better Auth's own `verification`
- * table (see `db.ts`'s `getLatestEmailOtp`) — the same way AJ has to for
- * now without a real inbox. Call this right after the sign-up form's
- * submit button, in place of whatever direct "land on the next page"
- * assertion used to follow it.
+ * Caterly has no sign-in, sign-up, forgot-password or email-verification form of its own (AJ, 2026-11-10): all four happen on Platterly's central pages, which
+ * look like Caterly's. These helpers drive those pages in a real browser. The 6-digit codes are read from the local mail sink (port 3600, `npm run mail-sink`),
+ * and the Platform must be running (auth.localhost:3300). Run the Caterly browser tests with Caterly's link to the Platform switched off
+ * (`PLATFORM_ANSWER_SECRET=` empty for the dev server), so a test sign-up leaves no business or audit rows in the Platform. Test people in the central
+ * identity database are removed by `cleanupOnboardingTestUser` when `IDENTITY_DATABASE_URL` is given.
  */
-export async function verifyEmailViaOtp(page: Page, email: string): Promise<void> {
-  await expect(page).toHaveURL(/\/kitchenlogin\/verify-email/);
-  const otp = await getLatestEmailOtp(email);
-  if (!otp) throw new Error(`No email-verification OTP found for ${email} — check the verification table.`);
-  await page.getByLabel("Enter verification code").fill(otp);
-  await page.getByRole("button", { name: "Verify Email" }).click();
+export const SINK = "http://localhost:3600";
+export const CENTRAL_PASSWORD = "correct-horse-battery";
+
+/** Text typed before the page is interactive is lost when it becomes interactive, so every fill waits for the page's ready marker first. */
+async function centralFill(page: Page, label: string, value: string) {
+  await page.locator('[data-hydrated="true"]').waitFor();
+  await page.getByLabel(label, label === "Password" ? { exact: true } : undefined).fill(value);
 }
 
+/** The newest 6-digit code mailed to this address, from the sink (retries while the background send finishes). */
+export async function codeFromSink(page: Page, to: string, after = ""): Promise<string> {
+  for (let i = 0; i < 60; i++) {
+    const messages = (await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[]; subject: string; receivedAt: string }[];
+    const mine = messages.filter((m) => m.to.includes(to) && m.receivedAt > after).sort((a, b) => b.receivedAt.localeCompare(a.receivedAt))[0];
+    const code = mine?.subject.match(/\b(\d{6})\b/)?.[1];
+    if (code) return code;
+    await page.waitForTimeout(250);
+  }
+  throw new Error(`no verification code arrived for ${to} - is the mail sink running (npm run mail-sink)?`);
+}
+
+/** On the central sign-in page: sign in with an existing person's email and password. */
+export async function signInOnCentralPage(page: Page, email: string, password = CENTRAL_PASSWORD): Promise<void> {
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await centralFill(page, "Email", email);
+  await centralFill(page, "Password", password);
+  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
+}
+
+/** On the central sign-in page: create the account, verify the emailed code, and sign in, which sends the browser back to where it came from. */
+export async function signUpOnCentralPage(page: Page, person: { email: string; firstName?: string; lastName?: string; phone?: string; password?: string }): Promise<void> {
+  const { email, firstName = "E2E", lastName = "Tester", phone = "9800000099", password = CENTRAL_PASSWORD } = person;
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await centralFill(page, "First name", firstName);
+  await centralFill(page, "Last name", lastName);
+  await centralFill(page, "Phone", phone);
+  await centralFill(page, "Confirm password", password);
+  await page.getByRole("checkbox", { name: /I accept the Terms/ }).check();
+  await centralFill(page, "Email", email);
+  await centralFill(page, "Password", password);
+  await page.getByRole("button", { name: "Create account" }).click();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  await centralFill(page, "Verification code", await codeFromSink(page, email));
+  await page.getByRole("button", { name: "Verify email" }).click();
+  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+  await centralFill(page, "Password", password);
+  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
+}
 
 export interface SignUpOptions {
   firstName?: string;
@@ -32,26 +70,18 @@ export interface SignUpOptions {
 }
 
 /**
- * Sign up a fresh caterer through the real form, verify the email code, skip onboarding and land on
- * the Dashboard. Every spec used to carry its own copy of these ~15 steps (each one slowed by
- * `slowMo`), so this is the single place to change when the sign-up flow changes.
+ * Sign up a fresh caterer through the central pages (Caterly sends a signed-out visitor there), verify the emailed code, sign in, skip onboarding and land on
+ * the Dashboard. Every spec carries its own caterer through this, so it is the single place to change when the sign-up flow changes.
  */
 export async function signUpCaterer(page: Page, email: string, options: SignUpOptions = {}): Promise<void> {
-  const { firstName = "E2E", lastName = "Tester", phone = "9800000099", closeClaimDialog = true } = options;
-  await page.goto("/?legacy=1");
-  await page.getByRole("button", { name: "Create an account" }).click();
-  await page.getByLabel("First name").fill(firstName);
-  await page.getByLabel("Last name").fill(lastName);
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Phone", { exact: true }).fill(phone);
-  await page.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await page.getByLabel("Confirm password").fill("correct-horse-battery");
-  await page.getByRole("checkbox", { name: "I accept the Terms and Conditions and Privacy Policy" }).check();
-  await page.getByRole("button", { name: "Create Platterly Account" }).click();
-  await verifyEmailViaOtp(page, email);
+  const { firstName, lastName, phone, closeClaimDialog = true } = options;
+  await page.goto("/");
+  await signUpOnCentralPage(page, { email, firstName, lastName, phone });
+  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
   // The "Stay updated" push popup would sit over the page under test; push-prompt.spec.ts covers it itself.
   if (!options.pushPrompt) await setPushPromptState(email, "NEVER");
-  await expect(page).toHaveURL(/\/kitchenlogin\/onboarding$/);
+  // The wizard is on screen before its click handlers are attached (several workers share one dev server that compiles on first visit).
+  await waitUntilInteractive(page);
   await page.getByRole("button", { name: "Skip for now" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   if (closeClaimDialog) await page.getByRole("button", { name: "Close" }).click();
@@ -92,4 +122,19 @@ export async function pickCalendarDate(page: Page, trigger: Locator, isoDate: st
   }
   await popover.getByRole("button", { name: String(day), exact: true }).click();
   await expect(popover).not.toBeVisible();
+}
+
+/**
+ * Waits until React has attached to the page's inputs (the first input carries React's own props key). A full page load shows the form before its click
+ * handlers and state exist, and anything typed or clicked before that is lost, so specs wait for this before typing.
+ */
+export async function waitUntilInteractive(page: Page, timeout = 60_000): Promise<void> {
+  await page.waitForFunction(() => Array.from(document.querySelectorAll("input,button")).some((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))), undefined, { timeout });
+}
+
+/** Step 1 of the onboarding wizard: waits for the page to be interactive, types the business name and waits until the page has kept it (Continue turns on). */
+export async function fillWizardBusinessName(page: Page, name: string): Promise<void> {
+  await waitUntilInteractive(page);
+  await page.getByLabel("Company / business name").fill(name);
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
 }

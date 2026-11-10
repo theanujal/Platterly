@@ -36,7 +36,7 @@ describe("identity provider configuration", () => {
     expect(options.rateLimit).toMatchObject({ enabled: true, storage: "database" });
     const rules = options.rateLimit.customRules;
     expect(rules["/sign-in/email"].max).toBeLessThanOrEqual(5);
-    expect(rules["/sign-up/email"].max).toBeLessThanOrEqual(5);
+    expect(rules["/sign-up/email"].max).toBe(10); // AJ, 2026-11-10: 10 sign-ups a minute per address, up from 5
     expect(rules["/email-otp/send-verification-otp"]).toEqual({ window: OTP.resendSeconds, max: 1 });
     expect(rules["/forget-password/email-otp"]).toEqual({ window: OTP.resendSeconds, max: 1 });
   });

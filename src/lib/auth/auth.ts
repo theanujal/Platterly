@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
-import { organization, emailOTP, genericOAuth } from "better-auth/plugins";
+import { organization, genericOAuth } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/db";
 import { ac, roles } from "./permissions";
@@ -11,13 +11,7 @@ import { notify } from "@/lib/notifications/notify";
 import { INVITATION_EXPIRES_IN_SECONDS, INVITATION_EXPIRY_HOURS } from "@/modules/team/invitation-config";
 import { canonicalUrl } from "@/lib/seo/canonical";
 import { trustedOrigins } from "@/lib/routing/hosts";
-import { sendEmail } from "@/lib/notifications/email/zeptomail";
-import { passwordResetEmail, verificationCodeEmail } from "@/lib/notifications/email/templates";
-import { isRateLimited } from "@/lib/rate-limit";
-import { APIError } from "better-auth/api";
 import { PLATFORM_CLIENT_ID, PLATFORM_PROVIDER_ID, platformIssuer } from "@/lib/platform/config";
-
-const OTP_EXPIRES_IN_SECONDS = 600;
 
 /**
  * Auth core (Chunk 1 Group 1.3). Email/password is the first strategy; built
@@ -67,8 +61,10 @@ export const auth = betterAuth({
   },
   // Only the production rehearsal (e2e through one IP) switches this off; never set it in production.
   ...(process.env.AUTH_RATE_LIMIT_OFF === "1" ? { rateLimit: { enabled: false } } : {}),
+  // No password of Caterly's own (AJ, 2026-11-10): sign-in, sign-up, forgot-password and email verification are all done on Platterly's central pages, so the
+  // email-and-password and email-code endpoints are switched off here and a hand-written request to them fails.
   emailAndPassword: {
-    enabled: true,
+    enabled: false,
   },
   // Single sign-in. A person is matched to a Caterly user in two steps, and only the first is by email:
   //  1. The FIRST central sign-in of someone who already has a Caterly user links them when the central email is verified (the provider only lets a verified
@@ -183,35 +179,6 @@ export const auth = betterAuth({
             expiresInHours: INVITATION_EXPIRY_HOURS,
           },
         });
-      },
-    }),
-    /**
-     * AJ's explicit ask (2026-09-16): a 6-digit email OTP right after
-     * sign-up, gating both post-signup entry points (onboarding and the
-     * invitation-accept page — see their own `emailVerified` guards).
-     * Deliberately NOT routed through the tenant-scoped `notify()`
-     * interface, unlike `sendInvitationEmail` above — `auto-provision.ts`
-     * returns `organizationId: null` for a user signing up to accept a
-     * pending invitation, so no Organization is guaranteed to exist yet at
-     * this point. Sent straight through ZeptoMail in the shared email layout
-     * (Chunk 16); without credentials it falls back to the server log.
-     */
-    emailOTP({
-      otpLength: 6,
-      expiresIn: OTP_EXPIRES_IN_SECONDS,
-      allowedAttempts: 5,
-      sendVerificationOnSignUp: true,
-      async sendVerificationOTP({ email, otp, type }) {
-        if (type !== "email-verification" && type !== "forget-password") return;
-        // A new code at most once a minute per address and purpose (the page's own countdown is the same 60 seconds),
-        // so the form can't be used to flood someone's inbox.
-        if (isRateLimited(`otp:${type}:${email.toLowerCase()}`, 1, 55_000)) {
-          throw new APIError("TOO_MANY_REQUESTS", { message: "Please wait a minute before asking for another code." });
-        }
-        const message = type === "forget-password" ? passwordResetEmail(otp, OTP_EXPIRES_IN_SECONDS / 60) : verificationCodeEmail(otp, OTP_EXPIRES_IN_SECONDS / 60);
-        const result = await sendEmail({ to: email, ...message });
-        // No ZeptoMail credentials (dev, CI) or a failed send: the code is still readable in the server log.
-        if (result.status !== "sent") console.log(`[dev-only] Email verification OTP for ${email}: ${otp} (${result.reason})`);
       },
     }),
     /**

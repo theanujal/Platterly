@@ -119,7 +119,7 @@ export function createIdp(options: IdpOptions = {}) {
       max: 60,
       customRules: {
         "/sign-in/email": { window: 60, max: 5 },
-        "/sign-up/email": { window: 60, max: 5 },
+        "/sign-up/email": { window: 60, max: 10 },
         "/email-otp/send-verification-otp": { window: OTP.resendSeconds, max: 1 },
         "/email-otp/verify-email": { window: 60, max: 10 },
         "/email-otp/reset-password": { window: 60, max: 10 },
