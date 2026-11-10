@@ -12,22 +12,18 @@ const CATERING = process.env.PW_BASE_URL ?? "http://catering.localhost:3000";
 const OPS = process.env.PW_OPS_URL ?? "http://ops.localhost:3000";
 const BARE = process.env.PW_BARE_URL ?? "http://localhost:3000";
 
-test("the catering root shows the kitchen sign-in directly, without redirecting", async ({ page }) => {
-  const response = await page.goto(`${CATERING}/`);
-  expect(response?.status()).toBe(200);
-  await expect(page).toHaveURL(new RegExp(`^${CATERING.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/?$`));
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create an account" })).toBeVisible();
-  // It is the sign-in page, so it is not offered to search engines yet and carries no template text
-  expect(response?.headers()["x-robots-tag"]).toContain("noindex");
+test("the catering root sends a visitor to Platterly's central sign-in, and stays out of search results", async ({ page }) => {
+  // Sign-in is central only (AJ, 2026-11-10): the root no longer shows a form of its own. It redirects, and the redirect itself is not offered to search engines.
+  const root = await page.request.get(`${CATERING}/`, { maxRedirects: 0 });
+  expect(root.status()).toBe(307);
+  expect(root.headers()["x-robots-tag"]).toContain("noindex");
+  await page.goto(`${CATERING}/`);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await expect(page.getByText("To get started, edit the")).toHaveCount(0);
   // The old address redirects to the root, keeping any query
   const old = await page.request.get(`${CATERING}/kitchenlogin?next=%2Fdashboard`, { maxRedirects: 0 });
   expect(old.status()).toBe(307);
   expect(old.headers()["location"]).toMatch(/^(https?:\/\/catering\.[^/]+)?\/\?next=%2Fdashboard$/);
-  await page.goto(`${CATERING}/kitchenlogin`);
-  await expect(page).toHaveURL(new RegExp(`^${CATERING.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/$`));
-  await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
   // The wizard keeps its own path
   const wizard = await page.request.get(`${CATERING}/kitchenlogin/onboarding`, { maxRedirects: 0 });
   expect(wizard.status()).not.toBe(404);

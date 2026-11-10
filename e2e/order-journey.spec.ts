@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId } from "./db";
-import { pickCalendarDate, selectOption, signOutFromMenu, signUpCaterer, signUpOnCentralPage } from "./auth-helpers";
+import { pickCalendarDate, selectOption, signInOnCentralPage, signOutFromMenu, signUpCaterer, signUpOnCentralPage } from "./auth-helpers";
 import { openOrderApprovalTab, submitVenueDetailsAsCustomer } from "./approval-helpers";
 
 /**
@@ -262,9 +262,8 @@ test("customer orders, owner sends the menu, customer approves, the kitchen team
   // ===== Kitchen member: signs out and straight back in, no second email code =====
   await kitchenPage.goto("/dashboard");
   await signOutFromMenu(kitchenPage);
-  await kitchenPage.getByLabel("Email").fill(kitchenEmail);
-  await kitchenPage.getByLabel("Password", { exact: true }).fill("correct-horse-battery");
-  await kitchenPage.getByRole("button", { name: "Sign in to your account" }).click();
+  // Sign-in is the central page only (the Caterly form is gone); the helper waits for the page to be interactive before typing.
+  await signInOnCentralPage(kitchenPage, kitchenEmail);
   await expect(kitchenPage).toHaveURL(/\/dashboard$/);
   await kitchenContext.close();
 });

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { cleanupOnboardingTestUser, countInvoicesForOrder, getApprovalState, getOrderKind, getOrderRow, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
-import { signUpCaterer } from "./auth-helpers";
+import { expectNoAccessPage, signUpCaterer } from "./auth-helpers";
 import { openApprovalHistory, submitVenueDetailsAsCustomer, waitForHydration } from "./approval-helpers";
 
 /**
@@ -312,8 +312,8 @@ test("a person who can edit orders but not approve menus sees the tab read-only;
 
   // no access to orders at all: refused, as before
   await setRoleGrants(email, "manager", { orders: [], menus: ["view"], customers: ["view"] });
-  const response = await page.goto(`/orders/${sent.orderId}`);
-  expect(response?.status()).toBe(403);
+  await page.goto(`/orders/${sent.orderId}`);
+  await expectNoAccessPage(page);
 });
 
 test("the Pricing Summary and the Order Status card agree with the rest of the order", async ({ page }) => {

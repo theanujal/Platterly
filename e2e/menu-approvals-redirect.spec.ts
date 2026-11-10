@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { cleanupOnboardingTestUser, seedReviewFixture, setMemberRole, setRoleGrants } from "./db";
-import { signUpCaterer } from "./auth-helpers";
+import { expectNoAccessPage, expectNotFoundPage, signUpCaterer } from "./auth-helpers";
 
 /**
  * Menu Approvals + Orders merge, Phase 4: Orders is the way in. The old `/menu-approvals` queue and `/menu-approvals/[id]` page redirect
@@ -45,7 +45,8 @@ test("the old pages redirect to Orders and the approval tab, and the sidebar ent
   await expect(page).toHaveURL(new RegExp(`/orders/${sent.orderId}\\?tab=approval$`));
 
   // An approval that does not exist is refused, not redirected.
-  expect((await page.goto("/menu-approvals/ms_does_not_exist"))?.status()).toBe(404);
+  await page.goto("/menu-approvals/ms_does_not_exist");
+  await expectNotFoundPage(page);
 });
 
 test("a role that approves menus but cannot open Orders keeps the queue, and its links still reach the order", async ({ page }) => {
@@ -66,7 +67,8 @@ test("a role that approves menus but cannot open Orders keeps the queue, and its
   expect(queueHtml).not.toContain(draft.customerPhone);
   expect(queueHtml).not.toContain("40,000");
   await expect(page.getByRole("link", { name: "Menu Approvals" })).toBeVisible();
-  expect((await page.goto("/orders"))?.status()).toBe(403);
+  await page.goto("/orders");
+  await expectNoAccessPage(page);
 
   // The review link from the queue lands on the restricted order view, with the approval tab.
   await page.goto(`/menu-approvals/${draft.selectionId}`);

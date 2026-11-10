@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { assignOrderEventToLocation, cleanupOnboardingTestUser, givePlanWithMultiLocation, holdMemberToLocation, seedOrderWithEvent, setRoleGrants, setSensitiveGrants, seedPurchaseOrder, seedReviewFixture } from "./db";
-import { signUpCaterer } from "./auth-helpers";
+import { expectNotFoundPage, signUpCaterer } from "./auth-helpers";
 
 /**
  * Chunk 23: multiple locations are opt-in. Off by default (and not offered on a plan without the feature); once
@@ -107,15 +107,16 @@ test("a person held to a location cannot open another location's order or sheets
   // Held to North Branch: its order opens, Main's is a 404, and the Orders list shows only North's.
   const own = await page.goto(`/orders/${north.orderId}`);
   expect(own?.status()).toBe(200);
-  const other = await page.goto(`/orders/${main.orderId}`);
-  expect(other?.status()).toBe(404);
+  await page.goto(`/orders/${main.orderId}`);
+  await expectNotFoundPage(page);
   await page.goto("/orders");
   await expect(page.getByText(north.orderNumber).first()).toBeVisible();
   await expect(page.getByText(main.orderNumber)).toHaveCount(0);
   // Purchasing: North's order and the one tied to no location open, Main's is a 404.
   expect((await page.goto(`/purchasing/${poNorth}`))?.status()).toBe(200);
   expect((await page.goto(`/purchasing/${poShared}`))?.status()).toBe(200);
-  expect((await page.goto(`/purchasing/${poMain}`))?.status()).toBe(404);
+  await page.goto(`/purchasing/${poMain}`);
+  await expectNotFoundPage(page);
   await page.goto("/purchasing");
   await expect(page.getByText("PO-").filter({ hasText: poNorth.slice(3) })).toHaveCount(1);
   await expect(page.getByText(poMain.slice(3))).toHaveCount(0);
@@ -163,7 +164,7 @@ test("another location's order stays closed by address, ?tab=approval and its ap
   // Main's order: the real response is a 404 for the page, the approval tab and the approval review page, and the body carries none of it.
   for (const path of [`/orders/${main.orderId}`, `/orders/${main.orderId}?tab=approval`, `/orders/${main.orderId}?tab=pricing`, `/menu-approvals/${main.selectionId}`]) {
     const response = await page.goto(path);
-    expect(response?.status(), path).toBe(404);
+    await expectNotFoundPage(page);
     const html = (await response?.text()) ?? "";
     for (const secret of ["Mainland Secret", main.customerPhone, "Royal Dinner 72", "Paneer Tikka 72"]) { // (the id is the address typed in, which a 404 page echoes; it is not order data)
       expect(html.includes(secret), `${path} must not contain "${secret}"`).toBe(false);

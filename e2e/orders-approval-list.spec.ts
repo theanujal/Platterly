@@ -14,6 +14,14 @@ test.afterEach(async () => {
   if (email) await cleanupOnboardingTestUser(email);
 });
 
+// The "Last Month" preset follows today's date, so the past orders sit on the first day of the month before this one (India time, as the app counts it).
+const IST = new Date(Date.now() + 5.5 * 3_600_000);
+const FIRST = new Date(Date.UTC(IST.getUTCFullYear(), IST.getUTCMonth() - 1, 1));
+const LAST = new Date(Date.UTC(IST.getUTCFullYear(), IST.getUTCMonth(), 0));
+const LAST_FROM = FIRST.toISOString().slice(0, 10);
+const LAST_TO = LAST.toISOString().slice(0, 10);
+const LAST_MON = FIRST.toLocaleString("en-GB", { month: "short", timeZone: "UTC" });
+
 test("the list shows each order's menu approval, filters on it, and keeps past orders in their own view", async ({ page }) => {
   test.setTimeout(180_000);
   const email = `e2e-approval-list-${Date.now()}@example.test`;
@@ -26,7 +34,7 @@ test("the list shows each order's menu approval, filters on it, and keeps past o
   const pastOutstanding = await seedReviewFixture(email, { ordinal: 84, customer: "Late Guest", status: "CUSTOMER_APPROVED" });
   const pastDone = await seedReviewFixture(email, { ordinal: 85, customer: "Done Guest", status: "FINAL_LOCKED" });
   const pastNone = await seedReviewFixture(email, { ordinal: 86, customer: "Gone Guest", status: "DRAFT", noSelection: true });
-  for (const past of [pastOutstanding, pastDone, pastNone]) await setOrderEventDay(past.orderId, "2026-09-01");
+  for (const past of [pastOutstanding, pastDone, pastNone]) await setOrderEventDay(past.orderId, LAST_FROM);
 
   const row = (name: string) => page.getByRole("row").filter({ hasText: name });
 
@@ -60,17 +68,17 @@ test("the list shows each order's menu approval, filters on it, and keeps past o
   await expect(page.getByRole("combobox", { name: "Orders view" })).toHaveCount(0);
   await expect(page.getByTestId("orders-range-text")).toHaveText("All Dates");
   await page.getByTestId("orders-range").click();
-  await page.getByRole("radio", { name: "Last Month" }).click(); // September 2026: the three past orders are on 1 Sep
+  await page.getByRole("radio", { name: "Last Month" }).click(); // the month before this one: the three past orders are on its first day
   await page.getByTestId("orders-range-popup").getByRole("button", { name: "Apply" }).click();
-  await expect(page).toHaveURL(/from=2026-09-01&to=2026-09-30/);
+  await expect(page).toHaveURL(new RegExp(`from=${LAST_FROM}&to=${LAST_TO}`));
   await expect(page.getByText("Late Guest").first()).toBeVisible();
   await expect(page.getByText("Review Guest")).toHaveCount(0); // an upcoming order is outside the range
-  await expect(page.getByTestId("orders-range-text")).toContainText("Sep");
-  await page.goto("/orders?approval=SENT_TO_CUSTOMER&from=2026-09-01&to=2026-09-30"); // other filters travel with it
+  await expect(page.getByTestId("orders-range-text")).toContainText(LAST_MON);
+  await page.goto(`/orders?approval=SENT_TO_CUSTOMER&from=${LAST_FROM}&to=${LAST_TO}`); // other filters travel with it
   await expect(page.getByText("Sent Guest")).toHaveCount(0);
-  await page.goto("/orders?from=2026-09-30&to=2026-09-01"); // an invalid range is ignored: every order
+  await page.goto(`/orders?from=${LAST_TO}&to=${LAST_FROM}`); // an invalid range is ignored: every order
   await expect(page.getByText("Review Guest").first()).toBeVisible();
-  await page.goto("/orders?from=2026-09-01&to=2026-09-30");
+  await page.goto(`/orders?from=${LAST_FROM}&to=${LAST_TO}`);
   await page.getByTestId("orders-range").click();
   await page.getByTestId("orders-range-popup").getByRole("button", { name: "Clear" }).click();
   await expect(page).not.toHaveURL(/from=/);

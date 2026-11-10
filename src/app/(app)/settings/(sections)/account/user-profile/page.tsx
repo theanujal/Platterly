@@ -32,13 +32,13 @@ export default async function UserProfilePage() {
     <SettingsCard title="User Profile" description="Your personal account details.">
       <SettingsPanel>
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-full bg-muted font-semibold">
               {initials}
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="font-semibold">{name || "No name provided"}</p>
-              <p className="text-sm text-muted-foreground">{email}</p>
+              <p className="break-all text-sm text-muted-foreground">{email}</p>
             </div>
           </div>
           <Badge variant="info">{roleLabel(member.role)}</Badge>

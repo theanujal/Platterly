@@ -142,3 +142,14 @@ export async function fillWizardBusinessName(page: Page, name: string): Promise<
   await page.getByLabel("Company / business name").fill(name);
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
 }
+
+/**
+ * The app streams a loading screen first (speed work, commit 306890d), so a page that ends in `notFound()` or `forbidden()` can no longer change the HTTP status: it
+ * answers 200 and then shows the refusal page. What the person sees is what is checked; the specs that matter also check the body carries none of the record.
+ */
+export async function expectNotFoundPage(page: Page): Promise<void> {
+  await expect(page.getByText(/could not be found/i).first()).toBeVisible();
+}
+export async function expectNoAccessPage(page: Page): Promise<void> {
+  await expect(page.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
+}
