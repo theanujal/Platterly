@@ -29,6 +29,8 @@ export interface EmailLayoutParams {
   signOff?: string;
   /** Customer emails: the link that opts the customer out of promotional messages, shown under the footer. */
   unsubscribeUrl?: string;
+  /** Replaces the sentence after "Unsubscribe." under the footer (the default is written for customer emails). */
+  unsubscribeNote?: string;
   /** Trusted HTML shown under the code box. */
   afterCodeHtml?: string;
   securityNote?: string;
@@ -53,7 +55,7 @@ function logoSrc(): string {
 }
 
 export function renderEmail(params: EmailLayoutParams): string {
-  const { tag, eyebrow, title, greeting, bodyHtml, details, cta, signOff = "Team Platterly", unsubscribeUrl, code, afterCodeHtml = "", securityNote } = params;
+  const { tag, eyebrow, title, greeting, bodyHtml, details, cta, signOff = "Team Platterly", unsubscribeUrl, unsubscribeNote = "You will still get messages about your orders.", code, afterCodeHtml = "", securityNote } = params;
   const detailsBox = details?.length
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:4px 0 20px;background:#FFF6EA;border:1px solid #F8DDB8;border-radius:12px;">${details
         .map(
@@ -79,7 +81,7 @@ export function renderEmail(params: EmailLayoutParams): string {
       </table>`
     : "";
   const unsubscribe = unsubscribeUrl
-    ? `<div style="margin-top:8px;font-size:12px;color:#9CA3AF;">Don't want promotional emails? <a href="${escapeHtml(unsubscribeUrl)}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>. You will still get messages about your orders.</div>`
+    ? `<div style="margin-top:8px;font-size:12px;color:#9CA3AF;">Don't want promotional emails? <a href="${escapeHtml(unsubscribeUrl)}" style="color:#9CA3AF;text-decoration:underline;">Unsubscribe</a>. ${escapeHtml(unsubscribeNote)}</div>`
     : "";
   const note = securityNote
     ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:24px;background:#F8FAFC;border-radius:12px;">

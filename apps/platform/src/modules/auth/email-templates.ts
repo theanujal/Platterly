@@ -122,3 +122,14 @@ export const newSignInAlertEmail = (device: string, when: string) =>
     paragraphs: [`Your Platterly account was just signed in to from ${device} (${when}).`, "If this was you, there is nothing to do."],
     after: ["If this was not you, change your password now in your Account and turn on two-step verification. You can switch this alert off under Notifications in your Account."],
   });
+
+/** DRAFT. Optional alert (Account notification choice), for when apps can be connected (M3): another app was given access to the account. `app` is the app's name. */
+export const thirdPartyAccessAlertEmail = (app: string) =>
+  notice({
+    subject: "An app was given access to your Platterly account",
+    tag: "Security Alert",
+    eyebrow: "App access",
+    title: "An app was given access to your account",
+    paragraphs: [`An app called ${app} was just given access to your Platterly account.`, "If this was you, there is nothing to do."],
+    after: ["If this was not you, remove the app's access in your Account and change your password now. You can switch this alert off under Notifications in your Account."],
+  });

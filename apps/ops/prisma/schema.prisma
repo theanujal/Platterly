@@ -821,3 +821,23 @@ model AccountReview {
   @@index([status, createdAt])
   @@map("account_review")
 }
+
+/// A newsletter issue (AJ, 2026-11-10). Staff write it here; the Platform pulls the next due issue and sends it to the subscribers it holds.
+/// status: DRAFT -> SCHEDULED (scheduledFor) -> SENDING (the Platform took it) -> SENT. `testTo` is a pending "send me a test" request for one staff address.
+model NewsletterIssue {
+  id           String    @id @default(cuid())
+  subject      String
+  body         String    @default("")
+  status       String    @default("DRAFT")
+  scheduledFor DateTime?
+  sentCount    Int       @default(0)
+  failedCount  Int       @default(0)
+  sentAt       DateTime?
+  testTo       String?
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([status, scheduledFor])
+  @@map("newsletter_issue")
+}

@@ -11,4 +11,5 @@ export * from "./src/library";
 export * from "./src/stand";
 export * from "./src/platform";
 export * from "./src/account-review";
+export * from "./src/newsletter";
 export * from "./src/mail-guard";

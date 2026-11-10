@@ -331,7 +331,7 @@ type PrefsState = { phase: "loading" } | { phase: "error" } | { phase: "ready"; 
 const PREF_ROWS: { key: keyof Prefs; label: string; hint: string }[] = [
   { key: "newSignInAlert", label: "New sign-in to account alert", hint: "An email when your account is signed in to from a browser or system we have not seen before." },
   { key: "thirdPartyAlert", label: "Third-party app access alert", hint: "An email when another app is given access to your account. Apps cannot be connected yet, so nothing is sent for now." },
-  { key: "newsletter", label: "Newsletter subscription", hint: "Product news and tips from Platterly." },
+  { key: "newsletter", label: "Newsletter subscription", hint: "News, tips and product updates from Platterly, sent weekly or monthly. Every email has an unsubscribe link." },
 ];
 
 /** Optional account notices with an on/off switch each (AJ, 2026-11-10). Security, ownership and billing notices are always sent; product notices are set in each product. */

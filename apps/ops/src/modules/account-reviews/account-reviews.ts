@@ -12,7 +12,7 @@ import { platformBillingSecrets } from "@/modules/platform-list/platform-checkou
  *   POST /api/platform/account-reviews/status  {reviewId} -> {status: OPEN | CLEARED}; the Platform asks when the held person tries to sign in
  * Anything wrong with the signature looks the same: 401.
  */
-async function signedCall(request: Request, handle: (json: unknown) => Promise<{ status: number; body: unknown }>): Promise<Response> {
+export async function signedCall(request: Request, handle: (json: unknown) => Promise<{ status: number; body: unknown }>): Promise<Response> {
   const unauthorized = Response.json({ error: "unauthorized" }, { status: 401 });
   if (process.env.NODE_ENV === "production" && request.headers.get("x-forwarded-proto") !== "https") return unauthorized;
   const secrets = platformBillingSecrets();

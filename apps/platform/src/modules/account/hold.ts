@@ -16,7 +16,7 @@ export async function openHold(pool: Pick<Pool, "query">, userId: string): Promi
   return (rows[0] as HoldRow | undefined) ?? null;
 }
 
-async function opsPost(path: string, body: unknown, deps: Deps): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; reason: "not_configured" | "unreachable" | "refused" | "bad_answer" | "unknown" }> {
+export async function opsPost(path: string, body: unknown, deps: Deps): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; reason: "not_configured" | "unreachable" | "refused" | "bad_answer" | "unknown" }> {
   const env = deps.env ?? process.env;
   const secret = env.OPS_PLATFORM_BILLING_SECRET;
   if (!opsReviewConfigured(env) || !secret) return { ok: false, reason: "not_configured" };
