@@ -14,6 +14,7 @@ import { RecoveryEmail } from "./recovery-email";
 import { TwoFactor } from "./two-factor";
 import { ChangeEmail } from "./change-email";
 import { ChangePassword } from "./change-password";
+import { BillingSummary } from "./billing-views";
 import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
 import { Avatar, Badge, PageHeader } from "./ui";
@@ -65,6 +66,8 @@ export function OverviewView() {
                 )}
               </BusinessGate>
             </section>
+
+            <BillingSummary />
           </>
         )}
       </DataGate>

@@ -111,6 +111,10 @@ test.describe("Data states (the browser's request is intercepted; the running ap
 
   test("a business: overview, business, products, profile and security show the real fields and nothing invented", async ({ page }) => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+    const sub = { productKey: "caterly", product: "Caterly", planName: "Premium", display: { state: "active", label: "Active", tone: "good", detail: "Renews on 12 Nov 2027." } };
+    const invoice = (n: number) => ({ id: `pay_${n}`, productKey: "caterly", product: "Caterly", invoiceNumber: `FPA-26-11-${n}`, paidAt: `2026-11-0${n}T10:00:00.000Z`, planName: "Premium", interval: "ANNUAL", total: 47198.82 });
+    await page.route("**/api/account/billing", (r) => json(r, 200, { status: "ok", business: { name: BIZ.name }, subscriptions: [sub], invoices: [4, 3, 2, 1].map(invoice), payments: [] }));
+
 
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
@@ -120,7 +124,14 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText(`For ${BIZ.name}`);
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText("Linked");
     await expect(page.getByRole("article", { name: "Rivo", exact: true })).toContainText("Coming soon");
-    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(2);
+    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(3);
+    // Subscriptions and the three newest invoices (the fourth is only on the Invoices page), each with a download.
+    await expect(page.getByRole("article", { name: "Subscriptions" })).toContainText("Renews on 12 Nov 2027.");
+    const latest = page.getByRole("article", { name: "Latest invoices" });
+    await expect(latest.getByRole("listitem")).toHaveCount(3);
+    await expect(latest).toContainText("FPA-26-11-4");
+    await expect(latest).not.toContainText("FPA-26-11-1");
+    await expect(latest.getByRole("link", { name: "Download PDF" }).first()).toHaveAttribute("href", /\/api\/account\/invoices\/pay_4\?product=caterly/);
     await shot(page, "data-overview");
 
     expect((await page.request.get("/business")).status()).toBe(404);

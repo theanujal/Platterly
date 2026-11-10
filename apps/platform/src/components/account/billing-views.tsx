@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Icon } from "./icons";
 import { AccountShell } from "./shell";
 import { Badge, PageHeader } from "./ui";
 import type { InvoiceRow, PaymentRow, SubscriptionRow } from "@/modules/account/billing";
@@ -47,6 +49,77 @@ function Gate({ state, children }: { state: State; children: (s: Extract<State, 
   if (state.phase === "error") return <p className="pa-muted" role="alert">We could not load your billing just now. Please reload the page in a few minutes.</p>;
   if (state.phase === "no_business") return <p className="pa-muted" role="status">You have not set up a business yet, so there is no billing to show.</p>;
   return <>{children(state)}</>;
+}
+
+const LATEST_INVOICES = 3;
+
+/** Overview section (E): each subscription's state and renewal date, and the latest invoices, from the same one fetch as the Invoices and Payments pages. */
+export function BillingSummary() {
+  const state = useBilling();
+  // A person with no business has no billing: the products section above already says so, so nothing is added here.
+  if (state.phase === "no_business") return null;
+  return (
+    <section aria-labelledby="ov-billing">
+      <div className="pa-section-head">
+        <h2 id="ov-billing">Subscriptions and invoices</h2>
+        <Link href="/payments" className="pa-link">
+          All payments <Icon name="chevronRight" size={14} />
+        </Link>
+      </div>
+      <Gate state={state}>
+        {(b) => (
+          <div className="pa-grid-2">
+            <article className="pa-card pa-form" aria-label="Subscriptions">
+              {b.subscriptions.length === 0 ? (
+                <p className="pa-muted">No subscriptions yet. Choose a plan in the Store.</p>
+              ) : (
+                <ul className="pa-sessions">
+                  {b.subscriptions.map((s) => (
+                    <li className="pa-session" key={s.productKey}>
+                      <span className="pa-session-text">
+                        <span className="pa-row-label">
+                          {s.product}
+                          {s.planName ? ` · ${s.planName}` : ""}
+                        </span>
+                        <span className="pa-hint">{s.display.detail}</span>
+                      </span>
+                      <Badge tone={TONE[s.display.tone]}>{s.display.label}</Badge>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </article>
+            <article className="pa-card pa-form" aria-label="Latest invoices">
+              {b.invoices.length === 0 ? (
+                <p className="pa-muted">No invoices yet. One appears here as soon as a payment is confirmed.</p>
+              ) : (
+                <>
+                  <ul className="pa-sessions">
+                    {b.invoices.slice(0, LATEST_INVOICES).map((i) => (
+                      <li className="pa-session" key={i.id}>
+                        <span className="pa-session-text">
+                          <span className="pa-row-label">{i.invoiceNumber}</span>
+                          <span className="pa-hint">
+                            {day(i.paidAt)} · {i.product} {i.planName}, {term(i.interval)} · {inr(i.total)} incl. GST
+                          </span>
+                        </span>
+                        <a className="pa-btn pa-btn-outline" href={`/api/account/invoices/${encodeURIComponent(i.id)}?product=${encodeURIComponent(i.productKey)}`} download>
+                          Download PDF
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link href="/invoices" className="pa-link">
+                    All invoices <Icon name="chevronRight" size={14} />
+                  </Link>
+                </>
+              )}
+            </article>
+          </div>
+        )}
+      </Gate>
+    </section>
+  );
 }
 
 export function InvoicesView() {
