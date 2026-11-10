@@ -20,9 +20,12 @@ const TABLE_ACCESS_ALLOWED = ["modules/users/", "lib/db.ts", "lib/migration-roun
  * path for it (the F4.2.2 row gives no file); it was placed at `modules/auth/oidc-client.ts` on 2026-11-06 when AJ told the F4 work to start.
  * That location is NOT separately confirmed by AJ: moving it means changing this one line. A path is added here only for code that has already
  * verified signature, issuer, audience, expiry, nonce and the provider's own email_verified claim.
+ * Second importer, approved by AJ on 2026-11-10: `modules/organisations/business-created.ts`. A person who first signed in through a product reaches the Platform
+ * by that product's signed "business created" message. It checks the product's signature, then reads the identity provider's OWN record for that person and
+ * refuses unless that record says the email is verified (the 6-digit code at sign-up). It never takes the email, or the verified flag, from the product.
  * Tests under modules/users/__tests__/ are always allowed.
  */
-export const PRODUCTION_MINT_IMPORTERS: string[] = ["modules/auth/oidc-client.ts"];
+export const PRODUCTION_MINT_IMPORTERS: string[] = ["modules/auth/oidc-client.ts", "modules/organisations/business-created.ts"];
 
 const MINT = "mintProviderEmailAssertion";
 const ASSERTION_MODULE_FILE = "modules/users/provider-assertion.ts";
@@ -78,8 +81,8 @@ describe("identity-link static guards", () => {
     expect(findViolations(tree)).toEqual([]);
   });
 
-  it("exactly one production importer of mintProviderEmailAssertion is allowed: the OIDC client that validates the provider's tokens", () => {
-    expect(PRODUCTION_MINT_IMPORTERS).toEqual(["modules/auth/oidc-client.ts"]);
+  it("exactly two production importers of mintProviderEmailAssertion are allowed: the OIDC client that validates the provider's tokens, and the business-created receiver that reads the provider's own verified record", () => {
+    expect(PRODUCTION_MINT_IMPORTERS).toEqual(["modules/auth/oidc-client.ts", "modules/organisations/business-created.ts"]);
     const client = tree["modules/auth/oidc-client.ts"];
     expect(client).toBeDefined();
     // The assertion is minted only after the token checks: the mint call comes after signature, issuer, audience, nonce and email_verified.
@@ -87,6 +90,15 @@ describe("identity-link static guards", () => {
     for (const check of ["jwtVerify", "issuer:", "audience:", "equal(claims.nonce", "email_verified !== true"]) expect(at(check), check).toBeGreaterThan(-1);
     const mintAt = client.lastIndexOf(MINT);
     for (const check of ["jwtVerify", "equal(claims.nonce", "email_verified !== true"]) expect(at(check), `${check} must precede the mint`).toBeLessThan(mintAt);
+
+    // The receiver mints only after the product's signature checked out and the provider's own record said the email is verified; the email comes from that record.
+    const receiver = tree["modules/organisations/business-created.ts"];
+    expect(receiver).toBeDefined();
+    const rAt = (needle: string) => receiver.indexOf(needle);
+    for (const check of ["verifyPlatformRequest", "deps.readPerson(", "!person.emailVerified"]) expect(rAt(check), check).toBeGreaterThan(-1);
+    const rMint = receiver.lastIndexOf(MINT);
+    for (const check of ["verifyPlatformRequest", "!person.emailVerified"]) expect(rAt(check), `${check} must precede the mint`).toBeLessThan(rMint);
+    expect(receiver).toContain("email: person.email");
   });
 
   it("the service imports only the verifier from provider-assertion, never the minting function", () => {

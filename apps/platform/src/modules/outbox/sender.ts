@@ -2,6 +2,7 @@ import { PLATFORM_CONTRACT_VERSION, PLATFORM_EVENTS_PATH, parsePlatformEvent, si
 import { verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { getIntegration, getSecrets } from "../integrations/registry";
+import { findSubjectForUser } from "../users/subject";
 import type { DeliverableEvent, Sender } from "./deliver";
 
 // F6.2.1 real signed sender (checkpoint IC1). One POST per outbox event to `{product base URL}/api/platform/events`, signed for that route with the
@@ -18,7 +19,7 @@ type Registry = {
   secrets: (key: string, direction: "outbound" | "inbound") => Promise<Awaited<ReturnType<typeof getSecrets>>>;
 };
 type Identities = { subjectFor: (platformUserId: string) => Promise<string | null> };
-const realIdentities: Identities = { subjectFor: async (userId) => (await prisma.userIdentity.findFirst({ where: { userId }, select: { subject: true }, orderBy: { createdAt: "asc" } }))?.subject ?? null };
+const realIdentities: Identities = { subjectFor: (userId) => findSubjectForUser(prisma, userId) };
 const realRegistry: Registry = { integration: (key) => getIntegration(prisma, key), secrets: (key, direction) => getSecrets(prisma, key, direction) };
 
 type Deps = { fetch?: typeof fetch; timeoutMs?: number; registry?: Registry; identities?: Identities };

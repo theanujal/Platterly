@@ -1,5 +1,5 @@
 import { fail, isRecord, ok, type ParseResult } from "../../contract/src/result";
-import { isId } from "../../contract/src/ids";
+import { isId, isProductKey } from "../../contract/src/ids";
 import { PLATFORM_CONTRACT_VERSION } from "./version";
 
 /** Where a product receives Platform Core's commands and events. */
@@ -37,6 +37,52 @@ export function parseOrganisationLinkCommand(input: unknown): ParseResult<Organi
 }
 
 export function parseOrganisationLinkAnswer(input: unknown): ParseResult<OrganisationLinkAnswer> {
+  if (!isRecord(input)) return fail("the answer must be an object");
+  if (!isId("business", input.businessId)) return fail("businessId is not valid");
+  if (typeof input.created !== "boolean") return fail("created must be true or false");
+  return ok({ businessId: input.businessId, created: input.created });
+}
+
+/** Where the Platform receives a product's "business created" message (the product signs it with its per-product answer secret). */
+export const BUSINESS_CREATED_PATH = "/api/products/business-created";
+
+/**
+ * `business.created`: a product tells the Platform that a person who came through its sign-in made a business, so the Platform creates the matching
+ * organisation with that person as Admin and the person's Account shows it. Sent through the product's outbox with retry. `owner.subject` is the identity
+ * provider's person id; the email is never carried (the Platform reads the provider's own verified record for that person). A repeat is answered the same.
+ */
+export interface BusinessCreatedMessage {
+  version: number;
+  /** `cmd_<32 hex>`; a retry sends the same one. */
+  messageId: string;
+  type: "business.created";
+  productKey: string;
+  businessId: string;
+  businessName: string;
+  owner: { subject: string };
+}
+
+export interface BusinessCreatedAnswer {
+  businessId: string;
+  /** False when the Platform already had this business: the repeat changed nothing. */
+  created: boolean;
+}
+
+export function parseBusinessCreated(input: unknown): ParseResult<BusinessCreatedMessage> {
+  if (!isRecord(input)) return fail("the message must be an object");
+  if (input.version !== PLATFORM_CONTRACT_VERSION) return fail(`contract version ${String(input.version)} is not supported`);
+  if (!isId("command", input.messageId)) return fail("messageId is not valid");
+  if (input.type !== "business.created") return fail("type is not known");
+  if (!isProductKey(input.productKey)) return fail("productKey is not valid");
+  if (!isId("business", input.businessId)) return fail("businessId is not valid");
+  const name = typeof input.businessName === "string" ? input.businessName.trim() : "";
+  if (!name || name.length > 120) return fail("businessName is required (1 to 120 characters)");
+  const owner = input.owner;
+  if (!isRecord(owner) || typeof owner.subject !== "string" || owner.subject.trim() === "" || owner.subject.length > 100) return fail("owner.subject is required");
+  return ok({ version: input.version, messageId: input.messageId, type: "business.created", productKey: input.productKey, businessId: input.businessId, businessName: name, owner: { subject: owner.subject } });
+}
+
+export function parseBusinessCreatedAnswer(input: unknown): ParseResult<BusinessCreatedAnswer> {
   if (!isRecord(input)) return fail("the answer must be an object");
   if (!isId("business", input.businessId)) return fail("businessId is not valid");
   if (typeof input.created !== "boolean") return fail("created must be true or false");
