@@ -18,10 +18,11 @@ const shot = async (page: Page, name: string) => {
 
 const PAGES = [
   { path: "/", h1: "Welcome back" },
-  { path: "/business", h1: "My Business" },
   { path: "/products", h1: "My Products" },
   { path: "/profile", h1: "My Profile" },
   { path: "/security", h1: "Security" },
+  { path: "/devices", h1: "Devices and activity" },
+  { path: "/notifications", h1: "Notifications" },
 ];
 const switcher = (page: Page) => page.getByRole("button", { name: /Switch product/ });
 const nav = (page: Page) => page.getByRole("navigation", { name: "Account" });
@@ -122,11 +123,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByRole("heading", { level: 2 })).toHaveCount(2);
     await shot(page, "data-overview");
 
-    await page.goto("/business");
-    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("Admin");
-    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("1 product linked");
-    await expect(page.getByText(/Mumbai|catering$/)).toHaveCount(0);
-    await shot(page, "data-business");
+    expect((await page.request.get("/business")).status()).toBe(404);
 
     await page.goto("/products");
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toHaveAttribute("data-selected", "true");
@@ -147,9 +144,11 @@ test.describe("Data states (the browser's request is intercepted; the running ap
 
     await page.goto("/security");
     await expect(page.getByText(USER.email).first()).toBeVisible();
+    await shot(page, "data-security");
+    await page.goto("/devices");
     await expect(page.getByText("Chrome on a laptop")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeDisabled();
-    await shot(page, "data-security");
+    await shot(page, "data-devices");
   });
 
   test("every control that would write is disabled and says why", async ({ page }) => {
@@ -164,13 +163,13 @@ test.describe("Data states (the browser's request is intercepted; the running ap
 
   test("a suspended business and link are labelled as suspended", async ({ page }) => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody({ caterly: "suspended", rivo: "none" }, { ...BIZ, status: "suspended" })));
-    await page.goto("/business");
-    await expect(page.getByRole("article", { name: BIZ.name })).toContainText("Suspended");
+    await page.goto("/products");
+    await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText("suspended");
   });
 
   test("no business: every business page shows the empty state, the profile still shows", async ({ page }) => {
     await page.route(OVERVIEW, (r) => json(r, 200, { status: "ok", overview: { user: USER, business: { state: "none" } } }));
-    for (const p of ["/business", "/products"]) {
+    for (const p of ["/products"]) {
       await page.goto(p);
       await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     }
@@ -186,7 +185,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
 
   test("forbidden: a former Admin sees a no-access panel and no business details", async ({ page }) => {
     await page.route(OVERVIEW, (r) => json(r, 200, { status: "ok", overview: { user: USER, business: { state: "forbidden", reason: "member_disabled" } } }));
-    await page.goto("/business");
+    await page.goto("/products");
     await expect(page.getByRole("region", { name: "You no longer have access to this business" })).toBeVisible();
     await expect(page.getByText("Your Admin access to the business has ended.")).toBeVisible();
     await expect(page.getByText(BIZ.name)).toHaveCount(0);
@@ -216,11 +215,11 @@ test.describe("Data states (the browser's request is intercepted; the running ap
       await gate;
       await json(r, 200, okBody());
     });
-    await page.goto("/business");
+    await page.goto("/products");
     await expect(page.getByRole("status", { name: "Loading your account" })).toBeVisible();
     await shot(page, "state-loading-business");
     release();
-    await expect(page.getByRole("article", { name: BIZ.name })).toBeVisible();
+    await expect(page.getByRole("article", { name: "Caterly", exact: true })).toBeVisible();
     await expect(page.getByRole("status", { name: "Loading your account" })).toHaveCount(0);
   });
 });
@@ -236,7 +235,7 @@ test.describe("Host routing is unchanged", () => {
 
   test("the Account pages answer 404 on the auth and store hosts and on a bare or unknown host", async ({ request }) => {
     for (const host of ["auth.localhost:3300", "store.localhost:3300"]) {
-      for (const path of ["/business", "/products", "/profile", "/security"]) {
+      for (const path of ["/products", "/profile", "/security", "/devices", "/notifications"]) {
         expect((await request.get(`http://${host}${path}`)).status(), `${host}${path}`).toBe(404);
       }
     }

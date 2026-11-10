@@ -15,12 +15,13 @@ import "./account.css";
 /** `hidden` pages are not shown in the sidebar but still have a title for the header. */
 const NAV: { href: string; prefix?: string; label: string; title: string; icon: IconName; hidden?: boolean }[] = [
   { href: "/", label: "Overview", title: "Overview", icon: "home" },
-  { href: "/business", prefix: "My ", label: "Business", title: "My Business", icon: "building", hidden: true },
   { href: "/products", prefix: "My ", label: "Products", title: "My Products", icon: "grid" },
   { href: "/invoices", label: "Invoices", title: "Invoices", icon: "receipt" },
   { href: "/payments", label: "Payments", title: "Payments", icon: "card" },
   { href: "/profile", prefix: "My ", label: "Profile", title: "My Profile", icon: "user" },
   { href: "/security", label: "Security", title: "Security", icon: "shield" },
+  { href: "/devices", label: "Devices", title: "Devices and activity", icon: "globe" },
+  { href: "/notifications", label: "Notifications", title: "Notifications", icon: "bell" },
 ];
 
 const isActive = (href: string, pathname: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));

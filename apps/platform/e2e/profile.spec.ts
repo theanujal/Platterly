@@ -47,14 +47,23 @@ test("a signed-in person edits first name, last name, phone and time zone, the c
     await page.setViewportSize({ width: 1100, height: 1000 });
     await page.screenshot({ path: path.join(process.env.ACCOUNT_SHOTS, "profile.png"), fullPage: true });
   }
-  // Product updates start off, and the choice is stored.
-  const updates = page.getByRole("switch", { name: "Product updates" });
-  await expect(updates).not.toBeChecked();
-  await updates.check();
-  await expect(updates).toBeChecked();
-  await page.reload();
-  await expect(page.getByRole("switch", { name: "Product updates" })).toBeChecked();
+  // Notifications page: the newsletter starts off, the two alerts start on, every choice is stored, and security alerts are always on.
+  await page.goto("/notifications");
+  const newsletter = page.getByRole("switch", { name: "Newsletter subscription" });
+  const signInAlert = page.getByRole("switch", { name: "New sign-in to account alert" });
+  const appAlert = page.getByRole("switch", { name: "Third-party app access alert" });
+  await expect(newsletter).not.toBeChecked();
+  await expect(signInAlert).toBeChecked();
+  await expect(appAlert).toBeChecked();
   await expect(page.getByRole("switch", { name: "Security alerts" })).toBeDisabled();
+  await newsletter.check();
+  await expect(newsletter).toBeChecked();
+  await signInAlert.uncheck();
+  await expect(signInAlert).not.toBeChecked();
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "Newsletter subscription" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "New sign-in to account alert" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Third-party app access alert" })).toBeChecked();
 });
 
 test("saving without touching the time zone works (the default zone is accepted)", async ({ page }) => {

@@ -4,6 +4,7 @@ import { getSessionRef } from "@/lib/session";
 import { writeAudit } from "@/modules/audit/write-audit";
 import { confirmPassword } from "@/modules/account/confirm-password";
 import { getProfile } from "@/modules/account/profile";
+import { removeAllTrustedDevices } from "@/modules/account/trusted-devices";
 import { newSessionIdFrom, providerSessionHeaders, twoFactorStatus } from "@/modules/account/two-factor";
 import { sealAccountSession } from "@/modules/auth/account-session";
 import { accountOrigin, COOKIES } from "@/modules/auth/config";
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       return Response.json({ status: "ok", backupCodes: made.backupCodes }, { headers: NO_STORE });
     }
     await provider.api.disableTwoFactor({ body: { password }, headers });
+    await removeAllTrustedDevices(identityPool(), ref.session.userId); // trust must not outlive the two-step setting
     await record(ref.session.userId, ref.sub, "account.two_factor_disabled");
     return Response.json({ status: "ok" }, { headers: NO_STORE });
   } catch {

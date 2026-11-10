@@ -95,16 +95,6 @@ export function ProfileDetails() {
       setNotice({ kind: "failed", text: "We could not save your details. Nothing was changed. Please try again." });
     }
   }
-  async function setUpdates(on: boolean) {
-    // Shown at once; put back if the save fails.
-    setState({ phase: "ready", profile: { ...profile, notifyProductUpdates: on }, timeZones });
-    const result = await patch({ notifyProductUpdates: on });
-    if (result.ok) setState({ phase: "ready", profile: result.profile, timeZones });
-    else {
-      setState({ phase: "ready", profile, timeZones });
-      setNotice({ kind: "failed", text: "We could not save that choice. Nothing was changed." });
-    }
-  }
 
   async function sendPhoto(file: File | undefined) {
     if (!file) return;
@@ -226,27 +216,6 @@ export function ProfileDetails() {
         )}
       </form>
 
-      <section className="pa-card pa-form" aria-labelledby="pf-prefs">
-        <div className="pa-section-head">
-          <h2 id="pf-prefs">
-            <Icon name="bell" size={16} /> Notifications
-          </h2>
-        </div>
-        <div className="pa-switch-row">
-          <div>
-            <label htmlFor="pf-updates">Product updates</label>
-            <span className="pa-hint">News about new features, by email. Off unless you turn it on.</span>
-          </div>
-          <input id="pf-updates" type="checkbox" role="switch" className="pa-switch" checked={profile.notifyProductUpdates} onChange={(e) => setUpdates(e.target.checked)} />
-        </div>
-        <div className="pa-switch-row">
-          <div>
-            <label htmlFor="pf-alerts">Security alerts</label>
-            <span className="pa-hint">Always on. We email you about sign-ins and changes to your account.</span>
-          </div>
-          <input id="pf-alerts" type="checkbox" role="switch" className="pa-switch" checked disabled readOnly />
-        </div>
-      </section>
     </>
   );
 }

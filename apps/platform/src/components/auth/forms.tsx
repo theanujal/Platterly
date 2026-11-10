@@ -259,7 +259,7 @@ export function SignInForm() {
           <Field id="code" label={useBackup ? "Backup code" : "Authentication code"} value={code} onChange={setCode} autoComplete="one-time-code" inputMode={useBackup ? undefined : "numeric"} maxLength={useBackup ? 24 : 6} />
           <div className="pl-terms">
             <input id="trust" type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
-            <label htmlFor="trust">Trust this device for 30 days</label>
+            <label htmlFor="trust">Trust this device (until I remove it or change my password)</label>
           </div>
           <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !hydrated}>
             {busy ? "Checking…" : "Verify and sign in"}

@@ -111,3 +111,14 @@ export const twoFactorChangedEmail = (on: boolean) =>
 /** DRAFT. After an account deletion request. */
 export const deletionRequestEmail = () =>
   notice({ subject: "We received your Platterly account deletion request", tag: "Account Update", eyebrow: "Deletion request", title: "We received your deletion request", paragraphs: ["We received a request to delete your Platterly account. Our team reviews every request and will contact you before anything is deleted."], after: ["If you did not ask for this, sign in and withdraw the request on your Profile page, then change your password."] });
+
+/** DRAFT. Optional alert (Account notification choice): a sign-in from a browser or system not seen before. `device` is a plain label, never an address. */
+export const newSignInAlertEmail = (device: string, when: string) =>
+  notice({
+    subject: "New sign-in to your Platterly account",
+    tag: "Security Alert",
+    eyebrow: "New sign-in",
+    title: "New sign-in to your Platterly account",
+    paragraphs: [`Your Platterly account was just signed in to from ${device} (${when}).`, "If this was you, there is nothing to do."],
+    after: ["If this was not you, change your password now in your Account and turn on two-step verification. You can switch this alert off under Notifications in your Account."],
+  });

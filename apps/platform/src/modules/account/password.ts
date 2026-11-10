@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import { PASSWORD } from "../auth/config";
 import type { SessionEnder } from "../auth/session-store";
+import { removeAllTrustedDevices } from "./trusted-devices";
 import { isLockedOut, noteRight, noteWrong, resetPasswordAttempts as reset } from "./password-attempts";
 
 // Change password from the Account. The person must give the CURRENT password (a stolen session alone cannot change it). On success every OTHER
@@ -37,6 +38,7 @@ export async function changePassword(
   noteRight(userId);
   if (input.next === input.current) return { ok: false, reason: "same" };
   await pool.query(`update "account" set "password" = $2, "updatedAt" = now() where "id" = $1`, [row.id, await hasher.hash(input.next)]);
+  await removeAllTrustedDevices(pool, userId); // a new password ends every trusted device (AJ, 2026-11-10)
   // Every other session ends, through the provider so products holding a token for them are told (F4.2.3).
   const others = (await pool.query('select "token" from "session" where "userId" = $1 and "id" <> $2', [userId, input.currentSessionId])).rows.map((r) => r.token as string);
   if (others.length) {

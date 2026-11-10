@@ -138,7 +138,7 @@ test.describe("Sign-in journey", () => {
     await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     await expect(page.getByRole("region", { name: "You are not signed in" })).toHaveCount(0);
     await shot(page, "f4-5-account-signed-in");
-    for (const p of ["/business", "/products", "/profile", "/security"]) {
+    for (const p of ["/products", "/profile", "/security", "/devices", "/notifications"]) {
       await page.goto(p);
       await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
     }
@@ -383,7 +383,7 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     await registerAndSignIn(page, to);
     const phone = await signInSecondDevice(browser, to);
 
-    await page.goto("/security");
+    await page.goto("/devices");
     const list = page.getByRole("list", { name: "Signed-in devices" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
     await expect(list.getByText("This device")).toHaveCount(1);

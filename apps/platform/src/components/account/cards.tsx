@@ -1,42 +1,13 @@
 "use client";
 
-import { initials, LINK_LABEL, STATUS_LABEL } from "@/lib/account/catalogue";
-import type { BusinessSummary, LinkState, ProductKey, TeamMemberView } from "@/modules/account/types";
+import { initials, LINK_LABEL } from "@/lib/account/catalogue";
+import type { BusinessSummary, LinkState, TeamMemberView } from "@/modules/account/types";
 import { Icon } from "./icons";
 import { Avatar, Badge, type Tone } from "./ui";
 
 export const STATUS_TONE: Record<BusinessSummary["status"], Tone> = { active: "success", suspended: "warning" };
 export const LINK_TONE: Record<LinkState, Tone> = { linked: "success", suspended: "warning", none: "neutral" };
 const LINK_DETAIL: Record<LinkState, string> = { linked: "Linked to this business", suspended: "The link is suspended", none: "Not set up for this business" };
-
-export function BusinessCard({ business, products }: { business: BusinessSummary; products: Record<ProductKey, LinkState> }) {
-  const linked = Object.values(products).filter((l) => l !== "none").length;
-  return (
-    <article className="pa-card pa-business" aria-label={business.name}>
-      <div className="pa-business-top">
-        <Avatar label={initials(business.name)} size="lg" />
-        <div className="pa-business-id">
-          <h3>{business.name}</h3>
-          <p>{linked === 1 ? "1 product linked" : `${linked} products linked`}</p>
-        </div>
-      </div>
-      <div className="pa-chips">
-        <Badge tone={STATUS_TONE[business.status]}>{STATUS_LABEL[business.status]}</Badge>
-        <span className="pa-chip">{business.role}</span>
-      </div>
-      <dl className="pa-facts">
-        <div>
-          <dt>Your role</dt>
-          <dd>{business.role}</dd>
-        </div>
-        <div>
-          <dt>Caterly</dt>
-          <dd>{LINK_LABEL[products.caterly]}</dd>
-        </div>
-      </dl>
-    </article>
-  );
-}
 
 export function CaterlyCard({ business, link, selected = false }: { business: BusinessSummary; link: LinkState; selected?: boolean }) {
   return (

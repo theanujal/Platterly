@@ -61,7 +61,7 @@ test("two-step verification: set up, still signed in, then a code is asked at si
   await other.getByRole("button", { name: "Verify and sign in" }).click();
   await expect(other.getByText("That code is not right.")).toBeVisible();
   await other.getByLabel("Authentication code").fill(codeNow(secret));
-  await other.getByLabel("Trust this device for 30 days").check();
+  await other.getByLabel(/^Trust this device/).check();
   await other.getByRole("button", { name: "Verify and sign in" }).click();
   await expect(other.getByRole("heading", { name: "Security" })).toBeVisible();
   // Trusted device: signing out and in again on that browser skips the code.
@@ -69,6 +69,17 @@ test("two-step verification: set up, still signed in, then a code is asked at si
   await passwordStep(other, to);
   await expect(other.getByRole("navigation", { name: "Account" })).toBeVisible();
   await expect(other.getByRole("heading", { name: "Two-step verification" })).toHaveCount(0);
+
+  // The trusted device is listed under Security and can be removed; after that the code is asked again.
+  await other.goto("/devices");
+  const trusted = other.getByRole("region", { name: "Trusted devices" });
+  await expect(trusted.getByRole("listitem")).toHaveCount(1);
+  await expect(trusted.getByRole("listitem")).toContainText("Chrome");
+  await trusted.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(trusted.getByText("No trusted devices.")).toBeVisible();
+  await signOut(other);
+  await passwordStep(other, to);
+  await expect(other.getByRole("heading", { name: "Two-step verification" })).toBeVisible();
 
   // Another browser that is not trusted: a backup code works once.
   const third = await (await browser.newContext()).newPage();

@@ -6,6 +6,9 @@ import type { Pool } from "pg";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { recoveryDelivery } from "@/modules/account/recovery-email";
 import { recordSignIn } from "@/modules/account/sign-in-history";
+import { TRUST_MAX_AGE_SECONDS, labelTrustedDevice, removeAllTrustedDevices } from "@/modules/account/trusted-devices";
+import { deviceLabel } from "@/modules/account/devices";
+import { alertIfNewDevice } from "@/modules/account/new-sign-in-alert";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
 import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
@@ -51,7 +54,18 @@ export function createIdp(options: IdpOptions = {}) {
             if (!(await mayStartSession(pool, session.userId))) throw new APIError("FORBIDDEN", { message: "Your account is under review. Contact Platterly support.", code: "ACCOUNT_ON_HOLD" });
           },
           after: async (session) => {
+            await alertIfNewDevice(pool, session.userId, session.userAgent); // before the history write, so the new device is compared with the earlier ones
             await recordSignIn(pool, { userId: session.userId, outcome: "signed_in", userAgent: session.userAgent });
+          },
+        },
+      },
+      // A trusted device gets a plain label (browser and system) so the person can tell them apart in the Account.
+      verification: {
+        create: {
+          after: async (verification, context) => {
+            const v = verification as { identifier?: string; value?: string };
+            if (!v.identifier?.startsWith("trust-device-") || !v.value) return;
+            await labelTrustedDevice(pool, v.identifier, v.value, deviceLabel(context?.headers?.get("user-agent")));
           },
         },
       },
@@ -79,6 +93,17 @@ export function createIdp(options: IdpOptions = {}) {
       }),
       // A refused password for a real person is recorded too. The answer to the caller is unchanged (nothing here says whether the address exists).
       after: createAuthMiddleware(async (ctx) => {
+        // A password reset ends every trusted device, like a password change in the Account does.
+        if (ctx.path === "/email-otp/reset-password" && !(ctx.context.returned instanceof APIError)) {
+          try {
+            const body = ctx.body as { email?: unknown } | undefined;
+            const found = typeof body?.email === "string" ? await ctx.context.internalAdapter.findUserByEmail(body.email.toLowerCase()) : null;
+            if (found) await removeAllTrustedDevices(pool, found.user.id);
+          } catch {
+            /* the reset itself already succeeded */
+          }
+          return;
+        }
         if (ctx.path !== "/sign-in/email" || !(ctx.context.returned instanceof APIError)) return;
         try {
           const body = ctx.body as { email?: unknown } | undefined;
@@ -140,8 +165,8 @@ export function createIdp(options: IdpOptions = {}) {
         },
       }),
       // Two-step verification: an authenticator app (TOTP) plus backup codes. Off for everyone until they turn it on in the Account. A person who has it
-      // is asked for a code after the password; "remember this device" skips the code on that browser for 30 days.
-      twoFactor({ issuer: "Platterly" }),
+      // is asked for a code after the password; "trust this device" skips the code on that browser until the person removes it or changes their password.
+      twoFactor({ issuer: "Platterly", trustDeviceMaxAge: TRUST_MAX_AGE_SECONDS }),
       jwt(),
       oauthProvider({
         loginPage: "/sign-in",
