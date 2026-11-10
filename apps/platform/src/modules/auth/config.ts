@@ -12,7 +12,7 @@ export const SESSION_POLICY = {
   updateAgeSeconds: DAY,
   /** Absolute expiry: no session lives longer than this from sign-in, however active (enforced when the Account reads the session). */
   absoluteSeconds: 30 * DAY,
-  /** How recently someone must have authenticated for a sensitive action. Not enforced by any action yet (ADM-12 is open). */
+  /** How recently someone must have authenticated for a sensitive action. Approved at 5 minutes. No separate check is needed: change email, password, recovery email, two-step, deletion and export each re-ask the current password. */
   freshAuthSeconds: 5 * 60,
   /** D2 (approved): existing sessions survive an ordinary identity-provider outage for up to 24 hours; no new sign-ins. Used by products (F8), not here. */
   outageExtensionSeconds: 24 * HOUR,
