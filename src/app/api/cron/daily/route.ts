@@ -5,6 +5,7 @@ import { runDueNotifications } from "@/modules/notifications/triggers";
 import { generateDueRecurringExpenses } from "@/modules/expenses/recurring";
 import { scrubOldVisits } from "@/modules/storefront-visits/visits";
 import { runOpsLinkJobs } from "@/modules/ops-link/events";
+import { runDuePlatformOutbox } from "@/modules/platform-link/outbox";
 import { runLibraryScanIfDue } from "@/modules/library/scan";
 
 /**
@@ -37,12 +38,17 @@ async function run(request: Request) {
   const visitsScrubbed = await scrubOldVisits(now);
   // Ops link: pending events, the catch-up sign-ups and the daily usage report (a no-op until OPS_* is configured).
   const opsLink = await runOpsLinkJobs(now);
+  // Messages to the Platform ("business created") that are due for a retry (a no-op until PLATFORM_ANSWER_SECRET is set; never fails the cron).
+  const platformLink = await runDuePlatformOutbox(now).catch((error) => {
+    console.error("[platform-link] outbox run failed:", error);
+    return 0;
+  });
   // The library scan: what kitchens added that Platterly's library lacks, for review in Ops. About once a day; never fails the cron.
   const libraryScan = await runLibraryScanIfDue(now).catch((error) => {
     console.error("[library] scan failed:", error);
     return { ran: false, scanned: 0, candidates: 0 };
   });
-  return NextResponse.json({ ranAt: now.toISOString(), opsLink, notifications, recurringExpenses, visitsScrubbed, library: libraryScan });
+  return NextResponse.json({ ranAt: now.toISOString(), opsLink, platformLink, notifications, recurringExpenses, visitsScrubbed, library: libraryScan });
 }
 
 export const GET = run;

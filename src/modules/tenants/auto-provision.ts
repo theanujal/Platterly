@@ -10,6 +10,7 @@ import { opsBillingOn } from "@/modules/ops-link/config";
 import { PLATFORM_PROVIDER_ID } from "@/lib/platform/config";
 import { takeCentralSubject } from "@/lib/platform/central-subject";
 import { hasPendingMembership } from "@/modules/platform-link/pending";
+import { emitBusinessCreated } from "@/modules/platform-link/outbox";
 
 /**
  * Runs immediately after a new caterer/kitchen-admin account is created
@@ -97,6 +98,10 @@ export async function provisionTenantForNewUser(
     recordId: organization.id,
     after: JSON.parse(JSON.stringify(organization)),
   });
+
+  // The person came through central sign-in: tell the Platform this business exists so their Account shows it. Queued first and retried, never awaited,
+  // and it catches its own errors, so sign-up never waits on or fails because of the Platform.
+  if (subject) void emitBusinessCreated({ businessId: organization.businessId, businessName: organization.name, subject }).catch(() => undefined);
 
   // With OPS_BILLING on, the trial comes from Platterly Ops: it starts one when it hears of the sign-up (below) and sends the
   // snapshot. Until that arrives the kitchen runs on the manifest's trial defaults, so sign-up never waits on ops.

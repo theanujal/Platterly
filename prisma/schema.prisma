@@ -3044,6 +3044,24 @@ model OpsOutbox {
   @@map("ops_outbox")
 }
 
+/// Messages Caterly sends to the Platform (step 4: "business created"). Written first, sent at once, retried by the scheduled job; sign-up never waits on the Platform.
+model PlatformOutbox {
+  messageId     String          @id
+  type          String
+  businessId    String
+  payload       Json
+  status        OpsOutboxStatus @default(PENDING)
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime?
+  lastError     String?
+  createdAt     DateTime        @default(now())
+  sentAt        DateTime?
+
+  @@unique([type, businessId])
+  @@index([status, nextAttemptAt])
+  @@map("platform_outbox")
+}
+
 // When catering last asked ops for a business's snapshot (the daily backup to ops's pushes), so a business ops has no
 // subscription for is not asked again every minute.
 model OpsPull {

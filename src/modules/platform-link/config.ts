@@ -11,3 +11,9 @@ export function platformLink(): PlatformLinkConfig | null {
   const answerSecret = (process.env.PLATFORM_ANSWER_SECRET ?? "").trim();
   return commandSecrets.length > 0 && answerSecret ? { commandSecrets, answerSecret } : null;
 }
+
+/** What Caterly needs to SEND to the Platform: the secret it signs with (the product's answer secret). Null means the Platform link is off, and nothing is queued. */
+export function platformSender(): { answerSecret: string } | null {
+  const answerSecret = (process.env.PLATFORM_ANSWER_SECRET ?? "").trim();
+  return answerSecret ? { answerSecret } : null;
+}
