@@ -3,6 +3,8 @@ import { newId } from "../../contract/index";
 import {
   DELIVERY_BACKOFF_SECONDS,
   PLATFORM_CONTRACT_VERSION,
+  parseBusinessRenamed,
+  parseBusinessRenamedAnswer,
   parseIdTokenClaims,
   parseIssueClaimRequest,
   parseOrganisationLinkAnswer,
@@ -169,5 +171,25 @@ describe("organisation claims and link commands", () => {
 describe("constants", () => {
   it("backoff is 1 min, 5 min, 30 min, 2 h, 12 h, 24 h", () => {
     expect([...DELIVERY_BACKOFF_SECONDS]).toEqual([60, 300, 1800, 7200, 43200, 86400]);
+  });
+});
+
+describe("business.renamed", () => {
+  const message = (over: Record<string, unknown> = {}) => ({ version: PLATFORM_CONTRACT_VERSION, messageId: newId("command"), type: "business.renamed", productKey: "caterly", businessId: business, businessName: "  Asha Catering ", nameVersion: 1_700_000_000_000, ...over });
+
+  it("reads a good message and trims the name", () => {
+    const r = parseBusinessRenamed(message());
+    expect(r.ok && r.value.businessName).toBe("Asha Catering");
+  });
+
+  it("refuses an empty or over-long name, a bad version, and a wrong type or id", () => {
+    for (const bad of [{ businessName: "  " }, { businessName: "x".repeat(121) }, { nameVersion: 0 }, { nameVersion: 1.5 }, { nameVersion: "5" }, { type: "business.created" }, { businessId: "nope" }, { version: 99 }]) {
+      expect(parseBusinessRenamed(message(bad)).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("reads the answer", () => {
+    expect(parseBusinessRenamedAnswer({ businessId: business, changed: false }).ok).toBe(true);
+    expect(parseBusinessRenamedAnswer({ businessId: business }).ok).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import type { TenantStatus } from "@/generated/prisma/enums";
 import { onTenantStatusChanged } from "@/modules/notifications/triggers";
 import { validateSlugFormat } from "./slug";
 import { emitBusinessUpdated } from "@/modules/ops-link/events";
+import { emitBusinessRenamed } from "@/modules/platform-link/outbox";
 import { isLocked, lockedOrganizationIds } from "@/modules/ops-link/entitlements";
 
 export interface TenantProfileInput {
@@ -141,6 +142,8 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
   });
   // Ops keeps the business's name and owner; tell it when either changed (no-op until the ops link is configured).
   await emitBusinessUpdated(before, id);
+  // The Platform shows the business name in the Account and the Store: tell it when the name changed. Queued and retried; never fails the save.
+  if (after.name !== before.name) await emitBusinessRenamed({ businessId: after.businessId, businessName: after.name });
 
   return after;
 }

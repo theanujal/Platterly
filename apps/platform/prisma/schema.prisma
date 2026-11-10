@@ -71,6 +71,8 @@ model Organisation {
   ownershipLocked   Boolean  @default(false) @map("ownership_locked")
   membershipVersion BigInt   @default(0) @map("membership_version")
   outboxSequence    BigInt   @default(0) @map("outbox_sequence")
+  /// `nameVersion` of the last rename a product sent and the Platform applied; an older rename is ignored.
+  nameVersion       BigInt   @default(0) @map("name_version")
   adminEstablished  Boolean  @default(false) @map("admin_established")
   linkEstablished   Boolean  @default(false) @map("link_established")
   importBatchId     String?  @map("import_batch_id")

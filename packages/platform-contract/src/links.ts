@@ -88,3 +88,48 @@ export function parseBusinessCreatedAnswer(input: unknown): ParseResult<Business
   if (typeof input.created !== "boolean") return fail("created must be true or false");
   return ok({ businessId: input.businessId, created: input.created });
 }
+
+/** Where the Platform receives a product's "business renamed" message (signed like `business.created`). */
+export const BUSINESS_RENAMED_PATH = "/api/products/business-renamed";
+
+/**
+ * `business.renamed`: a product tells the Platform its business now has a new name, so the Account and the Store show the same name. `nameVersion` grows
+ * with every rename (the product uses the time of the change in milliseconds); the Platform ignores any message older than the last one it applied, so a
+ * retry that arrives late can never bring an old name back. A repeat is answered the same.
+ */
+export interface BusinessRenamedMessage {
+  version: number;
+  /** `cmd_<32 hex>`; a retry sends the same one. */
+  messageId: string;
+  type: "business.renamed";
+  productKey: string;
+  businessId: string;
+  businessName: string;
+  nameVersion: number;
+}
+
+export interface BusinessRenamedAnswer {
+  businessId: string;
+  /** False when the Platform already had this name, or had a newer rename: nothing changed. */
+  changed: boolean;
+}
+
+export function parseBusinessRenamed(input: unknown): ParseResult<BusinessRenamedMessage> {
+  if (!isRecord(input)) return fail("the message must be an object");
+  if (input.version !== PLATFORM_CONTRACT_VERSION) return fail(`contract version ${String(input.version)} is not supported`);
+  if (!isId("command", input.messageId)) return fail("messageId is not valid");
+  if (input.type !== "business.renamed") return fail("type is not known");
+  if (!isProductKey(input.productKey)) return fail("productKey is not valid");
+  if (!isId("business", input.businessId)) return fail("businessId is not valid");
+  const name = typeof input.businessName === "string" ? input.businessName.trim() : "";
+  if (!name || name.length > 120) return fail("businessName is required (1 to 120 characters)");
+  if (typeof input.nameVersion !== "number" || !Number.isSafeInteger(input.nameVersion) || input.nameVersion < 1) return fail("nameVersion must be a positive whole number");
+  return ok({ version: input.version, messageId: input.messageId, type: "business.renamed", productKey: input.productKey, businessId: input.businessId, businessName: name, nameVersion: input.nameVersion });
+}
+
+export function parseBusinessRenamedAnswer(input: unknown): ParseResult<BusinessRenamedAnswer> {
+  if (!isRecord(input)) return fail("the answer must be an object");
+  if (!isId("business", input.businessId)) return fail("businessId is not valid");
+  if (typeof input.changed !== "boolean") return fail("changed must be true or false");
+  return ok({ businessId: input.businessId, changed: input.changed });
+}

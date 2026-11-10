@@ -1,6 +1,6 @@
 import "server-only";
 import { newId, verifyRequest } from "@platterly/contract";
-import { BUSINESS_CREATED_PATH, parseBusinessCreatedAnswer, signPlatformRequest, PLATFORM_CONTRACT_VERSION, type BusinessCreatedMessage } from "@platterly/platform-contract";
+import { BUSINESS_CREATED_PATH, BUSINESS_RENAMED_PATH, parseBusinessCreatedAnswer, parseBusinessRenamedAnswer, signPlatformRequest, PLATFORM_CONTRACT_VERSION, type BusinessCreatedMessage, type BusinessRenamedMessage } from "@platterly/platform-contract";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { PLATFORM_CLIENT_ID, platformAuthOrigin } from "@/lib/platform/config";
@@ -17,6 +17,9 @@ export const MAX_ATTEMPTS = RETRY_DELAYS_SECONDS.length + 1;
 const TIMEOUT_MS = 5000;
 const CLAIM_LOCK_MS = 2 * 60_000;
 const TYPE = "business.created";
+const RENAMED = "business.renamed";
+/** The Platform keeps names up to 120 characters; Caterly keeps the full name, only the copy it sends is cut. */
+const MAX_NAME = 120;
 
 /** Queues "business created" once per business. Returns the message id, or null when the link is off or it was already queued. Never throws. */
 export async function enqueueBusinessCreated(input: { businessId: string; businessName: string; subject: string }): Promise<string | null> {
@@ -24,7 +27,7 @@ export async function enqueueBusinessCreated(input: { businessId: string; busine
     if (!platformSender()) return null;
     const messageId = newId("command");
     const message: BusinessCreatedMessage = { version: PLATFORM_CONTRACT_VERSION, messageId, type: TYPE, productKey: PLATFORM_CLIENT_ID, businessId: input.businessId, businessName: input.businessName, owner: { subject: input.subject } };
-    await prisma.platformOutbox.create({ data: { messageId, type: TYPE, businessId: input.businessId, payload: message as unknown as Prisma.InputJsonValue } });
+    await prisma.platformOutbox.create({ data: { messageId, type: TYPE, businessId: input.businessId, dedupeKey: `${TYPE}:${input.businessId}`, payload: message as unknown as Prisma.InputJsonValue } });
     return messageId;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return null;
@@ -39,10 +42,32 @@ export async function emitBusinessCreated(input: { businessId: string; businessN
   if (messageId) await attemptDelivery(messageId).catch(() => undefined);
 }
 
+/** Queues a rename for the Platform (several may be queued; the Platform keeps the newest by `nameVersion`). Returns the message id, or null when the link is off or the name is empty. Never throws. */
+export async function enqueueBusinessRenamed(input: { businessId: string; businessName: string }, now: Date = new Date()): Promise<string | null> {
+  try {
+    if (!platformSender()) return null;
+    const businessName = input.businessName.trim().slice(0, MAX_NAME).trim();
+    if (!businessName) return null;
+    const messageId = newId("command");
+    const message: BusinessRenamedMessage = { version: PLATFORM_CONTRACT_VERSION, messageId, type: RENAMED, productKey: PLATFORM_CLIENT_ID, businessId: input.businessId, businessName, nameVersion: now.getTime() };
+    await prisma.platformOutbox.create({ data: { messageId, type: RENAMED, businessId: input.businessId, payload: message as unknown as Prisma.InputJsonValue } });
+    return messageId;
+  } catch (error) {
+    console.error("[platform-link] could not queue a message:", error);
+    return null;
+  }
+}
+
+/** Queue, then try once straight away. A failure leaves the message for the scheduled retry. */
+export async function emitBusinessRenamed(input: { businessId: string; businessName: string }): Promise<void> {
+  const messageId = await enqueueBusinessRenamed(input);
+  if (messageId) await attemptDelivery(messageId).catch(() => undefined);
+}
+
 export type Outcome = "sent" | "retry" | "failed" | "skipped";
 type Verdict = { kind: "sent" | "retry" | "failed"; error?: string };
 
-export async function classify(response: Response, answerSecret: string): Promise<Verdict> {
+export async function classify(response: Response, answerSecret: string, type: string = TYPE): Promise<Verdict> {
   const text = await response.text().catch(() => "");
   if (response.status >= 500 || response.status === 408 || response.status === 429) return { kind: "retry", error: `The Platform answered ${response.status}.` };
   // Only an answer signed with our own secret counts: anything else could be a proxy or an error page, so it is tried again, never taken as "sent".
@@ -50,9 +75,10 @@ export async function classify(response: Response, answerSecret: string): Promis
   if (!signed) return { kind: "retry", error: `The Platform's answer (${response.status}) was not signed.` };
   let json: unknown = null;
   try { json = JSON.parse(text); } catch { /* handled below */ }
-  if (response.status === 200) return parseBusinessCreatedAnswer(json).ok ? { kind: "sent" } : { kind: "retry", error: "The Platform's answer could not be read." };
+  if (response.status === 200) return (type === RENAMED ? parseBusinessRenamedAnswer(json) : parseBusinessCreatedAnswer(json)).ok ? { kind: "sent" } : { kind: "retry", error: "The Platform's answer could not be read." };
   const code = typeof (json as { error?: unknown } | null)?.error === "string" ? (json as { error: string }).error : `status_${response.status}`;
-  return code === "product_not_current" ? { kind: "retry", error: "The Platform has not switched this product on yet." } : { kind: "failed", error: `The Platform refused: ${code}.` };
+  // `business_unknown`: a rename can overtake the "created" message that is still being retried, so it waits for it.
+  return code === "product_not_current" || code === "business_unknown" ? { kind: "retry", error: code === "business_unknown" ? "The Platform does not have this business yet." : "The Platform has not switched this product on yet." } : { kind: "failed", error: `The Platform refused: ${code}.` };
 }
 
 export async function attemptDelivery(messageId: string, now: Date = new Date(), fetchImpl: typeof fetch = fetch): Promise<Outcome> {
@@ -70,7 +96,7 @@ export async function attemptDelivery(messageId: string, now: Date = new Date(),
   let verdict: Verdict;
   try {
     const body = JSON.stringify(row.payload);
-    const url = `${platformAuthOrigin()}${BUSINESS_CREATED_PATH}`;
+    const url = `${platformAuthOrigin()}${row.type === RENAMED ? BUSINESS_RENAMED_PATH : BUSINESS_CREATED_PATH}`;
     const response = await fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...signPlatformRequest(sender.answerSecret, row.messageId, body, "POST", url) },
@@ -78,7 +104,7 @@ export async function attemptDelivery(messageId: string, now: Date = new Date(),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       redirect: "error",
     });
-    verdict = await classify(response, sender.answerSecret);
+    verdict = await classify(response, sender.answerSecret, row.type);
   } catch (error) {
     verdict = { kind: "retry", error: error instanceof Error ? `Could not reach the Platform: ${error.message}` : "Could not reach the Platform." };
   }

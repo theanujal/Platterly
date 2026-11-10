@@ -4,7 +4,8 @@ import { verifyPlatformRequest } from "@platterly/platform-contract";
 import { prisma } from "@/lib/db";
 import { rememberCentralSubject } from "@/lib/platform/central-subject";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
-import { MAX_ATTEMPTS, RETRY_DELAYS_SECONDS, attemptDelivery, enqueueBusinessCreated, runDuePlatformOutbox } from "../outbox";
+import { updateTenant } from "@/modules/tenants/tenant";
+import { MAX_ATTEMPTS, RETRY_DELAYS_SECONDS, attemptDelivery, enqueueBusinessCreated, enqueueBusinessRenamed, runDuePlatformOutbox } from "../outbox";
 
 const ANSWER = "plsec_answer_outbox_test";
 const saved: Record<string, string | undefined> = {};
@@ -142,5 +143,55 @@ describe("sign-up queues the message", () => {
     const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId! } });
     businessIds.push(org.businessId);
     expect(await prisma.platformOutbox.count({ where: { businessId: org.businessId } })).toBe(0);
+  });
+});
+
+describe("platform outbox: business.renamed", () => {
+  it("queues every rename (not once per business), cut to 120 characters, with a growing nameVersion", async () => {
+    const i = input();
+    const a = (await enqueueBusinessRenamed({ businessId: i.businessId, businessName: "  First Name  " }, new Date(1_000)))!;
+    const b = (await enqueueBusinessRenamed({ businessId: i.businessId, businessName: "x".repeat(150) }, new Date(2_000)))!;
+    expect((await row(a)).payload).toMatchObject({ type: "business.renamed", productKey: "caterly", businessId: i.businessId, businessName: "First Name", nameVersion: 1_000 });
+    const long = (await row(b)).payload as { businessName: string; nameVersion: number };
+    expect([long.businessName.length, long.nameVersion]).toEqual([120, 2_000]);
+    expect(await enqueueBusinessRenamed({ businessId: i.businessId, businessName: "   " })).toBeNull();
+  });
+
+  it("queues nothing when the link is off", async () => {
+    delete process.env.PLATFORM_ANSWER_SECRET;
+    expect(await enqueueBusinessRenamed({ businessId: input().businessId, businessName: "Name" })).toBeNull();
+  });
+
+  it("goes to the rename route and is sent on a signed 200", async () => {
+    const i = input();
+    const id = (await enqueueBusinessRenamed({ businessId: i.businessId, businessName: "New Name" }))!;
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => reply(200, { businessId: i.businessId, changed: true }));
+    expect(await attemptDelivery(id, new Date(), fetchMock as never)).toBe("sent");
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("http://auth.localhost:3300/api/products/business-renamed");
+    expect(verifyPlatformRequest([ANSWER], new Headers(init.headers), init.body as string, "POST", url).ok).toBe(true);
+    expect((await row(id)).status).toBe("SENT");
+  });
+
+  it("waits and retries while the Platform does not have the business yet", async () => {
+    const id = (await enqueueBusinessRenamed({ businessId: input().businessId, businessName: "Name" }))!;
+    expect(await attemptDelivery(id, new Date(), (async () => reply(404, { error: "business_unknown" })) as never)).toBe("retry");
+    const r = await row(id);
+    expect([r.status, r.lastError]).toEqual(["PENDING", "The Platform does not have this business yet."]);
+  });
+
+  it("saving a changed business name queues one rename; saving the same name queues none", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connect ECONNREFUSED"); }));
+    const id = crypto.randomUUID();
+    userIds.push(id);
+    await prisma.user.create({ data: { id, name: "Rn", email: `rn-${id}@example.com`, emailVerified: true, createdAt: new Date(), updatedAt: new Date() } });
+    const { organizationId } = await provisionTenantForNewUser(id);
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId! } });
+    businessIds.push(org.businessId);
+    await updateTenant(org.id, { name: "Asha Catering" });
+    await updateTenant(org.id, { name: "Asha Catering" });
+    const queued = await prisma.platformOutbox.findMany({ where: { businessId: org.businessId, type: "business.renamed" } });
+    expect(queued).toHaveLength(1);
+    expect(queued[0].payload).toMatchObject({ businessId: org.businessId, businessName: "Asha Catering" });
   });
 });
