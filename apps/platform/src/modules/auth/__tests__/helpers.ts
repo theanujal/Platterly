@@ -3,7 +3,7 @@ import { registerAccountClient } from "../clients";
 import { IDENTITY_MIGRATIONS_DIR, migrateIdentity } from "../identity-db";
 import { createIdp, type Idp } from "../idp";
 import type { OtpKind } from "../mailer";
-import { PRODUCT_CLIENT_HEADER } from "../sign-up-gate";
+import { OAUTH_QUERY_HEADER } from "../sign-up-gate";
 
 // Test harness for the identity provider against the isolated F4 test database (IDENTITY_TEST_DATABASE_URL). Tests are skipped without it.
 /** A registered product the harness creates, and the header every test call sends so sign-up is allowed (see sign-up-gate.ts). */
@@ -58,8 +58,20 @@ export class Jar {
   }
 }
 
+/**
+ * The signed sign-in address a product's real link produces: the harness asks the provider's authorize step (with PKCE, as a product does) and keeps the query of
+ * the sign-in page it redirects to (`sig`, `exp`, `client_id` ...). Pass another client id to see what happens for the Account or an unknown product.
+ */
+export async function signedSignInQuery(h: Harness, clientId: string = TEST_PRODUCT, redirectUri = "http://gate.localhost:3500/auth/callback"): Promise<string> {
+  const q = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: redirectUri, scope: "openid email profile", state: "s1", code_challenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", code_challenge_method: "S256" });
+  const res = await h.idp.handler(new Request(`http://auth.localhost:3300/api/auth/oauth2/authorize?${q}`, { headers: { origin: "http://auth.localhost:3300", host: "auth.localhost:3300" }, redirect: "manual" }));
+  const location = res.headers.get("location") ?? "";
+  if (!location.includes("sig=")) throw new Error(`the provider gave no signed sign-in address for ${clientId} (answered ${res.status} ${location.slice(0, 120)})`);
+  return new URL(location, "http://auth.localhost:3300").search.replace(/^\?/, "");
+}
+
 export async function call(h: Harness, jar: Jar, method: string, path: string, body?: unknown, origin = "http://auth.localhost:3300", extraHeaders?: Record<string, string>): Promise<Response> {
-  const headers: Record<string, string> = { origin, host: new URL(origin).host, ...(extraHeaders ?? { [PRODUCT_CLIENT_HEADER]: TEST_PRODUCT }) };
+  const headers: Record<string, string> = { origin, host: new URL(origin).host, ...(extraHeaders ?? { [OAUTH_QUERY_HEADER]: await signedSignInQuery(h) }) };
   if (jar.header()) headers.cookie = jar.header();
   if (body !== undefined) headers["content-type"] = "application/json";
   const res = await h.idp.handler(new Request(`${origin}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), redirect: "manual" }));

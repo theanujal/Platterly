@@ -1,5 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { openSignUpFromProduct } from "./signed-in";
 import path from "node:path";
 
 /**
@@ -43,7 +44,7 @@ async function codeFor(page: Page, to: string): Promise<string> {
 async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   // Sign-up is open only to a person who starts from a registered product (the rule of 2026-11-10), so the test person is created as if they came from one
   // (the plain-looking stub product), verifies by the emailed code, and then signs in at the Account like any existing person.
-  await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
+  await openSignUpFromProduct(page);
   await fill(page, "First name", ("E2E Person").split(" ")[0]);
   await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");
@@ -72,7 +73,7 @@ test.describe("Sign-up only from a product", () => {
       await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
       await expect(page.getByRole("link", { name: "Create an account" })).toHaveCount(0);
     }
-    for (const closed of ["http://auth.localhost:3300/sign-up", "http://auth.localhost:3300/sign-up?client_id=platterly-account", "http://auth.localhost:3300/sign-up?client_id=platterly-store", "http://auth.localhost:3300/sign-up?client_id=no-such-product"]) {
+    for (const closed of ["http://auth.localhost:3300/sign-up", "http://auth.localhost:3300/sign-up?client_id=platterly-account", "http://auth.localhost:3300/sign-up?client_id=platterly-store", "http://auth.localhost:3300/sign-up?client_id=no-such-product", `http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`, `http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}&sig=abc&exp=${Math.floor(Date.now() / 1000) + 600}`]) {
       await page.goto(closed);
       await expect(page.getByRole("heading", { name: "Create your account from a product" })).toBeVisible();
       await expect(page.getByLabel("Email")).toHaveCount(0);
@@ -84,7 +85,7 @@ test.describe("Sign-up only from a product", () => {
   });
 
   test("a product's own sign-up page shows the form", async ({ page }) => {
-    await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
+    await openSignUpFromProduct(page);
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
   });
@@ -101,7 +102,7 @@ test.describe("Sign-in journey", () => {
     // The Account offers no way to create an account (sign-up starts from a product), so the sign-up here is opened as a product would open it.
     await expect(page.getByRole("link", { name: "Create an account" })).toHaveCount(0);
     await expect(page.getByText("Accounts are created when you first use a Platterly product.")).toBeVisible();
-    await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
+    await openSignUpFromProduct(page);
     await shot(page, "f4-3-sign-up-page");
     await fill(page, "First name", ("E2E Person").split(" ")[0]);
     await fill(page, "Last name", ("E2E Person").split(" ").slice(1).join(" ") || "Tester");
@@ -201,8 +202,7 @@ test.describe("Sign-in safety", () => {
 
   test("someone who has not verified their email is sent to the verification page, not signed in", async ({ page }) => {
     const to = newEmail();
-    await page.goto("/");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await openSignUpFromProduct(page);
     await fill(page, "First name", ("Unverified").split(" ")[0]);
     await fill(page, "Last name", ("Unverified").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
@@ -224,8 +224,7 @@ test.describe("Sign-in safety", () => {
   test("an unverified person who signs in is sent a fresh code, so someone who never got one (an imported user) can still verify", async ({ page }) => {
     const to = newEmail();
     const mailCount = async () => ((await (await page.request.get(`${SINK}/api/messages`)).json()) as { to: string[] }[]).filter((m) => m.to.includes(to)).length;
-    await page.goto("/");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await openSignUpFromProduct(page);
     await fill(page, "First name", ("Never Verified").split(" ")[0]);
     await fill(page, "Last name", ("Never Verified").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
@@ -251,8 +250,7 @@ test.describe("Sign-in safety", () => {
 
   test("a wrong code is refused with a clear message", async ({ page }) => {
     const to = newEmail();
-    await page.goto("/");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await openSignUpFromProduct(page);
     await fill(page, "First name", ("Wrong Code").split(" ")[0]);
     await fill(page, "Last name", ("Wrong Code").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
@@ -269,8 +267,7 @@ test.describe("Sign-in safety", () => {
   });
 
   test("a short password is refused before anything is sent", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await openSignUpFromProduct(page);
     await fill(page, "First name", ("Short Pass").split(" ")[0]);
     await fill(page, "Last name", ("Short Pass").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
@@ -295,8 +292,7 @@ test.describe("Sign-in safety", () => {
 
   test("an off-site next never leaves the account host after a real sign-in", async ({ page }) => {
     const to = newEmail();
-    await page.goto("/auth/start?next=//evil.test/steal");
-    await page.getByRole("link", { name: "Create an account" }).click();
+    await openSignUpFromProduct(page); // sign-up starts from a product; the off-site next is tried when signing in at the Account below
     await fill(page, "First name", ("Next Test").split(" ")[0]);
     await fill(page, "Last name", ("Next Test").split(" ").slice(1).join(" ") || "Tester");
     await fill(page, "Phone", "9800000123");
@@ -309,6 +305,9 @@ test.describe("Sign-in safety", () => {
     await page.getByRole("button", { name: "Verify email" }).click();
     // Wait for the sign-in page itself: a field filled while the page is still changing is lost.
     await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+    await page.goto("/auth/start?next=//evil.test/steal");
+    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+    await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL("http://account.localhost:3300/");

@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 
 // Shared by the Account specs that need a really signed-in person: registers a new person through the pages, reads the 6-digit code from the local mail
@@ -6,6 +7,20 @@ export const SINK = "http://localhost:3600";
 export const PASSWORD = "correct horse 7";
 /** A registered, plain-looking product to sign up from (sign-up is closed to anyone who does not start from a product). */
 const SIGN_UP_PRODUCT = "stub-product";
+
+/**
+ * Opens the sign-up page the way a product does: through the identity provider's authorize step (PKCE, as a product sends it), which signs the sign-in page's
+ * address, then the page's own "Create an account" link. Sign-up is refused without that signed address (a product name typed into the address is worth nothing).
+ * Used by every spec that registers a person, so the product's own server need not be running.
+ */
+export async function openSignUpFromProduct(page: Page, clientId: string = SIGN_UP_PRODUCT, redirectUri = "http://stub.localhost:3500/auth/callback"): Promise<void> {
+  const challenge = createHash("sha256").update(randomBytes(32).toString("base64url")).digest("base64url");
+  const q = new URLSearchParams({ response_type: "code", client_id: clientId, redirect_uri: redirectUri, scope: "openid email profile", state: "e2e", code_challenge: challenge, code_challenge_method: "S256" });
+  await page.goto(`http://auth.localhost:3300/api/auth/oauth2/authorize?${q}`);
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
+  await page.getByRole("link", { name: "Create an account" }).click();
+  await expect(page).toHaveURL(/auth\.localhost:3300\/sign-up\?/);
+}
 let counter = 0;
 export const newEmail = () => `acct-${Date.now()}-${counter++}@auth.test`;
 
@@ -30,7 +45,7 @@ export async function codeFor(page: Page, to: string, after = ""): Promise<strin
 export async function registerAndSignIn(page: Page, to: string, startPath = "/", name = "E2E Person") {
   // Sign-up is open only to a person who starts from a registered product (the rule of 2026-11-10), so the test person is created as if they came from one
   // (the plain-looking stub product), verifies by the emailed code, and then signs in at the Account like any existing person.
-  await page.goto(`http://auth.localhost:3300/sign-up?client_id=${SIGN_UP_PRODUCT}`);
+  await openSignUpFromProduct(page);
   await fill(page, "First name", (name).split(" ")[0]);
   await fill(page, "Last name", (name).split(" ").slice(1).join(" ") || "Tester");
   await fill(page, "Phone", "9800000123");

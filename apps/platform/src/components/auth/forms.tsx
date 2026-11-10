@@ -7,7 +7,7 @@ import { isValidPhoneNumber } from "libphonenumber-js/max";
 import { PhoneField } from "../phone-field";
 import "../account/account.css";
 import "./auth.css";
-import { PRODUCT_CLIENT_HEADER } from "@/modules/auth/sign-up-gate";
+import { OAUTH_QUERY_HEADER } from "@/modules/auth/sign-up-gate";
 import { useProductBrand } from "./brand";
 import { ChefHatIcon, EyeIcon, EyeOffIcon, LockIcon, MailIcon, QrCodeIcon, ShieldCheckIcon, TrendingUpIcon, UserIcon, UtensilsCrossedIcon } from "./theme-icons";
 
@@ -345,7 +345,7 @@ export function SignUpForm({ termsUrl, privacyUrl }: { termsUrl: string; privacy
     setBusy(true);
     const first = firstName.trim();
     const last = lastName.trim();
-    const res = await post("/sign-up/email", { name: `${first} ${last}`, firstName: first, lastName: last, phone, email, password }, { [PRODUCT_CLIENT_HEADER]: params.get("client_id") ?? "" });
+    const res = await post("/sign-up/email", { name: `${first} ${last}`, firstName: first, lastName: last, phone, email, password }, { [OAUTH_QUERY_HEADER]: window.location.search.replace(/^\?/, "") });
     setBusy(false);
     if (res.status === 200) return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
     setError(res.status === 429 ? BUSY : res.status === 400 || res.status === 422 ? "Check your details: your name, a valid phone number and email, and a password of at least 8 characters." : GENERIC);
