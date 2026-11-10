@@ -11,3 +11,6 @@ export const platformIssuer = () => `${platformAuthOrigin()}/api/auth`;
 export function safeNextPath(next: string | null | undefined, fallback = "/dashboard"): string {
   return typeof next === "string" && /^\/(?!\/)[\w\-./?=&%]*$/.test(next) ? next : fallback;
 }
+
+/** Where the person manages their own details (name, phone, email). Products only show them; the Account is the one place they change. */
+export const platformAccountOrigin = () => process.env.PLATFORM_ACCOUNT_ORIGIN ?? "http://account.localhost:3300";
