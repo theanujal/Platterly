@@ -14,6 +14,8 @@ const MESSAGES: Record<string, string> = {
   too_many_tries: "Too many wrong codes. Start again.",
   nothing_pending: "There is no change waiting. Start again.",
   send_failed: "We could not send the code. Please try again in a moment.",
+  two_factor_required: "Enter the 6-digit code from your authenticator app.",
+  wrong_two_factor: "That authenticator code is not right. Check the app and try again.",
 };
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
 
@@ -36,22 +38,23 @@ export function ChangeEmail() {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [hold, setHold] = useState<string | null>(null);
+  const [totp, setTotp] = useState("");
+  const [twoFactor, setTwoFactor] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
+  /** Whether two-step verification is on is read again every time the form opens, so turning it on in the same visit is noticed. */
+  function refreshTwoFactor() {
     fetch("/api/account/email", { cache: "no-store", credentials: "same-origin" })
       .then((r) => r.json())
-      .then((b: { hold?: { until: string } | null }) => alive && setHold(b.hold?.until ?? null))
+      .then((b: { twoFactor?: boolean }) => setTwoFactor(b.twoFactor === true))
       .catch(() => undefined);
-    return () => {
-      alive = false;
-    };
-  }, []);
+  }
+  useEffect(refreshTwoFactor, []);
 
   function open() {
+    refreshTwoFactor();
     setMode("start");
     setPassword("");
+    setTotp("");
     setCode("");
     setError("");
   }
@@ -62,11 +65,15 @@ export function ChangeEmail() {
     setBusy(true);
     const fail = (status: string) => setError(MESSAGES[status] ?? GENERIC);
     if (mode === "start") {
-      const r = await call({ action: "start", password, email });
+      const r = await call({ action: "start", password, email, ...(twoFactor ? { totp } : {}) });
       if (r.ok) {
         setPassword("");
+        setTotp("");
         setMode("code");
-      } else fail(r.status);
+      } else {
+        if (r.status === "two_factor_required") setTwoFactor(true);
+        fail(r.status);
+      }
     } else {
       const r = await call({ action: "confirm", code });
       if (r.ok) setMode("done");
@@ -79,12 +86,7 @@ export function ChangeEmail() {
     <div className="pa-switch-row" style={{ flexWrap: "wrap" }}>
       <div>
         <span className="pa-row-label">Change email</span>
-        <span className="pa-hint">Change the address you sign in with. We send a code to the new address and tell the old one, which can cancel the change for 72 hours.</span>
-        {hold && (
-          <span className="pa-hint" role="status">
-            Your email changed recently. Until {new Date(hold).toLocaleString()}, ownership transfers and billing-contact changes are on hold.
-          </span>
-        )}
+        <span className="pa-hint">Change the address you sign in with. We send a code to the new address and tell the old one, which can cancel the change for 24 hours. You are signed out of every device when it changes.</span>
       </div>
       {mode === "closed" && (
         <div className="pa-row-actions">
@@ -96,12 +98,12 @@ export function ChangeEmail() {
       {mode === "done" && (
         <div className="pa-form" style={{ flexBasis: "100%" }}>
           <p className="pa-muted" role="status">
-            Your sign-in email was changed. We signed you out on your other devices and told your old address, which can cancel the change for 72 hours.
+            Your sign-in email was changed. We signed you out of every device and told your old address, which can cancel the change for 24 hours.
           </p>
           <div className="pa-form-actions">
-            <button type="button" className="pa-btn pa-btn-primary" onClick={() => window.location.reload()}>
-              Done
-            </button>
+            <a className="pa-btn pa-btn-primary" href="/auth/start">
+              Sign in again
+            </a>
           </div>
         </div>
       )}
@@ -118,6 +120,13 @@ export function ChangeEmail() {
                 <label htmlFor="ce-password">Current password</label>
                 <input id="ce-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
+              {twoFactor && (
+                <div className="pa-field">
+                  <label htmlFor="ce-totp">Authenticator code</label>
+                  <input id="ce-totp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={totp} onChange={(e) => setTotp(e.target.value.replace(/\D/g, ""))} />
+                  <span className="pa-hint">Two-step verification is on, so we also need the code from your authenticator app.</span>
+                </div>
+              )}
             </div>
           ) : (
             <div className="pa-field">
@@ -132,7 +141,7 @@ export function ChangeEmail() {
             </p>
           )}
           <div className="pa-form-actions">
-            <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || (mode === "start" ? !email || !password : code.length !== 6)}>
+            <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || (mode === "start" ? !email || !password || (twoFactor && totp.length !== 6) : code.length !== 6)}>
               {mode === "start" ? "Send code" : "Confirm new email"}
             </button>
             <button type="button" className="pa-btn pa-btn-outline" disabled={busy} onClick={() => setMode("closed")}>

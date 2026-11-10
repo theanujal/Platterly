@@ -212,6 +212,7 @@ export function SignInForm() {
     setBusy(false);
     if (res.status === 200) return finish();
     if (res.status === 429) return setError(BUSY);
+    if (res.status === 403 && res.code === "ACCOUNT_ON_HOLD") return setError("Your account is under review. We are verifying that it is really you. Please contact Platterly support.");
     // A lost or expired first step (the short-lived cookie is gone): start over from the password.
     if (res.status === 401 && res.code === "INVALID_TWO_FACTOR_COOKIE") {
       setStep("password");
@@ -238,6 +239,7 @@ export function SignInForm() {
       await post("/email-otp/send-verification-otp", { email, type: "email-verification" }).catch(() => null);
       return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
     }
+    if (res.status === 403 && res.code === "ACCOUNT_ON_HOLD") return setError("Your account is under review. We are verifying that it is really you. Please contact Platterly support.");
     setError(res.status === 429 ? BUSY : res.status === 401 || res.status === 400 ? "The email or password is not right. Check them and try again." : GENERIC);
   }
 

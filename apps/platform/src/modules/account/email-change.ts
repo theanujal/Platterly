@@ -1,14 +1,17 @@
 import { createHmac, randomBytes, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Pool } from "pg";
 
-// Change of sign-in email with safeguards (plan R11-9): the current password (checked by the route), a code sent to the NEW address, a notice with a
-// cancel link to the OLD address that works for 72 hours, and a hold on risky actions for those 72 hours. Only hashes of the code and the cancel token are
+// Change of sign-in email with safeguards (plan R11-9, reshaped by AJ 2026-11-10): the current password and, when it is on, the two-step code (both checked by the
+// route), a code sent to the NEW address, and a notice with a cancel link to the OLD address that works for 24 hours. Cancelling needs a reason, puts the old email
+// back, and puts the account on hold until Ops verifies the person (see hold.ts). A code that is never entered changes nothing; the old address is told once
+// (`claimExpiredNotices`). There is no hold on other actions. Only hashes of the code and the cancel token are
 // stored. The Platform's own copy of the email is changed in the same step through `sync`, inside the identity transaction, so the two never disagree:
 // if `sync` fails the identity change is rolled back. Every query is scoped to the person (by id, or by the secret cancel token).
 export const CODE_MINUTES = 10;
 export const MAX_TRIES = 5;
 export const RESEND_SECONDS = 55;
-export const HOLD_HOURS = 72;
+/** How long the old address can cancel a completed change (stored in the column "holdUntil", which now means "cancel until"). */
+export const CANCEL_HOURS = 24;
 
 const EMAIL = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]{2,}$/;
 export const normaliseEmail = (e: string) => e.trim().toLowerCase();
@@ -17,9 +20,10 @@ const same = (a: string, b: string) => a.length === b.length && timingSafeEqual(
 
 export type Sync = (change: { userId: string; from: string; to: string }) => Promise<void>;
 export type StartResult = { ok: true; code: string; to: string } | { ok: false; reason: "invalid" | "same" | "unavailable" | "too_soon" };
-export type ConfirmOk = { ok: true; oldEmail: string; newEmail: string; cancelToken: string; holdUntil: Date };
+export type ConfirmOk = { ok: true; oldEmail: string; newEmail: string; cancelToken: string; cancelUntil: Date };
 export type ConfirmResult = ConfirmOk | { ok: false; reason: "wrong_code" | "expired" | "too_many_tries" | "nothing_pending" | "unavailable" };
-export type CancelResult = { ok: true; userId: string; restoredEmail: string; newEmail: string } | { ok: false; reason: "invalid" | "expired" | "already_cancelled" | "unavailable" };
+export type CancelReason = { code: "not_me" | "mistake" | "other"; note: string };
+export type CancelResult = { ok: true; userId: string; reviewId: string; restoredEmail: string; newEmail: string; requestedAt: Date } | { ok: false; reason: "invalid" | "expired" | "already_cancelled" | "unavailable" | "reason_required" };
 
 export async function startChange(pool: Pool, secret: string, user: { id: string; email: string }, input: unknown, now: Date = new Date()): Promise<StartResult> {
   const email = typeof input === "string" ? normaliseEmail(input) : "";
@@ -68,7 +72,7 @@ export async function confirmChange(pool: Pool, secret: string, userId: string, 
       return { ok: false, reason: "unavailable" };
     }
     const cancelToken = randomBytes(32).toString("base64url");
-    const holdUntil = new Date(now.getTime() + HOLD_HOURS * 3_600_000);
+    const holdUntil = new Date(now.getTime() + CANCEL_HOURS * 3_600_000);
     await client.query('update "user" set "email" = $2, "emailVerified" = true, "updatedAt" = $3 where "id" = $1', [userId, newEmail, now]);
     // A recovery email that is now the main email is dropped (it must differ from the main one).
     await client.query(`delete from "recoveryEmail" where "userId" = $1 and lower("email") = $2`, [userId, newEmail]);
@@ -86,15 +90,21 @@ export async function confirmChange(pool: Pool, secret: string, userId: string, 
       await sync({ userId, from: newEmail, to: oldEmail }).catch(() => undefined);
       throw error;
     }
-    return { ok: true, oldEmail, newEmail, cancelToken, holdUntil };
+    return { ok: true, oldEmail, newEmail, cancelToken, cancelUntil: holdUntil };
   } finally {
     client.release();
   }
 }
 
-/** The old address used the cancel link. Valid only while the 72-hour window is open. Restores the old email in both places. */
-export async function cancelChange(pool: Pool, secret: string, token: unknown, sync: Sync, now: Date = new Date()): Promise<CancelResult> {
+/**
+ * The old address used the cancel link. Valid only while the 24-hour window is open, and only with a reason. Restores the old email in both places and, in the same
+ * transaction, puts the account on hold (accountHold) until Ops verifies the person.
+ */
+export async function cancelChange(pool: Pool, secret: string, token: unknown, why: unknown, sync: Sync, now: Date = new Date()): Promise<CancelResult> {
   if (typeof token !== "string" || token.length < 20 || token.length > 200) return { ok: false, reason: "invalid" };
+  const code = (why as { code?: unknown } | null)?.code;
+  const note = typeof (why as { note?: unknown } | null)?.note === "string" ? ((why as { note: string }).note).trim() : "";
+  if ((code !== "not_me" && code !== "mistake" && code !== "other") || note.length > 500 || (code === "other" && note.length === 0)) return { ok: false, reason: "reason_required" };
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -119,7 +129,9 @@ export async function cancelChange(pool: Pool, secret: string, token: unknown, s
       return { ok: false, reason: "unavailable" };
     }
     await client.query('update "user" set "email" = $2, "updatedAt" = $3 where "id" = $1', [userId, oldEmail, now]);
-    await client.query(`update "emailChange" set "status" = 'cancelled', "cancelledAt" = $2, "holdUntil" = null where "id" = $1`, [row.id, now]);
+    await client.query(`update "emailChange" set "status" = 'cancelled', "cancelledAt" = $2, "holdUntil" = null, "cancelReason" = $3, "cancelNote" = $4 where "id" = $1`, [row.id, now, code, note]);
+    await client.query(`insert into "accountHold" ("userId", "reviewId", "reason", "createdAt") values ($1, $2, $3, $4)
+      on conflict ("userId") do update set "reviewId" = excluded."reviewId", "reason" = excluded."reason", "createdAt" = excluded."createdAt", "opsNotifiedAt" = null, "liftedAt" = null`, [userId, row.id, code, now]);
     try {
       await sync({ userId, from: newEmail, to: oldEmail });
     } catch {
@@ -132,16 +144,22 @@ export async function cancelChange(pool: Pool, secret: string, token: unknown, s
       await sync({ userId, from: oldEmail, to: newEmail }).catch(() => undefined);
       throw error;
     }
-    return { ok: true, userId, restoredEmail: oldEmail, newEmail };
+    return { ok: true, userId, reviewId: row.id as string, restoredEmail: oldEmail, newEmail, requestedAt: now };
   } finally {
     client.release();
   }
 }
 
-/** Whether the person's 72-hour window is open. Features that must hold risky actions (ownership transfer, claims, billing contact) ask this. */
-export async function emailChangeHold(pool: Pool, userId: string, now: Date = new Date()): Promise<{ until: string } | null> {
-  const { rows } = await pool.query(`select "holdUntil" from "emailChange" where "userId" = $1 and "status" = 'completed' and "holdUntil" > $2 order by "holdUntil" desc limit 1`, [userId, now]);
-  return rows[0] ? { until: (rows[0].holdUntil as Date).toISOString() } : null;
+/**
+ * Pending changes whose code ran out (or was tried too often) without being completed, that the old address has not been told about yet. Each is claimed in
+ * one statement, so two callers never both send the notice. Nothing was changed; the old address is told that someone tried. `userId` limits it to one person.
+ */
+export async function claimExpiredNotices(pool: Pool, now: Date = new Date(), userId?: string): Promise<{ oldEmail: string; newEmail: string }[]> {
+  const { rows } = await pool.query(
+    `update "emailChange" set "noticeSentAt" = $1 where "status" = 'pending' and "noticeSentAt" is null and "codeExpiresAt" <= $1 and ($2::text is null or "userId" = $2) returning "oldEmail", "newEmail"`,
+    [now, userId ?? null],
+  );
+  return rows.map((r) => ({ oldEmail: r.oldEmail as string, newEmail: r.newEmail as string }));
 }
 
 export async function pendingChange(pool: Pool, userId: string, now: Date = new Date()): Promise<{ newEmail: string } | null> {

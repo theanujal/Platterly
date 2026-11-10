@@ -9,6 +9,7 @@ import { recordSignIn } from "@/modules/account/sign-in-history";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
 import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
+import { mayStartSession } from "../account/hold";
 import { isRegisteredProduct } from "./branding";
 import { identityPool } from "./identity-db";
 import { PRODUCT_CLIENT_HEADER } from "./sign-up-gate";
@@ -45,6 +46,10 @@ export function createIdp(options: IdpOptions = {}) {
       // Every new session is a sign-in: it goes in that person's own history (device label and time only).
       session: {
         create: {
+          // A held account (the old address cancelled an email change) cannot start a session, here or through a product, until Ops staff have verified the person.
+          before: async (session) => {
+            if (!(await mayStartSession(pool, session.userId))) throw new APIError("FORBIDDEN", { message: "Your account is under review. Contact Platterly support.", code: "ACCOUNT_ON_HOLD" });
+          },
           after: async (session) => {
             await recordSignIn(pool, { userId: session.userId, outcome: "signed_in", userAgent: session.userAgent });
           },
