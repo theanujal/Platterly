@@ -243,6 +243,43 @@ describe("Store buy calls: upgrade credit, downgrade, cancel", () => {
     expect(credit!.amount).toBe(Number(paid.creditAmount));
   });
 
+  // Two early renewals stack: the second year starts when the first ends. The rows are moved to "day 100 of the first year" so the numbers are exact.
+  const stackTwoYearsAtDay100 = async () => {
+    await pay("pro", "ANNUAL", "pay_s1");
+    await pay("pro", "ANNUAL", "pay_s2");
+    const now = Date.now();
+    const sub = await prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY, endDate: null } });
+    const rows = await prisma.subscriptionPayment.findMany({ where: { businessId: BIZ, productKey: KEY, status: "PAID" }, orderBy: { periodStart: "asc" } });
+    expect(rows).toHaveLength(2);
+    const startDay = now - 100 * DAYS;
+    await prisma.subscription.update({ where: { id: sub.id }, data: { startDate: new Date(startDay), currentPeriodEnd: new Date(startDay + 730 * DAYS) } });
+    await prisma.subscriptionPayment.update({ where: { id: rows[0].id }, data: { periodStart: new Date(startDay), periodEnd: new Date(startDay + 365 * DAYS) } });
+    await prisma.subscriptionPayment.update({ where: { id: rows[1].id }, data: { periodStart: new Date(startDay + 365 * DAYS), periodEnd: new Date(startDay + 730 * DAYS) } });
+    return { sub, rows, startDay };
+  };
+  const creditQuote = async () => (await (await call("quote", BIZ, { planId: await planIdOf("max"), interval: "ANNUAL" })).json()) as { credit: number; creditDays: number; amount: number; total: number };
+
+  it("an upgrade after two stacked yearly payments credits the rest of the first year and the whole second year", async () => {
+    await stackTwoYearsAtDay100();
+    const quote = await creditQuote();
+    // 265 days left of year one (10000 x 265 / 365 = 7260.27) plus all of year two (10000), valued at what was paid.
+    expect(quote.credit).toBeCloseTo(17260.27, 1);
+    expect(quote.creditDays).toBe(630);
+    expect(quote.amount).toBeCloseTo(20000 - quote.credit, 1);
+    expect(quote.total).toBeCloseTo(quote.amount * 1.18, 1);
+  });
+
+  it("a payment from an earlier subscription of the same plan is not counted again", async () => {
+    const { rows, startDay } = await stackTwoYearsAtDay100();
+    const before = await creditQuote();
+    // An older payment for the same plan whose period reaches past today, but that belongs to a subscription that ended before this one began.
+    const { id: _id, razorpayOrderId: _o, razorpayPaymentId: _p, invoiceNumber: _i, ...rest } = rows[0];
+    await prisma.subscriptionPayment.create({
+      data: { ...rest, id: `pay_${"9".repeat(32)}`, razorpayOrderId: "order_old_one", razorpayPaymentId: "pay_old_one", invoiceNumber: null, buyer: rest.buyer ?? undefined, invoiceSnapshot: rest.invoiceSnapshot ?? undefined, periodStart: new Date(startDay - 200 * DAYS), periodEnd: new Date(startDay + 300 * DAYS) },
+    });
+    expect((await creditQuote()).credit).toBeCloseTo(before.credit, 1);
+  });
+
   it("the same plan again (a renewal) and a cheaper plan get no credit", async () => {
     await pay("max", "ANNUAL", "pay_c");
     for (const code of ["max", "pro"]) expect(((await (await call("quote", BIZ, { planId: await planIdOf(code), interval: "ANNUAL" })).json()) as { credit: number }).credit, code).toBe(0);

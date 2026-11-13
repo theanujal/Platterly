@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 import { nextInvoiceNumber } from "./numbering";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
-import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, unusedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
+import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, stackedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
 import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchPaidChargeId, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
 import { recordRazorpayEvent } from "./events";
@@ -114,9 +114,12 @@ export async function quoteCheckout(input: { businessId: string; productKey: str
   // Only an upgrade (a dearer plan, by monthly price) is credited; buying a cheaper plan outright starts it at its own price.
   const dearer = !!current && plan.monthly.amount > Number(current.plan.priceMonthly ?? 0);
   if (current && dearer && current.status === "ACTIVE" && current.planId !== input.planId && current.currentPeriodEnd && current.currentPeriodEnd > now) {
-    const last = await prisma.subscriptionPayment.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, status: "PAID", periodEnd: { not: null }, periodStart: { not: null } }, orderBy: { periodEnd: "desc" } });
-    if (last?.periodStart && last.periodEnd && last.planId === current.planId) {
-      const found = unusedCredit({ paidAmount: Number(last.amount), periodStart: last.periodStart, periodEnd: last.periodEnd, currentPeriodEnd: current.currentPeriodEnd, now });
+    // Renewing early stacks paid periods, so every paid period of the CURRENT subscription that has not run out counts: the rest of the running one and
+    // all of the later ones. Payments of earlier subscriptions (even for the same plan) are never counted, hence the start-date floor (a day of slack for auto-pay dates).
+    const paid = await prisma.subscriptionPayment.findMany({ where: { businessId: input.businessId, productKey: input.productKey, planId: current.planId, status: "PAID", periodStart: { gte: new Date(current.startDate.getTime() - 86_400_000) }, periodEnd: { gt: now } }, select: { amount: true, periodStart: true, periodEnd: true } });
+    const periods = paid.flatMap((p) => (p.periodStart && p.periodEnd ? [{ paidAmount: Number(p.amount), periodStart: p.periodStart, periodEnd: p.periodEnd }] : []));
+    if (periods.length > 0) {
+      const found = stackedCredit(periods, now);
       credit = Math.min(found.credit, price.amount);
       creditDays = found.daysLeft;
       if (credit > 0) creditLabel = `Credit for ${creditDays} unused ${creditDays === 1 ? "day" : "days"} of ${current.plan.name}`;

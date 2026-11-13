@@ -34,6 +34,27 @@ export function unusedCredit(input: { paidAmount: number; periodStart: Date; per
   return { credit: Math.min(round2((input.paidAmount * left) / total), round2(input.paidAmount)), daysLeft: Math.ceil(left / DAY_MS) };
 }
 
+/**
+ * Upgrade credit across stacked renewals. Renewing early adds a paid period after the one still running, so what is unused is the rest of the running period
+ * plus every later period in full (and nothing from periods that have run out). Each payment's own value, before GST, is spread over its own paid period.
+ * Never more than was paid for the periods counted, never negative, rounded to paise. With a single payment it equals `unusedCredit`.
+ */
+export function stackedCredit(payments: { paidAmount: number; periodStart: Date; periodEnd: Date }[], now: Date): { credit: number; daysLeft: number } {
+  let credit = 0;
+  let paid = 0;
+  let leftMs = 0;
+  for (const p of payments) {
+    const total = p.periodEnd.getTime() - p.periodStart.getTime();
+    const left = Math.min(Math.max(p.periodEnd.getTime() - now.getTime(), 0), total);
+    if (total <= 0 || left <= 0 || p.paidAmount <= 0) continue;
+    credit += unusedCredit({ paidAmount: p.paidAmount, periodStart: p.periodStart, periodEnd: p.periodEnd, currentPeriodEnd: p.periodEnd, now }).credit;
+    paid += p.paidAmount;
+    leftMs += left;
+  }
+  if (credit <= 0) return { credit: 0, daysLeft: 0 };
+  return { credit: Math.min(round2(credit), round2(paid)), daysLeft: Math.ceil(leftMs / DAY_MS) };
+}
+
 export function periodEndFrom(start: Date, interval: Interval): Date {
   return new Date(start.getTime() + INTERVAL_DAYS[interval] * DAY_MS);
 }
