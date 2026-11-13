@@ -74,7 +74,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     : subscription?.status === "TRIALING"
       ? { trialDaysLeft: subscription.trialEndsAt ? daysUntil(subscription.trialEndsAt) : null, trialTotalDays: subscription.subscriptionPlan.trialDurationDays }
       : null;
-  const notice = await getActiveNotice(organizationId);
+  // The Old Admin (handed the Admin role over) has no plan or billing: the sidebar's trial, upgrade, grace and renewal cards are for the Admin.
+  const noPlanCards = (await prisma.member.findFirst({ where: { userId: session.user.id, organizationId }, select: { role: true } }))?.role === "oldAdmin";
+  const notice = noPlanCards ? null : await getActiveNotice(organizationId);
   // A paid plan's period ended and the 7-day payment grace is running: warn with the day it ends (AJ, 2026-10-12).
   const graceEndsAt = entitlements.graceEndsAt ?? null;
   const fmt = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
@@ -91,7 +93,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <SensitiveAccessProvider flags={sensitive}>
     <SidebarProvider defaultOpen={defaultOpen}>
       <Suspense><NavigationProgress /></Suspense>
-      <AppSidebar organizationName={organization.name} trial={trial} notice={notice} grace={grace} renewal={renewal} allowedHrefs={allowedHrefs} />
+      <AppSidebar organizationName={organization.name} trial={noPlanCards ? null : trial} notice={notice} grace={noPlanCards ? null : grace} renewal={noPlanCards ? null : renewal} allowedHrefs={allowedHrefs} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />

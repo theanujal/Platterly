@@ -33,6 +33,12 @@ export const ROLE_DEFINITIONS = [
     invitable: false,
   },
   {
+    id: "oldAdmin",
+    label: "Old Admin",
+    description: "Handed the Admin role to someone else. Can look at the business but change nothing, and sees no prices, finance, plan or billing. The Admin can remove them.",
+    invitable: false,
+  },
+  {
     id: "manager",
     label: "Manager",
     description: "Runs day-to-day operations: creates and edits most records and approves menus. Can delete Staff page records only, sees no prices unless the Admin allows it, and can't manage the team, roles or settings.",

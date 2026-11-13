@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { lockMemberPair } from "@/lib/member-lock/with-member-lock";
+import { settleOldAdmins } from "./membership";
 
 /** True when the Platform already made this person a member of a business (so a brand-new Caterly user must not get a tenant of their own). */
 export async function hasPendingMembership(subject: string): Promise<boolean> {
@@ -22,6 +23,11 @@ export async function consumePendingMembership(userId: string, subject: string):
     if (await tx.member.findFirst({ where: { userId }, select: { id: true } })) return false;
     await tx.member.create({ data: { id: crypto.randomUUID(), organizationId: org.id, userId, role: pending.role, createdAt: new Date(), disabledAt: pending.disabled ? new Date() : null } });
     await tx.platformPendingMember.delete({ where: { subject } });
+    if (pending.role === "owner") {
+      // The new Admin has arrived: the parked Old Admin steps down, and any other owner becomes a manager (one Admin).
+      await settleOldAdmins(tx, org.id, pending.businessId, userId);
+      await tx.member.updateMany({ where: { organizationId: org.id, role: "owner", NOT: { userId } }, data: { role: "manager" } });
+    }
     return true;
   });
 }

@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { KeyRound, Mail, ShieldCheck, UserPlus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { prisma } from "@/lib/db";
+import { platformAccountOrigin } from "@/lib/platform/config";
 import { PanelHeader, SettingsCard, SettingsPanel } from "../../_components/settings-ui";
 import { hasPermission, requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { INVITABLE_ROLE_DEFINITIONS, ROLE_DEFINITIONS, roleLabel } from "@/lib/auth/role-metadata";
@@ -59,6 +62,10 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
     searchParams,
   ]);
 
+  // The Business Admin card: only the Admin sees the button, and only for a business that is linked to the Platform (the transfer itself happens in the Account).
+  const linked = (await prisma.organization.findUnique({ where: { id: organizationId }, select: { businessId: true } }))?.businessId != null;
+  const admin = allMembers.find((m) => m.role === "owner");
+  const viewerIsAdmin = admin?.userId === session.user.id;
   const viewer = { userId: session.user.id, role: allMembers.find((m) => m.userId === session.user.id)?.role ?? "staff" };
   const members = applyTeamPrivacy(allMembers, viewer, teamPrivacy);
 
@@ -102,6 +109,15 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
             <p className="text-sm text-muted-foreground">
               Need to add someone who does not sign in, such as serving or delivery crew? Add them as <Link href="/staff" className="underline">staff without a login</Link>.
             </p>
+            {linked && admin && viewerIsAdmin && (
+              <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">Business Admin: {admin.user.name}</p>
+                  <p className="text-sm text-muted-foreground">You can hand this role to someone else. It is done in your Platterly Account, and nothing changes until they accept.</p>
+                </div>
+                <Button variant="outline" size="sm" render={<a href={`${platformAccountOrigin()}/admin-role`} />}>Transfer admin role</Button>
+              </div>
+            )}
             <ul className="flex flex-col gap-3">
               {members.map((member) => {
                 const isYou = member.userId === session.user.id;

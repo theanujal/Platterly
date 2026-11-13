@@ -112,6 +112,31 @@ export const roles = {
     stockRequests: ["request", "fulfil", "receive"],
   }),
   /**
+   * The person who handed the Business Admin role to someone else (AJ, 2026-11-13). Looks at the business but changes nothing: view only, no
+   * prices, costs, invoices, payments or expenses (`sensitive: []`), no Settings (so no plan or billing), no team. The new Admin may remove them.
+   * Given only by the Platform's `former_admin` role; never invited and never editable in Manage Role Permissions.
+   */
+  oldAdmin: ac.newRole({
+    ...memberAc.statements,
+    tenant: [],
+    users: [],
+    customers: ["view"],
+    eventTypes: ["view"],
+    orders: ["view"],
+    quotations: ["view"],
+    menus: ["view"],
+    inventory: ["view"],
+    invoices: [],
+    payments: [],
+    expenses: [],
+    reports: ["view"],
+    staffing: ["view"],
+    settings: [],
+    kitchen: ["view", "viewPdf"],
+    recipes: ["view"],
+    sensitive: [],
+  }),
+  /**
    * Broad operations, no prices (AJ, 2026-10-17): creates and edits most records and approves menus, but deletes only Staff
    * page records (`staffing: delete`), sees no prices or costs until the Admin grants them, and does not manage the team,
    * roles or settings.

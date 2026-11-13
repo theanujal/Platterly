@@ -228,3 +228,58 @@ describe("remembered central subject", () => {
     expect(takeCentralSubject("b@example.com", t + 121_000)).toBeNull();
   });
 });
+
+describe("Admin transfer: the old Admin becomes an Old Admin only once the new Admin is here", () => {
+  it("the new Admin has not signed in to Caterly yet: the old Admin stays Admin, then steps down when the new Admin joins", async () => {
+    const o = await org();
+    const oldAdmin = await person();
+    const nominee = await person(false);
+    await join(o.id, oldAdmin.id, "owner");
+    // Both events arrive; the nominee has no Caterly user, so they are stored as pending, and the old Admin is parked.
+    await send(event(o.businessId, { subject: nominee.subject, role: "admin" }));
+    await send(event(o.businessId, { subject: oldAdmin.subject, role: "former_admin" }));
+    expect(await roleOf(o.id, oldAdmin.id)).toBe("owner");
+    expect(await prisma.platformPendingMember.findUnique({ where: { subject: oldAdmin.subject } })).toMatchObject({ role: "oldAdmin", businessId: o.businessId });
+    // The nominee's first central sign-in.
+    expect(await consumePendingMembership(nominee.id, nominee.subject)).toBe(true);
+    expect(await roleOf(o.id, nominee.id)).toBe("owner");
+    expect(await roleOf(o.id, oldAdmin.id)).toBe("oldAdmin");
+    expect(await prisma.platformPendingMember.findUnique({ where: { subject: oldAdmin.subject } })).toBeNull();
+    expect(await prisma.member.count({ where: { organizationId: o.id, role: "owner" } })).toBe(1);
+  });
+
+  it("the new Admin already has a Caterly user: both orders end with one Admin and one Old Admin", async () => {
+    for (const newAdminFirst of [true, false]) {
+      const o = await org();
+      const oldAdmin = await person();
+      const nominee = await person();
+      await join(o.id, oldAdmin.id, "owner");
+      const a = () => send(event(o.businessId, { subject: nominee.subject, role: "admin" }));
+      const b = () => send(event(o.businessId, { subject: oldAdmin.subject, role: "former_admin" }));
+      if (newAdminFirst) { await a(); await b(); } else { await b(); await a(); }
+      expect(await roleOf(o.id, nominee.id)).toBe("owner");
+      expect(await roleOf(o.id, oldAdmin.id)).toBe("oldAdmin");
+      expect(await prisma.platformPendingMember.findUnique({ where: { subject: oldAdmin.subject } })).toBeNull();
+    }
+  });
+
+  it("an Old Admin the Platform later removes loses the seat like any member", async () => {
+    const o = await org();
+    const oldAdmin = await person();
+    const nominee = await person();
+    await join(o.id, oldAdmin.id, "owner");
+    await send(event(o.businessId, { subject: nominee.subject, role: "admin" }));
+    await send(event(o.businessId, { subject: oldAdmin.subject, role: "former_admin" }));
+    await send(event(o.businessId, { subject: oldAdmin.subject, role: "former_admin", status: "removed" }));
+    expect(await roleOf(o.id, oldAdmin.id)).toBeNull();
+  });
+});
+
+describe("the Old Admin role", () => {
+  it("views the business but changes nothing, and sees no prices, finance, settings or billing", async () => {
+    const { roles } = await import("@/lib/auth/permissions");
+    const r = roles.oldAdmin;
+    for (const ok of [{ orders: ["view"] }, { customers: ["view"] }, { menus: ["view"] }, { kitchen: ["view"] }, { reports: ["view"] }]) expect(r.authorize(ok as never).success).toBe(true);
+    for (const no of [{ orders: ["create"] }, { orders: ["edit"] }, { orders: ["delete"] }, { menus: ["approve"] }, { kitchen: ["updateStatus"] }, { invoices: ["view"] }, { payments: ["view"] }, { expenses: ["view"] }, { settings: ["view"] }, { users: ["view"] }, { tenant: ["edit"] }, { sensitive: ["orderPrices"] }, { sensitive: ["menuPrices"] }, { sensitive: ["financialReports"] }]) expect(r.authorize(no as never).success).toBe(false);
+  });
+});

@@ -52,6 +52,19 @@ const EXPECTED: Record<string, Record<string, string[]>> = {
     kitchen: ["view", "updateStatus", "viewPdf"],
     recipes: ["view", "create", "edit"],
   },
+  // The Admin who handed the role over (2026-11-13): looks, changes nothing, no prices or finance, no settings or billing.
+  oldAdmin: {
+    customers: ["view"],
+    eventTypes: ["view"],
+    orders: ["view"],
+    quotations: ["view"],
+    menus: ["view"],
+    inventory: ["view"],
+    reports: ["view"],
+    staffing: ["view"],
+    kitchen: ["view", "viewPdf"],
+    recipes: ["view"],
+  },
   staff: {
     orders: ["view"],
     quotations: ["view"],
@@ -104,7 +117,7 @@ function grants(role: keyof typeof roles) {
 const can = (role: string, resource: string, action: string) => (EXPECTED[role][resource] ?? []).includes(action);
 
 describe("role permission matrix", () => {
-  it("covers exactly the seven roles", () => {
+  it("covers exactly the eight roles", () => {
     expect(Object.keys(roles).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 

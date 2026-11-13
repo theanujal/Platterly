@@ -42,6 +42,8 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
   const [pendingToggle, setPendingToggle] = useState(false);
 
   const isOwner = role === "owner";
+  // The Admin who handed the role over: the only thing to do here is remove them (their role cannot be changed to another from this page).
+  const isOldAdmin = role === "oldAdmin";
 
   // The picked role waits here until the owner confirms it; nothing changes before that.
   const [roleToConfirm, setRoleToConfirm] = useState<string | null>(null);
@@ -95,6 +97,7 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
 
   return (
     <div className="flex items-center gap-2">
+      {!isOldAdmin && (
       <Select
         items={Object.fromEntries(ROLE_OPTIONS.map((o) => [o.value, o.label]))}
         value={role}
@@ -112,7 +115,8 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
           ))}
         </SelectContent>
       </Select>
-      {locations && (
+      )}
+      {locations && !isOldAdmin && (
         <Select
           items={{ [ALL_LOCATIONS]: "All locations", ...Object.fromEntries(locations.map((l) => [l.id, l.name])) }}
           value={locationId ?? ALL_LOCATIONS}
@@ -132,6 +136,7 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
           </SelectContent>
         </Select>
       )}
+      {!isOldAdmin && (
       <AlertDialog open={toggleOpen} onOpenChange={setToggleOpen}>
         <AlertDialogTrigger render={<Button variant="outline" size="sm" />}>
           {disabled ? "Enable" : "Disable"}
@@ -157,6 +162,7 @@ export function MemberRowActions({ memberId, memberName, role, disabled, locatio
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      )}
       <Button variant="outline" size="sm" aria-label={`Remove ${memberName}`} onClick={() => setRemoveOpen(true)}>
         <Trash2 /> Remove
       </Button>

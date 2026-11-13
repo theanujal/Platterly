@@ -1,7 +1,8 @@
-import { Briefcase, ChefHat, Crown, Shield, User, Wallet, Warehouse, type LucideIcon } from "lucide-react";
+import { Briefcase, ChefHat, Crown, Eye, Shield, User, Wallet, Warehouse, type LucideIcon } from "lucide-react";
 
 const ROLE_ICONS: Record<string, LucideIcon> = {
   owner: Crown,
+  oldAdmin: Eye,
   manager: Shield,
   staff: User,
   kitchen: ChefHat,

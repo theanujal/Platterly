@@ -8,8 +8,27 @@ type Tx = Pick<Prisma.TransactionClient, "organization" | "account" | "member" |
 
 export type MembershipResult = { ok: true } | { ok: false; status: 409; error: "business_not_linked" | "subject_missing" | "person_in_another_business" };
 
-/** The Platform's one central role is `admin`; in Caterly that is the `owner` (shown as Admin). Nothing else is ever granted from the centre. */
-const caterlyRole = (central: string) => (central === "admin" ? "owner" : "staff");
+/**
+ * The Platform's central role `admin` is the Caterly `owner` (shown as Admin); `former_admin` (the Admin who handed the role over) is `oldAdmin`
+ * (shown as Old Admin: sees, changes nothing). Nothing else is ever granted from the centre.
+ */
+const caterlyRole = (central: string) => (central === "admin" ? "owner" : central === "former_admin" ? "oldAdmin" : "staff");
+
+/**
+ * An Admin transfer reaches Caterly as two events: the new Admin becomes `admin` and the old one becomes `former_admin`. The old Admin keeps running the
+ * business until the new Admin really is an Admin here (the new person may not have signed in to Caterly yet, and the team must never be left without one).
+ * So a `former_admin` event that finds no other Admin is parked as a marker (a pending row with role `oldAdmin`), and this runs when an Admin joins:
+ * every parked person becomes an Old Admin. Returns nothing; the caller then demotes any remaining other owner as before.
+ */
+export async function settleOldAdmins(tx: Tx, organizationId: string, businessId: string, newAdminUserId: string): Promise<void> {
+  const markers = await tx.platformPendingMember.findMany({ where: { businessId, role: "oldAdmin" }, select: { subject: true } });
+  if (markers.length === 0) return;
+  const subjects = markers.map((m) => m.subject);
+  const accounts = await tx.account.findMany({ where: { providerId: PLATFORM_PROVIDER_ID, accountId: { in: subjects } }, select: { userId: true } });
+  const userIds = accounts.map((a) => a.userId).filter((id) => id !== newAdminUserId);
+  if (userIds.length > 0) await tx.member.updateMany({ where: { organizationId, userId: { in: userIds }, NOT: { role: "oldAdmin" } }, data: { role: "oldAdmin" } });
+  await tx.platformPendingMember.deleteMany({ where: { businessId, role: "oldAdmin", subject: { in: subjects } } });
+}
 
 /**
  * `membership.changed`, applied to Caterly's Member table inside the event's transaction (a refusal rolls it all back and the sender retries).
@@ -52,14 +71,24 @@ export async function applyMembership(tx: Tx, businessId: string, data: Membersh
   }
 
   // active
+  if (role === "oldAdmin" && member && member.role !== "oldAdmin") {
+    const otherAdmin = await tx.member.findFirst({ where: { organizationId: org.id, role: "owner", disabledAt: null, NOT: { userId } }, select: { id: true } });
+    if (!otherAdmin) {
+      // The new Admin is not here yet: stay Admin, and become the Old Admin the moment they join.
+      await tx.platformPendingMember.upsert({ where: { subject: data.subject }, create: { subject: data.subject, businessId, role, disabled: false }, update: { businessId, role, disabled: false } });
+      return { ok: true };
+    }
+  }
   if (!member) {
     const elsewhere = await tx.member.findFirst({ where: { userId, NOT: { organizationId: org.id } }, select: { id: true } });
     if (elsewhere) return { ok: false, status: 409, error: "person_in_another_business" };
     await tx.member.create({ data: { id: crypto.randomUUID(), organizationId: org.id, userId, role, createdAt: new Date() } });
   } else {
     const promote = role === "owner" && member.role !== "owner";
-    if (member.disabledAt || promote) await tx.member.update({ where: { id: member.id }, data: { disabledAt: null, ...(promote ? { role: "owner" } : {}) } });
+    const demote = role === "oldAdmin" && member.role !== "oldAdmin";
+    if (member.disabledAt || promote || demote) await tx.member.update({ where: { id: member.id }, data: { disabledAt: null, ...(promote ? { role: "owner" } : demote ? { role: "oldAdmin" } : {}) } });
   }
+  if (role === "owner") await settleOldAdmins(tx, org.id, businessId, userId);
   if (role === "owner") await tx.member.updateMany({ where: { organizationId: org.id, role: "owner", NOT: { userId } }, data: { role: "manager" } });
   await tx.platformPendingMember.deleteMany({ where: { subject: data.subject } });
   return { ok: true };
