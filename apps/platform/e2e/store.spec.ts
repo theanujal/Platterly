@@ -1,7 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
 
-/** Store prototype (docs/store-first-slice-design.md, section 9): sample products, plans and bundles; no real payment. Home is public; Manage needs sign-in (see store-sso.spec.ts). */
+/**
+ * Store prototype (docs/store-first-slice-design.md, section 9): sample products, plans and bundles; no real payment. Every Store page needs a sign-in (see store-sso.spec.ts).
+ * It tests the SAMPLE data, which the Store shows only when OPS_BASE_URL is not set: run it against a Platform server started without OPS_BASE_URL,
+ * OPS_PLATFORM_READER_SECRET and OPS_PLATFORM_BILLING_SECRET (the usual dev launcher sets them, and then the Store is live and these tests cannot pass).
+ * It registers people, so use a throwaway Platform database or remove them afterwards with apps/platform/scripts/clean-test-people.mjs --apply.
+ */
 const STORE = "http://store.localhost:3300";
 
 /** Registers a new person and signs in through the central page; resolves once the Store page is back on screen. */
@@ -22,6 +27,11 @@ async function fillDetails(page: Page) {
 }
 
 test.describe("Store home", () => {
+  // The Store is never public (2026-11-07): the home, like Manage, asks for a sign-in first.
+  test.beforeEach(async ({ page }) => {
+    await signInToStore(page, "/");
+  });
+
   test("opens on Subscribed products with renewal date and amount and a Manage link, and no frequency filter or group headings", async ({ page }) => {
     await page.goto(`${STORE}/`);
     await expect(page.getByRole("note")).toContainText("Prototype with sample data");
