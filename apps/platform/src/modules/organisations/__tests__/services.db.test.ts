@@ -389,7 +389,9 @@ describe.skipIf(credentials === null)("F3.2.2 organisation services against the 
     });
 
     it("services never open a transaction or import the global client", () => {
-      const offenders = files.filter(([f, text]) => f.startsWith("modules/organisations/") && !f.includes("__tests__/") && /\$transaction|@\/lib\/db/.test(text)).map(([f]) => f);
+      // The three event receivers are entry points, not services: each opens the one transaction its event needs (AJ approved this list, 2026-11-13).
+      const RECEIVERS = ["modules/organisations/business-created.ts", "modules/organisations/business-renamed.ts", "modules/organisations/business-state.ts"];
+      const offenders = files.filter(([f, text]) => f.startsWith("modules/organisations/") && !f.includes("__tests__/") && !RECEIVERS.includes(f) && /\$transaction|@\/lib\/db/.test(text)).map(([f]) => f);
       expect(offenders).toEqual([]);
     });
   });

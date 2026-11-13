@@ -144,7 +144,7 @@ describe("migration folders (text only)", () => {
 
   it("sorts the identity migration after the baseline", () => {
     expect(names.slice(0, 2)).toEqual(["20261101000000_baseline", NAME]);
-    expect(names.slice(2)).toEqual(["20261106150000_organisation_schema", "20261107160000_one_business_per_admin", "20261107170000_organisation_team_members"]);
+    expect(names.slice(2)).toEqual(["20261106150000_organisation_schema", "20261107160000_one_business_per_admin", "20261107170000_organisation_team_members", "20261108120000_product_integrations", "20261110120500_organisation_name_version", "20261113120000_ownership_transfer"]);
   });
 
   it("fits the history check when the history is built from these exact files", () => {
