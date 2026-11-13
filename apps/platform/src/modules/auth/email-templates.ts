@@ -49,7 +49,7 @@ export function passwordResetEmail(code: string, expiresInMinutes: number): Rend
 
 type CodeKind = "change-email" | "recovery-email" | "sign-in";
 
-/** DRAFT. A code sent for something other than sign-up or reset: confirming a new sign-in email, a recovery email, or a sign-in. */
+/** A code sent for something other than sign-up or reset: confirming a new sign-in email, a recovery email, or a sign-in. */
 export function otherCodeEmail(kind: CodeKind, code: string, expiresInMinutes: number): RenderedAuthEmail {
   const t = {
     "change-email": { subject: "Confirm Your New Platterly Email", tag: "Email Change", eyebrow: "Confirm your new email", title: "Confirm your new Platterly email", body: "Use the code below to confirm this address as the new sign-in email for your Platterly account.", label: "Your confirmation code", ignore: "If you did not ask to change your email, you can safely ignore this email. Nothing will change." },
@@ -73,7 +73,7 @@ function notice(n: Notice): RenderedAuthEmail {
   };
 }
 
-/** DRAFT. To the OLD address when the sign-in email was changed: with the 24-hour cancel link. */
+/** To the OLD address when the sign-in email was changed: with the 24-hour cancel link. */
 export const signInEmailChangedEmail = (newEmail: string, cancelUrl: string, cancelHours: number) =>
   notice({
     subject: "Your Platterly sign-in email was changed",
@@ -84,35 +84,35 @@ export const signInEmailChangedEmail = (newEmail: string, cancelUrl: string, can
     cta: { label: "Cancel this change", url: cancelUrl },
   });
 
-/** DRAFT. To the NEW address when the sign-in email was changed. */
+/** To the NEW address when the sign-in email was changed. */
 export const newSignInEmailWelcome = () =>
   notice({ subject: "This is now your Platterly sign-in email", tag: "Account Update", eyebrow: "Sign-in email changed", title: "This is now your Platterly sign-in email", paragraphs: ["Your Platterly account now uses this address to sign in.", "For your security you were signed out on all devices. Sign in again with this address and your password."] });
 
-/** DRAFT. To the old address when someone started an email change but never entered the code. */
+/** To the old address when someone started an email change but never entered the code. */
 export const emailChangeAttemptEmail = () =>
   notice({ subject: "Someone tried to change your Platterly sign-in email", tag: "Security Alert", eyebrow: "Email change not completed", title: "Someone tried to change your sign-in email", paragraphs: ["Someone asked to change the sign-in email of your Platterly account to another address, but the code was never entered, so nothing was changed."], after: ["If this was you, you can ignore this email. If it was not, sign in to check your recent activity and change your password."] });
 
-/** DRAFT. To both addresses when the old address cancelled a change. */
+/** To both addresses when the old address cancelled a change. */
 export const emailChangeCancelledEmail = () =>
   notice({ subject: "A Platterly email change was cancelled", tag: "Security Alert", eyebrow: "Email change cancelled", title: "A Platterly email change was cancelled", paragraphs: ["The change of sign-in email on this Platterly account was cancelled. The sign-in email is back to the original address and everyone was signed out.", "The account is on hold until Platterly has verified the owner, so signing in will not work until then."], after: ["If this was not you, contact Platterly support."] });
 
-/** DRAFT. After a password change. */
+/** After a password change. */
 export const passwordChangedEmail = () =>
   notice({ subject: "Your Platterly password was changed", tag: "Security Alert", eyebrow: "Password changed", title: "Your Platterly password was changed", paragraphs: ["The password for your Platterly account was just changed, and you were signed out on your other devices."], after: ["If this was not you, reset your password now and contact Platterly support."] });
 
-/** DRAFT. After a recovery email change; `what` says what happened. */
+/** After a recovery email change; `what` says what happened. */
 export const recoveryEmailChangedEmail = (what: string) =>
   notice({ subject: "Your Platterly recovery email changed", tag: "Security Alert", eyebrow: "Recovery email changed", title: "Your Platterly recovery email changed", paragraphs: [what], after: ["If this was not you, reset your password now and contact Platterly support."] });
 
-/** DRAFT. After two-step verification was switched on or off. */
+/** After two-step verification was switched on or off. */
 export const twoFactorChangedEmail = (on: boolean) =>
   notice({ subject: `Two-step verification was turned ${on ? "on" : "off"} on your Platterly account`, tag: "Security Alert", eyebrow: "Two-step verification", title: `Two-step verification was turned ${on ? "on" : "off"}`, paragraphs: [`Two-step verification was just turned ${on ? "on" : "off"} on your Platterly account.`], after: ["If this was not you, reset your password now and contact Platterly support."] });
 
-/** DRAFT. After an account deletion request. */
+/** After an account deletion request. */
 export const deletionRequestEmail = () =>
   notice({ subject: "We received your Platterly account deletion request", tag: "Account Update", eyebrow: "Deletion request", title: "We received your deletion request", paragraphs: ["We received a request to delete your Platterly account. Our team reviews every request and will contact you before anything is deleted."], after: ["If you did not ask for this, sign in and withdraw the request on your Profile page, then change your password."] });
 
-/** DRAFT. Optional alert (Account notification choice): a sign-in from a browser or system not seen before. `device` is a plain label, never an address. */
+/** Optional alert (Account notification choice): a sign-in from a browser or system not seen before. `device` is a plain label, never an address. */
 export const newSignInAlertEmail = (device: string, when: string) =>
   notice({
     subject: "New sign-in to your Platterly account",
@@ -123,7 +123,7 @@ export const newSignInAlertEmail = (device: string, when: string) =>
     after: ["If this was not you, change your password now in your Account and turn on two-step verification. You can switch this alert off under Notifications in your Account."],
   });
 
-/** DRAFT. Optional alert (Account notification choice), for when apps can be connected (M3): another app was given access to the account. `app` is the app's name. */
+/** Optional alert (Account notification choice), for when apps can be connected (M3): another app was given access to the account. `app` is the app's name. */
 export const thirdPartyAccessAlertEmail = (app: string) =>
   notice({
     subject: "An app was given access to your Platterly account",
@@ -134,9 +134,9 @@ export const thirdPartyAccessAlertEmail = (app: string) =>
     after: ["If this was not you, remove the app's access in your Account and change your password now. You can switch this alert off under Notifications in your Account."],
   });
 
-// Admin transfer by invitation (AJ, 2026-11-10 / 2026-11-13). All five are DRAFTS until AJ approves the wording.
+// Admin transfer by invitation (AJ, 2026-11-10 / 2026-11-13). All six approved by AJ, 2026-11-13.
 
-/** DRAFT. To the person invited to become the Business Admin. */
+/** To the person invited to become the Business Admin. */
 export const adminTransferInviteEmail = (businessName: string, fromName: string, acceptUrl: string, days: number) =>
   notice({
     subject: `${fromName} invited you to be the Business Admin of ${businessName}`,
@@ -148,7 +148,7 @@ export const adminTransferInviteEmail = (businessName: string, fromName: string,
     after: ["If you were not expecting this, you can ignore this email. Nothing changes unless you accept."],
   });
 
-/** DRAFT. To the current Admin when they send an invitation (a record, and a warning if it was not them). */
+/** To the current Admin when they send an invitation (a record, and a warning if it was not them). */
 export const adminTransferSentEmail = (nomineeEmail: string, businessName: string, days: number) =>
   notice({
     subject: "You invited someone to be the Business Admin",
@@ -159,7 +159,7 @@ export const adminTransferSentEmail = (nomineeEmail: string, businessName: strin
     after: ["If this was not you, withdraw the invitation in your Account now, change your password and contact Platterly support."],
   });
 
-/** DRAFT. To the old Admin when the invitation is accepted. */
+/** To the old Admin when the invitation is accepted. */
 export const adminTransferAcceptedEmail = (businessName: string, newAdminEmail: string) =>
   notice({
     subject: `${newAdminEmail} is now the Business Admin of ${businessName}`,
@@ -169,7 +169,7 @@ export const adminTransferAcceptedEmail = (businessName: string, newAdminEmail: 
     paragraphs: [`${newAdminEmail} accepted your invitation and is now the Business Admin of ${businessName}.`, "You stay on as a member who can see everything but cannot change anything, and you can no longer manage the plan or billing. The new Admin can remove you."],
   });
 
-/** DRAFT. To the new Admin once the role has moved. */
+/** To the new Admin once the role has moved. */
 export const adminTransferWelcomeEmail = (businessName: string) =>
   notice({
     subject: `You are now the Business Admin of ${businessName}`,
@@ -179,10 +179,10 @@ export const adminTransferWelcomeEmail = (businessName: string) =>
     paragraphs: [`You accepted the invitation and now own the business account for ${businessName}: its plan, billing and who looks after it.`, "The previous Admin stays on as a member who cannot change anything. You can remove them from the Team page in your product."],
   });
 
-/** DRAFT. To the Admin when the invited person says no. */
+/** To the Admin when the invited person says no. */
 export const adminTransferDeclinedEmail = (nomineeEmail: string, businessName: string) =>
   notice({ subject: "Your Business Admin invitation was declined", tag: "Business Admin", eyebrow: "Admin transfer", title: "Your invitation was declined", paragraphs: [`${nomineeEmail} declined your invitation to become the Business Admin of ${businessName}. You are still the Admin, and you can invite someone else.`] });
 
-/** DRAFT. To the invited person when the Admin withdraws the invitation. */
+/** To the invited person when the Admin withdraws the invitation. */
 export const adminTransferCancelledEmail = (businessName: string) =>
   notice({ subject: "A Business Admin invitation was withdrawn", tag: "Business Admin", eyebrow: "Admin transfer", title: "The invitation was withdrawn", paragraphs: [`The invitation to become the Business Admin of ${businessName} was withdrawn, so the link no longer works.`], after: ["There is nothing you need to do."] });

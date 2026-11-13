@@ -225,7 +225,7 @@ test("a Caterly user already linked to a DIFFERENT central identity is not hande
 
 test("an invitee with no Caterly account signs in centrally, comes back to the invitation (not onboarding), and joins the INVITER's business", async ({ page, browser }) => {
   test.setTimeout(90_000);
-  const ownerEmail = `e2e-owner-${Date.now()}@example.test`;
+  const ownerEmail = `e2e-sso-owner-${Date.now()}@example.test`;
   const invitee = newEmail();
   created.push(ownerEmail);
   invitees.push(invitee);
