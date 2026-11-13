@@ -5,7 +5,6 @@
 // There is ONE central role, the Business Admin (C5, C6). The old Owner/Admin/Manager/Member columns are superseded. Rows whose answer depends on
 // an open decision are marked PENDING and FAIL CLOSED: `authorize` refuses them with reason `pending_decision` until AJ decides:
 //   Decision M / O-D3ROWS  which Owner-only rows apply to the Business Admin (suspend/unlink a product, billing, invoices)
-//   ADM-06 / X3            the initiating role for an ownership transfer
 //   ADM-12                 the exact list of other sensitive Admin actions, and the freshness windows
 //   ADM-07                 whether "Admin cannot touch Admin" is retained (moot while exactly one Admin exists and no action targets a member)
 // Fresh authentication: real `max_age` enforcement needs the session's authentication time, which waits on D1/D2 and F4. This module only
@@ -46,7 +45,7 @@ export const PERMISSIONS: Readonly<Record<Action, Rule>> = {
   "product.unlink": { kind: "pending", freshAuth: "pending", note: "PENDING Decision M / O-D3ROWS." },
   "billing.view": { kind: "pending", freshAuth: "pending", note: "PENDING Decision M / O-D3ROWS." },
   "billing.manage": { kind: "pending", freshAuth: "pending", note: "PENDING Decision M / O-D3ROWS (covers subscription, billing details, plan changes)." },
-  "ownership.transfer": { kind: "pending", freshAuth: true, note: "PENDING initiating role (Decision M, ADM-06, X3). Fresh authentication is kept (C14)." },
+  "ownership.transfer": { kind: "admin", freshAuth: true, note: "Decided by AJ (2026-11-10): the Business Admin invites the next Admin. Fresh authentication is kept (C14)." },
   "ownership.cancel": { kind: "admin", freshAuth: true, note: "The initiator cancels a pending transfer, with fresh authentication (X5, C14)." },
   "ownership.decline": { kind: "nominee", freshAuth: false, note: "The nominee declines, in a normal authenticated session (C14)." },
   "profile.manage": { kind: "any_signed_in_user", freshAuth: false, note: "Everyone manages their own profile and security." },
@@ -56,7 +55,7 @@ export const PERMISSIONS: Readonly<Record<Action, Rule>> = {
   "member.role.assign": { kind: "unavailable", freshAuth: false, note: "SUPERSEDED: one central role (P3)." },
 };
 
-export type CallerMembership = { organisationId: string; centralRole: "admin"; status: "active" | "disabled" | "removed" };
+export type CallerMembership = { organisationId: string; centralRole: "admin" | "former_admin"; status: "active" | "disabled" | "removed" };
 export type Caller = {
   /** Null for a request with no signed-in user. */
   userId: string | null;

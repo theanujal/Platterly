@@ -186,6 +186,8 @@ export function SignInForm() {
   const themed = brand?.theme === "caterly";
   const hydrated = useHydrated();
   const { params, carry, email: preset } = useQuery();
+  // An Admin-transfer invitation link carries `invite`; after signing in the person goes on to the page where they accept it.
+  const invite = params.get("invite");
   const [email, setEmail] = useState(preset);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -246,7 +248,7 @@ export function SignInForm() {
   if (done)
     return (
       <AuthCard title="You are signed in" lede="You can close this page, or go to your Account.">
-        <a className="pa-btn pa-btn-primary" href={`${window.location.protocol}//${window.location.host.replace(/^auth\./, "account.")}/auth/start`}>
+        <a className="pa-btn pa-btn-primary" href={`${window.location.protocol}//${window.location.host.replace(/^auth\./, "account.")}/auth/start${invite ? `?next=${encodeURIComponent(`/admin-transfer?invite=${invite}`)}` : ""}`}>
           Go to my Account
         </a>
       </AuthCard>

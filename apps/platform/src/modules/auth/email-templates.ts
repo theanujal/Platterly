@@ -133,3 +133,56 @@ export const thirdPartyAccessAlertEmail = (app: string) =>
     paragraphs: [`An app called ${app} was just given access to your Platterly account.`, "If this was you, there is nothing to do."],
     after: ["If this was not you, remove the app's access in your Account and change your password now. You can switch this alert off under Notifications in your Account."],
   });
+
+// Admin transfer by invitation (AJ, 2026-11-10 / 2026-11-13). All five are DRAFTS until AJ approves the wording.
+
+/** DRAFT. To the person invited to become the Business Admin. */
+export const adminTransferInviteEmail = (businessName: string, fromName: string, acceptUrl: string, days: number) =>
+  notice({
+    subject: `${fromName} invited you to be the Business Admin of ${businessName}`,
+    tag: "Business Admin",
+    eyebrow: "Invitation",
+    title: `Become the Business Admin of ${businessName}`,
+    paragraphs: [`${fromName} has invited you to take over as the Business Admin of ${businessName} on Platterly.`, "The Business Admin owns the business account: its plan, billing and who looks after it. If you accept, the current Admin stays on as a member who can see everything but cannot change anything, until you remove them.", `This invitation works for ${days} days. If you do not have a Platterly account yet, you will be asked to create one with this email address.`],
+    cta: { label: "View the invitation", url: acceptUrl },
+    after: ["If you were not expecting this, you can ignore this email. Nothing changes unless you accept."],
+  });
+
+/** DRAFT. To the current Admin when they send an invitation (a record, and a warning if it was not them). */
+export const adminTransferSentEmail = (nomineeEmail: string, businessName: string, days: number) =>
+  notice({
+    subject: "You invited someone to be the Business Admin",
+    tag: "Security Alert",
+    eyebrow: "Admin transfer",
+    title: "You invited someone to be the Business Admin",
+    paragraphs: [`You invited ${nomineeEmail} to take over as the Business Admin of ${businessName}.`, `Nothing changes until they accept. The invitation ends after ${days} days, and you can withdraw it any time before then in your Account, under Admin role.`],
+    after: ["If this was not you, withdraw the invitation in your Account now, change your password and contact Platterly support."],
+  });
+
+/** DRAFT. To the old Admin when the invitation is accepted. */
+export const adminTransferAcceptedEmail = (businessName: string, newAdminEmail: string) =>
+  notice({
+    subject: `${newAdminEmail} is now the Business Admin of ${businessName}`,
+    tag: "Business Admin",
+    eyebrow: "Admin transfer",
+    title: "The Business Admin role has moved",
+    paragraphs: [`${newAdminEmail} accepted your invitation and is now the Business Admin of ${businessName}.`, "You stay on as a member who can see everything but cannot change anything, and you can no longer manage the plan or billing. The new Admin can remove you."],
+  });
+
+/** DRAFT. To the new Admin once the role has moved. */
+export const adminTransferWelcomeEmail = (businessName: string) =>
+  notice({
+    subject: `You are now the Business Admin of ${businessName}`,
+    tag: "Business Admin",
+    eyebrow: "Admin transfer",
+    title: `You are now the Business Admin of ${businessName}`,
+    paragraphs: [`You accepted the invitation and now own the business account for ${businessName}: its plan, billing and who looks after it.`, "The previous Admin stays on as a member who cannot change anything. You can remove them from the Team page in your product."],
+  });
+
+/** DRAFT. To the Admin when the invited person says no. */
+export const adminTransferDeclinedEmail = (nomineeEmail: string, businessName: string) =>
+  notice({ subject: "Your Business Admin invitation was declined", tag: "Business Admin", eyebrow: "Admin transfer", title: "Your invitation was declined", paragraphs: [`${nomineeEmail} declined your invitation to become the Business Admin of ${businessName}. You are still the Admin, and you can invite someone else.`] });
+
+/** DRAFT. To the invited person when the Admin withdraws the invitation. */
+export const adminTransferCancelledEmail = (businessName: string) =>
+  notice({ subject: "A Business Admin invitation was withdrawn", tag: "Business Admin", eyebrow: "Admin transfer", title: "The invitation was withdrawn", paragraphs: [`The invitation to become the Business Admin of ${businessName} was withdrawn, so the link no longer works.`], after: ["There is nothing you need to do."] });

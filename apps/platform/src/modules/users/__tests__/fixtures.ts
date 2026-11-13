@@ -23,3 +23,5 @@ export const findUserWithIdentities = (db: Pick<Prisma.TransactionClient, "user"
 export const insertUser = (db: Pick<Prisma.TransactionClient, "user">, data: { email: string; status?: "active" | "disabled" }) =>
   db.user.create({ data: { email: data.email, status: data.status ?? "active", emailVerifiedAt: new Date() }, select: { id: true } });
 export const setUserStatus = (db: Pick<Prisma.TransactionClient, "user">, email: string, status: "active" | "disabled") => db.user.update({ where: { email }, data: { status } });
+export const setEmailVerified = (db: Pick<Prisma.TransactionClient, "user">, id: string, verified: boolean) => db.user.update({ where: { id }, data: { emailVerifiedAt: verified ? new Date() : null }, select: { id: true } });
+export const emailOfUser = async (db: Pick<Prisma.TransactionClient, "user">, id: string) => (await db.user.findUniqueOrThrow({ where: { id }, select: { email: true } })).email;

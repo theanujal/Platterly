@@ -79,8 +79,19 @@ describe("actions that need no membership", () => {
   });
 });
 
+describe("ownership transfer and the former Admin", () => {
+  const former: Caller = { userId: "u1", emailVerified: true, membership: { organisationId: ORG, centralRole: "former_admin", status: "active" }, authenticatedAt: secondsAgo(10) };
+  it("the active Admin may start a transfer with fresh authentication only", () => {
+    expect(reason(run(admin("active"), "ownership.transfer"))).toBe("allowed");
+    expect(reason(run({ ...admin("active"), authenticatedAt: secondsAgo(4000) }, "ownership.transfer"))).toBe("fresh_auth_required");
+  });
+  it("a former Admin (active, read-only) is refused every organisation action, the Store and billing included", () => {
+    for (const a of ["org.view", "org.edit", "product.activate", "product.unlink", "billing.view", "billing.manage", "ownership.transfer", "ownership.cancel"]) expect(reason(run(former, a)), a).toBe("not_a_member");
+  });
+});
+
 describe("pending decisions stay closed", () => {
-  it.each(["product.unlink", "billing.view", "billing.manage", "ownership.transfer"])("%s is refused even to the active Admin until AJ decides", (action) => {
+  it.each(["product.unlink", "billing.view", "billing.manage"])("%s is refused even to the active Admin until AJ decides", (action) => {
     expect(reason(run(admin("active"), action))).toBe("pending_decision");
   });
   it("a pending row never tells a non-member anything beyond 'not a member'", () => {

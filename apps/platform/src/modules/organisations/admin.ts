@@ -22,7 +22,7 @@ export async function isAdminElsewhere(tx: AdminTx, userId: string, exceptOrgani
 }
 
 /** Demote the expected previous Admin first, then insert the new one (the unique index forbids two active Admins even inside the transaction). */
-export async function swapAdminRows(tx: AdminTx, organisationId: string, expectedPreviousMemberId: string | null, newUserId: string): Promise<AdminSwap | SwapRefusal> {
+export async function swapAdminRows(tx: AdminTx, organisationId: string, expectedPreviousMemberId: string | null, newUserId: string, previousBecomes: PreviousBecomes = "disabled"): Promise<AdminSwap | SwapRefusal> {
   const active = await tx.organisationMember.findFirst({ where: { organisationId, centralRole: "admin", status: "active" }, select: { id: true, userId: true } });
   if (expectedPreviousMemberId === null) {
     if (active) return { refused: "admin_exists" };
@@ -33,19 +33,21 @@ export async function swapAdminRows(tx: AdminTx, organisationId: string, expecte
   if (await isAdminElsewhere(tx, newUserId, organisationId)) return { refused: "already_admin_elsewhere" };
   const existing = await tx.organisationMember.findUnique({ where: { organisationId_userId: { organisationId, userId: newUserId } }, select: { id: true } });
   if (existing) return { refused: "former_admin_reappointment_not_decided" };
-  if (active) await tx.organisationMember.update({ where: { id: active.id }, data: { status: "disabled" }, select: { id: true } });
+  // Staff recovery locks the old Admin out ("disabled"). A transfer by invitation keeps them on as a read-only member ("former_admin", still active, AJ 2026-11-13).
+  if (active) await tx.organisationMember.update({ where: { id: active.id }, data: previousBecomes === "former_admin" ? { centralRole: "former_admin" } : { status: "disabled" }, select: { id: true } });
   const created = await tx.organisationMember.create({ data: { organisationId, userId: newUserId, centralRole: "admin", status: "active" }, select: { id: true, userId: true } });
   return { previous: active ? { memberId: active.id, userId: active.userId } : null, current: { memberId: created.id, userId: created.userId } };
 }
 
 export const isRefusal = (r: AdminSwap | SwapRefusal): r is SwapRefusal => "refused" in r;
 
-export type ReplaceAdminInput = { organisationId: string; expectedPreviousMemberId: string | null; newUserId: string };
+export type PreviousBecomes = "disabled" | "former_admin";
+export type ReplaceAdminInput = { organisationId: string; expectedPreviousMemberId: string | null; newUserId: string; previousBecomes?: PreviousBecomes };
 
 export async function replaceAdmin(tx: Prisma.TransactionClient, ctx: Context, input: ReplaceAdminInput): Promise<Result<{ previous: AdminSwap["previous"]; current: AdminSwap["current"] }>> {
   if (!input.newUserId) throw new InvalidInputError("a new Admin is required");
   await lockOrganisation(tx, input.organisationId);
-  const swap = await swapAdminRows(tx, input.organisationId, input.expectedPreviousMemberId, input.newUserId);
+  const swap = await swapAdminRows(tx, input.organisationId, input.expectedPreviousMemberId, input.newUserId, input.previousBecomes);
   if (isRefusal(swap)) return refuse(tx, ctx, "admin.replaced", input.organisationId, swap.refused, swap.detail);
   const { membershipVersion } = await tx.organisation.update({ where: { id: input.organisationId }, data: { membershipVersion: { increment: 1 } }, select: { membershipVersion: true } });
   await writeAudit(tx, {
@@ -59,7 +61,10 @@ export async function replaceAdmin(tx: Prisma.TransactionClient, ctx: Context, i
     after: { adminMemberId: swap.current.memberId },
     requestId: ctx.requestId,
   });
-  if (swap.previous) await queueMembership(tx, input.organisationId, { userId: swap.previous.userId, status: "disabled", membershipVersion: Number(membershipVersion) });
+  if (swap.previous) {
+    const kept = input.previousBecomes === "former_admin";
+    await queueMembership(tx, input.organisationId, { userId: swap.previous.userId, status: kept ? "active" : "disabled", role: kept ? "former_admin" : "admin", membershipVersion: Number(membershipVersion) });
+  }
   await queueMembership(tx, input.organisationId, { userId: swap.current.userId, status: "active", membershipVersion: Number(membershipVersion) });
   return { ok: true, previous: swap.previous, current: swap.current };
 }

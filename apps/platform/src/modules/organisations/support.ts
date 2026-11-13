@@ -26,15 +26,15 @@ export async function refuse(
   return { ok: false, code, detail };
 }
 
-/** One `membership.changed` event (central role `admin`) for every product the business is linked to, or only `productKey` when given. */
+/** One `membership.changed` event (central role `admin`, or `former_admin` for the old Admin after a transfer) for every product the business is linked to, or only `productKey` when given. */
 export async function queueMembership(
   tx: Pick<Prisma.TransactionClient, "organisationProduct" | "organisation" | "outboxEvent">,
   organisationId: string,
-  m: { userId: string; status: "active" | "disabled" | "removed"; membershipVersion: number },
+  m: { userId: string; status: "active" | "disabled" | "removed"; membershipVersion: number; role?: "admin" | "former_admin" },
   productKey?: string,
 ): Promise<void> {
   const keys = productKey ? [productKey] : (await tx.organisationProduct.findMany({ where: { organisationId }, select: { productKey: true }, orderBy: { productKey: "asc" } })).map((p) => p.productKey);
   for (const key of keys) {
-    await enqueueOutbox(tx, { organisationId, productKey: key, eventType: "membership.changed", payload: { userId: m.userId, role: "admin", status: m.status, membershipVersion: m.membershipVersion } });
+    await enqueueOutbox(tx, { organisationId, productKey: key, eventType: "membership.changed", payload: { userId: m.userId, role: m.role ?? "admin", status: m.status, membershipVersion: m.membershipVersion } });
   }
 }

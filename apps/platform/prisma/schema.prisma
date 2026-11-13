@@ -84,6 +84,7 @@ model Organisation {
   creationRequests OrganisationCreationRequest[]
   unlinks          OrganisationProductUnlink[]
   teamMembers      OrganisationTeamMember[]
+  transfers        OwnershipTransfer[]
 
   @@map("organisations")
 }
@@ -256,4 +257,24 @@ model ProductIntegration {
   updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("product_integrations")
+}
+
+// Admin transfer by invitation (AJ, 2026-11-10 and 2026-11-13). One pending transfer per business (partial unique index in the migration). The secret link is stored
+// only as a hash. The nominee may be a person with no account yet, so the nominee is an email until the transfer is accepted.
+model OwnershipTransfer {
+  id             String    @id(map: "ownership_transfers_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organisationId String    @map("organisation_id")
+  fromMemberId   String    @map("from_member_id") @db.Uuid
+  nomineeEmail   String    @map("nominee_email")
+  tokenHash      String    @unique(map: "ownership_transfers_token_hash_key") @map("token_hash")
+  status         String    @default("pending")
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(3)
+  acceptedUserId String?   @map("accepted_user_id") @db.Uuid
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade, onUpdate: Restrict, map: "ownership_transfers_organisation_id_fkey")
+
+  @@index([organisationId], map: "ownership_transfers_organisation_id_idx")
+  @@map("ownership_transfers")
 }

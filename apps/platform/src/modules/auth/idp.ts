@@ -16,6 +16,7 @@ import { mayStartSession } from "../account/hold";
 import { identityPool } from "./identity-db";
 import { OAUTH_QUERY_HEADER } from "./sign-up-gate";
 import { signedProduct } from "./sign-up-origin";
+import { inviteAllowsSignUp } from "../ownership-transfer/invite-signup";
 import { otpEmail, sendAuthEmail, type OtpKind } from "./mailer";
 
 // The identity provider (D1: Better Auth), served on the auth host at /api/auth. It owns credentials, sessions and the OIDC endpoints.
@@ -87,7 +88,9 @@ export function createIdp(options: IdpOptions = {}) {
       // Sign-up only from a product: the form sends the provider-SIGNED address the person arrived on, and a missing, forged, expired or non-product one is refused (see sign-up-gate.ts).
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== "/sign-up/email") return;
-        if (!(await signedProduct(pool, ctx.headers?.get(OAUTH_QUERY_HEADER), ctx.context.secret))) {
+        const arrivedWith = ctx.headers?.get(OAUTH_QUERY_HEADER);
+        // The other way in: an Admin-transfer invitation for exactly this address (see ownership-transfer/invite-signup.ts).
+        if (!(await signedProduct(pool, arrivedWith, ctx.context.secret)) && !(await inviteAllowsSignUp(arrivedWith, (ctx.body as { email?: unknown } | undefined)?.email))) {
           throw new APIError("FORBIDDEN", { message: "Accounts are created when you first use a Platterly product.", code: "SIGN_UP_FROM_PRODUCT_ONLY" });
         }
       }),

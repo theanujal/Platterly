@@ -14,7 +14,19 @@ export type RefusalCode =
   | "same_admin"
   | "former_admin_reappointment_not_decided"
   | "product_not_linked"
-  | "last_link";
+  | "last_link"
+  | "not_the_admin"
+  | "ownership_locked"
+  | "organisation_not_active"
+  | "email_change_open"
+  | "account_on_hold"
+  | "transfer_pending"
+  | "nominee_is_self"
+  | "nominee_holds_a_slot"
+  | "nominee_email_mismatch"
+  | "transfer_not_found"
+  | "transfer_not_pending"
+  | "transfer_expired";
 
 export type Refusal = { ok: false; code: RefusalCode; detail?: Record<string, number | string> };
 export type Done<T> = { ok: true } & T;
