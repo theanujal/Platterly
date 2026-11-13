@@ -207,13 +207,14 @@ describe("the catering import", () => {
     await target.query(`update subscription set status = 'LOCKED' where "businessId" = $1 and "endDate" is null`, [biz(1)]);
     const broken = await reconcile(target, built, applied, KEY);
     expect(broken.ok).toBe(false);
-    expect(broken.checks.filter((c: { ok: boolean }) => !c.ok).map((c: { name: string }) => c.name).join(" | ")).toMatch(/total received[\s\S]*differ|rows whose dates, status/);
+    expect(broken.checks.filter((c: { ok: boolean }) => !c.ok).map((c: { name: string }) => c.name).join(" | ")).toMatch(/total received/);
     await target.query("rollback");
   });
 
   it("ops locking an ended trial is the same fact as catering's still-trialing row, but locking one that has not ended is a difference", async () => {
-    // s2's trial ended on 2026-09-08 (long past); s1b's paid period runs to 2026-11-11 (still ahead).
+    // s2's trial ended on 2026-09-08 (long past); s1b's paid period must still be ahead whenever this runs, so it is set far out.
     await source.query(`update subscription set "trialEndsAt" = '2026-09-08' where id = 's2'`);
+    await source.query(`update subscription set "currentPeriodEnd" = '2099-01-01' where id = 's1b'`);
     const data = await readSource(source, PROFILE);
     const built = buildImport(data, new Set([biz(1), biz(2)]), new Set(manifest.entitlements.map((e) => e.key)));
     await target.query("begin");
