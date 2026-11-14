@@ -10,7 +10,7 @@ import { describeSubscription, type SubscriptionDisplay } from "@/modules/store/
  * named by the request), and Ops is asked only for that one business. Money figures are Ops's; nothing here is worked out again.
  */
 export type InvoiceRow = { id: string; productKey: string; product: string; invoiceNumber: string; paidAt: string | null; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number };
-export type PaymentRow = { id: string; productKey: string; product: string; at: string; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number; status: "PAID" | "PENDING" | "FAILED"; reason: string | null; invoiceNumber: string | null };
+export type PaymentRow = { id: string; productKey: string; product: string; at: string; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number; status: "PAID" | "PENDING" | "FAILED"; reason: string | null; invoiceNumber: string | null; refund?: { status: "PENDING" | "REJECTED" | "PARTIAL" | "REFUNDED"; refunded: number } | null };
 export type SubscriptionRow = {
   productKey: string;
   product: string;
@@ -41,7 +41,7 @@ export async function loadBillingHistory(session: Session | null, now: Date = ne
     subscriptions.push({ productKey, product: p.name, planName: sub?.plan.name ?? null, display: describeSubscription(sub ? { status: sub.status, trialEndsAt: sub.trialEndsAt, currentPeriodEnd: sub.currentPeriodEnd, cancelledAt: sub.cancelledAt ?? null } : null, now) , current: sub ? { status: sub.status, interval: sub.billingInterval, startDate: sub.startDate, trialEndsAt: sub.trialEndsAt, currentPeriodEnd: sub.currentPeriodEnd, pendingPlan: sub.pending?.planName ?? null, autoPay: sub.autoPay ?? null } : null, history: [...p.billing.history].sort((a, b) => b.startDate.localeCompare(a.startDate)) });
     for (const pay of p.billing.payments) {
       if (pay.invoiceNumber) invoices.push({ id: pay.id, productKey, product: p.name, invoiceNumber: pay.invoiceNumber, paidAt: pay.paidAt, planName: pay.planName, interval: pay.interval, total: pay.total });
-      payments.push({ id: pay.id, productKey, product: p.name, at: pay.paidAt ?? "", planName: pay.planName, interval: pay.interval, total: pay.total, status: "PAID", reason: null, invoiceNumber: pay.invoiceNumber });
+      payments.push({ id: pay.id, productKey, product: p.name, at: pay.paidAt ?? "", planName: pay.planName, interval: pay.interval, total: pay.total, status: "PAID", reason: null, invoiceNumber: pay.invoiceNumber, refund: pay.refund ?? null });
     }
     for (const a of p.attempts ?? []) payments.push({ id: a.id, productKey, product: p.name, at: a.createdAt, planName: a.planName, interval: a.interval, total: a.total, status: a.status, reason: a.failureReason, invoiceNumber: null });
   }

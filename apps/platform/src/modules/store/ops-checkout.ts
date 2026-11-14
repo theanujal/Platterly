@@ -138,6 +138,13 @@ export async function changeStoreSubscription(input: { businessId: string; opsPr
   return got.answer.ok === true ? { ok: true, answer: { ok: true } } : { ok: false, reason: "bad_answer" };
 }
 
+/** The Admin asks for a refund on one paid payment (Ops staff decide). Ops checks the payment is the business's own and paid, and says why when it cannot be asked for. */
+export async function requestStoreRefund(input: { businessId: string; opsProductKey: string; paymentId: string; reason: string; requestedBy: string }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "refund-request", { paymentId: input.paymentId, reason: input.reason, requestedBy: input.requestedBy }, deps);
+  if (!got.ok) return got;
+  return got.answer.ok === true ? { ok: true, answer: { ok: true } } : { ok: false, reason: "bad_answer" };
+}
+
 // ---------- Saved payment methods (docs/payment-methods-design.md) ----------
 
 type Scope = { businessId: string; opsProductKey: string };

@@ -218,6 +218,58 @@ function AutoRenewalControls({ productKey, status, onChanged }: { productKey: st
   );
 }
 
+const REFUND_BADGE = { PENDING: { tone: "info", text: "Refund requested" }, REJECTED: { tone: "neutral", text: "Refund declined" }, PARTIAL: { tone: "info", text: "Partly refunded" }, REFUNDED: { tone: "success", text: "Refunded" } } as const;
+
+/** "Request a refund" on one paid payment: the reason goes to Platterly staff, who decide in Ops. Not offered while a request is waiting or once the payment is refunded in full. */
+function RefundRequest({ payment, onChanged }: { payment: PaymentRow; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const status = payment.refund?.status;
+  const badge = status ? REFUND_BADGE[status] : null;
+  // A refund can be asked for within 7 days of paying (AJ, 2026-11-15); Ops enforces it too.
+  const inWindow = Date.now() - new Date(payment.at).getTime() <= 7 * 86_400_000;
+  const canAsk = payment.status === "PAID" && inWindow && (!status || status === "REJECTED" || status === "PARTIAL");
+
+  async function send() {
+    setBusy(true);
+    setNote(null);
+    try {
+      const res = await fetch("/api/account/refund", { method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ productKey: payment.productKey, paymentId: payment.id, reason }) });
+      const json = (await res.json().catch(() => ({}))) as { message?: string };
+      if (!res.ok) return setNote({ ok: false, text: json.message ?? "We could not send your request. Please try again in a few minutes." });
+      setOpen(false);
+      setReason("");
+      setNote({ ok: true, text: "Your refund request is sent. We will email you once it is decided." });
+      onChanged();
+    } catch {
+      setNote({ ok: false, text: "Something went wrong. Your request was not sent." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div data-testid={`refund-${payment.id}`}>
+      <span className="pa-row-actions">
+        {badge ? <Badge tone={badge.tone}>{badge.text}{status === "PARTIAL" && payment.refund ? ` ${inr(payment.refund.refunded)}` : ""}</Badge> : null}
+        {canAsk && !open ? <button type="button" className="pa-btn pa-btn-outline" onClick={() => setOpen(true)}>Request a refund</button> : null}
+      </span>
+      {open ? (
+        <form className="pa-form" onSubmit={(e) => { e.preventDefault(); void send(); }} aria-label="Request a refund">
+          <label className="pa-hint" htmlFor={`refund-reason-${payment.id}`}>Why are you asking for a refund?</label>
+          <textarea id={`refund-reason-${payment.id}`} className="pa-input" rows={3} maxLength={1000} required value={reason} onChange={(e) => setReason(e.target.value)} />
+          <p className="pa-hint">Refunds can be asked for within 7 days of paying. Our team decides the amount. If it is approved, it goes back to the way you paid.</p>
+          <button type="submit" className="pa-btn pa-btn-primary" disabled={busy || !reason.trim()}>Send request</button>{" "}
+          <button type="button" className="pa-btn pa-btn-outline" onClick={() => setOpen(false)}>Cancel</button>
+        </form>
+      ) : null}
+      {note ? <p className={note.ok ? "pa-hint" : "pa-muted"} role={note.ok ? "status" : "alert"}>{note.text}</p> : null}
+    </div>
+  );
+}
+
 function daysLeft(iso: string) {
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000));
 }
@@ -312,6 +364,7 @@ export function SubscriptionsView({ storeOrigin }: { storeOrigin: string }) {
                             <span className="pa-row-actions">
                               {paymentBadge(p)}
                               {p.status === "PAID" && p.invoiceNumber ? <a className="pa-btn pa-btn-outline" href={`/api/account/invoices/${encodeURIComponent(p.id)}?product=${encodeURIComponent(p.productKey)}`} download>Invoice</a> : null}
+                              {p.status === "PAID" ? <RefundRequest payment={p} onChanged={() => setReloads((n) => n + 1)} /> : null}
                             </span>
                           </li>
                         ))}

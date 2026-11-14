@@ -1,6 +1,7 @@
 import "server-only";
 import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
 import { BillingError, cancelAutoPay, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, pauseAutoPay, quoteCheckout, reactivateSubscription, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
+import { requestRefund } from "@/modules/billing/refunds";
 import { methodsView, recordFirstMethod, removeMethod, startAddCard, startMakePrimary, verifyAddCard, verifyMakePrimary } from "@/modules/billing/methods";
 import { prisma } from "@/lib/db";
 import { platformRazorpay, RazorpayError } from "@/modules/billing/razorpay";
@@ -100,6 +101,13 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
         return "abandoned" as const;
       });
       return outcome === "has_payment" ? reply(409, { error: "has_payment" }) : reply(200, { ok: true });
+    }
+    // The Admin asks for a refund on one paid payment; Platterly staff decide in Ops. The reason is the owner's own words.
+    if (action === "refund-request") {
+      const body = (json ?? {}) as Record<string, unknown>;
+      if (typeof body.paymentId !== "string" || typeof body.reason !== "string") return reply(400, { error: "refund-request needs a paymentId and a reason" });
+      await requestRefund({ paymentId: body.paymentId, businessId, productKey, requestedBy: typeof body.requestedBy === "string" ? body.requestedBy.slice(0, 100) : null, reason: body.reason });
+      return reply(200, { ok: true });
     }
     if (action === "methods") return reply(200, await methodsView(businessId, productKey));
     if (action === "method-add") return reply(200, await startAddCard(businessId, platformRazorpay()));

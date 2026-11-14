@@ -21,6 +21,15 @@ export async function nextInvoiceNumber(db: Db, productKey: string): Promise<num
   return rows[0].lastNumber;
 }
 
+/** The next credit note number for a product (its own series, separate from invoices), taken atomically inside the approving transaction. */
+export async function nextCreditNoteNumber(db: Db, productKey: string): Promise<number> {
+  const rows = await db.$queryRaw<{ lastCreditNote: number }[]>`
+    insert into invoice_counter ("productKey", "lastNumber", "lastCreditNote") values (${productKey}, 0, 1)
+    on conflict ("productKey") do update set "lastCreditNote" = invoice_counter."lastCreditNote" + 1
+    returning "lastCreditNote"`;
+  return rows[0].lastCreditNote;
+}
+
 /** The highest number issued so far for a product (0 when none). */
 export async function lastInvoiceNumber(productKey: string): Promise<number> {
   return (await prisma.invoiceCounter.findUnique({ where: { productKey } }))?.lastNumber ?? 0;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
-import { changeStoreSubscription, opsCheckoutConfigured, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout } from "../ops-checkout";
+import { changeStoreSubscription, opsCheckoutConfigured, requestStoreRefund, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout } from "../ops-checkout";
 import { opsKeyFor, readBuyer } from "../purchase";
 
 const SECRET = "billing-secret-0123456789abcdef0123456789abcdef";
@@ -118,6 +118,21 @@ describe("Store: price quote and plan changes", () => {
     const asked = { businessId: BIZ, opsProductKey: "catering", change: "cancel" as const };
     expect(await changeStoreSubscription(asked, { env, fetchImpl: ops({ status: 400, body: { error: "There is no paid plan to cancel." } }).fetchImpl })).toEqual({ ok: false, reason: "rejected", message: "There is no paid plan to cancel." });
     expect(await changeStoreSubscription(asked, { env, fetchImpl: ops({ body: { ok: false } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
+  });
+});
+
+describe("Store: asking for a refund", () => {
+  const asked = { businessId: BIZ, opsProductKey: "catering", paymentId: "pay_1", reason: "Closing down", requestedBy: "usr_1" };
+  it("sends the payment, the reason and who asked to the refund-request route", async () => {
+    const { fetchImpl, seen } = ops({ body: { ok: true } });
+    expect(await requestStoreRefund(asked, { env, fetchImpl })).toEqual({ ok: true, answer: { ok: true } });
+    expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "refund-request")}`);
+    expect(seen.signedOk).toBe(true);
+    expect(JSON.parse(seen.body!)).toEqual({ paymentId: "pay_1", reason: "Closing down", requestedBy: "usr_1" });
+  });
+  it("a 400 from Ops carries its message; an answer that is not ok is refused", async () => {
+    expect(await requestStoreRefund(asked, { env, fetchImpl: ops({ status: 400, body: { error: "A refund request for this payment is already waiting for a decision." } }).fetchImpl })).toEqual({ ok: false, reason: "rejected", message: "A refund request for this payment is already waiting for a decision." });
+    expect(await requestStoreRefund(asked, { env, fetchImpl: ops({ body: { ok: false } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
   });
 });
 

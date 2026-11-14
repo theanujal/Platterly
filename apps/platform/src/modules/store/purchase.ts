@@ -8,7 +8,7 @@ import { findSubjectForUser } from "../users/subject";
 import { completePaidSignupNow, findPendingSignup } from "../organisations/paid-signup-run";
 import { identityPool } from "../auth/identity-db";
 import { getProfile } from "../account/profile";
-import { changeStoreAutoPay, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
+import { changeStoreAutoPay, requestStoreRefund, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { opsKeyFor } from "./keys";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
@@ -128,6 +128,17 @@ export async function changePlan(session: Session | null, input: { change?: unkn
     return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change, planId: wanted.planId, interval: wanted.interval });
   }
   return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change });
+}
+
+/** The Account's "Request a refund" on a paid payment: the signed-in person's own business, active Admin only. The reason is theirs; Ops decides. */
+export async function requestRefund(session: Session | null, input: { productKey?: unknown; paymentId?: unknown; reason?: unknown }): Promise<PurchaseResult<{ ok: true }>> {
+  const who = await buyerBusiness(session);
+  if (!who.ok || !session) return who.ok ? { ok: false, reason: "not_signed_in" } : who;
+  const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
+  const paymentId = text(input.paymentId, 64);
+  const reason = text(input.reason, 1000);
+  if (!productKey || !paymentId || !reason) return { ok: false, reason: "bad_request" };
+  return requestStoreRefund({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), paymentId, reason, requestedBy: session.userId });
 }
 
 // ---------- Saved payment methods ----------

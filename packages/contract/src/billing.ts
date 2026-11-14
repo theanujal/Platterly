@@ -178,7 +178,10 @@ export interface BillingView {
     autoPay?: { status: AutoPayStatus; nextChargeAt: string | null } | null;
   } | null;
   history: { id: string; planName: string; status: SubscriptionStatus; startDate: string; endDate: string | null }[];
-  payments: { id: string; planName: string; interval: BillingInterval; total: number; paidAt: string | null; periodStart: string | null; periodEnd: string | null; invoiceNumber: string | null }[];
+  payments: { id: string; planName: string; interval: BillingInterval; total: number; paidAt: string | null; periodStart: string | null; periodEnd: string | null; invoiceNumber: string | null;
+    /** Where a refund stands on this payment: asked for and waiting, turned down, partly or fully given back (`refunded` is the rupees so far). Null or absent when none was asked for, and from an older ops. */
+    refund?: { status: "PENDING" | "REJECTED" | "PARTIAL" | "REFUNDED"; refunded: number } | null;
+  }[];
 }
 
 export interface OrderCheckoutAnswer {

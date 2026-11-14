@@ -133,9 +133,9 @@ model Product {
   notice            ProductNotice?
   invoiceCounter    InvoiceCounter?
   libraryCandidates LibraryCandidate[]
+  coupons           Coupon[]
 
   @@map("product")
-  coupons Coupon[]
 }
 
 // ---------- Business directory ----------
@@ -398,9 +398,11 @@ model PlatformReader {
 // The running invoice number of one product (one counter per product, so numbering follows the product, not the whole
 // platform). `lastNumber` is the highest number issued; the next invoice takes lastNumber + 1, atomically.
 model InvoiceCounter {
-  productKey String  @id
-  product    Product @relation(fields: [productKey], references: [key], onDelete: Cascade)
-  lastNumber Int     @default(0)
+  productKey     String  @id
+  product        Product @relation(fields: [productKey], references: [key], onDelete: Cascade)
+  lastNumber     Int     @default(0)
+  // The running credit note number of the same product (credit notes are a separate series from invoices).
+  lastCreditNote Int     @default(0)
 
   @@map("invoice_counter")
 }
@@ -586,6 +588,8 @@ model SubscriptionPayment {
   coupon                 Coupon?         @relation(fields: [couponId], references: [id], onDelete: Restrict)
   couponDiscount         Decimal?        @db.Decimal(10, 2)
   createdAt              DateTime        @default(now())
+  refundRequests         RefundRequest[]
+  refunds                Refund[]
 
   @@index([businessId, createdAt])
   @@index([razorpaySubscriptionId])
@@ -945,4 +949,62 @@ model Coupon {
   payments SubscriptionPayment[]
 
   @@map("coupon")
+}
+
+// ---------- Refunds (AJ, 2026-11-14: the Business Admin asks in the Store, Platterly staff decide in Ops) ----------
+
+enum RefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// What happens to the plan when a refund is approved: the kitchen locks now, or it keeps the paid days with no renewal.
+enum RefundEndMode {
+  END_NOW
+  KEEP_TO_PERIOD_END
+}
+
+// A Business Admin's request to be refunded for one paid payment. At most one open (PENDING) request per payment.
+model RefundRequest {
+  id            String              @id
+  paymentId     String
+  payment       SubscriptionPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  businessId    String
+  // The Platterly person who asked (an Admin), as the product sent it. Null if unknown.
+  requestedBy   String?
+  reason        String
+  status        RefundRequestStatus @default(PENDING)
+  decidedBy     String?
+  decidedAt     DateTime?
+  rejectionNote String?
+  createdAt     DateTime            @default(now())
+  refund        Refund?
+
+  @@index([paymentId])
+  @@index([businessId, createdAt])
+  @@index([status])
+  @@map("refund_request")
+}
+
+// A refund Platterly issued: what staff approved, split into the amount before GST and its GST share, with its credit note.
+// Platterly's own accounting record, so it is never deleted (Restrict).
+model Refund {
+  id               String              @id
+  requestId        String              @unique
+  request          RefundRequest       @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  paymentId        String
+  payment          SubscriptionPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  // Rupees. amount + gstAmount = total, the sum given back to the customer.
+  amount           Decimal             @db.Decimal(10, 2)
+  gstAmount        Decimal             @db.Decimal(10, 2)
+  total            Decimal             @db.Decimal(10, 2)
+  endMode          RefundEndMode
+  razorpayRefundId String              @unique
+  creditNoteNumber String              @unique
+  decidedBy        String?
+  issuedAt         DateTime            @default(now())
+
+  @@index([paymentId])
+  @@map("refund")
 }

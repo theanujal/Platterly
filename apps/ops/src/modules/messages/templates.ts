@@ -157,6 +157,39 @@ export const TEMPLATES: Record<string, Template> = {
     }),
     whatsapp: { name: "platterly_plan_payment_received", body: "Hi {{1}}, we received your payment of {{2}} for the {{3}} plan. Your plan is active until {{4}}. Invoice {{5}} is in Settings > Subscription in Platterly.", params: (v, c) => [c.businessName, inr(text(v, "amount")), text(v, "planName"), text(v, "validUntil"), text(v, "invoiceNumber")] },
   },
+  refund_approved: {
+    requires: ["amount", "creditNoteNumber", "endMode"],
+    render: (v, c) => ({
+      subject: "Your refund has been approved",
+      html: renderEmail({
+        tag: "Refund",
+        eyebrow: "Refund approved",
+        title: "Your refund is on its way",
+        greeting: greet(c),
+        bodyHtml:
+          p(`We have approved a refund for <strong>${escapeHtml(c.businessName)}</strong> and sent it back to the way you paid. Banks usually take 5 to 7 working days to show it.`) +
+          p(text(v, "endMode") === "END_NOW" ? "Your plan has ended, so the account is locked. Nothing is deleted: choose a plan in the Store to carry on where you left off." : "Your plan keeps working until the days you paid for run out, and it will not renew."),
+        details: [["Refund (with GST)", inr(text(v, "amount"))], ["Credit note", text(v, "creditNoteNumber")]],
+        cta: { label: "View subscription", url: `${c.accountUrl ?? c.productUrl}/subscriptions` },
+      }),
+    }),
+    whatsapp: { name: "platterly_refund_approved", body: "Hi {{1}}, we approved your refund of {{2}}. It goes back to the way you paid; banks usually take 5 to 7 working days to show it. {{3}} Credit note: {{4}}.", params: (v, c) => [c.businessName, inr(text(v, "amount")), text(v, "endMode") === "END_NOW" ? "Your plan has ended, so the account is locked." : "Your plan works until the paid days run out and will not renew.", text(v, "creditNoteNumber")] },
+  },
+  refund_declined: {
+    requires: [],
+    render: (v, c) => ({
+      subject: "About your refund request",
+      html: renderEmail({
+        tag: "Refund",
+        eyebrow: "Refund request",
+        title: "We could not approve your refund",
+        greeting: greet(c),
+        bodyHtml: p(`We looked at your refund request for <strong>${escapeHtml(c.businessName)}</strong> and could not approve it. Your plan carries on as before.`) + (v.note ? p(`<strong>Note from our team:</strong> ${escapeHtml(text(v, "note"))}`) : "") + p("If you think this is a mistake, reply to this email and we will look again."),
+        cta: { label: "View subscription", url: `${c.accountUrl ?? c.productUrl}/subscriptions` },
+      }),
+    }),
+    whatsapp: { name: "platterly_refund_declined", body: "Hi {{1}}, we could not approve your refund request, so your plan carries on as before. {{2}}", params: (v, c) => [c.businessName, v.note ? `Note from our team: ${text(v, "note")}` : "Reply to this message if you have any questions."] },
+  },
   stand_placed: {
     requires: ["quantity", "amount"],
     render: (v, c) => ({

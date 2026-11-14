@@ -6,6 +6,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { nextInvoiceNumber } from "./numbering";
+import { refundState } from "./refund-math";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { INTERVAL_DAYS, formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, stackedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
@@ -64,7 +65,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
   await requireBusiness(businessId, productKey);
   const [subs, payments] = await Promise.all([
     prisma.subscription.findMany({ where: { businessId, productKey }, include: { plan: { select: { id: true, code: true, name: true } } }, orderBy: { startDate: "desc" } }),
-    prisma.subscriptionPayment.findMany({ where: { businessId, productKey, status: "PAID" }, include: { plan: { select: { name: true } } }, orderBy: { paidAt: "desc" } }),
+    prisma.subscriptionPayment.findMany({ where: { businessId, productKey, status: "PAID" }, include: { plan: { select: { name: true } }, refunds: { select: { total: true } }, refundRequests: { select: { status: true }, orderBy: { createdAt: "desc" } } }, orderBy: { paidAt: "desc" } }),
   ]);
   const current = subs.find((s) => s.endDate === null) ?? null;
   const pendingPlan = current?.pendingPlanId ? await prisma.plan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
@@ -83,7 +84,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
       autoPay: current.autoPay ? { status: current.autoPay, nextChargeAt: current.autoPay === "ACTIVE" && !current.pendingPlanId ? iso(current.currentPeriodEnd) : null } : null,
     },
     history: subs.map((s) => ({ id: s.id, planName: s.plan.name, status: s.status, startDate: s.startDate.toISOString(), endDate: iso(s.endDate) })),
-    payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber })),
+    payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber, refund: refundState({ total: Number(p.total), refunded: p.refunds.reduce((sum, r) => sum + Number(r.total), 0), pending: p.refundRequests.some((r) => r.status === "PENDING"), lastRequest: p.refundRequests[0]?.status ?? null }) })),
   };
 }
 

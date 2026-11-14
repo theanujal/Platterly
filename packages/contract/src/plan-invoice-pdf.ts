@@ -44,6 +44,8 @@ export interface PlanInvoiceData {
   totalLabel: string;
   paymentNote: string;
   footerNote: string | null;
+  /** A credit note reuses this layout: its title, the label before the number and the document type. Each defaults to the invoice wording. */
+  document?: { title: string; numberLabel: string; typeLabel: string };
   /** Wording for other things Platterly invoices (the Order QR stand): each defaults to the plan wording below. */
   labels?: Partial<InvoiceLabels>;
 }
@@ -76,7 +78,7 @@ const PAGE_BOTTOM = 800;
 /** Draws the plan invoice (A4) and returns the PDF bytes. Pure: no database, no files, so it is easy to test. */
 export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   const doc = new jsPDF({ unit: "pt", format: "a4", compress: true });
-  doc.setProperties({ title: `Invoice ${data.invoiceNumber}`, author: "Platterly" });
+  doc.setProperties({ title: `${data.document?.title === "CREDIT NOTE" ? "Credit note" : "Invoice"} ${data.invoiceNumber}`, author: "Platterly" });
   const labels = { ...PLAN_LABELS, ...data.labels };
   const left = 40;
   const right = 555;
@@ -123,7 +125,7 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   doc.line(325, 36, 325, 150);
   font("bold", 28);
   ink(TEXT);
-  doc.text("INVOICE", 342, 62);
+  doc.text(data.document?.title ?? "INVOICE", 342, 62);
   const pillWidth = 22 + doc.getTextWidth(data.statusLabel) + 12;
   fill(SUCCESS_TINT);
   doc.roundedRect(342, 72, pillWidth, 20, 10, 10, "F");
@@ -135,9 +137,9 @@ export function renderPlanInvoicePdf(data: PlanInvoiceData): ArrayBuffer {
   ink(SUCCESS);
   doc.text(data.statusLabel, 366, 85.5);
   const meta: [string, string][] = [
-    ["Invoice #:", data.invoiceNumber],
+    [data.document?.numberLabel ?? "Invoice #:", data.invoiceNumber],
     ["Date:", data.date],
-    ["Invoice Type:", "Subscription"],
+    [data.document?.typeLabel ? "Document Type:" : "Invoice Type:", data.document?.typeLabel ?? "Subscription"],
     ["Product:", data.productName],
   ];
   meta.forEach(([label, value], i) => {
