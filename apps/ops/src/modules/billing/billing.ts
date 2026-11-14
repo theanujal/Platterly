@@ -13,6 +13,8 @@ import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscript
 import { getProfile } from "./profile";
 import { getSavedBuyer, saveBillingProfile } from "./billing-profile";
 import { recordRazorpayEvent } from "./events";
+import { BillingError } from "./billing-error";
+import { ensureRazorpayCustomer } from "./razorpay-customer";
 
 /**
  * A business pays Platterly for its plan (ported from catering's Chunk 20, now keyed by business and product). A yearly
@@ -20,7 +22,7 @@ import { recordRazorpayEvent } from "./events";
  * Razorpay charges every 30 days and each charge is one payment, one period and one invoice. A paid period that runs out locks the business (the snapshot's own dates and ops's sweep both say so).
  * Platterly's Razorpay keys are read from the environment; until they are set, checkout answers "not switched on yet".
  */
-export class BillingError extends Error {}
+export { BillingError };
 
 export const onlineBillingAvailable = () => platformRazorpay() !== null;
 
@@ -28,7 +30,7 @@ const iso = (d: Date | null) => (d ? d.toISOString() : null);
 const view = (b: PriceBreakdown): PriceView => ({ amount: b.amount, gstPercent: b.gstPercent, gstAmount: b.gstAmount, total: b.total });
 
 /** The business must be registered on the product the caller is signed in as. Anything else looks like "not found". */
-async function requireBusiness(businessId: string, productKey: string) {
+export async function requireBusiness(businessId: string, productKey: string) {
   const link = await prisma.businessProduct.findUnique({ where: { businessId_productKey: { businessId, productKey } }, include: { business: true } });
   if (!link) throw new BillingError("unknown_business");
   return link.business;
@@ -312,7 +314,7 @@ export async function stopAutoPay(sub: { businessId: string; productKey: string;
 }
 
 /** The Razorpay plan for this plan at its current monthly price (with GST), made the first time it is sold. */
-async function razorpayPlanFor(creds: PlatformRazorpay, plan: PlanOffer, fetchImpl: typeof fetch) {
+export async function razorpayPlanFor(creds: PlatformRazorpay, plan: PlanOffer, fetchImpl: typeof fetch) {
   const key = { planId: plan.id, amountPaise: Math.round(plan.monthly.total * 100) };
   const found = await prisma.razorpayPlan.findUnique({ where: { planId_amountPaise: key } });
   if (found) return found.razorpayPlanId;
@@ -349,7 +351,9 @@ export async function startAutoPayCheckout(input: { businessId: string; productK
   if (current?.planId === plan.id && (current.autoPay === "ACTIVE" || current.autoPay === "PAUSED")) throw new BillingError("Auto-pay is already on for this plan.");
   await dropUnpaidSetup(creds, input.businessId, input.productKey, current?.razorpaySubscriptionId ?? null, fetchImpl);
   const razorpayPlanId = await razorpayPlanFor(creds, plan, fetchImpl);
-  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
+  // With the business's Razorpay customer, the card the owner pays with is saved at Razorpay and can be listed as a payment method.
+  const customerId = await ensureRazorpayCustomer(input.businessId, creds, fetchImpl);
+  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, customerId, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
   const price = plan.monthly;
   const payment = await prisma.subscriptionPayment.create({
     data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: input.businessId, productKey: input.productKey, planId: plan.id, interval: "MONTHLY", amount: price.amount, gstPercent: price.gstPercent, gstAmount: price.gstAmount, total: price.total, razorpaySubscriptionId: sub.id, buyer: input.buyer as unknown as Prisma.InputJsonValue },
@@ -405,7 +409,13 @@ export async function chargeAutoPay(input: AutoPayCycle & { razorpayPaymentId: s
   // The first charge settles the payment written at checkout; each later one is a new payment for the same plan, price and buyer.
   let payment = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId, status: { in: ["PENDING", "FAILED"] } }, orderBy: { createdAt: "asc" }, include });
   if (!payment) {
-    const last = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId, status: "PAID" }, orderBy: { paidAt: "desc" } });
+    let last = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId, status: "PAID" }, orderBy: { paidAt: "desc" } });
+    // A subscription the owner switched to (a new primary payment method) has no payment of its own yet: the business's current subscription row names it,
+    // and the template is that business's and product's last paid payment.
+    if (!last) {
+      const switched = await prisma.subscription.findUnique({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId } });
+      if (switched && !switched.endDate) last = await prisma.subscriptionPayment.findFirst({ where: { businessId: switched.businessId, productKey: switched.productKey, status: "PAID" }, orderBy: { paidAt: "desc" } });
+    }
     if (!last) return null;
     // A renewal uses the business's current saved billing details (so an edit in the Account reaches the next invoice), else the previous payment's.
     const renewalBuyer = (await getSavedBuyer(last.businessId)) ?? last.buyer;

@@ -44,6 +44,7 @@ function fakeRazorpay(): typeof fetch {
     calls.push({ method: init?.method ?? "GET", path, body: init?.body ? JSON.parse(String(init.body)) : null });
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
     if (path === "/plans") return json({ id: `plan_T${++counter}` });
+    if (path === "/customers") return json({ id: `cust_T${++counter}` });
     if (path === "/orders") return json({ id: `order_T${++counter}` });
     if (path === "/subscriptions") {
       const id = `sub_T${++counter}`;
@@ -83,7 +84,7 @@ async function setup() {
   const pro = await createPlan({ productKey: KEY, code: "pro", name: "Pro", isTrial: false, priceMonthly: 3000, priceAnnual: 33000, gstPercent: 18, highlights: [], entitlements: { maxCustomers: 100 } }, null);
   const lite = await createPlan({ productKey: KEY, code: "lite", name: "Lite", isTrial: false, priceMonthly: 1000, priceAnnual: null, gstPercent: 18, highlights: [], entitlements: { maxCustomers: 10 } }, null);
   const id = businessId();
-  await prisma.business.create({ data: { id, name: "AutoPayTest Kitchen", ownerEmail: "o@example.test", ownerName: "O", products: { create: { productKey: KEY } } } });
+  await prisma.business.create({ data: { id, name: "AutoPayTest Kitchen", ownerEmail: "o@example.test", ownerPhone: "9845671203", ownerName: "O", products: { create: { productKey: KEY } } } });
   return { pro, lite, biz: id };
 }
 
@@ -174,7 +175,7 @@ describe("auto-pay checkout and charges", () => {
   it("starts a subscription on a Razorpay plan made once per plan and price, with a PENDING payment", async () => {
     const { pro, biz } = await setup();
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
-    expect(a).toMatchObject({ kind: "subscription", keyId: KEY_ID, razorpaySubscriptionId: "sub_T2", amountPaise: 354000 });
+    expect(a).toMatchObject({ kind: "subscription", keyId: KEY_ID, razorpaySubscriptionId: "sub_T3", amountPaise: 354000 });
     await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     expect(calls.filter((c) => c.path === "/plans")).toHaveLength(1);
     await prisma.plan.update({ where: { id: pro.id }, data: { priceMonthly: 3500 } });
@@ -573,7 +574,7 @@ describe("renewal reminders", () => {
 
     // A second kitchen on the same plans, paying monthly by auto-pay: the heads-up a week before, then "today" from 8 am IST.
     const other = businessId();
-    await prisma.business.create({ data: { id: other, name: "AutoPayTest Monthly", ownerEmail: "m@example.test", products: { create: { productKey: KEY } } } });
+    await prisma.business.create({ data: { id: other, name: "AutoPayTest Monthly", ownerEmail: "m@example.test", ownerPhone: "9845671204", products: { create: { productKey: KEY } } } });
     const a = await startAutoPayCheckout({ businessId: other, productKey: KEY, planId: pro.id, buyer });
     const first = cycle(a.razorpaySubscriptionId, new Date(Math.floor((Date.now() + IST) / DAY) * DAY - IST + 14 * 3_600_000));
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_m1", ...first });

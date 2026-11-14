@@ -57,6 +57,8 @@ export interface RazorpaySubscription {
   current_start: number | null;
   current_end: number | null;
   charge_at?: number | null;
+  notes?: Record<string, string> | unknown[] | null;
+  customer_id?: string | null;
 }
 
 async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST" | "DELETE", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {

@@ -46,5 +46,14 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 ## Open points
 
 - UPI AutoPay with a future start and its label (VPA) are untested; check in test mode before relying on them.
-- A renewal charge for a switched subscription must find the business's last paid payment by business and product, not by Razorpay subscription id (it has none yet): `chargeAutoPay` needs that lookup.
+- ~~A renewal charge for a switched subscription must find the business's last paid payment by business and product~~ Done 2026-11-14 (3b.1b): `chargeAutoPay` falls back to the Subscription row.
 - Renewal reminders point to Caterly's `/subscribe`; annual reminders need the Store address as a new Ops setting.
+
+## Built (3b.1b, 2026-11-14, Ops only)
+
+`apps/ops/src/modules/billing/methods.ts` implements the flows above (`startAddCard`/`verifyAddCard`, `startMakePrimary`/`verifyMakePrimary`, `removeMethod`, `listMethods`, `recordMethodFromPayment`); the caller must already have checked the person is the business's active Admin. Behaviour worth knowing:
+
+- A Razorpay customer needs the owner's email and mobile number; without them a monthly purchase or card add is refused with a message saying which is missing.
+- `verifyMakePrimary` accepts only a subscription this business started (notes carry business, product and purpose) that Razorpay reports `authenticated` or `active`; otherwise it cancels it and changes nothing. It points the subscription row first, then cancels the old one, so the old one's cancelled webhook is ignored. The old card stays as a secondary; an old UPI method is deleted (decision 5).
+- The Rs 5 refund of a card registration that fails keeps the card and raises a staff alert.
+- Not built yet: routes and `proxy.ts` entries (3b.2), recording the first method from a verified monthly purchase (3b.2), Account page (3b.3), annual reminders (3b.4).
