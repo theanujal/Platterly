@@ -64,6 +64,12 @@ export function Footer({ cookieSettings = false }: { cookieSettings?: boolean })
                 <a href={SITE.appUrl} className={LINK}>
                   Log in
                 </a>
+                <a href={SITE.accountUrl} className={LINK}>
+                  Your Account
+                </a>
+                <a href={SITE.storeUrl} className={LINK}>
+                  Store
+                </a>
               </Group>
             </div>
               {/* Level with the logo, on the right. */}

@@ -31,7 +31,7 @@ export const MENUS: { label: string; groups: NavGroup[] }[] = [
           { label: "Upcoming features", href: "/upcoming/" },
         ],
       },
-      { label: "Support", links: [{ label: "Contact us", href: "/contact/" }, { label: "Talk to us", href: "/talk-to-us/" }, { label: "Log in", href: SITE.appUrl }] },
+      { label: "Support", links: [{ label: "Contact us", href: "/contact/" }, { label: "Talk to us", href: "/talk-to-us/" }, { label: "Log in", href: SITE.appUrl }, { label: "Your Account", href: SITE.accountUrl }, { label: "Store", href: SITE.storeUrl }] },
     ],
   },
 ];

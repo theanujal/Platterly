@@ -52,7 +52,7 @@ for (const page of pages) {
   }
   for (const match of html.matchAll(/<a [^>]*href="(https?:\/\/[^"]+)"/g)) {
     const url = new URL(match[1]);
-    if (!["catering.platterly.in", "platterly.in", "razorpay.com"].includes(url.hostname)) fail(`unexpected outside link: ${url.href}`);
+    if (!["catering.platterly.in", "store.platterly.in", "account.platterly.in", "platterly.in", "razorpay.com"].includes(url.hostname)) fail(`unexpected outside link: ${url.href}`);
   }
 }
 

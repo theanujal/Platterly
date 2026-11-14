@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
 const APP = "https://catering.platterly.in/";
+const STORE = "https://store.platterly.in/";
+const ACCOUNT = "https://account.platterly.in/";
 
 async function loadLazyImages(page: Page) {
   await page.evaluate(async () => {
@@ -24,6 +26,20 @@ test("home: the headline, the Products menu, and the calls to action", async ({ 
   await header.getByRole("link", { name: /Caterly by Platterly/ }).click();
   await expect(page).toHaveURL(/\/catering\/$/);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Run your catering business without the chaos.");
+});
+
+test("existing customers are sent to the Account and the Store: the footer, the Resources menu and the pricing section; sign-up and log-in still start at the product", async ({ page }) => {
+  await page.goto("/caterly/");
+  const footer = page.getByRole("contentinfo");
+  await expect(footer.getByRole("link", { name: "Your Account" })).toHaveAttribute("href", ACCOUNT);
+  await expect(footer.getByRole("link", { name: "Store", exact: true })).toHaveAttribute("href", STORE);
+  await expect(footer.getByRole("link", { name: "Log in" })).toHaveAttribute("href", APP);
+  const header = page.getByRole("banner");
+  await header.getByRole("button", { name: "Resources" }).click();
+  await expect(header.getByRole("link", { name: "Your Account" })).toHaveAttribute("href", ACCOUNT);
+  await expect(header.getByRole("link", { name: "Store", exact: true })).toHaveAttribute("href", STORE);
+  await expect(page.getByRole("link", { name: "Change or renew your plan in the Store" })).toHaveAttribute("href", STORE);
+  await expect(header.getByRole("link", { name: "Get started for free" })).toHaveAttribute("href", APP);
 });
 
 test("catering: every section, the pricing figures and the ten questions", async ({ page }) => {

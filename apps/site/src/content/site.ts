@@ -7,6 +7,9 @@ export const SITE = {
   url: "https://platterly.in",
   /** The kitchen sign-in and sign-up screen lives at the root of the catering host. */
   appUrl: "https://catering.platterly.in/",
+  /** Where an existing customer manages their plan and pays (the Platterly Store) and their own details (the Platterly Account). Sign-up still starts at the product. */
+  storeUrl: "https://store.platterly.in/",
+  accountUrl: "https://account.platterly.in/",
   contactEmail: "hello@platterly.in",
   tagline: "Software built for the food business.",
   description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",

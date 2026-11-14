@@ -168,6 +168,13 @@ export default async function CateringPage() {
               </Reveal>
             ))}
           </div>
+          <p className="mt-10 text-center text-sm text-slate-gray">
+            Already a customer?{" "}
+            <a href={SITE.storeUrl} className="font-medium underline underline-offset-4">
+              Change or renew your plan in the Store
+            </a>
+            .
+          </p>
         </div>
       </Panel>
 
