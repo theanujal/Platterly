@@ -181,6 +181,36 @@ test.describe("Live Store: monthly auto-pay", () => {
     await expect(page.getByTestId("autopay-note").getByRole("link")).toHaveAttribute("href", `${ACCOUNT}/payment-methods`);
   });
 
+  test("the Account's Subscriptions page shows the plan like Caterly's old page did: status, billing information, history, and the payment with its invoice", async () => {
+    await page.goto(`${ACCOUNT}/subscriptions`);
+    await expect(page.getByRole("heading", { name: "Subscriptions", level: 1 })).toBeVisible();
+    const caterly = page.getByTestId("subscription-caterly");
+    await expect(caterly.getByRole("region", { name: /Current subscription/ })).toContainText("Premium");
+    await expect(caterly.getByRole("region", { name: /Current subscription/ })).toContainText("Active");
+    await expect(caterly.getByRole("region", { name: "Billing information" })).toContainText("Auto-pay every 30 days");
+    await expect(caterly.getByTestId("autopay-status")).toContainText("On, next charge");
+    await expect(caterly.getByRole("region", { name: /Subscription history/ })).toContainText("Premium");
+    const payments = caterly.getByTestId("payments-list");
+    await expect(payments).toContainText("monthly");
+    await expect(payments.getByRole("link", { name: "Invoice" }).first()).toHaveAttribute("href", /\/api\/account\/invoices\/.+product=caterly/);
+    // "Manage plan" goes to the Store, where plans are changed and paid.
+    await expect(caterly.getByTestId("manage-plan")).toHaveAttribute("href", `${STORE}/manage/caterly`);
+  });
+
+  test("pause and resume auto-renewal work on the Subscriptions page itself", async () => {
+    test.setTimeout(120_000);
+    await page.goto(`${ACCOUNT}/subscriptions`);
+    await page.getByRole("button", { name: "Pause auto-renewal" }).click();
+    await page.getByRole("button", { name: "Yes, pause" }).click();
+    await expect(page.getByText("Auto-renewal is paused.")).toBeVisible({ timeout: 30_000 });
+    expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("PAUSED");
+    // The page reloads itself with the new state.
+    await expect(page.getByTestId("autopay-status")).toContainText("Paused", { timeout: 30_000 });
+    await page.getByRole("button", { name: "Resume auto-renewal" }).click();
+    await expect(page.getByText("Auto-renewal is back on.")).toBeVisible({ timeout: 30_000 });
+    expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE");
+  });
+
   test("pausing auto-renewal stops future charges, keeps the paid days, and resuming turns it back on", async () => {
     test.setTimeout(120_000);
     const periodEnd = () => ops(`select "currentPeriodEnd" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);

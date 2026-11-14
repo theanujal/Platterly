@@ -1,7 +1,6 @@
-import { PaymentsView } from "@/components/account/billing-views";
-import { requireAccountSignIn } from "@/lib/account/guard";
+import { redirect } from "next/navigation";
 
-export default async function Page() {
-  await requireAccountSignIn("/payments");
-  return <PaymentsView />;
+/** Payments became Subscriptions (AJ, 2026-11-14); the old address still works. */
+export default function Page() {
+  redirect("/subscriptions");
 }

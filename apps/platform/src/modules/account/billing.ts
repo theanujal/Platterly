@@ -11,7 +11,15 @@ import { describeSubscription, type SubscriptionDisplay } from "@/modules/store/
  */
 export type InvoiceRow = { id: string; productKey: string; product: string; invoiceNumber: string; paidAt: string | null; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number };
 export type PaymentRow = { id: string; productKey: string; product: string; at: string; planName: string; interval: "MONTHLY" | "ANNUAL"; total: number; status: "PAID" | "PENDING" | "FAILED"; reason: string | null; invoiceNumber: string | null };
-export type SubscriptionRow = { productKey: string; product: string; planName: string | null; display: SubscriptionDisplay };
+export type SubscriptionRow = {
+  productKey: string;
+  product: string;
+  planName: string | null;
+  display: SubscriptionDisplay;
+  /** The running subscription's own details (null when there is none), and every subscription the business has had, newest first. */
+  current: { status: string; interval: "MONTHLY" | "ANNUAL" | null; startDate: string; trialEndsAt: string | null; currentPeriodEnd: string | null; pendingPlan: string | null; autoPay: { status: "ACTIVE" | "PENDING" | "PAUSED" | "HALTED" | "CANCELLED"; nextChargeAt: string | null } | null } | null;
+  history: { id: string; planName: string; status: string; startDate: string; endDate: string | null }[];
+};
 export type BillingHistory =
   | { status: "ok"; business: { name: string }; subscriptions: SubscriptionRow[]; invoices: InvoiceRow[]; payments: PaymentRow[] }
   | { status: "unauthenticated" | "no_business" | "not_admin" | "unavailable" };
@@ -30,7 +38,7 @@ export async function loadBillingHistory(session: Session | null, now: Date = ne
   for (const p of result.billing.products) {
     const productKey = storeKeyFor(p.productKey);
     const sub = p.billing.subscription;
-    subscriptions.push({ productKey, product: p.name, planName: sub?.plan.name ?? null, display: describeSubscription(sub ? { status: sub.status, trialEndsAt: sub.trialEndsAt, currentPeriodEnd: sub.currentPeriodEnd, cancelledAt: sub.cancelledAt ?? null } : null, now) });
+    subscriptions.push({ productKey, product: p.name, planName: sub?.plan.name ?? null, display: describeSubscription(sub ? { status: sub.status, trialEndsAt: sub.trialEndsAt, currentPeriodEnd: sub.currentPeriodEnd, cancelledAt: sub.cancelledAt ?? null } : null, now) , current: sub ? { status: sub.status, interval: sub.billingInterval, startDate: sub.startDate, trialEndsAt: sub.trialEndsAt, currentPeriodEnd: sub.currentPeriodEnd, pendingPlan: sub.pending?.planName ?? null, autoPay: sub.autoPay ?? null } : null, history: [...p.billing.history].sort((a, b) => b.startDate.localeCompare(a.startDate)) });
     for (const pay of p.billing.payments) {
       if (pay.invoiceNumber) invoices.push({ id: pay.id, productKey, product: p.name, invoiceNumber: pay.invoiceNumber, paidAt: pay.paidAt, planName: pay.planName, interval: pay.interval, total: pay.total });
       payments.push({ id: pay.id, productKey, product: p.name, at: pay.paidAt ?? "", planName: pay.planName, interval: pay.interval, total: pay.total, status: "PAID", reason: null, invoiceNumber: pay.invoiceNumber });

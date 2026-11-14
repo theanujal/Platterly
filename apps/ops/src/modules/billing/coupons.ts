@@ -65,3 +65,13 @@ export async function findUsableCoupon(input: { code: string; productKey: string
   if ((await prisma.subscriptionPayment.count({ where: { couponId: coupon.id, businessId: input.businessId, status: "PAID" } })) > 0) throw new BillingError("You have already used this coupon.");
   return coupon;
 }
+
+/** Every coupon, newest first, with how many PAID payments have used it. */
+export async function listCoupons() {
+  const [coupons, used] = await Promise.all([
+    prisma.coupon.findMany({ orderBy: { createdAt: "desc" } }),
+    prisma.subscriptionPayment.groupBy({ by: ["couponId"], where: { couponId: { not: null }, status: "PAID" }, _count: { _all: true } }),
+  ]);
+  const uses = new Map(used.map((row) => [row.couponId, row._count._all]));
+  return coupons.map((coupon) => ({ ...coupon, value: Number(coupon.value), uses: uses.get(coupon.id) ?? 0 }));
+}

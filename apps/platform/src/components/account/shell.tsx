@@ -17,7 +17,7 @@ const NAV: { href: string; prefix?: string; label: string; title: string; icon: 
   { href: "/", label: "Overview", title: "Overview", icon: "home" },
   { href: "/products", prefix: "My ", label: "Products", title: "My Products", icon: "grid" },
   { href: "/invoices", label: "Invoices", title: "Invoices", icon: "receipt" },
-  { href: "/payments", label: "Payments", title: "Payments", icon: "card" },
+  { href: "/subscriptions", label: "Subscriptions", title: "Subscriptions", icon: "card" },
   { href: "/payment-methods", label: "Payment method", title: "Payment method", icon: "card" },
   { href: "/billing-details", label: "Billing details", title: "Billing details", icon: "building" },
   { href: "/profile", prefix: "My ", label: "Profile", title: "My Profile", icon: "user" },
