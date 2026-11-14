@@ -15,6 +15,7 @@ import { getSavedBuyer, saveBillingProfile } from "./billing-profile";
 import { recordRazorpayEvent } from "./events";
 import { BillingError } from "./billing-error";
 import { ensureRazorpayCustomer } from "./razorpay-customer";
+import { applyCoupon, findUsableCoupon } from "./coupons";
 
 /**
  * A business pays Platterly for its plan (ported from catering's Chunk 20, now keyed by business and product). A yearly
@@ -94,6 +95,9 @@ export interface CheckoutQuote {
   credit: number;
   creditDays: number;
   creditLabel: string | null;
+  /** The coupon taken off (after the credit, before GST): its code, and the rupees it took off. 0 and null when none. */
+  couponCode: string | null;
+  discount: number;
   amount: number;
   gstPercent: number;
   gstAmount: number;
@@ -105,7 +109,7 @@ export interface CheckoutQuote {
  * plan it replaces, valued at what the last payment for it bought, and only for a yearly purchase (a monthly plan is auto-pay at its own price). The same plan again (a renewal), a trial and a plan assigned by hand get none.
  * Checkout works this out again itself and never trusts a number from the caller.
  */
-export async function quoteCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval }, now: Date = new Date()): Promise<CheckoutQuote> {
+export async function quoteCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval; couponCode?: string | null }, now: Date = new Date()): Promise<CheckoutQuote> {
   await requireBusiness(input.businessId, input.productKey);
   const plan = (await listSellablePlans(input.productKey)).find((candidate) => candidate.id === input.planId);
   if (!plan) throw new BillingError("That plan is not available.");
@@ -129,18 +133,28 @@ export async function quoteCheckout(input: { businessId: string; productKey: str
       if (credit > 0) creditLabel = `Credit for ${creditDays} unused ${creditDays === 1 ? "day" : "days"} of ${current.plan.name}`;
     }
   }
-  const net = priceBreakdown(Math.round((price.amount - credit) * 100) / 100, price.gstPercent);
-  return { planName: plan.name, interval: input.interval, planPrice: price.amount, credit, creditDays, creditLabel, amount: net.amount, gstPercent: net.gstPercent, gstAmount: net.gstAmount, total: net.total };
+  // A coupon takes its discount off what is left after the credit, before GST, so GST is charged on the lower amount. One per order. It is a first-payment offer, so
+  // a monthly (auto-pay) purchase takes none until the first-month discount is built (plan slice C4).
+  let discount = 0;
+  let couponCode: string | null = null;
+  if (input.couponCode?.trim()) {
+    if (input.interval !== "ANNUAL") throw new BillingError("Coupons can be used on yearly plans for now.");
+    const coupon = await findUsableCoupon({ code: input.couponCode, productKey: input.productKey, businessId: input.businessId, now });
+    discount = applyCoupon({ kind: coupon.kind, value: Number(coupon.value) }, Math.round((price.amount - credit) * 100) / 100);
+    couponCode = coupon.code;
+  }
+  const net = priceBreakdown(Math.round((price.amount - credit - discount) * 100) / 100, price.gstPercent);
+  return { planName: plan.name, interval: input.interval, planPrice: price.amount, credit, creditDays, creditLabel, couponCode, discount, amount: net.amount, gstPercent: net.gstPercent, gstAmount: net.gstAmount, total: net.total };
 }
 
 /** Starts a Razorpay Checkout for one period of a plan. A PENDING payment is written first so the webhook can find it. */
-export async function startCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval; buyer: Buyer }, fetchImpl: typeof fetch = fetch): Promise<OrderCheckoutAnswer> {
+export async function startCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval; buyer: Buyer; couponCode?: string | null }, fetchImpl: typeof fetch = fetch): Promise<OrderCheckoutAnswer> {
   const business = await requireBusiness(input.businessId, input.productKey);
   const creds = platformRazorpay();
   if (!creds) throw new BillingError("Online payment is not switched on yet. Please contact Platterly.");
   // The price is worked out here, from Ops's own records, with any upgrade credit taken off; nothing about money comes from the caller.
-  const quote = await quoteCheckout({ businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: input.interval });
-  if (quote.total < 1) throw new BillingError("The credit from your current plan covers this plan. Please contact Platterly to switch.");
+  const quote = await quoteCheckout({ businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: input.interval, couponCode: input.couponCode });
+  if (quote.total < 1) throw new BillingError("The credit or coupon covers this plan. Please contact Platterly to switch.");
   const price = { amount: quote.amount, gstPercent: quote.gstPercent, gstAmount: quote.gstAmount, total: quote.total };
 
   const { razorpayOrderId } = await createRazorpayOrder(creds, { amountRupees: price.total, receipt: `sub-${input.businessId.slice(4, 24)}`, notes: { businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: input.interval } }, fetchImpl);
@@ -156,11 +170,13 @@ export async function startCheckout(input: { businessId: string; productKey: str
       gstAmount: price.gstAmount,
       total: price.total,
       creditAmount: quote.credit > 0 ? quote.credit : null,
+      couponId: quote.couponCode ? (await prisma.coupon.findUnique({ where: { code: quote.couponCode }, select: { id: true } }))?.id ?? null : null,
+      couponDiscount: quote.discount > 0 ? quote.discount : null,
       razorpayOrderId,
       buyer: input.buyer as unknown as Prisma.InputJsonValue,
     },
   });
-  await audit({ actorUserId: null, action: "billing.checkout_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: input.planId, interval: input.interval, total: price.total } });
+  await audit({ actorUserId: null, action: "billing.checkout_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: input.planId, interval: input.interval, total: price.total, coupon: quote.couponCode, discount: quote.discount } });
   return { kind: "order", keyId: creds.keyId, razorpayOrderId, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${quote.planName} plan, ${input.interval === "ANNUAL" ? "1 year" : "30 days"}` };
 }
 

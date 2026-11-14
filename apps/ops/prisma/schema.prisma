@@ -135,6 +135,7 @@ model Product {
   libraryCandidates LibraryCandidate[]
 
   @@map("product")
+  coupons Coupon[]
 }
 
 // ---------- Business directory ----------
@@ -580,10 +581,15 @@ model SubscriptionPayment {
   invoiceSnapshot        Json?
   // Where an imported row came from (for example "catering:<payment id>"); null for payments made through ops.
   importedFrom           String?
+  // The coupon taken off this payment (one per order), and the rupees it took off `amount` (before GST). Null when none was used.
+  couponId               String?
+  coupon                 Coupon?         @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  couponDiscount         Decimal?        @db.Decimal(10, 2)
   createdAt              DateTime        @default(now())
 
   @@index([businessId, createdAt])
   @@index([razorpaySubscriptionId])
+  @@index([couponId])
   @@map("subscription_payment")
 }
 
@@ -914,4 +920,29 @@ model AbandonedOrder {
 
   @@index([status, abandonedAt])
   @@map("abandoned_order")
+}
+
+enum CouponKind {
+  PERCENT
+  FIXED
+}
+
+// A discount code staff create. It takes `value` percent, or `value` rupees (before GST), off the FIRST payment of a purchase only (renewals charge the full
+// price), one coupon per order, never below zero. `maxUses` counts PAID payments. Null `productKey` means any product.
+model Coupon {
+  id         String     @id @default(cuid())
+  code       String     @unique
+  kind       CouponKind
+  value      Decimal    @db.Decimal(10, 2)
+  active     Boolean    @default(true)
+  expiresAt  DateTime?
+  maxUses    Int?
+  productKey String?
+  product    Product?   @relation(fields: [productKey], references: [key], onDelete: Restrict)
+  note       String?
+  createdAt  DateTime   @default(now())
+
+  payments SubscriptionPayment[]
+
+  @@map("coupon")
 }
