@@ -391,6 +391,16 @@ describe("billing API requests", () => {
     expect(parseCheckoutRequest({ planId: "plan_1", interval: "MONTHLY", buyer: {} }).ok).toBe(false);
   });
 
+  it("a checkout carries a coupon code only as trimmed text, and refuses anything else", () => {
+    const body = { planId: "p1", interval: "ANNUAL", buyer: { name: "A" } };
+    const typed = parseCheckoutRequest({ ...body, couponCode: "  SAVE10 " });
+    expect(typed.ok && typed.value.couponCode).toBe("SAVE10");
+    const blank = parseCheckoutRequest({ ...body, couponCode: "   " });
+    expect(blank.ok && "couponCode" in blank.value).toBe(false);
+    expect(parseCheckoutRequest({ ...body, couponCode: 5 }).ok).toBe(false);
+    expect(parseCheckoutRequest({ ...body, couponCode: "x".repeat(65) }).ok).toBe(false);
+  });
+
   it("parses a verify request: ids are plain tokens and the signature is 64 hex characters", () => {
     const sig = "a".repeat(64);
     expect(parseVerifyRequest({ razorpayOrderId: "order_Abc123", razorpayPaymentId: "pay_Abc123", signature: sig }).ok).toBe(true);

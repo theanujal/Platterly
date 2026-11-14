@@ -88,8 +88,8 @@ export async function abandonPendingBusiness(input: { businessId: string; opsPro
 export type StoreCheckoutAnswer = Extract<CheckoutAnswer, { kind?: "order" }> | Extract<CheckoutAnswer, { kind: "subscription" }>;
 
 /** Starts a purchase: Ops creates the Razorpay order (yearly) or auto-pay subscription (monthly) and a pending payment, and answers with what Razorpay Checkout needs. */
-export async function startStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL"; buyer: Buyer }, deps: Deps = {}): Promise<CheckoutResult<StoreCheckoutAnswer>> {
-  const got = await signedOpsPost(input.businessId, input.opsProductKey, "checkout", { planId: input.planId, interval: input.interval, buyer: input.buyer }, deps);
+export async function startStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL"; buyer: Buyer; couponCode?: string }, deps: Deps = {}): Promise<CheckoutResult<StoreCheckoutAnswer>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "checkout", { planId: input.planId, interval: input.interval, buyer: input.buyer, ...(input.couponCode ? { couponCode: input.couponCode } : {}) }, deps);
   if (!got.ok) return got;
   const a = got.answer;
   if (typeof a.keyId !== "string" || typeof a.amountPaise !== "number") return { ok: false, reason: "bad_answer" };
@@ -112,15 +112,18 @@ export async function verifyStoreCheckout(input: StoreVerifyInput, deps: Deps = 
 }
 
 /** What a plan would cost this business now, from Ops: the plan price, any upgrade credit for unused days, GST, and the total. The Store only shows these figures. */
-export type StoreQuote = { planName: string; interval: "MONTHLY" | "ANNUAL"; planPrice: number; credit: number; creditDays: number; creditLabel: string | null; amount: number; gstPercent: number; gstAmount: number; total: number };
+export type StoreQuote = { planName: string; interval: "MONTHLY" | "ANNUAL"; planPrice: number; credit: number; creditDays: number; creditLabel: string | null; /** The coupon taken off (before GST) and the rupees it took off; null and 0 when none. */ couponCode: string | null; discount: number; amount: number; gstPercent: number; gstAmount: number; total: number };
 
-export async function quoteStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL" }, deps: Deps = {}): Promise<CheckoutResult<StoreQuote>> {
-  const got = await signedOpsPost(input.businessId, input.opsProductKey, "quote", { planId: input.planId, interval: input.interval }, deps);
+export async function quoteStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL"; couponCode?: string }, deps: Deps = {}): Promise<CheckoutResult<StoreQuote>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "quote", { planId: input.planId, interval: input.interval, ...(input.couponCode ? { couponCode: input.couponCode } : {}) }, deps);
   if (!got.ok) return got;
   const a = got.answer;
   const numbers = ["planPrice", "credit", "creditDays", "amount", "gstPercent", "gstAmount", "total"] as const;
   if (typeof a.planName !== "string" || (a.interval !== "MONTHLY" && a.interval !== "ANNUAL") || numbers.some((k) => typeof a[k] !== "number" || !Number.isFinite(a[k] as number))) return { ok: false, reason: "bad_answer" };
-  return { ok: true, answer: a as unknown as StoreQuote };
+  // An older Ops sends no coupon fields: that is no coupon.
+  if (a.discount !== undefined && (typeof a.discount !== "number" || !Number.isFinite(a.discount))) return { ok: false, reason: "bad_answer" };
+  if (a.couponCode !== undefined && a.couponCode !== null && typeof a.couponCode !== "string") return { ok: false, reason: "bad_answer" };
+  return { ok: true, answer: { ...(a as unknown as StoreQuote), couponCode: typeof a.couponCode === "string" ? a.couponCode : null, discount: typeof a.discount === "number" ? a.discount : 0 } };
 }
 
 export type SubscriptionChange = "downgrade" | "undo-downgrade" | "cancel" | "reactivate";

@@ -47,6 +47,8 @@ export interface CheckoutRequest {
   buyer: Buyer;
   /** The product can open Razorpay's auto-pay window. A monthly checkout with this set is a Razorpay subscription, not an order. */
   autoPay?: true;
+  /** A coupon code the buyer typed (yearly plans only for now). Ops checks it and works the discount out; the product never sends an amount. */
+  couponCode?: string;
 }
 
 export function parseCheckoutRequest(input: unknown): ParseResult<CheckoutRequest> {
@@ -55,7 +57,9 @@ export function parseCheckoutRequest(input: unknown): ParseResult<CheckoutReques
   if (!BILLING_INTERVALS.includes(input.interval as BillingInterval)) return fail("interval must be MONTHLY or ANNUAL");
   const buyer = parseBuyer(input.buyer);
   if (!buyer.ok) return buyer;
-  return ok({ planId: input.planId, interval: input.interval as BillingInterval, buyer: buyer.value, ...(input.autoPay === true ? { autoPay: true as const } : {}) });
+  if (input.couponCode !== undefined && (typeof input.couponCode !== "string" || input.couponCode.length > 64)) return fail("couponCode must be text of at most 64 characters");
+  const couponCode = typeof input.couponCode === "string" && input.couponCode.trim() ? input.couponCode.trim() : undefined;
+  return ok({ planId: input.planId, interval: input.interval as BillingInterval, buyer: buyer.value, ...(input.autoPay === true ? { autoPay: true as const } : {}), ...(couponCode ? { couponCode } : {}) });
 }
 
 export interface VerifyRequest {

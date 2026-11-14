@@ -47,6 +47,11 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
   const router = useRouter();
   const [quote, setQuote] = useState<StoreQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
+  // A coupon (yearly plans only for now): what was typed, the code Ops accepted, and Ops's plain reason when it did not.
+  const [couponInput, setCouponInput] = useState("");
+  const [couponApplied, setCouponApplied] = useState<string | null>(null);
+  const [couponMessage, setCouponMessage] = useState<string | null>(null);
+  const [couponBusy, setCouponBusy] = useState(false);
   const [changing, setChanging] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
 
@@ -63,10 +68,32 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
       .catch(() => setQuoteError("We could not work out your price just now. Please go back and try again."));
   }
 
+  /** Prices the plan again with a typed code, or without one (`code` null). A refused code keeps the last good price and says why. */
+  async function applyCoupon(code: string | null) {
+    if (!chosen || !live) return;
+    setCouponBusy(true);
+    setCouponMessage(null);
+    try {
+      const res = await fetch("/api/store/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, ...(code ? { couponCode: code } : {}) }) });
+      const answer = (await res.json().catch(() => ({}))) as Partial<StoreQuote> & { message?: string };
+      if (!res.ok) return setCouponMessage(answer.message ?? "We could not check that coupon just now. Please try again.");
+      setQuote(answer as StoreQuote);
+      setCouponApplied(code ? (answer.couponCode ?? code) : null);
+      if (!code) setCouponInput("");
+    } catch {
+      setCouponMessage("We could not check that coupon just now. Please try again.");
+    } finally {
+      setCouponBusy(false);
+    }
+  }
+
   function choose(plan: PlanOffer) {
     const kind = changeKind(product, plan);
     setChosen({ plan, interval, kind });
     setStep("confirm");
+    setCouponInput("");
+    setCouponApplied(null);
+    setCouponMessage(null);
     setQuote(null);
     setQuoteError(null);
     setPayError(null);
@@ -116,7 +143,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
     setPaying(true);
     setPayError(null);
     try {
-      const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, buyer }) });
+      const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, buyer, ...(couponApplied ? { couponCode: couponApplied } : {}) }) });
       const answer = (await started.json().catch(() => ({}))) as (Partial<RazorpayOrder> & Partial<RazorpaySubscription> & { kind?: string }) & { error?: string; message?: string; fields?: Partial<Record<BuyerField, string>> };
       if (!started.ok) {
         if (answer.fields) setErrors(answer.fields);
@@ -286,7 +313,24 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                 })}
                 <div className="ps-field">
                   <label htmlFor="coupon">Coupon code<span className="ps-optional"> (optional)</span></label>
-                  <input id="coupon" disabled placeholder="Coupons are not switched on yet" />
+                  {!live ? (
+                    <input id="coupon" disabled placeholder="Coupons are not switched on yet" />
+                  ) : chosen.interval !== "ANNUAL" || kind === "downgrade" ? (
+                    <>
+                      <input id="coupon" disabled placeholder="Coupons can be used on yearly plans for now" />
+                    </>
+                  ) : couponApplied ? (
+                    <p data-testid="coupon-applied" className="ps-hint">
+                      Coupon <strong>{couponApplied}</strong> applied.{" "}
+                      <button type="button" className="ps-link" onClick={() => void applyCoupon(null)} disabled={couponBusy || paying}>Remove</button>
+                    </p>
+                  ) : (
+                    <div className="ps-coupon-row">
+                      <input id="coupon" value={couponInput} autoComplete="off" maxLength={64} onChange={(event) => setCouponInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (couponInput.trim()) void applyCoupon(couponInput.trim()); } }} />
+                      <button type="button" className="ps-secondary" disabled={couponBusy || paying || !couponInput.trim() || !quote} onClick={() => void applyCoupon(couponInput.trim())}>{couponBusy ? "Checking..." : "Apply"}</button>
+                    </div>
+                  )}
+                  {couponMessage && <p className="ps-error" role="alert" data-testid="coupon-message">{couponMessage}</p>}
                 </div>
                 {kind !== "downgrade" && (
                   <div className="ps-payblock" role="group" aria-label="Payment">
@@ -325,6 +369,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                 <>
                   <div><dt>Plan price</dt><dd data-testid="amount">{inr(quote.planPrice)}</dd></div>
                   {quote.credit > 0 && <div><dt>{quote.creditLabel ?? "Credit for unused days"}</dt><dd data-testid="credit">&minus;{inr(quote.credit)}</dd></div>}
+                  {quote.discount > 0 && <div><dt>Coupon {quote.couponCode}</dt><dd data-testid="discount">&minus;{inr(quote.discount)}</dd></div>}
                   <div><dt>GST ({quote.gstPercent}%)</dt><dd data-testid="gst">{inr(quote.gstAmount)}</dd></div>
                   <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(quote.total)}</dd></div>
                 </>

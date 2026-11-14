@@ -47,7 +47,7 @@ export function readBuyer(input: unknown): { ok: true; buyer: Buyer } | { ok: fa
   return Object.keys(fields).length ? { ok: false, fields } : { ok: true, buyer };
 }
 
-export async function startPurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown; buyer?: unknown }): Promise<PurchaseResult<StoreCheckoutAnswer>> {
+export async function startPurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown; buyer?: unknown; couponCode?: unknown }): Promise<PurchaseResult<StoreCheckoutAnswer>> {
   const who = await buyerBusiness(session);
   if (!who.ok) return who;
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
@@ -57,7 +57,9 @@ export async function startPurchase(session: Session | null, input: { productKey
   const buyer = readBuyer(input.buyer);
   if (!buyer.ok) return { ok: false, reason: "bad_request", fields: buyer.fields };
   if (interval === "MONTHLY") await shareOwnerContact(session, who.businessId, opsKeyFor(productKey));
-  const got = await startStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), planId, interval, buyer: buyer.buyer });
+  const couponCode = readCoupon(input.couponCode);
+  if (couponCode === false) return { ok: false, reason: "bad_request" };
+  const got = await startStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), planId, interval, buyer: buyer.buyer, ...(couponCode ? { couponCode } : {}) });
   if (!got.ok) return got;
   return got;
 }
@@ -90,6 +92,9 @@ async function completeIfPendingSignup(session: Session | null): Promise<void> {
   }
 }
 
+/** A typed coupon code: text of at most 64 characters, or nothing. `false` for anything else (the request is refused). */
+const readCoupon = (value: unknown): string | null | false => (value === undefined || value === null || value === "" ? null : typeof value === "string" && value.length <= 64 ? value.trim() || null : false);
+
 const planAndInterval = (input: { productKey?: unknown; planId?: unknown; interval?: unknown }) => {
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
   const planId = text(input.planId, 80);
@@ -98,12 +103,14 @@ const planAndInterval = (input: { productKey?: unknown; planId?: unknown; interv
 };
 
 /** The price of a plan for the signed-in person's own business, with any upgrade credit, as Ops works it out. */
-export async function quotePurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown }): Promise<PurchaseResult<StoreQuote>> {
+export async function quotePurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown; couponCode?: unknown }): Promise<PurchaseResult<StoreQuote>> {
   const who = await buyerBusiness(session);
   if (!who.ok) return who;
   const wanted = planAndInterval(input);
   if (!wanted) return { ok: false, reason: "bad_request" };
-  return quoteStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(wanted.productKey), planId: wanted.planId, interval: wanted.interval });
+  const couponCode = readCoupon(input.couponCode);
+  if (couponCode === false) return { ok: false, reason: "bad_request" };
+  return quoteStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(wanted.productKey), planId: wanted.planId, interval: wanted.interval, ...(couponCode ? { couponCode } : {}) });
 }
 
 const CHANGES: readonly SubscriptionChange[] = ["downgrade", "undo-downgrade", "cancel", "reactivate"];

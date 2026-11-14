@@ -416,3 +416,53 @@ describe("saved billing details come from a confirmed payment", () => {
     expect((await profile())?.updatedAt).toEqual(first?.updatedAt);
   });
 });
+
+describe("Store buy calls: coupons (yearly)", () => {
+  const cleanCoupons = async () => {
+    await prisma.subscriptionPayment.deleteMany({ where: { productKey: KEY, couponId: { not: null } } });
+    await prisma.coupon.deleteMany({ where: { code: { startsWith: "PLRC" } } });
+  };
+  beforeEach(cleanCoupons);
+  afterEach(cleanCoupons);
+
+  it("the quote with a code shows the discount and GST on the lower amount; a typed code in any case works", async () => {
+    await prisma.coupon.create({ data: { code: "PLRC10", kind: "PERCENT", value: 10 } });
+    const res = await call("quote", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", couponCode: "plrc10" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ planPrice: 10000, couponCode: "PLRC10", discount: 1000, amount: 9000, gstAmount: 1620, total: 10620 });
+  });
+
+  it("a code that cannot be used is a 400 with the plain reason", async () => {
+    const res = await call("quote", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", couponCode: "PLRC-NOPE" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "That coupon code is not valid." });
+  });
+
+  it("checkout charges the discounted total and records the coupon on the payment", async () => {
+    const coupon = await prisma.coupon.create({ data: { code: "PLRC-FIX", kind: "FIXED", value: 2000 } });
+    const res = await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", buyer, couponCode: "PLRC-FIX" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ amountPaise: Math.round(8000 * 1.18 * 100) });
+    const payment = await prisma.subscriptionPayment.findFirstOrThrow({ where: { businessId: BIZ, productKey: KEY } });
+    expect(payment).toMatchObject({ couponId: coupon.id });
+    expect(Number(payment.couponDiscount)).toBe(2000);
+  });
+
+  it("a coupon on a monthly plan is refused (monthly takes none yet), at quote and at checkout, and no payment is started", async () => {
+    await prisma.coupon.create({ data: { code: "PLRC-MON", kind: "PERCENT", value: 10 } });
+    const planId = await planIdOf("pro");
+    const quote = await call("quote", BIZ, { planId, interval: "MONTHLY", couponCode: "PLRC-MON" });
+    expect(quote.status).toBe(400);
+    expect(await quote.json()).toMatchObject({ error: expect.stringMatching(/yearly/i) });
+    const checkout = await call("checkout", BIZ, { planId, interval: "MONTHLY", buyer, couponCode: "PLRC-MON" });
+    expect(checkout.status).toBe(400);
+    expect(await prisma.subscriptionPayment.count({ where: { businessId: BIZ, productKey: KEY } })).toBe(0);
+  });
+
+  it("a request without a code is unchanged, and a non-text code is a 400", async () => {
+    const plain = await call("quote", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL" });
+    expect(await plain.json()).toMatchObject({ couponCode: null, discount: 0, total: 11800 });
+    const bad = await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", buyer, couponCode: 5 });
+    expect(bad.status).toBe(400);
+  });
+});

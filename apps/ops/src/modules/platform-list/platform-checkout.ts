@@ -50,6 +50,7 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       if (!parsed.ok) return reply(400, { error: parsed.error });
       const { autoPay: _ignored, ...checkout } = parsed.value;
       // A monthly plan in the Store is always auto-pay (AJ, 2026-11-14): the flag is ignored. A yearly plan is a one-time order.
+      if (checkout.interval === "MONTHLY" && checkout.couponCode) throw new BillingError("Coupons can be used on yearly plans for now.");
       if (checkout.interval === "MONTHLY") return reply(200, await startAutoPayCheckout({ businessId, productKey, planId: checkout.planId, buyer: checkout.buyer }));
       return reply(200, await startCheckout({ businessId, productKey, ...checkout }));
     }
@@ -125,7 +126,8 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
     if (action === "quote" || action === "downgrade") {
       const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
       if (typeof o.planId !== "string" || !o.planId || o.planId.length > 80 || (o.interval !== "MONTHLY" && o.interval !== "ANNUAL")) return reply(400, { error: "planId and interval (MONTHLY or ANNUAL) are required" });
-      if (action === "quote") return reply(200, await quoteCheckout({ businessId, productKey, planId: o.planId, interval: o.interval }));
+      if (o.couponCode !== undefined && (typeof o.couponCode !== "string" || o.couponCode.length > 64)) return reply(400, { error: "couponCode must be text of at most 64 characters" });
+      if (action === "quote") return reply(200, await quoteCheckout({ businessId, productKey, planId: o.planId, interval: o.interval, couponCode: o.couponCode ?? null }));
       await scheduleDowngrade({ businessId, productKey, planId: o.planId, interval: o.interval });
       return reply(200, { ok: true });
     }

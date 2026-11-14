@@ -137,3 +137,5 @@
 .ps-signin:hover, .ps-signout:hover { text-decoration: underline; }
 .ps-header-nav form { margin: 0; }
 .ps-warn { margin: 12px 0; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--muted); color: var(--foreground); }
+.ps-coupon-row { display: flex; gap: 8px; align-items: stretch; }
+.ps-coupon-row input { flex: 1; min-width: 0; }
