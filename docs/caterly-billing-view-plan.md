@@ -1,6 +1,6 @@
 # Caterly's read-only Subscription page (plan)
 
-Date: 2026-11-15. Status: PLAN, nothing built. Decision by AJ, 2026-11-15.
+Date: 2026-11-15. Status: BUILT (V1-V4), committed `03457af` and `1e6bb43`, pushed. Decision by AJ, 2026-11-15. Deviation: a locked kitchen does not get the page (Settings redirects it to the plan-ended screen).
 
 ## Decision
 

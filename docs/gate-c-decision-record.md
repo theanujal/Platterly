@@ -12,7 +12,7 @@ Recorded 2026-11-14 on AJ's word, in chat. Closes Gate C of `docs/platform-found
 ## Billing rights: how it will be built
 
 - The Platform knows only two central roles, `admin` and `former_admin`. Manager, finance and similar roles live inside each product, because products own their teams (AJ, 2026-11-10).
-- So "other roles can see invoices" means the Platform learns which product members hold billing access. Source: the membership events a product already sends to the Platform. The exact shape is designed in F12.1.2, not here.
+- So "other roles can see invoices" means the Platform learns which product members hold billing access. Source: the membership events a product already sends to the Platform. The exact shape is designed in F12.1.2, not here. **Update 2026-11-15:** done another way (AJ): Caterly has a read-only Subscription page, and its own team and roles decide who may open it through the permission "Billing and Plan" (`docs/caterly-billing-view-plan.md`); the Platform does not learn product roles. The Account and the Store stay Business-Admin only.
 - Buying stays Admin-only in every case. The Old Admin (`former_admin`) sees no prices or finance (AJ, 2026-11-13) and so sees no invoices.
 
 ## `PAST_DUE`
