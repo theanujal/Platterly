@@ -59,3 +59,23 @@ describe("the Store's product cards use those states", () => {
     expect(applyBilling([product("caterly")], billing({ status: "TRIALING", billingInterval: null, trialEndsAt: days(4), currentPeriodEnd: null }), NOW)[0]).toMatchObject({ status: "TRIAL", display: { state: "trial" } });
   });
 });
+
+describe("a failed auto-pay renewal (R4)", () => {
+  const sub = (offset: number, autoPay: string, extra: object = {}) => describeSubscription({ status: "ACTIVE", currentPeriodEnd: days(offset), autoPay: { status: autoPay }, ...extra }, NOW);
+  it("reads Payment due with its own wording while Razorpay is retrying, and says when full access ends", () => {
+    const d = sub(-1, "PENDING");
+    expect(d).toMatchObject({ state: "payment_due", label: "Payment due", tone: "warn" });
+    expect(d.detail).toMatch(/last payment did not go through.*Update your payment method.*try your payment method again.*until 26 Nov 2026/);
+  });
+  it("also after Razorpay gave up (HALTED), without promising a retry", () => {
+    const d = sub(-2, "HALTED");
+    expect(d.state).toBe("payment_due");
+    expect(d.detail).not.toMatch(/try your payment method again/);
+  });
+  it("is Locked once the 7 days have passed, and a healthy or cancelled auto-pay is unchanged", () => {
+    expect(sub(-8, "HALTED").state).toBe("locked");
+    expect(sub(30, "ACTIVE").state).toBe("active");
+    expect(sub(-1, "ACTIVE").detail).toMatch(/paid days ended/);
+    expect(sub(-1, "PENDING", { cancelledAt: days(-3) }).state).toBe("ended_in_grace");
+  });
+});

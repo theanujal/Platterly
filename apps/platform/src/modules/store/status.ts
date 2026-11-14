@@ -10,7 +10,7 @@ export type SubscriptionDisplay = { state: "trial" | "trial_ended" | "active" | 
 
 const date = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
 
-export function describeSubscription(sub: { status: SubscriptionStatus; trialEndsAt?: string | null; currentPeriodEnd?: string | null; cancelledAt?: string | null } | null, now: Date = new Date()): SubscriptionDisplay {
+export function describeSubscription(sub: { status: SubscriptionStatus; trialEndsAt?: string | null; currentPeriodEnd?: string | null; cancelledAt?: string | null; autoPay?: { status: string } | null } | null, now: Date = new Date()): SubscriptionDisplay {
   if (!sub) return { state: "none", label: "Not subscribed", tone: "none", detail: "Choose a plan to start." };
   const end = sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
   if (sub.status === "TRIALING") {
@@ -19,7 +19,16 @@ export function describeSubscription(sub: { status: SubscriptionStatus; trialEnd
     return { state: "trial", label: "On trial", tone: "info", detail: trialEnd ? `Your trial ends on ${date(trialEnd)}.` : "You are on a free trial." };
   }
   if (sub.status === "LOCKED" || sub.status === "CANCELLED") return { state: "locked", label: "Locked", tone: "bad", detail: "Access has ended. Choose a plan to restore it." };
-  // ACTIVE (and PAST_DUE, should Ops ever set it): the dates decide.
+  // ACTIVE (and PAST_DUE, should Ops ever set it): the dates decide. A monthly auto-pay whose renewal failed (Razorpay retrying, or stopped after its retries) reads
+  // "Payment due" with its own wording, with or without the dates having run out (D-C, gate-c-decision-record.md; slice R4).
+  const failed = !sub.cancelledAt && (sub.autoPay?.status === "PENDING" || sub.autoPay?.status === "HALTED");
+  if (failed) {
+    const graceEnds = end ? paymentGraceEnd(end) : null;
+    if (graceEnds && now.getTime() >= graceEnds.getTime()) return { state: "locked", label: "Locked", tone: "bad", detail: `Your last payment did not go through and the ${PAID_GRACE_DAYS} days to pay have passed. Choose a plan to restore access.` };
+    const keep = graceEnds && end && end.getTime() <= now.getTime() ? ` You keep full access until ${date(graceEnds)}.` : "";
+    const retry = sub.autoPay?.status === "PENDING" ? " We will try your payment method again." : "";
+    return { state: "payment_due", label: "Payment due", tone: "warn", detail: `Your last payment did not go through. Update your payment method or pay again to keep your plan.${retry}${keep}` };
+  }
   if (end && end.getTime() <= now.getTime()) {
     const graceEnds = paymentGraceEnd(end);
     if (now.getTime() >= graceEnds.getTime()) return { state: "locked", label: "Locked", tone: "bad", detail: `Your plan ended on ${date(end)} and the ${PAID_GRACE_DAYS} days to renew have passed. Choose a plan to restore access.` };
