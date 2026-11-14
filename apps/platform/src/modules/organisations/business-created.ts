@@ -81,3 +81,24 @@ export async function receiveBusinessCreated(deps: BusinessCreatedDeps, request:
   if (!result.ok) return answer({ error: result.code }, 409);
   return answer({ businessId: result.organisationId, created: result.created } satisfies BusinessCreatedAnswer);
 }
+
+/**
+ * The Platform user for a person the identity provider has verified (single sign-up, docs/single-signup-business-plan.md): the person is read from the provider's own
+ * record (never from a product), must have verified their email, and is found or created linked by the provider's person id. Lives here, next to the product
+ * receiver, because this file is one of the two allowed to mint the identity assertion (identity-link.guard.test.ts).
+ */
+export async function linkVerifiedPerson<P extends { email: string; emailVerified: boolean }>(
+  deps: { readPerson: (subject: string) => Promise<P | null>; linkClient?: IdentityLinkClient },
+  subject: string,
+): Promise<{ ok: true; userId: string; person: P } | { ok: false; reason: string }> {
+  const person = await deps.readPerson(subject);
+  if (!person) return { ok: false, reason: "person_unknown" };
+  if (!person.emailVerified) return { ok: false, reason: "email_not_verified" };
+  const linked = await findOrCreateBySubject({
+    provider: IDP_PROVIDER,
+    subject,
+    email: person.email,
+    emailAssertion: mintProviderEmailAssertion({ provider: IDP_PROVIDER, subject, email: person.email }),
+  }, deps.linkClient);
+  return linked.ok ? { ok: true, userId: linked.user.id, person } : { ok: false, reason: linked.reason };
+}

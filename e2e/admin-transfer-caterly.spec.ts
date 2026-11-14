@@ -79,11 +79,10 @@ test("Admin transfer in Caterly: the old Admin stays Admin until the new Admin a
   const nomineeEmail = `at-new-${stamp}@auth.test`;
   created.push({ admin: adminEmail, nominee: nomineeEmail });
 
-  // The Admin starts a business in Caterly; the Platform learns of it and gives them the Admin seat.
+  // The Admin signs up from Caterly: the Account made their business when the email was verified and Caterly adopted it (single sign-up), so they are its owner at once.
   const adminCtx = await browser.newContext();
   const admin = await adminCtx.newPage();
   await signUpFromCaterly(admin, adminEmail);
-  await expect.poll(async () => (await pool.query(`select count(*) from "platform_outbox" where status = 'SENT' and type = 'business.created'`)).rows[0].count, { timeout: 30_000 }).not.toBe("0");
   expect(await roleOf(adminEmail)).toBe("owner");
 
   // The Team Management card sends the Admin to the Account's Admin role page.

@@ -4,6 +4,7 @@ import { redirect, forbidden } from "next/navigation";
 import { auth } from "./auth";
 import { prisma } from "@/lib/db";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
+import { PLATFORM_PROVIDER_ID } from "@/lib/platform/config";
 import { isLocked } from "@/modules/ops-link/entitlements";
 import type { statement } from "./permissions";
 import { roleAllows, sensitiveKeysFor } from "@/modules/roles/role-grants";
@@ -104,6 +105,9 @@ export async function requireActiveOrganization(options: { allowLocked?: boolean
         if (pendingInvitation) {
           redirect(`/invitations/${pendingInvitation.id}/accept`);
         }
+        // A person who signed in centrally may be waiting for the business the Account made for them to reach Caterly: that page joins it as soon as it has arrived.
+        const central = await prisma.account.findFirst({ where: { userId: session.user.id, providerId: PLATFORM_PROVIDER_ID }, select: { id: true } });
+        if (central) redirect("/kitchenlogin/setting-up");
         forbidden();
       }
       membership = await prisma.member.findFirstOrThrow({

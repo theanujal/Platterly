@@ -17,6 +17,7 @@ import { identityPool } from "./identity-db";
 import { OAUTH_QUERY_HEADER } from "./sign-up-gate";
 import { signedProduct } from "./sign-up-origin";
 import { inviteAllowsSignUp } from "../ownership-transfer/invite-signup";
+import { provisionBusinessForVerifiedSignup } from "../organisations/signup-business-run";
 import { otpEmail, sendAuthEmail, type OtpKind } from "./mailer";
 
 // The identity provider (D1: Better Auth), served on the auth host at /api/auth. It owns credentials, sessions and the OIDC endpoints.
@@ -96,6 +97,23 @@ export function createIdp(options: IdpOptions = {}) {
       }),
       // A refused password for a real person is recorded too. The answer to the caller is unchanged (nothing here says whether the address exists).
       after: createAuthMiddleware(async (ctx) => {
+        // Single sign-up: remember the product the person signed up from, then create their business once the email is verified (docs/single-signup-business-plan.md).
+        // Neither step may change the answer the person gets: a failure is logged and the first sign-in tries again.
+        if ((ctx.path === "/sign-up/email" || ctx.path === "/email-otp/verify-email") && !(ctx.context.returned instanceof APIError)) {
+          try {
+            const email = (ctx.body as { email?: unknown } | undefined)?.email;
+            const found = typeof email === "string" ? await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase()) : null;
+            if (found && ctx.path === "/sign-up/email") {
+              const product = await signedProduct(pool, ctx.headers?.get(OAUTH_QUERY_HEADER), ctx.context.secret);
+              if (product) await pool.query(`insert into "signupProduct" ("userId", "clientId") values ($1, $2) on conflict ("userId") do nothing`, [found.user.id, product]);
+            } else if (found) {
+              await provisionBusinessForVerifiedSignup(found.user.id);
+            }
+          } catch (error) {
+            console.error("[signup] after-hook failed:", error);
+          }
+          return;
+        }
         // A password reset ends every trusted device, like a password change in the Account does.
         if (ctx.path === "/email-otp/reset-password" && !(ctx.context.returned instanceof APIError)) {
           try {

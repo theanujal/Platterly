@@ -54,6 +54,10 @@ export async function provisionTenantForNewUser(
   const linked = await prisma.account.findFirst({ where: { userId, providerId: PLATFORM_PROVIDER_ID }, select: { accountId: true } });
   const subject = linked?.accountId ?? takeCentralSubject(user.email);
   if (subject && (await hasPendingMembership(subject))) return { organizationId: null };
+  // Single sign-up (AJ, 2026-11-14): a person who came through the central sign-in never gets a business made here. The Account makes it when their email is verified
+  // and hands it to Caterly (`organisation.link`, then their membership); until that arrives they wait on "Setting up your account". Only the emergency local door
+  // (no central person) still makes a business here.
+  if (subject) return { organizationId: null };
 
   const slug = await generatePlaceholderSlug();
   const now = new Date();

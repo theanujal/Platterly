@@ -117,22 +117,16 @@ describe("platform outbox: business.created", () => {
 });
 
 describe("sign-up queues the message", () => {
-  it("a person who came through central sign-in gets one queued for their new business, and sign-up still succeeds while the Platform is down", async () => {
+  it("a person who came through central sign-in gets no business made here and nothing queued (the Account makes it and hands it over)", async () => {
     const id = crypto.randomUUID();
     userIds.push(id);
     const email = `ob-${id}@example.com`;
-    const subject = `sub-${id}`;
     await prisma.user.create({ data: { id, name: "Ob", email, emailVerified: true, createdAt: new Date(), updatedAt: new Date() } });
-    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connect ECONNREFUSED"); }));
-    rememberCentralSubject(email, subject);
+    rememberCentralSubject(email, `sub-${id}`);
     const { organizationId } = await provisionTenantForNewUser(id);
-    expect(organizationId).toBeTruthy();
-    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId! } });
-    businessIds.push(org.businessId);
-    const queued = await prisma.platformOutbox.findFirstOrThrow({ where: { businessId: org.businessId } });
-    expect(queued.payload).toMatchObject({ type: "business.created", productKey: "caterly", businessId: org.businessId, owner: { subject } });
-    for (let n = 0; n < 40 && (await row(queued.messageId)).attempts === 0; n++) await new Promise((r) => setTimeout(r, 50)); // the immediate attempt
-    expect((await row(queued.messageId)).status).toBe("PENDING"); // Platform down: waiting for the retry, not lost
+    expect(organizationId).toBeNull();
+    expect(await prisma.member.count({ where: { userId: id } })).toBe(0);
+    expect(await prisma.platformOutbox.count({ where: { payload: { path: ["owner", "subject"], equals: `sub-${id}` } } })).toBe(0);
   });
 
   it("a person with no central sign-in queues nothing", async () => {

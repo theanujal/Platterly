@@ -1,4 +1,4 @@
-import { PLATFORM_CONTRACT_VERSION, PLATFORM_EVENTS_PATH, parsePlatformEvent, signPlatformRequest } from "@platterly/platform-contract";
+import { PLATFORM_CONTRACT_VERSION, PLATFORM_EVENTS_PATH, PLATFORM_LINK_PATH, parseOrganisationLinkAnswer, parseOrganisationLinkCommand, parsePlatformEvent, signPlatformRequest } from "@platterly/platform-contract";
 import { verifyRequest } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { getIntegration, getSecrets } from "../integrations/registry";
@@ -33,6 +33,32 @@ export function createSender(deps: Deps = {}): Sender {
     if (!integration) return { ok: false, error: `product ${event.productKey} is not registered` };
     if (integration.status !== "current") return { ok: false, error: `product ${event.productKey} is ${integration.status}, not current` };
     if (event.sequence > BigInt(Number.MAX_SAFE_INTEGER)) return { ok: false, error: "sequence is too large to send" };
+
+    // `organisation.link` is a command, not an event: it goes to the product's command route and the answer must say the product now has the business.
+    if (event.eventType === "organisation.link") {
+      const businessName = typeof event.payload === "object" && event.payload !== null ? (event.payload as { businessName?: unknown }).businessName : undefined;
+      const commandId = `cmd_${wireEventId(event.eventId).slice(4)}`;
+      const command = JSON.stringify({ version: PLATFORM_CONTRACT_VERSION, commandId, type: "organisation.link", businessId: event.organisationId, businessName });
+      if (!parseOrganisationLinkCommand(JSON.parse(command)).ok) return { ok: false, error: "link command is not valid" };
+      const out = await registry.secrets(event.productKey, "outbound");
+      const inn = await registry.secrets(event.productKey, "inbound");
+      if (!out || !inn) return { ok: false, error: `product ${event.productKey} has no secrets` };
+      const linkUrl = `${integration.baseUrl}${PLATFORM_LINK_PATH}`;
+      let linkRes: Response;
+      try {
+        linkRes = await doFetch(linkUrl, { method: "POST", body: command, headers: signPlatformRequest(out.current, commandId, command, "POST", linkUrl), redirect: "manual", signal: AbortSignal.timeout(deps.timeoutMs ?? TIMEOUT_MS) });
+      } catch (error) {
+        return { ok: false, error: `could not reach ${event.productKey}: ${error instanceof Error ? error.message : "unknown"}` };
+      }
+      const linkText = await linkRes.text().catch(() => "");
+      if (linkRes.status !== 200) return { ok: false, error: `${event.productKey} answered ${linkRes.status}` };
+      const signed = verifyRequest([inn.current, ...(inn.previous ? [inn.previous] : [])], linkRes.headers, linkText);
+      if (!signed.ok) return { ok: false, error: `${event.productKey}'s answer was not signed correctly (${signed.reason})` };
+      let answer: unknown;
+      try { answer = JSON.parse(linkText); } catch { return { ok: false, error: `${event.productKey}'s answer was not JSON` }; }
+      const parsed = parseOrganisationLinkAnswer(answer);
+      return parsed.ok && parsed.value.businessId === event.organisationId ? { ok: true } : { ok: false, error: `${event.productKey} did not confirm the link` };
+    }
 
     // A membership event names the person by the Platform's user id; the product links people by the identity provider's person id, so it is added here.
     // It is looked up at SEND time, so events queued before this existed carry it too.

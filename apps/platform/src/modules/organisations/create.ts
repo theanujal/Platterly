@@ -7,6 +7,7 @@ import { swapAdminRows, isRefusal, isAdminElsewhere } from "./admin";
 import { InvalidInputError, assertProductKey, type Context, type Result } from "./errors";
 import { lockOrganisation } from "./lock";
 import { allocateSlot, slotsTakenElsewhere } from "./slots";
+import { enqueueOutbox } from "../outbox/enqueue";
 import { queueMembership, refuse } from "./support";
 
 // F3.2.2 organisation creation (O1) and adoption (docs/w1-implementation-plan.md, F3.2.2 and the single-Admin proposal, S1 and S2).
@@ -21,7 +22,7 @@ function checkName(name: string) {
 }
 
 /** `organisationId` adopts an existing business id (a Caterly `businessId`, so Platform and Ops agree on one id); without it a new one is minted. */
-export type CreateOrganisationInput = { userId: string; idempotencyKey: string; name: string; productKey: string; organisationId?: string };
+export type CreateOrganisationInput = { userId: string; idempotencyKey: string; name: string; productKey: string; organisationId?: string; /** Also queue `organisation.link` for the product, ahead of the membership event (a business made by the Account, not reported by the product). */ queueLink?: boolean };
 export type CreatedOrganisation = { organisationId: string; created: boolean };
 
 /**
@@ -85,6 +86,8 @@ export async function createOrganisation(tx: Prisma.TransactionClient, ctx: Cont
     after: { name, productKey: input.productKey, adminMemberId: swap.current.memberId },
     requestId: ctx.requestId,
   });
+  // The link goes first: events of one business and product are delivered in order, so the product always has the business before it hears who its Admin is.
+  if (input.queueLink) await enqueueOutbox(tx, { organisationId, productKey: input.productKey, eventType: "organisation.link", payload: { businessName: name } });
   await queueMembership(tx, organisationId, { userId: input.userId, status: "active", membershipVersion: Number(membershipVersion) });
   return { ok: true, organisationId, created: true };
 }
