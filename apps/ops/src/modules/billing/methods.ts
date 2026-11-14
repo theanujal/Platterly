@@ -140,7 +140,7 @@ export async function startMakePrimary(input: { businessId: string; productKey: 
   if (!plan) throw new BillingError("This plan is no longer sold, so the payment method cannot be changed.");
   const customerId = await ensureRazorpayCustomer(input.businessId, keys, fetchImpl);
   const razorpayPlanId = await razorpayPlanFor(keys, plan, fetchImpl);
-  const sub = await createRazorpaySubscription(keys, { razorpayPlanId, customerId, startAt: Math.floor(current.currentPeriodEnd.getTime() / 1000), notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id, purpose: "change_primary_method" } }, fetchImpl);
+  const sub = await createRazorpaySubscription(keys, { razorpayPlanId, customerId, startAt: Math.floor(current.currentPeriodEnd.getTime() / 1000), notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id, purpose: "change_primary_method", methodId: method.id } }, fetchImpl);
   return { keyId: keys.keyId, customerId, razorpaySubscriptionId: sub.id, description: "Authorise your new payment method (₹5, refunded straight away)" };
 }
 
@@ -159,7 +159,7 @@ export async function verifyMakePrimary(input: { businessId: string; productKey:
   const current = await currentSubscription(input.businessId, input.productKey);
   if (!current?.razorpaySubscriptionId) throw new BillingError("Auto-pay is not on, so there is no primary method to change.");
   const old = current.razorpaySubscriptionId;
-  const method = await recordMethodFromPayment(input.businessId, input.razorpayPaymentId, sub.id, keys, fetchImpl);
+  const method = await methodAuthorised(input.businessId, notes.methodId, input.razorpayPaymentId, sub.id, keys, fetchImpl);
   await prisma.$transaction(async (tx) => {
     await tx.subscription.update({ where: { id: current.id }, data: { razorpaySubscriptionId: sub.id, autoPay: "ACTIVE" } });
     // The old primary stays as a saved secondary if it is a card; a UPI id cannot be kept as one (design decision 5).
@@ -207,4 +207,27 @@ export async function recordFirstMethod(businessId: string, razorpayPaymentId: s
   } catch (error) {
     console.error("[methods] could not save the first payment method", razorpaySubscriptionId, error);
   }
+}
+
+/**
+ * The method a make-primary authorisation was made with. Authorising a saved card in Razorpay's window makes Razorpay issue a NEW token for the same card,
+ * so the chosen card keeps its one row and takes the new token (the old token is deleted at Razorpay, best effort). A different card typed into the window
+ * is saved as a method of its own, as for any payment.
+ */
+async function methodAuthorised(businessId: string, chosenId: string | undefined, razorpayPaymentId: string, subscriptionId: string, creds: PlatformRazorpay, fetchImpl: typeof fetch): Promise<PaymentMethod> {
+  const chosen = chosenId ? await prisma.paymentMethod.findUnique({ where: { id: chosenId } }) : null;
+  const payment = await fetchRazorpayPayment(creds, razorpayPaymentId, fetchImpl);
+  const paidWith = describePayment(payment);
+  if (!chosen || chosen.businessId !== businessId || chosen.kind !== paidWith.kind || chosen.label !== paidWith.label) return recordMethodFromPayment(businessId, razorpayPaymentId, subscriptionId, creds, fetchImpl);
+  const newToken = payment.token_id ?? null;
+  const oldToken = chosen.razorpayTokenId;
+  const replaced = !!newToken && newToken !== oldToken;
+  // A row that already holds the new token (the same card saved twice) is folded into the chosen one.
+  if (replaced) await prisma.paymentMethod.deleteMany({ where: { businessId, razorpayTokenId: newToken, id: { not: chosen.id } } });
+  const updated = await prisma.paymentMethod.update({ where: { id: chosen.id }, data: { razorpaySubscriptionId: subscriptionId, ...(replaced ? { razorpayTokenId: newToken } : {}) } });
+  if (replaced && oldToken) {
+    const customer = await prisma.razorpayCustomer.findUnique({ where: { businessId } });
+    if (customer) await deleteRazorpayToken(creds, customer.customerId, oldToken, fetchImpl).catch((error) => console.error("[methods] could not delete the replaced token", oldToken, error));
+  }
+  return updated;
 }

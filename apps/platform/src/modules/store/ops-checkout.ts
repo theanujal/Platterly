@@ -163,3 +163,12 @@ export async function removeStoreMethod(input: Scope & { methodId: string }, dep
   if (!got.ok) return got;
   return got.answer.ok === true ? { ok: true, answer: { ok: true } } : { ok: false, reason: "bad_answer" };
 }
+
+export type AutoPayChange = "pause" | "resume" | "cancel";
+
+/** Pause, resume or stop a business's auto-pay (the Account's auto-renewal section). Ops checks the state and answers with a message for the person when there is nothing to change. */
+export async function changeStoreAutoPay(input: Scope & { change: AutoPayChange }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, `autopay-${input.change}` as PlatformBillingAction, {}, deps);
+  if (!got.ok) return got;
+  return got.answer.ok === true ? { ok: true, answer: { ok: true } } : { ok: false, reason: "bad_answer" };
+}

@@ -6,7 +6,7 @@ const biz = `biz_${"a".repeat(32)}`;
 
 describe("payment-method actions", () => {
   it("every billing action, the six method ones included, has a path the Platform's gate lets through", () => {
-    for (const action of ["methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove"] as const) {
+    for (const action of ["methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove", "autopay-pause", "autopay-resume", "autopay-cancel"] as const) {
       expect(PLATFORM_BILLING_ACTIONS).toContain(action);
     }
     for (const action of PLATFORM_BILLING_ACTIONS) expect(PLATFORM_CHECKOUT_PATH_PATTERN.test(platformCheckoutPath(biz, "catering", action)), action).toBe(true);

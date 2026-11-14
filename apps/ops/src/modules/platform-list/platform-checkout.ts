@@ -1,6 +1,6 @@
 import "server-only";
 import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
-import { BillingError, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, quoteCheckout, reactivateSubscription, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
+import { BillingError, cancelAutoPay, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, pauseAutoPay, quoteCheckout, reactivateSubscription, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
 import { methodsView, recordFirstMethod, removeMethod, startAddCard, startMakePrimary, verifyAddCard, verifyMakePrimary } from "@/modules/billing/methods";
 import { platformRazorpay, RazorpayError } from "@/modules/billing/razorpay";
 
@@ -51,6 +51,11 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       // A monthly plan in the Store is always auto-pay (AJ, 2026-11-14): the flag is ignored. A yearly plan is a one-time order.
       if (checkout.interval === "MONTHLY") return reply(200, await startAutoPayCheckout({ businessId, productKey, planId: checkout.planId, buyer: checkout.buyer }));
       return reply(200, await startCheckout({ businessId, productKey, ...checkout }));
+    }
+    // Pause, resume and stop auto-pay (the Account's auto-renewal section): Ops's own functions, which check the state and say why when there is nothing to change.
+    if (action === "autopay-pause" || action === "autopay-resume" || action === "autopay-cancel") {
+      await { "autopay-pause": pauseAutoPay, "autopay-resume": resumeAutoPay, "autopay-cancel": cancelAutoPay }[action](businessId, productKey);
+      return reply(200, { ok: true });
     }
     if (action === "methods") return reply(200, await methodsView(businessId, productKey));
     if (action === "method-add") return reply(200, await startAddCard(businessId, platformRazorpay()));

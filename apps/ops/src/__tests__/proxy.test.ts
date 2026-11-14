@@ -28,8 +28,8 @@ describe("ops proxy: public routes", () => {
 
   it("lets the Store's payment-method calls through for one business and product, and nothing near them", () => {
     const biz = `biz_${"a".repeat(32)}`;
-    for (const action of ["methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove"]) expect(through(`/api/platform/businesses/${biz}/products/catering/billing/${action}`).passed, action).toBe(true);
-    for (const path of [`/api/platform/businesses/${biz}/products/catering/billing/methods/x`, `/api/platform/businesses/${biz}/products/catering/billing/method`, `/api/platform/businesses/${biz}/products/catering/billing/method-add/`, `/api/platform/businesses/biz_short/products/catering/billing/methods`, `/api/platform/businesses/${biz}/products/catering/billing/method-other`]) {
+    for (const action of ["methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove", "autopay-pause", "autopay-resume", "autopay-cancel"]) expect(through(`/api/platform/businesses/${biz}/products/catering/billing/${action}`).passed, action).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/products/catering/billing/methods/x`, `/api/platform/businesses/${biz}/products/catering/billing/method`, `/api/platform/businesses/${biz}/products/catering/billing/method-add/`, `/api/platform/businesses/biz_short/products/catering/billing/methods`, `/api/platform/businesses/${biz}/products/catering/billing/method-other`, `/api/platform/businesses/${biz}/products/catering/billing/autopay`, `/api/platform/businesses/${biz}/products/catering/billing/autopay-stop`, `/api/platform/businesses/${biz}/products/catering/billing/autopay-pause/x`]) {
       expect(through(path).passed, path).toBe(false);
     }
   });

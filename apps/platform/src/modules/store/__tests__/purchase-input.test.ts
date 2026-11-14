@@ -19,6 +19,7 @@ describe("Store: what a payment-method request may carry", () => {
   it("reads the product and one of the six actions with the values that action needs", () => {
     expect(readMethodRequest({ action: "list", productKey: "caterly" })).toEqual({ action: "list", productKey: "caterly" });
     expect(readMethodRequest({ action: "add", productKey: "caterly" })).toEqual({ action: "add", productKey: "caterly" });
+    for (const action of ["autopay-pause", "autopay-resume", "autopay-cancel"] as const) expect(readMethodRequest({ action, productKey: "caterly" })).toEqual({ action, productKey: "caterly" });
     expect(readMethodRequest({ action: "primary", productKey: "caterly", methodId: "pm_1" })).toEqual({ action: "primary", productKey: "caterly", methodId: "pm_1" });
     expect(readMethodRequest({ action: "remove", productKey: "caterly", methodId: "pm_1" })).toEqual({ action: "remove", productKey: "caterly", methodId: "pm_1" });
     expect(readMethodRequest({ action: "add-verify", productKey: "caterly", razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: sig })).toEqual({ action: "add-verify", productKey: "caterly", razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: sig });

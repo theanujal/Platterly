@@ -201,7 +201,7 @@ describe("making a method the primary", () => {
     const { biz, secondary, periodEnd } = await withTwoCards();
     const start = await startMakePrimary({ businessId: biz, productKey: KEY, methodId: secondary.id }, creds);
     const made = calls.find((c) => c.path === "/subscriptions");
-    expect(made?.body).toMatchObject({ customer_id: "cust_T1", start_at: secs(periodEnd), notes: { businessId: biz, productKey: KEY } });
+    expect(made?.body).toMatchObject({ customer_id: "cust_T1", start_at: secs(periodEnd), notes: { businessId: biz, productKey: KEY, methodId: secondary.id } });
     expect(start).toMatchObject({ keyId: KEY_ID, razorpaySubscriptionId: expect.stringMatching(/^sub_T/) });
   });
 
@@ -225,6 +225,30 @@ describe("making a method the primary", () => {
     expect(calls.some((c) => c.path === "/subscriptions/sub_OLD/cancel")).toBe(true);
     const list = await listMethods(biz, KEY);
     expect(list.map((m) => [m.id === secondary.id ? "B" : m.id === primary.id ? "A" : "?", m.isPrimary])).toEqual([["B", true], ["A", false]]);
+  });
+
+  it("authorising a saved card again makes Razorpay issue a new token: the card keeps its one row, takes the new token, and the old token is deleted", async () => {
+    const { biz, primary, secondary } = await withTwoCards();
+    const start = await startMakePrimary({ businessId: biz, productKey: KEY, methodId: secondary.id }, creds);
+    rz[start.razorpaySubscriptionId].status = "authenticated";
+    pays.pay_auth = card("pay_auth", "token_B_NEW", "1111", "cust_T1");
+    await verifyMakePrimary({ businessId: biz, productKey: KEY, razorpaySubscriptionId: start.razorpaySubscriptionId, razorpayPaymentId: "pay_auth", signature: subSig(start.razorpaySubscriptionId, "pay_auth") }, creds);
+    const rows = await prisma.paymentMethod.findMany({ where: { businessId: biz }, orderBy: { createdAt: "asc" } });
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.id === secondary.id)).toMatchObject({ razorpayTokenId: "token_B_NEW", razorpaySubscriptionId: start.razorpaySubscriptionId });
+    expect(rows.find((r) => r.id === primary.id)).toMatchObject({ razorpaySubscriptionId: null });
+    expect(calls.some((c) => c.method === "DELETE" && c.path === "/customers/cust_T1/tokens/token_B")).toBe(true);
+  });
+
+  it("a different card authorised in the window is saved as its own method and made primary", async () => {
+    const { biz, secondary } = await withTwoCards();
+    const start = await startMakePrimary({ businessId: biz, productKey: KEY, methodId: secondary.id }, creds);
+    rz[start.razorpaySubscriptionId].status = "authenticated";
+    pays.pay_auth = card("pay_auth", "token_C", "7777", "cust_T1");
+    await verifyMakePrimary({ businessId: biz, productKey: KEY, razorpaySubscriptionId: start.razorpaySubscriptionId, razorpayPaymentId: "pay_auth", signature: subSig(start.razorpaySubscriptionId, "pay_auth") }, creds);
+    const list = await listMethods(biz, KEY);
+    expect(list).toHaveLength(3);
+    expect(list[0]).toMatchObject({ label: "Visa ending 7777", isPrimary: true });
   });
 
   it("changes nothing when the new method was not authorised", async () => {

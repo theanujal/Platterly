@@ -13,6 +13,9 @@ import { newEmail, registerAndSignIn } from "./signed-in";
  * The tests share one signed-in person and build on each other, so they run in order. The last one demotes that person to Old Admin.
  */
 const STORE = "http://store.localhost:3300";
+const ACCOUNT = "http://account.localhost:3300";
+/** The only recurring-eligible Razorpay test card (others answer "not eligible for recurring payments"), so every saved method here is this card. */
+const RECURRING_CARD = "4718609108204366";
 const BHANDARYS = "biz_0018e7f46f574908a6d42da6e1d6ca85";
 
 function sql(urlEnv: "DATABASE_URL" | "OPS_THROWAWAY_DATABASE_URL", statement: string): string {
@@ -64,17 +67,32 @@ async function chooseMonthly(p: Page, planName: string, button: "Subscribe" | "U
  * Authorises the auto-pay in Razorpay's test window with the documented recurring test card (Visa 4718 6091 0820 4366, any CVV and future expiry, any OTP) and
  * accepts "Yes, secure my card", which recurring payments require. Other test cards say "not eligible for recurring payments".
  */
-async function authoriseAutoPay(p: Page) {
+async function authoriseAutoPay(p: Page, cardNumber = RECURRING_CARD) {
   await p.getByRole("button", { name: /^Pay ₹/ }).click();
+  await completeRazorpayCard(p, cardNumber);
+}
+
+/** The card steps of Razorpay's test window, from the mobile number to the OTP; the window must already be open. */
+async function completeRazorpayCard(p: Page, cardNumber: string) {
   const frame = p.frameLocator("iframe.razorpay-checkout-frame");
   const mobile = frame.getByPlaceholder("Mobile number");
   if (await mobile.waitFor({ state: "visible", timeout: 15_000 }).then(() => true, () => false)) await mobile.pressSequentially("9845671203", { delay: 60 });
   await frame.getByText("Cards", { exact: true }).first().click();
   const addCard = frame.getByText("Add a new card");
   if (await addCard.isVisible().catch(() => false)) await addCard.click();
-  await frame.locator('input[name="card.number"]').pressSequentially("4718609108204366", { delay: 40 });
+  const number = frame.locator('input[name="card.number"]');
+  await number.click();
+  await number.pressSequentially(cardNumber, { delay: 120 });
+  // Razorpay reformats the field as it detects the card; if typing was cut short, replace it in one go.
+  if ((await number.inputValue()).replace(/\s/g, "") !== cardNumber) {
+    await number.clear();
+    await number.fill(cardNumber);
+  }
   await frame.locator('input[name="card.expiry"]').pressSequentially("1230", { delay: 40 });
   await frame.locator('input[name="card.cvv"]').pressSequentially("123", { delay: 40 });
+  // Saving the card is required for renewals; the registration window leaves the box unticked.
+  const save = frame.getByRole("checkbox", { name: /Save this card/i });
+  if ((await save.count()) > 0 && !(await save.isChecked().catch(() => true))) await save.check({ force: true }).catch(() => {});
   const name = frame.locator('input[name="card.name"]');
   if (await name.isVisible().catch(() => false)) await name.fill("Store Buyer");
   const email = frame.getByPlaceholder("Enter Email");
@@ -86,6 +104,7 @@ async function authoriseAutoPay(p: Page) {
   if (await otp.waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false)) {
     await otp.pressSequentially("123456", { delay: 40 });
     await frame.getByRole("button", { name: "Continue", exact: true }).locator("visible=true").last().click();
+    await p.waitForTimeout(8000);
   }
 }
 
@@ -132,5 +151,104 @@ test.describe("Live Store: monthly auto-pay", () => {
     expect(answer.remove.status).toBe(400);
     expect(answer.remove.json.message).toMatch(/primary/i);
     expect(await ops(`select count(*) from payment_method where "businessId"='${BHANDARYS}'`)).toBe("1");
+  });
+
+  const onPage = (name: string | RegExp) => page.getByTestId("pm-caterly").getByRole("button", { name });
+  const methodRows = () => page.getByTestId("method-row");
+  // The primary row carries the "Primary" badge; text matching cannot tell it from the secondary row's "Make primary" button.
+  const secondaryRow = () => methodRows().filter({ hasNot: page.locator(".pa-badge") });
+
+  test("the Account's Payment method page shows the card as primary and auto-renewal as on", async () => {
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await expect(page.getByRole("heading", { name: "Payment method", level: 1 })).toBeVisible();
+    await expect(methodRows()).toHaveCount(1);
+    await expect(methodRows().first()).toContainText("Visa ending 4366");
+    await expect(methodRows().first()).toContainText("Primary");
+    await expect(page.getByTestId("auto-renewal")).toContainText("On.");
+    await expect(page.getByTestId("pm-caterly")).toContainText(/next charge is on/);
+    // The only method is the primary: nothing to remove or make primary.
+    await expect(onPage("Remove")).toHaveCount(0);
+    await expect(onPage("Make primary")).toHaveCount(0);
+  });
+
+  test("the Store points a monthly plan to the Account instead of offering Cancel", async () => {
+    await page.goto(`${STORE}/manage/caterly`);
+    await expect(page.getByTestId("autopay-note")).toContainText("renews automatically");
+    await expect(page.getByRole("button", { name: "Cancel subscription" })).toHaveCount(0);
+    await expect(page.getByTestId("autopay-note").getByRole("link")).toHaveAttribute("href", `${ACCOUNT}/payment-methods`);
+  });
+
+  test("pausing auto-renewal stops future charges, keeps the paid days, and resuming turns it back on", async () => {
+    test.setTimeout(120_000);
+    const periodEnd = () => ops(`select "currentPeriodEnd" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);
+    const before = await periodEnd();
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await page.getByRole("button", { name: "Pause auto-renewal" }).click();
+    await page.getByRole("button", { name: "Yes, pause" }).click();
+    await expect(page.getByText("Auto-renewal is paused.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("auto-renewal")).toContainText("Paused.");
+    expect(await ops(`select "autoPay"::text||'|'||status::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("PAUSED|ACTIVE");
+    expect(await periodEnd()).toBe(before);
+    await page.getByRole("button", { name: "Resume auto-renewal" }).click();
+    await expect(page.getByText("Auto-renewal is back on.")).toBeVisible({ timeout: 30_000 });
+    expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE");
+  });
+
+  test("adding a card saves it as a secondary and Ops refunds the Rs 5", async () => {
+    test.setTimeout(240_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await onPage("Add card").click();
+    await completeRazorpayCard(page, RECURRING_CARD);
+    await expect(page.getByText(/was saved\. The ₹5/)).toBeVisible({ timeout: 60_000 });
+    await expect(methodRows()).toHaveCount(2);
+    expect(await ops(`select count(*) from payment_method where "businessId"='${BHANDARYS}' and "razorpaySubscriptionId" is null`)).toBe("1");
+  });
+
+  test("making the new card primary authorises a new subscription and switches the renewals to it", async () => {
+    test.setTimeout(240_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    const oldSub = await ops(`select "razorpaySubscriptionId" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);
+    await secondaryRow().getByRole("button", { name: "Make primary" }).click();
+    await completeRazorpayCard(page, RECURRING_CARD);
+    await expect(page.getByText(/is now your primary method/)).toBeVisible({ timeout: 60_000 });
+    const newSub = await ops(`select "razorpaySubscriptionId" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);
+    expect(newSub).not.toBe(oldSub);
+    await expect(methodRows().first()).toContainText("Primary");
+    // Both methods are the same test card, so the switch is shown by the primary now being the card that was added second.
+    expect(await ops(`select count(*) from payment_method where "businessId"='${BHANDARYS}' and "razorpaySubscriptionId"='${newSub}'`)).toBe("1");
+  });
+
+  test("a secondary method can be removed, the primary and the last cannot", async () => {
+    test.setTimeout(120_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await expect(methodRows()).toHaveCount(2);
+    await secondaryRow().getByRole("button", { name: "Remove", exact: true }).click();
+    await page.getByRole("button", { name: /^Remove Visa/ }).click();
+    await expect(page.getByText("The payment method was removed.")).toBeVisible({ timeout: 30_000 });
+    await expect(methodRows()).toHaveCount(1);
+    await expect(onPage("Remove")).toHaveCount(0);
+    expect(await ops(`select count(*) from payment_method where "businessId"='${BHANDARYS}'`)).toBe("1");
+  });
+
+  test("stopping auto-renewal cancels the Razorpay subscription for good and keeps the paid days", async () => {
+    test.setTimeout(120_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await page.getByRole("button", { name: "Stop auto-renewal" }).click();
+    await page.getByRole("button", { name: "Yes, stop auto-renewal" }).click();
+    await expect(page.getByText("Auto-renewal is stopped.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("auto-renewal")).toContainText("Stopped.");
+    await expect(page.getByRole("button", { name: "Resume auto-renewal" })).toHaveCount(0);
+    expect(await ops(`select "autoPay"::text||'|'||status::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("CANCELLED|ACTIVE");
+  });
+
+  test("the Old Admin is turned away from the Payment method page", async ({ browser }) => {
+    test.setTimeout(120_000);
+    // A new person takes over as Admin; the signed-in person becomes the Old Admin (a former_admin row that stays active and read-only).
+    const other = await browser.newPage();
+    await signInAsBhandarysAdmin(other);
+    await other.close();
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    await expect(page.getByText("Payment methods are available to the business Admin only.")).toBeVisible();
+    await expect(page.getByTestId("pm-caterly")).toHaveCount(0);
   });
 });

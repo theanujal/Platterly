@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
-import { listStoreMethods, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary } from "../ops-checkout";
+import { changeStoreAutoPay, listStoreMethods, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary } from "../ops-checkout";
 
 const SECRET = "billing-secret-0123456789abcdef0123456789abcdef";
 const env = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_BILLING_SECRET: SECRET } as unknown as NodeJS.ProcessEnv;
@@ -80,5 +80,18 @@ describe("Store: payment-method calls to Ops", () => {
   it("remove: a refusal from Ops reaches the person with its message", async () => {
     expect(await removeStoreMethod({ ...base, methodId: "pm_1" }, deps(ops({ ok: true }).fetchImpl))).toEqual({ ok: true, answer: { ok: true } });
     expect(await removeStoreMethod({ ...base, methodId: "pm_1" }, deps(ops({ error: "The last payment method cannot be removed. Add another first." }, 400).fetchImpl))).toEqual({ ok: false, reason: "rejected", message: "The last payment method cannot be removed. Add another first." });
+  });
+});
+
+describe("Store: pause, resume and stop auto-pay", () => {
+  it("sends each change to its own route with an empty body and returns ok; a refusal reaches the person with its message", async () => {
+    for (const change of ["pause", "resume", "cancel"] as const) {
+      const o = ops({ ok: true });
+      expect(await changeStoreAutoPay({ ...base, change }, deps(o.fetchImpl))).toEqual({ ok: true, answer: { ok: true } });
+      expect(o.seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", `autopay-${change}` as const)}`);
+      expect(JSON.parse(o.seen.body!)).toEqual({});
+    }
+    expect(await changeStoreAutoPay({ ...base, change: "pause" }, deps(ops({ error: "Auto-pay is not on." }, 400).fetchImpl))).toEqual({ ok: false, reason: "rejected", message: "Auto-pay is not on." });
+    expect(await changeStoreAutoPay({ ...base, change: "pause" }, deps(ops({ ok: false }).fetchImpl))).toEqual({ ok: false, reason: "bad_answer" });
   });
 });

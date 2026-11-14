@@ -65,3 +65,10 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 - **Six signed actions** under `/api/platform/businesses/{id}/products/{key}/billing/`: `methods`, `method-add`, `method-add-verify`, `method-primary`, `method-primary-verify`, `method-remove` (contract path pattern, route files, proxy tests). Platform side: `/api/store/methods` with an `action` field, all behind `billingAccess`.
 - **Pause and stop** of auto-pay move to the Account (AJ); not built.
 - **Browser proof:** `apps/platform/e2e/store-live-autopay.spec.ts` (monthly purchase, first method saved as primary, primary removal refused). Still untested in a browser: add card, make primary, remove a secondary (3b.3), UPI AutoPay, a renewal charge.
+
+## Built (3b.3, 2026-11-14, Account page and auto-renewal; proven in a browser)
+
+- **Account `/payment-methods`** (Admin only): per product the plan, auto-pay state, next charge date and saved methods (Primary badge); Add card, Make primary, Remove (not the primary, not the last). `/api/account/payment-methods` GET lists and POST takes the same actions as the Store's `/api/store/methods`.
+- **Auto-renewal** (Pause, Resume, Stop) moved here from the Store: Ops actions `autopay-pause`, `autopay-resume`, `autopay-cancel`. Stop is for good (the person starts again from the Store); paid days keep working, then the 7-day grace and the lock. The Store's monthly "Cancel subscription" is replaced by a note linking to the Account; a yearly plan still has its Cancel (stop renewal) in the Store.
+- **Re-tokenisation:** authorising a saved card in Razorpay's window issues a new token for the same card. `verifyMakePrimary` keeps the chosen card's single row, takes the new token and deletes the old one at Razorpay; a different card chosen in the window is saved as its own method.
+- Razorpay's test Mastercard is not eligible for recurring, so browser specs use the Visa 4718 6091 0820 4366 for every method.

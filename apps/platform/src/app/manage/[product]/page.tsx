@@ -1,3 +1,4 @@
+import { originFor } from "@/lib/routing/hosts";
 import Link from "next/link";
 import { StoreFrame } from "@/components/store/frame";
 import { ManageFlow } from "@/components/store/manage-flow";
@@ -41,7 +42,7 @@ export default async function ManagePage({ params }: { params: Promise<{ product
   const savedBuyer = saved?.ok ? saved.answer.profile : null;
   return (
     <StoreFrame>
-      <ManageFlow product={product} live={data.source === "ops"} savedBuyer={savedBuyer} />
+      <ManageFlow product={product} live={data.source === "ops"} savedBuyer={savedBuyer} accountUrl={originFor("account")} />
     </StoreFrame>
   );
 }

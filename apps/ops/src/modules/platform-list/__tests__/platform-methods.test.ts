@@ -13,6 +13,9 @@ import { POST as methodAddVerifyPOST } from "@/app/api/platform/businesses/[busi
 import { POST as methodPrimaryPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/method-primary/route";
 import { POST as methodPrimaryVerifyPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/method-primary-verify/route";
 import { POST as methodRemovePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/method-remove/route";
+import { POST as autopayPausePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-pause/route";
+import { POST as autopayResumePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-resume/route";
+import { POST as autopayCancelPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-cancel/route";
 
 /** The Store's monthly auto-pay and payment-method calls (Platform to Ops). Razorpay is a stand-in. */
 const KEY = "plrmeth";
@@ -49,6 +52,11 @@ function fakeRazorpay(): typeof fetch {
     }
     const invoices = path.match(/^\/invoices\?subscription_id=(sub_\w+)$/);
     if (invoices) return json({ items: inv[invoices[1]] ?? [] });
+    const change = path.match(/^\/subscriptions\/(sub_\w+)\/(pause|resume)$/);
+    if (change && rz[change[1]]) {
+      rz[change[1]].status = change[2] === "pause" ? "paused" : "active";
+      return json({ id: change[1], ...rz[change[1]] });
+    }
     const cancel = path.match(/^\/subscriptions\/(sub_\w+)\/cancel$/);
     if (cancel) {
       rz[cancel[1]] = { ...(rz[cancel[1]] ?? { current_start: null, current_end: null }), status: "cancelled" };
@@ -64,7 +72,7 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
+const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST, "autopay-pause": autopayPausePOST, "autopay-resume": autopayResumePOST, "autopay-cancel": autopayCancelPOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
 const call = (action: PlatformBillingAction, body: unknown, secret: string | null = BILLING_SECRET) => {
   const text = JSON.stringify(body);
   const url = `http://127.0.0.1:3200${platformCheckoutPath(BIZ, KEY, action)}`;
@@ -229,5 +237,37 @@ describe("payment-method calls", () => {
     expect((await call("method-add-verify", { nonsense: true })).status).toBe(400);
     expect((await call("method-primary-verify", { nonsense: true })).status).toBe(400);
     expect((await call("method-remove", { methodId: "pm_notmine" })).status).toBe(400);
+  });
+});
+
+describe("auto-renewal calls: pause, resume, stop", () => {
+  const state = () => prisma.subscription.findFirstOrThrow({ where: { businessId: BIZ, endDate: null } });
+
+  it("pause stops future charges only, resume turns them back on, and the paid days are untouched", async () => {
+    const { subId } = await buyMonthly();
+    const before = await state();
+    expect((await call("autopay-pause", {})).status).toBe(200);
+    expect(rz[subId].status).toBe("paused");
+    expect(await state()).toMatchObject({ autoPay: "PAUSED", status: "ACTIVE" });
+    expect((await state()).currentPeriodEnd).toEqual(before.currentPeriodEnd);
+    expect((await call("autopay-resume", {})).status).toBe(200);
+    expect(rz[subId].status).toBe("active");
+    expect(await state()).toMatchObject({ autoPay: "ACTIVE" });
+  });
+
+  it("stop cancels the Razorpay subscription for good, keeps the paid days, and cannot be resumed", async () => {
+    const { subId } = await buyMonthly();
+    expect((await call("autopay-cancel", {})).status).toBe(200);
+    expect(rz[subId].status).toBe("cancelled");
+    expect(await state()).toMatchObject({ autoPay: "CANCELLED", status: "ACTIVE" });
+    expect((await call("autopay-resume", {})).status).toBe(400);
+  });
+
+  it("answers with a message for the person when there is nothing to change, and 401 when unsigned", async () => {
+    const refused = await call("autopay-pause", {});
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: string }).error).toMatch(/auto-pay/i);
+    expect((await call("autopay-pause", {}, null)).status).toBe(401);
+    expect((await call("autopay-cancel", {}, null)).status).toBe(401);
   });
 });

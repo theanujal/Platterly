@@ -25,7 +25,7 @@ const FIELDS: { key: keyof Buyer; label: string; optional?: boolean; autoComplet
 const BUTTON: Record<ChangeKind, string> = { current: "Current plan", upgrade: "Upgrade", downgrade: "Downgrade", new: "Subscribe" };
 
 /** Manage one product (prototype): plans with Upgrade / Downgrade / Current plan, then Confirm order, Payment (sample) and Confirmation. Nothing is saved or charged. */
-export function ManageFlow({ product, live = false, savedBuyer = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null }) {
+export function ManageFlow({ product, live = false, savedBuyer = null, accountUrl = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null; accountUrl?: string | null }) {
   const sub = product.subscription;
   const currentPlan = sub ? product.plans.find((p) => p.id === sub.planId) ?? null : null;
   const [step, setStep] = useState<Step>("plans");
@@ -231,7 +231,13 @@ export function ManageFlow({ product, live = false, savedBuyer = null }: { produ
               </tbody>
             </table>
           </details>
-          {sub && (
+          {live && sub && sub.interval === "MONTHLY" && (
+            // A monthly plan renews by auto-pay: pause and stop are in the Account, next to the payment method (AJ, 2026-11-14).
+            <p className="ps-note" role="note" data-testid="autopay-note">
+              Your monthly plan renews automatically. To pause or stop auto-renewal, or to change the card it uses, go to {accountUrl ? <a href={`${accountUrl}/payment-methods`}>Payment method in your Account</a> : "Payment method in your Account"}.
+            </p>
+          )}
+          {sub && !(live && sub.interval === "MONTHLY") && (
             <div className="ps-cancel">
               {cancelling === null && !(live && sub.cancelledAt) && <button type="button" className="ps-linkbtn" onClick={() => setCancelling("ask")}>Cancel subscription</button>}
               {cancelling === "ask" && (
