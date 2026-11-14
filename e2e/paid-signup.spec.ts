@@ -55,8 +55,8 @@ async function code(page: Page, to: string) {
 const cron = (page: Page) => page.request.post(`${AUTH}/api/cron/paid-signups`, { headers: { authorization: `Bearer ${readFileSync(process.env.CRON_SECRET_FILE!, "utf8").trim()}` } });
 
 /** The pricing button of Caterly's marketing page for the yearly Premium plan: it goes to Caterly's start, which carries the plan to the central sign-in. */
-async function startPaidSignUp(page: Page, email: string) {
-  await page.goto(`${CATERLY}/api/platform/sso/start?plan=premium&interval=ANNUAL`);
+async function startPaidSignUp(page: Page, email: string, interval: "ANNUAL" | "MONTHLY" = "ANNUAL") {
+  await page.goto(`${CATERLY}/api/platform/sso/start?plan=premium&interval=${interval}`);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
   await fill(page, "First name", "Asha");
@@ -201,4 +201,154 @@ test("signing up again with an unpaid email before the window ends replaces the 
   expect(second).not.toBe(first);
   expect((await ops.query(`select count(*) from abandoned_order where "businessId" = $1`, [first])).rows[0].count).toBe("1");
   await ops.query(`delete from abandoned_order where "businessId" = $1`, [first]);
+});
+
+/** Authorises monthly auto-pay in Razorpay's test window with the only recurring-eligible test card (Visa 4718 6091 0820 4366), "Yes, secure my card" and any OTP. */
+async function authoriseAutoPay(page: Page) {
+  await page.getByRole("button", { name: /^Pay ₹/ }).click();
+  const frame = page.frameLocator("iframe.razorpay-checkout-frame");
+  const mobile = frame.getByPlaceholder("Mobile number");
+  if (await mobile.waitFor({ state: "visible", timeout: 15_000 }).then(() => true, () => false)) await mobile.pressSequentially("9845671203", { delay: 60 });
+  await frame.getByText("Cards", { exact: true }).first().click();
+  const addCard = frame.getByText("Add a new card");
+  if (await addCard.isVisible().catch(() => false)) await addCard.click();
+  const number = frame.locator('input[name="card.number"]');
+  await number.click();
+  await number.pressSequentially("4718609108204366", { delay: 120 });
+  if ((await number.inputValue()).replace(/\s/g, "") !== "4718609108204366") {
+    await number.clear();
+    await number.fill("4718609108204366");
+  }
+  await frame.locator('input[name="card.expiry"]').pressSequentially("1230", { delay: 40 });
+  await frame.locator('input[name="card.cvv"]').pressSequentially("123", { delay: 40 });
+  const save = frame.getByRole("checkbox", { name: /Save this card/i });
+  if ((await save.count()) > 0 && !(await save.isChecked().catch(() => true))) await save.check({ force: true }).catch(() => {});
+  const name = frame.locator('input[name="card.name"]');
+  if (await name.isVisible().catch(() => false)) await name.fill("Asha Rao");
+  const mail = frame.getByPlaceholder("Enter Email");
+  if (await mail.isVisible().catch(() => false)) await mail.fill("buyer@auth.test");
+  await frame.getByRole("button", { name: "Continue", exact: true }).click();
+  await frame.getByText("Yes, secure my card", { exact: true }).locator("visible=true").first().click({ timeout: 30_000, force: true }).catch(() => {});
+  const otp = frame.getByPlaceholder(/OTP/i);
+  if (await otp.waitFor({ state: "visible", timeout: 20_000 }).then(() => true, () => false)) {
+    await otp.pressSequentially("123456", { delay: 40 });
+    await frame.getByRole("button", { name: "Continue", exact: true }).locator("visible=true").last().click();
+    await page.waitForTimeout(8000);
+  }
+}
+
+test("a paid MONTHLY sign-up: nothing exists before payment, no trial ever, and authorising auto-pay makes the business with an ACTIVE monthly plan and the card saved", async ({ page }) => {
+  test.setTimeout(300_000);
+  const email = `pm-${Date.now()}@auth.test`;
+  emails.push(email);
+  await startPaidSignUp(page, email, "MONTHLY");
+  await verify(page, email);
+
+  await expect(page).toHaveURL(/store\.localhost:3300\/manage\/caterly\?plan=premium&interval=MONTHLY/, { timeout: 60_000 });
+  await expect(page.getByLabel("Business name")).toBeVisible({ timeout: 60_000 });
+  const row = await pendingRow(email);
+  expect(row).toMatchObject({ status: "pending_payment", planCode: "premium", interval: "MONTHLY" });
+  const businessId = row.reservedBusinessId as string;
+  businesses.push(businessId);
+  expect((await platform.query(`select count(*) from organisations where id = $1`, [businessId])).rows[0].count).toBe("0");
+  await expect.poll(async () => (await ops.query(`select count(*) from business where id = $1`, [businessId])).rows[0].count, { timeout: 30_000 }).toBe("1");
+  expect((await ops.query(`select count(*) from subscription where "businessId" = $1`, [businessId])).rows[0].count).toBe("0");
+
+  await page.getByLabel("Business name").fill("Asha Rao Catering");
+  await page.getByLabel("Address line 1").fill("12 MG Road");
+  await page.getByLabel("City").fill("Pune");
+  await page.getByLabel("State").fill("Maharashtra");
+  await page.getByLabel("PIN code").fill("411001");
+  await authoriseAutoPay(page);
+  await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible({ timeout: 90_000 });
+
+  expect((await platform.query(`select count(*) from organisation_members m join users u on u.id = m.user_id where m.organisation_id = $1 and u.email = $2 and m.central_role = 'admin'`, [businessId, email])).rows[0].count).toBe("1");
+  expect((await ops.query(`select status, "billingInterval" from subscription where "businessId" = $1 order by "createdAt"`, [businessId])).rows).toEqual([{ status: "ACTIVE", billingInterval: "MONTHLY" }]);
+  expect((await ops.query(`select count(*) from subscription_payment where "businessId" = $1 and status = 'PAID'`, [businessId])).rows[0].count).toBe("1");
+  expect((await ops.query(`select count(*) from payment_method where "businessId" = $1 and "razorpaySubscriptionId" is not null`, [businessId])).rows[0].count).toBe("1");
+  expect((await pendingRow(email))?.status).toBe("completed");
+
+  await page.getByRole("link", { name: /^Continue to Caterly/ }).click();
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/, { timeout: 90_000 });
+  await expect.poll(async () => (await caterly.query(`select s.data->>'status' as status from ops_snapshot s join organization o on o.id = s."organizationId" where o."businessId" = $1`, [businessId])).rows[0]?.status ?? null, { timeout: 60_000 }).toBe("ACTIVE");
+});
+
+/**
+ * Paid, then the browser is closed before the Store can confirm. Razorpay cannot reach a local machine, so its real webhook never arrives here: the test posts a payment.captured
+ * event signed with Ops's webhook secret, for the real Razorpay order the checkout made. It proves OUR handling (Ops marks it paid, the scheduled check completes the sign-up);
+ * it does not prove that Razorpay sends the event.
+ */
+test("paid, browser closed, then Razorpay's signed payment.captured webhook arrives: the scheduled check completes the sign-up and nothing is abandoned", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const secret = readFileSync("apps/ops/.env", "utf8").match(/^RAZORPAY_WEBHOOK_SECRET="?([^"\n]+)"?/m)?.[1];
+  if (!secret) throw new Error("RAZORPAY_WEBHOOK_SECRET not found in apps/ops/.env");
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const email = `pc-${Date.now()}@auth.test`;
+  emails.push(email);
+  await startPaidSignUp(page, email);
+  await verify(page, email);
+  await expect(page.getByLabel("Business name")).toBeVisible({ timeout: 60_000 });
+  const businessId = (await pendingRow(email)).reservedBusinessId as string;
+  businesses.push(businessId);
+  await expect.poll(async () => (await ops.query(`select count(*) from business where id = $1`, [businessId])).rows[0].count, { timeout: 30_000 }).toBe("1");
+  // The Store form can reset itself while it finishes loading, so fill it until the values stay.
+  await expect(async () => {
+    await page.getByLabel("Business name").fill("Asha Rao Catering");
+    await page.getByLabel("Address line 1").fill("12 MG Road");
+    await page.getByLabel("City").fill("Pune");
+    await page.getByLabel("State").fill("Maharashtra");
+    await page.getByLabel("PIN code").fill("411001");
+    await page.waitForTimeout(500);
+    await expect(page.getByLabel("PIN code")).toHaveValue("411001");
+    await expect(page.getByLabel("Business name")).toHaveValue("Asha Rao Catering");
+  }).toPass({ timeout: 30_000 });
+
+  // Pay, and close the browser the moment the bank page says Success.
+  const bank = page.context().waitForEvent("page", { timeout: 60_000 });
+  await page.getByRole("button", { name: /^Pay ₹/ }).click();
+  const frame = page.frameLocator("iframe.razorpay-checkout-frame");
+  const mobile = frame.getByPlaceholder("Mobile number");
+  if (await mobile.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) await mobile.pressSequentially("9845671203", { delay: 60 });
+  await frame.getByText("Cards", { exact: true }).first().click();
+  await frame.getByText("Add a new card").click();
+  await frame.locator('input[name="card.number"]').pressSequentially("4111111111111111", { delay: 40 });
+  await frame.locator('input[name="card.expiry"]').pressSequentially("1230", { delay: 40 });
+  await frame.locator('input[name="card.cvv"]').pressSequentially("123", { delay: 40 });
+  await frame.getByPlaceholder("Enter Email").fill("buyer@auth.test");
+  await frame.getByRole("button", { name: "Continue", exact: true }).click();
+  await frame.getByText("Maybe later", { exact: true }).locator("visible=true").first().click({ timeout: 8000 }).catch(() => {});
+  await (await bank).getByRole("button", { name: "Success" }).click();
+  await context.close();
+
+  // Without a browser and without the webhook, Ops cannot know it was paid: the scheduled check leaves it pending (unpaid for under 24 hours).
+  const cronNow = async () => {
+    const response = await fetch(`${AUTH}/api/cron/paid-signups`, { method: "POST", headers: { authorization: `Bearer ${readFileSync(process.env.CRON_SECRET_FILE!, "utf8").trim()}` } });
+    expect(response.status).toBe(200);
+  };
+  await cronNow();
+  expect((await pendingRow(email))?.status).toBe("pending_payment");
+
+  // The webhook: payment.captured for the real Razorpay order, with the amount Razorpay captured, signed with Ops's secret.
+  const payment = (await ops.query(`select "razorpayOrderId", total from subscription_payment where "businessId" = $1`, [businessId])).rows[0];
+  expect(payment.razorpayOrderId).toBeTruthy();
+  const body = JSON.stringify({
+    event: "payment.captured",
+    payload: { payment: { entity: { id: `pay_sim${Date.now()}`, order_id: payment.razorpayOrderId, amount: Math.round(Number(payment.total) * 100), status: "captured" } } },
+  });
+  const signature = (await import("node:crypto")).createHmac("sha256", secret).update(body).digest("hex");
+  const hook = await fetch("http://localhost:3200/api/webhooks/razorpay", { method: "POST", headers: { "content-type": "application/json", "x-razorpay-signature": signature, "x-razorpay-event-id": `evt_sim${Date.now()}` }, body });
+  expect(hook.status).toBe(200);
+  expect((await ops.query(`select status from subscription_payment where "businessId" = $1`, [businessId])).rows).toEqual([{ status: "PAID" }]);
+
+  // Now the scheduled check completes the paid sign-up and never abandons it.
+  await expect
+    .poll(async () => {
+      await cronNow();
+      return (await pendingRow(email))?.status ?? null;
+    }, { timeout: 60_000, intervals: [3000] })
+    .toBe("completed");
+  expect((await platform.query(`select count(*) from organisations where id = $1`, [businessId])).rows[0].count).toBe("1");
+  expect((await ops.query(`select status, "billingInterval" from subscription where "businessId" = $1`, [businessId])).rows).toEqual([{ status: "ACTIVE", "billingInterval": "ANNUAL" }]);
+  expect((await ops.query(`select count(*) from abandoned_order where "businessId" = $1`, [businessId])).rows[0].count).toBe("0");
 });
