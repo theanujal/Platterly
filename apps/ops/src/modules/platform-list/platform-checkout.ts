@@ -66,6 +66,41 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       const done = await prisma.business.updateMany({ where: { id: businessId, products: { some: { productKey } } }, data: { ownerPhone: phone, ownerEmail: email } });
       return done.count ? reply(200, { ok: true }) : reply(404, { error: "unknown_business" });
     }
+    // A paid-plan sign-up opens the Store checkout (single sign-up, plan revision 3): the Account registers the business and product with NO plan and NO trial, so the
+    // checkout has something to attach the payment to. Only a paid payment makes a plan.
+    if (action === "register-pending") {
+      const body = (json ?? {}) as Record<string, unknown>;
+      const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+      const name = text(body.name, 200);
+      const ownerEmail = text(body.ownerEmail, 254);
+      if (!name || !ownerEmail?.includes("@")) return reply(400, { error: "register-pending needs a name and an owner email" });
+      if (!(await prisma.product.findUnique({ where: { key: productKey }, select: { key: true } }))) return reply(404, { error: "unknown_business" });
+      const owner = { ownerName: text(body.ownerName, 200) ?? name, ownerEmail, ownerPhone: text(body.ownerPhone, 20) };
+      await prisma.business.upsert({ where: { id: businessId }, create: { id: businessId, name, ...owner }, update: { name, ...owner } });
+      await prisma.businessProduct.upsert({ where: { businessId_productKey: { businessId, productKey } }, create: { businessId, productKey }, update: {} });
+      return reply(200, { ok: true });
+    }
+    // The payment window ended unpaid: keep what the person gave on the Abandoned-orders page and remove the registration. Never when anything was paid or any plan exists.
+    if (action === "abandon-pending") {
+      const body = (json ?? {}) as Record<string, unknown>;
+      const text = (v: unknown, max: number) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
+      const email = text(body.email, 254);
+      const name = text(body.name, 200);
+      const step = text(body.step, 40);
+      const signedUpAt = typeof body.signedUpAt === "string" ? new Date(body.signedUpAt) : null;
+      if (!email || !name || !step || !signedUpAt || Number.isNaN(signedUpAt.getTime())) return reply(400, { error: "abandon-pending needs an email, a name, a step and when they signed up" });
+      const outcome = await prisma.$transaction(async (tx) => {
+        const held = await tx.business.findUnique({ where: { id: businessId }, select: { _count: { select: { subscriptions: true } } } });
+        const paid = await tx.subscriptionPayment.count({ where: { businessId, status: "PAID" } });
+        if (paid > 0 || (held?._count.subscriptions ?? 0) > 0) return "has_payment" as const;
+        const data = { email, name, phone: text(body.phone, 20), productKey, planCode: text(body.planCode, 60), interval: text(body.interval, 20), step, signedUpAt };
+        await tx.abandonedOrder.upsert({ where: { businessId }, create: { businessId, ...data }, update: data });
+        await tx.subscriptionPayment.deleteMany({ where: { businessId } });
+        await tx.business.deleteMany({ where: { id: businessId } });
+        return "abandoned" as const;
+      });
+      return outcome === "has_payment" ? reply(409, { error: "has_payment" }) : reply(200, { ok: true });
+    }
     if (action === "methods") return reply(200, await methodsView(businessId, productKey));
     if (action === "method-add") return reply(200, await startAddCard(businessId, platformRazorpay()));
     if (action === "method-add-verify") {

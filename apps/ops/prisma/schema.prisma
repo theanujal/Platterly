@@ -895,3 +895,23 @@ model NewsletterIssue {
   @@index([status, scheduledFor])
   @@map("newsletter_issue")
 }
+
+// A paid-plan sign-up that was started and never paid (AJ, 2026-11-14). The person's sign-in record is deleted when the payment window ends; this row keeps
+// what they gave so staff can follow up, and goes after 90 days. `businessId` is the id reserved for them (one row per sign-up).
+model AbandonedOrder {
+  id          String   @id @default(cuid())
+  businessId  String   @unique
+  email       String
+  name        String
+  phone       String?
+  productKey  String
+  planCode    String?
+  interval    String?
+  step        String
+  signedUpAt  DateTime
+  abandonedAt DateTime @default(now())
+  status      String   @default("OPEN")
+
+  @@index([status, abandonedAt])
+  @@map("abandoned_order")
+}

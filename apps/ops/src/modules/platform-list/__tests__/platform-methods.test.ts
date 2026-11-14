@@ -16,6 +16,8 @@ import { POST as methodRemovePOST } from "@/app/api/platform/businesses/[busines
 import { POST as autopayPausePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-pause/route";
 import { POST as autopayResumePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-resume/route";
 import { POST as ownerContactPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/owner-contact/route";
+import { POST as registerPendingPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/register-pending/route";
+import { POST as abandonPendingPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/abandon-pending/route";
 import { POST as autopayCancelPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-cancel/route";
 
 /** The Store's monthly auto-pay and payment-method calls (Platform to Ops). Razorpay is a stand-in. */
@@ -73,12 +75,12 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST, "autopay-pause": autopayPausePOST, "autopay-resume": autopayResumePOST, "autopay-cancel": autopayCancelPOST, "owner-contact": ownerContactPOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
-const call = (action: PlatformBillingAction, body: unknown, secret: string | null = BILLING_SECRET) => {
+const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST, "autopay-pause": autopayPausePOST, "autopay-resume": autopayResumePOST, "autopay-cancel": autopayCancelPOST, "owner-contact": ownerContactPOST, "register-pending": registerPendingPOST, "abandon-pending": abandonPendingPOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
+const call = (action: PlatformBillingAction, body: unknown, secret: string | null = BILLING_SECRET, biz: string = BIZ) => {
   const text = JSON.stringify(body);
-  const url = `http://127.0.0.1:3200${platformCheckoutPath(BIZ, KEY, action)}`;
+  const url = `http://127.0.0.1:3200${platformCheckoutPath(biz, KEY, action)}`;
   const request = new Request(url, { method: "POST", headers: secret === null ? {} : signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", url) }), body: text });
-  return HANDLERS[action](request, { params: Promise.resolve({ businessId: BIZ, productKey: KEY }) });
+  return HANDLERS[action](request, { params: Promise.resolve({ businessId: biz, productKey: KEY }) });
 };
 const secs = (d: Date) => Math.floor(d.getTime() / 1000);
 const subSig = (subId: string, payId: string) => createHmac("sha256", KEY_SECRET).update(`${payId}|${subId}`).digest("hex");
@@ -86,6 +88,7 @@ const orderSig = (orderId: string, payId: string) => createHmac("sha256", KEY_SE
 const card = (id: string, token: string, last4: string, customer: string | null = null): Pay => ({ id, status: "captured", amount: 500, method: "card", token_id: token, customer_id: customer, card: { last4, network: "Visa" } });
 
 async function clean() {
+  await prisma.abandonedOrder.deleteMany({ where: { businessId: { in: [BIZ, `biz_${"e".repeat(32)}`] } } });
   await prisma.razorpayEvent.deleteMany({ where: { businessId: BIZ } });
   await prisma.notification.deleteMany({ where: { productKey: KEY } });
   await prisma.messageLog.deleteMany({ where: { productKey: KEY } });
@@ -197,6 +200,38 @@ describe("payment-method calls", () => {
     expect((await call("owner-contact", { phone: "abc", email: "admin@account.test" })).status).toBe(400);
     expect((await call("owner-contact", { phone: "+919845000111", email: "nope" })).status).toBe(400);
     expect((await call("owner-contact", { phone: "+919845000111", email: "a@b.test" }, null)).status).toBe(401);
+  });
+
+  it("a paid sign-up is registered with no plan and no trial, and abandoning it keeps one Abandoned-orders row and removes the registration", async () => {
+    const PENDING = `biz_${"e".repeat(32)}`;
+    try {
+      expect((await call("register-pending", { name: "Asha Rao", ownerName: "Asha Rao", ownerEmail: "asha@pending.test", ownerPhone: "+919800000123" }, BILLING_SECRET, PENDING)).status).toBe(200);
+      expect(await prisma.business.findUnique({ where: { id: PENDING }, select: { name: true, ownerEmail: true, ownerPhone: true } })).toEqual({ name: "Asha Rao", ownerEmail: "asha@pending.test", ownerPhone: "+919800000123" });
+      expect(await prisma.businessProduct.count({ where: { businessId: PENDING, productKey: KEY } })).toBe(1);
+      expect(await prisma.subscription.count({ where: { businessId: PENDING } })).toBe(0); // no trial, no plan
+      // bad input and a wrong signature are refused
+      expect((await call("register-pending", { name: "", ownerEmail: "x" }, BILLING_SECRET, PENDING)).status).toBe(400);
+      expect((await call("register-pending", { name: "A", ownerEmail: "a@b.test" }, null, PENDING)).status).toBe(401);
+
+      const gone = { name: "Asha Rao", email: "asha@pending.test", phone: "+919800000123", planCode: "premium", interval: "ANNUAL", step: "opened_store", signedUpAt: new Date().toISOString() };
+      expect((await call("abandon-pending", gone, BILLING_SECRET, PENDING)).status).toBe(200);
+      expect(await prisma.business.count({ where: { id: PENDING } })).toBe(0);
+      expect(await prisma.abandonedOrder.findUnique({ where: { businessId: PENDING }, select: { email: true, planCode: true, interval: true, step: true, status: true } })).toEqual({ email: "asha@pending.test", planCode: "premium", interval: "ANNUAL", step: "opened_store", status: "OPEN" });
+      // a repeat is harmless and still one row
+      expect((await call("abandon-pending", gone, BILLING_SECRET, PENDING)).status).toBe(200);
+      expect(await prisma.abandonedOrder.count({ where: { businessId: PENDING } })).toBe(1);
+    } finally {
+      await prisma.abandonedOrder.deleteMany({ where: { businessId: PENDING } });
+      await prisma.business.deleteMany({ where: { id: PENDING } });
+    }
+  });
+
+  it("abandoning is refused for a business that has a plan or a paid payment, and nothing is removed", async () => {
+    const gone = { name: "O", email: "o@example.test", step: "payment_failed", signedUpAt: new Date().toISOString() };
+    await prisma.subscription.create({ data: { id: newId("subscription"), businessId: BIZ, productKey: KEY, planId, status: "ACTIVE", startDate: new Date() } });
+    expect((await call("abandon-pending", gone)).status).toBe(409);
+    expect(await prisma.business.count({ where: { id: BIZ } })).toBe(1);
+    expect(await prisma.abandonedOrder.count({ where: { businessId: BIZ } })).toBe(0);
   });
 
   it("add card: opens a Rs 5 registration, then saves the card and refunds the Rs 5", async () => {
