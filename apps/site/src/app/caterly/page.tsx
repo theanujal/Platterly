@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   ...pageLinks("/caterly/"),
 };
 
+/** A paid plan's button starts a paid sign-up (no trial: sign up, pay in the Store, then into Caterly); the trial and the built-in fallback cards go to Caterly as before. */
+function planHref(code: string | undefined, interval: "MONTHLY" | "ANNUAL"): string {
+  return code ? `${SITE.appUrl}api/platform/sso/start?plan=${encodeURIComponent(code)}&interval=${interval}` : SITE.appUrl;
+}
+
 export default async function CateringPage() {
   const PRICING = await getPricing();
   const faqLd = {
@@ -151,9 +156,14 @@ export default async function CateringPage() {
                       </li>
                     ))}
                   </ul>
-                  <ButtonLink href={SITE.appUrl} variant={plan.featured ? "primary" : "outline"} className="mt-auto">
+                  <ButtonLink href={planHref(plan.code, "MONTHLY")} variant={plan.featured ? "primary" : "outline"} className="mt-auto">
                     {plan.cta}
                   </ButtonLink>
+                  {plan.code && plan.hasYearly && (
+                    <a href={planHref(plan.code, "ANNUAL")} className="text-center text-sm font-medium underline underline-offset-4">
+                      Pay yearly instead
+                    </a>
+                  )}
                 </div>
               </Reveal>
             ))}

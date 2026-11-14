@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Buyer, PlanOffer } from "@platterly/contract";
@@ -25,12 +25,17 @@ const FIELDS: { key: keyof Buyer; label: string; optional?: boolean; autoComplet
 const BUTTON: Record<ChangeKind, string> = { current: "Current plan", upgrade: "Upgrade", downgrade: "Downgrade", new: "Subscribe" };
 
 /** Manage one product (prototype): plans with Upgrade / Downgrade / Current plan, then Confirm order, Payment (sample) and Confirmation. Nothing is saved or charged. */
-export function ManageFlow({ product, live = false, savedBuyer = null, accountUrl = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null; accountUrl?: string | null }) {
+/** A paid-plan sign-up arrives with the plan it chose (and, after paying, where to go back to the product). */
+export type InitialChoice = { planCode: string; interval: "MONTHLY" | "ANNUAL" };
+
+export function ManageFlow({ product, live = false, savedBuyer = null, accountUrl = null, initialChoice = null, continueUrl = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null; accountUrl?: string | null; initialChoice?: InitialChoice | null; continueUrl?: string | null }) {
   const sub = product.subscription;
   const currentPlan = sub ? product.plans.find((p) => p.id === sub.planId) ?? null : null;
-  const [step, setStep] = useState<Step>("plans");
-  const [interval, setInterval] = useState<Interval>(sub?.interval ?? "MONTHLY");
-  const [chosen, setChosen] = useState<{ plan: PlanOffer; interval: Interval; kind: ChangeKind } | null>(null);
+  // A paid-plan sign-up arrives with its plan chosen, so the page opens on the confirm step (its price is fetched once, below).
+  const startPlan = initialChoice ? product.plans.find((p) => p.code === initialChoice.planCode) ?? null : null;
+  const [step, setStep] = useState<Step>(startPlan ? "confirm" : "plans");
+  const [interval, setInterval] = useState<Interval>(startPlan && initialChoice ? initialChoice.interval : sub?.interval ?? "MONTHLY");
+  const [chosen, setChosen] = useState<{ plan: PlanOffer; interval: Interval; kind: ChangeKind } | null>(startPlan && initialChoice ? { plan: startPlan, interval: initialChoice.interval, kind: changeKind(product, startPlan) } : null);
   const [buyer, setBuyer] = useState<Buyer>(savedBuyer ?? EMPTY);
   const [errors, setErrors] = useState<Partial<Record<BuyerField, string>>>({});
   const [cancelling, setCancelling] = useState<"ask" | "done" | null>(null);
@@ -50,6 +55,14 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
   const stepIndex = step === "plans" ? 0 : step === "confirm" ? 1 : 2;
   const price = chosen && (chosen.interval === "ANNUAL" ? chosen.plan.annual : chosen.plan.monthly);
 
+  /** Live purchases show Ops's own price, with any credit for unused days. A downgrade charges nothing today, so it has no quote. */
+  function fetchQuote(plan: PlanOffer, chosenInterval: Interval) {
+    if (!live || changeKind(product, plan) === "downgrade") return;
+    void fetch("/api/store/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: plan.id, interval: chosenInterval }) })
+      .then(async (res) => (res.ok ? setQuote((await res.json()) as StoreQuote) : setQuoteError("We could not work out your price just now. Please go back and try again.")))
+      .catch(() => setQuoteError("We could not work out your price just now. Please go back and try again."));
+  }
+
   function choose(plan: PlanOffer) {
     const kind = changeKind(product, plan);
     setChosen({ plan, interval, kind });
@@ -57,12 +70,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
     setQuote(null);
     setQuoteError(null);
     setPayError(null);
-    // Live purchases show Ops's own price, with any credit for unused days. A downgrade charges nothing today, so it has no quote.
-    if (live && kind !== "downgrade") {
-      void fetch("/api/store/quote", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: plan.id, interval }) })
-        .then(async (res) => (res.ok ? setQuote((await res.json()) as StoreQuote) : setQuoteError("We could not work out your price just now. Please go back and try again.")))
-        .catch(() => setQuoteError("We could not work out your price just now. Please go back and try again."));
-    }
+    fetchQuote(plan, interval);
   }
 
   /** Downgrade (at the end of the paid period), undo it, stop renewal, or take that back: one call to Ops through the Store, then the page reloads its data. */
@@ -85,6 +93,11 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
       setChanging(false);
     }
   }
+  useEffect(() => {
+    if (startPlan && initialChoice && live) fetchQuote(startPlan, initialChoice.interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+
   async function confirm(event: React.FormEvent) {
     event.preventDefault();
     const found = checkBuyer(buyer);
@@ -300,7 +313,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                       : `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} would be charged today.`}
                 </p>
                 {live && kind === "downgrade" ? <p role="status">You can undo this from the plans page until then.</p> : live ? <p role="status">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>}
-                <Link className="ps-cta" href="/">Back to Store</Link>
+                {continueUrl ? <a className="ps-cta" href={continueUrl}>Continue to {product.name}</a> : <Link className="ps-cta" href="/">Back to Store</Link>}
               </section>
             )}
           </div>

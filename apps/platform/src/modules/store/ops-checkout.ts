@@ -8,7 +8,7 @@ import { verifyPullResponse } from "@platterly/platform-contract";
  * checked that the signed-in person may buy for this business: Ops trusts Platform's word for who may, and checks only that the business is registered for the product.
  * A failure is a reason code; only a 400 from Ops carries its message, because Ops writes those for people.
  */
-export type CheckoutFailure = "not_configured" | "unreachable" | "refused" | "bad_answer" | "rejected" | "unknown_business";
+export type CheckoutFailure = "not_configured" | "unreachable" | "refused" | "bad_answer" | "rejected" | "unknown_business" | "conflict";
 export type CheckoutResult<T> = { ok: true; answer: T } | { ok: false; reason: CheckoutFailure; message?: string };
 type Deps = { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; now?: number };
 
@@ -41,6 +41,7 @@ async function signedOpsBilling(method: "POST" | "PUT", path: string, body: unkn
   const verified = verifyPullResponse([secret], requestId, response.headers, raw, deps.now);
   if (!verified.ok) return { ok: false, reason: "bad_answer" };
   if (response.status === 404) return { ok: false, reason: "unknown_business" };
+  if (response.status === 409) return { ok: false, reason: "conflict" };
   if (response.status === 400) return { ok: false, reason: "rejected", message: typeof verified.value.error === "string" ? verified.value.error : undefined };
   if (!response.ok) return { ok: false, reason: "refused" };
   return { ok: true, answer: verified.value };
@@ -65,6 +66,21 @@ export async function saveOpsBillingProfile(input: { businessId: string; buyer: 
  */
 export async function sendOwnerContact(input: { businessId: string; opsProductKey: string; phone: string; email: string }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
   const got = await signedOpsPost(input.businessId, input.opsProductKey, "owner-contact", { phone: input.phone, email: input.email }, deps);
+  return got.ok ? { ok: true, answer: { ok: true } } : got;
+}
+
+/**
+ * A paid-plan sign-up opens the Store checkout (docs/paid-plan-signup-plan.md): Ops is told the business and product with NO plan and NO trial, so the payment has something to
+ * attach to. Safe to repeat. The caller has already checked that the signed-in person is the one this sign-up belongs to.
+ */
+export async function registerPendingBusiness(input: { businessId: string; opsProductKey: string; name: string; ownerName: string; ownerEmail: string; ownerPhone: string | null }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "register-pending", { name: input.name, ownerName: input.ownerName, ownerEmail: input.ownerEmail, ownerPhone: input.ownerPhone }, deps);
+  return got.ok ? { ok: true, answer: { ok: true } } : got;
+}
+
+/** The payment window ended unpaid: Ops keeps one Abandoned-orders record and removes the registration. `conflict` means Ops found a plan or a paid payment and removed nothing. */
+export async function abandonPendingBusiness(input: { businessId: string; opsProductKey: string; name: string; email: string; phone: string | null; planCode: string | null; interval: string | null; step: string; signedUpAt: Date }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "abandon-pending", { name: input.name, email: input.email, phone: input.phone, planCode: input.planCode, interval: input.interval, step: input.step, signedUpAt: input.signedUpAt.toISOString() }, deps);
   return got.ok ? { ok: true, answer: { ok: true } } : got;
 }
 

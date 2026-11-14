@@ -16,7 +16,17 @@ export async function GET(request: Request) {
   });
   // The central sign-in could not be started (for example Platterly's sign-in is down): say so on the sign-in page instead of sending the person round in a circle.
   if (!result?.url) return NextResponse.redirect(new URL("/?error=provider_unavailable", request.url), 303);
-  const response = NextResponse.redirect(result.url, 303);
+  // A paid-plan button on the pricing page sends the plan with it (`?plan=premium&interval=ANNUAL`): it rides on the authorization address to the central sign-in, which
+  // signs it, so the Account knows this sign-up chose a plan and sends the person to pay in the Store (docs/paid-plan-signup-plan.md). Anything malformed is a trial sign-up.
+  const target = new URL(result.url);
+  const params = new URL(request.url).searchParams;
+  const plan = params.get("plan");
+  const interval = params.get("interval");
+  if (plan && /^[a-z0-9_-]{1,60}$/.test(plan) && (interval === "MONTHLY" || interval === "ANNUAL")) {
+    target.searchParams.set("plan", plan);
+    target.searchParams.set("interval", interval);
+  }
+  const response = NextResponse.redirect(target, 303);
   response.headers.set("cache-control", "no-store");
   return response;
 }

@@ -24,6 +24,10 @@ export interface PricingCard {
   features: readonly string[];
   cta: string;
   featured: boolean;
+  /** Ops's plan code for a paid plan, so its button can start a paid sign-up (no trial, pay first). Absent on the trial and on the built-in fallback cards. */
+  code?: string;
+  /** True when the plan has a yearly price, so a "pay yearly" link is offered. */
+  hasYearly?: boolean;
 }
 export interface PricingData {
   note: string;
@@ -58,6 +62,7 @@ export function pricingFromPlans(plans: OpsPlan[] | undefined): PricingData {
         ...(p.isTrial ? {} : yearly ? { yearly } : {}),
         features: p.highlights,
         cta: p.isTrial ? "Start Free" : "Get Started",
+        ...(p.isTrial ? {} : { code: p.code, hasYearly: p.priceAnnual !== null }),
         featured: !p.isTrial && (explicit ? p.featured === true : paid.length === 1),
       };
     }),

@@ -11,6 +11,13 @@ describe("pricingFromPlans", () => {
     expect(pricingFromPlans([])).toBe(PRICING);
   });
 
+  it("gives a paid card its plan code (so its button starts a paid sign-up) and the trial none", () => {
+    const data = pricingFromPlans([trial, plan({ code: "premium", name: "Premium", priceAnnual: 9999 }), plan({ code: "basic", name: "Basic", priceAnnual: null })]);
+    expect(data.plans[0].code).toBeUndefined();
+    expect(data.plans[1]).toMatchObject({ code: "premium", hasYearly: true });
+    expect(data.plans[2]).toMatchObject({ code: "basic", hasYearly: false });
+  });
+
   it("keeps a plan without a monthly price off the site", () => {
     const data = pricingFromPlans([trial, plan({ name: "Hidden", priceMonthly: null }), plan({ name: "Real" })]);
     expect(data.plans.map((p) => p.name)).toEqual(["Free Trial", "Real"]);

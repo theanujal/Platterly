@@ -24,3 +24,19 @@ export function queryFromSearchParams(searchParams: Record<string, string | stri
   for (const [key, value] of Object.entries(searchParams)) for (const v of Array.isArray(value) ? value : value === undefined ? [] : [value]) params.append(key, v);
   return params.toString();
 }
+
+/** What a paid-plan sign-up link adds to the signed address: a plan code and a billing interval. Only well-formed values count; anything else is a trial sign-up. */
+export type SignUpOrigin = { clientId: string; plan: { code: string; interval: "MONTHLY" | "ANNUAL" } | null };
+
+export function planFromQuery(query: string): SignUpOrigin["plan"] {
+  const params = new URLSearchParams(query);
+  const code = params.get("plan");
+  const interval = params.get("interval");
+  return code && /^[a-z0-9_-]{1,60}$/.test(code) && (interval === "MONTHLY" || interval === "ANNUAL") ? { code, interval } : null;
+}
+
+/** `signedProduct` plus the plan the product's link carried. The provider signs every part of the address, so the plan cannot be changed or invented by the person. */
+export async function signedSignUpOrigin(pool: Pool, query: string | null | undefined, secret: string): Promise<SignUpOrigin | null> {
+  const clientId = await signedProduct(pool, query, secret);
+  return clientId && query ? { clientId, plan: planFromQuery(query) } : null;
+}

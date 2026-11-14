@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { identityPool } from "../auth/identity-db";
 import { runDeliveryBatch } from "../outbox/deliver";
 import { getSender } from "../outbox/sender";
+import { markPendingVerified } from "./paid-signup-run";
 import { createBusinessForSignup, type SignupBusinessResult } from "./signup-business";
 
 /**
@@ -12,9 +13,15 @@ import { createBusinessForSignup, type SignupBusinessResult } from "./signup-bus
  */
 export async function provisionBusinessForVerifiedSignup(subject: string): Promise<SignupBusinessResult | null> {
   try {
-    const { rows } = await identityPool().query<{ clientId: string }>(`select "clientId" from "signupProduct" where "userId" = $1`, [subject]);
+    const { rows } = await identityPool().query<{ clientId: string; status: string }>(`select "clientId", "status" from "signupProduct" where "userId" = $1`, [subject]);
     const productKey = rows[0]?.clientId;
     if (!productKey) return null;
+    // A paid-plan sign-up has no business until it pays: only the payment window starts here (docs/paid-plan-signup-plan.md).
+    if (rows[0].status === "pending_payment") {
+      await markPendingVerified(subject);
+      return null;
+    }
+    if (rows[0].status === "completed") return null;
     const result = await createBusinessForSignup(
       {
         prisma,

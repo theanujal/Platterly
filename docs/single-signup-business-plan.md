@@ -1,6 +1,6 @@
 # Single sign-up creates the business (plan, for AJ's review)
 
-Status: **draft, no code written.** Written 2026-11-14 from AJ's five steps. Nothing here is approved until AJ says so.
+Status: **BUILT, proven in a browser and committed (2026-11-14: `ddaa49d`, `01fcda1`, `c3da719`).** Approved by AJ the same day. Verifying the OTP now also signs the person in and sends them back to the product (no second sign-in). Paid-plan sign-ups branch from this flow: see `docs/paid-plan-signup-plan.md`.
 
 ## What AJ wants
 

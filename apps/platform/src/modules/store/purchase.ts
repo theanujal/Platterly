@@ -5,13 +5,14 @@ import { billingAccess } from "./billing-rights";
 import { checkBuyer } from "./buyer-check";
 import { prisma } from "@/lib/db";
 import { findSubjectForUser } from "../users/subject";
+import { completePaidSignupNow, findPendingSignup } from "../organisations/paid-signup-run";
 import { identityPool } from "../auth/identity-db";
 import { getProfile } from "../account/profile";
 import { changeStoreAutoPay, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
-import { STORE_KEY_FOR_OPS_KEY } from "./products";
+import { opsKeyFor } from "./keys";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
-export const opsKeyFor = (storeKey: string) => Object.entries(STORE_KEY_FOR_OPS_KEY).find(([, store]) => store === storeKey)?.[0] ?? storeKey;
+export { opsKeyFor };
 
 /** Before a step that makes the business's Razorpay customer, hand Ops the Admin's phone and email from the Account. Never blocks the step: if it fails, Ops falls back to what it already holds and says what is missing. */
 async function shareOwnerContact(session: Session | null, businessId: string, opsProductKey: string): Promise<void> {
@@ -73,7 +74,20 @@ export async function finishPurchase(session: Session | null, input: { productKe
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
   const values = readVerifyRequest(Object.fromEntries(Object.entries(input).filter(([k]) => k !== "productKey")));
   if (!productKey || !values) return { ok: false, reason: "bad_request" };
-  return verifyStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), ...values });
+  const result = await verifyStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), ...values });
+  // A paid-plan sign-up has no business until it pays: the moment Ops confirms the payment, the business is made and handed to the product. If this does not run (the
+  // browser closed first), the scheduled check completes it.
+  if (result.ok && result.answer.status === "PAID") await completeIfPendingSignup(session);
+  return result;
+}
+
+async function completeIfPendingSignup(session: Session | null): Promise<void> {
+  try {
+    const subject = session ? await findSubjectForUser(prisma, session.userId) : null;
+    if (subject && (await findPendingSignup(subject))) await completePaidSignupNow(subject);
+  } catch (error) {
+    console.error("[store] could not complete the paid sign-up:", error);
+  }
 }
 
 const planAndInterval = (input: { productKey?: unknown; planId?: unknown; interval?: unknown }) => {

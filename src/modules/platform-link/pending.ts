@@ -7,6 +7,7 @@ import { ensureTrialPlan } from "@/modules/subscriptions/trial-plan";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { opsBillingOn } from "@/modules/ops-link/config";
 import { emitBusinessSignedUp } from "@/modules/ops-link/events";
+import { pullSnapshot } from "@/modules/ops-link/pull";
 
 /** True when the Platform already made this person a member of a business (so a brand-new Caterly user must not get a tenant of their own). */
 export async function hasPendingMembership(subject: string): Promise<boolean> {
@@ -32,7 +33,7 @@ async function afterOwnerJoined(userId: string, joined: { organizationId: string
   if (joined.role !== "owner") return;
   try {
     const [org, user] = await Promise.all([
-      prisma.organization.findUnique({ where: { id: joined.organizationId }, select: { id: true, ownerFirstName: true, ownerLastName: true, contactPhone: true } }),
+      prisma.organization.findUnique({ where: { id: joined.organizationId }, select: { id: true, businessId: true, ownerFirstName: true, ownerLastName: true, contactPhone: true } }),
       prisma.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true, phone: true } }),
     ]);
     if (!org || !user) return;
@@ -48,6 +49,8 @@ async function afterOwnerJoined(userId: string, joined: { organizationId: string
       const trialPlan = await ensureTrialPlan();
       await assignPlan(org.id, trialPlan.id, userId);
     }
+    // A business the Account made after a paid sign-up arrives already paid for: take its plan from Ops now, so it opens with that plan and not the trial defaults.
+    if (opsBillingOn()) await pullSnapshot(org.id, org.businessId).catch((error) => console.error("[platform-link] could not pull the plan:", error instanceof Error ? error.message : "unknown"));
     void emitBusinessSignedUp(org.id).catch(() => undefined);
   } catch (error) {
     console.error("[platform-link] could not finish setting up the adopted business:", error instanceof Error ? error.message : "unknown");

@@ -17,9 +17,10 @@ describe("Store: a business's real subscriptions on the products", () => {
   });
 
   it("a trial is TRIAL with its end date", () => {
-    const [p] = applyBilling([product("caterly")], billing("catering", sub({ status: "TRIALING", billingInterval: null, trialEndsAt: "2026-11-14T15:48:03.706Z", currentPeriodEnd: null })));
+    const ends = new Date(Date.now() + 7 * 86_400_000); // always in the future, so the trial is still running whenever this is run
+    const [p] = applyBilling([product("caterly")], billing("catering", sub({ status: "TRIALING", billingInterval: null, trialEndsAt: ends.toISOString(), currentPeriodEnd: null })));
     expect(p.status).toBe("TRIAL");
-    expect(p.trialEndsAt).toBe("2026-11-14");
+    expect(p.trialEndsAt).toBe(ends.toISOString().slice(0, 10));
   });
 
   it("a locked or cancelled plan, no subscription, and a product Ops did not mention all stay not subscribed", () => {

@@ -15,8 +15,10 @@ import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } fr
 import { mayStartSession } from "../account/hold";
 import { identityPool } from "./identity-db";
 import { OAUTH_QUERY_HEADER } from "./sign-up-gate";
-import { signedProduct } from "./sign-up-origin";
+import { signedProduct, signedSignUpOrigin } from "./sign-up-origin";
 import { inviteAllowsSignUp } from "../ownership-transfer/invite-signup";
+import { mintOrganisationId } from "../organisations/create";
+import { abandonPaidSignupNow, findPendingSignupByEmail } from "../organisations/paid-signup-run";
 import { provisionBusinessForVerifiedSignup } from "../organisations/signup-business-run";
 import { otpEmail, sendAuthEmail, type OtpKind } from "./mailer";
 
@@ -88,12 +90,23 @@ export function createIdp(options: IdpOptions = {}) {
     hooks: {
       // Sign-up only from a product: the form sends the provider-SIGNED address the person arrived on, and a missing, forged, expired or non-product one is refused (see sign-up-gate.ts).
       before: createAuthMiddleware(async (ctx) => {
+        // A paid-plan sign-up that was never paid cannot sign in with a password: the person starts again from the product (docs/paid-plan-signup-plan.md).
+        if (ctx.path === "/sign-in/email") {
+          const email = (ctx.body as { email?: unknown } | undefined)?.email;
+          if (typeof email === "string" && (await findPendingSignupByEmail(email.trim()).catch(() => null))) throw new APIError("FORBIDDEN", { message: "Your sign-up was not completed. Please start again from the product you chose.", code: "SIGNUP_NOT_COMPLETED" });
+          return;
+        }
         if (ctx.path !== "/sign-up/email") return;
         const arrivedWith = ctx.headers?.get(OAUTH_QUERY_HEADER);
         // The other way in: an Admin-transfer invitation for exactly this address (see ownership-transfer/invite-signup.ts).
         if (!(await signedProduct(pool, arrivedWith, ctx.context.secret)) && !(await inviteAllowsSignUp(arrivedWith, (ctx.body as { email?: unknown } | undefined)?.email))) {
           throw new APIError("FORBIDDEN", { message: "Accounts are created when you first use a Platterly product.", code: "SIGN_UP_FROM_PRODUCT_ONLY" });
         }
+        // The same email started a paid-plan sign-up and never paid: that unpaid one is cleared away (its details go to Ops's Abandoned orders) so the person can start again.
+        // If it turns out to have been paid, nothing is removed and the sign-up carries on as for any registered email.
+        const again = (ctx.body as { email?: unknown } | undefined)?.email;
+        const stale = typeof again === "string" ? await findPendingSignupByEmail(again.trim()).catch(() => null) : null;
+        if (stale && (await abandonPaidSignupNow(stale.subject)) === "unknown") throw new APIError("INTERNAL_SERVER_ERROR", { message: "Something went wrong. Please try again in a moment." });
       }),
       // A refused password for a real person is recorded too. The answer to the caller is unchanged (nothing here says whether the address exists).
       after: createAuthMiddleware(async (ctx) => {
@@ -104,8 +117,14 @@ export function createIdp(options: IdpOptions = {}) {
             const email = (ctx.body as { email?: unknown } | undefined)?.email;
             const found = typeof email === "string" ? await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase()) : null;
             if (found && ctx.path === "/sign-up/email") {
-              const product = await signedProduct(pool, ctx.headers?.get(OAUTH_QUERY_HEADER), ctx.context.secret);
-              if (product) await pool.query(`insert into "signupProduct" ("userId", "clientId") values ($1, $2) on conflict ("userId") do nothing`, [found.user.id, product]);
+              const origin = await signedSignUpOrigin(pool, ctx.headers?.get(OAUTH_QUERY_HEADER), ctx.context.secret);
+              // A paid-plan link has no trial: the plan and the business id reserved for the person are kept until they pay (docs/paid-plan-signup-plan.md).
+              if (origin) {
+                await pool.query(
+                  `insert into "signupProduct" ("userId", "clientId", "planCode", "interval", "reservedBusinessId", "status") values ($1, $2, $3, $4, $5, $6) on conflict ("userId") do nothing`,
+                  [found.user.id, origin.clientId, origin.plan?.code ?? null, origin.plan?.interval ?? null, origin.plan ? mintOrganisationId() : null, origin.plan ? "pending_payment" : "trial"],
+                );
+              }
             } else if (found) {
               await provisionBusinessForVerifiedSignup(found.user.id);
             }

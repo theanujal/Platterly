@@ -11,7 +11,7 @@ const forbidden = { status: "ok", overview: { user: { id: "u-1", email: "a@b.tes
 
 const run = (overview: OverviewResult, admin: boolean, s: Session | null = session) => {
   const asked: string[] = [];
-  return billingAccess(s, { overview: async () => overview, isActiveAdmin: async (userId, organisationId) => (asked.push(`${userId}:${organisationId}`), admin) }).then((r) => ({ r, asked }));
+  return billingAccess(s, { overview: async () => overview, isActiveAdmin: async (userId, organisationId) => (asked.push(`${userId}:${organisationId}`), admin), pending: async () => null }).then((r) => ({ r, asked }));
 };
 
 // Billing is the business Admin's (AJ, 2026-11-14): the Old Admin (a "former_admin" row, still active, read-only) sees no prices or finance and buys nothing.
@@ -39,5 +39,21 @@ describe("who may buy and see billing", () => {
 
   it("an overview that could not be read is unauthenticated, never a guess in the person's favour", async () => {
     expect((await run({ status: "error" } as OverviewResult, true)).r).toEqual({ status: "unauthenticated" });
+  });
+});
+
+// A paid-plan sign-up that has not paid has no business, only the id reserved for them (docs/paid-plan-signup-plan.md): the Store treats it as theirs.
+describe("a paid-plan sign-up that has not paid yet", () => {
+  const pending = { businessId: `biz_${"c".repeat(32)}`, businessName: "Asha Rao", productKey: "caterly", planCode: "premium", interval: "ANNUAL" };
+  it("is the buyer for the id reserved for them, found from their own session", async () => {
+    const r = await billingAccess(session, { overview: async () => noBusiness, pending: async () => pending });
+    expect(r).toEqual({ status: "ok", businessId: pending.businessId, businessName: "Asha Rao" });
+  });
+  it("is not asked about when the person has a business whose access ended, and a person with nothing pending still has no business", async () => {
+    let asked = 0;
+    const r = await billingAccess(session, { overview: async () => forbidden, pending: async () => (asked++, pending) });
+    expect(r).toEqual({ status: "no_business" });
+    expect(asked).toBe(0);
+    expect(await billingAccess(session, { overview: async () => noBusiness, pending: async () => null })).toEqual({ status: "no_business" });
   });
 });

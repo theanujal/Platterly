@@ -241,6 +241,7 @@ export function SignInForm() {
       await post("/email-otp/send-verification-otp", { email, type: "email-verification" }).catch(() => null);
       return void window.location.assign(withCarry("/verify", carry, { email, sent: "1" }));
     }
+    if (res.status === 403 && res.code === "SIGNUP_NOT_COMPLETED") return setError("Your sign-up was not completed. Please start again from the product you chose.");
     if (res.status === 403 && res.code === "ACCOUNT_ON_HOLD") return setError("Your account is under review. We are verifying that it is really you. Please contact Platterly support.");
     setError(res.status === 429 ? BUSY : res.status === 401 || res.status === 400 ? "The email or password is not right. Check them and try again." : GENERIC);
   }
@@ -436,6 +437,11 @@ export function VerifyForm() {
     setBusy(false);
     // Verifying signs the person in. Came from a product: hand the signed query back to the provider, which sends them on to the product. Came directly: the sign-in page.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full navigation to the provider's API route, not a Next page
+    // A paid-plan sign-up has no trial and no product account yet: it goes to the Store to pay, with the plan it chose, and returns to the product after paying.
+    const chosen = new URLSearchParams(carry);
+    const [plan, interval, client] = [chosen.get("plan"), chosen.get("interval"), chosen.get("client_id")];
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full navigation to the Store host
+    if (res.status === 200 && carry.includes("sig=") && plan && interval && client) return void window.location.assign(`${window.location.protocol}//${window.location.host.replace(/^auth\./, "store.")}/manage/${encodeURIComponent(client)}?plan=${encodeURIComponent(plan)}&interval=${encodeURIComponent(interval)}`);
     if (res.status === 200 && carry.includes("sig=")) return void window.location.assign(`/api/auth/oauth2/authorize?${carry}`);
     if (res.status === 200) return void window.location.assign(withCarry("/sign-in", carry, { email, verified: "1" }));
     setError(res.status === 429 ? BUSY : res.status === 400 ? "That code is not right or has expired. Check it, or ask for a new one." : GENERIC);
