@@ -1,9 +1,9 @@
 import "server-only";
-import type { Buyer } from "@platterly/contract";
+import { parseBillingVerifyRequest, parseMethodRequest, parseVerifyRequest, type BillingVerifyRequest, type Buyer, type MethodsAnswer } from "@platterly/contract";
 import type { Session } from "@/lib/session";
 import { billingAccess } from "./billing-rights";
 import { checkBuyer } from "./buyer-check";
-import { changeStoreSubscription, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout, type CheckoutFailure, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
+import { changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { STORE_KEY_FOR_OPS_KEY } from "./products";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
@@ -30,7 +30,7 @@ export function readBuyer(input: unknown): { ok: true; buyer: Buyer } | { ok: fa
   return Object.keys(fields).length ? { ok: false, fields } : { ok: true, buyer };
 }
 
-export async function startPurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown; buyer?: unknown }): Promise<PurchaseResult<{ keyId: string; razorpayOrderId: string; amountPaise: number; businessName: string; description: string }>> {
+export async function startPurchase(session: Session | null, input: { productKey?: unknown; planId?: unknown; interval?: unknown; buyer?: unknown }): Promise<PurchaseResult<StoreCheckoutAnswer>> {
   const who = await buyerBusiness(session);
   if (!who.ok) return who;
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
@@ -41,19 +41,22 @@ export async function startPurchase(session: Session | null, input: { productKey
   if (!buyer.ok) return { ok: false, reason: "bad_request", fields: buyer.fields };
   const got = await startStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), planId, interval, buyer: buyer.buyer });
   if (!got.ok) return got;
-  const { keyId, razorpayOrderId, amountPaise, businessName, description } = got.answer;
-  return { ok: true, answer: { keyId, razorpayOrderId, amountPaise, businessName, description } };
+  return got;
 }
 
-export async function finishPurchase(session: Session | null, input: { productKey?: unknown; razorpayOrderId?: unknown; razorpayPaymentId?: unknown; signature?: unknown }): Promise<PurchaseResult<{ status: string | null; invoiceNumber: string | null }>> {
+/** Reads a verify request (an order's values, an auto-pay's values, or an auto-pay setup report) into the shape Ops takes; anything else is null. */
+export const readVerifyRequest = (input: unknown): BillingVerifyRequest | null => {
+  const parsed = parseBillingVerifyRequest(input);
+  return parsed.ok ? parsed.value : null;
+};
+
+export async function finishPurchase(session: Session | null, input: { productKey?: unknown } & Record<string, unknown>): Promise<PurchaseResult<{ status: string | null; invoiceNumber: string | null }>> {
   const who = await buyerBusiness(session);
   if (!who.ok) return who;
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;
-  const razorpayOrderId = text(input.razorpayOrderId, 80);
-  const razorpayPaymentId = text(input.razorpayPaymentId, 80);
-  const signature = text(input.signature, 200);
-  if (!productKey || !razorpayOrderId || !razorpayPaymentId || !signature) return { ok: false, reason: "bad_request" };
-  return verifyStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), razorpayOrderId, razorpayPaymentId, signature });
+  const values = readVerifyRequest(Object.fromEntries(Object.entries(input).filter(([k]) => k !== "productKey")));
+  if (!productKey || !values) return { ok: false, reason: "bad_request" };
+  return verifyStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), ...values });
 }
 
 const planAndInterval = (input: { productKey?: unknown; planId?: unknown; interval?: unknown }) => {
@@ -87,4 +90,52 @@ export async function changePlan(session: Session | null, input: { change?: unkn
     return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change, planId: wanted.planId, interval: wanted.interval });
   }
   return changeStoreSubscription({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), change });
+}
+
+// ---------- Saved payment methods ----------
+
+export type MethodRequest =
+  | { action: "list" | "add"; productKey: string }
+  | { action: "primary" | "remove"; productKey: string; methodId: string }
+  | { action: "add-verify"; productKey: string; razorpayOrderId: string; razorpayPaymentId: string; signature: string }
+  | { action: "primary-verify"; productKey: string; razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string };
+
+/** Reads a payment-method request: the product and one of the six actions with exactly the values it needs. Anything else is null. */
+export function readMethodRequest(input: unknown): MethodRequest | null {
+  const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const productKey = typeof o.productKey === "string" && KEY.test(o.productKey) ? o.productKey : null;
+  if (!productKey) return null;
+  if (o.action === "list" || o.action === "add") return { action: o.action, productKey };
+  if (o.action === "primary" || o.action === "remove") {
+    const m = parseMethodRequest(o);
+    return m.ok ? { action: o.action, productKey, methodId: m.value.methodId } : null;
+  }
+  if (o.action === "add-verify") {
+    const v = parseVerifyRequest(o);
+    return v.ok ? { action: "add-verify", productKey, ...v.value } : null;
+  }
+  if (o.action === "primary-verify") {
+    const v = parseBillingVerifyRequest(o);
+    return v.ok && "razorpaySubscriptionId" in v.value && "signature" in v.value ? { action: "primary-verify", productKey, razorpaySubscriptionId: v.value.razorpaySubscriptionId, razorpayPaymentId: v.value.razorpayPaymentId, signature: v.value.signature } : null;
+  }
+  return null;
+}
+
+export type MethodAnswer = MethodsAnswer | AddCardWindow | MakePrimaryWindow | { label: string } | { ok: true };
+
+/** The Account's and Store's payment-method actions, for the signed-in person's own business and only its active Admin. Ops does the work. */
+export async function managePaymentMethod(session: Session | null, input: unknown): Promise<PurchaseResult<MethodAnswer>> {
+  const who = await buyerBusiness(session);
+  if (!who.ok) return who;
+  const request = readMethodRequest(input);
+  if (!request) return { ok: false, reason: "bad_request" };
+  const scope = { businessId: who.businessId, opsProductKey: opsKeyFor(request.productKey) };
+  switch (request.action) {
+    case "list": return listStoreMethods(scope);
+    case "add": return startStoreAddCard(scope);
+    case "add-verify": return verifyStoreAddCard({ ...scope, razorpayOrderId: request.razorpayOrderId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });
+    case "primary": return startStoreMakePrimary({ ...scope, methodId: request.methodId });
+    case "primary-verify": return verifyStoreMakePrimary({ ...scope, razorpaySubscriptionId: request.razorpaySubscriptionId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });
+    case "remove": return removeStoreMethod({ ...scope, methodId: request.methodId });
+  }
 }

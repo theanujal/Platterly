@@ -102,7 +102,7 @@ export interface CheckoutQuote {
 
 /**
  * What a purchase of this plan would cost this business right now. Only an upgrade from a paid, running plan gets a credit: the days still unused on the
- * plan it replaces, valued at what the last payment for it bought. The same plan again (a renewal), a trial and a plan assigned by hand get none.
+ * plan it replaces, valued at what the last payment for it bought, and only for a yearly purchase (a monthly plan is auto-pay at its own price). The same plan again (a renewal), a trial and a plan assigned by hand get none.
  * Checkout works this out again itself and never trusts a number from the caller.
  */
 export async function quoteCheckout(input: { businessId: string; productKey: string; planId: string; interval: Interval }, now: Date = new Date()): Promise<CheckoutQuote> {
@@ -116,7 +116,8 @@ export async function quoteCheckout(input: { businessId: string; productKey: str
   const current = await prisma.subscription.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, endDate: null }, include: { plan: { select: { name: true, priceMonthly: true } } } });
   // Only an upgrade (a dearer plan, by monthly price) is credited; buying a cheaper plan outright starts it at its own price.
   const dearer = !!current && plan.monthly.amount > Number(current.plan.priceMonthly ?? 0);
-  if (current && dearer && current.status === "ACTIVE" && current.planId !== input.planId && current.currentPeriodEnd && current.currentPeriodEnd > now) {
+  // A monthly plan is auto-pay, which charges the plan's own price (Razorpay knows no credit), so only a yearly purchase takes credit (AJ, 2026-11-14).
+  if (input.interval === "ANNUAL" && current && dearer && current.status === "ACTIVE" && current.planId !== input.planId && current.currentPeriodEnd && current.currentPeriodEnd > now) {
     // Renewing early stacks paid periods, so every paid period of the CURRENT subscription that has not run out counts: the rest of the running one and
     // all of the later ones. Payments of earlier subscriptions (even for the same plan) are never counted, hence the start-date floor (a day of slack for auto-pay dates).
     const paid = await prisma.subscriptionPayment.findMany({ where: { businessId: input.businessId, productKey: input.productKey, planId: current.planId, status: "PAID", periodStart: { gte: new Date(current.startDate.getTime() - 86_400_000) }, periodEnd: { gt: now } }, select: { amount: true, periodStart: true, periodEnd: true } });

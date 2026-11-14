@@ -26,6 +26,14 @@ describe("ops proxy: public routes", () => {
     }
   });
 
+  it("lets the Store's payment-method calls through for one business and product, and nothing near them", () => {
+    const biz = `biz_${"a".repeat(32)}`;
+    for (const action of ["methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove"]) expect(through(`/api/platform/businesses/${biz}/products/catering/billing/${action}`).passed, action).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/products/catering/billing/methods/x`, `/api/platform/businesses/${biz}/products/catering/billing/method`, `/api/platform/businesses/${biz}/products/catering/billing/method-add/`, `/api/platform/businesses/biz_short/products/catering/billing/methods`, `/api/platform/businesses/${biz}/products/catering/billing/method-other`]) {
+      expect(through(path).passed, path).toBe(false);
+    }
+  });
+
   it("lets exactly the Store's checkout and verify calls through for one business and product, and nothing else near them", () => {
     const biz = `biz_${"a".repeat(32)}`;
     for (const action of ["checkout", "verify"]) expect(through(`/api/platform/businesses/${biz}/products/catering/billing/${action}`).passed, action).toBe(true);

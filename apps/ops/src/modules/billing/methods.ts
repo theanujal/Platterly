@@ -1,5 +1,6 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
+import type { MethodsAnswer } from "@platterly/contract";
 import type { PaymentMethod } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -187,4 +188,23 @@ export async function removeMethod(input: { businessId: string; productKey: stri
   }
   await prisma.paymentMethod.delete({ where: { id: method.id } });
   await audit({ actorUserId: null, action: "billing.method_removed", subject: input.businessId, detail: { methodId: method.id, label: method.label } });
+}
+
+/** What the Store's payment-method page shows: the saved methods and when the next renewal is charged. */
+export async function methodsView(businessId: string, productKey: string): Promise<MethodsAnswer> {
+  const [methods, current] = await Promise.all([listMethods(businessId, productKey), currentSubscription(businessId, productKey)]);
+  const autoPayOn = !!current?.razorpaySubscriptionId && (current.autoPay === "ACTIVE" || current.autoPay === "PENDING");
+  return { methods: methods.map((m) => ({ id: m.id, kind: m.kind as MethodsAnswer["methods"][number]["kind"], label: m.label, isPrimary: m.isPrimary })), nextChargeAt: autoPayOn && current?.currentPeriodEnd ? current.currentPeriodEnd.toISOString() : null };
+}
+
+/**
+ * After a verified auto-pay purchase: save the method the window's payment was made with, as the primary. Never throws: the payment is already
+ * confirmed, and a method that cannot be read now can be added again from the Account.
+ */
+export async function recordFirstMethod(businessId: string, razorpayPaymentId: string, razorpaySubscriptionId: string, creds?: PlatformRazorpay | null, fetchImpl: typeof fetch = fetch) {
+  try {
+    await recordMethodFromPayment(businessId, razorpayPaymentId, razorpaySubscriptionId, needCreds(creds), fetchImpl);
+  } catch (error) {
+    console.error("[methods] could not save the first payment method", razorpaySubscriptionId, error);
+  }
 }

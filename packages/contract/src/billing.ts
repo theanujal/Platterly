@@ -102,6 +102,30 @@ export function parseBillingVerifyRequest(input: unknown): ParseResult<BillingVe
   return ok({ razorpaySubscriptionId, razorpayPaymentId, signature });
 }
 
+/** The make-primary and remove calls name one saved payment method. */
+export interface MethodRequest {
+  methodId: string;
+}
+
+export function parseMethodRequest(input: unknown): ParseResult<MethodRequest> {
+  if (!isRecord(input) || typeof input.methodId !== "string" || !/^[\w-]{3,64}$/.test(input.methodId)) return fail("methodId is invalid");
+  return ok({ methodId: input.methodId });
+}
+
+/** A saved payment method as the Store shows it: a label only, never card data. */
+export interface PaymentMethodView {
+  id: string;
+  kind: "CARD" | "UPI" | "EMANDATE";
+  label: string;
+  isPrimary: boolean;
+}
+
+/** The business's saved methods (primary first) and when the next renewal is charged (null when there is no auto-pay). */
+export interface MethodsAnswer {
+  methods: PaymentMethodView[];
+  nextChargeAt: string | null;
+}
+
 export interface DowngradeRequest {
   planId: string;
   interval: BillingInterval;

@@ -1,7 +1,8 @@
 import "server-only";
-import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
-import { BillingError, cancelScheduledDowngrade, cancelSubscription, quoteCheckout, reactivateSubscription, scheduleDowngrade, startCheckout, verifyCheckout } from "@/modules/billing/billing";
-import { RazorpayError } from "@/modules/billing/razorpay";
+import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
+import { BillingError, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, quoteCheckout, reactivateSubscription, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
+import { methodsView, recordFirstMethod, removeMethod, startAddCard, startMakePrimary, verifyAddCard, verifyMakePrimary } from "@/modules/billing/methods";
+import { platformRazorpay, RazorpayError } from "@/modules/billing/razorpay";
 
 /**
  * The platform-billing secrets: what Platform signs its Store buy calls with. NOT the platform-reader secret, so a secret that can only read can never
@@ -46,9 +47,31 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
     if (action === "checkout") {
       const parsed = parseCheckoutRequest(json);
       if (!parsed.ok) return reply(400, { error: parsed.error });
-      // One-time payments only for now (auto-pay is not offered in the Store yet): `autoPay` is ignored, so monthly is a 30-day order as well.
       const { autoPay: _ignored, ...checkout } = parsed.value;
+      // A monthly plan in the Store is always auto-pay (AJ, 2026-11-14): the flag is ignored. A yearly plan is a one-time order.
+      if (checkout.interval === "MONTHLY") return reply(200, await startAutoPayCheckout({ businessId, productKey, planId: checkout.planId, buyer: checkout.buyer }));
       return reply(200, await startCheckout({ businessId, productKey, ...checkout }));
+    }
+    if (action === "methods") return reply(200, await methodsView(businessId, productKey));
+    if (action === "method-add") return reply(200, await startAddCard(businessId, platformRazorpay()));
+    if (action === "method-add-verify") {
+      const parsed = parseVerifyRequest(json);
+      if (!parsed.ok) return reply(400, { error: parsed.error });
+      const method = await verifyAddCard({ businessId, ...parsed.value }, platformRazorpay());
+      return reply(200, { ok: true, label: method.label });
+    }
+    if (action === "method-primary-verify") {
+      const parsed = parseBillingVerifyRequest(json);
+      if (!parsed.ok || !("razorpaySubscriptionId" in parsed.value) || "failed" in parsed.value) return reply(400, { error: parsed.ok ? "razorpaySubscriptionId, razorpayPaymentId and signature are required" : parsed.error });
+      const method = await verifyMakePrimary({ businessId, productKey, ...parsed.value }, platformRazorpay());
+      return reply(200, { ok: true, label: method.label });
+    }
+    if (action === "method-primary" || action === "method-remove") {
+      const parsed = parseMethodRequest(json);
+      if (!parsed.ok) return reply(400, { error: parsed.error });
+      if (action === "method-primary") return reply(200, await startMakePrimary({ businessId, productKey, ...parsed.value }, platformRazorpay()));
+      await removeMethod({ businessId, productKey, ...parsed.value }, platformRazorpay());
+      return reply(200, { ok: true });
     }
     if (action === "quote" || action === "downgrade") {
       const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
@@ -71,7 +94,16 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
     }
     const parsed = parseBillingVerifyRequest(json);
     if (!parsed.ok) return reply(400, { error: parsed.error });
-    if (!("razorpayOrderId" in parsed.value)) return reply(400, { error: "only one-time payments can be verified here" });
+    if ("razorpaySubscriptionId" in parsed.value) {
+      // The auto-pay window's own result: a setup that failed, or a first payment to confirm (then the method it was paid with is saved).
+      if ("failed" in parsed.value) {
+        const failed = await failAutoPayCheckout({ businessId, productKey, razorpaySubscriptionId: parsed.value.razorpaySubscriptionId, reason: parsed.value.failed.reason, detail: parsed.value.failed.detail });
+        return reply(200, { ok: true, status: failed?.status ?? null, invoiceNumber: null });
+      }
+      const paid = await verifyAutoPayCheckout({ businessId, productKey, ...parsed.value });
+      if (paid?.status === "PAID") await recordFirstMethod(businessId, parsed.value.razorpayPaymentId, parsed.value.razorpaySubscriptionId, platformRazorpay());
+      return reply(200, { ok: true, status: paid?.status ?? null, invoiceNumber: paid?.invoiceNumber ?? null });
+    }
     const payment = await verifyCheckout({ businessId, productKey, ...parsed.value });
     return reply(200, { ok: true, status: payment?.status ?? null, invoiceNumber: payment?.invoiceNumber ?? null });
   } catch (error) {

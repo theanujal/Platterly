@@ -57,3 +57,11 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 - `verifyMakePrimary` accepts only a subscription this business started (notes carry business, product and purpose) that Razorpay reports `authenticated` or `active`; otherwise it cancels it and changes nothing. It points the subscription row first, then cancels the old one, so the old one's cancelled webhook is ignored. The old card stays as a secondary; an old UPI method is deleted (decision 5).
 - The Rs 5 refund of a card registration that fails keeps the card and raises a staff alert.
 - Not built yet: routes and `proxy.ts` entries (3b.2), recording the first method from a verified monthly purchase (3b.2), Account page (3b.3), annual reminders (3b.4).
+
+## Built (3b.2, 2026-11-14, Ops and Platform; proven in a browser for the monthly purchase)
+
+- **Monthly plans are auto-pay only** in the Store (AJ): the Store's `checkout` for MONTHLY always starts a Razorpay subscription for the business's customer; yearly stays a one-time order. A monthly plan is charged at its own price with **no upgrade credit** (Option A); credit applies to yearly purchases only (`quoteCheckout`).
+- **First method:** after a verified auto-pay purchase Ops saves the method the window's payment was made with, as the primary (`recordFirstMethod`; a failure never undoes the payment).
+- **Six signed actions** under `/api/platform/businesses/{id}/products/{key}/billing/`: `methods`, `method-add`, `method-add-verify`, `method-primary`, `method-primary-verify`, `method-remove` (contract path pattern, route files, proxy tests). Platform side: `/api/store/methods` with an `action` field, all behind `billingAccess`.
+- **Pause and stop** of auto-pay move to the Account (AJ); not built.
+- **Browser proof:** `apps/platform/e2e/store-live-autopay.spec.ts` (monthly purchase, first method saved as primary, primary removal refused). Still untested in a browser: add card, make primary, remove a secondary (3b.3), UPI AutoPay, a renewal charge.

@@ -53,7 +53,7 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const call = (action: PlatformBillingAction, biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
+const call = (action: Exclude<PlatformBillingAction, `method${string}`>, biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
   const text = JSON.stringify(body);
   const url = `http://127.0.0.1:3200${platformCheckoutPath(biz, key, action)}`;
   const request = new Request(url, { method: "POST", headers: secret === null ? {} : signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", url) }), body: text });
@@ -147,12 +147,6 @@ describe("Store buy calls: checkout and verify", () => {
     const pending = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: answer.razorpayOrderId } });
     expect(pending).toMatchObject({ businessId: BIZ, productKey: KEY, status: "PENDING", interval: "ANNUAL" });
     expect((pending.buyer as unknown as Buyer).name).toBe(buyer.name);
-  });
-
-  it("a monthly request with autoPay set is still a one-time order (auto-pay is not offered in the Store yet)", async () => {
-    const res = await call("checkout", BIZ, { planId: await planId(), interval: "MONTHLY", buyer, autoPay: true });
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { kind: string }).kind).toBe("order");
   });
 
   it("verify confirms a real Razorpay signature once, issues the invoice and makes the plan ACTIVE; a wrong signature changes nothing", async () => {
@@ -375,7 +369,7 @@ describe("Platform reads: invoice PDF and unfinished payments", () => {
 
   it("the Platform's billing read lists unfinished payments: a started one as PENDING, a failed one as FAILED, and a paid one not at all", async () => {
     const started = (await (await call("checkout", BIZ, { planId: await planId(), interval: "ANNUAL", buyer })).json()) as { razorpayOrderId: string };
-    const failed = (await (await call("checkout", BIZ, { planId: await planId(), interval: "MONTHLY", buyer })).json()) as { razorpayOrderId: string };
+    const failed = (await (await call("checkout", BIZ, { planId: await planId(), interval: "ANNUAL", buyer })).json()) as { razorpayOrderId: string };
     await failPayment(failed.razorpayOrderId);
     await pay("pro", "ANNUAL", "pay_i4");
     const billing = await buildBusinessBilling(BIZ);
@@ -383,7 +377,7 @@ describe("Platform reads: invoice PDF and unfinished payments", () => {
     const byOrder = async (orderId: string) => (await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayOrderId: orderId } })).id;
     expect(attempts.map((a) => a.status).sort()).toEqual(["FAILED", "PENDING"]);
     expect(attempts.find((a) => a.status === "PENDING")).toMatchObject({ id: await byOrder(started.razorpayOrderId), planName: "Pro", interval: "ANNUAL", total: 11800 });
-    expect(attempts.find((a) => a.status === "FAILED")).toMatchObject({ id: await byOrder(failed.razorpayOrderId), interval: "MONTHLY", total: 1180 });
+    expect(attempts.find((a) => a.status === "FAILED")).toMatchObject({ id: await byOrder(failed.razorpayOrderId), interval: "ANNUAL", total: 11800 });
     expect(billing!.products[0].billing.payments).toHaveLength(1);
   });
 });
@@ -410,7 +404,7 @@ describe("saved billing details come from a confirmed payment", () => {
   });
 
   it("a failed payment saves nothing", async () => {
-    const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "MONTHLY", buyer })).json()) as { razorpayOrderId: string };
+    const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", buyer })).json()) as { razorpayOrderId: string };
     await failPayment(checkout.razorpayOrderId);
     expect(await profile()).toBeNull();
   });

@@ -8,7 +8,7 @@ import { inr, longDate, type Interval } from "@/modules/store/format";
 import { checkBuyer, type BuyerField } from "@/modules/store/buyer-check";
 import type { StoreQuote } from "@/modules/store/ops-checkout";
 import { changeKind, type ChangeKind, type SampleProduct } from "@/modules/store/sample-catalogue";
-import { openRazorpay, type RazorpayOrder } from "./razorpay";
+import { openRazorpay, openRazorpaySubscription, type RazorpayOrder, type RazorpaySubscription } from "./razorpay";
 import "./store.css";
 
 type Step = "plans" | "confirm" | "done";
@@ -94,7 +94,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null }: { produ
       setStep("done");
       return;
     }
-    // A live downgrade is scheduled with Ops for the end of the paid period; nothing is charged. A live purchase is a real one-time payment.
+    // A live downgrade is scheduled with Ops for the end of the paid period; nothing is charged. A live purchase is a real payment (one-time for yearly, auto-pay for monthly).
     if (chosen.kind === "downgrade") {
       if (await change("downgrade", chosen.plan)) setStep("done");
       return;
@@ -104,18 +104,33 @@ export function ManageFlow({ product, live = false, savedBuyer = null }: { produ
     setPayError(null);
     try {
       const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, buyer }) });
-      const order = (await started.json().catch(() => ({}))) as Partial<RazorpayOrder> & { error?: string; message?: string; fields?: Partial<Record<BuyerField, string>> };
+      const answer = (await started.json().catch(() => ({}))) as (Partial<RazorpayOrder> & Partial<RazorpaySubscription> & { kind?: string }) & { error?: string; message?: string; fields?: Partial<Record<BuyerField, string>> };
       if (!started.ok) {
-        if (order.fields) setErrors(order.fields);
-        setPayError(order.message ?? (order.fields ? "Please check the details marked below." : "We could not start your payment. Please try again in a few minutes."));
+        if (answer.fields) setErrors(answer.fields);
+        setPayError(answer.message ?? (answer.fields ? "Please check the details marked below." : "We could not start your payment. Please try again in a few minutes."));
         return;
       }
-      const paid = await openRazorpay(order as RazorpayOrder, { name: buyer.name });
-      if (!paid) {
-        setPayError("Your payment was not completed, so you have not been charged. You can try again.");
-        return;
+      // Yearly plans are one payment; monthly plans are auto-pay (Razorpay charges every 30 days), so the window authorises the renewal.
+      let verifyBody: Record<string, unknown>;
+      if (answer.kind === "subscription") {
+        const subscriptionId = answer.razorpaySubscriptionId as string;
+        const paid = await openRazorpaySubscription(answer as RazorpaySubscription, { name: buyer.name });
+        if (!paid) {
+          // Closed before finishing: Ops marks the setup as not finished (no charge, same access) and the person can try again.
+          void fetch("/api/store/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, razorpaySubscriptionId: subscriptionId, failed: { reason: "not_finished", detail: null } }) }).catch(() => undefined);
+          setPayError("Your auto-pay was not set up, so you have not been charged. You can try again.");
+          return;
+        }
+        verifyBody = { razorpaySubscriptionId: paid.razorpay_subscription_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature };
+      } else {
+        const paid = await openRazorpay(answer as RazorpayOrder, { name: buyer.name });
+        if (!paid) {
+          setPayError("Your payment was not completed, so you have not been charged. You can try again.");
+          return;
+        }
+        verifyBody = { razorpayOrderId: paid.razorpay_order_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature };
       }
-      const verified = await fetch("/api/store/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, razorpayOrderId: paid.razorpay_order_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature }) });
+      const verified = await fetch("/api/store/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, ...verifyBody }) });
       const result = (await verified.json().catch(() => ({}))) as { invoiceNumber?: string | null; message?: string };
       if (!verified.ok) {
         setPayError(result.message ?? "Your payment went through but we could not confirm it yet. Please do not pay again; it will show here shortly, or contact support.");
@@ -136,7 +151,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null }: { produ
       <header className="ps-head">
         <h1>Manage your {product.name} subscription</h1>
         <p className="ps-lede">Choose a plan, confirm your payment and you are done. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Payments are real one-time payments through Razorpay (test mode until launch). A downgrade starts when your paid days end." : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Yearly plans are one payment and monthly plans renew automatically (auto-pay), both through Razorpay (test mode until launch). A downgrade starts when your paid days end." : "Prototype with sample data. Nothing is saved or charged."}</p>
       </header>
 
       <ol className="ps-steps" aria-label="Progress">
