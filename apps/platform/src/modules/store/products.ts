@@ -16,7 +16,8 @@ import { SAMPLE_BUNDLES, SAMPLE_PRODUCTS, type SampleBundle, type SampleProduct 
  * Real mode also finds the signed-in person's business (their Platform membership; the Platform business id is the Ops business id) and reads that business's
  * subscriptions from Ops, so each product shows as subscribed, on trial or not subscribed. There are no bundles in real mode.
  */
-export type StoreBusiness = { state: "none" } | { state: "forbidden" } | { state: "ok"; id: string; name: string };
+/** `forbidden`: their membership no longer gives access. `not_admin`: they belong to the business but are not its active Admin (another role, or the Old Admin), so plans and payments are not theirs to see or change. */
+export type StoreBusiness = { state: "none" } | { state: "forbidden" } | { state: "not_admin" } | { state: "ok"; id: string; name: string };
 export type StoreProducts =
   | { source: "sample"; products: SampleProduct[]; bundles: SampleBundle[] }
   | {
@@ -92,7 +93,7 @@ export async function loadStoreProducts(session: Session | null = null): Promise
   }
   if (section.state === "forbidden") return { source: "ops", products, bundles: [], business: { state: "forbidden" }, billing: "not_applicable" };
   // The Old Admin (a former Admin who stays on read-only) sees no prices or subscriptions: only the business's active Admin does.
-  if (!(await isActiveAdminInDb(session?.userId ?? "", section.business.id))) return { source: "ops", products, bundles: [], business: { state: "forbidden" }, billing: "not_applicable" };
+  if (!(await isActiveAdminInDb(session?.userId ?? "", section.business.id))) return { source: "ops", products, bundles: [], business: { state: "not_admin" }, billing: "not_applicable" };
   const business: StoreBusiness = { state: "ok", id: section.business.id, name: section.business.name };
   const billing = await fetchOpsBilling(business.id);
   // A business Ops has no record of (not_found) simply has no subscriptions; any other failure is "unavailable", never a guess.

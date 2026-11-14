@@ -27,8 +27,8 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
     return (
       <StoreFrame>
         <main className="ps-page ps-manage">
-          <h1>Set up your business first</h1>
-          <p>{data.business.state === "none" ? "You have not set up a business yet. Create it in your Account, then come back to choose a plan." : "Your access to your business has ended, so you cannot change its plan."}</p>
+          <h1>{data.business.state === "not_admin" ? "Only your business's Admin can change the plan" : "Set up your business first"}</h1>
+          <p>{data.business.state === "none" ? "You have not set up a business yet. Create it in your Account, then come back to choose a plan." : data.business.state === "not_admin" ? "Plans and payments for your business are managed by its Admin. Ask them to make the change." : "Your access to your business has ended, so you cannot change its plan."}</p>
           <p><Link href="/">Back to Store</Link></p>
         </main>
       </StoreFrame>

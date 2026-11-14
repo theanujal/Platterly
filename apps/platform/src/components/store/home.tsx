@@ -32,6 +32,7 @@ export function StoreHome({ products, bundles, live = false, business = null, bi
       </header>
 
       {live && business?.state === "none" && <p className="ps-warn" role="alert">You have not set up a business yet. Create it in your Account first; your subscriptions will show here.</p>}
+      {live && business?.state === "not_admin" && <p className="ps-warn" role="alert">Plans and payments are managed by your business&apos;s Admin, so its subscriptions are not shown here.</p>}
       {live && business?.state === "forbidden" && <p className="ps-warn" role="alert">Your access to your business has ended, so its subscriptions are not shown.</p>}
       {live && billing === "unavailable" && <p className="ps-warn" role="alert">We could not load your subscriptions just now. The plans below show no subscription until we can; please try again in a few minutes.</p>}
 

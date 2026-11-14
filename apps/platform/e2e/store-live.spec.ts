@@ -217,7 +217,7 @@ test.describe("Live Store", () => {
     await page.goto(`${ACCOUNT}/payments`);
     await expect(page.getByText("Billing is available to the business Admin only.")).toBeVisible();
     await page.goto(`${STORE}/`);
-    await expect(page.getByRole("alert")).toContainText("Your access to your business has ended");
+    await expect(page.getByRole("alert")).toContainText("Plans and payments are managed by your business's Admin");
     // The Store still lists its catalogue, as it does for anyone without access; what must not appear is this business's own subscription.
     await expect(page.getByText("Next renewal")).toHaveCount(0);
     await expect(page.getByText("Cross Platform")).toHaveCount(0);
