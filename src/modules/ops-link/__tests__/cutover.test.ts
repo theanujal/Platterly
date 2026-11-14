@@ -1,21 +1,20 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { newId, signedHeaders, verifyRequest, type EntitlementSnapshot } from "@platterly/contract";
+import { newId, signedHeaders, type EntitlementSnapshot } from "@platterly/contract";
 import { prisma } from "@/lib/db";
-import { ValidationError } from "@/lib/errors";
 import { assignPlan } from "@/modules/subscriptions/subscription";
 import { createPlan, deactivatePlan, updatePlan } from "@/modules/subscriptions/plan";
 import { savePlatformBillingProfile, type PlatformBillingInput } from "@/modules/subscriptions/platform-billing";
-import { cancelScheduledDowngrade, getPaymentInvoice, getSubscribeData, getSubscriptionPageData, reportAutoPayFailed, scheduleDowngrade, setAutoPayPaused, startCheckout, verifyCheckout } from "@/modules/subscriptions/billing-source";
 import { provisionTenantForNewUser } from "@/modules/tenants/auto-provision";
 import { opsBillingOn } from "../config";
 import { FIRST_SNAPSHOT_WINDOW_HOURS, getEntitlements, isLocked, lockedOrganizationIds } from "../entitlements";
 import { storeSnapshot } from "../snapshots";
 
 /**
- * The cutover (docs/ops-contract.md 8.3): with OPS_BILLING off the billing screens read catering's own rows; with it on they
- * ask Platterly Ops. Ops here is a small signed stand-in server, so every request's signature, path and body is checked.
+ * The cutover (docs/ops-contract.md 8.3): entitlements, sign-up and the refusal of local plan editing with OPS_BILLING on and off. Caterly's own billing
+ * screens (and the code behind them) were removed when billing moved to the Platterly Account and Store (AJ, 2026-11-14), so they are no longer tested here.
+ * Ops here is a small signed stand-in server, so every request's signature, path and body is checked.
  */
 const EVENT_SECRET = "opssec_cutover_event";
 const COMMAND_SECRET = "opssec_cutover_command";
@@ -115,222 +114,6 @@ function snapshot(businessId: string, over: Partial<EntitlementSnapshot> = {}): 
     entitlements: { maxCustomers: 50, maxUsers: 8, maxEvents: 80, maxOrders: 90, multiLocation: false }, issuedAt: new Date().toISOString(), validUntil: new Date(Date.now() + 7 * DAY).toISOString(), ...over,
   };
 }
-
-const offer = (id: string, name: string, monthly: number, annual: number | null) => ({
-  id, code: name.toLowerCase(), name, description: `${name} plan`, highlights: ["A"], monthly: { amount: monthly, gstPercent: 18, gstAmount: monthly * 0.18, total: monthly * 1.18 },
-  annual: annual === null ? null : { amount: annual, gstPercent: 18, gstAmount: annual * 0.18, total: annual * 1.18 },
-});
-const billingView = (planId: string, over: Record<string, unknown> = {}) => ({
-  onlineBillingAvailable: true,
-  subscription: { id: "sub_1", status: "ACTIVE", plan: { id: planId, code: "pro", name: "Ops Pro" }, billingInterval: "MONTHLY", startDate: new Date(Date.now() - 5 * DAY).toISOString(), trialEndsAt: null, currentPeriodEnd: new Date(Date.now() + 20 * DAY).toISOString(), pending: null },
-  history: [{ id: "sub_0", planName: "Trial", status: "CANCELLED", startDate: new Date(Date.now() - 12 * DAY).toISOString(), endDate: new Date(Date.now() - 5 * DAY).toISOString() }, { id: "sub_1", planName: "Ops Pro", status: "ACTIVE", startDate: new Date(Date.now() - 5 * DAY).toISOString(), endDate: null }],
-  payments: [{ id: "pay_1", planName: "Ops Pro", interval: "MONTHLY", total: 1180, paidAt: new Date().toISOString(), periodStart: new Date().toISOString(), periodEnd: new Date(Date.now() + 30 * DAY).toISOString(), invoiceNumber: "FPCK-26-10-300" }],
-  ...over,
-});
-
-describe("with OPS_BILLING off the screens read catering's own rows and never call ops", () => {
-  it("the lock screen and the Settings page show the plan rows, in the one shape", async () => {
-    const org = await makeKitchen({ sub: "ACTIVE", currentPeriodEnd: new Date(Date.now() + 10 * DAY) });
-    process.env.OPS_BASE_URL = baseUrl; // link on, flag off: still no calls
-    process.env.OPS_EVENT_SECRET = EVENT_SECRET;
-    process.env.OPS_COMMAND_SECRETS = COMMAND_SECRET;
-    const data = await getSubscribeData(org.id);
-    expect(data).toMatchObject({ locked: false, unavailable: false, subscription: { status: "ACTIVE", planName: "Local Plan", priceMonthly: 700, limits: { maxUsers: 3, maxEvents: 9, maxOrders: 11 } } });
-    const page = await getSubscriptionPageData(org.id);
-    expect(page).toMatchObject({ unavailable: false, historyInvoices: true, current: { planName: "Local Plan", priceAnnual: 7000 } });
-    expect(page.history).toHaveLength(1);
-    expect(requests).toHaveLength(0);
-  });
-
-  it("a locked kitchen reports why, and a paid payment's invoice is read from its own row", async () => {
-    const org = await makeKitchen({ sub: "TRIALING", trialEndsAt: new Date(Date.now() - DAY) });
-    expect(await getSubscribeData(org.id)).toMatchObject({ locked: true, lockReason: "trial_ended" });
-    expect(await getPaymentInvoice(org.id, "pay_nope")).toBeNull();
-    const plan = await prisma.subscriptionPlan.findFirstOrThrow({ where: { id: { in: planIds } } });
-    const payment = await prisma.subscriptionPayment.create({
-      data: { organizationId: org.id, subscriptionPlanId: plan.id, interval: "MONTHLY", amount: 700, gstPercent: 18, gstAmount: 126, total: 826, status: "PAID", razorpayOrderId: `order_${crypto.randomUUID()}`, razorpayPaymentId: "pay_local", invoiceNumber: `FPT-${crypto.randomUUID().slice(0, 6)}`, paidAt: new Date(), periodStart: new Date(), periodEnd: new Date(Date.now() + 30 * DAY), invoiceSnapshot: { seller: {}, buyer: { name: "X" }, gst: { kind: "UNKNOWN", lines: [] }, highlights: [] } },
-    });
-    expect(await getPaymentInvoice(org.id, payment.id)).toMatchObject({ planName: "Local Plan", total: 826, razorpayPaymentId: "pay_local", gstAmount: 126 });
-    expect(await getPaymentInvoice("someone-else", payment.id)).toBeNull();
-    expect(requests).toHaveLength(0);
-  });
-});
-
-describe("with OPS_BILLING on the screens ask ops", () => {
-  it("shows ops's plans and subscription, with limits from the snapshot, and signs every request", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId));
-    answers = { "GET /api/products/catering/billing/plans": { status: 200, body: { plans: [offer("plan_pro", "Pro", 1000, 10000), offer("plan_lite", "Lite", 500, null)] } }, [`GET /api/products/catering/businesses/${org.businessId}/billing`]: { status: 200, body: billingView("plan_pro") } };
-    const data = await getSubscribeData(org.id);
-    expect(data.unavailable).toBe(false);
-    expect(data.plans.map((p) => p.name)).toEqual(["Pro", "Lite"]);
-    expect(data.plans[0]).toMatchObject({ monthly: { total: 1180 }, priceMonthly: 1000 });
-    expect(data.subscription).toMatchObject({ status: "ACTIVE", planId: "plan_pro", planName: "Ops Pro", priceMonthly: 1000, priceAnnual: 10000, limits: { maxUsers: 8, maxEvents: 80, maxOrders: 90 } });
-    expect(data).toMatchObject({ locked: false, onlineBilling: true });
-    for (const r of requests) expect(verifyRequest([EVENT_SECRET], new Headers(r.headers as Record<string, string>), r.body, { target: { method: r.method, path: r.path } })).toMatchObject({ ok: true });
-  });
-
-  it("the Settings page gets history without per-row PDFs, real payments with their GST, and the pending plan", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId));
-    answers = {
-      "GET /api/products/catering/billing/plans": { status: 200, body: { plans: [offer("plan_pro", "Ops Pro", 1000, 10000), offer("plan_lite", "Lite", 500, null)] } },
-      [`GET /api/products/catering/businesses/${org.businessId}/billing`]: { status: 200, body: billingView("plan_pro", { subscription: { ...billingView("plan_pro").subscription, pending: { planId: "plan_lite", planName: "Lite", interval: "MONTHLY" } } }) },
-    };
-    const page = await getSubscriptionPageData(org.id);
-    expect(page).toMatchObject({ unavailable: false, historyInvoices: false, current: { pendingPlanName: "Lite", pendingInterval: "MONTHLY" } });
-    expect(page.history.map((h) => h.planName)).toEqual(["Trial", "Ops Pro"]);
-    expect(page.payments[0]).toMatchObject({ planName: "Ops Pro", total: 1180, gstAmount: 180, invoiceNumber: "FPCK-26-10-300" });
-  });
-
-  it("says billing is unavailable (and still knows the lock) when ops is down, unsigned, or answers with garbage", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId, { status: "LOCKED" }));
-    process.env.OPS_BASE_URL = "http://127.0.0.1:9";
-    expect(await getSubscribeData(org.id)).toMatchObject({ unavailable: true, plans: [], locked: true });
-    expect(await getSubscriptionPageData(org.id)).toMatchObject({ unavailable: true, current: null });
-
-    process.env.OPS_BASE_URL = baseUrl;
-    unsigned = true;
-    answers = { "GET /api/products/catering/billing/plans": { status: 200, body: { plans: [offer("plan_evil", "Fake", 1, null)] } } };
-    expect(await getSubscribeData(org.id)).toMatchObject({ unavailable: true, plans: [] });
-    unsigned = false;
-    answers = {};
-    expect((await getSubscribeData(org.id)).unavailable).toBe(true);
-  });
-
-  it("starts a checkout with the business's own invoice details and returns Razorpay's order", async () => {
-    const org = await makeKitchen({ sub: "none", gst: "29ABCDE1234F1Z5" });
-    on();
-    answers = { [`POST /api/products/catering/businesses/${org.businessId}/billing/checkout`]: { status: 200, body: { keyId: "rzp_k", razorpayOrderId: "order_1", amountPaise: 118000, businessName: "Cutover Kitchen", description: "Pro plan, 30 days" } } };
-    expect(await startCheckout(org.id, "plan_pro", "ANNUAL", "user-1")).toMatchObject({ keyId: "rzp_k", razorpayOrderId: "order_1", amountPaise: 118000 });
-    expect(JSON.parse(requests[0].body)).toEqual({ planId: "plan_pro", interval: "ANNUAL", buyer: { name: "Cutover Kitchen", addressLine1: "1 Main Rd", addressLine2: null, city: "Bengaluru", state: "Karnataka", postalCode: "560001", country: "India", gstin: "29ABCDE1234F1Z5" } });
-  });
-
-  it("a monthly checkout asks ops for auto-pay and returns Razorpay's subscription", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    answers = { [`POST /api/products/catering/businesses/${org.businessId}/billing/checkout`]: { status: 200, body: { kind: "subscription", keyId: "rzp_k", razorpaySubscriptionId: "sub_1", amountPaise: 118000, businessName: "Cutover Kitchen", description: "Pro plan, monthly" } } };
-    expect(await startCheckout(org.id, "plan_pro", "MONTHLY", "user-1")).toMatchObject({ kind: "subscription", razorpaySubscriptionId: "sub_1" });
-    expect(JSON.parse(requests[0].body)).toMatchObject({ planId: "plan_pro", interval: "MONTHLY", autoPay: true });
-  });
-
-  it("verifies an auto-pay subscription's first payment with exactly its ids", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    const base = `/api/products/catering/businesses/${org.businessId}/billing`;
-    answers = { [`POST ${base}/verify`]: { status: 200, body: { ok: true } }, [`GET /api/products/catering/snapshots/${org.businessId}`]: { status: 200, body: snapshot(org.businessId, { version: 2 }) } };
-    const params = { razorpaySubscriptionId: "sub_1", razorpayPaymentId: "pay_1", signature: "b".repeat(64) };
-    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: false, failed: false });
-    expect(requests[0].path).toBe(`${base}/verify`);
-    expect(JSON.parse(requests[0].body)).toEqual(params);
-    // Confirmed only when ops says the first charge is paid; until then the page says "Setting up auto-pay…".
-    answers[`POST ${base}/verify`] = { status: 200, body: { ok: true, status: "PAID", invoiceNumber: "FP-2" } };
-    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: true, failed: false });
-    // Ops found the mandate never went through (a signed ₹0 payment): the page says auto-pay wasn't set up.
-    answers[`POST ${base}/verify`] = { status: 200, body: { ok: true, status: "FAILED", invoiceNumber: null } };
-    expect(await verifyCheckout(org.id, params)).toEqual({ confirmed: false, failed: true });
-  });
-
-  it("tells ops an auto-pay setup was declined or not finished, which Razorpay never does", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    const path = `/api/products/catering/businesses/${org.businessId}/billing/verify`;
-    answers = { [`POST ${path}`]: { status: 200, body: { ok: true, status: "FAILED", invoiceNumber: null } } };
-    await reportAutoPayFailed(org.id, "sub_1", "declined", "Your bank declined this payment");
-    await reportAutoPayFailed(org.id, "sub_1", "not_finished", null);
-    expect(requests.map((r) => JSON.parse(r.body))).toEqual([
-      { razorpaySubscriptionId: "sub_1", failed: { reason: "declined", detail: "Your bank declined this payment" } },
-      { razorpaySubscriptionId: "sub_1", failed: { reason: "not_finished", detail: null } },
-    ]);
-  });
-
-  it("pauses and resumes auto-pay through ops, and refuses with the flag off", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    await expect(setAutoPayPaused(org.id, true)).rejects.toBeInstanceOf(ValidationError);
-    expect(requests).toHaveLength(0);
-    on();
-    const base = `/api/products/catering/businesses/${org.businessId}/billing/autopay`;
-    const snap = `GET /api/products/catering/snapshots/${org.businessId}`;
-    answers = { [`POST ${base}/pause`]: { status: 200, body: { ok: true } }, [`POST ${base}/resume`]: { status: 200, body: { ok: true } }, [snap]: { status: 200, body: snapshot(org.businessId) } };
-    await setAutoPayPaused(org.id, true);
-    await setAutoPayPaused(org.id, false);
-    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([`POST ${base}/pause`, snap, `POST ${base}/resume`, snap]);
-  });
-
-  it("the Settings page gets auto-pay's status and next charge as a date", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId));
-    const nextChargeAt = "2026-11-20T10:00:00.000Z";
-    answers = {
-      "GET /api/products/catering/billing/plans": { status: 200, body: { plans: [offer("plan_pro", "Ops Pro", 1000, 10000)] } },
-      [`GET /api/products/catering/businesses/${org.businessId}/billing`]: { status: 200, body: billingView("plan_pro", { subscription: { ...billingView("plan_pro").subscription, autoPay: { status: "ACTIVE", nextChargeAt } } }) },
-    };
-    const page = await getSubscriptionPageData(org.id);
-    expect(page.current?.autoPay).toEqual({ status: "ACTIVE", nextChargeAt: new Date(nextChargeAt) });
-    expect(page.history.every((h) => h.autoPay === null)).toBe(true);
-  });
-
-  it("shows ops's own message for a refusal, a friendly one for an unknown business, and a generic one when ops fails", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    const path = `POST /api/products/catering/businesses/${org.businessId}/billing/checkout`;
-    answers = { [path]: { status: 400, body: { error: "Online payment is not switched on yet. Please contact Platterly." } } };
-    await expect(startCheckout(org.id, "p", "MONTHLY", "u")).rejects.toThrow("Online payment is not switched on yet. Please contact Platterly.");
-    answers = { [path]: { status: 404, body: { error: "unknown_business" } } };
-    await expect(startCheckout(org.id, "p", "MONTHLY", "u")).rejects.toThrow(/could not find your billing record/);
-    answers = { [path]: { status: 500, body: { error: "boom" } } };
-    await expect(startCheckout(org.id, "p", "MONTHLY", "u")).rejects.toThrow(/could not be reached/);
-    answers = { [path]: { status: 400, body: { error: "That plan is not available." } } };
-    await expect(startCheckout(org.id, "p", "MONTHLY", "u")).rejects.toBeInstanceOf(ValidationError);
-  });
-
-  it("verifying a payment asks ops, then pulls the new snapshot so the lock lifts at once", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId, { version: 1, status: "LOCKED" }));
-    expect(await isLocked(org.id)).toBe(true);
-    const base = `/api/products/catering/businesses/${org.businessId}/billing`;
-    answers = { [`POST ${base}/verify`]: { status: 200, body: { ok: true, status: "PAID", invoiceNumber: "FP-1" } }, [`GET /api/products/catering/snapshots/${org.businessId}`]: { status: 200, body: snapshot(org.businessId, { version: 2, status: "ACTIVE" }) } };
-    await verifyCheckout(org.id, { razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "a".repeat(64) });
-    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([`POST ${base}/verify`, `GET /api/products/catering/snapshots/${org.businessId}`]);
-    expect(await isLocked(org.id)).toBe(false);
-  });
-
-  it("a payment ops cannot verify stays locked and shows ops's message", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    await storeSnapshot(org.id, snapshot(org.businessId, { status: "LOCKED" }));
-    answers = { [`POST /api/products/catering/businesses/${org.businessId}/billing/verify`]: { status: 400, body: { error: "We could not verify this payment." } } };
-    await expect(verifyCheckout(org.id, { razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "a".repeat(64) })).rejects.toThrow("We could not verify this payment.");
-    expect(await isLocked(org.id)).toBe(true);
-  });
-
-  it("schedules and cancels a downgrade through ops", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    const path = `/api/products/catering/businesses/${org.businessId}/billing/downgrade`;
-    answers = { [`POST ${path}`]: { status: 200, body: { ok: true } }, [`DELETE ${path}`]: { status: 200, body: { ok: true } } };
-    await scheduleDowngrade(org.id, "plan_lite", "MONTHLY", "u");
-    await cancelScheduledDowngrade(org.id, "u");
-    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([`POST ${path}`, `DELETE ${path}`]);
-    expect(JSON.parse(requests[0].body)).toEqual({ planId: "plan_lite", interval: "MONTHLY" });
-  });
-
-  it("prints an invoice from ops's frozen copy, and answers null for an unknown payment", async () => {
-    const org = await makeKitchen({ sub: "none" });
-    on();
-    const base = `/api/products/catering/businesses/${org.businessId}/billing/payments`;
-    const snap = { seller: { legalName: "Platterly" }, buyer: { name: "Cutover Kitchen" }, gst: { kind: "INTRA", lines: [{ label: "CGST (9%)", amount: 90 }] }, highlights: ["A"] };
-    answers = { [`GET ${base}/pay_1`]: { status: 200, body: { invoiceNumber: "FPCK-26-10-300", planName: "Ops Pro", interval: "MONTHLY", amount: 1000, gstPercent: 18, gstAmount: 180, total: 1180, paidAt: "2026-10-05T10:00:00.000Z", periodStart: "2026-10-05T10:00:00.000Z", periodEnd: "2026-11-04T10:00:00.000Z", razorpayPaymentId: "pay_rzp", snapshot: snap } }, [`GET ${base}/pay_missing`]: { status: 404, body: { error: "unknown_invoice" } } };
-    expect(await getPaymentInvoice(org.id, "pay_1")).toMatchObject({ invoiceNumber: "FPCK-26-10-300", total: 1180, razorpayPaymentId: "pay_rzp", paidAt: new Date("2026-10-05T10:00:00.000Z"), snapshot: { gst: { kind: "INTRA" } } });
-    expect(await getPaymentInvoice(org.id, "pay_missing")).toBeNull();
-  });
-});
 
 describe("entitlements with OPS_BILLING on and no snapshot yet", () => {
   it("a kitchen with its own subscription rows stays on them", async () => {
