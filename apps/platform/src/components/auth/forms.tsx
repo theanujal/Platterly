@@ -374,7 +374,7 @@ export function SignUpForm({ termsUrl, privacyUrl }: { termsUrl: string; privacy
         <Field id="email" label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" inputMode="email" star />
         <div className="pa-field">
           <label htmlFor="phone" className="pl-req">
-            Phone
+            Business phone number
           </label>
           <PhoneField id="phone" value={phone} onChange={setPhone} />
         </div>

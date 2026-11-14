@@ -59,6 +59,15 @@ export async function saveOpsBillingProfile(input: { businessId: string; buyer: 
   return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
 }
 
+/**
+ * Tells Ops the Admin's phone and email as the Account holds them (the single sign-up), so the business's Razorpay customer is made from them and a
+ * payment step never depends on what the product sent. The caller must already have checked that the person is the business's active Admin.
+ */
+export async function sendOwnerContact(input: { businessId: string; opsProductKey: string; phone: string; email: string }, deps: Deps = {}): Promise<CheckoutResult<{ ok: true }>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "owner-contact", { phone: input.phone, email: input.email }, deps);
+  return got.ok ? { ok: true, answer: { ok: true } } : got;
+}
+
 /** What the Store opens in Razorpay Checkout: a one-time order (yearly plans) or an auto-pay subscription (monthly plans, which are always auto-pay). */
 export type StoreCheckoutAnswer = Extract<CheckoutAnswer, { kind?: "order" }> | Extract<CheckoutAnswer, { kind: "subscription" }>;
 

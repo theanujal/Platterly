@@ -123,6 +123,8 @@ test.describe("Live Store: monthly auto-pay", () => {
   test("buying Premium monthly sets up auto-pay: the first month is paid, the plan is ACTIVE and the card is saved as the primary method", async () => {
     test.setTimeout(240_000);
     const before = Number(await paid());
+    // The product sent no owner phone and a stale email: the Store must hand Ops the Admin's phone and email from the Account (the single sign-up) before the Razorpay customer is made.
+    ops(`update business set "ownerPhone"=null, "ownerEmail"='stale@product.test' where id='${BHANDARYS}'`);
     await chooseMonthly(page, "Premium", "Subscribe");
     await authoriseAutoPay(page);
     await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible({ timeout: 60_000 });
@@ -130,6 +132,7 @@ test.describe("Live Store: monthly auto-pay", () => {
     expect(await current()).toMatch(/^ACTIVE\|premium\|MONTHLY$/);
     expect(await ops(`select "autoPay"::text||'|'||(\"razorpaySubscriptionId\" like 'sub_%')::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE|true");
     expect(await ops(`select count(*) from razorpay_customer where "businessId"='${BHANDARYS}'`)).toBe("1");
+    expect(await ops(`select "ownerPhone"||'|'||("ownerEmail"<>'stale@product.test')::text from business where id='${BHANDARYS}'`)).toBe("+919800000123|true");
     expect(await ops(`select label from payment_method where "businessId"='${BHANDARYS}'`)).toBe("Visa ending 4366");
   });
 

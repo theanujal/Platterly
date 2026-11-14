@@ -3,11 +3,26 @@ import { parseBillingVerifyRequest, parseMethodRequest, parseVerifyRequest, type
 import type { Session } from "@/lib/session";
 import { billingAccess } from "./billing-rights";
 import { checkBuyer } from "./buyer-check";
-import { changeStoreAutoPay, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
+import { prisma } from "@/lib/db";
+import { identityPool } from "../auth/identity-db";
+import { getProfile } from "../account/profile";
+import { changeStoreAutoPay, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { STORE_KEY_FOR_OPS_KEY } from "./products";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
 export const opsKeyFor = (storeKey: string) => Object.entries(STORE_KEY_FOR_OPS_KEY).find(([, store]) => store === storeKey)?.[0] ?? storeKey;
+
+/** Before a step that makes the business's Razorpay customer, hand Ops the Admin's phone and email from the Account. Never blocks the step: if it fails, Ops falls back to what it already holds and says what is missing. */
+async function shareOwnerContact(session: Session | null, businessId: string, opsProductKey: string): Promise<void> {
+  try {
+    // The session holds the Platform user id; the Account's profile is keyed by the identity subject.
+    const link = session ? await prisma.userIdentity.findFirst({ where: { userId: session.userId }, select: { subject: true } }) : null;
+    const profile = link ? await getProfile(identityPool(), link.subject) : null;
+    if (profile?.phone && profile.email) await sendOwnerContact({ businessId, opsProductKey, phone: profile.phone, email: profile.email });
+  } catch (error) {
+    console.error("[store] could not share the owner contact with Ops:", error);
+  }
+}
 
 export type PurchaseFailure = "not_signed_in" | "no_business" | "not_admin" | "bad_request" | CheckoutFailure;
 export type PurchaseResult<T> = { ok: true; answer: T } | { ok: false; reason: PurchaseFailure; message?: string; fields?: Record<string, string> };
@@ -39,6 +54,7 @@ export async function startPurchase(session: Session | null, input: { productKey
   if (!productKey || !planId || !interval) return { ok: false, reason: "bad_request" };
   const buyer = readBuyer(input.buyer);
   if (!buyer.ok) return { ok: false, reason: "bad_request", fields: buyer.fields };
+  if (interval === "MONTHLY") await shareOwnerContact(session, who.businessId, opsKeyFor(productKey));
   const got = await startStoreCheckout({ businessId: who.businessId, opsProductKey: opsKeyFor(productKey), planId, interval, buyer: buyer.buyer });
   if (!got.ok) return got;
   return got;
@@ -132,7 +148,7 @@ export async function managePaymentMethod(session: Session | null, input: unknow
   const scope = { businessId: who.businessId, opsProductKey: opsKeyFor(request.productKey) };
   switch (request.action) {
     case "list": return listStoreMethods(scope);
-    case "add": return startStoreAddCard(scope);
+    case "add": await shareOwnerContact(session, scope.businessId, scope.opsProductKey); return startStoreAddCard(scope);
     case "add-verify": return verifyStoreAddCard({ ...scope, razorpayOrderId: request.razorpayOrderId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });
     case "primary": return startStoreMakePrimary({ ...scope, methodId: request.methodId });
     case "primary-verify": return verifyStoreMakePrimary({ ...scope, razorpaySubscriptionId: request.razorpaySubscriptionId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });

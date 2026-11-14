@@ -127,7 +127,7 @@ export const platformBillingPath = (businessId: string) => `/api/platform/busine
  * product billing API (`parseCheckoutRequest`, `parseBillingVerifyRequest`). The business and product are in the path, so a signature for one
  * business's route is no good for another's.
  */
-export const PLATFORM_BILLING_ACTIONS = ["checkout", "verify", "quote", "downgrade", "undo-downgrade", "cancel", "reactivate", "methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove", "autopay-pause", "autopay-resume", "autopay-cancel"] as const;
+export const PLATFORM_BILLING_ACTIONS = ["checkout", "verify", "quote", "downgrade", "undo-downgrade", "cancel", "reactivate", "methods", "method-add", "method-add-verify", "method-primary", "method-primary-verify", "method-remove", "autopay-pause", "autopay-resume", "autopay-cancel", "owner-contact"] as const;
 export type PlatformBillingAction = (typeof PLATFORM_BILLING_ACTIONS)[number];
 export const platformCheckoutPath = (businessId: string, productKey: string, action: PlatformBillingAction) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/${action}`;
 /**
@@ -136,7 +136,7 @@ export const platformCheckoutPath = (businessId: string, productKey: string, act
  */
 export const platformInvoicePath = (businessId: string, productKey: string, paymentId: string) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/payments/${paymentId}/invoice`;
 export const PLATFORM_INVOICE_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/payments\/[A-Za-z0-9_-]{1,64}\/invoice$/;
-export const PLATFORM_CHECKOUT_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/(?:checkout|verify|quote|downgrade|undo-downgrade|cancel|reactivate|methods|method-add|method-add-verify|method-primary|method-primary-verify|method-remove|autopay-pause|autopay-resume|autopay-cancel)$/;
+export const PLATFORM_CHECKOUT_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/(?:checkout|verify|quote|downgrade|undo-downgrade|cancel|reactivate|methods|method-add|method-add-verify|method-primary|method-primary-verify|method-remove|autopay-pause|autopay-resume|autopay-cancel|owner-contact)$/;
 export const PLATFORM_BILLING_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/billing$/;
 
 export interface PlatformBusinessBilling {

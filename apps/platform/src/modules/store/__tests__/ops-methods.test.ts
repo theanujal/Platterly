@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { platformCheckoutPath, requestTarget, signedHeaders, verifyRequest, type Buyer } from "@platterly/contract";
-import { changeStoreAutoPay, listStoreMethods, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary } from "../ops-checkout";
+import { changeStoreAutoPay, listStoreMethods, removeStoreMethod, sendOwnerContact, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary } from "../ops-checkout";
 
 const SECRET = "billing-secret-0123456789abcdef0123456789abcdef";
 const env = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_BILLING_SECRET: SECRET } as unknown as NodeJS.ProcessEnv;
@@ -93,5 +93,15 @@ describe("Store: pause, resume and stop auto-pay", () => {
     }
     expect(await changeStoreAutoPay({ ...base, change: "pause" }, deps(ops({ error: "Auto-pay is not on." }, 400).fetchImpl))).toEqual({ ok: false, reason: "rejected", message: "Auto-pay is not on." });
     expect(await changeStoreAutoPay({ ...base, change: "pause" }, deps(ops({ ok: false }).fetchImpl))).toEqual({ ok: false, reason: "bad_answer" });
+  });
+});
+
+describe("Store: owner contact to Ops", () => {
+  it("sends the Admin's phone and email, signed, to the owner-contact route", async () => {
+    const { fetchImpl, seen } = ops({ ok: true });
+    expect(await sendOwnerContact({ ...base, phone: "+919845000111", email: "admin@account.test" }, deps(fetchImpl))).toEqual({ ok: true, answer: { ok: true } });
+    expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "owner-contact")}`);
+    expect(seen.signedOk).toBe(true);
+    expect(JSON.parse(seen.body!)).toEqual({ phone: "+919845000111", email: "admin@account.test" });
   });
 });

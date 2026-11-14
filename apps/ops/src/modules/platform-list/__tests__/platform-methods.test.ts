@@ -15,6 +15,7 @@ import { POST as methodPrimaryVerifyPOST } from "@/app/api/platform/businesses/[
 import { POST as methodRemovePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/method-remove/route";
 import { POST as autopayPausePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-pause/route";
 import { POST as autopayResumePOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-resume/route";
+import { POST as ownerContactPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/owner-contact/route";
 import { POST as autopayCancelPOST } from "@/app/api/platform/businesses/[businessId]/products/[productKey]/billing/autopay-cancel/route";
 
 /** The Store's monthly auto-pay and payment-method calls (Platform to Ops). Razorpay is a stand-in. */
@@ -72,7 +73,7 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST, "autopay-pause": autopayPausePOST, "autopay-resume": autopayResumePOST, "autopay-cancel": autopayCancelPOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
+const HANDLERS = { checkout: checkoutPOST, verify: verifyPOST, quote: quotePOST, methods: methodsPOST, "method-add": methodAddPOST, "method-add-verify": methodAddVerifyPOST, "method-primary": methodPrimaryPOST, "method-primary-verify": methodPrimaryVerifyPOST, "method-remove": methodRemovePOST, "autopay-pause": autopayPausePOST, "autopay-resume": autopayResumePOST, "autopay-cancel": autopayCancelPOST, "owner-contact": ownerContactPOST } as Record<PlatformBillingAction, typeof checkoutPOST>;
 const call = (action: PlatformBillingAction, body: unknown, secret: string | null = BILLING_SECRET) => {
   const text = JSON.stringify(body);
   const url = `http://127.0.0.1:3200${platformCheckoutPath(BIZ, KEY, action)}`;
@@ -187,6 +188,15 @@ describe("payment-method calls", () => {
     expect(await (await call("methods", {})).json()).toEqual({ methods: [], nextChargeAt: null });
     expect((await call("methods", {}, null)).status).toBe(401);
     expect((await call("method-remove", { methodId: "pm_x" }, "wrong-secret-0123456789abcdef0123456789")).status).toBe(401);
+  });
+
+  it("owner-contact: the Account's phone and email replace what the product sent, and bad ones are refused", async () => {
+    const res = await call("owner-contact", { phone: "+919845000111", email: "admin@account.test" });
+    expect(res.status).toBe(200);
+    expect(await prisma.business.findUnique({ where: { id: BIZ }, select: { ownerPhone: true, ownerEmail: true } })).toEqual({ ownerPhone: "+919845000111", ownerEmail: "admin@account.test" });
+    expect((await call("owner-contact", { phone: "abc", email: "admin@account.test" })).status).toBe(400);
+    expect((await call("owner-contact", { phone: "+919845000111", email: "nope" })).status).toBe(400);
+    expect((await call("owner-contact", { phone: "+919845000111", email: "a@b.test" }, null)).status).toBe(401);
   });
 
   it("add card: opens a Rs 5 registration, then saves the card and refunds the Rs 5", async () => {

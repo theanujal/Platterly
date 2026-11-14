@@ -53,7 +53,7 @@ function fakeRazorpay(): typeof fetch {
   }) as typeof fetch;
 }
 
-const call = (action: Exclude<PlatformBillingAction, `method${string}` | `autopay-${string}`>, biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
+const call = (action: Exclude<PlatformBillingAction, `method${string}` | `autopay-${string}` | "owner-contact">, biz: string, body: unknown, secret: string | null = BILLING_SECRET, key = KEY) => {
   const text = JSON.stringify(body);
   const url = `http://127.0.0.1:3200${platformCheckoutPath(biz, key, action)}`;
   const request = new Request(url, { method: "POST", headers: secret === null ? {} : signedHeaders(secret, newId("command"), text, { target: requestTarget("POST", url) }), body: text });

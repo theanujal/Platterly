@@ -2,6 +2,7 @@ import "server-only";
 import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
 import { BillingError, cancelAutoPay, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, pauseAutoPay, quoteCheckout, reactivateSubscription, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
 import { methodsView, recordFirstMethod, removeMethod, startAddCard, startMakePrimary, verifyAddCard, verifyMakePrimary } from "@/modules/billing/methods";
+import { prisma } from "@/lib/db";
 import { platformRazorpay, RazorpayError } from "@/modules/billing/razorpay";
 
 /**
@@ -56,6 +57,14 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
     if (action === "autopay-pause" || action === "autopay-resume" || action === "autopay-cancel") {
       await { "autopay-pause": pauseAutoPay, "autopay-resume": resumeAutoPay, "autopay-cancel": cancelAutoPay }[action](businessId, productKey);
       return reply(200, { ok: true });
+    }
+    // The Admin's phone and email as the Account holds them (the single sign-up): the Razorpay customer is made from these, so a payment step never depends on what the product sent.
+    if (action === "owner-contact") {
+      const phone = typeof (json as { phone?: unknown } | null)?.phone === "string" ? (json as { phone: string }).phone.trim() : "";
+      const email = typeof (json as { email?: unknown } | null)?.email === "string" ? (json as { email: string }).email.trim() : "";
+      if (!/^\+?[0-9]{8,15}$/.test(phone) || !email.includes("@") || email.length > 254) return reply(400, { error: "owner-contact needs a phone number and an email address" });
+      const done = await prisma.business.updateMany({ where: { id: businessId, products: { some: { productKey } } }, data: { ownerPhone: phone, ownerEmail: email } });
+      return done.count ? reply(200, { ok: true }) : reply(404, { error: "unknown_business" });
     }
     if (action === "methods") return reply(200, await methodsView(businessId, productKey));
     if (action === "method-add") return reply(200, await startAddCard(businessId, platformRazorpay()));

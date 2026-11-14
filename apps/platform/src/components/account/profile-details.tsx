@@ -179,7 +179,7 @@ export function ProfileDetails() {
             <span className="pa-hint">To change your email, use the Security page. It needs a code sent to the new address.</span>
           </div>
           <div className="pa-field">
-            <label htmlFor="pf-phone">Phone</label>
+            <label htmlFor="pf-phone">Business phone number</label>
             <PhoneField id="pf-phone" value={editing ? draft.phone : profile.phone} onChange={(v) => setDraft({ ...draft, phone: v })} disabled={!editing} describedBy={errors.phone ? "pf-phone-err" : undefined} invalid={!!errors.phone} />
             {errors.phone && (
               <span className="pa-hint" id="pf-phone-err" role="alert">
