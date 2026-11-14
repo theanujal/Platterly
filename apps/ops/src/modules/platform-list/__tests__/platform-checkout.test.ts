@@ -448,15 +448,14 @@ describe("Store buy calls: coupons (yearly)", () => {
     expect(Number(payment.couponDiscount)).toBe(2000);
   });
 
-  it("a coupon on a monthly plan is refused (monthly takes none yet), at quote and at checkout, and no payment is started", async () => {
+  it("a monthly quote with a coupon is the discounted first month, with what it renews at (the checkout itself is covered in coupon-monthly.test.ts)", async () => {
     await prisma.coupon.create({ data: { code: "PLRC-MON", kind: "PERCENT", value: 10 } });
-    const planId = await planIdOf("pro");
-    const quote = await call("quote", BIZ, { planId, interval: "MONTHLY", couponCode: "PLRC-MON" });
-    expect(quote.status).toBe(400);
-    expect(await quote.json()).toMatchObject({ error: expect.stringMatching(/yearly/i) });
-    const checkout = await call("checkout", BIZ, { planId, interval: "MONTHLY", buyer, couponCode: "PLRC-MON" });
-    expect(checkout.status).toBe(400);
-    expect(await prisma.subscriptionPayment.count({ where: { businessId: BIZ, productKey: KEY } })).toBe(0);
+    const res = await call("quote", BIZ, { planId: await planIdOf("pro"), interval: "MONTHLY", couponCode: "PLRC-MON" });
+    expect(res.status).toBe(200);
+    const quote = (await res.json()) as { discount: number; total: number; renewalTotal: number };
+    expect(quote.discount).toBe(100);
+    expect(quote.total).toBe(1062);
+    expect(quote.renewalTotal).toBe(1180);
   });
 
   it("a request without a code is unchanged, and a non-text code is a 400", async () => {

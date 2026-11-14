@@ -81,14 +81,14 @@ describe("Store: price quote and plan changes", () => {
     const { fetchImpl, seen } = ops({ body: quote });
     const result = await quoteStoreCheckout({ businessId: BIZ, opsProductKey: "catering", planId: "plan_2", interval: "ANNUAL" }, { env, fetchImpl });
     // An Ops answer without coupon fields is a quote with no coupon.
-    expect(result).toEqual({ ok: true, answer: { ...quote, couponCode: null, discount: 0 } });
+    expect(result).toEqual({ ok: true, answer: { ...quote, couponCode: null, discount: 0, renewalTotal: null, renewalFrom: null } });
     expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "quote")}`);
     expect(JSON.parse(seen.body!)).toEqual({ planId: "plan_2", interval: "ANNUAL" });
     expect(seen.signedOk).toBe(true);
   });
 
   it("sends a typed coupon code to Ops and returns the discount Ops worked out", async () => {
-    const withCoupon = { ...quote, couponCode: "SAVE10", discount: 1000 };
+    const withCoupon = { ...quote, couponCode: "SAVE10", discount: 1000, renewalTotal: null, renewalFrom: null };
     const { fetchImpl, seen } = ops({ body: withCoupon });
     const result = await quoteStoreCheckout({ businessId: BIZ, opsProductKey: "catering", planId: "plan_2", interval: "ANNUAL", couponCode: "save10" }, { env, fetchImpl });
     expect(result).toEqual({ ok: true, answer: withCoupon });

@@ -8,7 +8,7 @@ import { audit } from "@/lib/audit";
 import { nextInvoiceNumber } from "./numbering";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
-import { formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, stackedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
+import { INTERVAL_DAYS, formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, stackedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
 import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchPaidChargeId, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
 import { getSavedBuyer, saveBillingProfile } from "./billing-profile";
@@ -98,6 +98,9 @@ export interface CheckoutQuote {
   /** The coupon taken off (after the credit, before GST): its code, and the rupees it took off. 0 and null when none. */
   couponCode: string | null;
   discount: number;
+  /** A MONTHLY purchase with a coupon: what the plan renews at (the coupon is the first payment only) and from when. Null otherwise. */
+  renewalTotal: number | null;
+  renewalFrom: string | null;
   amount: number;
   gstPercent: number;
   gstAmount: number;
@@ -133,18 +136,17 @@ export async function quoteCheckout(input: { businessId: string; productKey: str
       if (credit > 0) creditLabel = `Credit for ${creditDays} unused ${creditDays === 1 ? "day" : "days"} of ${current.plan.name}`;
     }
   }
-  // A coupon takes its discount off what is left after the credit, before GST, so GST is charged on the lower amount. One per order. It is a first-payment offer, so
-  // a monthly (auto-pay) purchase takes none until the first-month discount is built (plan slice C4).
+  // A coupon takes its discount off what is left after the credit, before GST, so GST is charged on the lower amount. One per order. It is a first-payment offer: on a
+  // monthly (auto-pay) plan it is the first month only, and the plan renews at its full price one cycle later.
   let discount = 0;
   let couponCode: string | null = null;
   if (input.couponCode?.trim()) {
-    if (input.interval !== "ANNUAL") throw new BillingError("Coupons can be used on yearly plans for now.");
     const coupon = await findUsableCoupon({ code: input.couponCode, productKey: input.productKey, businessId: input.businessId, now });
     discount = applyCoupon({ kind: coupon.kind, value: Number(coupon.value) }, Math.round((price.amount - credit) * 100) / 100);
     couponCode = coupon.code;
   }
   const net = priceBreakdown(Math.round((price.amount - credit - discount) * 100) / 100, price.gstPercent);
-  return { planName: plan.name, interval: input.interval, planPrice: price.amount, credit, creditDays, creditLabel, couponCode, discount, amount: net.amount, gstPercent: net.gstPercent, gstAmount: net.gstAmount, total: net.total };
+  return { planName: plan.name, interval: input.interval, planPrice: price.amount, credit, creditDays, creditLabel, couponCode, discount, renewalTotal: couponCode && input.interval === "MONTHLY" ? price.total : null, renewalFrom: couponCode && input.interval === "MONTHLY" ? new Date(now.getTime() + INTERVAL_DAYS.MONTHLY * 86_400_000).toISOString() : null, amount: net.amount, gstPercent: net.gstPercent, gstAmount: net.gstAmount, total: net.total };
 }
 
 /** Starts a Razorpay Checkout for one period of a plan. A PENDING payment is written first so the webhook can find it. */
@@ -356,7 +358,7 @@ async function dropUnpaidSetup(creds: PlatformRazorpay, businessId: string, prod
 }
 
 /** Monthly checkout: a Razorpay subscription (auto-pay). A PENDING payment is written first so the first charge can find it. */
-export async function startAutoPayCheckout(input: { businessId: string; productKey: string; planId: string; buyer: Buyer }, fetchImpl: typeof fetch = fetch): Promise<AutoPayCheckoutAnswer> {
+export async function startAutoPayCheckout(input: { businessId: string; productKey: string; planId: string; buyer: Buyer; couponCode?: string | null }, fetchImpl: typeof fetch = fetch): Promise<AutoPayCheckoutAnswer> {
   const business = await requireBusiness(input.businessId, input.productKey);
   const creds = platformRazorpay();
   if (!creds) throw new BillingError("Online payment is not switched on yet. Please contact Platterly.");
@@ -366,18 +368,27 @@ export async function startAutoPayCheckout(input: { businessId: string; productK
   if (!plan) throw new BillingError("That plan is not available.");
   const current = await prisma.subscription.findFirst({ where: { businessId: input.businessId, productKey: input.productKey, endDate: null } });
   if (current?.planId === plan.id && (current.autoPay === "ACTIVE" || current.autoPay === "PAUSED")) throw new BillingError("Auto-pay is already on for this plan.");
+  // A coupon is checked (and priced) before anything is made at Razorpay, so a refused code starts nothing.
+  const discounted = input.couponCode?.trim() ? await quoteCheckout({ businessId: input.businessId, productKey: input.productKey, planId: input.planId, interval: "MONTHLY", couponCode: input.couponCode }) : null;
+  if (discounted && discounted.total < 1) throw new BillingError("The credit or coupon covers this plan. Please contact Platterly to switch.");
   await dropUnpaidSetup(creds, input.businessId, input.productKey, current?.razorpaySubscriptionId ?? null, fetchImpl);
   const razorpayPlanId = await razorpayPlanFor(creds, plan, fetchImpl);
   // With the business's Razorpay customer, the card the owner pays with is saved at Razorpay and can be listed as a payment method.
   const customerId = await ensureRazorpayCustomer(input.businessId, creds, fetchImpl);
-  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, customerId, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
-  const price = plan.monthly;
+  // With a coupon the subscription starts one cycle later and the discounted first month is an add-on, which Razorpay charges when the owner authorises (a subscription's
+  // own amount cannot be lowered for one cycle). The plan at Razorpay keeps its full price, so the renewal from the start date charges that.
+  const startAt = discounted ? Math.floor(Date.now() / 1000) + INTERVAL_DAYS.MONTHLY * 86_400 : undefined;
+  const addons = discounted ? [{ name: `${plan.name} first month (coupon ${discounted.couponCode})`, amountPaise: Math.round(discounted.total * 100) }] : undefined;
+  const sub = await createRazorpaySubscription(creds, { razorpayPlanId, customerId, startAt, addons, notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id } }, fetchImpl);
+  const price = discounted ? { amount: discounted.amount, gstPercent: discounted.gstPercent, gstAmount: discounted.gstAmount, total: discounted.total } : plan.monthly;
+  const couponId = discounted?.couponCode ? (await prisma.coupon.findUnique({ where: { code: discounted.couponCode }, select: { id: true } }))?.id ?? null : null;
   const payment = await prisma.subscriptionPayment.create({
-    data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: input.businessId, productKey: input.productKey, planId: plan.id, interval: "MONTHLY", amount: price.amount, gstPercent: price.gstPercent, gstAmount: price.gstAmount, total: price.total, razorpaySubscriptionId: sub.id, buyer: input.buyer as unknown as Prisma.InputJsonValue },
+    data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: input.businessId, productKey: input.productKey, planId: plan.id, interval: "MONTHLY", amount: price.amount, gstPercent: price.gstPercent, gstAmount: price.gstAmount, total: price.total, razorpaySubscriptionId: sub.id, buyer: input.buyer as unknown as Prisma.InputJsonValue, ...(discounted && couponId ? { couponId, couponDiscount: discounted.discount } : {}) },
   });
   await audit({ actorUserId: null, action: "billing.autopay_started", subject: input.businessId, detail: { paymentId: payment.id, productKey: input.productKey, planId: plan.id, razorpaySubscriptionId: sub.id } });
-  const amount = `₹${price.total.toLocaleString("en-IN")}`;
-  return { kind: "subscription", keyId: creds.keyId, razorpaySubscriptionId: sub.id, amountPaise: Math.round(price.total * 100), businessName: business.name, description: `${plan.name} plan, ${amount} every 30 days (auto-pay)` };
+  const amount = `₹${(discounted ? plan.monthly.total : price.total).toLocaleString("en-IN")}`;
+  const description = discounted ? `${plan.name} plan, ₹${price.total.toLocaleString("en-IN")} now (coupon ${discounted.couponCode}), then ${amount} every 30 days (auto-pay)` : `${plan.name} plan, ${amount} every 30 days (auto-pay)`;
+  return { kind: "subscription", keyId: creds.keyId, razorpaySubscriptionId: sub.id, amountPaise: Math.round(price.total * 100), businessName: business.name, description };
 }
 
 /** Checkout's own signature check for auto-pay, then the first charge. */
@@ -391,6 +402,11 @@ export async function verifyAutoPayCheckout(input: { businessId: string; product
   // Still "created": the mandate never went through, although the window signed a ₹0 payment ("Payment successful but
   // e-Mandate failed" in test mode, 2026-10-23). No charge will come, so it is a setup not finished.
   if (sub.status === "created") return failAutoPayCheckout({ businessId: input.businessId, productKey: input.productKey, razorpaySubscriptionId: sub.id, reason: "not_finished", detail: "Razorpay: the mandate was not authorised." });
+  // A coupon's discounted first month is an add-on on a subscription that starts one cycle later: there is no cycle yet, and the add-on's invoice is the charge.
+  if (payment.couponId && sub.start_at && (!sub.current_start || !sub.current_end)) {
+    const chargeId = await fetchPaidChargeId(creds, sub.id, fetchImpl);
+    return chargeId ? (await chargeFirstMonth({ razorpaySubscriptionId: sub.id, razorpayPaymentId: chargeId, startAt: new Date(sub.start_at * 1000) })) ?? payment : payment;
+  }
   // Razorpay charges at once, so a paid setup has its cycle; without one, the webhook's first charge settles the payment.
   if (!sub.current_start || !sub.current_end) return payment;
   // Recorded under the invoice's payment, the one subscription.charged names too, so the webhook finds it and adds no second
@@ -419,6 +435,34 @@ export async function failAutoPayCheckout(input: { businessId: string; productKe
  * One auto-pay charge: the first from checkout verification, every one from Razorpay's `subscription.charged` webhook. The
  * unique Razorpay payment id makes it safe to call twice: one charge is one payment, one period and one invoice.
  */
+/**
+ * A coupon's discounted first month was paid (the add-on's invoice on a subscription that starts one cycle later). The payment written at checkout is settled for the
+ * days up to the start date, with auto-pay on, so the renewal from that date (Razorpay's own cycle) renews this subscription in place. Safe to call twice.
+ */
+export async function chargeFirstMonth(input: { razorpaySubscriptionId: string; razorpayPaymentId: string; startAt: Date; capturedPaise?: number }, now: Date = new Date()) {
+  const include = { plan: true, business: true } as const;
+  const already = await prisma.subscriptionPayment.findUnique({ where: { razorpayPaymentId: input.razorpayPaymentId } });
+  if (already) return already;
+  const payment = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId, couponId: { not: null }, status: { in: ["PENDING", "FAILED"] } }, orderBy: { createdAt: "asc" }, include });
+  if (!payment) return null;
+  return settle(payment, input.razorpayPaymentId, now, input.capturedPaise, { razorpaySubscriptionId: input.razorpaySubscriptionId, periodStart: now, periodEnd: input.startAt });
+}
+
+/** Razorpay's invoice.paid for a subscription: only a coupon's discounted first month waits on it (every other charge arrives as subscription.charged). */
+export async function firstMonthInvoicePaid(input: { razorpaySubscriptionId: string; razorpayPaymentId: string; paidPaise?: number }, fetchImpl: typeof fetch = fetch, now: Date = new Date()) {
+  const payment = await prisma.subscriptionPayment.findFirst({ where: { razorpaySubscriptionId: input.razorpaySubscriptionId, couponId: { not: null }, status: { in: ["PENDING", "FAILED"] } }, orderBy: { createdAt: "asc" } });
+  if (!payment) return null;
+  if (input.paidPaise !== undefined && input.paidPaise !== Math.round(Number(payment.total) * 100)) {
+    console.error("[billing] first-month amount does not match", payment.id);
+    return null;
+  }
+  const creds = platformRazorpay();
+  if (!creds) return null;
+  const sub = await fetchRazorpaySubscription(creds, input.razorpaySubscriptionId, fetchImpl);
+  if (!sub.start_at) return null;
+  return chargeFirstMonth({ razorpaySubscriptionId: input.razorpaySubscriptionId, razorpayPaymentId: input.razorpayPaymentId, startAt: new Date(sub.start_at * 1000) }, now);
+}
+
 export async function chargeAutoPay(input: AutoPayCycle & { razorpayPaymentId: string; capturedPaise?: number }, now: Date = new Date()) {
   const include = { plan: true, business: true } as const;
   const already = await prisma.subscriptionPayment.findUnique({ where: { razorpayPaymentId: input.razorpayPaymentId } });
@@ -438,8 +482,10 @@ export async function chargeAutoPay(input: AutoPayCycle & { razorpayPaymentId: s
     const renewalBuyer = (await getSavedBuyer(last.businessId)) ?? last.buyer;
     // ponytail: two deliveries of one charge at the same moment can each write a row here; the second fails on the unique payment id
     // (Razorpay retries and finds the first) and leaves one stray PENDING row. Harmless; tidy it up if it ever shows in Ops.
+    // A coupon is for the first payment only: a renewal after a discounted first month charges the full price, so the discount is added back before GST.
+    const full = last.couponId && last.couponDiscount ? priceBreakdown(Math.round((Number(last.amount) + Number(last.couponDiscount)) * 100) / 100, Number(last.gstPercent)) : null;
     payment = await prisma.subscriptionPayment.create({
-      data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: last.businessId, productKey: last.productKey, planId: last.planId, interval: "MONTHLY", amount: last.amount, gstPercent: last.gstPercent, gstAmount: last.gstAmount, total: last.total, razorpaySubscriptionId: input.razorpaySubscriptionId, ...(renewalBuyer ? { buyer: renewalBuyer as Prisma.InputJsonValue } : {}) },
+      data: { id: `pay_${randomBytes(16).toString("hex")}`, businessId: last.businessId, productKey: last.productKey, planId: last.planId, interval: "MONTHLY", amount: full ? full.amount : last.amount, gstPercent: last.gstPercent, gstAmount: full ? full.gstAmount : last.gstAmount, total: full ? full.total : last.total, razorpaySubscriptionId: input.razorpaySubscriptionId, ...(renewalBuyer ? { buyer: renewalBuyer as Prisma.InputJsonValue } : {}) },
       include,
     });
   }

@@ -56,6 +56,8 @@ export interface RazorpaySubscription {
   status: string;
   current_start: number | null;
   current_end: number | null;
+  /** When billing starts, for a subscription made with a delayed start (a coupon's discounted first month). */
+  start_at?: number | null;
   charge_at?: number | null;
   notes?: Record<string, string> | unknown[] | null;
   customer_id?: string | null;
@@ -77,8 +79,8 @@ export const createRazorpayPlan = (creds: PlatformRazorpay, p: { name: string; a
   call<{ id: string }>(creds, "POST", "/plans", { period: "daily", interval: 30, item: { name: p.name, amount: p.amountPaise, currency: "INR" } }, fetchImpl).then(({ id }) => ({ id }));
 
 /** 120 cycles of 30 days is about ten years: auto-pay until the owner pauses, changes plan or is locked. */
-export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; notes: Record<string, string>; customerId?: string; startAt?: number }, fetchImpl: typeof fetch = fetch) =>
-  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes, ...(p.customerId ? { customer_id: p.customerId } : {}), ...(p.startAt ? { start_at: p.startAt } : {}) }, fetchImpl);
+export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; notes: Record<string, string>; customerId?: string; startAt?: number; addons?: { name: string; amountPaise: number }[] }, fetchImpl: typeof fetch = fetch) =>
+  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes, ...(p.customerId ? { customer_id: p.customerId } : {}), ...(p.startAt ? { start_at: p.startAt } : {}), ...(p.addons?.length ? { addons: p.addons.map((a) => ({ item: { name: a.name, amount: a.amountPaise, currency: "INR" } })) } : {}) }, fetchImpl);
 
 export const fetchRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "GET", `/subscriptions/${id}`, undefined, fetchImpl);
 

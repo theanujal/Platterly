@@ -121,14 +121,6 @@ test.describe("Live Store: coupons", () => {
     await expect(total()).toHaveText(/35,046/);
   });
 
-  test("a monthly plan takes no coupon yet: the field is off and says so", async () => {
-    await page.goto(`${STORE}/manage/caterly`);
-    await page.getByRole("button", { name: "Monthly" }).click();
-    await page.getByRole("article").filter({ hasText: "Premium" }).getByRole("button", { name: "Subscribe" }).click();
-    await expect(page.getByLabel(/Coupon code/)).toBeDisabled();
-    await expect(page.getByLabel(/Coupon code/)).toHaveAttribute("placeholder", /yearly plans for now/);
-  });
-
   test("paying with the coupon charges the discounted total, and Ops records the coupon, the discount and one use", async () => {
     test.setTimeout(180_000);
     await chooseAnnual(page, "Premium", "Subscribe");

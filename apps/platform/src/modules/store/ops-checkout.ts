@@ -112,7 +112,7 @@ export async function verifyStoreCheckout(input: StoreVerifyInput, deps: Deps = 
 }
 
 /** What a plan would cost this business now, from Ops: the plan price, any upgrade credit for unused days, GST, and the total. The Store only shows these figures. */
-export type StoreQuote = { planName: string; interval: "MONTHLY" | "ANNUAL"; planPrice: number; credit: number; creditDays: number; creditLabel: string | null; /** The coupon taken off (before GST) and the rupees it took off; null and 0 when none. */ couponCode: string | null; discount: number; amount: number; gstPercent: number; gstAmount: number; total: number };
+export type StoreQuote = { planName: string; interval: "MONTHLY" | "ANNUAL"; planPrice: number; credit: number; creditDays: number; creditLabel: string | null; /** The coupon taken off (before GST) and the rupees it took off; null and 0 when none. */ couponCode: string | null; discount: number; /** A monthly coupon is the first month only: what the plan renews at, and from when (null when no coupon). */ renewalTotal: number | null; renewalFrom: string | null; amount: number; gstPercent: number; gstAmount: number; total: number };
 
 export async function quoteStoreCheckout(input: { businessId: string; opsProductKey: string; planId: string; interval: "MONTHLY" | "ANNUAL"; couponCode?: string }, deps: Deps = {}): Promise<CheckoutResult<StoreQuote>> {
   const got = await signedOpsPost(input.businessId, input.opsProductKey, "quote", { planId: input.planId, interval: input.interval, ...(input.couponCode ? { couponCode: input.couponCode } : {}) }, deps);
@@ -123,7 +123,9 @@ export async function quoteStoreCheckout(input: { businessId: string; opsProduct
   // An older Ops sends no coupon fields: that is no coupon.
   if (a.discount !== undefined && (typeof a.discount !== "number" || !Number.isFinite(a.discount))) return { ok: false, reason: "bad_answer" };
   if (a.couponCode !== undefined && a.couponCode !== null && typeof a.couponCode !== "string") return { ok: false, reason: "bad_answer" };
-  return { ok: true, answer: { ...(a as unknown as StoreQuote), couponCode: typeof a.couponCode === "string" ? a.couponCode : null, discount: typeof a.discount === "number" ? a.discount : 0 } };
+  if (a.renewalTotal !== undefined && a.renewalTotal !== null && (typeof a.renewalTotal !== "number" || !Number.isFinite(a.renewalTotal))) return { ok: false, reason: "bad_answer" };
+  if (a.renewalFrom !== undefined && a.renewalFrom !== null && (typeof a.renewalFrom !== "string" || Number.isNaN(Date.parse(a.renewalFrom)))) return { ok: false, reason: "bad_answer" };
+  return { ok: true, answer: { ...(a as unknown as StoreQuote), couponCode: typeof a.couponCode === "string" ? a.couponCode : null, discount: typeof a.discount === "number" ? a.discount : 0, renewalTotal: typeof a.renewalTotal === "number" ? a.renewalTotal : null, renewalFrom: typeof a.renewalFrom === "string" ? a.renewalFrom : null } };
 }
 
 export type SubscriptionChange = "downgrade" | "undo-downgrade" | "cancel" | "reactivate";

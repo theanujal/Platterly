@@ -1,4 +1,4 @@
-import { autoPayEvent, confirmPayment, failPayment } from "@/modules/billing/billing";
+import { autoPayEvent, confirmPayment, failPayment, firstMonthInvoicePaid } from "@/modules/billing/billing";
 import { finishRazorpayEvent, recordRazorpayEvent, webhookIds, type RazorpayWebhook } from "@/modules/billing/events";
 import { confirmStandPayment, failStandPayment } from "@/modules/stand/stand";
 import { platformRazorpay, verifyWebhookSignature, type RazorpaySubscription } from "@/modules/billing/razorpay";
@@ -14,7 +14,7 @@ import { notifySafely } from "@/modules/notifications/notifications";
  */
 export const dynamic = "force-dynamic";
 
-type Event = RazorpayWebhook & { payload?: { subscription?: { entity?: RazorpaySubscription } } };
+type Event = RazorpayWebhook & { payload?: { subscription?: { entity?: RazorpaySubscription }; invoice?: { entity?: { subscription_id?: string | null; payment_id?: string | null; amount_paid?: number } } } };
 
 export async function POST(request: Request) {
   const secret = platformRazorpay()?.webhookSecret;
@@ -44,6 +44,12 @@ export async function POST(request: Request) {
 
 async function apply(event: Event) {
   // Auto-pay: Razorpay also sends payment.captured for each charge, but its order is Razorpay's own and matches none of ours below.
+  // A coupon's discounted first month is an add-on invoice on a subscription that starts later: its invoice.paid is the only word of that charge.
+  if (event.event === "invoice.paid") {
+    const invoice = event.payload?.invoice?.entity;
+    if (invoice?.subscription_id && invoice.payment_id) await firstMonthInvoicePaid({ razorpaySubscriptionId: invoice.subscription_id, razorpayPaymentId: invoice.payment_id, paidPaise: invoice.amount_paid });
+    return;
+  }
   const subscription = event.payload?.subscription?.entity;
   if (event.event?.startsWith("subscription.") && subscription?.id) return autoPayEvent(event.event, subscription, event.payload?.payment?.entity);
   const entity = event.payload?.payment?.entity;

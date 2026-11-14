@@ -155,11 +155,9 @@ describe("a coupon at checkout (yearly)", () => {
     await expect(findUsableCoupon({ code: "CT-FIX", productKey: KEY, businessId: newBiz(), now: new Date() })).rejects.toThrow("This coupon has been used up.");
   });
 
-  it("refuses a bad code with the plain reason, and refuses a coupon on a monthly plan until monthly is built", async () => {
+  it("refuses a bad code with the plain reason", async () => {
     const { pro, biz } = await setup();
     await expect(quoteCheckout(yearly(biz, pro.id, "CT-NOPE"))).rejects.toThrow(BillingError);
-    await createCoupon({ code: "CT-MON", kind: "PERCENT", value: 10 });
-    await expect(quoteCheckout({ businessId: biz, productKey: KEY, planId: pro.id, interval: "MONTHLY", couponCode: "CT-MON" })).rejects.toThrow(/yearly/i);
   });
 
   it("a coupon that would make the payment free is refused rather than starting a zero payment", async () => {

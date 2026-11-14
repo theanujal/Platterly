@@ -50,8 +50,7 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       if (!parsed.ok) return reply(400, { error: parsed.error });
       const { autoPay: _ignored, ...checkout } = parsed.value;
       // A monthly plan in the Store is always auto-pay (AJ, 2026-11-14): the flag is ignored. A yearly plan is a one-time order.
-      if (checkout.interval === "MONTHLY" && checkout.couponCode) throw new BillingError("Coupons can be used on yearly plans for now.");
-      if (checkout.interval === "MONTHLY") return reply(200, await startAutoPayCheckout({ businessId, productKey, planId: checkout.planId, buyer: checkout.buyer }));
+      if (checkout.interval === "MONTHLY") return reply(200, await startAutoPayCheckout({ businessId, productKey, planId: checkout.planId, buyer: checkout.buyer, couponCode: checkout.couponCode }));
       return reply(200, await startCheckout({ businessId, productKey, ...checkout }));
     }
     // Pause, resume and stop auto-pay (the Account's auto-renewal section): Ops's own functions, which check the state and say why when there is nothing to change.

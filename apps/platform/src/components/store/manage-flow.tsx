@@ -315,10 +315,8 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                   <label htmlFor="coupon">Coupon code<span className="ps-optional"> (optional)</span></label>
                   {!live ? (
                     <input id="coupon" disabled placeholder="Coupons are not switched on yet" />
-                  ) : chosen.interval !== "ANNUAL" || kind === "downgrade" ? (
-                    <>
-                      <input id="coupon" disabled placeholder="Coupons can be used on yearly plans for now" />
-                    </>
+                  ) : kind === "downgrade" ? (
+                    <input id="coupon" disabled placeholder="Coupons apply to a new payment, not a downgrade" />
                   ) : couponApplied ? (
                     <p data-testid="coupon-applied" className="ps-hint">
                       Coupon <strong>{couponApplied}</strong> applied.{" "}
@@ -372,6 +370,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                   {quote.discount > 0 && <div><dt>Coupon {quote.couponCode}</dt><dd data-testid="discount">&minus;{inr(quote.discount)}</dd></div>}
                   <div><dt>GST ({quote.gstPercent}%)</dt><dd data-testid="gst">{inr(quote.gstAmount)}</dd></div>
                   <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(quote.total)}</dd></div>
+                  {quote.renewalTotal !== null && quote.renewalFrom && <div><dt>Then, from {longDate(quote.renewalFrom)}</dt><dd data-testid="renewal">{inr(quote.renewalTotal)} a month</dd></div>}
                 </>
               ) : (
                 <>
