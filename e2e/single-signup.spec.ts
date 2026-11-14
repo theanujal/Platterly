@@ -63,12 +63,8 @@ async function signUpAndVerify(page: Page, email: string) {
   // The email is not verified yet: nothing has been created on the Platform.
   expect((await platform.query(`select count(*) from users where email = $1`, [email])).rows[0].count).toBe("0");
   await fill(page, "Verification code", await code(page, email));
+  // Verifying signs the person in and sends them back to Caterly: there is no second sign-in.
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-}
-async function signIn(page: Page) {
-  await fill(page, "Password", PASSWORD);
-  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
 }
 const accountBusiness = (email: string) =>
   platform.query(
@@ -81,16 +77,14 @@ test("signing up from Caterly: the Account makes the business at verification an
   const email = `ss-${Date.now()}@auth.test`;
   emails.push(email);
   await signUpAndVerify(page, email);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/, { timeout: 90_000 });
 
-  // At verification, before any sign-in: the Account has made the person, their business (named after them), the product link and the Admin seat.
+  // The Account made the person, their business (named after them), the product link and the Admin seat at verification.
   const made = await accountBusiness(email);
   expect(made.rows).toHaveLength(1);
   expect(made.rows[0]).toMatchObject({ name: "Asha Rao", product_key: "caterly", central_role: "admin" });
   const businessId = made.rows[0].id as string;
   businesses.push(businessId);
-
-  await signIn(page);
-  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/, { timeout: 90_000 });
 
   // Caterly adopted that business: one business for this person, with the Platform's id, as its owner, on a trial. It made none of its own and reported none.
   const mine = await caterly.query(`select o."businessId", m.role from member m join "user" u on u.id = m."userId" join organization o on o.id = m."organizationId" where u.email = $1`, [email]);
@@ -110,14 +104,13 @@ test("if Caterly cannot be reached at verification the person waits on \"Setting
   try {
     await platform.query(`update product_integrations set base_url = 'http://127.0.0.1:9' where key = 'caterly'`);
     await signUpAndVerify(page, email);
+    // Verifying signs the person in and sends them to Caterly, which has no business for them yet: they wait.
+    await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/setting-up/, { timeout: 60_000 });
     const made = await accountBusiness(email);
     expect(made.rows).toHaveLength(1);
     const businessId = made.rows[0].id as string;
     businesses.push(businessId);
     expect((await platform.query(`select count(*) from outbox_events where organisation_id = $1 and status = 'delivered'`, [businessId])).rows[0].count).toBe("0");
-
-    await signIn(page);
-    await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/setting-up/, { timeout: 60_000 });
     await expect(page.getByRole("heading", { name: "Setting up your account" })).toBeVisible();
     expect((await caterly.query(`select count(*) from member m join "user" u on u.id = m."userId" where u.email = $1`, [email])).rows[0].count).toBe("0");
 

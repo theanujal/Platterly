@@ -7,8 +7,9 @@ test("the Devices page lists this person's sign-ins and a refused password, newe
   await registerAndSignIn(page, to, "/devices");
   await expect(page.getByRole("heading", { name: "Sign-in history" })).toBeVisible();
   const history = page.getByRole("list", { name: "Sign-in history" });
-  await expect(history.getByRole("listitem")).toHaveCount(1);
-  await expect(history.getByText("Signed in")).toBeVisible();
+  // Verifying the email signed the person in (single sign-up), then the helper signed in again: two entries.
+  await expect(history.getByRole("listitem")).toHaveCount(2);
+  await expect(history.getByText("Signed in").first()).toBeVisible();
 
   // Another browser tries a wrong password, then signs in properly.
   const other = await (await browser.newContext()).newPage();
@@ -23,10 +24,11 @@ test("the Devices page lists this person's sign-ins and a refused password, newe
 
   await page.reload();
   const items = page.getByRole("list", { name: "Sign-in history" }).getByRole("listitem");
-  await expect(items).toHaveCount(3);
+  await expect(items).toHaveCount(4);
   await expect(items.nth(0)).toContainText("Signed in");
   await expect(items.nth(1)).toContainText("Wrong password");
   await expect(items.nth(2)).toContainText("Signed in");
+  await expect(items.nth(3)).toContainText("Signed in");
   await expect(page.getByRole("list", { name: "Sign-in history" })).not.toContainText(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b|127\.0\.0\.1|::1/);
 });
 

@@ -434,6 +434,9 @@ export function VerifyForm() {
     setError("");
     const res = await post("/email-otp/verify-email", { email, otp: code.trim() });
     setBusy(false);
+    // Verifying signs the person in. Came from a product: hand the signed query back to the provider, which sends them on to the product. Came directly: the sign-in page.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- a full navigation to the provider's API route, not a Next page
+    if (res.status === 200 && carry.includes("sig=")) return void window.location.assign(`/api/auth/oauth2/authorize?${carry}`);
     if (res.status === 200) return void window.location.assign(withCarry("/sign-in", carry, { email, verified: "1" }));
     setError(res.status === 429 ? BUSY : res.status === 400 ? "That code is not right or has expired. Check it, or ask for a new one." : GENERIC);
   }

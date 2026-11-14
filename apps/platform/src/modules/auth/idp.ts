@@ -137,6 +137,9 @@ export function createIdp(options: IdpOptions = {}) {
         }
       }),
     },
+    // Single sign-up (AJ, 2026-11-14): entering the emailed code both verifies the address and signs the person in, so a new person goes straight back to the product
+    // they came from. The new session still passes every session rule (account hold, new-device alert, history).
+    emailVerification: { autoSignInAfterVerification: true },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD.minLength,

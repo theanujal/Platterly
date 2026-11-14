@@ -72,9 +72,7 @@ test("a name and phone changed in the Account show on Caterly's User Profile", a
   await page.getByRole("button", { name: "Create account" }).click();
   await fill(page, "Verification code", await codeFor(page, to));
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-  await fill(page, "Password", PASSWORD);
-  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
+  // Verifying signs the person in and sends them back to Caterly (single sign-up): straight to onboarding, no second sign-in.
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
 
   // Caterly's page shows what was given at sign-up.

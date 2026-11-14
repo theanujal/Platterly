@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { openSignUpFromProduct } from "./signed-in";
+import { openSignUpFromProduct, verifyAndSignOut } from "./signed-in";
 import path from "node:path";
 
 /** The sign-in system's code emails (approved Caterly layout): the code is read from the email body, not the subject. */
@@ -59,8 +59,7 @@ async function registerAndSignIn(page: Page, to: string, startPath = "/") {
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await fill(page, "Verification code", await codeFor(page, to));
-  await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+  await verifyAndSignOut(page);
   await page.goto(startPath);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await fill(page, "Email", to);
@@ -122,13 +121,13 @@ test.describe("Sign-in journey", () => {
     await shot(page, "f4-4-verify-page");
     await fill(page, "Verification code", await codeFor(page, to));
     await page.getByRole("button", { name: "Verify email" }).click();
-    await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-    await expect(page.getByLabel("Email")).toHaveValue(to);
+    // Verifying signs the person in and sends them on to the product they came from (single sign-up): no second sign-in. The stub product is not running here, so the
+    // proof is that the page left the verify page and the provider now holds this person's session.
+    await page.waitForURL((url) => !url.pathname.endsWith("/verify"), { waitUntil: "commit", timeout: 30_000 });
+    const session = await page.context().request.get("http://auth.localhost:3300/api/auth/get-session");
+    expect(((await session.json()) as { user?: { email?: string } } | null)?.user?.email).toBe(to);
+    // Opening the Account now needs no password either: the existing session completes the sign-in.
     await page.goto("/");
-    await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
-    await fill(page, "Email", to);
-    await fill(page, "Password", PASSWORD);
-    await page.getByRole("button", { name: "Sign in" }).click();
 
     // Back on the Account, signed in, with the person's real email and no business yet.
     await expect(page).toHaveURL("http://account.localhost:3300/");
@@ -248,8 +247,7 @@ test.describe("Sign-in safety", () => {
     await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
     await expect.poll(mailCount, { message: "a second code is sent when they sign in", timeout: 8000 }).toBe(2);
     await fill(page, "Verification code", await codeFor(page, to));
-    await page.getByRole("button", { name: "Verify email" }).click();
-    await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+    await verifyAndSignOut(page);
   });
 
   test("a wrong code is refused with a clear message", async ({ page }) => {
@@ -306,9 +304,7 @@ test.describe("Sign-in safety", () => {
     await fill(page, "Password", PASSWORD);
     await page.getByRole("button", { name: "Create account" }).click();
     await fill(page, "Verification code", await codeFor(page, to));
-    await page.getByRole("button", { name: "Verify email" }).click();
-    // Wait for the sign-in page itself: a field filled while the page is still changing is lost.
-    await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
+    await verifyAndSignOut(page);
     await page.goto("/auth/start?next=//evil.test/steal");
     await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     await fill(page, "Email", to);

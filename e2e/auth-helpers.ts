@@ -57,10 +57,8 @@ export async function signUpOnCentralPage(page: Page, person: { email: string; f
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await centralFill(page, "Verification code", await codeFromSink(page, email));
+  // Verifying signs the person in and sends them back to the product (single sign-up): no second sign-in.
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-  await centralFill(page, "Password", password);
-  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
 }
 
 export interface SignUpOptions {

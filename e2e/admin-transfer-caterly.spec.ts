@@ -65,10 +65,8 @@ async function signUpFromCaterly(page: Page, to: string) {
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Create account" }).click();
   await fill(page, "Verification code", await codeFor(page, to));
+  // Verifying signs the person in and sends them back to Caterly (single sign-up): straight to onboarding, no second sign-in.
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-  await fill(page, "Password", PASSWORD);
-  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
 }
 
