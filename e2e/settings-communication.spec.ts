@@ -102,7 +102,7 @@ test("WhatsApp and Email settings: status, email switches, activate once connect
   await expect(page.getByRole("switch", { name: "Send me push notifications" })).not.toBeChecked();
 });
 
-test("Platterly Link page and Subscription invoice download", async ({ page }) => {
+test("Platterly Link page", async ({ page }) => {
   test.setTimeout(180_000);
   const email = `e2e-link-${Date.now()}@example.test`;
   cleanupEmails.push(email);
@@ -114,16 +114,4 @@ test("Platterly Link page and Subscription invoice download", async ({ page }) =
   await expect(page.getByText("Share this unique link with customers.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "How it works" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Platterly Link" }).first()).toBeVisible(); // renamed in the sub-menu too
-
-  // Subscription: trial card, billing information, and a downloadable invoice
-  await page.goto("/settings/subscription");
-  await expect(page.getByText("Trial Active").first()).toBeVisible();
-  await expect(page.getByText("Billing Information")).toBeVisible();
-  await expect(page.getByText("Payment: ₹0")).toBeVisible();
-  const invoice = page.getByRole("button", { name: "Invoice" });
-  const href = await invoice.getAttribute("href");
-  expect(href).toMatch(/\/settings\/subscription\/invoice\/.+/);
-  const pdf = await page.request.get(href!);
-  expect(pdf.headers()["content-type"]).toContain("application/pdf");
-  expect((await pdf.body()).subarray(0, 4).toString()).toBe("%PDF");
 });

@@ -14,6 +14,7 @@ import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shel
 import { Toaster } from "@/components/ui/toaster";
 import { SensitiveAccessProvider } from "@/components/sensitive-access";
 import { UserMenu } from "@/components/app-shell/user-menu";
+import { platformAccountOrigin } from "@/lib/platform/config";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
 import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
@@ -104,7 +105,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex items-center gap-1">
             {activeLocation.canSwitch && <LocationSwitcher locations={switcherLocations.map((l) => ({ id: l.id, name: l.name }))} activeId={activeLocation.locationId} />}
             <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
-            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} />
+            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} accountUrl={`${platformAccountOrigin()}/profile`} />
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>

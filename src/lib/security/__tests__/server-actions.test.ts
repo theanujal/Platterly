@@ -94,8 +94,6 @@ describe("signed-in pages and route handlers", () => {
   const FOR_EVERYONE = [
     "src/app/(app)/dashboard/page.tsx",
     "src/app/(app)/settings/page.tsx",
-    "src/app/(app)/settings/(sections)/account/user-profile/page.tsx",
-    "src/app/(app)/settings/(sections)/account/change-password/page.tsx",
     "src/app/(app)/settings/(sections)/communication/push-notifications/page.tsx",
   ];
 

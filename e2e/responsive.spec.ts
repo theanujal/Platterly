@@ -14,7 +14,7 @@ const VIEWPORTS = [
 ];
 const PAGES = [
   "/dashboard", "/orders", "/calendar", "/customers", "/menu-catalog/items", "/inventory", "/kitchen-dashboard",
-  "/settings/account/user-profile", "/settings/team", "/settings/integration/iframe",
+  "/settings/account/business-profile", "/settings/team", "/settings/integration/iframe",
 ];
 
 const cleanupEmails: string[] = [];

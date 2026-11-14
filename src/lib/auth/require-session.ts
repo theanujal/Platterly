@@ -128,9 +128,9 @@ export async function requireActiveOrganization(options: { allowLocked?: boolean
   }
 
   // Chunk 20: a kitchen whose trial or paid period has run out can sign in but reach nothing except the payment
-  // page (`/subscribe`, which passes allowLocked). This is the one place every page and Server Action goes through.
+  // screen (`/plan-ended`, which passes allowLocked). This is the one place every page and Server Action goes through.
   if (!options.allowLocked) {
-    if (await isLocked(organizationId)) redirect("/subscribe");
+    if (await isLocked(organizationId)) redirect("/plan-ended");
   }
 
   return { session, organizationId };

@@ -14,3 +14,7 @@ export function safeNextPath(next: string | null | undefined, fallback = "/dashb
 
 /** Where the person manages their own details (name, phone, email). Products only show them; the Account is the one place they change. */
 export const platformAccountOrigin = () => process.env.PLATFORM_ACCOUNT_ORIGIN ?? "http://account.localhost:3300";
+
+/** Where the Business Admin pays and manages the plan (the Platterly Store). Caterly has no billing pages of its own (AJ, 2026-11-14). */
+export const platformStoreOrigin = () => process.env.PLATFORM_STORE_ORIGIN ?? "http://store.localhost:3300";
+export const storeManageUrl = () => `${platformStoreOrigin()}/manage/caterly`;

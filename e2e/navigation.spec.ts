@@ -57,8 +57,9 @@ test("merged menus open as tabs, and Settings, Billing and Sign out are in the a
   await page.getByRole("button", { name: "Account menu" }).click();
   await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
-  await page.getByRole("menuitem", { name: "Billing" }).click();
-  await expect(page).toHaveURL(/\/settings\/subscription$/);
+  // Billing has no Caterly page: it goes through /subscribe to the Store (the Store is another app, so only the link is checked).
+  await expect(page.getByRole("menuitem", { name: "Billing" })).toHaveAttribute("href", "/subscribe");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings(\/.*)?$/);

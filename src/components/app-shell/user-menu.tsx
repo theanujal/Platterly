@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, CreditCard, LogOut, Settings as SettingsIcon } from "lucide-react";
+import { ChevronDown, CreditCard, ExternalLink, LogOut, Settings as SettingsIcon, UserRound } from "lucide-react";
 import { signOutAndLeave } from "@/lib/auth/client-sign-out";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLinkIt
  * The name at the top right (AJ, 2026-10-04): Settings, Billing (the Subscription tab in Settings) and Sign out live
  * here instead of at the bottom of the sidebar. Settings and Billing show only for a role that can open Settings.
  */
-export function UserMenu({ fullName, email, initials, canOpenSettings }: { fullName: string; email: string; initials: string; canOpenSettings: boolean }) {
+export function UserMenu({ fullName, email, initials, canOpenSettings, accountUrl }: { fullName: string; email: string; initials: string; canOpenSettings: boolean; accountUrl: string }) {
   const router = useRouter();
 
   async function signOut() {
@@ -31,12 +31,16 @@ export function UserMenu({ fullName, email, initials, canOpenSettings }: { fullN
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-44">
+        {/* Name, phone, email and password live only in the Platterly Account (AJ, 2026-11-14). */}
+        <DropdownMenuLinkItem closeOnClick render={<a href={accountUrl} />}>
+          <UserRound /> Your Account <ExternalLink className="ml-auto size-3.5 text-muted-foreground" aria-hidden />
+        </DropdownMenuLinkItem>
         {canOpenSettings && (
           <>
             <DropdownMenuLinkItem closeOnClick render={<Link href="/settings" />}>
               <SettingsIcon /> Settings
             </DropdownMenuLinkItem>
-            <DropdownMenuLinkItem closeOnClick render={<Link href="/settings/subscription" />}>
+            <DropdownMenuLinkItem closeOnClick render={<Link href="/subscribe" />}>
               <CreditCard /> Billing
             </DropdownMenuLinkItem>
           </>

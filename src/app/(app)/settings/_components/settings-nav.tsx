@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Lock, Mail, MessageCircle, Trash2, User, Users, Wallet } from "lucide-react";
+import { Bell, Building2, ChefHat, Code2, Coins, FileText, Link2, Mail, MessageCircle, Trash2, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "cn";
 
@@ -20,15 +20,12 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Account",
     items: [
-      { label: "User Profile", href: "/settings/account/user-profile", icon: User },
       { label: "Business Profile", href: "/settings/account/business-profile", icon: Building2 },
-      { label: "Change Password", href: "/settings/account/change-password", icon: Lock },
       { label: "Currency & Time Zone", href: "/settings/account/currency-preferences", icon: Coins },
     ],
   },
   { label: "Kitchen", items: [{ label: "Kitchen Rules", href: "/settings/kitchen/kitchen-rules", icon: ChefHat }] },
   { label: "Team", items: [{ label: "Team Management", href: "/settings/team", icon: Users }] },
-  { label: "Subscription", items: [{ label: "Subscription", href: "/settings/subscription", icon: CreditCard }] },
   {
     label: "Integration",
     items: [

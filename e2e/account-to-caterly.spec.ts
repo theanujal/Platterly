@@ -11,7 +11,7 @@ const CODE_SUBJECT = /Account Verification|Reset Your Platterly Password|Confirm
 /**
  * A change made in the Platterly Account shows in Caterly (AJ, 2026-11-10: "like Zoho, a central account"). One real person is registered through Caterly's
  * central sign-in, edits their name and phone in the Account, the Platform's outbox is run once by hand (nothing schedules it locally), and Caterly's
- * read-only User Profile page shows the new details. Needs the Platform (CRON_SECRET_FILE holds the secret it was started with), the mail sink and PLATFORM_SSO_E2E=1.
+ * top bar shows the new name. Needs the Platform (CRON_SECRET_FILE holds the secret it was started with), the mail sink and PLATFORM_SSO_E2E=1.
  * It leaves permanent Platform audit rows (that table cannot have rows deleted), so it is run on purpose, never in a routine run.
  */
 test.skip(process.env.PLATFORM_SSO_E2E !== "1" || !process.env.CRON_SECRET_FILE, "needs the Platform, the mail sink and CRON_SECRET_FILE");
@@ -53,7 +53,7 @@ const runPlatformOutbox = async (page: Page) => {
   return (await res.json()) as unknown;
 };
 
-test("a name and phone changed in the Account show on Caterly's User Profile", async ({ page }) => {
+test("a name and phone changed in the Account show in Caterly's top bar", async ({ page }) => {
   test.setTimeout(120_000);
   const to = `acct-caterly-${Date.now()}@auth.test`;
   created.push(to);
@@ -75,9 +75,9 @@ test("a name and phone changed in the Account show on Caterly's User Profile", a
   // Verifying signs the person in and sends them back to Caterly (single sign-up): straight to onboarding, no second sign-in.
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
 
-  // Caterly's page shows what was given at sign-up.
-  await page.goto(`${CATERLY}/settings/account/user-profile`);
-  await expect(page.getByText("Sso", { exact: true })).toBeVisible();
+  // Caterly's top bar shows the name given at sign-up (the User Profile page is gone: details are kept and changed only in the Account).
+  await page.goto(`${CATERLY}/settings/account/business-profile`);
+  await expect(page.getByRole("button", { name: "Account menu" })).toContainText("Sso Person");
 
   // Caterly tells the Platform about the new business; run the Platform's outbox until the person has a seat.
   await expect.poll(async () => (await pool.query(`select count(*) from "platform_outbox" where status = 'SENT' and type = 'business.created' and payload->'owner'->>'subject' is not null`)).rows[0].count, { timeout: 30_000 }).not.toBe("0");
@@ -95,9 +95,11 @@ test("a name and phone changed in the Account show on Caterly's User Profile", a
   await runPlatformOutbox(page);
   await expect.poll(async () => (await pool.query('select "firstName", "lastName", phone from "user" where email = $1', [to])).rows[0], { timeout: 20_000 })
     .toEqual({ firstName: "Asha", lastName: "Rao Nair", phone: "+919800000456" });
+  await page.goto(`${CATERLY}/settings/account/business-profile`);
+  await expect(page.getByRole("button", { name: "Account menu" })).toContainText("Asha Rao Nair");
+  // The menu points to the Account for profile and password; Caterly has no edit page of its own.
+  await page.getByRole("button", { name: "Account menu" }).click();
+  await expect(page.getByRole("menuitem", { name: /Your Account/ })).toBeVisible();
   await page.goto(`${CATERLY}/settings/account/user-profile`);
-  await expect(page.getByText("Asha", { exact: true })).toBeVisible();
-  await expect(page.getByText("Rao Nair", { exact: true })).toBeVisible();
-  await expect(page.getByText("+919800000456")).toBeVisible();
-  await expect(page.getByRole("main").getByRole("button", { name: /edit/i })).toHaveCount(0);
+  await expect(page.getByText("This page could not be found.")).toBeVisible();
 });
