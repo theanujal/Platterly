@@ -4,6 +4,7 @@ import type { Session } from "@/lib/session";
 import { billingAccess } from "./billing-rights";
 import { checkBuyer } from "./buyer-check";
 import { prisma } from "@/lib/db";
+import { findSubjectForUser } from "../users/subject";
 import { identityPool } from "../auth/identity-db";
 import { getProfile } from "../account/profile";
 import { changeStoreAutoPay, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
@@ -16,8 +17,8 @@ export const opsKeyFor = (storeKey: string) => Object.entries(STORE_KEY_FOR_OPS_
 async function shareOwnerContact(session: Session | null, businessId: string, opsProductKey: string): Promise<void> {
   try {
     // The session holds the Platform user id; the Account's profile is keyed by the identity subject.
-    const link = session ? await prisma.userIdentity.findFirst({ where: { userId: session.userId }, select: { subject: true } }) : null;
-    const profile = link ? await getProfile(identityPool(), link.subject) : null;
+    const subject = session ? await findSubjectForUser(prisma, session.userId) : null;
+    const profile = subject ? await getProfile(identityPool(), subject) : null;
     if (profile?.phone && profile.email) await sendOwnerContact({ businessId, opsProductKey, phone: profile.phone, email: profile.email });
   } catch (error) {
     console.error("[store] could not share the owner contact with Ops:", error);
