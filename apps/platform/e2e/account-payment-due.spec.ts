@@ -23,7 +23,7 @@ function sql(urlEnv: "DATABASE_URL" | "OPS_THROWAWAY_DATABASE_URL", statement: s
 }
 const ops = (statement: string) => sql("OPS_THROWAWAY_DATABASE_URL", statement);
 /** Makes the business's current Ops subscription a paid monthly plan whose period ended a day ago, with the given auto-pay state. */
-const seed = (autoPay: string) => ops(`update subscription set status='ACTIVE', "billingInterval"='MONTHLY', "trialEndsAt"=null, "currentPeriodEnd"=(now() at time zone 'utc') - interval '1 day', "razorpaySubscriptionId"='sub_e2e_due', "autoPay"='${autoPay}', "cancelledAt"=null where "businessId"='${BHANDARYS}' and "endDate" is null`);
+const seed = (autoPay: string) => ops(`update subscription set "planId"=(select id from plan where "productKey"='catering' and name='Cross Platform'), status='ACTIVE', "billingInterval"='MONTHLY', "trialEndsAt"=null, "currentPeriodEnd"=(now() at time zone 'utc') - interval '1 day', "razorpaySubscriptionId"='sub_e2e_due', "autoPay"='${autoPay}', "cancelledAt"=null where "businessId"='${BHANDARYS}' and "endDate" is null`);
 
 async function signInAsBhandarysAdmin(page: Page): Promise<void> {
   const email = newEmail();
@@ -42,6 +42,9 @@ test("a failed auto-pay renewal reads Payment due in the Account and the Store; 
   await expect(card.getByText("Payment due").first()).toBeVisible();
   await expect(card).toContainText(FAILED);
   await expect(card).toContainText("We will try your payment method again.");
+  // The page also says what the plan costs (this interval, GST included) and what it includes, from Ops's plan list (cleanup, AJ 2026-11-15).
+  await expect(card.getByTestId("plan-price")).toHaveText("₹5,898.82 a month, GST included");
+  await expect(card.getByTestId("plan-includes")).toContainText("everything upcoming");
 
   await page.goto(`${STORE}/manage/caterly`);
   await expect(page.getByRole("alert").filter({ hasText: "Payment due" })).toContainText(FAILED);

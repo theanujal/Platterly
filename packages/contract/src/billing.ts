@@ -181,6 +181,8 @@ export interface BillingView {
   payments: { id: string; planName: string; interval: BillingInterval; total: number; paidAt: string | null; periodStart: string | null; periodEnd: string | null; invoiceNumber: string | null;
     /** Where a refund stands on this payment: asked for and waiting, turned down, partly or fully given back (`refunded` is the rupees so far). Null or absent when none was asked for, and from an older ops. */
     refund?: { status: "PENDING" | "REJECTED" | "PARTIAL" | "REFUNDED"; refunded: number } | null;
+    /** The credit notes issued on this payment (one per refund), each downloadable. Absent from an older ops. */
+    creditNotes?: { id: string; number: string; total: number }[];
   }[];
 }
 

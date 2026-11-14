@@ -136,6 +136,9 @@ export const platformCheckoutPath = (businessId: string, productKey: string, act
  */
 export const platformInvoicePath = (businessId: string, productKey: string, paymentId: string) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/payments/${paymentId}/invoice`;
 export const PLATFORM_INVOICE_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/payments\/[A-Za-z0-9_-]{1,64}\/invoice$/;
+/** A refund's credit note as a PDF, for the Account (a signed GET with the read-only secret; the answer is signed JSON `{ fileName, pdfBase64 }`). Scoped to one business and product. */
+export const platformCreditNotePath = (businessId: string, productKey: string, refundId: string) => `/api/platform/businesses/${businessId}/products/${productKey}/billing/refunds/${refundId}/credit-note`;
+export const PLATFORM_CREDIT_NOTE_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/refunds\/[A-Za-z0-9_-]{1,64}\/credit-note$/;
 export const PLATFORM_CHECKOUT_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/products\/[a-z][a-z0-9-]{1,31}\/billing\/(?:checkout|verify|quote|downgrade|undo-downgrade|cancel|reactivate|methods|method-add|method-add-verify|method-primary|method-primary-verify|method-remove|autopay-pause|autopay-resume|autopay-cancel|owner-contact|register-pending|abandon-pending|refund-request)$/;
 export const PLATFORM_BILLING_PATH_PATTERN = /^\/api\/platform\/businesses\/biz_[0-9a-f]{32}\/billing$/;
 

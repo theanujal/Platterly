@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildBusinessBilling } from "@/modules/platform-list/platform-plans";
 import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { BillingError } from "../billing-error";
-import { approveRefund, listRefundHistory, listRefundQueue, rejectRefund, requestRefund } from "../refunds";
+import { approveRefund, getCreditNote, listRefundHistory, listRefundQueue, rejectRefund, requestRefund } from "../refunds";
 import { newSubscriptionId } from "@/modules/snapshots/issue";
 import { renderCreditNote } from "../invoice-pdf";
 import { refundable, splitRefund } from "../refund-math";
@@ -200,5 +201,55 @@ describe("the Refunds page data and the credit note", () => {
     expect(pdf?.fileName).toBe(`${refund.creditNoteNumber}.pdf`);
     expect(Buffer.from(pdf!.bytes).subarray(0, 5).toString()).toBe("%PDF-");
     expect(await renderCreditNote("rf_missing")).toBeNull();
+  });
+});
+
+describe("the credit note reaches the kitchen", () => {
+  it("the approval email carries the credit note PDF as an attachment, and the billing answer lists it for download", async () => {
+    const saved = { t: process.env.ZEPTOMAIL_TOKEN, f: process.env.ZEPTOMAIL_FROM, u: process.env.ZEPTOMAIL_API_URL };
+    process.env.ZEPTOMAIL_TOKEN = "test-token";
+    process.env.ZEPTOMAIL_FROM = "noreply@example.test";
+    process.env.ZEPTOMAIL_API_URL = "http://localhost:3600/v1.1/email";
+    const sent: { attachments?: { name: string; mime_type: string; content: string }[] }[] = [];
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).startsWith("http://localhost:3600/")) return real(input, init);
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ request_id: "r1" }), { status: 200 });
+    }) as typeof fetch);
+    try {
+      const { businessId, payment } = await setup();
+      const r = await requestRefund({ paymentId: payment.id, businessId, reason: "x" });
+      const refund = await approveRefund({ requestId: r.id, totalRupees: 590, endMode: "KEEP_TO_PERIOD_END", actorUserId: null }, fakeFetch, creds);
+      // (Other mail, such as a note to staff, may go through the same sender; the owner's carries the PDF.)
+      const withFile = sent.filter((m) => m.attachments?.length);
+      expect(withFile).toHaveLength(1);
+      const [file] = withFile[0].attachments ?? [];
+      expect(file).toMatchObject({ name: `${refund.creditNoteNumber}.pdf`, mime_type: "application/pdf" });
+      expect(Buffer.from(file.content, "base64").subarray(0, 5).toString()).toBe("%PDF-");
+
+      const view = await buildBusinessBilling(businessId);
+      expect(view?.products[0].billing.payments[0].creditNotes).toEqual([{ id: refund.id, number: refund.creditNoteNumber, total: 590 }]);
+      // Another business's scope is not found.
+      expect(await renderCreditNote(refund.id, { businessId: "biz_" + "0".repeat(32), productKey: KEY })).toBeNull();
+      expect(await renderCreditNote(refund.id, { businessId, productKey: KEY })).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+      for (const [k, v] of [["ZEPTOMAIL_TOKEN", saved.t], ["ZEPTOMAIL_FROM", saved.f], ["ZEPTOMAIL_API_URL", saved.u]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
+  it("a product reads a credit note scoped to its business and product; another business's refund is unknown", async () => {
+    const { businessId, payment } = await setup();
+    const r = await requestRefund({ paymentId: payment.id, businessId, reason: "x" });
+    const refund = await approveRefund({ requestId: r.id, totalRupees: 590, endMode: "KEEP_TO_PERIOD_END", actorUserId: null }, fakeFetch, creds);
+    const note = await getCreditNote(businessId, KEY, refund.id);
+    expect(note.fileName).toBe(`${refund.creditNoteNumber}.pdf`);
+    expect(Buffer.from(note.pdfBase64, "base64").subarray(0, 5).toString()).toBe("%PDF-");
+    await expect(getCreditNote(businessId, KEY, "rf_missing")).rejects.toThrow("unknown_invoice");
+    await expect(getCreditNote("biz_" + "0".repeat(32), KEY, refund.id)).rejects.toThrow("unknown_business");
   });
 });

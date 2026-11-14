@@ -218,6 +218,7 @@ function AutoRenewalControls({ productKey, status, onChanged }: { productKey: st
   );
 }
 
+const withinRefundWindow = (paidAt: string) => Date.now() - new Date(paidAt).getTime() <= 7 * 86_400_000;
 const REFUND_BADGE = { PENDING: { tone: "info", text: "Refund requested" }, REJECTED: { tone: "neutral", text: "Refund declined" }, PARTIAL: { tone: "info", text: "Partly refunded" }, REFUNDED: { tone: "success", text: "Refunded" } } as const;
 
 /** "Request a refund" on one paid payment: the reason goes to Platterly staff, who decide in Ops. Not offered while a request is waiting or once the payment is refunded in full. */
@@ -229,7 +230,7 @@ function RefundRequest({ payment, onChanged }: { payment: PaymentRow; onChanged:
   const status = payment.refund?.status;
   const badge = status ? REFUND_BADGE[status] : null;
   // A refund can be asked for within 7 days of paying (AJ, 2026-11-15); Ops enforces it too.
-  const inWindow = Date.now() - new Date(payment.at).getTime() <= 7 * 86_400_000;
+  const inWindow = withinRefundWindow(payment.at);
   const canAsk = payment.status === "PAID" && inWindow && (!status || status === "REJECTED" || status === "PARTIAL");
 
   async function send() {
@@ -254,6 +255,9 @@ function RefundRequest({ payment, onChanged }: { payment: PaymentRow; onChanged:
     <div data-testid={`refund-${payment.id}`}>
       <span className="pa-row-actions">
         {badge ? <Badge tone={badge.tone}>{badge.text}{status === "PARTIAL" && payment.refund ? ` ${inr(payment.refund.refunded)}` : ""}</Badge> : null}
+        {(payment.creditNotes ?? []).map((n) => (
+          <a key={n.id} className="pa-btn pa-btn-outline" href={`/api/account/credit-notes/${encodeURIComponent(n.id)}?product=${encodeURIComponent(payment.productKey)}`} download>Credit note {n.number}</a>
+        ))}
         {canAsk && !open ? <button type="button" className="pa-btn pa-btn-outline" onClick={() => setOpen(true)}>Request a refund</button> : null}
       </span>
       {open ? (
@@ -318,10 +322,19 @@ export function SubscriptionsView({ storeOrigin }: { storeOrigin: string }) {
                           <ul className="pa-sessions">
                             <li className="pa-session"><span className="pa-hint">Payment method</span><span className="pa-row-label">{trialing ? "Free trial" : c.autoPay ? "Auto-pay every 30 days (Razorpay)" : c.interval ? "Razorpay, paid once (card, UPI or net banking)" : "Set by Platterly"}</span></li>
                             {c.autoPay ? <li className="pa-session"><span className="pa-hint">Auto-renewal</span><span className="pa-row-label" data-testid="autopay-status">{AUTO_PAY_LABEL[c.autoPay.status] ?? c.autoPay.status}{c.autoPay.nextChargeAt ? `, next charge ${day(c.autoPay.nextChargeAt)}` : ""}</span></li> : null}
+                            {s.planDetails?.total != null && c.interval ? <li className="pa-session"><span className="pa-hint">Plan price</span><span className="pa-row-label" data-testid="plan-price">{inr(s.planDetails.total)} {c.interval === "ANNUAL" ? "a year" : "a month"}, GST included</span></li> : null}
                             <li className="pa-session"><span className="pa-hint">Next billing</span><span className="pa-row-label">{day(trialing ? c.trialEndsAt : c.currentPeriodEnd) || "—"}</span></li>
                             {c.pendingPlan ? <li className="pa-session"><span className="pa-hint">Next plan</span><span className="pa-row-label">{c.pendingPlan} (from the next payment)</span></li> : null}
                           </ul>
                         </section>
+                        {s.planDetails && s.planDetails.highlights.length > 0 ? (
+                          <section className="pa-card" aria-label="What your plan includes">
+                            <h3>What your plan includes</h3>
+                            <ul className="pa-sessions" data-testid="plan-includes">
+                              {s.planDetails.highlights.map((h) => <li className="pa-session" key={h}><span className="pa-row-label">{h}</span></li>)}
+                            </ul>
+                          </section>
+                        ) : null}
                       </>
                     ) : null}
                     <p>

@@ -2,7 +2,7 @@ import "server-only";
 import { CONTRACT_VERSION, isId, isProductKey, requestTarget, signedHeaders, verifyRequest, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import { getBillingView, listSellablePlans } from "@/modules/billing/billing";
-import { renderPaymentInvoice } from "@/modules/billing/invoice-pdf";
+import { renderCreditNote, renderPaymentInvoice } from "@/modules/billing/invoice-pdf";
 import { readerSecrets } from "./platform-list";
 
 /** The plans on sale for every active product (public price information only: no business, subscription or payment data). */
@@ -75,6 +75,21 @@ export async function handlePlatformInvoiceRequest(request: Request, params: { b
   if (!verified.ok) return unauthorized;
   if (verified.contract > CONTRACT_VERSION) return Response.json({ error: `contract ${verified.contract} is not supported` }, { status: 400 });
   const found = isId("business", params.businessId) && isProductKey(params.productKey) ? await renderPaymentInvoice(params.paymentId, { businessId: params.businessId, productKey: params.productKey }) : null;
+  if (!found) return Response.json({ error: "not_found" }, { status: 404 });
+  const text = JSON.stringify({ fileName: found.fileName, pdfBase64: Buffer.from(found.bytes).toString("base64") });
+  return new Response(text, { headers: { ...signedHeaders(secrets.sign, verified.id, text), "cache-control": "no-store" } });
+}
+
+/** GET .../billing/refunds/{refundId}/credit-note: one credit note as a PDF inside signed JSON, for the Account. Same scheme as the invoice read; scoped to the business and product. */
+export async function handlePlatformCreditNoteRequest(request: Request, params: { businessId: string; productKey: string; refundId: string }): Promise<Response> {
+  const unauthorized = Response.json({ error: "unauthorized" }, { status: 401 });
+  if (process.env.NODE_ENV === "production" && request.headers.get("x-forwarded-proto") !== "https") return unauthorized;
+  const secrets = await readerSecrets();
+  if (!secrets) return unauthorized;
+  const verified = verifyRequest(secrets.accept, request.headers, "", { target: requestTarget(request.method, request.url) });
+  if (!verified.ok) return unauthorized;
+  if (verified.contract > CONTRACT_VERSION) return Response.json({ error: `contract ${verified.contract} is not supported` }, { status: 400 });
+  const found = isId("business", params.businessId) && isProductKey(params.productKey) ? await renderCreditNote(params.refundId, { businessId: params.businessId, productKey: params.productKey }) : null;
   if (!found) return Response.json({ error: "not_found" }, { status: 404 });
   const text = JSON.stringify({ fileName: found.fileName, pdfBase64: Buffer.from(found.bytes).toString("base64") });
   return new Response(text, { headers: { ...signedHeaders(secrets.sign, verified.id, text), "cache-control": "no-store" } });

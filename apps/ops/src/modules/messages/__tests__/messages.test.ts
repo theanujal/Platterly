@@ -53,7 +53,7 @@ afterEach(async () => {
 
 describe("templates", () => {
   it("render every template with a subject and escaped, branded html", () => {
-    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123", endsOn: "8 Nov 2026", newPlanName: "Lite", chargeOn: "22 Nov 2026", creditNoteNumber: "FPCNAK-26-11-1", endMode: "END_NOW", note: "Past our policy" };
+    const vars = { daysLeft: 3, planName: "Pro", amount: 3540, invoiceNumber: "PL/1", validUntil: "5 Nov 2026", quantity: 2, trackingNote: "Courier ABC 123", endsOn: "8 Nov 2026", newPlanName: "Lite", chargeOn: "22 Nov 2026", creditNoteNumber: "FPCNAK-26-11-1", endMode: "END_NOW", refundId: "rf_x", note: "Past our policy" };
     for (const key of Object.keys(TEMPLATES)) {
       const out = renderTemplate(key, vars, ctx);
       expect(out.ok, key).toBe(true);
@@ -207,7 +207,7 @@ describe("WhatsApp", () => {
   });
 
   it("builds each Meta template's parameters, in order, with the right link", () => {
-    expect(whatsappMessage("refund_approved", { amount: 590, creditNoteNumber: "FPCNAK-26-11-1", endMode: "KEEP_TO_PERIOD_END" }, ctx)).toMatchObject({ name: "platterly_refund_approved", params: ["Asha's <Kitchen>", "₹590", "Your plan works until the paid days run out and will not renew.", "FPCNAK-26-11-1"] });
+    expect(whatsappMessage("refund_approved", { amount: 590, creditNoteNumber: "FPCNAK-26-11-1", endMode: "KEEP_TO_PERIOD_END" }, ctx)).toMatchObject({ name: "platterly_refund_approved", params: ["Asha's <Kitchen>", "₹590", "Your plan works until the paid days run out and will not renew.", "FPCNAK-26-11-1", "https://catering.example/subscriptions"] });
     expect(whatsappMessage("refund_declined", { note: "Past our policy" }, ctx)).toMatchObject({ name: "platterly_refund_declined", params: ["Asha's <Kitchen>", "Note from our team: Past our policy"] });
     expect(whatsappMessage("refund_declined", {}, ctx)?.params[1]).toMatch(/Reply to this message/);
     expect(whatsappMessage("payment_received", { planName: "Pro", amount: 1180, invoiceNumber: "FPDK-26-11-1", validUntil: "22 Dec 2026" }, ctx)).toMatchObject({ name: "platterly_plan_payment_received", params: ["Asha's <Kitchen>", "₹1,180", "Pro", "22 Dec 2026", "FPDK-26-11-1"] });

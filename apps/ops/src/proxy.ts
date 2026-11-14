@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { PLATFORM_ACCOUNT_REVIEW_PATH, PLATFORM_ACCOUNT_REVIEW_STATUS_PATH, PLATFORM_BILLING_PATH_PATTERN, PLATFORM_BILLING_PROFILE_PATH_PATTERN, PLATFORM_CHECKOUT_PATH_PATTERN, PLATFORM_INVOICE_PATH_PATTERN } from "@platterly/contract";
+import { PLATFORM_ACCOUNT_REVIEW_PATH, PLATFORM_ACCOUNT_REVIEW_STATUS_PATH, PLATFORM_BILLING_PATH_PATTERN, PLATFORM_BILLING_PROFILE_PATH_PATTERN, PLATFORM_CHECKOUT_PATH_PATTERN, PLATFORM_INVOICE_PATH_PATTERN, PLATFORM_CREDIT_NOTE_PATH_PATTERN } from "@platterly/contract";
 
 /**
  * Optimistic gate only: a request with no session cookie goes to the sign-in page. Real authorisation happens in each
@@ -12,7 +12,7 @@ const PUBLIC_EXACT = ["/api/platform/products", "/api/platform/plans", PLATFORM_
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (PUBLIC_EXACT.includes(pathname) || PLATFORM_BILLING_PATH_PATTERN.test(pathname) || PLATFORM_BILLING_PROFILE_PATH_PATTERN.test(pathname) || PLATFORM_CHECKOUT_PATH_PATTERN.test(pathname) || PLATFORM_INVOICE_PATH_PATTERN.test(pathname)) return NextResponse.next();
+  if (PUBLIC_EXACT.includes(pathname) || PLATFORM_BILLING_PATH_PATTERN.test(pathname) || PLATFORM_BILLING_PROFILE_PATH_PATTERN.test(pathname) || PLATFORM_CHECKOUT_PATH_PATTERN.test(pathname) || PLATFORM_INVOICE_PATH_PATTERN.test(pathname) || PLATFORM_CREDIT_NOTE_PATH_PATTERN.test(pathname)) return NextResponse.next();
   if (PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) return NextResponse.next();
   const hasSession = request.cookies.getAll().some((c) => c.name.endsWith("session_token"));
   if (!hasSession) return NextResponse.redirect(new URL("/sign-in", request.url));

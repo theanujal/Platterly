@@ -16,6 +16,8 @@ export interface SendEmailParams {
   to: string;
   subject: string;
   html: string;
+  /** Files to attach (a PDF, say), sent as base64. */
+  attachments?: { name: string; bytes: ArrayBuffer | Uint8Array; mimeType: string }[];
 }
 export type SendEmailResult = { status: "sent"; providerMessageId: string | null } | { status: "skipped"; reason: string } | { status: "failed"; reason: string };
 
@@ -39,6 +41,7 @@ export async function sendEmail(params: SendEmailParams, fetchImpl: typeof fetch
         to: [{ email_address: { address: params.to } }],
         subject: params.subject,
         htmlbody: params.html,
+        ...(params.attachments?.length ? { attachments: params.attachments.map((a) => ({ name: a.name, mime_type: a.mimeType, content: Buffer.from(a.bytes as ArrayBuffer).toString("base64") })) } : {}),
       }),
     });
     const body = (await response.json().catch(() => null)) as ZeptoBody | null;

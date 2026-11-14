@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { nextInvoiceNumber } from "./numbering";
 import { refundState } from "./refund-math";
+import { renderPaymentInvoice } from "./invoice-pdf";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot, newSubscriptionId } from "@/modules/snapshots/issue";
 import { INTERVAL_DAYS, formatInvoiceNumber, gstKind, gstLines, periodEndFrom, priceBreakdown, stackedCredit, type Interval, type InvoiceSnapshot, type PriceBreakdown } from "./math";
@@ -65,7 +66,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
   await requireBusiness(businessId, productKey);
   const [subs, payments] = await Promise.all([
     prisma.subscription.findMany({ where: { businessId, productKey }, include: { plan: { select: { id: true, code: true, name: true } } }, orderBy: { startDate: "desc" } }),
-    prisma.subscriptionPayment.findMany({ where: { businessId, productKey, status: "PAID" }, include: { plan: { select: { name: true } }, refunds: { select: { total: true } }, refundRequests: { select: { status: true }, orderBy: { createdAt: "desc" } } }, orderBy: { paidAt: "desc" } }),
+    prisma.subscriptionPayment.findMany({ where: { businessId, productKey, status: "PAID" }, include: { plan: { select: { name: true } }, refunds: { select: { id: true, total: true, creditNoteNumber: true }, orderBy: { issuedAt: "asc" } }, refundRequests: { select: { status: true }, orderBy: { createdAt: "desc" } } }, orderBy: { paidAt: "desc" } }),
   ]);
   const current = subs.find((s) => s.endDate === null) ?? null;
   const pendingPlan = current?.pendingPlanId ? await prisma.plan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
@@ -84,7 +85,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
       autoPay: current.autoPay ? { status: current.autoPay, nextChargeAt: current.autoPay === "ACTIVE" && !current.pendingPlanId ? iso(current.currentPeriodEnd) : null } : null,
     },
     history: subs.map((s) => ({ id: s.id, planName: s.plan.name, status: s.status, startDate: s.startDate.toISOString(), endDate: iso(s.endDate) })),
-    payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber, refund: refundState({ total: Number(p.total), refunded: p.refunds.reduce((sum, r) => sum + Number(r.total), 0), pending: p.refundRequests.some((r) => r.status === "PENDING"), lastRequest: p.refundRequests[0]?.status ?? null }) })),
+    payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber, refund: refundState({ total: Number(p.total), refunded: p.refunds.reduce((sum, r) => sum + Number(r.total), 0), pending: p.refundRequests.some((r) => r.status === "PENDING"), lastRequest: p.refundRequests[0]?.status ?? null }), creditNotes: p.refunds.map((r) => ({ id: r.id, number: r.creditNoteNumber, total: Number(r.total) })) })),
   };
 }
 
@@ -633,4 +634,12 @@ export async function getInvoice(businessId: string, productKey: string, payment
     razorpayPaymentId: payment.razorpayPaymentId,
     snapshot: payment.invoiceSnapshot as unknown as InvoiceSnapshot,
   };
+}
+
+/** One paid invoice as a PDF (signed JSON with the file as base64) for a product's read-only Subscription page; scoped to the business and product. */
+export async function getInvoicePdf(businessId: string, productKey: string, paymentId: string) {
+  await requireBusiness(businessId, productKey);
+  const found = await renderPaymentInvoice(paymentId, { businessId, productKey });
+  if (!found) throw new BillingError("unknown_invoice");
+  return { fileName: found.fileName, pdfBase64: Buffer.from(found.bytes).toString("base64") };
 }

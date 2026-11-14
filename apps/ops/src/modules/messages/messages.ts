@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma, type MessageChannel } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { renderCreditNote } from "@/modules/billing/invoice-pdf";
 import { sendEmail } from "./zeptomail";
 import { sendWacrmMessage, wacrmConfig } from "./wacrm";
 import { TEMPLATES, hasTemplate, renderTemplate, whatsappMessage, type Variables } from "./templates";
@@ -91,7 +92,11 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
   const rendered = renderTemplate(row.template, row.variables as Variables, context);
   if (!rendered.ok) return finish({ status: "FAILED", error: rendered.error, nextAttemptAt: null }, "failed");
 
-  const result = await sendEmail({ to: business.ownerEmail, subject: rendered.value.subject, html: rendered.value.html }, fetchImpl);
+  // An approved refund's email carries its credit note as a PDF (the same file the Account offers). A missing one never stops the email.
+  const refundId = row.template === "refund_approved" ? (row.variables as Variables).refundId : undefined;
+  const note = typeof refundId === "string" ? await renderCreditNote(refundId).catch(() => null) : null;
+  const attachments = note ? [{ name: note.fileName, bytes: note.bytes, mimeType: "application/pdf" }] : undefined;
+  const result = await sendEmail({ to: business.ownerEmail, subject: rendered.value.subject, html: rendered.value.html, attachments }, fetchImpl);
   const base = { toEmail: business.ownerEmail, subject: rendered.value.subject };
   if (result.status === "sent") return finish({ ...base, status: "SENT", sentAt: new Date(), providerMessage: result.providerMessageId, error: null, nextAttemptAt: null }, "sent");
   if (result.status === "skipped") return finish({ ...base, status: "SKIPPED", error: result.reason, nextAttemptAt: null }, "skipped");

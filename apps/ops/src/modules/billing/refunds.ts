@@ -7,7 +7,8 @@ import { notifySafely } from "@/modules/notifications/notifications";
 import { tellOwner } from "@/modules/messages/messages";
 import { issueSnapshot } from "@/modules/snapshots/issue";
 import { BillingError } from "./billing-error";
-import { cancelSubscription, stopAutoPay } from "./billing";
+import { cancelSubscription, requireBusiness, stopAutoPay } from "./billing";
+import { renderCreditNote } from "./invoice-pdf";
 import { formatInvoiceNumber } from "./math";
 import { nextCreditNoteNumber } from "./numbering";
 import { refundRazorpayPayment, platformRazorpay, type PlatformRazorpay } from "./razorpay";
@@ -90,7 +91,7 @@ export async function approveRefund(
     }).then(async (refund) => {
       await audit({ actorUserId: input.actorUserId, action: "refund.approved", subject: request.id, detail: { paymentId: payment.id, total: split.total, endMode: input.endMode, creditNoteNumber: refund.creditNoteNumber, razorpayRefundId: razorpay.id } });
       await applyEndMode({ businessId: payment.businessId, productKey: payment.productKey }, input.endMode, now);
-      await tellOwner({ businessId: payment.businessId, productKey: payment.productKey, template: "refund_approved", variables: { amount: split.total, creditNoteNumber: refund.creditNoteNumber, endMode: input.endMode }, dedupeKey: `refund:${request.id}:approved` });
+      await tellOwner({ businessId: payment.businessId, productKey: payment.productKey, template: "refund_approved", variables: { amount: split.total, creditNoteNumber: refund.creditNoteNumber, endMode: input.endMode, refundId: refund.id }, dedupeKey: `refund:${request.id}:approved` });
       return refund;
     });
   } catch (error) {
@@ -159,4 +160,12 @@ export async function listRefundHistory(take = 50) {
     productName: r.payment.product.name,
     refund: r.refund && { id: r.refund.id, total: Number(r.refund.total), creditNoteNumber: r.refund.creditNoteNumber, endMode: r.refund.endMode },
   }));
+}
+
+/** One credit note as a PDF for a product (its signed billing read): scoped to the business and product, so another business's refund id is "unknown_invoice". */
+export async function getCreditNote(businessId: string, productKey: string, refundId: string) {
+  await requireBusiness(businessId, productKey);
+  const note = await renderCreditNote(refundId, { businessId, productKey });
+  if (!note) throw new BillingError("unknown_invoice");
+  return { fileName: note.fileName, pdfBase64: Buffer.from(note.bytes).toString("base64") };
 }

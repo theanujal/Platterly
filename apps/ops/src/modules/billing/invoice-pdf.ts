@@ -53,8 +53,8 @@ export async function renderPaymentInvoice(id: string, scope?: { businessId: str
  * The credit note for one refund: the invoice's own layout (same seller, buyer and GST split from the frozen snapshot) with the refunded amount and its GST share,
  * numbered in the credit note series and pointing back to the invoice it reduces. Staff only for now.
  */
-export async function renderCreditNote(refundId: string): Promise<{ bytes: ArrayBuffer; fileName: string } | null> {
-  const refund = await prisma.refund.findUnique({ where: { id: refundId }, include: { payment: { include: { plan: { select: { name: true } }, product: { select: { name: true } } } } } });
+export async function renderCreditNote(refundId: string, scope?: { businessId: string; productKey: string }): Promise<{ bytes: ArrayBuffer; fileName: string } | null> {
+  const refund = await prisma.refund.findFirst({ where: { id: refundId, ...(scope ? { payment: scope } : {}) }, include: { payment: { include: { plan: { select: { name: true } }, product: { select: { name: true } } } } } });
   const payment = refund?.payment;
   if (!refund || !payment?.invoiceSnapshot || !payment.invoiceNumber) return null;
   const { seller, buyer, gst, highlights } = payment.invoiceSnapshot as unknown as InvoiceSnapshot;

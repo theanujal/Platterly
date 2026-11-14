@@ -167,13 +167,13 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Your refund is on its way",
         greeting: greet(c),
         bodyHtml:
-          p(`We have approved a refund for <strong>${escapeHtml(c.businessName)}</strong> and sent it back to the way you paid. Banks usually take 5 to 7 working days to show it.`) +
+          p(`We have approved a refund for <strong>${escapeHtml(c.businessName)}</strong> and sent it back to the way you paid. Banks usually take 5 to 7 working days to show it. Your credit note is attached, and you can download it any time from your Account.`) +
           p(text(v, "endMode") === "END_NOW" ? "Your plan has ended, so the account is locked. Nothing is deleted: choose a plan in the Store to carry on where you left off." : "Your plan keeps working until the days you paid for run out, and it will not renew."),
         details: [["Refund (with GST)", inr(text(v, "amount"))], ["Credit note", text(v, "creditNoteNumber")]],
         cta: { label: "View subscription", url: `${c.accountUrl ?? c.productUrl}/subscriptions` },
       }),
     }),
-    whatsapp: { name: "platterly_refund_approved", body: "Hi {{1}}, we approved your refund of {{2}}. It goes back to the way you paid; banks usually take 5 to 7 working days to show it. {{3}} Credit note: {{4}}.", params: (v, c) => [c.businessName, inr(text(v, "amount")), text(v, "endMode") === "END_NOW" ? "Your plan has ended, so the account is locked." : "Your plan works until the paid days run out and will not renew.", text(v, "creditNoteNumber")] },
+    whatsapp: { name: "platterly_refund_approved", body: "Hi {{1}}, we approved your refund of {{2}}. It goes back to the way you paid; banks usually take 5 to 7 working days to show it. {{3}} Credit note {{4}}: download it from your Account, {{5}}", params: (v, c) => [c.businessName, inr(text(v, "amount")), text(v, "endMode") === "END_NOW" ? "Your plan has ended, so the account is locked." : "Your plan works until the paid days run out and will not renew.", text(v, "creditNoteNumber"), `${c.accountUrl ?? c.productUrl}/subscriptions`] },
   },
   refund_declined: {
     requires: [],

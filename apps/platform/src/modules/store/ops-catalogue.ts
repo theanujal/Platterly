@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformInvoicePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
+import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
 import { signPullRequest, verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -74,6 +74,16 @@ export type InvoiceResult = { ok: true; fileName: string; pdf: Buffer } | { ok: 
  */
 export async function fetchOpsInvoice(businessId: string, opsProductKey: string, paymentId: string, deps: Deps = {}): Promise<InvoiceResult> {
   const got = await signedOpsGet(platformInvoicePath(businessId, opsProductKey, paymentId), deps);
+  if (!got.ok) return got;
+  const { fileName, pdfBase64 } = got.json;
+  if (typeof fileName !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(fileName) || typeof pdfBase64 !== "string") return { ok: false, reason: "bad_answer" };
+  const pdf = Buffer.from(pdfBase64, "base64");
+  return pdf.subarray(0, 5).toString("latin1") === "%PDF-" ? { ok: true, fileName, pdf } : { ok: false, reason: "bad_answer" };
+}
+
+/** One credit note as a PDF, the same way as an invoice: a signed read, scoped by Ops to the business and product, the file as base64 in the signed answer. */
+export async function fetchOpsCreditNote(businessId: string, opsProductKey: string, refundId: string, deps: Deps = {}): Promise<InvoiceResult> {
+  const got = await signedOpsGet(platformCreditNotePath(businessId, opsProductKey, refundId), deps);
   if (!got.ok) return got;
   const { fileName, pdfBase64 } = got.json;
   if (typeof fileName !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(fileName) || typeof pdfBase64 !== "string") return { ok: false, reason: "bad_answer" };

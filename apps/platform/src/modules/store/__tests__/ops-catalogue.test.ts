@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PLATFORM_PLANS_PATH, platformBillingPath, signedHeaders, verifyRequest, requestTarget, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
-import { fetchOpsBilling, fetchOpsCatalogue, fetchOpsInvoice, opsCatalogueConfigured } from "../ops-catalogue";
+import { fetchOpsBilling, fetchOpsCatalogue, fetchOpsCreditNote, fetchOpsInvoice, opsCatalogueConfigured } from "../ops-catalogue";
 
 const SECRET = "test-reader-secret-0123456789abcdef0123456789abcdef";
 const env = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_READER_SECRET: SECRET } as unknown as NodeJS.ProcessEnv;
@@ -131,5 +131,19 @@ describe("Store: an invoice PDF from Ops", () => {
 
   it("a payment Ops does not know for that business is not_found", async () => {
     expect(await fetchOpsInvoice(BIZ, "catering", "pay_other", { env, fetchImpl: ops({ status: 404 }).fetchImpl })).toEqual({ ok: false, reason: "not_found" });
+  });
+});
+
+describe("fetchOpsCreditNote", () => {
+  const BIZ = `biz_${"a".repeat(32)}`;
+  const pdf = Buffer.from("%PDF-1.4 test").toString("base64");
+  it("asks for one refund of one business and product, and returns the verified PDF; a refund Ops does not know is not_found", async () => {
+    const { fetchImpl, seen } = ops({ body: { fileName: "FPCNA-26-11-1.pdf", pdfBase64: pdf } });
+    const result = await fetchOpsCreditNote(BIZ, "catering", "rf_abc", { env, fetchImpl });
+    expect(result.ok && result.fileName).toBe("FPCNA-26-11-1.pdf");
+    expect(seen.url).toBe(`http://ops.test/api/platform/businesses/${BIZ}/products/catering/billing/refunds/rf_abc/credit-note`);
+    expect(seen.signedOk).toBe(true);
+    expect(await fetchOpsCreditNote(BIZ, "catering", "rf_other", { env, fetchImpl: ops({ status: 404 }).fetchImpl })).toEqual({ ok: false, reason: "not_found" });
+    expect(await fetchOpsCreditNote(BIZ, "catering", "rf_abc", { env, fetchImpl: ops({ body: { fileName: "a.pdf", pdfBase64: Buffer.from("x").toString("base64") } }).fetchImpl })).toEqual({ ok: false, reason: "bad_answer" });
   });
 });
