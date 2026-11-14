@@ -25,7 +25,7 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 | Remove a saved method | `DELETE /customers/{id}/tokens/{token}` returns `deleted: true`. |
 | Charge a chosen token from Ops | **Not available on this account** (`POST /payments/create/recurring` answers "not found"; Razorpay activates it per account). Not used. |
 | Swap the method of an existing subscription | No documented way. Updatable fields are plan, quantity, remaining count and when the change applies. |
-| UPI AutoPay with a future start | Not tested yet. |
+| UPI AutoPay with a future start | Works (tested 2026-11-14, see below). |
 
 ## Model
 
@@ -45,7 +45,7 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 
 ## Open points
 
-- UPI AutoPay with a future start and its label (VPA) are untested; check in test mode before relying on them.
+- ~~UPI AutoPay with a future start and its label (VPA) are untested.~~ Tested 2026-11-14 in a browser: see "UPI AutoPay" below.
 - ~~A renewal charge for a switched subscription must find the business's last paid payment by business and product~~ Done 2026-11-14 (3b.1b): `chargeAutoPay` falls back to the Subscription row.
 - ~~Renewal reminders point to Caterly's `/subscribe`; annual reminders need the Store address as a new Ops setting.~~ Done 2026-11-14 (3b.4).
 
@@ -80,3 +80,17 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 - **To the Account** (`<ACCOUNT_ORIGIN>/payment-methods`): auto-pay failed, upcoming, today, paused, resumed, and the Resume variants of the renewal and grace messages for a paused plan.
 - Unchanged (Caterly): welcome, stand orders, payment received, plan changed.
 - Go-live: set both origins in Ops's environment.
+
+## UPI AutoPay (tested 2026-11-14, Razorpay test mode, browser)
+
+`apps/platform/e2e/store-live-upi.spec.ts`, 5 of 5. No code change was needed.
+
+| Case | Result |
+|---|---|
+| Buy a monthly plan with UPI | Works. The auto-pay window's UPI tab offers only "UPI QR" (no UPI id box); in test mode "Show QR" is a simulated scan that succeeds by itself with the test UPI id `testuser@razorpay`. The method is saved as "UPI testuser@razorpay" (Razorpay also returns a token for it) and is the primary. |
+| Add a card next to a UPI primary | Works. |
+| Switch UPI to a saved card (subscription starting in the future) | Works. The UPI row is dropped (decision 5). |
+| Switch a card to UPI (UPI mandate starting in the future) | Works. The UPI id becomes the primary; both cards stay as secondaries. |
+| Close the window before paying | Charges nothing; the plan stays as it was. |
+
+Not tested: a real renewal charge on a UPI mandate (needs Razorpay's webhook and time), real UPI apps, and the test ids `success@razorpay` / `failure@razorpay` (this window has no place to type them).
