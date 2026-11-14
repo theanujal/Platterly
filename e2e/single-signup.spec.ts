@@ -17,6 +17,7 @@ const CATERLY = "http://catering.localhost:3000";
 const PASSWORD = "correct horse 7";
 const caterly = new Pool({ connectionString: process.env.DATABASE_URL });
 const platform = new Pool({ connectionString: process.env.PLATFORM_THROWAWAY_DATABASE_URL });
+const ops = process.env.OPS_THROWAWAY_DATABASE_URL?.includes("throwaway") ? new Pool({ connectionString: process.env.OPS_THROWAWAY_DATABASE_URL }) : null;
 const emails: string[] = [];
 const businesses: string[] = [];
 test.afterEach(async () => {
@@ -24,6 +25,7 @@ test.afterEach(async () => {
   // The business Caterly adopted is not removed with the person: take it (and its trial and queued messages) out too.
   for (const id of businesses.splice(0)) {
     await caterly.query(`delete from platform_outbox where "businessId" = $1`, [id]);
+    await caterly.query(`delete from ops_outbox where "businessId" = $1`, [id]);
     await caterly.query(`delete from subscription where "organizationId" in (select id from organization where "businessId" = $1)`, [id]);
     await caterly.query(`delete from organization where "businessId" = $1`, [id]);
   }
@@ -31,6 +33,7 @@ test.afterEach(async () => {
 test.afterAll(async () => {
   await caterly.end();
   await platform.end();
+  await ops?.end();
 });
 
 async function fill(page: Page, label: string, value: string) {
@@ -89,7 +92,8 @@ test("signing up from Caterly: the Account makes the business at verification an
   // Caterly adopted that business: one business for this person, with the Platform's id, as its owner, on a trial. It made none of its own and reported none.
   const mine = await caterly.query(`select o."businessId", m.role from member m join "user" u on u.id = m."userId" join organization o on o.id = m."organizationId" where u.email = $1`, [email]);
   expect(mine.rows).toEqual([{ businessId, role: "owner" }]);
-  expect(await getTrialSubscriptionStatus(email)).toBe("TRIALING");
+  // Caterly's own trial exists only when Ops does not own billing; with Ops billing on, the trial comes from Ops (the last test).
+  if (process.env.OPS_BILLING !== "1") expect(await getTrialSubscriptionStatus(email)).toBe("TRIALING");
   expect((await caterly.query(`select count(*) from platform_outbox where "businessId" = $1 and type = 'business.created'`, [businessId])).rows[0].count).toBe("0");
   // The hand-over messages were delivered, the link first.
   const sent = await platform.query(`select event_type from outbox_events where organisation_id = $1 and status = 'delivered' order by sequence`, [businessId]);
@@ -125,4 +129,32 @@ test("if Caterly cannot be reached at verification the person waits on \"Setting
   } finally {
     await platform.query(`update product_integrations set base_url = $1 where key = 'caterly'`, [goodUrl]);
   }
+});
+
+test("with Ops billing on, the adopted business starts its trial in Ops and Caterly receives the plan", async ({ page }) => {
+  test.skip(!ops || process.env.OPS_BILLING !== "1", "needs Ops on a throwaway database (OPS_THROWAWAY_DATABASE_URL) and Caterly started with Ops billing on");
+  test.setTimeout(180_000);
+  const email = `ss-${Date.now()}@auth.test`;
+  emails.push(email);
+  await signUpAndVerify(page, email);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/, { timeout: 90_000 });
+  const businessId = (await accountBusiness(email)).rows[0].id as string;
+  businesses.push(businessId);
+
+  // Ops heard of the business (named after the person until onboarding names it), with the person as its owner, and started the trial.
+  await expect
+    .poll(async () => (await ops!.query(`select name, "ownerName", "ownerEmail" from business where id = $1`, [businessId])).rows[0] ?? null, { timeout: 60_000 })
+    .toEqual({ name: "Asha Rao", ownerName: "Asha Rao", ownerEmail: email });
+  await expect
+    .poll(async () => (await ops!.query(`select status from subscription where "businessId" = $1 and "productKey" = 'catering' and "endDate" is null`, [businessId])).rows.map((r) => r.status), { timeout: 60_000 })
+    .toEqual(["TRIALING"]);
+  // Caterly got the plan Ops issued, and the person is not locked out: the dashboard opens (it would send them to /subscribe if the trial were missing).
+  await expect
+    .poll(async () => (await caterly.query(`select count(*) from ops_snapshot s join organization o on o.id = s."organizationId" where o."businessId" = $1`, [businessId])).rows[0].count, { timeout: 60_000 })
+    .toBe("1");
+  await page.goto(`${CATERLY}/dashboard`);
+  await expect(page).toHaveURL(/catering\.localhost:3000\/dashboard/);
+  // Ops raised one "New business signed up" for this business, not two.
+  expect((await ops!.query(`select count(*) from notification where "businessId" = $1 and kind = 'business.signed_up'`, [businessId])).rows[0].count).toBe("1");
+  // Cleanup of Ops' side: the throwaway database is dropped afterwards.
 });
