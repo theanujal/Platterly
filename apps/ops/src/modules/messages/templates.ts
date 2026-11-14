@@ -1,3 +1,4 @@
+import { storeKeyFor } from "@platterly/contract";
 import { escapeHtml, p, renderEmail } from "./layout";
 import { cleanParams } from "./wacrm";
 
@@ -13,6 +14,11 @@ export interface MessageContext {
   productName: string;
   /** The product's own address, for buttons that open a page inside it. */
   productUrl: string;
+  /** The product's Ops key (`catering`), for the Store's own product key in a link. */
+  productKey?: string;
+  /** The Store's and the Account's addresses (Ops settings STORE_ORIGIN and ACCOUNT_ORIGIN). Unset: every button opens the product's own page, as before. */
+  storeUrl?: string;
+  accountUrl?: string;
 }
 export interface Rendered {
   subject: string;
@@ -29,6 +35,10 @@ interface Template {
 const text = (v: Variables, key: string, fallback = "") => String(v[key] ?? fallback);
 const greet = (c: MessageContext) => `Dear ${c.ownerName || "there"},`;
 const inr = (value: string | number) => `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+/** Where a person pays: the Store's page for this product, or the product's own /subscribe while the Store address is not set. */
+const payUrl = (c: MessageContext) => (c.storeUrl && c.productKey ? `${c.storeUrl}/manage/${storeKeyFor(c.productKey)}` : `${c.productUrl}/subscribe`);
+/** Where a person looks after their payment method and auto-renewal: the Account's Payment method page, or the product's own page while the Account address is not set. */
+const methodsUrl = (c: MessageContext, productPath: string) => (c.accountUrl ? `${c.accountUrl}/payment-methods` : `${c.productUrl}${productPath}`);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export const TEMPLATES: Record<string, Template> = {
@@ -58,7 +68,7 @@ export const TEMPLATES: Record<string, Template> = {
           title: `Your trial ends in ${plural(days, "day")}`,
           greeting: greet(c),
           bodyHtml: p(`The free trial for <strong>${escapeHtml(c.businessName)}</strong> ends in ${plural(days, "day")}. Choose a plan to keep every feature and your data exactly as it is.`),
-          cta: { label: "Choose a plan", url: `${c.productUrl}/subscribe` },
+          cta: { label: "Choose a plan", url: `${payUrl(c)}` },
         }),
       };
     },
@@ -73,7 +83,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Your free trial has ended",
         greeting: greet(c),
         bodyHtml: p(`The free trial for <strong>${escapeHtml(c.businessName)}</strong> has ended. Nothing has been deleted: choose a plan and you can carry on where you left off.`),
-        cta: { label: "Choose a plan", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Choose a plan", url: `${payUrl(c)}` },
       }),
     }),
   },
@@ -91,11 +101,11 @@ export const TEMPLATES: Record<string, Template> = {
           title: days <= 1 ? `Today is the last day to ${act}` : `You have ${plural(days, "day")} to ${act}`,
           greeting: greet(c),
           bodyHtml: p(`The paid plan for <strong>${escapeHtml(c.businessName)}</strong> has ended. Everything still works, but if it is not ${act}d by <strong>${escapeHtml(text(v, "endsOn"))}</strong> your account will be locked.`) + p(`Nothing is deleted when an account is locked: ${act} and you carry on exactly where you left off.`),
-          cta: v.paused ? { label: "Resume", url: `${c.productUrl}/settings/subscription` } : { label: "Renew now", url: `${c.productUrl}/subscribe` },
+          cta: v.paused ? { label: "Resume", url: `${methodsUrl(c, "/settings/subscription")}` } : { label: "Renew now", url: `${payUrl(c)}` },
         }),
       };
     },
-    whatsapp: { name: "platterly_plan_grace", body: "Hi {{1}}, your Platterly plan has ended. Everything still works, but your account will be locked on {{2}} unless the plan is renewed. Renew here: {{3}} Nothing is deleted.", params: (v, c) => [c.businessName, text(v, "endsOn"), v.paused ? `${c.productUrl}/settings/subscription` : `${c.productUrl}/subscribe`] },
+    whatsapp: { name: "platterly_plan_grace", body: "Hi {{1}}, your Platterly plan has ended. Everything still works, but your account will be locked on {{2}} unless the plan is renewed. Renew here: {{3}} Nothing is deleted.", params: (v, c) => [c.businessName, text(v, "endsOn"), v.paused ? `${methodsUrl(c, "/settings/subscription")}` : `${payUrl(c)}`] },
   },
   plan_renewal_due: {
     requires: ["daysLeft", "endsOn", "planName"],
@@ -110,11 +120,11 @@ export const TEMPLATES: Record<string, Template> = {
           title: days === 0 ? "Your plan renews today" : `Your plan ends on ${escapeHtml(text(v, "endsOn"))}`,
           greeting: greet(c),
           bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> ends on <strong>${escapeHtml(text(v, "endsOn"))}</strong>. ${resume ? "Resume auto-pay" : "Renew"} before then to carry on without a break.`),
-          cta: resume ? { label: "Resume", url: `${c.productUrl}/settings/subscription` } : { label: "Renew now", url: `${c.productUrl}/subscribe` },
+          cta: resume ? { label: "Resume", url: `${methodsUrl(c, "/settings/subscription")}` } : { label: "Renew now", url: `${payUrl(c)}` },
         }),
       };
     },
-    whatsapp: { name: "platterly_plan_renewal_due", body: "Hi {{1}}, your {{2}} plan ends {{3}}. Renew here to keep using Platterly without a break: {{4}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName", "Platterly"), Number(v.daysLeft) === 0 ? "today" : `on ${text(v, "endsOn")} (in ${plural(Number(v.daysLeft), "day")})`, v.paused ? `${c.productUrl}/settings/subscription` : `${c.productUrl}/subscribe`] },
+    whatsapp: { name: "platterly_plan_renewal_due", body: "Hi {{1}}, your {{2}} plan ends {{3}}. Renew here to keep using Platterly without a break: {{4}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName", "Platterly"), Number(v.daysLeft) === 0 ? "today" : `on ${text(v, "endsOn")} (in ${plural(Number(v.daysLeft), "day")})`, v.paused ? `${methodsUrl(c, "/settings/subscription")}` : `${payUrl(c)}`] },
   },
   plan_locked: {
     requires: [],
@@ -126,10 +136,10 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Your account is locked",
         greeting: greet(c),
         bodyHtml: p(`The 7 days to renew the plan for <strong>${escapeHtml(c.businessName)}</strong> have passed, so the account is locked. Nothing has been deleted: renew and you can carry on where you left off.`),
-        cta: { label: "Renew now", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Renew now", url: `${payUrl(c)}` },
       }),
     }),
-    whatsapp: { name: "platterly_plan_locked", body: "Hi {{1}}, the 7 days to renew your Platterly plan have passed, so your account is locked. Nothing is deleted. Renew here to carry on where you left off: {{2}} Thank you.", params: (_v, c) => [c.businessName, `${c.productUrl}/subscribe`] },
+    whatsapp: { name: "platterly_plan_locked", body: "Hi {{1}}, the 7 days to renew your Platterly plan have passed, so your account is locked. Nothing is deleted. Renew here to carry on where you left off: {{2}} Thank you.", params: (_v, c) => [c.businessName, `${payUrl(c)}`] },
   },
   payment_received: {
     requires: ["planName", "amount"],
@@ -200,7 +210,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Your payment did not go through",
         greeting: greet(c),
         bodyHtml: p(`We could not take the payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong>. No money has been kept. You can try again, or use another way to pay.`),
-        cta: { label: "Try again", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Try again", url: `${payUrl(c)}` },
       }),
     }),
   },
@@ -214,10 +224,10 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Your auto-pay did not go through",
         greeting: greet(c),
         bodyHtml: p(`We could not take this month's payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong>. Razorpay will try again over the next few days, and everything keeps working meanwhile.`) + p("If your card or bank mandate has changed, you can set up auto-pay again now."),
-        cta: { label: "Set up auto-pay again", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Set up auto-pay again", url: `${methodsUrl(c, "/subscribe")}` },
       }),
     }),
-    whatsapp: { name: "platterly_autopay_failed", body: "Hi {{1}}, we could not take the auto-pay for your {{2}} plan. Razorpay will try again over the next few days, and everything keeps working meanwhile. To fix it now, set up auto-pay again here: {{3}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName"), `${c.productUrl}/subscribe`] },
+    whatsapp: { name: "platterly_autopay_failed", body: "Hi {{1}}, we could not take the auto-pay for your {{2}} plan. Razorpay will try again over the next few days, and everything keeps working meanwhile. To fix it now, set up auto-pay again here: {{3}} Thank you.", params: (v, c) => [c.businessName, text(v, "planName"), `${methodsUrl(c, "/subscribe")}`] },
   },
   autopay_upcoming: {
     requires: ["planName", "amount", "chargeOn"],
@@ -230,7 +240,7 @@ export const TEMPLATES: Record<string, Template> = {
         greeting: greet(c),
         bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> renews on <strong>${escapeHtml(text(v, "chargeOn"))}</strong>. We will charge <strong>${inr(text(v, "amount"))}</strong> (with GST) through your auto-pay, so there is nothing you need to do.`),
         details: [["Plan", text(v, "planName")], ["Amount (with GST)", inr(text(v, "amount"))], ["Charge date", text(v, "chargeOn")]],
-        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+        cta: { label: "View subscription", url: `${methodsUrl(c, "/settings/subscription")}` },
       }),
     }),
     whatsapp: { name: "platterly_autopay_upcoming", body: "Hi {{1}}, your {{2}} plan renews on {{3}}. We will charge {{4}} through your auto-pay, so there is nothing you need to do. To change or pause it, open Settings > Subscription in Platterly.", params: (v, c) => [c.businessName, text(v, "planName"), text(v, "chargeOn"), inr(text(v, "amount"))] },
@@ -245,7 +255,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: `We will charge ${inr(text(v, "amount"))} today`,
         greeting: greet(c),
         bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan for <strong>${escapeHtml(c.businessName)}</strong> renews today. We will charge <strong>${inr(text(v, "amount"))}</strong> (with GST) through your auto-pay and send you a confirmation once it goes through.`),
-        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+        cta: { label: "View subscription", url: `${methodsUrl(c, "/settings/subscription")}` },
       }),
     }),
     whatsapp: { name: "platterly_autopay_today", body: "Hi {{1}}, your {{2}} plan renews today. We will charge {{3}} through your auto-pay and send you a confirmation once it goes through.", params: (v, c) => [c.businessName, text(v, "planName"), inr(text(v, "amount"))] },
@@ -260,7 +270,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Please set up auto-pay again",
         greeting: greet(c),
         bodyHtml: p(`Razorpay could not take the payment for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> after several tries, so auto-pay has stopped. Set it up again to keep your account open.`),
-        cta: { label: "Set up auto-pay again", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Set up auto-pay again", url: `${payUrl(c)}` },
       }),
     }),
   },
@@ -274,7 +284,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: "No more charges until you resume",
         greeting: greet(c),
         bodyHtml: p(`The <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> is paused. Everything keeps working until the end of the period you have paid for. Resume at any time to carry on.`),
-        cta: { label: "Resume", url: `${c.productUrl}/settings/subscription` },
+        cta: { label: "Resume", url: `${methodsUrl(c, "/settings/subscription")}` },
       }),
     }),
   },
@@ -288,7 +298,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: "Auto-pay is on again",
         greeting: greet(c),
         bodyHtml: p(`Auto-pay for the <strong>${escapeHtml(text(v, "planName"))}</strong> plan of <strong>${escapeHtml(c.businessName)}</strong> is on again.`),
-        cta: { label: "View subscription", url: `${c.productUrl}/settings/subscription` },
+        cta: { label: "View subscription", url: `${methodsUrl(c, "/settings/subscription")}` },
       }),
     }),
   },
@@ -302,7 +312,7 @@ export const TEMPLATES: Record<string, Template> = {
         title: `One step to move to ${escapeHtml(text(v, "newPlanName"))}`,
         greeting: greet(c),
         bodyHtml: p(`Your <strong>${escapeHtml(text(v, "planName"))}</strong> period has ended. To move <strong>${escapeHtml(c.businessName)}</strong> to <strong>${escapeHtml(text(v, "newPlanName"))}</strong>, approve its auto-pay. Your account keeps working for 7 days meanwhile.`),
-        cta: { label: "Approve auto-pay", url: `${c.productUrl}/subscribe` },
+        cta: { label: "Approve auto-pay", url: `${payUrl(c)}` },
       }),
     }),
   },

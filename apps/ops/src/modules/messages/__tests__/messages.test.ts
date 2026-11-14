@@ -119,6 +119,20 @@ describe("sendMessage", () => {
     expect(await prisma.messageLog.findFirstOrThrow({ where: { businessId: BIZ } })).toMatchObject({ status: "SENT", toEmail: "asha@example.test", providerMessage: "req-1", attempts: 1 });
   });
 
+  it("opens the Store's pay page and the Account's Payment method page when their addresses are set (trailing slashes ignored)", async () => {
+    process.env.STORE_ORIGIN = "https://store.example/";
+    process.env.ACCOUNT_ORIGIN = "https://account.example";
+    try {
+      await sendMessage({ businessId: BIZ, productKey: KEY, template: "payment_failed", variables: { planName: "Pro" } }, fakeFetch);
+      await sendMessage({ businessId: BIZ, productKey: KEY, template: "autopay_failed", variables: { planName: "Pro" } }, fakeFetch);
+    } finally {
+      delete process.env.STORE_ORIGIN;
+      delete process.env.ACCOUNT_ORIGIN;
+    }
+    expect(calls[0].body.htmlbody).toContain(`https://store.example/manage/${KEY}`);
+    expect(calls[1].body.htmlbody).toContain("https://account.example/payment-methods");
+  });
+
   it("logs a skip, and sends nothing, when no mail provider is set", async () => {
     delete process.env.ZEPTOMAIL_TOKEN;
     expect(await sendMessage({ businessId: BIZ, productKey: KEY, template: "welcome_owner" }, fakeFetch)).toMatchObject({ ok: true, outcome: "skipped" });

@@ -1,5 +1,5 @@
 import "server-only";
-import type { PlatformBusinessBilling } from "@platterly/contract";
+import { STORE_KEY_FOR_OPS_KEY, storeKeyFor, type PlatformBusinessBilling } from "@platterly/contract";
 import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
 import { describeSubscription } from "./status";
@@ -33,8 +33,7 @@ export type StoreProducts =
  * Ops still keys this product `catering`; everywhere a person sees it, and in Platform (Account, Store links), it is `caterly`. Platform does the renaming
  * here, so Ops's data and the signed Caterly-to-Ops links keep their key. A key not listed is used as Ops gives it.
  */
-export const STORE_KEY_FOR_OPS_KEY: Record<string, string> = { catering: "caterly" };
-export const storeKeyFor = (opsKey: string) => STORE_KEY_FOR_OPS_KEY[opsKey] ?? opsKey;
+export { STORE_KEY_FOR_OPS_KEY, storeKeyFor };
 
 /**
  * Puts a business's real subscriptions on the products. Ops keys the product `catering`; the Store calls it `caterly` (see storeKeyFor). Only a live

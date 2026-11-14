@@ -178,3 +178,10 @@ export function parsePlatformBusinessBilling(input: unknown): ParseResult<Platfo
   }
   return ok({ businessId, generatedAt, products: out });
 }
+
+/**
+ * Ops still keys the catering product `catering`; everywhere a person sees it, and in Platform (Account, Store links), it is `caterly`. Ops and Platform share this
+ * one map: Platform renames Ops's key for the Store, and Ops builds the Store's `/manage/<key>` links in its emails with it. A key not listed is used as it is.
+ */
+export const STORE_KEY_FOR_OPS_KEY: Record<string, string> = { catering: "caterly" };
+export const storeKeyFor = (opsKey: string): string => STORE_KEY_FOR_OPS_KEY[opsKey] ?? opsKey;

@@ -47,7 +47,7 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 
 - UPI AutoPay with a future start and its label (VPA) are untested; check in test mode before relying on them.
 - ~~A renewal charge for a switched subscription must find the business's last paid payment by business and product~~ Done 2026-11-14 (3b.1b): `chargeAutoPay` falls back to the Subscription row.
-- Renewal reminders point to Caterly's `/subscribe`; annual reminders need the Store address as a new Ops setting.
+- ~~Renewal reminders point to Caterly's `/subscribe`; annual reminders need the Store address as a new Ops setting.~~ Done 2026-11-14 (3b.4).
 
 ## Built (3b.1b, 2026-11-14, Ops only)
 
@@ -72,3 +72,11 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 - **Auto-renewal** (Pause, Resume, Stop) moved here from the Store: Ops actions `autopay-pause`, `autopay-resume`, `autopay-cancel`. Stop is for good (the person starts again from the Store); paid days keep working, then the 7-day grace and the lock. The Store's monthly "Cancel subscription" is replaced by a note linking to the Account; a yearly plan still has its Cancel (stop renewal) in the Store.
 - **Re-tokenisation:** authorising a saved card in Razorpay's window issues a new token for the same card. `verifyMakePrimary` keeps the chosen card's single row, takes the new token and deletes the old one at Razorpay; a different card chosen in the window is saved as its own method.
 - Razorpay's test Mastercard is not eligible for recurring, so browser specs use the Visa 4718 6091 0820 4366 for every method.
+
+## Built (3b.4, 2026-11-14, Ops; links checked in unit tests)
+
+- Ops settings `STORE_ORIGIN` and `ACCOUNT_ORIGIN`. Unset, every email and WhatsApp link is the product's own, as before.
+- **To the Store** (`<STORE_ORIGIN>/manage/<storeKey>`): trial ending, trial ended, plan renewal due (yearly), plan grace, plan locked, payment failed, auto-pay stopped, downgrade approval.
+- **To the Account** (`<ACCOUNT_ORIGIN>/payment-methods`): auto-pay failed, upcoming, today, paused, resumed, and the Resume variants of the renewal and grace messages for a paused plan.
+- Unchanged (Caterly): welcome, stand orders, payment received, plan changed.
+- Go-live: set both origins in Ops's environment.

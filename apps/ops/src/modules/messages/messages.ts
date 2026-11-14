@@ -70,7 +70,8 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
     await prisma.messageLog.update({ where: { id }, data });
     return outcome;
   };
-  const context = { businessName: business?.name ?? "", ownerName: business?.ownerName ?? "", productName: product?.name ?? "Platterly", productUrl: product?.baseUrl ?? "https://platterly.in" };
+  const origin = (value: string | undefined) => (value ?? "").trim().replace(/\/+$/, "") || undefined;
+  const context = { businessName: business?.name ?? "", ownerName: business?.ownerName ?? "", productName: product?.name ?? "Platterly", productUrl: product?.baseUrl ?? "https://platterly.in", productKey: row.productKey ?? undefined, storeUrl: origin(process.env.STORE_ORIGIN), accountUrl: origin(process.env.ACCOUNT_ORIGIN) };
   const retryOrFail = (base: Prisma.MessageLogUpdateInput, reason: string) =>
     row.attempts < MAX_ATTEMPTS ? finish({ ...base, error: reason, nextAttemptAt: new Date(now.getTime() + RETRY_DELAYS_SECONDS[row.attempts - 1] * 1000) }, "retry") : finish({ ...base, status: "FAILED", error: reason, nextAttemptAt: null }, "failed");
 
