@@ -105,11 +105,11 @@ describe("loading existing permissions", () => {
     expect(isAllowed(g, "kitchen", "viewPdf")).toBe(true);
     expect(hasAccess(g, "orders")).toBe(false); // Kitchen never implies Orders
     expect(hasAccess(g, "menus")).toBe(false); // ...or Menu Catalog
-    expect(summarize(g)).toEqual({ modulesOn: 3, modulesTotal: 14, actionsOn: 7, sensitiveOn: 0, sensitiveTotal: 8 });
+    expect(summarize(g)).toEqual({ modulesOn: 3, modulesTotal: 14, actionsOn: 7, sensitiveOn: 0, sensitiveTotal: 9 });
   });
 
   it("shows Accounts with its four sensitive keys, and Manager with none", () => {
-    expect(summarize(preset("accounts"))).toEqual({ modulesOn: 6, modulesTotal: 14, actionsOn: 8, sensitiveOn: 4, sensitiveTotal: 8 });
+    expect(summarize(preset("accounts"))).toEqual({ modulesOn: 6, modulesTotal: 14, actionsOn: 8, sensitiveOn: 4, sensitiveTotal: 9 });
     expect(preset("accounts").sensitive.sort()).toEqual(["commercialDocuments", "financialReports", "orderPrices", "paymentDetails"]);
     expect(summarize(preset("manager")).sensitiveOn).toBe(0);
   });

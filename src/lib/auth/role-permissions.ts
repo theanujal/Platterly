@@ -36,6 +36,7 @@ const SENSITIVE_LABEL: Record<string, string> = {
   profitability: "profitability",
   financialReports: "financial reports",
   commercialDocuments: "customer-facing documents",
+  planBilling: "the Platterly plan and its invoices",
 };
 
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export", "manage", "updateStatus", "viewPdf"] as const;

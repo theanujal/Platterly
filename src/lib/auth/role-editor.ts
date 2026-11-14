@@ -42,6 +42,7 @@ export const SENSITIVE_INFO: Record<SensitiveKey, { label: string; covers: strin
   profitability: { label: "Profitability", covers: "The Profitability page, margins and event costs." },
   financialReports: { label: "Financial reports", covers: "Revenue and finance report tabs, and the finance exports (reports, expenses, profitability)." },
   commercialDocuments: { label: "Commercial PDFs", covers: "Customer-facing PDFs: invoice, quotation, receipt and payment link." },
+  planBilling: { label: "Billing and Plan", covers: "The Subscription page: your Platterly plan, its price, invoices, payments and credit notes. View only; buying and changing the plan stay with the Business Admin." },
 };
 
 /** Stock requests and receiving are planned, not built: shown as "Coming soon" and never saved or enforced. */

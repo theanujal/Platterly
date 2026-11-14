@@ -26,8 +26,8 @@ describe("security headers (next.config.ts)", () => {
     expect(open).toHaveLength(2);
     expect(open.some((s) => s.startsWith("/:tenantSlug/plan"))).toBe(true);
     // The single-segment storefront rule must exclude the app's own routes (admin, sign-in, ops, unsubscribe...).
-    const storefront = open.find((s) => !s.includes("plan"))!;
-    for (const reserved of ["super", "kitchenlogin", "dashboard", "settings", "api", "unsubscribe"]) expect(storefront).toContain(reserved);
+    const storefront = open.find((s) => !s.startsWith("/:tenantSlug/plan"))!;
+    for (const reserved of ["super", "kitchenlogin", "dashboard", "settings", "api", "unsubscribe", "plan-ended"]) expect(storefront).toContain(reserved);
   });
 
   it("does not advertise the framework", () => {

@@ -65,6 +65,7 @@ export const statement = {
     "profitability", // profitability, margins, event costs
     "financialReports", // revenue and finance report tabs and their exports
     "commercialDocuments", // customer-facing PDFs: invoices, receipts, quotations
+    "planBilling", // "Billing and Plan": the Platterly subscription page (plan, invoices, payments, credit notes), read-only. Buying stays with the Business Admin in the Store (AJ, 2026-11-15)
   ],
   // Reserved identifiers only (AJ, 2026-10-17, D4): stock requests and stock receiving are not built. Nothing enforces
   // these and the editor shows them as "Coming soon".
@@ -108,7 +109,7 @@ export const roles = {
     settings: ["view", "edit"],
     kitchen: ["view", "updateStatus", "viewPdf"],
     recipes: ["view", "create", "edit", "delete"],
-    sensitive: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"],
+    sensitive: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"],
     stockRequests: ["request", "fulfil", "receive"],
   }),
   /**

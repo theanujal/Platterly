@@ -5,7 +5,7 @@ import { storeManageUrl } from "@/lib/platform/config";
 
 /**
  * Caterly has no billing pages (AJ, 2026-11-14): plans, payment, invoices and refunds live in the Platterly Store. Old links (emails, notices, bookmarks) still
- * arrive at /subscribe and /settings/subscription, so both go through here: the Business Admin is sent to the Store, anyone else to the "plan ended" screen when the
+ * arrive at /subscribe, so it goes through here (/settings/subscription is the read-only Subscription page again, 2026-11-15): the Business Admin is sent to the Store, anyone else to the "plan ended" screen when the
  * kitchen is locked, or back to the dashboard.
  */
 export async function sendToBilling(): Promise<never> {

@@ -194,7 +194,7 @@ async function sessionAllows(
 export async function sensitiveAccess(organizationId?: string): Promise<Record<SensitiveKey, boolean>> {
   const session = await requireSession();
   const orgId = organizationId ?? session.session.activeOrganizationId;
-  const none = Object.fromEntries((["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const).map((k) => [k, false])) as Record<SensitiveKey, boolean>;
+  const none = Object.fromEntries((["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"] as const).map((k) => [k, false])) as Record<SensitiveKey, boolean>;
   if (!orgId) return none;
   const member = await prisma.member.findFirst({ where: { userId: session.user.id, organizationId: orgId }, select: { role: true, disabledAt: true } });
   if (!member || member.disabledAt) return none;

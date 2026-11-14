@@ -9,7 +9,7 @@ import { roles, statement } from "@/lib/auth/permissions";
  * Three independent layers: module access (a module's `view`), actions (create, edit, delete, approve, updateStatus ...), and
  * sensitive data (the `sensitive` resource: prices, costs, payments, financial reports, commercial documents).
  */
-const ALL_SENSITIVE = ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"];
+const ALL_SENSITIVE = ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"];
 
 const EXPECTED: Record<string, Record<string, string[]>> = {
   owner: {

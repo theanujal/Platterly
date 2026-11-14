@@ -26,12 +26,12 @@ export const MATRIX_MODULES = [
     key: "sensitive",
     label: "Sensitive data",
     pages: "Prices, costs, payments, financial reports and commercial documents",
-    actions: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"],
+    actions: ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"],
   },
 ] as const;
 
 /** The sensitive-data keys, one per kind of protected field or document. */
-export const SENSITIVE_KEYS = ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const;
+export const SENSITIVE_KEYS = ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"] as const;
 export type SensitiveKey = (typeof SENSITIVE_KEYS)[number];
 
 /** Reserved for the stock-request and stock-receiving workflows (not built; D4). Shown as "Coming soon", never enforced. */

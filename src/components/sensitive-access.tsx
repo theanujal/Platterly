@@ -16,10 +16,11 @@ export interface SensitiveFlags {
   profitability: boolean;
   financialReports: boolean;
   commercialDocuments: boolean;
+  planBilling: boolean;
 }
 
 // The default (outside a provider, e.g. in a test render) shows everything: only the app layout restricts.
-const ALL: SensitiveFlags = { menuPrices: true, orderPrices: true, paymentDetails: true, supplierCosts: true, recipeCosts: true, profitability: true, financialReports: true, commercialDocuments: true };
+const ALL: SensitiveFlags = { menuPrices: true, orderPrices: true, paymentDetails: true, supplierCosts: true, recipeCosts: true, profitability: true, financialReports: true, commercialDocuments: true, planBilling: true };
 
 const SensitiveContext = createContext<SensitiveFlags>(ALL);
 

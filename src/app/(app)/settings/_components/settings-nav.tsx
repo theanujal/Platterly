@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Building2, ChefHat, Code2, Coins, FileText, Link2, Mail, MessageCircle, Trash2, Users, Wallet } from "lucide-react";
+import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Mail, MessageCircle, Trash2, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "cn";
 
@@ -43,6 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Invoice Settings", href: "/settings/communication/invoice-settings", icon: FileText },
     ],
   },
+  { label: "Billing", items: [{ label: "Subscription", href: "/settings/subscription", icon: CreditCard }] },
   { label: "Danger Zone", items: [{ label: "Delete All Data", href: "/settings/danger-zone", icon: Trash2 }] },
 ];
 
@@ -50,12 +51,13 @@ const NAV_GROUPS: NavGroup[] = [
 // bg-secondary panel, icon + label rows, and the active page gets the same
 // accent fill and ring as Menu Catalog's and the food item drawer's active
 // tab. Keep the two in step.
-export function SettingsNav() {
+export function SettingsNav({ showBilling = false }: { showBilling?: boolean }) {
   const pathname = usePathname();
+  const groups = NAV_GROUPS.filter((group) => group.label !== "Billing" || showBilling);
 
   return (
     <nav className="flex shrink-0 flex-col gap-5 bg-secondary px-4 py-6 md:w-60">
-      {NAV_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="flex flex-col gap-1">
           <h2 className="px-3 pb-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase">{group.label}</h2>
           {group.items.map((item) => {

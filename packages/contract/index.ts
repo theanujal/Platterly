@@ -14,3 +14,4 @@ export * from "./src/platform";
 export * from "./src/account-review";
 export * from "./src/newsletter";
 export * from "./src/mail-guard";
+export * from "./src/subscription-status";

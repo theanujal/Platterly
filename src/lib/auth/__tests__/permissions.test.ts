@@ -119,7 +119,7 @@ describe("PRD §5 department roles (added 2026-09-20)", () => {
     expect(roles.kitchen.authorize({ customers: ["view"] }).success).toBe(false);
     expect(roles.kitchen.authorize({ invoices: ["view"] }).success).toBe(false);
     expect(roles.kitchen.authorize({ recipes: ["delete"] }).success).toBe(false);
-    for (const key of ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments"] as const) {
+    for (const key of ["menuPrices", "orderPrices", "paymentDetails", "supplierCosts", "recipeCosts", "profitability", "financialReports", "commercialDocuments", "planBilling"] as const) {
       expect(roles.kitchen.authorize({ sensitive: [key] }).success, `kitchen:sensitive:${key}`).toBe(false);
     }
   });

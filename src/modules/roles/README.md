@@ -8,7 +8,7 @@ Roles & Permissions redesign (AJ, 2026-10-17). Plan: `docs/roles-permissions-red
 |---|---|---|
 | Module access | `view` on a module opens the screen | `src/lib/auth/permissions.ts` (`statement`, presets), `nav-permissions.ts` |
 | Actions | create / edit / delete / approve / export / `kitchen: updateStatus, viewPdf` | the same statements; `requirePermission` / `hasPermission` in `src/lib/auth/require-session.ts` |
-| Sensitive data | the `sensitive` resource, eight independent keys: `menuPrices`, `orderPrices`, `paymentDetails`, `supplierCosts`, `recipeCosts`, `profitability`, `financialReports`, `commercialDocuments` | `SENSITIVE_KEYS` in `src/lib/auth/role-matrix.ts`; `sensitiveAccess`, `canSee`, `requireSensitive` in `require-session.ts` |
+| Sensitive data | the `sensitive` resource, nine independent keys: `menuPrices`, `orderPrices`, `paymentDetails`, `supplierCosts`, `recipeCosts`, `profitability`, `financialReports`, `commercialDocuments`, `planBilling` ("Billing and Plan": the read-only Subscription page; owner only by default) | `SENSITIVE_KEYS` in `src/lib/auth/role-matrix.ts`; `sensitiveAccess`, `canSee`, `requireSensitive` in `require-session.ts` |
 
 `kitchen` (Kitchen Dashboard, its PDF, the cooking stage) and `recipes` are their own resources, no longer borrowed from `menus` and `inventory`. `stockRequests` is reserved in the model and not built.
 
