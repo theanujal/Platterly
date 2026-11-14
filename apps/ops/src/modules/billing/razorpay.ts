@@ -59,7 +59,7 @@ export interface RazorpaySubscription {
   charge_at?: number | null;
 }
 
-async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {
+async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST" | "DELETE", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {
   const response = await fetchImpl(`${API}${path}`, {
     method,
     headers: { Authorization: `Basic ${Buffer.from(`${creds.keyId}:${creds.keySecret}`).toString("base64")}`, "Content-Type": "application/json" },
@@ -75,8 +75,8 @@ export const createRazorpayPlan = (creds: PlatformRazorpay, p: { name: string; a
   call<{ id: string }>(creds, "POST", "/plans", { period: "daily", interval: 30, item: { name: p.name, amount: p.amountPaise, currency: "INR" } }, fetchImpl).then(({ id }) => ({ id }));
 
 /** 120 cycles of 30 days is about ten years: auto-pay until the owner pauses, changes plan or is locked. */
-export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; notes: Record<string, string> }, fetchImpl: typeof fetch = fetch) =>
-  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes }, fetchImpl);
+export const createRazorpaySubscription = (creds: PlatformRazorpay, p: { razorpayPlanId: string; notes: Record<string, string>; customerId?: string; startAt?: number }, fetchImpl: typeof fetch = fetch) =>
+  call<RazorpaySubscription>(creds, "POST", "/subscriptions", { plan_id: p.razorpayPlanId, total_count: 120, customer_notify: 1, notes: p.notes, ...(p.customerId ? { customer_id: p.customerId } : {}), ...(p.startAt ? { start_at: p.startAt } : {}) }, fetchImpl);
 
 export const fetchRazorpaySubscription = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpaySubscription>(creds, "GET", `/subscriptions/${id}`, undefined, fetchImpl);
 
@@ -91,3 +91,45 @@ export const resumeRazorpaySubscription = (creds: PlatformRazorpay, id: string, 
 export function verifySubscriptionSignature(params: { razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string }, keySecret: string): boolean {
   return safeEqual(createHmac("sha256", keySecret).update(`${params.razorpayPaymentId}|${params.razorpaySubscriptionId}`).digest("hex"), params.signature);
 }
+
+
+// ---------- Saved payment methods (docs/payment-methods-design.md) ----------
+
+/** The business's Razorpay customer. `fail_existing: 0` returns the existing customer for the same contact instead of failing, so a retry is safe. */
+export const createRazorpayCustomer = (creds: PlatformRazorpay, p: { name: string; email: string; contact: string; businessId: string }, fetchImpl: typeof fetch = fetch) =>
+  call<{ id: string }>(creds, "POST", "/customers", { name: p.name, email: p.email, contact: p.contact, fail_existing: "0", notes: { businessId: p.businessId } }, fetchImpl).then(({ id }) => ({ id }));
+
+/**
+ * A Rs 5 order that registers a card as a saved, recurring-authorised token for the customer (opened in Checkout with `order_id`, `customer_id` and
+ * `recurring: "1"`). The Rs 5 is captured, not refunded by Razorpay: the caller refunds it once the registration is verified. The token is never debited by
+ * Platterly (Razorpay has not switched on server-side token debit for this account); `max_amount` is the RBI's Rs 15,000 limit.
+ */
+export const createTokenRegistrationOrder = (creds: PlatformRazorpay, p: { customerId: string; receipt: string; notes: Record<string, string>; now?: Date }, fetchImpl: typeof fetch = fetch) =>
+  call<{ id: string }>(creds, "POST", "/orders", { amount: 500, currency: "INR", receipt: p.receipt, customer_id: p.customerId, method: "card", token: { max_amount: 1_500_000, expire_at: Math.floor((p.now ?? new Date()).getTime() / 1000) + 365 * 86400, frequency: "as_presented" }, notes: p.notes }, fetchImpl).then(({ id }) => ({ id }));
+
+/** A payment as Razorpay describes it: how it was paid (card last four and network, or the UPI id) and the token it created. */
+export interface RazorpayPayment {
+  id: string;
+  status: string;
+  amount: number;
+  amount_refunded?: number;
+  method: string;
+  token_id?: string | null;
+  customer_id?: string | null;
+  card?: { last4?: string; network?: string; type?: string } | null;
+  vpa?: string | null;
+  bank?: string | null;
+}
+export const fetchRazorpayPayment = (creds: PlatformRazorpay, id: string, fetchImpl: typeof fetch = fetch) => call<RazorpayPayment>(creds, "GET", `/payments/${id}`, undefined, fetchImpl);
+export const refundRazorpayPayment = (creds: PlatformRazorpay, id: string, amountPaise: number, fetchImpl: typeof fetch = fetch) => call<{ id: string; status: string }>(creds, "POST", `/payments/${id}/refund`, { amount: amountPaise }, fetchImpl);
+
+export interface RazorpayToken {
+  id: string;
+  method: string;
+  card?: { last4?: string; network?: string } | null;
+  vpa?: { username?: string; handle?: string } | null;
+  recurring?: boolean;
+}
+export const fetchCustomerTokens = (creds: PlatformRazorpay, customerId: string, fetchImpl: typeof fetch = fetch) =>
+  call<{ items: RazorpayToken[] }>(creds, "GET", `/customers/${customerId}/tokens`, undefined, fetchImpl).then(({ items }) => items ?? []);
+export const deleteRazorpayToken = (creds: PlatformRazorpay, customerId: string, tokenId: string, fetchImpl: typeof fetch = fetch) => call<{ deleted: boolean }>(creds, "DELETE", `/customers/${customerId}/tokens/${tokenId}`, undefined, fetchImpl);

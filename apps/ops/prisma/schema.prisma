@@ -159,16 +159,47 @@ model Business {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  products        BusinessProduct[]
-  alerts          Alert[]
-  notifications   Notification[]
-  subscriptions   Subscription[]
-  payments        SubscriptionPayment[]
-  standOrders     StandOrder[]
-  billingCustomer BillingCustomer?
+  products         BusinessProduct[]
+  alerts           Alert[]
+  notifications    Notification[]
+  subscriptions    Subscription[]
+  payments         SubscriptionPayment[]
+  standOrders      StandOrder[]
+  billingCustomer  BillingCustomer?
+  razorpayCustomer RazorpayCustomer?
+  paymentMethods   PaymentMethod[]
 
   @@index([createdAt])
   @@map("business")
+}
+
+// The business's customer in Platterly's Razorpay account (docs/payment-methods-design.md). One per business, made the first time a payment method is needed;
+// every authorisation passes its id so Razorpay can list the saved methods.
+model RazorpayCustomer {
+  businessId String   @id
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId String   @unique
+  createdAt  DateTime @default(now())
+
+  @@map("razorpay_customer")
+}
+
+// A saved payment method, as a label only (never card data): "Visa ending 4366", "UPI name@bank". `razorpayTokenId` is the saved card at Razorpay (null for UPI);
+// `razorpaySubscriptionId` is the auto-pay subscription this method authorised (null for a method saved only as a secondary). The primary method is not stored:
+// it is the one whose subscription is the business's current auto-pay subscription.
+model PaymentMethod {
+  id                     String   @id
+  businessId             String
+  business               Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  kind                   String
+  label                  String
+  razorpayTokenId        String?  @unique
+  razorpaySubscriptionId String?
+  createdAt              DateTime @default(now())
+
+  @@index([businessId])
+  @@index([razorpaySubscriptionId])
+  @@map("payment_method")
 }
 
 // A business's saved billing details (F12.2.1): what starts every purchase filled in and what the Account's Billing details page edits. One row per business.
