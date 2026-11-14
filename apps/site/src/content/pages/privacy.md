@@ -1,7 +1,7 @@
 ---
 title: Privacy Policy
 summary: How Platterly collects, uses, stores and protects personal information.
-updated: 2026-10-31
+updated: 2026-11-14
 ---
 
 This policy explains what personal information Fragen Network Private Limited ("Platterly", "we", "us") collects when you visit platterly.in or use Caterly by Platterly at catering.platterly.in, how we use it, and the choices you have.
@@ -60,7 +60,7 @@ We do not sell personal information. We share it only with:
 
 ## 5. Where it is stored and how long we keep it
 
-Information is stored on secure servers. Each caterer's data is kept separate from every other caterer's, and access inside Platterly is limited to people who need it. We keep account information while the account is active and for as long afterwards as is needed for legal, tax and accounting purposes, then delete or anonymise it. A caterer can delete all the data in their account from Settings, and can ask us to delete their account in writing.
+Information is stored on secure servers. Each caterer's data is kept separate from every other caterer's, and access inside Platterly is limited to people who need it. If you start signing up for a paid plan but do not complete payment, we clear the unfinished sign-up and keep the details you gave (name, email, phone number, business name and the plan you chose) for 90 days so we can follow up with you, then delete them. We keep account information while the account is active and for as long afterwards as is needed for legal, tax and accounting purposes, then delete or anonymise it. A caterer can delete all the data in their account from Settings, and can ask us to delete their account in writing.
 
 ## 6. Your rights
 
