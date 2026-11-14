@@ -687,7 +687,7 @@ Same shape as F15: local acceptance (journey step 10, bundle and add-on entitlem
 | D7 | Single source of the product registry (Ops vs Platform Core) | F6.1 | **Approved 2026-11-04**: Ops authoritative; Platform Core caches and refreshes |
 | D15 | One membership per user identity per product, all roles, enforced in the database; no switcher (new, Revision 10) | F3.2, F5, F7 | **Approved 2026-11-04** (section 3b) |
 | D8 | Platform deployment shape: one Next app for auth, account and store hosts | F1.1 | Yes, one app |
-| D9 | Coupon rules (types, stacking, limits) | F12.3 | Percent and fixed, one per order |
+| D9 | Coupon rules (types, stacking, limits) | F12.3 | **Approved 2026-11-14 (AJ):** percent and fixed, one per order. See `docs/gate-c-decision-record.md` |
 | D10 | Bundle and add-on commercial rules | F18 | Decide before M3 |
 | D11 | Rivo repo, stack and timeline | F17 | Reuse the stub as the conformance reference |
 | D12 | Start M2 build after M1 L3 approval, or only after M1 production | F12 | After M1 L3 approval, local only |
