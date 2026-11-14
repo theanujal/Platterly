@@ -1,8 +1,7 @@
 import "server-only";
 import type { Buyer } from "@platterly/contract";
-import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
-import { loadAccountOverview } from "@/modules/account/overview";
+import { billingAccess } from "./billing-rights";
 import { checkBuyer } from "./buyer-check";
 import { changeStoreSubscription, quoteStoreCheckout, startStoreCheckout, verifyStoreCheckout, type CheckoutFailure, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { STORE_KEY_FOR_OPS_KEY } from "./products";
@@ -10,19 +9,17 @@ import { STORE_KEY_FOR_OPS_KEY } from "./products";
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
 export const opsKeyFor = (storeKey: string) => Object.entries(STORE_KEY_FOR_OPS_KEY).find(([, store]) => store === storeKey)?.[0] ?? storeKey;
 
-export type PurchaseFailure = "not_signed_in" | "no_business" | "bad_request" | CheckoutFailure;
+export type PurchaseFailure = "not_signed_in" | "no_business" | "not_admin" | "bad_request" | CheckoutFailure;
 export type PurchaseResult<T> = { ok: true; answer: T } | { ok: false; reason: PurchaseFailure; message?: string; fields?: Record<string, string> };
 
 const KEY = /^[a-z][a-z0-9_-]{0,39}$/;
 const text = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null);
 
-/** Who is buying, and for which business: the business is the signed-in person's own (never named by the request). */
-async function buyerBusiness(session: Session | null): Promise<{ ok: true; businessId: string } | { ok: false; reason: "not_signed_in" | "no_business" }> {
-  if (!session) return { ok: false, reason: "not_signed_in" };
-  const overview = await loadAccountOverview(prisma, session);
-  if (overview.status !== "ok") return { ok: false, reason: "not_signed_in" };
-  const business = overview.overview.business;
-  return business.state === "ok" ? { ok: true, businessId: business.business.id } : { ok: false, reason: "no_business" };
+/** Who is buying, and for which business: the signed-in person's own, and only its active Admin may buy (the Old Admin may not). */
+async function buyerBusiness(session: Session | null): Promise<{ ok: true; businessId: string } | { ok: false; reason: "not_signed_in" | "no_business" | "not_admin" }> {
+  const access = await billingAccess(session);
+  if (access.status === "ok") return { ok: true, businessId: access.businessId };
+  return { ok: false, reason: access.status === "unauthenticated" ? "not_signed_in" : access.status };
 }
 
 /** Reads the billing details from the request into the shape Ops stores on the payment, and checks them with the same rules the form shows. */

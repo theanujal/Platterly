@@ -11,6 +11,7 @@ type State =
   | { phase: "loading" }
   | { phase: "error" }
   | { phase: "no_business" }
+  | { phase: "not_admin" }
   | { phase: "ready"; business: string; subscriptions: SubscriptionRow[]; invoices: InvoiceRow[]; payments: PaymentRow[] };
 
 /** The business's billing as Ops holds it (read-only). One fetch shared by the two pages. */
@@ -26,6 +27,7 @@ function useBilling(): State {
         const body = (await res.json()) as { status?: string; business?: { name: string }; subscriptions?: SubscriptionRow[]; invoices?: InvoiceRow[]; payments?: PaymentRow[] };
         if (!alive) return;
         if (body.status === "no_business") return setState({ phase: "no_business" });
+        if (body.status === "not_admin") return setState({ phase: "not_admin" });
         if (body.status === "ok" && body.business && body.subscriptions && body.invoices && body.payments) setState({ phase: "ready", business: body.business.name, subscriptions: body.subscriptions, invoices: body.invoices, payments: body.payments });
         else setState({ phase: "error" });
       } catch {
@@ -48,6 +50,7 @@ function Gate({ state, children }: { state: State; children: (s: Extract<State, 
   if (state.phase === "loading") return <p className="pa-muted" role="status" aria-busy="true">Loading your billing…</p>;
   if (state.phase === "error") return <p className="pa-muted" role="alert">We could not load your billing just now. Please reload the page in a few minutes.</p>;
   if (state.phase === "no_business") return <p className="pa-muted" role="status">You have not set up a business yet, so there is no billing to show.</p>;
+  if (state.phase === "not_admin") return <p className="pa-muted" role="status">Billing is available to the business Admin only.</p>;
   return <>{children(state)}</>;
 }
 
@@ -57,7 +60,7 @@ const LATEST_INVOICES = 3;
 export function BillingSummary() {
   const state = useBilling();
   // A person with no business has no billing: the products section above already says so, so nothing is added here.
-  if (state.phase === "no_business") return null;
+  if (state.phase === "no_business" || state.phase === "not_admin") return null;
   return (
     <section aria-labelledby="ov-billing">
       <div className="pa-section-head">

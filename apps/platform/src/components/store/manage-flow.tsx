@@ -25,13 +25,13 @@ const FIELDS: { key: keyof Buyer; label: string; optional?: boolean; autoComplet
 const BUTTON: Record<ChangeKind, string> = { current: "Current plan", upgrade: "Upgrade", downgrade: "Downgrade", new: "Subscribe" };
 
 /** Manage one product (prototype): plans with Upgrade / Downgrade / Current plan, then Confirm order, Payment (sample) and Confirmation. Nothing is saved or charged. */
-export function ManageFlow({ product, live = false }: { product: SampleProduct; live?: boolean }) {
+export function ManageFlow({ product, live = false, savedBuyer = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null }) {
   const sub = product.subscription;
   const currentPlan = sub ? product.plans.find((p) => p.id === sub.planId) ?? null : null;
   const [step, setStep] = useState<Step>("plans");
   const [interval, setInterval] = useState<Interval>(sub?.interval ?? "MONTHLY");
   const [chosen, setChosen] = useState<{ plan: PlanOffer; interval: Interval; kind: ChangeKind } | null>(null);
-  const [buyer, setBuyer] = useState<Buyer>(EMPTY);
+  const [buyer, setBuyer] = useState<Buyer>(savedBuyer ?? EMPTY);
   const [errors, setErrors] = useState<Partial<Record<BuyerField, string>>>({});
   const [cancelling, setCancelling] = useState<"ask" | "done" | null>(null);
   // Real payment (live mode): `paying` while Ops and Razorpay are being talked to; `payError` is plain text for the person; `invoice` comes back from Ops.

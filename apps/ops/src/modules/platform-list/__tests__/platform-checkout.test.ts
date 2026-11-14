@@ -387,3 +387,38 @@ describe("Platform reads: invoice PDF and unfinished payments", () => {
     expect(billing!.products[0].billing.payments).toHaveLength(1);
   });
 });
+
+describe("saved billing details come from a confirmed payment", () => {
+  const profile = () => prisma.billingCustomer.findUnique({ where: { businessId: BIZ } });
+
+  it("a pending checkout saves nothing, so an abandoned attempt cannot overwrite good details", async () => {
+    await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", buyer });
+    expect(await profile()).toBeNull();
+  });
+
+  it("a confirmed payment saves the details typed at checkout, marked as coming from a payment", async () => {
+    await pay("pro", "ANNUAL", "pay_prof_1");
+    expect(await profile()).toMatchObject({ name: buyer.name, addressLine1: buyer.addressLine1, city: buyer.city, state: buyer.state, postalCode: buyer.postalCode, gstin: buyer.gstin, source: "payment" });
+  });
+
+  it("a later purchase with changed details updates the saved record, still one per business", async () => {
+    await pay("pro", "ANNUAL", "pay_prof_2");
+    const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf("max"), interval: "ANNUAL", buyer: { ...buyer, city: "Mysuru", gstin: null } })).json()) as { razorpayOrderId: string };
+    await call("verify", BIZ, { razorpayOrderId: checkout.razorpayOrderId, razorpayPaymentId: "pay_prof_3", signature: razorpaySig(checkout.razorpayOrderId, "pay_prof_3") });
+    expect(await prisma.billingCustomer.count({ where: { businessId: BIZ } })).toBe(1);
+    expect(await profile()).toMatchObject({ city: "Mysuru", gstin: null, source: "payment" });
+  });
+
+  it("a failed payment saves nothing", async () => {
+    const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "MONTHLY", buyer })).json()) as { razorpayOrderId: string };
+    await failPayment(checkout.razorpayOrderId);
+    expect(await profile()).toBeNull();
+  });
+
+  it("confirming the same payment twice leaves the saved record as it was", async () => {
+    const orderId = await pay("pro", "ANNUAL", "pay_prof_4");
+    const first = await profile();
+    await call("verify", BIZ, { razorpayOrderId: orderId, razorpayPaymentId: "pay_prof_4", signature: razorpaySig(orderId, "pay_prof_4") });
+    expect((await profile())?.updatedAt).toEqual(first?.updatedAt);
+  });
+});

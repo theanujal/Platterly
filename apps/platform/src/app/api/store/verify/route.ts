@@ -10,6 +10,6 @@ export async function POST(request: Request) {
   const result = await finishPurchase(await getSession(), body && typeof body === "object" ? body : {});
   const headers = { "cache-control": "no-store" };
   if (result.ok) return Response.json(result.answer, { headers });
-  const status = result.reason === "not_signed_in" ? 401 : result.reason === "no_business" ? 409 : result.reason === "bad_request" || result.reason === "rejected" ? 400 : result.reason === "unknown_business" ? 404 : 502;
+  const status = result.reason === "not_signed_in" ? 401 : result.reason === "no_business" ? 409 : result.reason === "not_admin" ? 403 : result.reason === "bad_request" || result.reason === "rejected" ? 400 : result.reason === "unknown_business" ? 404 : 502;
   return Response.json({ error: result.reason, ...(result.reason === "rejected" && result.message ? { message: result.message } : {}) }, { status, headers });
 }

@@ -159,15 +159,38 @@ model Business {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  products      BusinessProduct[]
-  alerts        Alert[]
-  notifications Notification[]
-  subscriptions Subscription[]
-  payments      SubscriptionPayment[]
-  standOrders   StandOrder[]
+  products        BusinessProduct[]
+  alerts          Alert[]
+  notifications   Notification[]
+  subscriptions   Subscription[]
+  payments        SubscriptionPayment[]
+  standOrders     StandOrder[]
+  billingCustomer BillingCustomer?
 
   @@index([createdAt])
   @@map("business")
+}
+
+// A business's saved billing details (F12.2.1): what starts every purchase filled in and what the Account's Billing details page edits. One row per business.
+// Written when a payment is confirmed paid (never for an abandoned attempt) and when the Admin saves the Account page. An invoice keeps its own frozen copy in
+// `SubscriptionPayment.invoiceSnapshot`, so changing this never rewrites an invoice.
+model BillingCustomer {
+  businessId   String   @id
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name         String
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  postalCode   String?
+  country      String?
+  gstin        String?
+  // Where the last change came from: "payment" (a confirmed purchase) or "account" (the Admin's own edit).
+  source       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("billing_customer")
 }
 
 // A business using a product. Usage counts come from `usage.reported` events (summaries only, never product data).

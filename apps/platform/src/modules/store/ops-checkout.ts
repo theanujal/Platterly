@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, platformCheckoutPath, requestTarget, signedHeaders, type Buyer, type CheckoutAnswer, type PlatformBillingAction } from "@platterly/contract";
+import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformCheckoutPath, requestTarget, signedHeaders, type BillingProfileAnswer, type Buyer, type CheckoutAnswer, type PlatformBillingAction } from "@platterly/contract";
 import { verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -14,19 +14,20 @@ type Deps = { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; now?: number };
 
 export const opsCheckoutConfigured = (env: NodeJS.ProcessEnv = process.env) => Boolean(env.OPS_BASE_URL && env.OPS_PLATFORM_BILLING_SECRET && env.OPS_PLATFORM_BILLING_SECRET.length >= 32);
 
-async function signedOpsPost(businessId: string, productKey: string, action: PlatformBillingAction, body: unknown, deps: Deps): Promise<CheckoutResult<Record<string, unknown>>> {
+/** The Store's signed calls to Ops, POST for buy actions and PUT for saving the billing details: same secret, same route-bound signature, same checks on the answer. */
+async function signedOpsBilling(method: "POST" | "PUT", path: string, body: unknown, deps: Deps): Promise<CheckoutResult<Record<string, unknown>>> {
   const env = deps.env ?? process.env;
   const secret = env.OPS_PLATFORM_BILLING_SECRET;
   if (!opsCheckoutConfigured(env) || !secret) return { ok: false, reason: "not_configured" };
-  const url = new URL(platformCheckoutPath(businessId, productKey, action), env.OPS_BASE_URL);
+  const url = new URL(path, env.OPS_BASE_URL);
   const requestId = newId("command");
   const text = JSON.stringify(body);
   let response: Response;
   let raw: string;
   try {
     response = await (deps.fetchImpl ?? fetch)(url, {
-      method: "POST",
-      headers: signedHeaders(secret, requestId, text, { now: deps.now === undefined ? undefined : Math.floor(deps.now / 1000), target: requestTarget("POST", url.toString()) }),
+      method,
+      headers: signedHeaders(secret, requestId, text, { now: deps.now === undefined ? undefined : Math.floor(deps.now / 1000), target: requestTarget(method, url.toString()) }),
       body: text,
       cache: "no-store",
       redirect: "error",
@@ -43,6 +44,19 @@ async function signedOpsPost(businessId: string, productKey: string, action: Pla
   if (response.status === 400) return { ok: false, reason: "rejected", message: typeof verified.value.error === "string" ? verified.value.error : undefined };
   if (!response.ok) return { ok: false, reason: "refused" };
   return { ok: true, answer: verified.value };
+}
+
+const signedOpsPost = (businessId: string, productKey: string, action: PlatformBillingAction, body: unknown, deps: Deps) => signedOpsBilling("POST", platformCheckoutPath(businessId, productKey, action), body, deps);
+
+/**
+ * Saves a business's billing details (the Account's Billing details page). Ops checks them with the same rules as the forms and answers with the saved record.
+ * The caller must already have checked that the signed-in person is the business's active Admin; `editedBy` is their id, kept in Ops's audit log.
+ */
+export async function saveOpsBillingProfile(input: { businessId: string; buyer: Buyer; editedBy: string }, deps: Deps = {}): Promise<CheckoutResult<BillingProfileAnswer>> {
+  const got = await signedOpsBilling("PUT", platformBillingProfilePath(input.businessId), { buyer: input.buyer, editedBy: input.editedBy }, deps);
+  if (!got.ok) return got;
+  const parsed = parseBillingProfileAnswer(got.answer);
+  return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
 }
 
 /** Starts a one-time payment: Ops creates the Razorpay order and a pending payment and answers with what Razorpay Checkout needs. */

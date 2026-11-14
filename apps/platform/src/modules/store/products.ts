@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
 import { describeSubscription } from "./status";
 import { loadAccountOverview } from "@/modules/account/overview";
+import { isActiveAdminInDb } from "./billing-rights";
 import { fetchOpsBilling, fetchOpsCatalogue, opsCatalogueConfigured } from "./ops-catalogue";
 import { inr } from "./format";
 import { SAMPLE_BUNDLES, SAMPLE_PRODUCTS, type SampleBundle, type SampleProduct } from "./sample-catalogue";
@@ -82,6 +83,8 @@ export async function loadStoreProducts(session: Session | null = null): Promise
   const section = overview.status === "ok" ? overview.overview.business : null;
   if (!section || section.state === "none") return { source: "ops", products, bundles: [], business: { state: "none" }, billing: "not_applicable" };
   if (section.state === "forbidden") return { source: "ops", products, bundles: [], business: { state: "forbidden" }, billing: "not_applicable" };
+  // The Old Admin (a former Admin who stays on read-only) sees no prices or subscriptions: only the business's active Admin does.
+  if (!(await isActiveAdminInDb(session?.userId ?? "", section.business.id))) return { source: "ops", products, bundles: [], business: { state: "forbidden" }, billing: "not_applicable" };
   const business: StoreBusiness = { state: "ok", id: section.business.id, name: section.business.name };
   const billing = await fetchOpsBilling(business.id);
   // A business Ops has no record of (not_found) simply has no subscriptions; any other failure is "unavailable", never a guess.

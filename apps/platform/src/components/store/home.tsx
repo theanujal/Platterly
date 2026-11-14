@@ -28,7 +28,7 @@ export function StoreHome({ products, bundles, live = false, business = null, bi
       <header className="ps-head">
         <h1>Your products</h1>
         <p className="ps-lede">See what your business subscribes to, or add another product. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? (business?.state === "ok" ? `Showing ${business.name}. Plans, prices and your subscriptions are live from Platterly. Payment is not connected yet.` : "Plans and prices are live from Platterly. Payment is not connected yet.") : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-note" role="note">{live ? (business?.state === "ok" ? `Showing ${business.name}. Plans, prices and your subscriptions are live from Platterly.` : "Plans and prices are live from Platterly.") : "Prototype with sample data. Nothing is saved or charged."}</p>
       </header>
 
       {live && business?.state === "none" && <p className="ps-warn" role="alert">You have not set up a business yet. Create it in your Account first; your subscriptions will show here.</p>}

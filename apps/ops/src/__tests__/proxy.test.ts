@@ -42,6 +42,14 @@ describe("ops proxy: public routes", () => {
     }
   });
 
+  it("lets exactly the billing-details read and save for one business through, and nothing near it", () => {
+    const biz = `biz_${"a".repeat(32)}`;
+    expect(through(`/api/platform/businesses/${biz}/billing-profile`).passed).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/billing-profile/`, `/api/platform/businesses/${biz}/billing-profile/x`, `/api/platform/businesses/${biz}/billing-profiles`, `/api/platform/businesses/biz_short/billing-profile`, `/api/platform/businesses/${biz}/products/catering/billing-profile`, `/api/platform/businesses/billing-profile`]) {
+      expect(through(path).passed, path).toBe(false);
+    }
+  });
+
   it("keeps the other public prefixes working", () => {
     for (const path of ["/sign-in", "/api/auth/get-session", "/api/health", "/api/products/events", "/api/webhooks/razorpay", "/api/cron", "/api/site/x", "/api/public/enquiries"]) {
       expect(through(path).passed, path).toBe(true);

@@ -4,6 +4,7 @@ import { ManageFlow } from "@/components/store/manage-flow";
 import { getSession } from "@/lib/session";
 import { requireStoreSignIn } from "@/lib/store/guard";
 import { StoreUnavailable } from "@/components/store/unavailable";
+import { fetchOpsBillingProfile } from "@/modules/store/ops-catalogue";
 import { loadStoreProducts } from "@/modules/store/products";
 import "@/components/store/store.css";
 
@@ -34,9 +35,13 @@ export default async function ManagePage({ params }: { params: Promise<{ product
       </StoreFrame>
     );
   }
+  // The business's saved billing details start the form filled in (live Store only; the business was already checked to be the person's own, as its Admin).
+  // Ops being unreachable or having nothing saved just leaves the form blank, as before.
+  const saved = data.source === "ops" && data.business.state === "ok" ? await fetchOpsBillingProfile(data.business.id) : null;
+  const savedBuyer = saved?.ok ? saved.answer.profile : null;
   return (
     <StoreFrame>
-      <ManageFlow product={product} live={data.source === "ops"} />
+      <ManageFlow product={product} live={data.source === "ops"} savedBuyer={savedBuyer} />
     </StoreFrame>
   );
 }

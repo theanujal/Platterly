@@ -1,7 +1,6 @@
 import "server-only";
-import { prisma } from "@/lib/db";
 import type { Session } from "@/lib/session";
-import { loadAccountOverview } from "./overview";
+import { billingAccess } from "@/modules/store/billing-rights";
 import { fetchOpsBilling } from "@/modules/store/ops-catalogue";
 import { storeKeyFor } from "@/modules/store/products";
 import { describeSubscription, type SubscriptionDisplay } from "@/modules/store/status";
@@ -15,17 +14,15 @@ export type PaymentRow = { id: string; productKey: string; product: string; at: 
 export type SubscriptionRow = { productKey: string; product: string; planName: string | null; display: SubscriptionDisplay };
 export type BillingHistory =
   | { status: "ok"; business: { name: string }; subscriptions: SubscriptionRow[]; invoices: InvoiceRow[]; payments: PaymentRow[] }
-  | { status: "unauthenticated" | "no_business" | "unavailable" };
+  | { status: "unauthenticated" | "no_business" | "not_admin" | "unavailable" };
 
 export async function loadBillingHistory(session: Session | null, now: Date = new Date()): Promise<BillingHistory> {
-  if (!session) return { status: "unauthenticated" };
-  const overview = await loadAccountOverview(prisma, session);
-  if (overview.status !== "ok") return { status: "unauthenticated" };
-  const section = overview.overview.business;
-  if (section.state !== "ok") return { status: "no_business" };
-  const result = await fetchOpsBilling(section.business.id);
+  // Only the business's active Admin sees billing (the Old Admin does not); the business is the signed-in person's own.
+  const access = await billingAccess(session);
+  if (access.status !== "ok") return { status: access.status };
+  const result = await fetchOpsBilling(access.businessId);
   // Ops not knowing the business at all just means it has no billing yet.
-  if (!result.ok) return result.reason === "not_found" ? { status: "ok", business: { name: section.business.name }, subscriptions: [], invoices: [], payments: [] } : { status: "unavailable" };
+  if (!result.ok) return result.reason === "not_found" ? { status: "ok", business: { name: access.businessName }, subscriptions: [], invoices: [], payments: [] } : { status: "unavailable" };
 
   const subscriptions: SubscriptionRow[] = [];
   const invoices: InvoiceRow[] = [];
@@ -43,5 +40,5 @@ export async function loadBillingHistory(session: Session | null, now: Date = ne
   const byNewest = (a: { at?: string; paidAt?: string | null }, b: { at?: string; paidAt?: string | null }) => (b.at ?? b.paidAt ?? "").localeCompare(a.at ?? a.paidAt ?? "");
   invoices.sort(byNewest);
   payments.sort(byNewest);
-  return { status: "ok", business: { name: section.business.name }, subscriptions, invoices, payments };
+  return { status: "ok", business: { name: access.businessName }, subscriptions, invoices, payments };
 }
