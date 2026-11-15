@@ -1,10 +1,11 @@
 import { cookies } from "next/headers";
 import { Suspense } from "react";
-import { requireActiveOrganization, hasPermission, sensitiveAccess } from "@/lib/auth/require-session";
+import { requireActiveOrganization, hasPermission, canSee, sensitiveAccess } from "@/lib/auth/require-session";
 import { prisma } from "@/lib/db";
 import { getActiveNotice } from "@/modules/subscriptions/platform-notice";
 import { getCurrentSubscription } from "@/modules/subscriptions/subscription";
 import { opsBillingOn } from "@/modules/ops-link/config";
+import { getPlanUsage } from "@/modules/subscriptions/usage";
 import { getEntitlements } from "@/modules/ops-link/entitlements";
 import { TRIAL_DURATION_DAYS } from "@/modules/subscriptions/trial-plan";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
@@ -14,7 +15,7 @@ import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shel
 import { Toaster } from "@/components/ui/toaster";
 import { SensitiveAccessProvider } from "@/components/sensitive-access";
 import { UserMenu } from "@/components/app-shell/user-menu";
-import { platformAccountOrigin } from "@/lib/platform/config";
+import { platformAccountOrigin, platformStoreOrigin } from "@/lib/platform/config";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
 import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
@@ -46,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [organization, subscription, inbox, push] = await Promise.all([
     prisma.organization.findUniqueOrThrow({
       where: { id: organizationId },
-      select: { name: true },
+      select: { name: true, logo: true },
     }),
     getCurrentSubscription(organizationId),
     getInbox(organizationId, session.user.id),
@@ -86,6 +87,23 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const periodEnd = entitlements.currentPeriodEnd;
   const renewal = !grace && entitlements.interval === "ANNUAL" && periodEnd && daysUntil(periodEnd) <= 30 ? { endsOn: fmt(periodEnd) } : null;
 
+  // Billing (Caterly's read-only Subscription page) is for roles with "Billing and Plan"; the Store is the Business Admin's alone (AJ, 2026-11-15).
+  const [showBilling, isAdmin] = await Promise.all([canSee("planBilling", organizationId), hasPermission({ tenant: ["edit"] }, organizationId)]);
+
+  const usage = showBilling ? await getPlanUsage(organizationId, entitlements) : [];
+  const drawerPlan = showBilling && entitlements.planName
+    ? {
+        name: entitlements.planName,
+        status: entitlements.status,
+        detail:
+          entitlements.status === "TRIALING" && entitlements.trialEndsAt
+            ? `Free trial ends on ${fmt(entitlements.trialEndsAt)}`
+            : entitlements.currentPeriodEnd
+              ? `Plan period ends on ${fmt(entitlements.currentPeriodEnd)}`
+              : "Active",
+      }
+    : null;
+
   const fullName = `${session.user.firstName ?? ""} ${session.user.lastName ?? ""}`.trim() || session.user.name;
   const initials =
     ((session.user.firstName?.[0] ?? session.user.name[0] ?? "") + (session.user.lastName?.[0] ?? "")).toUpperCase() || "U";
@@ -105,7 +123,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex items-center gap-1">
             {activeLocation.canSwitch && <LocationSwitcher locations={switcherLocations.map((l) => ({ id: l.id, name: l.name }))} activeId={activeLocation.locationId} />}
             <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
-            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} accountUrl={`${platformAccountOrigin()}/profile`} />
+            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} accountUrl={`${platformAccountOrigin()}/profile`} showBilling={showBilling} storeUrl={isAdmin ? platformStoreOrigin() : null} businessName={organization.name} logo={organization.logo} isAdmin={isAdmin} plan={drawerPlan} usage={usage} />
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>

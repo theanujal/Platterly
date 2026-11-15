@@ -99,7 +99,7 @@ test("a name and phone changed in the Account show in Caterly's top bar", async 
   await expect(page.getByRole("button", { name: "Account menu" })).toContainText("Asha Rao Nair");
   // The menu points to the Account for profile and password; Caterly has no edit page of its own.
   await page.getByRole("button", { name: "Account menu" }).click();
-  await expect(page.getByRole("menuitem", { name: /Your Account/ })).toBeVisible();
+  await expect(page.getByTestId("account-drawer").getByRole("link", { name: "Account", exact: true })).toBeVisible();
   await page.goto(`${CATERLY}/settings/account/user-profile`);
   await expect(page.getByText("This page could not be found.")).toBeVisible();
 });

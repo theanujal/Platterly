@@ -53,18 +53,24 @@ test("merged menus open as tabs, and Settings, Billing and Sign out are in the a
     await expect(page).toHaveURL(new RegExp(`/${tab.toLowerCase()}$`));
   }
 
-  // The account menu: Settings, Billing (the Subscription tab) and Sign out.
+  // The account drawer (opens from the right): the way to the Account, Store, Settings and Billing, the plan and its usage, and Sign out fixed at the bottom.
+  const drawer = page.getByTestId("account-drawer");
   await page.getByRole("button", { name: "Account menu" }).click();
-  await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
-  await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
-  // Billing has no Caterly page: it goes through /subscribe to the Store (the Store is another app, so only the link is checked).
-  await expect(page.getByRole("menuitem", { name: "Billing" })).toHaveAttribute("href", "/subscribe");
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByRole("link", { name: "Account", exact: true })).toHaveAttribute("href", /account\.localhost:3300/);
+  await expect(drawer.getByRole("button", { name: "Sign out" })).toBeVisible();
+  // Billing is Caterly's read-only Subscription page; the Store (the Business Admin's, another app) sits beside it, so only its link is checked.
+  await expect(drawer.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/settings/subscription");
+  await expect(drawer.getByRole("link", { name: "Store" })).toHaveAttribute("href", /store\.localhost:3300/);
+  await expect(drawer.getByTestId("drawer-usage")).toContainText("Team members");
+  await expect(drawer.getByTestId("drawer-usage")).toContainText("Customers");
   await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await drawer.getByRole("link", { name: "Settings" }).click();
   await expect(page).toHaveURL(/\/settings(\/.*)?$/);
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await drawer.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
 });
 

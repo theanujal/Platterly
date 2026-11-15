@@ -98,7 +98,7 @@ export async function signUpCaterer(page: Page, email: string, options: SignUpOp
 /** Signs out through the account menu at the top right (Settings, Billing and Sign out live there). */
 export async function signOutFromMenu(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Account menu" }).click();
-  await page.getByRole("menuitem", { name: "Sign out" }).click();
+  await page.getByTestId("account-drawer").getByRole("button", { name: "Sign out" }).click();
 }
 
 export async function selectOption(page: Page, trigger: Locator, optionName: string | RegExp): Promise<void> {
