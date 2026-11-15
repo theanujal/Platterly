@@ -123,7 +123,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="ml-auto flex items-center gap-1">
             {activeLocation.canSwitch && <LocationSwitcher locations={switcherLocations.map((l) => ({ id: l.id, name: l.name }))} activeId={activeLocation.locationId} />}
             <NotificationBell onRead={markNotificationReadAction} onReadAll={markAllNotificationsReadAction} unread={inbox.unread} items={inbox.items.map((item) => ({ ...item, createdAt: item.createdAt.toISOString() }))} />
-            <UserMenu fullName={fullName} email={session.user.email} initials={initials} canOpenSettings={allowedHrefs.includes("/settings")} accountUrl={`${platformAccountOrigin()}/profile`} showBilling={showBilling} storeUrl={isAdmin ? platformStoreOrigin() : null} businessName={organization.name} logo={organization.logo} isAdmin={isAdmin} plan={drawerPlan} usage={usage} />
+            <UserMenu fullName={fullName} email={session.user.email} initials={initials} image={session.user.image ?? null} canOpenSettings={allowedHrefs.includes("/settings")} accountUrl={`${platformAccountOrigin()}/profile`} showBilling={showBilling} storeUrl={isAdmin ? platformStoreOrigin() : null} businessName={organization.name} logo={organization.logo} isAdmin={isAdmin} plan={drawerPlan} usage={usage} />
           </div>
         </header>
         <div className="flex flex-1 flex-col">{children}</div>

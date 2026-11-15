@@ -11,7 +11,9 @@ import { deviceLabel } from "@/modules/account/devices";
 import { alertIfNewDevice } from "@/modules/account/new-sign-in-alert";
 import { trustedOrigins } from "@/lib/routing/hosts";
 import { normalizePhone } from "@/modules/account/phone";
-import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, authOrigin } from "./config";
+import { ACCOUNT_SCOPES, COOKIES, OTP, PASSWORD, SESSION_POLICY, accountOrigin, authOrigin } from "./config";
+import { photoVersion } from "../account/photo";
+import { photoLinkUrl } from "../account/photo-link";
 import { mayStartSession } from "../account/hold";
 import { identityPool } from "./identity-db";
 import { OAUTH_QUERY_HEADER } from "./sign-up-gate";
@@ -217,13 +219,17 @@ export function createIdp(options: IdpOptions = {}) {
         scopes: [...ACCOUNT_SCOPES],
         allowDynamicClientRegistration: false,
         // Products read the common details from userinfo (with the profile scope): first and last name, and the phone.
-        customUserInfoClaims: ({ user, scopes }) => {
+        customUserInfoClaims: async ({ user, scopes }) => {
           const u = user as Record<string, unknown>;
           const claims: Record<string, string> = {};
           if (scopes.includes("profile")) {
             if (typeof u.firstName === "string" && u.firstName) claims.given_name = u.firstName;
             if (typeof u.lastName === "string" && u.lastName) claims.family_name = u.lastName;
             if (typeof u.phone === "string" && u.phone) claims.phone_number = u.phone;
+            // The profile photo, as a signed address on the Account's host (photo-link.ts); left out when there is no photo.
+            const version = typeof u.id === "string" ? await photoVersion(pool, u.id).catch(() => null) : null;
+            const picture = version && typeof u.id === "string" ? photoLinkUrl(accountOrigin(), u.id, version) : null;
+            if (picture) claims.picture = picture;
           }
           return claims;
         },

@@ -210,6 +210,8 @@ export const auth = betterAuth({
             lastName: typeof profile.family_name === "string" ? profile.family_name : undefined,
             // The phone every product collects at sign-up, kept once in the Platterly Account and sent here as the standard phone_number claim.
             phone: typeof profile.phone_number === "string" ? profile.phone_number : undefined,
+            // The Account photo (a signed address). No picture in the answer means the person has none or removed it, so the saved one is cleared too (an empty value; the screens treat it as no photo).
+            image: typeof profile.picture === "string" ? profile.picture : "",
           }),
         },
       ],

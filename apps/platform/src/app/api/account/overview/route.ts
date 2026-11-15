@@ -14,8 +14,9 @@ export async function GET(request: Request) {
   const result = await loadAccountOverview(prisma, ref?.session ?? null);
   if (ref && result.status === "ok") {
     try {
-      const name = (await getProfile(identityPool(), ref.sub))?.name;
-      if (name) result.overview.user.name = name;
+      const profile = await getProfile(identityPool(), ref.sub);
+      if (profile?.name) result.overview.user.name = profile.name;
+      if (profile?.photoVersion) result.overview.user.photoVersion = profile.photoVersion;
     } catch {
       /* the email is shown instead */
     }

@@ -13,6 +13,8 @@ test("a person adds, sees, changes and removes a profile photo; bad files are re
   await expect(photo).toBeVisible();
   await page.reload();
   await expect(photo).toBeVisible();
+  // The same photo is the avatar in the Account's own header.
+  await expect(page.locator(".pa-acct-chip .pa-avatar-img")).toBeVisible();
   const served = await page.request.get("/api/account/photo");
   expect(served.status()).toBe(200);
   expect(served.headers()["content-type"]).toBe("image/png");
@@ -28,6 +30,8 @@ test("a person adds, sees, changes and removes a profile photo; bad files are re
 
   await page.getByRole("button", { name: "Remove photo" }).click();
   await expect(photo).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator(".pa-acct-chip .pa-avatar-img")).toHaveCount(0);
   expect((await page.request.get("/api/account/photo")).status()).toBe(404);
 });
 

@@ -57,3 +57,15 @@ export async function removePhoto(pool: Pool, userId: string, dir: string = phot
   if (key) await rm(path.join(dir, path.basename(key)), { force: true });
   return !!key;
 }
+
+/** The version of the person's current photo (the time it was set, in ms), or null when there is none. */
+export async function photoVersion(pool: Pool, userId: string): Promise<string | null> {
+  const { rows } = await pool.query('select case when "photoKey" is not null then floor(extract(epoch from "photoUpdatedAt") * 1000)::bigint::text end as v from "accountProfile" where "userId" = $1', [userId]);
+  return (rows[0]?.v as string | null | undefined) ?? null;
+}
+
+/** The photo only when `version` is still the current one, so an old shared address stops working once the photo changes or is removed. */
+export async function readPhotoVersion(pool: Pool, userId: string, version: string, dir: string = photoDir()): Promise<{ bytes: Buffer; type: string } | null> {
+  if ((await photoVersion(pool, userId)) !== version) return null;
+  return readPhoto(pool, userId, dir);
+}

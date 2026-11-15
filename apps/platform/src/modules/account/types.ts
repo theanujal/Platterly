@@ -17,7 +17,7 @@ export type BusinessSection =
   | { state: "forbidden"; reason: "member_disabled" | "member_removed" }
   | { state: "ok"; business: BusinessSummary; products: Record<ProductKey, LinkState>; team: TeamMemberView[]; /** Where "Open" takes the person: the product's own dashboard, from the product registry. Only for a linked product whose registry entry is current. */ openUrls?: Partial<Record<ProductKey, string>> };
 
-export type AccountUserView = { id: string; email: string; emailVerified: boolean; /** The person's full name, when the Account holds one; screens fall back to the email. */ name?: string };
+export type AccountUserView = { id: string; email: string; emailVerified: boolean; /** The person's full name, when the Account holds one; screens fall back to the email. */ name?: string; /** The version of the person's profile photo, when there is one (the shell builds the picture address from it). */ photoVersion?: string | null };
 export type AccountOverview = { user: AccountUserView; business: BusinessSection };
 
 export type OverviewResult = { status: "ok"; overview: AccountOverview } | { status: "unauthenticated" } | { status: "error" };

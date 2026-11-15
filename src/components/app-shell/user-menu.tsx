@@ -20,11 +20,13 @@ export type DrawerPlan = { name: string; status: string; detail: string };
  * the Store and the plan are the Business Admin's (the crown). Plan and usage show only to roles with "Billing and Plan".
  */
 export function UserMenu({
-  fullName, email, initials, businessName, logo, isAdmin, canOpenSettings, accountUrl, showBilling, storeUrl, plan, usage,
+  fullName, email, initials, image, businessName, logo, isAdmin, canOpenSettings, accountUrl, showBilling, storeUrl, plan, usage,
 }: {
   fullName: string;
   email: string;
   initials: string;
+  /** The person's Platterly Account photo, when they have one. */
+  image: string | null;
   businessName: string;
   logo: string | null;
   isAdmin: boolean;
@@ -50,7 +52,12 @@ export function UserMenu({
           <span className="text-xs font-medium">{fullName}</span>
           <span className="text-[11px] text-muted-foreground">{businessName}</span>
         </div>
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{initials}</div>
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element -- the person's photo from their Platterly Account, a signed address on another host
+          <img src={image} alt="" className="size-8 shrink-0 rounded-full object-cover" />
+        ) : (
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">{initials}</div>
+        )}
         <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       </SheetTrigger>
       <SheetContent side="right" className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-sm" data-testid="account-drawer">
@@ -62,6 +69,9 @@ export function UserMenu({
             {logo ? (
               // eslint-disable-next-line @next/next/no-img-element -- the business's own uploaded logo
               <img src={logo} alt="" className="size-20 rounded-full border border-border bg-background object-cover" />
+            ) : image ? (
+              // eslint-disable-next-line @next/next/no-img-element -- the person's photo from their Platterly Account
+              <img src={image} alt="" className="size-20 rounded-full border border-border bg-background object-cover" />
             ) : (
               <div className="flex size-20 items-center justify-center rounded-full bg-primary/10 text-xl font-semibold text-primary">{initials}</div>
             )}

@@ -22,7 +22,7 @@ const NAV: { href: string; prefix?: string; label: string; title: string; icon: 
   { href: "/billing-details", label: "Billing Details", title: "Billing Details", icon: "building" },
   { href: "/profile", prefix: "My ", label: "Profile", title: "My Profile", icon: "user", divider: true },
   { href: "/security", label: "Security", title: "Security", icon: "shield" },
-  { href: "/devices", label: "Devices", title: "Devices and activity", icon: "monitor" },
+  { href: "/devices", label: "Devices", title: "Devices", icon: "monitor" },
   { href: "/notifications", label: "Notifications", title: "Notifications", icon: "bell" },
 ];
 
@@ -31,10 +31,10 @@ const isActive = (href: string, pathname: string) => (href === "/" ? pathname ==
 /** Who the shell says is signed in, from the real data: the email, a placeholder while loading, or "Not signed in". */
 function useWho() {
   const data = useAccountData();
-  if (data.phase === "ready") return { label: initials(data.overview.user.name ?? data.overview.user.email), name: data.overview.user.name ?? data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified", business: data.overview.business.state === "ok" ? data.overview.business.business.name : null };
-  if (data.phase === "unauthenticated") return { label: "?", name: "Not signed in", sub: "Sign in to see your account", business: null };
-  if (data.phase === "error") return { label: "!", name: "Account unavailable", sub: "Could not load", business: null };
-  return { label: "…", name: "Loading", sub: "", business: null };
+  if (data.phase === "ready") return { photo: data.overview.user.photoVersion ? `/api/account/photo?v=${data.overview.user.photoVersion}` : undefined, label: initials(data.overview.user.name ?? data.overview.user.email), name: data.overview.user.name ?? data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified", business: data.overview.business.state === "ok" ? data.overview.business.business.name : null };
+  if (data.phase === "unauthenticated") return { photo: undefined, label: "?", name: "Not signed in", sub: "Sign in to see your account", business: null };
+  if (data.phase === "error") return { photo: undefined, label: "!", name: "Account unavailable", sub: "Could not load", business: null };
+  return { photo: undefined, label: "…", name: "Loading", sub: "", business: null };
 }
 
 /** The name at the top right: a small menu with the pages about the person and Sign out. */
@@ -66,7 +66,7 @@ function UserMenu() {
           <strong>{who.name}</strong>
           <small>{who.business ?? who.sub}</small>
         </span>
-        <Avatar label={who.label} size="sm" round />
+        <Avatar label={who.label} size="sm" round photo={who.photo} />
         <Icon name="chevronDown" size={16} />
       </button>
       {open && (
@@ -203,7 +203,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
         </nav>
         <div className="pa-side-foot">
           <Link href="/profile" className="pa-user" aria-label="Your profile">
-            <Avatar label={who.label} size="sm" round />
+            <Avatar label={who.label} size="sm" round photo={who.photo} />
             <span className="pa-user-text">
               <span className="pa-user-name">{who.name}</span>
               <span className="pa-user-mail">{who.sub}</span>
