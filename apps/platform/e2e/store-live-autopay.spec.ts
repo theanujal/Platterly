@@ -237,6 +237,8 @@ test.describe("Live Store: monthly auto-pay", () => {
     await page.goto(`${ACCOUNT}/payment-methods`);
     await onPage("Add payment method").click();
     await page.getByRole("menuitem", { name: "Add card" }).click();
+    await page.getByRole("checkbox", { name: /I understand and agree/ }).check();
+    await page.getByRole("button", { name: "Continue to Razorpay" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(page.getByText(/was saved\. The ₹5/)).toBeVisible({ timeout: 60_000 });
     await expect(methodRows()).toHaveCount(2);

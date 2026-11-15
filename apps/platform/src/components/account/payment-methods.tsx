@@ -99,6 +99,8 @@ export function PaymentMethods() {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ productKey: string; notice: Notice } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // The product whose "save a card" consent panel is open, and whether the owner has ticked it.
+  const [consentAdd, setConsentAdd] = useState<{ productKey: string; agreed: boolean } | null>(null);
   const [confirmAuto, setConfirmAuto] = useState<{ productKey: string; change: "pause" | "cancel" } | null>(null);
 
   // A change reloads the list by bumping this counter; the effect below is the only place that reads it.
@@ -137,6 +139,7 @@ export function PaymentMethods() {
   async function addCard(productKey: string) {
     setBusy(`add:${productKey}`);
     setNotice(null);
+    setConsentAdd(null);
     try {
       const started = await post({ action: "add", productKey });
       if (!started.ok) return say(productKey, "failed", messageOf(started, "We could not start saving your card. Please try again in a few minutes."));
@@ -145,7 +148,10 @@ export function PaymentMethods() {
       const verified = await post({ action: "add-verify", productKey, razorpayOrderId: paid.razorpay_order_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature });
       if (!verified.ok) return say(productKey, "failed", messageOf(verified, "We could not confirm your card. Please try again."));
       await load();
-      say(productKey, "ok", `${String(verified.json.label ?? "Your card")} was saved. The ₹5 taken to verify it is refunded.`);
+      const saved = String(verified.json.label ?? "Your card");
+      say(productKey, "ok", verified.json.refunded === false
+        ? `${saved} was saved. The ₹5 taken to verify it could not be refunded automatically. Platterly has been told and will refund it to you.`
+        : `${saved} was saved. The ₹5 taken to verify it has been refunded; your bank may take a few days to show it.`);
     } catch {
       say(productKey, "failed", "Something went wrong. Please try again.");
     } finally {
@@ -223,13 +229,31 @@ export function PaymentMethods() {
                     label="Add payment method"
                     triggerClass="pa-btn pa-btn-primary"
                     items={[
-                      { text: "Add card", icon: "card", onClick: () => addCard(p.productKey), disabled: busy !== null },
+                      { text: "Add card", icon: "card", onClick: () => setConsentAdd({ productKey: p.productKey, agreed: false }), disabled: busy !== null },
                       { text: "Add UPI", word: "UPI", onClick: () => {}, disabled: true, note: "Adding a UPI id on its own is not available yet." },
                     ]}
                   >
                     <Icon name="plus" size={16} /> Add payment method
                   </Menu>
                 </div>
+                {consentAdd?.productKey === p.productKey && (
+                  <div className="pa-pm-confirm" role="alertdialog" aria-label="Save a card">
+                    <p className="pa-muted">
+                      Razorpay will ask for your card in its own secure window; Platterly never sees the number. We take ₹5 to verify it and refund that ₹5 straight away. Saving a card
+                      lets Razorpay keep a reusable token for it, valid for one year and limited to ₹15,000 a charge. Saving a card does not start any payment. Only your primary method
+                      is ever charged, and only for a subscription you have switched auto-pay on for. You can remove the card here at any time.
+                    </p>
+                    <label>
+                      <input type="checkbox" checked={consentAdd.agreed} onChange={(e) => setConsentAdd({ productKey: p.productKey, agreed: e.target.checked })} /> I understand and agree to save this card.
+                    </label>{" "}
+                    <button type="button" className="pa-btn pa-btn-primary" disabled={!consentAdd.agreed || busy !== null} onClick={() => addCard(p.productKey)}>
+                      Continue to Razorpay
+                    </button>{" "}
+                    <button type="button" className="pa-btn pa-btn-outline" onClick={() => setConsentAdd(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {mine && (
                   <p className="pa-muted" role={mine.kind === "failed" ? "alert" : "status"}>
                     {mine.text}

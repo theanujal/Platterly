@@ -170,7 +170,7 @@ export function readMethodRequest(input: unknown): MethodRequest | null {
   return null;
 }
 
-export type MethodAnswer = MethodsAnswer | AddCardWindow | MakePrimaryWindow | { label: string } | { ok: true };
+export type MethodAnswer = MethodsAnswer | AddCardWindow | MakePrimaryWindow | { label: string; refunded?: boolean } | { ok: true };
 
 /** The Account's and Store's payment-method actions, for the signed-in person's own business and only its active Admin. Ops does the work. */
 export async function managePaymentMethod(session: Session | null, input: unknown): Promise<PurchaseResult<MethodAnswer>> {

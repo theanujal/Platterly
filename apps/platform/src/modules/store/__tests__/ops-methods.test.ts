@@ -60,8 +60,8 @@ describe("Store: payment-method calls to Ops", () => {
     expect(await startStoreAddCard(base, deps(a.fetchImpl))).toEqual({ ok: true, answer: started });
     expect(a.seen.url).toContain("/billing/method-add");
     expect(await startStoreAddCard(base, deps(ops({ keyId: "k" }).fetchImpl))).toEqual({ ok: false, reason: "bad_answer" });
-    const v = ops({ ok: true, label: "Visa ending 9999" });
-    expect(await verifyStoreAddCard({ ...base, razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "s" }, deps(v.fetchImpl))).toEqual({ ok: true, answer: { label: "Visa ending 9999" } });
+    const v = ops({ ok: true, label: "Visa ending 9999", refunded: false });
+    expect(await verifyStoreAddCard({ ...base, razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "s" }, deps(v.fetchImpl))).toEqual({ ok: true, answer: { label: "Visa ending 9999", refunded: false } });
     expect(v.seen.url).toContain("/billing/method-add-verify");
     expect(JSON.parse(v.seen.body!)).toEqual({ razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "s" });
   });

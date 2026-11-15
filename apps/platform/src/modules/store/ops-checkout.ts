@@ -172,11 +172,12 @@ export async function startStoreAddCard(scope: Scope, deps: Deps = {}): Promise<
 
 const labelAnswer = (a: Record<string, unknown>): CheckoutResult<{ label: string }> => (str(a, "label") ? { ok: true, answer: { label: a.label as string } } : { ok: false, reason: "bad_answer" });
 
-/** Step two: what Razorpay's window returned. Ops checks the signature, saves the card and refunds the Rs 5. */
-export async function verifyStoreAddCard(input: Scope & { razorpayOrderId: string; razorpayPaymentId: string; signature: string }, deps: Deps = {}): Promise<CheckoutResult<{ label: string }>> {
+/** Step two: what Razorpay's window returned. Ops checks the signature and the payment, saves the card, refunds the Rs 5 and says whether the refund went through. */
+export async function verifyStoreAddCard(input: Scope & { razorpayOrderId: string; razorpayPaymentId: string; signature: string }, deps: Deps = {}): Promise<CheckoutResult<{ label: string; refunded: boolean }>> {
   const { businessId, opsProductKey, ...body } = input;
   const got = await signedOpsPost(businessId, opsProductKey, "method-add-verify", body, deps);
-  return got.ok ? labelAnswer(got.answer) : got;
+  if (!got.ok) return got;
+  return str(got.answer, "label") && typeof got.answer.refunded === "boolean" ? { ok: true, answer: { label: got.answer.label as string, refunded: got.answer.refunded } } : { ok: false, reason: "bad_answer" };
 }
 
 export type MakePrimaryWindow = { keyId: string; customerId: string; razorpaySubscriptionId: string; description: string };

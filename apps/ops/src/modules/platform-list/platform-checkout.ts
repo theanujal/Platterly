@@ -114,8 +114,8 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
     if (action === "method-add-verify") {
       const parsed = parseVerifyRequest(json);
       if (!parsed.ok) return reply(400, { error: parsed.error });
-      const method = await verifyAddCard({ businessId, ...parsed.value }, platformRazorpay());
-      return reply(200, { ok: true, label: method.label });
+      const { method, refunded } = await verifyAddCard({ businessId, ...parsed.value }, platformRazorpay());
+      return reply(200, { ok: true, label: method.label, refunded });
     }
     if (action === "method-primary-verify") {
       const parsed = parseBillingVerifyRequest(json);

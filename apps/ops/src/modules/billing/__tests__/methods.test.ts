@@ -162,7 +162,8 @@ describe("adding a card", () => {
     const start = await startAddCard(biz, creds);
     expect(start).toMatchObject({ keyId: KEY_ID, customerId: "cust_T1", amountPaise: 500 });
     pays.pay_new = card("pay_new", "token_N", "9999", "cust_T1");
-    const row = await verifyAddCard({ businessId: biz, razorpayOrderId: start.razorpayOrderId, razorpayPaymentId: "pay_new", signature: orderSig(start.razorpayOrderId, "pay_new") }, creds);
+    const { method: row, refunded } = await verifyAddCard({ businessId: biz, razorpayOrderId: start.razorpayOrderId, razorpayPaymentId: "pay_new", signature: orderSig(start.razorpayOrderId, "pay_new") }, creds);
+    expect(refunded).toBe(true);
     expect(row).toMatchObject({ label: "Visa ending 9999", razorpayTokenId: "token_N", razorpaySubscriptionId: null });
     expect(calls.find((c) => c.path === "/payments/pay_new/refund")?.body).toEqual({ amount: 500 });
   });
@@ -176,13 +177,23 @@ describe("adding a card", () => {
     expect(await prisma.paymentMethod.count({ where: { businessId: biz } })).toBe(0);
   });
 
+  it("saves nothing when the payment was not captured", async () => {
+    const { biz } = await setup();
+    const start = await startAddCard(biz, creds);
+    pays.pay_new = { ...card("pay_new", "token_N", "9999", "cust_T1"), status: "authorized" };
+    await expect(verifyAddCard({ businessId: biz, razorpayOrderId: start.razorpayOrderId, razorpayPaymentId: "pay_new", signature: orderSig(start.razorpayOrderId, "pay_new") }, creds)).rejects.toThrow(/verify/);
+    expect(await prisma.paymentMethod.count({ where: { businessId: biz } })).toBe(0);
+  });
+
   it("keeps the card and tells staff when the Rs 5 cannot be refunded", async () => {
     const { biz } = await setup();
     const start = await startAddCard(biz, creds);
     pays.pay_new = card("pay_new", "token_N", "9999", "cust_T1");
     failPaths = ["/payments/pay_new/refund"];
-    await verifyAddCard({ businessId: biz, razorpayOrderId: start.razorpayOrderId, razorpayPaymentId: "pay_new", signature: orderSig(start.razorpayOrderId, "pay_new") }, creds);
+    const { refunded } = await verifyAddCard({ businessId: biz, razorpayOrderId: start.razorpayOrderId, razorpayPaymentId: "pay_new", signature: orderSig(start.razorpayOrderId, "pay_new") }, creds);
+    expect(refunded).toBe(false);
     expect(await prisma.paymentMethod.count({ where: { businessId: biz } })).toBe(1);
+    expect(await prisma.auditLog.count({ where: { subject: biz, action: "billing.method_refund_failed" } })).toBeGreaterThanOrEqual(1);
     expect(await prisma.notification.count({ where: { businessId: biz, kind: "method.refund_failed" } })).toBe(1);
   });
 });

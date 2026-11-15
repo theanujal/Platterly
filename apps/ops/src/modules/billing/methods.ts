@@ -88,27 +88,35 @@ export async function startAddCard(businessId: string, creds?: PlatformRazorpay 
   const keys = needCreds(creds);
   const customerId = await ensureRazorpayCustomer(businessId, keys, fetchImpl);
   const { id } = await createTokenRegistrationOrder(keys, { customerId, receipt: `pm_${randomBytes(8).toString("hex")}`, notes: { businessId, purpose: "add_payment_method" } }, fetchImpl);
-  return { keyId: keys.keyId, customerId, razorpayOrderId: id, amountPaise: 500, description: "Save a card for renewals (₹5, refunded straight away)" };
+  return { keyId: keys.keyId, customerId, razorpayOrderId: id, amountPaise: 500, description: "Save a card for renewals (₹5 to verify it, refunded straight away)" };
 }
 
-/** Step two: Checkout's signature, then the card is saved and the Rs 5 refunded. A refund that fails keeps the card and tells staff. */
-export async function verifyAddCard(input: { businessId: string; razorpayOrderId: string; razorpayPaymentId: string; signature: string }, creds?: PlatformRazorpay | null, fetchImpl: typeof fetch = fetch): Promise<PaymentMethod> {
+/**
+ * Step two: Checkout's signature, the payment's own record at Razorpay (this business's customer, captured, a token issued), and only then is the card saved.
+ * The Rs 5 is then refunded. A refund that fails keeps the card, is audited, raises a staff alert and is reported back as `refunded: false` so the owner is
+ * never told it was refunded when it was not.
+ */
+export async function verifyAddCard(input: { businessId: string; razorpayOrderId: string; razorpayPaymentId: string; signature: string }, creds?: PlatformRazorpay | null, fetchImpl: typeof fetch = fetch): Promise<{ method: PaymentMethod; refunded: boolean }> {
   const keys = needCreds(creds);
   if (!verifyCheckoutSignature(input, keys.keySecret)) throw cannotVerify();
   const customer = await prisma.razorpayCustomer.findUnique({ where: { businessId: input.businessId } });
   const payment = await fetchRazorpayPayment(keys, input.razorpayPaymentId, fetchImpl);
-  if (!customer || payment.customer_id !== customer.customerId || !payment.token_id) throw cannotVerify();
+  if (!customer || payment.customer_id !== customer.customerId || !payment.token_id || payment.status !== "captured") throw cannotVerify();
   const method = await recordMethodFromPayment(input.businessId, input.razorpayPaymentId, null, keys, fetchImpl);
-  if (!payment.amount_refunded) {
+  let refunded = !!payment.amount_refunded;
+  if (!refunded) {
     try {
-      await refundRazorpayPayment(keys, payment.id, payment.amount, fetchImpl);
+      const refund = await refundRazorpayPayment(keys, payment.id, payment.amount, fetchImpl);
+      if (refund.status === "failed") throw new Error("Razorpay reported the refund as failed");
+      refunded = true;
     } catch (error) {
       console.error("[methods] could not refund the card registration", payment.id, error);
+      await audit({ actorUserId: null, action: "billing.method_refund_failed", subject: input.businessId, detail: { methodId: method.id, razorpayPaymentId: payment.id, amountPaise: payment.amount } });
       await notifySafely({ productKey: await anyProductKey(input.businessId), businessId: input.businessId, kind: "method.refund_failed", severity: "WARNING", title: "A card's ₹5 could not be refunded", body: `Razorpay payment ${payment.id} (₹${payment.amount / 100}) was taken to save a card and must be refunded in the Razorpay dashboard.`, link: `/businesses/${input.businessId}`, dedupeKey: `method_refund_failed:${payment.id}` });
     }
   }
-  await audit({ actorUserId: null, action: "billing.method_added", subject: input.businessId, detail: { methodId: method.id, label: method.label } });
-  return method;
+  await audit({ actorUserId: null, action: "billing.method_added", subject: input.businessId, detail: { methodId: method.id, label: method.label, refunded } });
+  return { method, refunded };
 }
 
 async function anyProductKey(businessId: string): Promise<string> {

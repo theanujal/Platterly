@@ -55,7 +55,9 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 
 - A Razorpay customer needs the owner's email and mobile number; without them a monthly purchase or card add is refused with a message saying which is missing.
 - `verifyMakePrimary` accepts only a subscription this business started (notes carry business, product and purpose) that Razorpay reports `authenticated` or `active`; otherwise it cancels it and changes nothing. It points the subscription row first, then cancels the old one, so the old one's cancelled webhook is ignored. The old card stays as a secondary; an old UPI method is deleted (decision 5).
-- The Rs 5 refund of a card registration that fails keeps the card and raises a staff alert.
+- The Rs 5 refund of a card registration that fails keeps the card, writes a `billing.method_refund_failed` audit row, raises a staff alert, and tells the owner the refund is pending (never that it was refunded).
+- Add card registers a reusable, recurring-authorised **token** (up to Rs 15,000 a charge, one year, `as_presented`); it is not a subscription or mandate and nothing is debited by saving it. The Account shows this in a consent panel the owner must tick before Razorpay opens. The card is saved only after Ops verifies the signature and finds a captured payment of this business's customer with a token.
+- **Add UPI stays disabled** until the renewal model is decided (AJ, 2026-11-15). Renewal behaviour is unchanged.
 - Not built yet: routes and `proxy.ts` entries (3b.2), recording the first method from a verified monthly purchase (3b.2), Account page (3b.3), annual reminders (3b.4).
 
 ## Built (3b.2, 2026-11-14, Ops and Platform; proven in a browser for the monthly purchase)

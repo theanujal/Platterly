@@ -147,6 +147,8 @@ test.describe("Live Store: UPI auto-pay", () => {
     await page.goto(`${ACCOUNT}/payment-methods`);
     await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
     await page.getByRole("menuitem", { name: "Add card" }).click();
+    await page.getByRole("checkbox", { name: /I understand and agree/ }).check();
+    await page.getByRole("button", { name: "Continue to Razorpay" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(page.getByText(/was saved\. The ₹5/)).toBeVisible({ timeout: 60_000 });
     await expect(methodRows()).toHaveCount(2);
@@ -169,6 +171,8 @@ test.describe("Live Store: UPI auto-pay", () => {
     await page.goto(`${ACCOUNT}/payment-methods`);
     await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
     await page.getByRole("menuitem", { name: "Add card" }).click();
+    await page.getByRole("checkbox", { name: /I understand and agree/ }).check();
+    await page.getByRole("button", { name: "Continue to Razorpay" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(methodRows()).toHaveCount(2, { timeout: 60_000 });
     const before = await ops(`select "razorpaySubscriptionId" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);
