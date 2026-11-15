@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Mail, MessageCircle, Trash2, Users, Wallet } from "lucide-react";
+import { Bell, Building2, ChefHat, Code2, Coins, CreditCard, FileText, Link2, Mail, MessageCircle, Users, Wallet } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "cn";
 
@@ -13,7 +13,7 @@ interface NavGroup {
 
 // Grouped Settings IA matching the product doc's nav (Chunk 5 Group 5.4). Every
 // leaf is a real linkable route, gated independently by its own page (a
-// manager/staff visiting /settings/team or /settings/danger-zone gets
+// manager/staff visiting /settings/team gets
 // redirected/denied there, same as today's Super Admin nav convention of
 // always-show/gate-on-visit rather than hiding nav items).
 const NAV_GROUPS: NavGroup[] = [
@@ -44,7 +44,6 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   { label: "Billing", items: [{ label: "Subscription", href: "/settings/subscription", icon: CreditCard }] },
-  { label: "Danger Zone", items: [{ label: "Delete All Data", href: "/settings/danger-zone", icon: Trash2 }] },
 ];
 
 // The very same sub-nav as Menu Catalog's (AJ, 2026-09-30): full-bleed
