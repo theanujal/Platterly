@@ -57,11 +57,28 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await page.getByRole("button", { name: "Save Advance" }).click();
   await expect(page.getByText("Advance saved.")).toBeVisible();
 
-  // GST lives here now (AJ, 2026-10-10): the number, the switch, and the default rate and type for new invoices.
-  await page.getByLabel("GST number (optional)").fill("not valid");
+  // The GSTIN is part of the billing profile (AJ, 2026-11-16): Payments shows it read-only and keeps the switch, the default rate and type.
+  await expect(page.getByTestId("gstin-readonly")).toHaveText("Not added yet");
+  await page.getByRole("switch", { name: "Show GST details on invoices" }).click();
   await page.getByRole("button", { name: "Save GST" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "15 letters and digits" })).toBeVisible();
-  await page.getByLabel("GST number (optional)").fill("29ABCDE1234F1Z5");
+  await expect(page.getByRole("alert").filter({ hasText: "Enter your GST number" })).toBeVisible();
+  await page.getByRole("switch", { name: "Show GST details on invoices" }).click();
+
+  // Business Profile has the two cards; the GSTIN is edited in the Billing Profile card, with the same check as the Account.
+  await page.goto("/settings/account/business-profile");
+  await expect(page.getByRole("heading", { name: "Caterly Profile" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Business Profile" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Billing Profile" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit Billing" }).click();
+  await page.getByLabel("GSTIN").fill("not valid");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.getByText("Enter a valid 15-character GSTIN")).toBeVisible();
+  await page.getByLabel("GSTIN").fill("29ABCDE1234F1Z5");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+  await expect(page.getByText("29ABCDE1234F1Z5")).toBeVisible();
+
+  await page.goto("/settings/integration/payments");
+  await expect(page.getByTestId("gstin-readonly")).toHaveText("29ABCDE1234F1Z5");
   await page.getByRole("switch", { name: "Show GST details on invoices" }).click();
   await page.getByLabel("GST rate (%)").fill("12");
   await page.getByLabel("GST type").click();
@@ -69,14 +86,6 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
   await page.getByRole("button", { name: "Save GST" }).click();
   await expect(page.getByText("GST settings saved.")).toBeVisible();
   await expect(page.getByRole("switch", { name: "Create the invoice automatically" })).toHaveAttribute("aria-checked", "true");
-
-  // GST lives only under Payments: Business Profile neither shows the number nor edits it (AJ, 2026-10-14).
-  await page.goto("/settings/account/business-profile");
-  await expect(page.getByRole("heading", { name: "Caterly Profile" })).toBeVisible();
-  await expect(page.getByText("29ABCDE1234F1Z5")).toHaveCount(0);
-  await expect(page.getByText("GST Number")).toHaveCount(0);
-  await page.getByRole("button", { name: "Edit Profile" }).click();
-  await expect(page.getByLabel("GST number (optional)")).toHaveCount(0);
   await page.goto("/settings/integration/payments");
   await page.getByTestId("razorpay-accordion").getByRole("button", { name: /Razorpay/ }).click();
   await page.getByLabel("Key ID").fill("rzp_test_ABCDEF123456");

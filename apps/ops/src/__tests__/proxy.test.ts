@@ -57,7 +57,10 @@ describe("ops proxy: public routes", () => {
   it("lets exactly the billing-details read and save for one business through, and nothing near it", () => {
     const biz = `biz_${"a".repeat(32)}`;
     expect(through(`/api/platform/businesses/${biz}/billing-profile`).passed).toBe(true);
-    for (const path of [`/api/platform/businesses/${biz}/billing-profile/`, `/api/platform/businesses/${biz}/billing-profile/x`, `/api/platform/businesses/${biz}/billing-profiles`, `/api/platform/businesses/biz_short/billing-profile`, `/api/platform/businesses/${biz}/products/catering/billing-profile`, `/api/platform/businesses/billing-profile`]) {
+    expect(through(`/api/platform/businesses/${biz}/billing-profiles`).passed).toBe(true);
+    expect(through(`/api/platform/businesses/${biz}/billing-profiles/caterly`).passed).toBe(true);
+    expect(through(`/api/platform/businesses/${biz}/billing-profiles/caterly/history`).passed).toBe(true);
+    for (const path of [`/api/platform/businesses/${biz}/billing-profile/`, `/api/platform/businesses/${biz}/billing-profile/x`, `/api/platform/businesses/${biz}/billing-profiles/`, `/api/platform/businesses/${biz}/billing-profiles/Caterly`, `/api/platform/businesses/${biz}/billing-profiles/x/y`, `/api/platform/businesses/biz_short/billing-profiles`, `/api/platform/businesses/biz_short/billing-profile`, `/api/platform/businesses/${biz}/products/catering/billing-profile`, `/api/platform/businesses/billing-profile`]) {
       expect(through(path).passed, path).toBe(false);
     }
   });

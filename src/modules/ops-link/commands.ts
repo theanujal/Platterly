@@ -12,6 +12,8 @@ import { generatePlaceholderSlug } from "@/modules/tenants/slug";
 import { InvalidSlugError, SlugTakenError, activateTenant, claimSuspensionForOps, overrideSlug, suspendTenant, updateTenant } from "@/modules/tenants/tenant";
 import { CATERING_ENTITLEMENTS } from "./manifest";
 import { storeSnapshot } from "./snapshots";
+import { opsLink } from "./config";
+import { storeProfileCopy } from "./billing-profile";
 import { parseCommand } from "@platterly/contract";
 
 export interface CommandReply {
@@ -76,6 +78,13 @@ async function execute(command: Command): Promise<CommandReply> {
         throw error;
       }
       return { status: 200, body: { ok: true } };
+    }
+    case "billing_profile.set": {
+      // Only this product's own profile, and only a newer version than the copy held: a late or repeated push changes nothing.
+      const { profile } = command.payload;
+      if (profile.productKey !== opsLink()?.productKey) return { status: 200, body: { ok: true, applied: false } };
+      const applied = await storeProfileCopy(org.id, profile);
+      return { status: 200, body: { ok: true, applied, version: profile.version } };
     }
     case "provider.set": {
       const { channel, connected } = command.payload;

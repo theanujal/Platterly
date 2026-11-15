@@ -14,6 +14,7 @@ import { INTERVAL_DAYS, formatInvoiceNumber, gstKind, gstLines, periodEndFrom, p
 import { cancelRazorpaySubscription, createRazorpayOrder, pauseRazorpaySubscription, resumeRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, fetchPaidChargeId, fetchRazorpaySubscription, platformRazorpay, verifyCheckoutSignature, verifySubscriptionSignature, type PlatformRazorpay, type RazorpaySubscription } from "./razorpay";
 import { getProfile } from "./profile";
 import { getSavedBuyer, saveBillingProfile } from "./billing-profile";
+import { createProfileFromPayment, getProductBuyer } from "./product-billing-profile";
 import { recordRazorpayEvent } from "./events";
 import { BillingError } from "./billing-error";
 import { ensureRazorpayCustomer } from "./razorpay-customer";
@@ -265,6 +266,7 @@ async function settle(payment: PaymentToSettle, razorpayPaymentId: string, now: 
     if (claimed.count === 0) return false;
     // The details typed at this checkout become the business's saved billing details (only a confirmed payment gets here, never an abandoned attempt).
     await saveBillingProfile(businessId, buyer, "payment", tx);
+    await createProfileFromPayment(businessId, productKey, buyer, tx);
     // One payment at a time per business: two early renewals confirmed together each add their own period.
     await tx.$queryRaw`SELECT id FROM business WHERE id = ${businessId} FOR UPDATE`;
     const previous = await tx.subscription.findFirst({ where: { businessId, productKey, endDate: null } });
@@ -482,8 +484,8 @@ export async function chargeAutoPay(input: AutoPayCycle & { razorpayPaymentId: s
       if (switched && !switched.endDate) last = await prisma.subscriptionPayment.findFirst({ where: { businessId: switched.businessId, productKey: switched.productKey, status: "PAID" }, orderBy: { paidAt: "desc" } });
     }
     if (!last) return null;
-    // A renewal uses the business's current saved billing details (so an edit in the Account reaches the next invoice), else the previous payment's.
-    const renewalBuyer = (await getSavedBuyer(last.businessId)) ?? last.buyer;
+    // A renewal uses the product's current saved billing profile (so an edit in the Account or the product reaches the next invoice), else the previous payment's.
+    const renewalBuyer = (await getProductBuyer(last.businessId, last.productKey)) ?? (await getSavedBuyer(last.businessId)) ?? last.buyer;
     // ponytail: two deliveries of one charge at the same moment can each write a row here; the second fails on the unique payment id
     // (Razorpay retries and finds the first) and leaves one stray PENDING row. Harmless; tidy it up if it ever shows in Ops.
     // A coupon is for the first payment only: a renewal after a discounted first month charges the full price, so the discount is added back before GST.

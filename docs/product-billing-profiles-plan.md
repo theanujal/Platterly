@@ -94,3 +94,10 @@ One migration copies each business's current billing record into a (`businessId`
 4. **New billing-only fields:** add GST registration type, PAN, billing CC email and customer reference, or fewer?
 5. **Rivo and later products:** each product asks for its own profile the first time it is bought, starting empty, or may the Admin copy another product's profile with one button? (A copy is a one-time copy, never a link.)
 6. **Who may edit in the product:** only the Business Admin, or anyone with the product's Settings permission (as Caterly's Business Profile allows today)?
+
+## 7. AJ's decisions (2026-11-15 and 2026-11-16) — these override sections 2 and 6 where they differ
+- Home: Ops. One record per business and product, with a `version`.
+- **All fields are shared**, including description, website, Instagram and Facebook (and the logo, see the note below). Section 2's "product-only" column no longer applies. Order numbering and "show GST on invoices" are not billing fields and stay in Caterly.
+- Fields: legal name, brand name, contact person, one email, one phone, address lines 1-2, city, state, PIN, country, GSTIN, description, website, Instagram, Facebook. No PAN, GST type, CC email or reference. No owner name.
+- "Copy from another product" button; edit rights: the Admin, and the person with access in the product.
+- Logo: decided 2026-11-16: the product keeps the file; Ops stores only a link (`logoUrl`). The product sends its link when it saves.

@@ -128,6 +128,16 @@ describe("sendMessage", () => {
     expect(calls[1].body.to[0].email_address.address).toBe("asha@example.test");
   });
 
+  it("sends a product's billing messages to that product's billing email first, ignoring another product's", async () => {
+    await prisma.billingCustomer.create({ data: { businessId: BIZ, name: "Asha's Kitchen", source: "account", contactEmail: "legacy@example.test" } });
+    await prisma.productBillingProfile.create({ data: { businessId: BIZ, productKey: "someotherproduct", name: "Other", source: "account", contactEmail: "other@example.test" } }).catch(() => undefined);
+    await sendMessage({ businessId: BIZ, productKey: KEY, template: "payment_failed", variables: { planName: "Pro" } }, fakeFetch);
+    expect(calls[0].body.to[0].email_address.address).toBe("legacy@example.test");
+    await prisma.productBillingProfile.create({ data: { businessId: BIZ, productKey: KEY, name: "Asha's Kitchen", source: "account", contactEmail: "product@example.test" } });
+    await sendMessage({ businessId: BIZ, productKey: KEY, template: "payment_failed", variables: { planName: "Pro" }, dedupeKey: "second" }, fakeFetch);
+    expect(calls[1].body.to[0].email_address.address).toBe("product@example.test");
+  });
+
   it("opens the Store's pay page and the Account's Payment method page when their addresses are set (trailing slashes ignored)", async () => {
     process.env.STORE_ORIGIN = "https://store.example/";
     process.env.ACCOUNT_ORIGIN = "https://account.example";

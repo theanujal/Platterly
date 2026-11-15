@@ -147,6 +147,7 @@ model Organization {
   auditLogs          AuditLog[]
   secureAccessTokens SecureAccessToken[]
   settings           TenantSetting[]
+  billingProfile     OrganizationBillingProfile?
 
   // Ops link (docs/ops-contract.md): the business's global id in Platterly Ops. Every creation path gets one from the
   // database default, so no code has to remember to set it. Never changes and is never reused.
@@ -2958,6 +2959,18 @@ model OpsNotice {
   updatedAt      DateTime @updatedAt
 
   @@map("ops_notice")
+}
+
+// Caterly's read copy of the business's billing profile, which lives in Platterly Ops (one per business and product). Ops pushes it with `billing_profile.set`
+// after the Account saves it; it is only ever replaced by a newer version, never edited here. `profile` is the record as Ops sent it.
+model OrganizationBillingProfile {
+  organizationId String       @id
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  version        Int
+  profile        Json
+  syncedAt       DateTime     @default(now())
+
+  @@map("organization_billing_profile")
 }
 
 // Every command ops sent, kept so a repeated command id gets the same answer and is applied once.

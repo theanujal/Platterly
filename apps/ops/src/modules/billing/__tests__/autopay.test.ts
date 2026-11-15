@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { registerProduct } from "@/modules/registry/products";
 import { createPlan } from "@/modules/plans/plans";
 import { cancelRazorpaySubscription, createRazorpayPlan, createRazorpaySubscription, pauseRazorpaySubscription, resumeRazorpaySubscription, verifySubscriptionSignature, type PlatformRazorpay } from "../razorpay";
-import { saveBillingProfile } from "../billing-profile";
+import { getProductBillingProfile, saveProductBillingProfile } from "../product-billing-profile";
 import { cancelAutoPay, cancelScheduledDowngrade, chargeAutoPay, confirmPayment, failAutoPayCheckout, getBillingView, pauseAutoPay, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout } from "../billing";
 import { sendGraceNotices, sendRenewalReminders, sweepExpired } from "@/modules/subscriptions/subscriptions";
 import { POST as cancelPOST } from "@/app/api/products/[productKey]/businesses/[businessId]/billing/autopay/cancel/route";
@@ -221,18 +221,23 @@ describe("auto-pay checkout and charges", () => {
     expect(await verifyAutoPayCheckout({ businessId: biz, productKey: KEY, razorpaySubscriptionId: b.razorpaySubscriptionId, razorpayPaymentId: "pay_n", signature: subSig(b.razorpaySubscriptionId, "pay_n") })).toMatchObject({ status: "PENDING" });
   });
 
-  it("a renewal takes the business's current saved billing details, so an edit made in the Account reaches the next invoice and is not overwritten", async () => {
+  it("a renewal takes the product's current billing profile, so an edit made in the Account reaches the next invoice and is not overwritten", async () => {
     const { pro, biz } = await setup();
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     const first = cycle(a.razorpaySubscriptionId, new Date());
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_p1", ...first });
     expect(await prisma.billingCustomer.findUnique({ where: { businessId: biz } })).toMatchObject({ city: "Bengaluru", source: "payment" });
-    await saveBillingProfile(biz, { ...buyer, city: "Mysuru", gstin: null }, "account");
+    // The first payment created the product's profile; the Admin then edits it in the Account.
+    const created = (await getProductBillingProfile(biz, KEY))!;
+    expect(created).toMatchObject({ city: "Bengaluru", source: "payment", version: 1 });
+    const { businessId: _b, productKey: _k, version: _v, source: _s, updatedAt: _u, ...fields } = created;
+    void _b; void _k; void _v; void _s; void _u;
+    await saveProductBillingProfile({ businessId: biz, productKey: KEY, fields: { ...fields, city: "Mysuru", gstin: null }, baseVersion: 1, source: "account" });
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_p2", ...cycle(a.razorpaySubscriptionId, first.periodEnd) });
     const renewal = await prisma.subscriptionPayment.findUniqueOrThrow({ where: { razorpayPaymentId: "pay_p2" } });
     expect((renewal.invoiceSnapshot as unknown as { buyer: Buyer }).buyer).toMatchObject({ city: "Mysuru", gstin: null });
     // The edit stays marked as the Admin's own: the renewal carried it forward and did not rewrite it.
-    expect(await prisma.billingCustomer.findUnique({ where: { businessId: biz } })).toMatchObject({ city: "Mysuru", gstin: null, source: "account" });
+    expect(await getProductBillingProfile(biz, KEY)).toMatchObject({ city: "Mysuru", gstin: null, source: "account", version: 2 });
   });
 
   it("a later charge is a new payment that renews the same subscription in place; the same charge twice changes nothing", async () => {

@@ -16,3 +16,4 @@ export * from "./src/account-deletion";
 export * from "./src/newsletter";
 export * from "./src/mail-guard";
 export * from "./src/subscription-status";
+export * from "./src/product-billing-profile";

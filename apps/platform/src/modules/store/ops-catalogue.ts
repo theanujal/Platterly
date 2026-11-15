@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, parsePlatformProductCards, platformProductCardImagePath, PLATFORM_PRODUCT_CARDS_PATH, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue, type PlatformProductCards } from "@platterly/contract";
+import { newId, parseBillingProfileAnswer, parseProductBillingProfileHistoryAnswer, platformProductBillingProfileHistoryPath, type ProductBillingProfileChange, parseProductBillingProfilesAnswer, platformProductBillingProfilesPath, type ProductBillingProfileRecord, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, parsePlatformProductCards, platformProductCardImagePath, PLATFORM_PRODUCT_CARDS_PATH, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue, type PlatformProductCards } from "@platterly/contract";
 import { signPullRequest, verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -64,6 +64,22 @@ export async function fetchOpsBillingProfile(businessId: string, deps: Deps = {}
   if (!got.ok) return got;
   const parsed = parseBillingProfileAnswer(got.json);
   return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
+}
+
+/** Every per-product billing profile of one business (signed read). The caller must already have checked the person is the business's Admin. */
+export async function fetchOpsProductBillingProfiles(businessId: string, deps: Deps = {}): Promise<{ ok: true; profiles: ProductBillingProfileRecord[] } | { ok: false; reason: OpsReadFailure | "not_found" }> {
+  const got = await signedOpsGet(platformProductBillingProfilesPath(businessId), deps);
+  if (!got.ok) return got;
+  const parsed = parseProductBillingProfilesAnswer(got.json);
+  return parsed.ok ? { ok: true, profiles: parsed.value.profiles } : { ok: false, reason: "bad_answer" };
+}
+
+/** The changes made to one product's billing profile (signed read). The caller must already have checked the person is the business's Admin. */
+export async function fetchOpsProductBillingProfileHistory(businessId: string, productKey: string, deps: Deps = {}): Promise<{ ok: true; history: ProductBillingProfileChange[] } | { ok: false; reason: OpsReadFailure | "not_found" }> {
+  const got = await signedOpsGet(platformProductBillingProfileHistoryPath(businessId, productKey), deps);
+  if (!got.ok) return got;
+  const parsed = parseProductBillingProfileHistoryAnswer(got.json);
+  return parsed.ok ? { ok: true, history: parsed.value.history } : { ok: false, reason: "bad_answer" };
 }
 
 export type InvoiceResult = { ok: true; fileName: string; pdf: Buffer } | { ok: false; reason: OpsReadFailure | "not_found" };

@@ -1,0 +1,35 @@
+import { randomBytes } from "node:crypto";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { sniffImage, type PhotoType } from "./photo";
+
+// A business's logo uploaded in the Account (Business & Billing). The file lives in the Platform's own folder (ACCOUNT_LOGO_DIR, default `.data/account-logos`,
+// git-ignored and, in production, on the VPS); Ops stores only the link and the product shows it. PNG, JPEG or WebP, at most 4 MB, the type read from the file's
+// own first bytes. The name is random, so the link cannot be guessed and carries no business or person id.
+export const LOGO_MAX_BYTES = 4 * 1024 * 1024;
+export const logoDir = () => process.env.ACCOUNT_LOGO_DIR ?? path.join(process.cwd(), ".data", "account-logos");
+const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as const satisfies Record<PhotoType, string>;
+const KEY = /^[0-9a-f]{32}\.(jpg|png|webp)$/;
+
+export type LogoSave = { ok: true; key: string } | { ok: false; reason: "too_large" | "not_an_image" | "empty" };
+
+export async function saveLogo(bytes: Uint8Array, dir: string = logoDir()): Promise<LogoSave> {
+  if (bytes.length === 0) return { ok: false, reason: "empty" };
+  if (bytes.length > LOGO_MAX_BYTES) return { ok: false, reason: "too_large" };
+  const type = sniffImage(bytes);
+  if (!type) return { ok: false, reason: "not_an_image" };
+  await mkdir(dir, { recursive: true });
+  const key = `${randomBytes(16).toString("hex")}.${EXT[type]}`;
+  await writeFile(path.join(dir, key), bytes, { mode: 0o600 });
+  return { ok: true, key };
+}
+
+export async function readLogo(key: string, dir: string = logoDir()): Promise<{ bytes: Buffer; type: string } | null> {
+  if (!KEY.test(key)) return null;
+  try {
+    const ext = key.split(".")[1];
+    return { bytes: await readFile(path.join(dir, key)), type: ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg" };
+  } catch {
+    return null;
+  }
+}

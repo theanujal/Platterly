@@ -3,10 +3,11 @@ import { parseSnapshot, type EntitlementSnapshot } from "./snapshot";
 import { fail, isIsoDate, isRecord, ok, type ParseResult } from "./result";
 import { CONTRACT_VERSION, DELETE_RETENTION_DAYS } from "./version";
 import type { EntitlementDef } from "./manifest";
+import { parseProductBillingProfileRecord, type ProductBillingProfileRecord } from "./product-billing-profile";
 
 /* ---------- Commands: ops -> product (POST {product}/api/ops/commands) ---------- */
 
-export const COMMAND_TYPES = ["business.provision", "snapshot.push", "business.suspend", "business.reactivate", "notice.set", "business.delete", "business.restore", "business.update", "provider.set"] as const;
+export const COMMAND_TYPES = ["business.provision", "snapshot.push", "business.suspend", "business.reactivate", "notice.set", "business.delete", "business.restore", "business.update", "provider.set", "billing_profile.set"] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
 export interface ProvisionPayload {
@@ -51,7 +52,9 @@ export type Command =
   | { commandId: string; type: "business.delete"; businessId: string; payload: DeletePayload }
   | { commandId: string; type: "business.restore"; businessId: string; payload: Record<string, never> }
   | { commandId: string; type: "business.update"; businessId: string; payload: UpdatePayload }
-  | { commandId: string; type: "provider.set"; businessId: string; payload: { channel: ProviderChannel; connected: boolean } };
+  | { commandId: string; type: "provider.set"; businessId: string; payload: { channel: ProviderChannel; connected: boolean } }
+  /** The business's billing profile for THIS product changed in Ops (the Account saved it): the product refreshes its read copy. Never sent for a save the product itself made. */
+  | { commandId: string; type: "billing_profile.set"; businessId: string; payload: { profile: ProductBillingProfileRecord } };
 
 function shortText(value: unknown, max: number): string | null {
   return typeof value === "string" && value.length <= max ? value : null;
@@ -119,6 +122,10 @@ export function parseCommand(input: unknown, defs?: readonly EntitlementDef[]): 
       if (out.ownerEmail !== undefined && !out.ownerEmail.includes("@")) return fail("ownerEmail is invalid");
       if (Object.keys(out).length === 0) return fail("business.update needs at least one field");
       return ok({ ...base, type, payload: out });
+    }
+    case "billing_profile.set": {
+      const profile = parseProductBillingProfileRecord(payload.profile);
+      return profile.ok ? ok({ ...base, type, payload: { profile: profile.value } }) : profile;
     }
     case "provider.set": {
       if (!PROVIDER_CHANNELS.includes(payload.channel as ProviderChannel) || typeof payload.connected !== "boolean") return fail("provider.set needs a channel (whatsapp or email) and connected true or false");

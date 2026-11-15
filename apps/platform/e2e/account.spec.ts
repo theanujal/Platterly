@@ -97,7 +97,7 @@ test.describe("No product switcher", () => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Switch product/ })).toHaveCount(0);
-    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Billing Details", "My Profile", "Security", "Devices", "Notifications", "Help & Support"]) {
+    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Business & Billing", "My Profile", "Security", "Devices", "Notifications", "Help & Support"]) {
       await expect(nav(page).getByRole("link", { name })).toBeVisible();
     }
     await expect(nav(page).locator("hr")).toHaveCount(1);
@@ -485,36 +485,91 @@ test.describe("My Products: the cards come from Ops", () => {
     await page.getByLabel("Date range").selectOption("all");
   });
 
-  test("Billing Details: the form with contact and address fields, required checks and the side cards", async ({ page, context }) => {
+  test("Business & Billing: the list with completion, a product's two cards with Edit, copy from another product, a changed-elsewhere notice and the change history", async ({ page, context }) => {
     await withPlaceholderSession(context);
     await business(page);
     await mockProfile(page);
-    let saved: Record<string, string> | null = null;
-    const buyer = { name: "The Kitchen Co.", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: null, contactName: null, contactEmail: null, contactPhone: null };
-    await page.route("**/api/account/billing-profile", (r) => {
-      if (r.request().method() === "GET") return json(r, 200, { status: "ok", businessName: "The Kitchen Co.", buyer, updatedAt: "2026-11-01T00:00:00.000Z" });
-      saved = r.request().postDataJSON();
-      return json(r, 200, { status: "ok", businessName: "The Kitchen Co.", buyer: { ...buyer, ...saved }, updatedAt: "2026-11-15T00:00:00.000Z" });
+    const rec = (productKey: string, over: Record<string, unknown> = {}) => ({ productKey, version: 1, source: "account", updatedAt: "2026-11-01T10:00:00.000Z", name: "The Kitchen Co. LLP", brandName: "Kitchen Co", contactName: "Amit Sharma", contactEmail: "a@thekitchenco.in", contactPhone: "+919876543210", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: "27AAPFU0939F1ZV", description: "Catering for events", website: "https://thekitchenco.in", instagram: "https://instagram.com/kitchenco", facebook: null, logoUrl: null, ...over });
+    const profiles = [rec("caterly"), rec("rivo", { brandName: null, addressLine1: null })];
+    const puts: { key: string; body: Record<string, unknown> }[] = [];
+    let conflictNext = false;
+    await page.route("**/api/account/billing-profiles", (r) => json(r, 200, { status: "ok", businessName: "The Kitchen Co.", products: [{ productKey: "caterly", name: "Caterly" }, { productKey: "rivo", name: "Rivo" }, { productKey: "newprod", name: "New Product" }], profiles, legacy: null, prefill: null }));
+    await page.route("**/api/account/billing-profiles/*/history", (r) => json(r, 200, { status: "ok", history: [{ at: "2026-11-10T09:30:00.000Z", version: 2, source: "product", created: false, by: "product", changes: [{ field: "city", from: "Pune", to: "Mumbai" }] }, { at: "2026-11-01T10:00:00.000Z", version: 1, source: "account", created: true, by: "you", changes: [] }] }));
+    await page.route(/\/api\/account\/billing-profiles\/[a-z]+$/, (r) => {
+      const key = new URL(r.request().url()).pathname.split("/").pop()!;
+      const body = r.request().postDataJSON();
+      puts.push({ key, body });
+      if (conflictNext) return json(r, 409, { status: "conflict", current: rec(key, { version: 3, city: "Chennai", updatedAt: "2026-11-16T15:42:00.000Z", source: "product" }) });
+      return json(r, 200, { status: "ok", profile: rec(key, { ...body.fields, version: Number(body.baseVersion ?? 0) + 1, updatedAt: "2026-11-16T00:00:00.000Z" }) });
     });
+
+    // The list: how complete each product's profile is, and where to go next.
     await page.goto("/billing-details");
-    await expect(page.getByRole("heading", { name: "Billing Details", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Business billing information" })).toBeVisible();
-    await expect(page.getByLabel("Business / Organisation name")).toHaveValue("The Kitchen Co.");
+    await expect(page.getByRole("heading", { name: "Business & Billing", level: 1 })).toBeVisible();
+    await expect(page.getByText("1 of 3 product profiles are complete.")).toBeVisible();
+    await expect(page.getByText("33% complete")).toBeVisible();
+    await expect(page.getByRole("article", { name: "Caterly" })).toContainText("Complete");
+    await expect(page.getByRole("article", { name: "Rivo" })).toContainText("Business profile (missing details)");
+    await expect(page.getByRole("article", { name: "Rivo" })).toContainText("Billing profile (missing details)");
+    await expect(page.getByRole("heading", { name: "How it works" })).toBeVisible();
+    await page.getByRole("article", { name: "Caterly" }).getByRole("link", { name: /Manage/ }).click();
+
+    // A product's page: both cards read-only first, Edit opens one of them.
+    await expect(page.getByRole("heading", { name: "Caterly", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Business Profile" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Billing Profile" })).toBeVisible();
+    await expect(page.getByText("Registered under GST")).toBeVisible();
+    await expect(page.getByText("Invoice update rule")).toBeVisible();
+    await page.getByRole("region", { name: "Billing Profile" }).getByRole("button", { name: "Edit" }).click();
+    await expect(page.getByLabel("Legal billing name")).toHaveValue("The Kitchen Co. LLP");
     await expect(page.getByLabel("State")).toHaveValue("Maharashtra");
-    await expect(page.getByLabel("Country *")).toHaveValue("India");
-    await expect(page.getByRole("heading", { name: "About billing details" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Your information is secure" })).toBeVisible();
-    // The contact fields are required: a bad email and phone are refused in the form, not silently saved.
-    await page.getByLabel("Billing contact person").fill("Amit Sharma");
-    await page.getByLabel("Billing email").fill("accounts@thekitchenco.in");
-    await page.getByLabel("Billing phone number").fill("98765 43210");
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByText("Your billing details were saved. New invoices will use them.")).toBeVisible();
-    expect(saved).toMatchObject({ contactName: "Amit Sharma", contactEmail: "accounts@thekitchenco.in", contactPhone: "+919876543210", state: "Maharashtra", country: "India" });
-    // Cancel puts back what was last saved.
     await page.getByLabel("City").fill("Pune");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
+    expect(puts[0]).toMatchObject({ key: "caterly", body: { baseVersion: 1, fields: { city: "Pune", brandName: "Kitchen Co" } } });
+    // The business card saves the same record, with the version the page now holds.
+    await page.getByRole("region", { name: "Business Profile" }).getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Brand name").fill("Kitchen Co Events");
+    // A logo can be added here too: the file is uploaded first and only its link goes into the profile.
+    await page.route("**/api/account/billing-profiles/*/logo", (r) => json(r, 200, { status: "ok", url: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` }));
+    await page.locator("#bd-logo").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: Buffer.from("png") });
+    await expect(page.getByAltText("Logo preview")).toBeVisible();
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
+    expect(puts[1]).toMatchObject({ key: "caterly", body: { baseVersion: 2, fields: { brandName: "Kitchen Co Events", city: "Pune", logoUrl: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` } } });
+    await expect(page.getByAltText("Caterly logo")).toBeVisible();
+    // A save that Ops refuses as stale keeps the person's edits and says what happened.
+    conflictNext = true;
+    await page.getByRole("region", { name: "Billing Profile" }).getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("City").fill("Goa");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByTestId("bd-conflict")).toContainText("changed elsewhere");
+    await expect(page.getByTestId("bd-conflict")).toContainText("Your edits are still here");
+    await expect(page.getByLabel("City")).toHaveValue("Goa");
+    await page.getByRole("button", { name: "Use the new values" }).click();
+    await expect(page.getByLabel("City")).toHaveValue("Chennai");
+    conflictNext = false;
     await page.getByRole("button", { name: "Cancel" }).click();
+
+    // Change History lists the changes with where they were made.
+    await page.getByRole("tab", { name: /Change History/ }).click();
+    await expect(page.getByTestId("bb-history")).toContainText("1 change");
+    await expect(page.getByTestId("bb-history")).toContainText("in Caterly");
+    await expect(page.getByTestId("bb-history")).toContainText(/City: Pune\s*Mumbai/);
+    await expect(page.getByTestId("bb-history")).toContainText("Profile created");
+
+    // A product with no profile starts empty and can copy another's once; nothing is saved by copying.
+    await page.goto("/billing-details/newprod");
+    await expect(page.getByRole("heading", { name: "New Product", level: 1 })).toBeVisible();
+    await page.getByRole("region", { name: "Billing Profile" }).getByRole("button", { name: "Edit" }).click();
+    await expect(page.getByLabel("City")).toHaveValue("");
+    const before = puts.length;
+    await page.getByLabel("Copy from another product").selectOption({ label: "Caterly" });
     await expect(page.getByLabel("City")).toHaveValue("Mumbai");
+    expect(puts).toHaveLength(before);
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
+    expect(puts[before]).toMatchObject({ key: "newprod", body: { baseVersion: null, fields: { city: "Mumbai" } } });
   });
 
   test("Payment Methods: the methods with Primary, Make primary and a menu, the automatic-renewals switch, and the side cards", async ({ page, context }) => {

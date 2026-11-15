@@ -23,7 +23,7 @@ export interface OpsReply<T> {
   json: T;
 }
 
-export async function opsBilling<T = unknown>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown, fetchImpl: typeof fetch = fetch): Promise<OpsReply<T>> {
+export async function opsBilling<T = unknown>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown, fetchImpl: typeof fetch = fetch): Promise<OpsReply<T>> {
   const config = opsLink();
   if (!config) throw new OpsUnavailableError();
   const text = body === undefined ? "" : JSON.stringify(body);
@@ -55,7 +55,7 @@ export async function opsBilling<T = unknown>(method: "GET" | "POST" | "DELETE",
 }
 
 /** The same call, but anything other than 2xx becomes a message a person can read (ops writes its 4xx messages for people). */
-export async function opsBillingOk<T = unknown>(method: "GET" | "POST" | "DELETE", path: string, body?: unknown, fetchImpl: typeof fetch = fetch): Promise<T> {
+export async function opsBillingOk<T = unknown>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown, fetchImpl: typeof fetch = fetch): Promise<T> {
   const { status, json } = await opsBilling<T & { error?: string }>(method, path, body, fetchImpl);
   if (status >= 200 && status < 300) return json;
   const error = (json as { error?: string })?.error;

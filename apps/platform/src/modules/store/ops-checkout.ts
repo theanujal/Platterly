@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformCheckoutPath, requestTarget, signedHeaders, type BillingProfileAnswer, type Buyer, type CheckoutAnswer, type MethodsAnswer, type PlatformBillingAction } from "@platterly/contract";
+import { newId, parseBillingProfileAnswer, parseProductBillingProfileAnswer, parseProductBillingProfileConflict, platformBillingProfilePath, platformProductBillingProfilePath, type ProductBillingProfileRecord, type ProductBillingProfileRequest, platformCheckoutPath, requestTarget, signedHeaders, type BillingProfileAnswer, type Buyer, type CheckoutAnswer, type MethodsAnswer, type PlatformBillingAction } from "@platterly/contract";
 import { verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -9,7 +9,7 @@ import { verifyPullResponse } from "@platterly/platform-contract";
  * A failure is a reason code; only a 400 from Ops carries its message, because Ops writes those for people.
  */
 export type CheckoutFailure = "not_configured" | "unreachable" | "refused" | "bad_answer" | "rejected" | "unknown_business" | "conflict";
-export type CheckoutResult<T> = { ok: true; answer: T } | { ok: false; reason: CheckoutFailure; message?: string };
+export type CheckoutResult<T> = { ok: true; answer: T } | { ok: false; reason: CheckoutFailure; message?: string; body?: Record<string, unknown> };
 type Deps = { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; now?: number };
 
 export const opsCheckoutConfigured = (env: NodeJS.ProcessEnv = process.env) => Boolean(env.OPS_BASE_URL && env.OPS_PLATFORM_BILLING_SECRET && env.OPS_PLATFORM_BILLING_SECRET.length >= 32);
@@ -41,7 +41,7 @@ async function signedOpsBilling(method: "POST" | "PUT", path: string, body: unkn
   const verified = verifyPullResponse([secret], requestId, response.headers, raw, deps.now);
   if (!verified.ok) return { ok: false, reason: "bad_answer" };
   if (response.status === 404) return { ok: false, reason: "unknown_business" };
-  if (response.status === 409) return { ok: false, reason: "conflict" };
+  if (response.status === 409) return { ok: false, reason: "conflict", body: verified.value };
   if (response.status === 400) return { ok: false, reason: "rejected", message: typeof verified.value.error === "string" ? verified.value.error : undefined };
   if (!response.ok) return { ok: false, reason: "refused" };
   return { ok: true, answer: verified.value };
@@ -58,6 +58,23 @@ export async function saveOpsBillingProfile(input: { businessId: string; buyer: 
   if (!got.ok) return got;
   const parsed = parseBillingProfileAnswer(got.answer);
   return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
+}
+
+export type ProductProfileSave = { profile: ProductBillingProfileRecord } | { conflict: true; current: ProductBillingProfileRecord | null };
+
+/**
+ * Saves (or copies into) one product's billing profile. A stale save comes back as `{ conflict: true, current }` with the record as it is now, so the page can
+ * show what changed. The caller must already have checked the signed-in person may edit this business's billing.
+ */
+export async function saveOpsProductBillingProfile(input: { businessId: string; productKey: string; request: ProductBillingProfileRequest }, deps: Deps = {}): Promise<CheckoutResult<ProductProfileSave>> {
+  const got = await signedOpsBilling("PUT", platformProductBillingProfilePath(input.businessId, input.productKey), input.request, deps);
+  if (!got.ok) {
+    if (got.reason !== "conflict") return got;
+    const c = parseProductBillingProfileConflict(got.body);
+    return c.ok ? { ok: true, answer: { conflict: true, current: c.value.current } } : { ok: false, reason: "bad_answer" };
+  }
+  const parsed = parseProductBillingProfileAnswer(got.answer);
+  return parsed.ok ? { ok: true, answer: { profile: parsed.value.profile } } : { ok: false, reason: "bad_answer" };
 }
 
 /**
@@ -104,11 +121,11 @@ export type StoreVerifyInput = { businessId: string; opsProductKey: string } & (
   | { razorpaySubscriptionId: string; failed: { reason: "declined" | "not_finished"; detail: string | null } }
 );
 
-export async function verifyStoreCheckout(input: StoreVerifyInput, deps: Deps = {}): Promise<CheckoutResult<{ status: string | null; invoiceNumber: string | null }>> {
+export async function verifyStoreCheckout(input: StoreVerifyInput, deps: Deps = {}): Promise<CheckoutResult<{ status: string | null; invoiceNumber: string | null; paymentId: string | null }>> {
   const { businessId, opsProductKey, ...body } = input;
   const got = await signedOpsPost(businessId, opsProductKey, "verify", body, deps);
   if (!got.ok) return got;
-  return { ok: true, answer: { status: typeof got.answer.status === "string" ? got.answer.status : null, invoiceNumber: typeof got.answer.invoiceNumber === "string" ? got.answer.invoiceNumber : null } };
+  return { ok: true, answer: { status: typeof got.answer.status === "string" ? got.answer.status : null, invoiceNumber: typeof got.answer.invoiceNumber === "string" ? got.answer.invoiceNumber : null, paymentId: typeof got.answer.paymentId === "string" ? got.answer.paymentId : null } };
 }
 
 /** What a plan would cost this business now, from Ops: the plan price, any upgrade credit for unused days, GST, and the total. The Store only shows these figures. */

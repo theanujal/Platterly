@@ -1,5 +1,6 @@
 "use server";
 
+import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 import { requireActiveOrganization, requirePermission } from "@/lib/auth/require-session";
 import { audit } from "@/lib/audit/audit";
@@ -79,7 +80,8 @@ export async function saveGstAction(formData: FormData): Promise<ActionResult> {
   const { organizationId, userId } = await guard();
   return run(async () => {
     await saveGstSettings(organizationId, {
-      number: String(formData.get("gstNumber") ?? ""),
+      // The GSTIN is edited in the Business Profile (it is part of the shared billing profile), never here: keep the number as it is.
+      number: (await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { gstNumber: true } })).gstNumber ?? "",
       showOnInvoices: formData.get("gstShowOnInvoices") === "true",
       rate: Number(formData.get("gstRate")),
       type: String(formData.get("gstType") ?? ""),

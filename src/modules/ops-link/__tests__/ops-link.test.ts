@@ -246,6 +246,24 @@ describe("business lifecycle commands", () => {
     expect(queued.map((e) => (e.payload as { data: unknown }).data)).toContainEqual({ businessName: "After Name", ownerName: "Meera K" });
   });
 
+  it("billing_profile.set keeps a read copy, replaces it only with a newer version, and ignores another product's profile", async () => {
+    const org = await makeOrg();
+    const profile = (version: number, over: Record<string, unknown> = {}) => ({ productKey: "catering", version, source: "account", updatedAt: "2026-11-16T10:00:00.000Z", name: "Legal Name", brandName: "Brand", contactName: "Asha", contactEmail: "a@example.com", contactPhone: "9876543210", addressLine1: "1 MG Road", addressLine2: null, city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: null, description: null, website: null, instagram: null, facebook: null, logoUrl: null, ...over });
+    const held = () => prisma.organizationBillingProfile.findUnique({ where: { organizationId: org.id } });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(2) }))).body).toMatchObject({ ok: true, applied: true, version: 2 });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(1, { city: "Old" }) }))).body).toMatchObject({ applied: false });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(2, { city: "Same" }) }))).body).toMatchObject({ applied: false });
+    expect((await held())?.profile).toMatchObject({ city: "Pune", brandName: "Brand" });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(3, { city: "Mumbai" }) }))).body).toMatchObject({ applied: true, version: 3 });
+    expect(((await held())?.profile as { city: string }).city).toBe("Mumbai");
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(9, { productKey: "rivo" }) }))).body).toMatchObject({ applied: false });
+    expect((await held())?.version).toBe(3);
+    // The shared fields reach the Organization row, so invoices use them; the business's own name and phone are not touched.
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).toMatchObject({ name: "OpsLink Test Kitchen", city: "Mumbai", addressLine1: "1 MG Road", state: "Maharashtra", postalCode: "411001", gstNumber: null });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: { ...profile(4), version: 0 } }))).status).toBe(400);
+    expect((await send(command("biz_" + "7".repeat(32), "billing_profile.set", { profile: profile(1) }))).status).toBe(404);
+  });
+
   it("update on only the slug leaves the profile alone; a taken slug is 409 and a badly formed one 400", async () => {
     const a = await makeOrg({ name: "Slug A" });
     const b = await makeOrg({ name: "Slug B" });

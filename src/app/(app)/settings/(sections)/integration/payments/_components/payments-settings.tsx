@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -279,7 +280,7 @@ function AdvancePanel({ settings }: { settings: PaymentSettingsView }) {
 function GstPanel({ settings }: { settings: PaymentSettingsView }) {
   const router = useRouter();
   const { pending, message, run } = useSave();
-  const [number, setNumber] = useState(settings.gst.number);
+  const number = settings.gst.number;
   const [show, setShow] = useState(settings.gst.showOnInvoices);
   const [rate, setRate] = useState(String(settings.gst.rate));
   const [type, setType] = useState<string>(settings.gst.type);
@@ -306,7 +307,6 @@ function GstPanel({ settings }: { settings: PaymentSettingsView }) {
         onSubmit={(event) => {
           event.preventDefault();
           const formData = new FormData();
-          formData.set("gstNumber", number);
           formData.set("gstShowOnInvoices", String(show));
           formData.set("gstRate", rate);
           formData.set("gstType", type);
@@ -314,8 +314,11 @@ function GstPanel({ settings }: { settings: PaymentSettingsView }) {
         }}
       >
         <div className="flex max-w-sm flex-col gap-1.5">
-          <Label htmlFor="gst-number">GST number (optional)</Label>
-          <IconInput icon={FileText} id="gst-number" value={number} onChange={(e) => setNumber(e.target.value)} placeholder="29ABCDE1234F1Z5" maxLength={15} />
+          <Label>GSTIN</Label>
+          <p className="text-sm" data-testid="gstin-readonly">{number || "Not added yet"}</p>
+          <p className="text-xs text-muted-foreground">
+            Your GSTIN is part of your business and billing profile. <Link href="/settings/account/business-profile" className="underline">Change it in Business Profile</Link>.
+          </p>
         </div>
         <div className="flex items-center justify-between gap-3 rounded-lg bg-muted/60 p-3">
           <div>

@@ -19,7 +19,7 @@ const NAV: { href: string; prefix?: string; label: string; title: string; icon: 
   { href: "/subscriptions", label: "Subscriptions", title: "Subscriptions", icon: "layers" },
   { href: "/invoices", label: "Invoices", title: "Invoices", icon: "receipt" },
   { href: "/payment-methods", label: "Payment Methods", title: "Payment Methods", icon: "card" },
-  { href: "/billing-details", label: "Billing Details", title: "Billing Details", icon: "building" },
+  { href: "/billing-details", label: "Business & Billing", title: "Business & Billing", icon: "building" },
   { href: "/profile", prefix: "My ", label: "Profile", title: "My Profile", icon: "user", divider: true },
   { href: "/security", label: "Security", title: "Security", icon: "shield" },
   { href: "/devices", label: "Devices", title: "Devices", icon: "monitor" },
@@ -125,8 +125,8 @@ function AccountHeader({ onMenu, menuOpen }: { onMenu: () => void; menuOpen: boo
         )}
       </nav>
       <div className="pa-topbar-right">
-        <a href={HELP_URL} className="pa-help-btn" target="_blank" rel="noopener noreferrer" aria-label="Help" title="Help">
-          <Icon name="helpCircle" size={20} />
+        <a href={HELP_URL} className="pa-help-btn" target="_blank" rel="noopener noreferrer">
+          <Icon name="lifebuoy" size={20} />Help
         </a>
         <UserMenu />
       </div>
@@ -197,7 +197,7 @@ function ShellFrame({ children }: { children: ReactNode }) {
             );
           })}
           <a href={HELP_URL} className="pa-nav-item" target="_blank" rel="noopener noreferrer">
-            <Icon name="helpCircle" size={18} />
+            <Icon name="lifebuoy" size={18} />
             <span>Help &amp; Support</span>
           </a>
         </nav>
