@@ -132,6 +132,8 @@ export function ProfileDetails({ aside }: { aside?: ReactNode }) {
           <p className="pa-line">
             <Icon name="mail" size={14} /> {profile.email} {profile.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
           </p>
+        </div>
+        <div className="pa-profile-photo">
           <div className="pa-form-actions">
             <label className="pa-btn pa-btn-outline" htmlFor="pf-photo">
               <Icon name="camera" size={16} /> {profile.photoVersion ? "Change photo" : "Add photo"}

@@ -2839,3 +2839,24 @@ textarea.pa-input {
   color: var(--primary);
   font-weight: 500;
 }
+
+/* The photo buttons sit at the right end of the head card, so the card stays one short row. */
+.pa-profile-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.pa-profile-photo .pa-form-actions {
+  margin-top: 0;
+}
+@media (max-width: 640px) {
+  .pa-profile-head {
+    flex-wrap: wrap;
+  }
+  .pa-profile-photo {
+    align-items: flex-start;
+    margin-left: 0;
+  }
+}
