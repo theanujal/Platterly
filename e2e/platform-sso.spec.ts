@@ -89,7 +89,7 @@ test("Caterly sends a signed-out visitor to the central page, which looks like C
   await expect(page.getByText("Run your catering business from one place")).toBeVisible();
   await expect(page.getByText("Sign in to manage your catering business")).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign in to your account" })).toBeVisible();
-  await expect(page.locator(".pl-cat-mark")).toHaveAttribute("src", `${CATERLY}/caterly-mark.svg`);
+  await expect(page.locator(".pl-cat-mark")).toHaveAttribute("src", `${CATERLY}/caterly-mark.png`);
   await registerOnCentralPage(page, to);
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   const session = await caterlySession(page);

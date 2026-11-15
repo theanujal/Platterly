@@ -24,7 +24,7 @@ const PRESETS = {
     defaultOrigin: "http://catering.localhost:3000",
     redirect: "/api/auth/callback/platterly",
     backchannel: "/api/platform/logout",
-    icon: "/caterly-mark.svg",
+    icon: "/caterly-mark.png",
     theme: "caterly",
   },
 };

@@ -15,7 +15,7 @@ import { NAV_PERMISSIONS, withoutSupersededEntries } from "@/components/app-shel
 import { Toaster } from "@/components/ui/toaster";
 import { SensitiveAccessProvider } from "@/components/sensitive-access";
 import { UserMenu } from "@/components/app-shell/user-menu";
-import { platformAccountOrigin, platformStoreOrigin } from "@/lib/platform/config";
+import { platformAccountOrigin, platformAuthOrigin, platformStoreOrigin } from "@/lib/platform/config";
 import { NotificationBell } from "@/components/app-shell/notification-bell";
 import { getInbox } from "@/modules/notifications/inbox";
 import { getPushState, vapidPublicKey } from "@/modules/notifications/push";
@@ -112,7 +112,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <SensitiveAccessProvider flags={sensitive}>
     <SidebarProvider defaultOpen={defaultOpen}>
       <Suspense><NavigationProgress /></Suspense>
-      <AppSidebar organizationName={organization.name} trial={noPlanCards ? null : trial} notice={notice} grace={noPlanCards ? null : grace} renewal={noPlanCards ? null : renewal} allowedHrefs={allowedHrefs} />
+      <AppSidebar organizationName={organization.name} trial={noPlanCards ? null : trial} notice={notice} grace={noPlanCards ? null : grace} renewal={noPlanCards ? null : renewal} allowedHrefs={allowedHrefs} logoSrc={`${platformAuthOrigin()}/api/product-logo/caterly`} />
       <SidebarInset>
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background/95 px-4 backdrop-blur-sm">
           <SidebarTrigger />

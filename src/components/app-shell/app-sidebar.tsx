@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ProductLogo } from "@/components/product-logo";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, CalendarDays, ChefHat, Boxes, Users, FileText, ShoppingCart, ShoppingBasket, ClipboardCheck, Flame, Receipt, Wallet, BarChart3, UserRoundCog, BookOpenText } from "lucide-react";
 import {
@@ -92,6 +93,8 @@ function NavItemGroup({ items, pathname }: { items: readonly NavItem[]; pathname
 
 interface AppSidebarProps {
   organizationName: string;
+  /** Caterly's logo from Ops (via the Platform); the bundled mark shows if it cannot be loaded. */
+  logoSrc: string;
   /** Links the signed-in role may open; anything in `NAV_PERMISSIONS` that is missing here is hidden. */
   allowedHrefs: string[];
   /** The Super Admin's own box. When present it replaces the trial card for every kitchen. */
@@ -104,7 +107,7 @@ interface AppSidebarProps {
   renewal: { endsOn: string } | null;
 }
 
-export function AppSidebar({ organizationName, trial, notice, grace, renewal, allowedHrefs }: AppSidebarProps) {
+export function AppSidebar({ organizationName, trial, notice, grace, renewal, allowedHrefs, logoSrc }: AppSidebarProps) {
   const pathname = usePathname();
   const visible = <T extends NavItem>(items: readonly T[]) => items.filter((item) => !(item.href in NAV_PERMISSIONS) || allowedHrefs.includes(item.href));
   const finance = groupItem(FINANCE_ITEM, allowedHrefs);
@@ -121,8 +124,7 @@ export function AppSidebar({ organizationName, trial, notice, grace, renewal, al
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />} className="cursor-pointer">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/caterly-mark.svg" alt="Caterly by Platterly" className="size-6 shrink-0" />
+              <ProductLogo src={logoSrc} className="size-9 shrink-0 group-data-[collapsible=icon]:size-8" />
               <div className="flex min-w-0 flex-col leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-sm font-semibold">Caterly</span>
                 <span className="truncate text-xs text-muted-foreground">{organizationName}</span>

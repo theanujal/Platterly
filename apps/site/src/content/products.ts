@@ -10,13 +10,15 @@ export interface Product {
   tagline: string;
   href: string;
   icon: string;
+  /** An uploaded logo (a file in /public); when set the tile shows it instead of the line icon. */
+  logo?: string;
   /** The product's own colour. Catering uses the catering app's orange. */
   color: string;
   tint: string;
 }
 
 export const PRODUCTS: Product[] = [
-  { id: "catering", name: "Caterly by Platterly", short: "Caterly", tagline: "Run a catering business from enquiry to event.", href: "/caterly/", icon: "chef", color: "#ff6900", tint: "#fff3e6" },
+  { id: "catering", name: "Caterly by Platterly", short: "Caterly", tagline: "Run a catering business from enquiry to event.", href: "/caterly/", icon: "chef", logo: "/caterly-mark.png", color: "#ff6900", tint: "#fff3e6" },
 ];
 
 export const CATERING_PRODUCT = PRODUCTS[0];
