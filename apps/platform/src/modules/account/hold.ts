@@ -1,6 +1,7 @@
 import { newId, parseAccountReviewRequest, PLATFORM_ACCOUNT_REVIEW_PATH, PLATFORM_ACCOUNT_REVIEW_STATUS_PATH, requestTarget, signedHeaders, type AccountReviewReason } from "@platterly/contract";
 import { verifyPullResponse } from "@platterly/platform-contract";
 import type { Pool } from "pg";
+import { isDeletionApproved, syncDeletionRequests } from "./deletion-ops";
 
 // Account on hold (AJ, 2026-11-10). When the OLD address cancels an email change, the account is held: nobody can sign in until Ops staff have verified the
 // person. Ops is told once (a signed POST with the platform-billing secret); and when the held person tries to sign in, the Platform asks Ops whether the review is
@@ -75,6 +76,9 @@ export async function resendUnnotified(pool: Pool, deps: Deps = {}): Promise<num
  * Any trouble reaching Ops, or a wrong answer, keeps the hold (it fails closed).
  */
 export async function mayStartSession(pool: Pool, userId: string, deps: Deps = {}): Promise<boolean> {
+  // A deletion request waiting for Ops, or approved by it, is checked first: an approved one blocks sign-in until staff restore it (see deletion-ops.ts).
+  await syncDeletionRequests(pool, deps, userId).catch(() => undefined);
+  if (await isDeletionApproved(pool, userId)) return false;
   const hold = await openHold(pool, userId);
   if (!hold) return true;
   const got = await opsPost(PLATFORM_ACCOUNT_REVIEW_STATUS_PATH, { reviewId: hold.reviewId }, deps);

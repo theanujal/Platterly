@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "./icons";
+import { useDialog } from "./use-dialog";
 
 const MESSAGES: Record<string, string> = {
   wrong_password: "That is not your current password.",
@@ -9,10 +10,24 @@ const MESSAGES: Record<string, string> = {
   too_many_attempts: "Too many wrong attempts. Please wait a few minutes and try again.",
   has_business: "You still have a business on this account. Hand it over or close it first, then ask again.",
   already_pending: "A deletion request is already waiting.",
+  team_member: "Your account is managed by your business's Admin. Ask them instead.",
 };
 const REQUIRED_PHRASE = "DELETE";
 const GENERIC = "Something went wrong. Nothing was changed. Please try again.";
-type Deletion = { phase: "loading" } | { phase: "none" } | { phase: "pending"; requestedAt: string };
+type Deletion = { phase: "loading" } | { phase: "none" } | { phase: "team_member" } | { phase: "declined"; reason: string } | { phase: "pending"; requestedAt: string };
+
+/** The delete dialog's frame: focus goes in, Tab stays inside, Escape closes, and focus returns to the button that opened it. */
+function DialogShell({ onClose, onSubmit, children }: { onClose: () => void; onSubmit: (event: FormEvent) => void; children: ReactNode }) {
+  const form = useRef<HTMLFormElement>(null);
+  useDialog(form, onClose);
+  return (
+    <div className="pa-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form ref={form} className="pa-modal pa-modal-narrow" role="alertdialog" aria-modal="true" aria-labelledby="dr-title" aria-describedby="dr-desc" onSubmit={onSubmit} noValidate>
+        {children}
+      </form>
+    </div>
+  );
+}
 
 /** "Your data": download everything the central identity holds about you, and ask for the account to be deleted. Both ask for the current password. */
 export function DataRights() {
@@ -29,7 +44,7 @@ export function DataRights() {
     let alive = true;
     fetch("/api/account/deletion", { cache: "no-store", credentials: "same-origin" })
       .then((r) => r.json())
-      .then((b: { status?: string; requestedAt?: string }) => alive && setDeletion(b.status === "pending" && b.requestedAt ? { phase: "pending", requestedAt: b.requestedAt } : { phase: "none" }))
+      .then((b: { status?: string; requestedAt?: string; teamMember?: boolean; declineReason?: string }) => alive && setDeletion(b.status === "pending" && b.requestedAt ? { phase: "pending", requestedAt: b.requestedAt } : b.teamMember ? { phase: "team_member" } : b.status === "declined" ? { phase: "declined", reason: b.declineReason ?? "" } : { phase: "none" }))
       .catch(() => alive && setDeletion({ phase: "none" }));
     return () => {
       alive = false;
@@ -151,10 +166,23 @@ export function DataRights() {
             <p className="pa-hint" role="status">
               Deletion requested on {new Date(deletion.requestedAt).toLocaleDateString()}. Our team will contact you before anything is deleted.
             </p>
+          ) : deletion.phase === "team_member" ? (
+            <p className="pa-hint" role="status">
+              You are on a business&apos;s team, so your account is managed by that business&apos;s Admin. Ask them to remove you; you cannot ask for deletion yourself.
+            </p>
           ) : (
-            <p className="pa-hint">Asks us to permanently delete your Platterly account and sign-in. Our team reviews every request. You must hand over or close your business first.</p>
+            <>
+              {deletion.phase === "declined" && (
+                <p className="pa-hint" role="status">
+                  Your last request was declined{deletion.reason ? `: ${deletion.reason}` : "."}
+                </p>
+              )}
+              <p className="pa-hint">
+                <strong>This deletes everything.</strong> It asks us to permanently delete your Platterly account and sign-in. If you are a business Admin, it also deletes your business and all its data in every Platterly product. Our team reviews every request before anything is deleted.
+              </p>
+            </>
           )}
-          <div>
+          <div hidden={deletion.phase === "team_member"}>
             {deletion.phase === "pending" ? (
               <button type="button" className="pa-btn pa-btn-outline" disabled={busy} onClick={withdraw}>
                 Withdraw request
@@ -169,20 +197,26 @@ export function DataRights() {
       </section>
 
       {panel === "delete" && (
-        <div className="pa-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && closeDelete()}>
-          <form className="pa-modal pa-modal-narrow" role="alertdialog" aria-modal="true" aria-labelledby="dr-title" aria-describedby="dr-desc" onSubmit={submit} noValidate onKeyDown={(e) => e.key === "Escape" && closeDelete()}>
+        <DialogShell onClose={closeDelete} onSubmit={submit}>
+          <>
             <div className="pa-modal-head">
-              <h2 id="dr-title">Delete your account?</h2>
+              <h2 id="dr-title">Delete your account and everything in it?</h2>
             </div>
-            <p id="dr-desc" className="pa-muted">
-              This asks us to permanently delete your Platterly account and sign-in, and everything you use it for. Our team reviews the request and contacts you before anything is
-              deleted. You must hand over or close your business first. This cannot be undone once it is done.
-            </p>
+            <div id="dr-desc" className="pa-warning" role="note">
+              <strong>This will delete everything. Please read before you continue.</strong>
+              <ul>
+                <li>Your Platterly account, sign-in, profile, photo and devices.</li>
+                <li>If you are a business Admin: your business and all of its data in every Platterly product, such as orders, customers, menus and your team&apos;s access.</li>
+                <li>Our team reviews your request first. Nothing is deleted until they approve it.</li>
+                <li>Once approved, you are signed out at once and your business is switched off. It is kept for 30 days in case you change your mind, then permanently removed. It cannot be recovered after that.</li>
+                <li>Invoices and payment records are kept as the law requires, with your personal details removed.</li>
+              </ul>
+            </div>
             <div className="pa-field">
               <label htmlFor="dr-confirm">
                 Type <span className="pa-mono">{REQUIRED_PHRASE}</span> to confirm
               </label>
-              <input id="dr-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoFocus />
+              <input id="dr-confirm" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
             </div>
             <div className="pa-field">
               <label htmlFor="dr-password">Current password</label>
@@ -206,8 +240,8 @@ export function DataRights() {
                 {busy ? "Sending…" : "Request deletion"}
               </button>
             </div>
-          </form>
-        </div>
+          </>
+        </DialogShell>
       )}
     </>
   );

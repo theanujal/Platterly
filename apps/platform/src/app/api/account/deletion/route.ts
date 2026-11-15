@@ -11,10 +11,11 @@ import { identityPool } from "@/modules/auth/identity-db";
 import { idp } from "@/modules/auth/idp";
 import { sendAuthEmail } from "@/modules/auth/mailer";
 import { deletionRequestEmail } from "@/modules/auth/email-templates";
+import { sendRequestToOps, sendWithdrawalToOps, syncDeletionRequests } from "@/modules/account/deletion-ops";
 
 // GET /api/account/deletion: whether a deletion request is pending. POST {"password", "reason"?}: ask for the account to be deleted (the password is asked
-// again). DELETE: withdraw a pending request. Staff review requests and delete by hand; nothing here deletes anything. A person who still has an active
-// business must hand it over or close it first. Account host only; writes take same-origin JSON.
+// again). DELETE: withdraw a pending request. One request covers the account and, for a business Admin, the business. It goes to Ops, where staff approve or
+// decline; nothing here deletes anything. A plain member of a business's team cannot ask (their Admin manages them). Account host only; writes take same-origin JSON.
 const NO_STORE = { "cache-control": "no-store" };
 const STATUS = { wrong_password: 403, no_password: 409, too_many_attempts: 429 } as const;
 
@@ -26,11 +27,24 @@ async function caller(request: Request, write: boolean) {
   return ref ?? Response.json({ status: "unauthenticated" }, { status: 401, headers: NO_STORE });
 }
 
+/** A person on a business's product team (its roster, by email) who is not the business's Admin cannot ask for deletion: the Admin manages the team. */
+async function isTeamMember(providerUserId: string): Promise<boolean> {
+  const profile = await getProfile(identityPool(), providerUserId);
+  if (!profile) return false;
+  return !!(await prisma.organisationTeamMember.findFirst({ where: { email: { equals: profile.email, mode: "insensitive" } }, select: { id: true } }));
+}
+
 export async function GET(request: Request) {
   const who = await caller(request, false);
   if (who instanceof Response) return who;
   try {
-    return Response.json(await getDeletionStatus(identityPool(), who.sub), { headers: NO_STORE });
+    // Pick up a decision Ops has made since the person last looked.
+    await syncDeletionRequests(identityPool(), {}, who.sub).catch(() => undefined);
+    const status = await getDeletionStatus(identityPool(), who.sub);
+    const overview = await loadAccountOverview(prisma, who.session);
+    // An Admin (or former Admin) has a business and is handled by the business rule; only someone with no business of their own can be a plain team member.
+    const teamMember = overview.status === "ok" && overview.overview.business.state === "none" && (await isTeamMember(who.sub));
+    return Response.json({ ...status, teamMember }, { headers: NO_STORE });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });
   }
@@ -46,10 +60,24 @@ export async function POST(request: Request) {
     const overview = await loadAccountOverview(prisma, who.session);
     // An active business (or one the person's membership still points at) must be handed over or closed first. A failed read blocks rather than allows.
     if (overview.status !== "ok") return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });
-    const hasBusiness = overview.overview.business.state === "ok";
-    const result = await requestDeletion(identityPool(), who.sub, { hasBusiness, reason: body?.reason });
+    const business = overview.overview.business;
+    if (business.state === "none" && (await isTeamMember(who.sub))) return Response.json({ status: "team_member" }, { status: 409, headers: NO_STORE });
+    const profile = await getProfile(identityPool(), who.sub);
+    if (!profile) return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });
+    const details = {
+      subject: who.sub,
+      name: profile.name,
+      email: profile.email,
+      phone: profile.phone,
+      businessId: business.state === "ok" ? business.business.id : null,
+      businessName: business.state === "ok" ? business.business.name : null,
+      products: business.state === "ok" ? Object.entries(business.products).filter(([, link]) => link === "linked").map(([key]) => key) : [],
+    };
+    const result = await requestDeletion(identityPool(), who.sub, { details, reason: body?.reason });
     if (!result.ok) return Response.json({ status: result.reason }, { status: 409, headers: NO_STORE });
     await audit(who.session.userId, "account.deletion_requested");
+    // Ops is told now; if it is down the scheduled job tells it again.
+    await sendRequestToOps(identityPool(), result.payload.requestId).catch(() => undefined);
     await notify(who.sub);
     return Response.json({ status: "ok" }, { headers: NO_STORE });
   } catch {
@@ -61,9 +89,12 @@ export async function DELETE(request: Request) {
   const who = await caller(request, true);
   if (who instanceof Response) return who;
   try {
-    const done = await cancelDeletion(identityPool(), who.sub);
-    if (done) await audit(who.session.userId, "account.deletion_request_withdrawn");
-    return Response.json({ status: done ? "ok" : "none" }, { headers: NO_STORE });
+    const id = await cancelDeletion(identityPool(), who.sub);
+    if (id) {
+      await audit(who.session.userId, "account.deletion_request_withdrawn");
+      await sendWithdrawalToOps(identityPool(), id).catch(() => undefined);
+    }
+    return Response.json({ status: id ? "ok" : "none" }, { headers: NO_STORE });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });
   }

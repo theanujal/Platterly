@@ -1043,3 +1043,31 @@ model Refund {
   @@index([paymentId])
   @@map("refund")
 }
+
+// A person's request to have their Platterly account (and, for a business Admin, the business) deleted, made on the Account's My Profile page. Staff approve or
+// decline here; the Platform asks for the decision and acts on it. Approval suspends the business for the retention period (restorable); the final removal is a
+// separate step. Financial records are kept, with personal details removed, when that step is built.
+model AccountDeletionRequest {
+  id            String    @id @default(cuid())
+  requestId     String    @unique
+  subject       String
+  name          String
+  email         String
+  phone         String
+  businessId    String?
+  businessName  String?
+  products      Json
+  reason        String    @default("")
+  requestedAt   DateTime
+  // PENDING, APPROVED, DECLINED, WITHDRAWN or RESTORED.
+  status        String    @default("PENDING")
+  declineReason String?
+  decidedAt     DateTime?
+  decidedBy     String?
+  // When the retention period ends and the final removal may happen (set on approval).
+  eraseAfter    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([status, createdAt])
+  @@map("account_deletion_request")
+}

@@ -26,8 +26,20 @@ test("a person downloads their data (password asked first, no secrets inside) an
   // Deleting follows Caterly's Danger Zone: a dialog where the button stays off until the word DELETE is typed.
   await expect(page.getByRole("heading", { name: "Danger Zone" })).toBeVisible();
   await page.getByRole("button", { name: "Request deletion" }).click();
-  const dialog = page.getByRole("alertdialog", { name: "Delete your account?" });
+  const dialog = page.getByRole("alertdialog", { name: "Delete your account and everything in it?" });
+  await expect(dialog).toContainText("This will delete everything");
+  await expect(dialog).toContainText("It cannot be recovered after that");
   const send = dialog.getByRole("button", { name: "Request deletion" });
+  // Keyboard: focus is already inside, Tab never leaves the dialog, and Escape closes it and gives focus back to the button that opened it.
+  await expect(dialog.getByLabel(/Type/)).toBeFocused();
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press("Tab");
+    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  }
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "Request deletion" })).toBeFocused();
+  await page.getByRole("button", { name: "Request deletion" }).click();
   await dialog.getByLabel("Current password").fill(PASSWORD);
   await expect(send).toBeDisabled();
   await dialog.getByLabel(/Type/).fill("delete");

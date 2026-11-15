@@ -112,6 +112,39 @@ export const twoFactorChangedEmail = (on: boolean) =>
 export const deletionRequestEmail = () =>
   notice({ subject: "We received your Platterly account deletion request", tag: "Account Update", eyebrow: "Deletion request", title: "We received your deletion request", paragraphs: ["We received a request to delete your Platterly account. Our team reviews every request and will contact you before anything is deleted."], after: ["If you did not ask for this, sign in and withdraw the request on your Profile page, then change your password."] });
 
+/** When staff approved the deletion: the account is blocked now and can still be restored for `days` days. */
+export const deletionApprovedEmail = (days: number) =>
+  notice({
+    subject: "Your Platterly account deletion was approved",
+    tag: "Account Update",
+    eyebrow: "Deletion approved",
+    title: "Your deletion request was approved",
+    paragraphs: [`Our team approved your request to delete your Platterly account. Your account and your business are now switched off and you can no longer sign in.`, `Everything is kept for ${days} days in case you change your mind. After that it is permanently removed.`],
+    after: ["If this was a mistake, reply to this email or contact Platterly support within that time and we will restore everything."],
+  });
+
+/** When staff declined the deletion, with the reason they gave. */
+export const deletionDeclinedEmail = (reason: string) =>
+  notice({
+    subject: "Your Platterly account deletion request was declined",
+    tag: "Account Update",
+    eyebrow: "Deletion declined",
+    title: "We could not delete your account",
+    paragraphs: ["Our team reviewed your request to delete your Platterly account and could not go ahead with it.", `Reason: ${reason}`],
+    after: ["Your account and business are unchanged. If you still want them deleted, you can ask again from your Profile page once this is sorted out."],
+  });
+
+/** When staff restored an approved deletion. */
+export const deletionRestoredEmail = () =>
+  notice({
+    subject: "Your Platterly account was restored",
+    tag: "Account Update",
+    eyebrow: "Account restored",
+    title: "Your account was restored",
+    paragraphs: ["Our team restored your Platterly account and your business. You can sign in again as before."],
+    after: ["If you did not expect this, contact Platterly support."],
+  });
+
 /** Optional alert (Account notification choice): a sign-in from a browser or system not seen before. `device` is a plain label, never an address. */
 export const newSignInAlertEmail = (device: string, when: string) =>
   notice({

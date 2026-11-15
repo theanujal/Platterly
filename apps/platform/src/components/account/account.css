@@ -2730,6 +2730,7 @@ textarea.pa-input {
 }
 .pa-modal-narrow {
   width: min(100%, 480px);
+  overflow-y: auto;
 }
 .pa-modal-actions {
   justify-content: flex-end;
@@ -2859,4 +2860,24 @@ textarea.pa-input {
     align-items: flex-start;
     margin-left: 0;
   }
+}
+
+.pa-warning {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--destructive, #dc2626) 35%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 6%, transparent);
+  font-size: 13px;
+}
+.pa-warning strong {
+  color: var(--destructive, #dc2626);
+}
+.pa-warning ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
 }

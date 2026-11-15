@@ -28,19 +28,22 @@ describe.skipIf(!testUrl)("data export and deletion request (identity test datab
     for (const secret of ["SECRET-HASH-VALUE", "SECRET-TOKEN", "u2@x.test", "+919800000124", '"password"', '"token"']) expect(text).not.toContain(secret);
     expect(await buildExport(h.pool, "ghost", "s1", null)).toBeNull();
   });
-  it("a deletion request is recorded once, can be withdrawn, and can be made again", async () => {
+  const details = { subject: "u1", name: "Asha Rao", email: "u1@x.test", phone: "+919800000123", businessId: null, businessName: null, products: [] };
+  it("a deletion request is recorded once, with what Ops will show staff, can be withdrawn, and can be made again", async () => {
     expect(await getDeletionStatus(h.pool, "u1")).toEqual({ status: "none" });
-    expect(await requestDeletion(h.pool, "u1", { hasBusiness: false, reason: "  leaving  " })).toEqual({ ok: true });
+    const first = await requestDeletion(h.pool, "u1", { details, reason: "  leaving  " });
+    expect(first).toMatchObject({ ok: true, payload: { subject: "u1", reason: "leaving", businessId: null } });
     expect((await getDeletionStatus(h.pool, "u1")).status).toBe("pending");
-    expect(await requestDeletion(h.pool, "u1", { hasBusiness: false })).toEqual({ ok: false, reason: "already_pending" });
+    expect(await requestDeletion(h.pool, "u1", { details })).toEqual({ ok: false, reason: "already_pending" });
     expect((await getDeletionStatus(h.pool, "u2")).status).toBe("none");
-    expect(await cancelDeletion(h.pool, "u1")).toBe(true);
-    expect(await cancelDeletion(h.pool, "u1")).toBe(false);
-    expect(await requestDeletion(h.pool, "u1", { hasBusiness: false })).toEqual({ ok: true });
+    expect(await cancelDeletion(h.pool, "u1")).toBe(first.ok ? first.payload.requestId : "x");
+    expect(await cancelDeletion(h.pool, "u1")).toBeNull();
+    expect(await requestDeletion(h.pool, "u1", { details })).toMatchObject({ ok: true });
     expect((await h.pool.query(`select reason from "deletionRequest" where "userId" = 'u1' order by "requestedAt" limit 1`)).rows[0].reason).toBe("leaving");
   });
-  it("a person with an active business is refused and nothing is recorded", async () => {
-    expect(await requestDeletion(h.pool, "u1", { hasBusiness: true })).toEqual({ ok: false, reason: "has_business" });
-    expect((await h.pool.query('select count(*) from "deletionRequest"')).rows[0].count).toBe("0");
+  it("a business Admin's request covers the business, so it is recorded with the business", async () => {
+    const result = await requestDeletion(h.pool, "u1", { details: { ...details, businessId: "biz_1", businessName: "Test Kitchen", products: ["caterly"] } });
+    expect(result).toMatchObject({ ok: true, payload: { businessId: "biz_1", businessName: "Test Kitchen", products: ["caterly"] } });
+    expect((await h.pool.query('select count(*) from "deletionRequest"')).rows[0].count).toBe("1");
   });
 });

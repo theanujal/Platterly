@@ -1,0 +1,49 @@
+import { UserX } from "lucide-react";
+import { Badge, Empty, PageHeader, formatWhen } from "@/components/ui";
+import { listAccountDeletions } from "@/modules/account-deletions/account-deletions";
+import { DecideForms, RestoreForm } from "./deletion-forms";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Account deletions" };
+
+const TONE = { PENDING: "warning", APPROVED: "danger", DECLINED: "neutral", WITHDRAWN: "neutral", RESTORED: "success" } as const;
+const LABEL = { PENDING: "Waiting for you", APPROVED: "Approved: suspended", DECLINED: "Declined", WITHDRAWN: "Withdrawn by the person", RESTORED: "Restored" } as const;
+
+export default async function AccountDeletionsPage() {
+  const rows = await listAccountDeletions();
+  return (
+    <>
+      <PageHeader title="Account deletions" description="People who asked to delete their Platterly account. A business Admin's request covers the business too. Nothing is deleted until you approve it." />
+      {rows.length === 0 ? (
+        <Empty><UserX className="mx-auto mb-2 size-5" aria-hidden />No deletion requests.</Empty>
+      ) : (
+        <ul className="divide-y divide-border rounded-xl bg-card shadow-[0_0_0_1px_rgba(17,24,39,0.1)]">
+          {rows.map((r) => {
+            const status = r.status as keyof typeof LABEL;
+            const products = Array.isArray(r.products) ? (r.products as string[]) : [];
+            return (
+              <li key={r.id} className="p-4" data-testid={`deletion-${r.requestId}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold">{r.name || r.email}</p>
+                  <Badge tone={TONE[status] ?? "neutral"}>{LABEL[status] ?? r.status}</Badge>
+                </div>
+                <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                  <div><dt className="inline text-muted-foreground">Email: </dt><dd className="inline">{r.email}</dd></div>
+                  <div><dt className="inline text-muted-foreground">Phone: </dt><dd className="inline">{r.phone || "Not given"}</dd></div>
+                  <div><dt className="inline text-muted-foreground">Business: </dt><dd className="inline">{r.businessName ?? "None (no business)"}</dd></div>
+                  <div><dt className="inline text-muted-foreground">Products: </dt><dd className="inline">{products.length ? products.join(", ") : "None"}</dd></div>
+                  <div><dt className="inline text-muted-foreground">Asked: </dt><dd className="inline">{formatWhen(r.requestedAt)}</dd></div>
+                  {r.eraseAfter ? <div><dt className="inline text-muted-foreground">Restorable until: </dt><dd className="inline">{formatWhen(r.eraseAfter)}</dd></div> : null}
+                </dl>
+                {r.reason ? <p className="mt-2 text-sm text-muted-foreground">Reason given: “{r.reason}”</p> : null}
+                {r.declineReason ? <p className="mt-2 text-sm text-muted-foreground">Declined because: “{r.declineReason}”</p> : null}
+                {status === "PENDING" ? <DecideForms id={r.id} hasBusiness={!!r.businessId} /> : null}
+                {status === "APPROVED" ? <RestoreForm id={r.id} /> : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
