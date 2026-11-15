@@ -110,6 +110,16 @@ model Product {
   // HSN / SAC code printed on stand invoices (4 to 8 digits). Null = use the SAC code in Billing's seller details.
   standHsnCode    String?
 
+  // What the product's card says in every product's Account (AJ, 2026-11-15): one line, and the picture (`builtin:<name>` from the built-in set, or
+  // `upload:<file name>` from the picture library). Staff edit both on the Products page.
+  tagline   String?
+  cardImage String?
+  // The product's logo for its tile on the Account: `upload:<file name>` from the picture library. No logo = the first letter of the name.
+  logo      String?
+  // The product's details page in every Account (AJ, 2026-11-15): a paragraph and up to four "What you can do" items, `[{icon,title,text}]`.
+  about     String?
+  features  Json?
+
   // The last manifest read from the product (see packages/contract manifest).
   manifest          Json?
   manifestVersion   String?
@@ -136,6 +146,27 @@ model Product {
   coupons           Coupon[]
 
   @@map("product")
+}
+
+// A product that is not on sale yet but is shown on every business's Account page (AJ, 2026-11-15). It has no address and no secrets, so it is not a `Product`.
+// `upcoming` is the switch staff turn off when the product goes live (the card stops saying "Coming soon"); `visible` hides it without deleting it.
+// When `launchAt` arrives staff get one notification (`launchNotifiedAt`), and the card says "Launching today" until the switch is turned off.
+model UpcomingProduct {
+  key              String    @id
+  name             String
+  tagline          String?
+  // `builtin:<name>` or `upload:<file name>`, as on Product.
+  cardImage        String?
+  logo             String?
+  launchAt         DateTime?
+  sortOrder        Int       @default(0)
+  upcoming         Boolean   @default(true)
+  visible          Boolean   @default(true)
+  launchNotifiedAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("upcoming_product")
 }
 
 // ---------- Business directory ----------

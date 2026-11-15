@@ -65,7 +65,9 @@ export async function mediaUsage(name: string): Promise<string[]> {
     prisma.siteLegalPage.findMany({ where: { body: { contains: link } }, select: { title: true } }),
     prisma.siteRelease.findMany({ where: { body: { contains: link } }, select: { title: true } }),
   ]);
-  return [...posts.map((p) => `Post: ${p.title}`), ...pages.map((p) => `Page: ${p.title}`), ...releases.map((r) => `Update: ${r.title}`)];
+  const ref = `upload:${name}`;
+  const [cards, upcoming] = await Promise.all([prisma.product.findMany({ where: { OR: [{ cardImage: ref }, { logo: ref }] }, select: { name: true } }), prisma.upcomingProduct.findMany({ where: { OR: [{ cardImage: ref }, { logo: ref }] }, select: { name: true } })]);
+  return [...posts.map((p) => `Post: ${p.title}`), ...pages.map((p) => `Page: ${p.title}`), ...releases.map((r) => `Update: ${r.title}`), ...[...cards, ...upcoming].map((c) => `Product card: ${c.name}`)];
 }
 
 export async function updateMediaAlt(name: string, alt: string, staffId: string | null) {

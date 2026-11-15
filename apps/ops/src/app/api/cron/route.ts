@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { runDueCommands } from "@/modules/commands/outbox";
 import { runDueMessages } from "@/modules/messages/messages";
 import { syncNotices } from "@/modules/notices/notices";
+import { notifyDueLaunches } from "@/modules/product-cards/manage";
 import { refreshLibraryCandidates } from "@/modules/library/library";
 import { refreshDueManifests } from "@/modules/registry/products";
 import { publishDueScheduled } from "@/modules/site-content/publish";
@@ -38,10 +39,11 @@ async function run(request: Request) {
   const graceNotices = await sendGraceNotices(now, product);
   const renewalReminders = await sendRenewalReminders(now, product);
   const noticesQueued = await syncNotices(product);
+  const launchesDue = await notifyDueLaunches(now);
   const commandsSent = await runDueCommands(now, 50, product);
   const messagesSent = await runDueMessages(now);
   const libraryNew = await refreshLibraryCandidates(now, product).catch(() => 0);
-  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, graceNotices, renewalReminders, noticesQueued, commandsSent, messagesSent, libraryNew });
+  return Response.json({ ranAt: now.toISOString(), locked, manifestsRead, sitePublished, snapshotsRefreshed, trialNotices, graceNotices, renewalReminders, noticesQueued, launchesDue, commandsSent, messagesSent, libraryNew });
 }
 
 export const GET = run;

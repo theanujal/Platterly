@@ -35,9 +35,9 @@ export function NotificationBell({ unread, items }: { unread: number; items: Bel
   }, [open]);
   return (
     <div ref={root} className="relative">
-      <button type="button" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="relative flex size-10 items-center justify-center rounded-[10px] border border-border bg-white hover:bg-muted">
+      <button type="button" aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"} aria-expanded={open} onClick={() => setOpen((v) => !v)} className="relative flex size-9 items-center justify-center rounded-lg border border-primary/30 bg-primary/10 text-primary transition-colors hover:bg-primary/20">
         <Bell className="size-[18px]" aria-hidden />
-        {unread > 0 ? <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-white">{unread > 99 ? "99+" : unread}</span> : null}
+        {unread > 0 ? <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground ring-2 ring-background">{unread > 9 ? "9+" : unread}</span> : null}
       </button>
       {open ? (
         <div className="absolute right-0 top-full z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-border bg-white shadow-lg">

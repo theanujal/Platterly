@@ -9,6 +9,7 @@ import { AppNav } from "./app-nav";
 import { countNewEnquiries } from "@/modules/enquiries/enquiries";
 import { NotificationBell } from "./notification-bell";
 import { ProductSwitcher } from "./product-switcher";
+import { UserChip } from "./user-chip";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const staff = await requireStaff();
@@ -42,10 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               unread={unread}
               items={latest.map((n) => ({ id: n.id, title: n.title, body: n.body, severity: n.severity, when: formatWhen(n.createdAt), href: n.link, read: Boolean(n.readAt) }))}
             />
-            <span className="hidden items-center gap-2 sm:flex" title={staff.email}>
-              <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{initials}</span>
-              <span className="hidden text-sm font-medium md:block">{staff.name}</span>
-            </span>
+            <UserChip name={staff.name} email={staff.email} initials={initials} />
           </div>
         </header>
         <main className="w-full p-4 sm:p-6 xl:px-8">{children}</main>

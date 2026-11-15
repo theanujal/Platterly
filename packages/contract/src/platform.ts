@@ -188,3 +188,100 @@ export function parsePlatformBusinessBilling(input: unknown): ParseResult<Platfo
  */
 export const STORE_KEY_FOR_OPS_KEY: Record<string, string> = { catering: "caterly" };
 export const storeKeyFor = (opsKey: string): string => STORE_KEY_FOR_OPS_KEY[opsKey] ?? opsKey;
+
+/**
+ * The product cards the Account's My Products page shows (AJ, 2026-11-15): every live product and every upcoming one staff have made visible, with the line,
+ * the picture and, for an upcoming one, the launch date. Ops owns all of it; the platform signs the request with the platform-reader secret and Ops signs the answer.
+ * Additive: a platform that does not know this path simply never asks.
+ */
+export const PLATFORM_PRODUCT_CARDS_PATH = "/api/platform/product-cards";
+export const platformProductCardImagePath = (name: string) => `/api/platform/product-cards/image/${encodeURIComponent(name)}`;
+export const PLATFORM_PRODUCT_CARD_IMAGE_PATH_PATTERN = /^\/api\/platform\/product-cards\/image\/[a-z0-9][a-z0-9._-]{0,120}$/;
+
+/** The pictures every product card can use without an upload. Staff pick one by name; the platform and Ops each ship the same files. */
+export const BUILTIN_CARD_IMAGES = ["cloche", "growth", "clipboard", "donut", "boxes"] as const;
+export type BuiltinCardImage = (typeof BUILTIN_CARD_IMAGES)[number];
+
+const UPLOAD_NAME = /^[a-z0-9][a-z0-9._-]{0,120}$/;
+/** `builtin:<name>` for one of the built-in pictures, or `upload:<file name>` for a picture staff uploaded to Ops's picture library. */
+export function isCardImageRef(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value.startsWith("builtin:")) return (BUILTIN_CARD_IMAGES as readonly string[]).includes(value.slice(8));
+  return value.startsWith("upload:") && UPLOAD_NAME.test(value.slice(7)) && !value.includes("..");
+}
+
+/** The icons a product's "What you can do" items can use; each name is drawn by the Account. */
+export const FEATURE_ICONS = ["users", "menus", "orders", "payments", "calendar", "delivery", "reports", "security"] as const;
+export type FeatureIcon = (typeof FEATURE_ICONS)[number];
+export interface ProductFeature {
+  icon: FeatureIcon;
+  title: string;
+  text: string;
+}
+export const MAX_FEATURES = 4;
+export const ABOUT_MAX = 600;
+
+/** The features as stored: a list of at most MAX_FEATURES items, each with a known icon and short texts. Null when it is not that. */
+export function parseFeatures(value: unknown): ProductFeature[] | null {
+  if (!Array.isArray(value) || value.length > MAX_FEATURES) return null;
+  const out: ProductFeature[] = [];
+  for (const item of value) {
+    if (!isRecord(item)) return null;
+    const { icon, title, text } = item;
+    if (typeof icon !== "string" || !(FEATURE_ICONS as readonly string[]).includes(icon)) return null;
+    if (typeof title !== "string" || !title.trim() || title.length > 80 || typeof text !== "string" || text.length > 200) return null;
+    out.push({ icon: icon as FeatureIcon, title, text });
+  }
+  return out;
+}
+
+export interface PlatformProductCard {
+  /** Ops's key: `catering` for Caterly, `rivo` for an upcoming product. */
+  key: string;
+  name: string;
+  /** The one-line description under the name. */
+  tagline: string | null;
+  image: string | null;
+  /** The logo for the card's tile (`upload:<file>`), or null: the tile then shows the first letter. Added after the first release, so an older answer without it reads as null. */
+  logo: string | null;
+  /** The details page: a paragraph about the product and its "What you can do" items. Added later, so an older answer without them reads as null and none. */
+  about: string | null;
+  features: ProductFeature[];
+  /** LIVE: on sale (or, for an upcoming product staff switched to live). UPCOMING: the card says "Coming soon" and counts down to `launchAt`. */
+  status: "LIVE" | "UPCOMING";
+  launchAt: string | null;
+}
+
+export interface PlatformProductCards {
+  generatedAt: string;
+  products: PlatformProductCard[];
+}
+
+export function parsePlatformProductCards(input: unknown): ParseResult<PlatformProductCards> {
+  if (!isRecord(input)) return fail("the cards must be an object");
+  const { generatedAt, products } = input;
+  if (!isIsoDate(generatedAt)) return fail("generatedAt must be a date");
+  if (!Array.isArray(products) || products.length > 100) return fail("products must be a list");
+  const seen = new Set<string>();
+  const out: PlatformProductCard[] = [];
+  for (const item of products) {
+    if (!isRecord(item)) return fail("each card must be an object");
+    const { key, name, tagline, image, status, launchAt } = item;
+    const about = item.about ?? null;
+    if (about !== null && (typeof about !== "string" || about.length > ABOUT_MAX)) return fail("about must be text or null");
+    const features = item.features === undefined ? [] : parseFeatures(item.features);
+    if (features === null) return fail("features are not valid");
+    const logo = item.logo ?? null;
+    if (logo !== null && !(typeof logo === "string" && logo.startsWith("upload:") && isCardImageRef(logo))) return fail("logo is not an uploaded picture");
+    if (typeof key !== "string" || !isProductKey(key)) return fail("a card key is not valid");
+    if (seen.has(key)) return fail(`card ${key} is repeated`);
+    seen.add(key);
+    if (typeof name !== "string" || !name.trim() || name.length > 200) return fail("a card needs a name");
+    if (tagline !== null && (typeof tagline !== "string" || tagline.length > 300)) return fail("tagline must be text or null");
+    if (image !== null && !isCardImageRef(image)) return fail("image is not a known picture");
+    if (status !== "LIVE" && status !== "UPCOMING") return fail("status must be LIVE or UPCOMING");
+    if (launchAt !== null && !isIsoDate(launchAt)) return fail("launchAt must be a date or null");
+    out.push({ key, name, tagline, image, logo, about, features, status, launchAt });
+  }
+  return ok({ generatedAt, products: out });
+}
