@@ -15,16 +15,9 @@ async function signInToStore(page: Page, path: string) {
   await expect(page).toHaveURL(`${STORE}${path}`);
 }
 
-const tab = (page: Page, name: string) => page.getByRole("tab", { name, exact: true });
+/** A tab by its label; the label ends with the number of products, e.g. "Subscribed products (2)". */
+const tab = (page: Page, name: string) => page.getByRole("tab", { name: new RegExp(`^${name}`) });
 const article = (page: Page, name: string) => page.getByRole("article", { name, exact: true });
-
-async function fillDetails(page: Page) {
-  await page.getByLabel("Business name").fill("Spice Route Caterers");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
-}
 
 test.describe("Store home", () => {
   // The Store is never public (2026-11-07): the home, like Manage, asks for a sign-in first.
@@ -32,28 +25,27 @@ test.describe("Store home", () => {
     await signInToStore(page, "/");
   });
 
-  test("opens on Subscribed products with renewal date and amount and a Manage link, and no frequency filter or group headings", async ({ page }) => {
+  test("opens on Subscribed products with renewal date and amount and a Manage link, and no frequency filter", async ({ page }) => {
     await page.goto(`${STORE}/`);
     await expect(page.getByRole("note")).toContainText("Prototype with sample data");
     await expect(tab(page, "Subscribed products")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByLabel("Billing frequency")).toHaveCount(0);
-    await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveCount(0);
     const caterly = article(page, "Caterly");
     await expect(caterly).toContainText("Growth");
-    await expect(caterly).toContainText("Next renewal date: 18 Apr 2027");
-    await expect(caterly).toContainText("Renewal amount: ₹29,500 / year");
-    await expect(article(page, "Rivo")).toContainText("Renewal amount: ₹2,124 / month");
+    await expect(caterly).toContainText("Next renewal18 Apr 2027");
+    await expect(caterly).toContainText("Renewal amount₹29,500 / year");
+    await expect(article(page, "Rivo")).toContainText("Renewal amount₹2,124 / month");
     await expect(article(page, "Stockroom")).toHaveCount(0);
     await expect(caterly.getByRole("link", { name: /Manage/ })).toHaveAttribute("href", "/manage/caterly");
   });
 
-  test("On trial and Unsubscribed products show their own products and actions", async ({ page }) => {
+  test("On trial and Available products show their own products and actions", async ({ page }) => {
     await page.goto(`${STORE}/`);
     await tab(page, "On trial products").click();
     await expect(article(page, "Stockroom")).toContainText("Trial ends on 15 Nov 2026");
     await expect(article(page, "Stockroom").getByRole("link", { name: /Choose a plan/ })).toHaveAttribute("href", "/manage/stockroom");
     await expect(article(page, "Caterly")).toHaveCount(0);
-    await tab(page, "Unsubscribed products").click();
+    await tab(page, "Available products").click();
     await expect(article(page, "Tabletop").getByRole("link", { name: /View plans/ })).toHaveAttribute("href", "/manage/tabletop");
     await expect(article(page, "Stockroom")).toHaveCount(0);
   });
@@ -70,14 +62,6 @@ test.describe("Store home", () => {
     await expect(bundle.getByRole("button", { name: "View bundle" })).toBeDisabled();
   });
 
-  test("search filters the products on the current tab and says so when nothing matches", async ({ page }) => {
-    await page.goto(`${STORE}/`);
-    await page.getByLabel("Search products").fill("riv");
-    await expect(article(page, "Rivo")).toBeVisible();
-    await expect(article(page, "Caterly")).toHaveCount(0);
-    await page.getByLabel("Search products").fill("zzz");
-    await expect(page.getByText("No subscribed products match.")).toBeVisible();
-  });
 });
 
 test.describe("Manage a product", () => {
@@ -88,7 +72,10 @@ test.describe("Manage a product", () => {
   test("lists every plan of the product and labels each one Current plan, Upgrade or Downgrade", async ({ page }) => {
     await page.goto(`${STORE}/manage/caterly`);
     await expect(page.getByRole("heading", { level: 1, name: "Manage your Caterly subscription" })).toBeVisible();
-    await expect(page.getByText(/You are on Growth, billed yearly\. Next renewal: 18 Apr 2027/)).toBeVisible();
+    const current = page.getByRole("region", { name: "Your current subscription" });
+    await expect(current).toContainText("Growth");
+    await expect(current).toContainText("Yearly plan");
+    await expect(current).toContainText("18 Apr 2027");
     await expect(page.getByRole("button", { name: "Annual" })).toHaveAttribute("aria-pressed", "true");
     await expect(article(page, "Growth").getByRole("button", { name: "Current plan" })).toBeDisabled();
     await expect(article(page, "Pro").getByRole("button", { name: "Upgrade" })).toBeEnabled();
@@ -99,7 +86,7 @@ test.describe("Manage a product", () => {
     await expect(page.getByText("Show features")).toHaveCount(0);
     await expect(article(page, "Pro")).toContainText("Inventory, purchasing and reports");
     await expect(article(page, "Starter")).toContainText("50 events a month");
-    await page.getByText("Compare plans in detail").click();
+    await page.getByRole("button", { name: "Compare plans" }).click();
     await expect(page.getByRole("row", { name: /Growth/ })).toContainText("₹29,500");
   });
 
@@ -115,29 +102,27 @@ test.describe("Manage a product", () => {
   test("upgrade: Confirm payment (details and sample payment on one screen) then Confirmation, with the plan's own amounts", async ({ page }) => {
     await page.goto(`${STORE}/manage/caterly`);
     await article(page, "Pro").getByRole("button", { name: "Upgrade" }).click();
-    await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText(["Choose plan", "Confirm payment", "Confirmation"]);
-    await expect(page.getByRole("list", { name: "Progress" }).locator("[aria-current=step]")).toHaveText("Confirm payment");
-    const summary = page.getByRole("complementary", { name: "Order summary" });
-    await expect(summary).toContainText("Caterly Pro");
+    await expect(page.getByRole("heading", { name: "Confirm payment" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "Progress" })).toHaveCount(0);
+    const summary = page.getByRole("form", { name: "Review changes" });
+    await expect(summary).toContainText("Pro");
     await expect(summary.getByTestId("amount")).toHaveText("₹50,000");
     await expect(summary.getByTestId("gst")).toHaveText("₹9,000");
     await expect(summary.getByTestId("total")).toHaveText("₹59,000");
     await expect(summary).toContainText("Total today");
+    // The invoice goes to the product's saved billing profile (sample here): the Store shows it with an Edit link and asks for nothing.
+    const billing = page.getByRole("complementary", { name: "Billing and invoice details" });
+    await expect(billing).toContainText("Spice Route Caterers");
+    await expect(billing).toContainText("GSTIN: 27ABCDE1234F1Z5");
+    await expect(billing.getByRole("link", { name: "Edit billing details" })).toHaveAttribute("href", /\/billing-details\/catering$/);
+    await expect(page.getByLabel("Business name")).toHaveCount(0);
     await expect(page.getByLabel(/Coupon code/)).toBeDisabled();
 
     await expect(page.getByRole("group", { name: "Payment" })).toContainText("Sample payment. No card or UPI is used");
     await expect(page.getByRole("group", { name: "Payment" })).toContainText("₹59,000");
     await page.getByRole("button", { name: "Simulate successful payment" }).click();
-    for (const message of ["Enter your business name.", "Enter the billing address.", "Enter the city.", "Enter the state.", "Enter a 6-digit PIN code."]) await expect(page.getByText(message)).toBeVisible();
-    await fillDetails(page);
-    await page.getByLabel("GSTIN").fill("NOTAGSTIN");
-    await page.getByRole("button", { name: "Simulate successful payment" }).click();
-    await expect(page.getByText(/valid 15-character GSTIN/)).toBeVisible();
-    await expect(page.getByRole("region", { name: "Confirmation" })).toHaveCount(0);
-    await page.getByLabel("GSTIN").fill("27ABCDE1234F1Z5");
-    await page.getByRole("button", { name: "Simulate successful payment" }).click();
     const done = page.getByRole("region", { name: "Confirmation" });
-    await expect(done.getByRole("heading", { name: "Upgrade confirmed" })).toBeVisible();
+    await expect(done.getByRole("heading", { name: "Upgrade successful" })).toBeVisible();
     await expect(done).toContainText("Sample only. Nothing was saved or charged");
     await done.getByRole("link", { name: "Back to Store" }).click();
     await expect(tab(page, "Subscribed products")).toBeVisible();
@@ -148,16 +133,19 @@ test.describe("Manage a product", () => {
     await page.goto(`${STORE}/manage/caterly`);
     await page.getByRole("button", { name: "Monthly" }).click();
     await article(page, "Starter").getByRole("button", { name: "Downgrade" }).click();
-    await expect(page.getByRole("list", { name: "Progress" }).getByRole("listitem")).toHaveText(["Choose plan", "Confirm downgrade", "Confirmation"]);
+    await expect(page.getByRole("heading", { name: "Confirm downgrade" })).toBeVisible();
     await expect(page.getByRole("group", { name: "Payment" })).toHaveCount(0);
-    const summary = page.getByRole("complementary", { name: "Order summary" });
-    await expect(summary).toContainText("No charge today. This plan starts at your next renewal.");
-    await expect(summary).toContainText("Total from 18 Apr 2027");
-    await fillDetails(page);
+    const next = page.getByRole("form", { name: "Review changes" });
+    await expect(next).toContainText("What happens next?");
+    await expect(next).toContainText("Your current Growth plan will remain active until 18 Apr 2027.");
+    await expect(next).toContainText("From 18 Apr 2027, your plan will change to Starter.");
+    await expect(next).toContainText("No payment is required now.");
     await page.getByRole("button", { name: "Schedule downgrade" }).click();
     const done = page.getByRole("region", { name: "Confirmation" });
     await expect(done.getByRole("heading", { name: "Downgrade scheduled" })).toBeVisible();
-    await expect(done).toContainText("You move to Starter on 18 Apr 2027. Until then you keep Growth, and nothing is charged today.");
+    await expect(done).toContainText("Growth to Starter");
+    await expect(done).toContainText("18 Apr 2027");
+    await expect(done).toContainText("No payment is collected today.");
   });
 
   test("a new subscription on an unsubscribed product goes through payment to Order confirmed; Back returns to the plans", async ({ page }) => {
@@ -166,7 +154,6 @@ test.describe("Manage a product", () => {
     await page.getByRole("button", { name: "Back" }).click();
     await expect(article(page, "Plus")).toBeVisible();
     await article(page, "Plus").getByRole("button", { name: "Subscribe" }).click();
-    await fillDetails(page);
     await page.getByRole("button", { name: "Simulate successful payment" }).click();
     await expect(page.getByRole("heading", { name: "Order confirmed" })).toBeVisible();
   });

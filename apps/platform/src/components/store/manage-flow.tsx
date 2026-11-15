@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Buyer, PlanOffer } from "@platterly/contract";
+import type { Buyer, PlanOffer, ProductBillingProfileRecord } from "@platterly/contract";
+import { Icon } from "@/components/account/icons";
 import { inr, longDate, type Interval } from "@/modules/store/format";
 import { checkBuyer, type BuyerField } from "@/modules/store/buyer-check";
+import { billingComplete } from "@/modules/store/profile-ready";
 import type { StoreQuote } from "@/modules/store/ops-checkout";
 import { changeKind, type ChangeKind, type SampleProduct } from "@/modules/store/sample-catalogue";
 import { openRazorpay, openRazorpaySubscription, type RazorpayOrder, type RazorpaySubscription } from "./razorpay";
@@ -23,12 +25,13 @@ const FIELDS: { key: keyof Buyer; label: string; optional?: boolean; autoComplet
   { key: "gstin", label: "GSTIN", optional: true, hint: "Optional. 15 characters, for a GST invoice in your business name." },
 ];
 const BUTTON: Record<ChangeKind, string> = { current: "Current plan", upgrade: "Upgrade", downgrade: "Downgrade", new: "Subscribe" };
+const TONE = { good: "success", info: "info", warn: "warning", bad: "warning", none: "neutral" } as const;
 
 /** Manage one product (prototype): plans with Upgrade / Downgrade / Current plan, then Confirm order, Payment (sample) and Confirmation. Nothing is saved or charged. */
 /** A paid-plan sign-up arrives with the plan it chose (and, after paying, where to go back to the product). */
 export type InitialChoice = { planCode: string; interval: "MONTHLY" | "ANNUAL" };
 
-export function ManageFlow({ product, live = false, savedBuyer = null, accountUrl = null, initialChoice = null, continueUrl = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null; accountUrl?: string | null; initialChoice?: InitialChoice | null; continueUrl?: string | null }) {
+export function ManageFlow({ product, live = false, savedBuyer = null, accountUrl = null, initialChoice = null, continueUrl = null, hasLogo = false, profile = null, profileState = "ok", collectDetails = false, editUrl = null }: { product: SampleProduct; live?: boolean; savedBuyer?: Buyer | null; accountUrl?: string | null; initialChoice?: InitialChoice | null; continueUrl?: string | null; hasLogo?: boolean; profile?: ProductBillingProfileRecord | null; profileState?: "ok" | "unavailable"; collectDetails?: boolean; editUrl?: string | null }) {
   const sub = product.subscription;
   const currentPlan = sub ? product.plans.find((p) => p.id === sub.planId) ?? null : null;
   // A paid-plan sign-up arrives with its plan chosen, so the page opens on the confirm step (its price is fetched once, below).
@@ -43,6 +46,8 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
   const [paying, setPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [invoice, setInvoice] = useState<string | null>(null);
+  // What the confirmation page shows about the payment: Razorpay's payment id, Ops's payment id (for the invoice download) and the time Ops confirmed it.
+  const [receipt, setReceipt] = useState<{ razorpayPaymentId: string | null; opsPaymentId: string | null; paidAt: string } | null>(null);
   // The price Ops works out for this business (credit for unused days on an upgrade), and the plan changes (downgrade, undo, cancel, reactivate).
   const router = useRouter();
   const [quote, setQuote] = useState<StoreQuote | null>(null);
@@ -52,12 +57,14 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
   const [couponApplied, setCouponApplied] = useState<string | null>(null);
   const [couponMessage, setCouponMessage] = useState<string | null>(null);
   const [couponBusy, setCouponBusy] = useState(false);
+  const [compare, setCompare] = useState(false);
   const [changing, setChanging] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
 
   const kind = chosen?.kind;
-  const steps = ["Choose plan", kind === "downgrade" ? "Confirm downgrade" : "Confirm payment", "Confirmation"];
-  const stepIndex = step === "plans" ? 0 : step === "confirm" ? 1 : 2;
+  // The invoice goes to the saved billing profile. A payment needs it complete; a downgrade charges nothing today, so it can go ahead without it.
+  const profileReady = collectDetails || billingComplete(profile);
+  const blockedByProfile = kind !== "downgrade" && !profileReady;
   const price = chosen && (chosen.interval === "ANNUAL" ? chosen.plan.annual : chosen.plan.monthly);
 
   /** Live purchases show Ops's own price, with any credit for unused days. A downgrade charges nothing today, so it has no quote. */
@@ -125,11 +132,21 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
   }, []);
 
+  // After "Edit billing details" in the Account (another tab), coming back here reloads the saved profile.
+  useEffect(() => {
+    if (step !== "confirm" || collectDetails) return;
+    const refresh = () => router.refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [step, collectDetails, router]);
+
   async function confirm(event: React.FormEvent) {
     event.preventDefault();
-    const found = checkBuyer(buyer);
-    setErrors(found);
-    if (Object.keys(found).length) return;
+    if (collectDetails) {
+      const found = checkBuyer(buyer);
+      setErrors(found);
+      if (Object.keys(found).length) return;
+    } else if (blockedByProfile) return;
     if (!live || !chosen) {
       setStep("done");
       return;
@@ -143,7 +160,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
     setPaying(true);
     setPayError(null);
     try {
-      const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, buyer, ...(couponApplied ? { couponCode: couponApplied } : {}) }) });
+      const started = await fetch("/api/store/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, planId: chosen.plan.id, interval: chosen.interval, ...(collectDetails ? { buyer } : {}), ...(couponApplied ? { couponCode: couponApplied } : {}) }) });
       const answer = (await started.json().catch(() => ({}))) as (Partial<RazorpayOrder> & Partial<RazorpaySubscription> & { kind?: string }) & { error?: string; message?: string; fields?: Partial<Record<BuyerField, string>> };
       if (!started.ok) {
         if (answer.fields) setErrors(answer.fields);
@@ -152,6 +169,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
       }
       // Yearly plans are one payment; monthly plans are auto-pay (Razorpay charges every 30 days), so the window authorises the renewal.
       let verifyBody: Record<string, unknown>;
+      let razorpayPaymentId: string | null = null;
       if (answer.kind === "subscription") {
         const subscriptionId = answer.razorpaySubscriptionId as string;
         const paid = await openRazorpaySubscription(answer as RazorpaySubscription, { name: buyer.name });
@@ -161,6 +179,7 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
           setPayError("Your auto-pay was not set up, so you have not been charged. You can try again.");
           return;
         }
+        razorpayPaymentId = paid.razorpay_payment_id;
         verifyBody = { razorpaySubscriptionId: paid.razorpay_subscription_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature };
       } else {
         const paid = await openRazorpay(answer as RazorpayOrder, { name: buyer.name });
@@ -168,15 +187,17 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
           setPayError("Your payment was not completed, so you have not been charged. You can try again.");
           return;
         }
+        razorpayPaymentId = paid.razorpay_payment_id;
         verifyBody = { razorpayOrderId: paid.razorpay_order_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature };
       }
       const verified = await fetch("/api/store/verify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ productKey: product.key, ...verifyBody }) });
-      const result = (await verified.json().catch(() => ({}))) as { invoiceNumber?: string | null; message?: string };
+      const result = (await verified.json().catch(() => ({}))) as { invoiceNumber?: string | null; paymentId?: string | null; message?: string };
       if (!verified.ok) {
         setPayError(result.message ?? "Your payment went through but we could not confirm it yet. Please do not pay again; it will show here shortly, or contact support.");
         return;
       }
       setInvoice(result.invoiceNumber ?? null);
+      setReceipt({ razorpayPaymentId, opsPaymentId: result.paymentId ?? null, paidAt: new Date().toISOString() });
       setStep("done");
     } catch {
       setPayError("Something went wrong. If money left your account, please do not pay again: contact support with the time of the payment.");
@@ -185,26 +206,50 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
     }
   }
 
+  const cycle = sub?.interval === "ANNUAL" ? "Yearly" : "Monthly";
+  const currentPrice = currentPlan && sub ? (sub.interval === "ANNUAL" ? currentPlan.annual : currentPlan.monthly) : null;
+  const saveMore = product.plans.some((p) => p.annual && p.annual.total < p.monthly.total * 12);
+  const tone = product.display ? TONE[product.display.tone] ?? "neutral" : "success";
+  const logo = hasLogo ? (
+    // eslint-disable-next-line @next/next/no-img-element -- the logo is this app's own route
+    <img className="pm-logo" src={`/api/product-logo/${encodeURIComponent(product.key)}`} alt="" width={64} height={64} />
+  ) : (
+    <span className="pm-logo pm-logo-letter" aria-hidden="true">{product.name[0]}</span>
+  );
+
+  /** What the person is told will happen, from the plan, the dates and (live) Ops's quote. */
+  function nextSteps(): string[] {
+    if (!chosen || !price) return [];
+    const date = longDate(sub?.nextRenewal ?? "");
+    const per = chosen.interval === "ANNUAL" ? "year" : "month";
+    if (kind === "downgrade") {
+      return [
+        `Your current ${currentPlan?.name ?? sub?.planName ?? "plan"} plan will remain active until ${date}.`,
+        `From ${date}, your plan will change to ${chosen.plan.name}.`,
+        "No payment is required now.",
+        chosen.interval === "ANNUAL" ? `Your next payment will be ${inr(price.total)} (${inr(price.amount)} + ${price.gstPercent}% GST), due on ${date}, for the next ${per}.` : `From ${date} you will be charged ${inr(price.total)} (${inr(price.amount)} + ${price.gstPercent}% GST) a ${per}, by auto-pay.`,
+      ];
+    }
+    const today = live && quote ? quote.total : price.total;
+    return [
+      `Your ${chosen.plan.name} plan starts as soon as your payment is confirmed.`,
+      `You pay ${inr(today)} today${live && quote && quote.credit > 0 ? `, after a credit of ${inr(quote.credit)} for your unused days` : ""}.`,
+      ...(live && quote && quote.renewalTotal !== null && quote.renewalFrom ? [`From ${longDate(quote.renewalFrom)} it renews at ${inr(quote.renewalTotal)} a month.`] : []),
+      "Your invoice is issued to the billing profile shown on this page.",
+    ];
+  }
+
   return (
     <main className="ps-page ps-manage">
-      <p className="ps-back"><Link href="/">&larr; Back to Store</Link></p>
+      <p className="ps-back"><Link href="/"><Icon name="arrowLeft" size={16} /> Back to Store</Link></p>
       <header className="ps-head">
         <h1>Manage your {product.name} subscription</h1>
-        <p className="ps-lede">Choose a plan, confirm your payment and you are done. Prices include GST.</p>
-        <p className="ps-note" role="note">{live ? "Plans and prices are live from Platterly. Yearly plans are one payment and monthly plans renew automatically (auto-pay), both through Razorpay (test mode until launch). A downgrade starts when your paid days end." : "Prototype with sample data. Nothing is saved or charged."}</p>
+        <p className="ps-lede">{step === "plans" ? "View your current plan, explore other plans and make changes as needed." : step === "done" ? (kind === "downgrade" ? "Your plan change has been scheduled successfully." : "Your plan change is complete.") : "Review and confirm your plan change."}</p>
+        {!live ? <p className="ps-note" role="note">Prototype with sample data. Nothing is saved or charged.</p> : step !== "plans" ? <p className="ps-note" role="note">Plans and prices are live from Platterly. Yearly plans are one payment and monthly plans renew automatically (auto-pay), both through Razorpay (test mode until launch). A downgrade starts when your paid days end.</p> : null}
       </header>
-
-      <ol className="ps-steps" aria-label="Progress">
-        {steps.map((label, i) => (
-          <li key={label} aria-current={i === stepIndex ? "step" : undefined} className={i <= stepIndex ? "ps-step-on" : undefined}>{label}</li>
-        ))}
-      </ol>
 
       {step === "plans" && (
         <>
-          {sub && currentPlan && (
-            <p className="ps-current">You are on <strong>{currentPlan.name}</strong>, billed {sub.interval === "ANNUAL" ? "yearly" : "monthly"}. Next renewal: {longDate(sub.nextRenewal)}.</p>
-          )}
           {live && product.display && ["payment_due", "ended_in_grace", "locked", "trial_ended"].includes(product.display.state) && <p className="ps-warn" role="alert"><strong>{product.display.label}.</strong> {product.display.detail}</p>}
           {live && sub?.pending && (
             <div className="ps-current" role="status">
@@ -220,23 +265,58 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
           )}
           {changeError && step === "plans" && <p className="ps-error" role="alert">{changeError}</p>}
           {product.status === "TRIAL" && <p className="ps-current">Your trial ends on {longDate(product.trialEndsAt!)}. Choose a plan to keep going.</p>}
-          {product.plans.some((p) => p.annual) && (
-            <div className="ps-toggle" role="group" aria-label="Billing frequency">
-              {(["MONTHLY", "ANNUAL"] as const).map((value) => (
-                <button key={value} type="button" aria-pressed={interval === value} onClick={() => setInterval(value)}>{value === "MONTHLY" ? "Monthly" : "Annual"}</button>
-              ))}
-            </div>
+
+          {sub && (
+            <section className="pm-current" aria-label="Your current subscription">
+              <div className="pm-current-id">
+                {logo}
+                <div>
+                  <p className="pm-eyebrow">Your current subscription</p>
+                  <h2>{currentPlan?.name ?? sub.planName ?? "Your plan"}</h2>
+                  <p className="pm-muted">{product.name} &middot; {cycle} plan</p>
+                </div>
+              </div>
+              <dl className="pm-current-facts">
+                <div><Icon name="calendar" size={22} /><dt>Next renewal</dt><dd>{longDate(sub.nextRenewal)}</dd></div>
+                {currentPrice && <div><Icon name="rupee" size={22} /><dt>Renewal amount</dt><dd>{inr(currentPrice.total)}</dd><dd className="pm-sub">({inr(currentPrice.amount)} + {currentPrice.gstPercent}% GST)</dd></div>}
+                <div><Icon name="card" size={22} /><dt>Billing cycle</dt><dd>{cycle}</dd><dd className="pm-sub">{sub.interval === "ANNUAL" ? "One-time payment" : "Auto-pay"}</dd></div>
+              </dl>
+              <span className={`ps-badge ps-badge-${tone} pm-status`}>{tone === "success" ? <Icon name="check" size={14} /> : null}{product.display?.label ?? "Active"}</span>
+            </section>
           )}
-          <ul className="ps-grid">
+
+          <div className="pm-plans-head">
+            <div>
+              <h2 className="ps-h2">Available plans</h2>
+              <p className="ps-sub">Choose a plan that best fits your business. You can upgrade, downgrade or change your billing cycle.</p>
+            </div>
+            {product.plans.some((p) => p.annual) && (
+              <div className="pm-cycle">
+                <span>Choose billing cycle</span>
+                <div className="ps-toggle" role="group" aria-label="Billing frequency">
+                  <button type="button" aria-pressed={interval === "MONTHLY"} onClick={() => setInterval("MONTHLY")}>Monthly</button>
+                  <span className="pm-annual">
+                    <button type="button" aria-pressed={interval === "ANNUAL"} onClick={() => setInterval("ANNUAL")}>Annual</button>
+                    {saveMore && <span className="ps-badge ps-badge-success pm-save" aria-hidden="true">Save more</span>}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <ul className="pm-plans">
             {product.plans.map((plan) => {
               const k = changeKind(product, plan);
               const p = interval === "ANNUAL" ? plan.annual : plan.monthly;
               const disabled = k === "current" || !p;
               return (
                 <li key={plan.id}>
-                  <article className="ps-card" aria-label={plan.name}>
-                    <h2>{plan.name}</h2>
-                    {plan.description && <p className="ps-desc">{plan.description}</p>}
+                  <article className={`pm-plan${k === "current" ? " is-current" : ""}`} aria-label={plan.name}>
+                    <div className="pm-plan-head">
+                      <h3>{plan.name}</h3>
+                      {k === "current" && <span className="ps-badge ps-badge-success"><Icon name="check" size={14} />Current plan</span>}
+                    </div>
+                    {plan.description && <p className="pm-muted">{plan.description}</p>}
                     {p ? (
                       <div className="ps-price">
                         <p className="ps-total"><span data-testid="total">{inr(p.total)}</span><span className="ps-per"> / {interval === "ANNUAL" ? "year" : "month"}</span></p>
@@ -248,38 +328,58 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
                         <p className="ps-gst">No annual price for this plan.</p>
                       </div>
                     )}
-                    <ul className="ps-highlights">{plan.highlights.map((h) => <li key={h}>{h}</li>)}</ul>
-                    <button type="button" className={k === "current" ? "ps-cta ps-current-btn" : "ps-cta"} disabled={disabled} onClick={() => choose(plan)}>{BUTTON[k]}</button>
+                    <ul className="pm-feats">{plan.highlights.map((h) => <li key={h}><Icon name="check" size={16} />{h}</li>)}</ul>
+                    {k === "current" ? (
+                      <button type="button" className="pm-btn pm-btn-current" aria-label="Current plan" disabled>You are currently subscribed to this plan.</button>
+                    ) : (
+                      <button type="button" className={`pm-btn ${k === "downgrade" ? "pm-btn-outline" : "pm-btn-solid"}`} disabled={disabled} onClick={() => choose(plan)}>{BUTTON[k]} to {plan.name}</button>
+                    )}
+                    {k === "downgrade" && sub?.nextRenewal && <p className="pm-note"><Icon name="info" size={16} />Takes effect after your current paid period ends ({longDate(sub.nextRenewal)}).</p>}
                   </article>
                 </li>
               );
             })}
           </ul>
-          <details className="ps-compare">
-            <summary>Compare plans in detail</summary>
-            <table>
-              <thead><tr><th scope="col">Plan</th><th scope="col">Monthly</th><th scope="col">Annual</th><th scope="col">Includes</th></tr></thead>
-              <tbody>
-                {product.plans.map((plan) => (
-                  <tr key={plan.id}>
-                    <th scope="row">{plan.name}</th>
-                    <td>{inr(plan.monthly.total)}</td>
-                    <td>{plan.annual ? inr(plan.annual.total) : "Not offered"}</td>
-                    <td>{plan.highlights.join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
+
+          <section className="pm-compare" aria-label="Compare plans">
+            <span className="pm-compare-icon" aria-hidden="true"><Icon name="scale" size={24} /></span>
+            <div>
+              <h2>Compare all plan features</h2>
+              <p>See a detailed, side-by-side comparison of {product.plans.map((pl) => pl.name).join(" and ")}.</p>
+            </div>
+            <button type="button" className="ps-outline" aria-expanded={compare} onClick={() => setCompare(!compare)}>Compare plans <Icon name="arrowRight" size={16} /></button>
+          </section>
+          {compare && (
+            <div className="ps-compare">
+              <table>
+                <thead><tr><th scope="col">Plan</th><th scope="col">Monthly</th><th scope="col">Annual</th><th scope="col">Includes</th></tr></thead>
+                <tbody>
+                  {product.plans.map((plan) => (
+                    <tr key={plan.id}>
+                      <th scope="row">{plan.name}</th>
+                      <td>{inr(plan.monthly.total)}</td>
+                      <td>{plan.annual ? inr(plan.annual.total) : "Not offered"}</td>
+                      <td>{plan.highlights.join(", ")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           {live && sub && sub.interval === "MONTHLY" && (
             // A monthly plan renews by auto-pay: pause and stop are in the Account, next to the payment method (AJ, 2026-11-14).
             <p className="ps-note" role="note" data-testid="autopay-note">
               Your monthly plan renews automatically. To pause or stop auto-renewal, or to change the card it uses, go to {accountUrl ? <a href={`${accountUrl}/payment-methods`}>Payment method in your Account</a> : "Payment method in your Account"}.
             </p>
           )}
+          <div className="pm-foot">
+            {sub && !(live && sub.interval === "MONTHLY") && !(live && sub.cancelledAt) && cancelling === null ? (
+              <button type="button" className="pm-cancel" onClick={() => setCancelling("ask")}><Icon name="trash" size={18} /> Cancel subscription</button>
+            ) : <span />}
+            <p className="pm-foot-note"><Icon name="info" size={18} />Changes to your plan or billing cycle will apply to future invoices only. Previously issued invoices will remain unchanged.</p>
+          </div>
           {sub && !(live && sub.interval === "MONTHLY") && (
             <div className="ps-cancel">
-              {cancelling === null && !(live && sub.cancelledAt) && <button type="button" className="ps-linkbtn" onClick={() => setCancelling("ask")}>Cancel subscription</button>}
               {cancelling === "ask" && (
                 <div role="alertdialog" aria-label="Cancel subscription" className="ps-confirmbox">
                   <p>{live ? `Stop renewing your ${product.name} subscription? It stays active until ${longDate(sub.nextRenewal)}. Nothing is refunded, and you can reactivate any time before then.` : `Cancel your ${product.name} subscription? Auto-pay stops now and the days you have paid for run out as usual, until ${longDate(sub.nextRenewal)}.`}</p>
@@ -293,97 +393,244 @@ export function ManageFlow({ product, live = false, savedBuyer = null, accountUr
         </>
       )}
 
-      {step !== "plans" && chosen && price && (
-        <div className="ps-checkout-grid">
-          <div>
-            {step === "confirm" && (
-              <form className="ps-form" onSubmit={confirm} noValidate aria-label="Billing details">
-                <h2>{kind === "downgrade" ? "Confirm downgrade" : "Confirm payment"}</h2>
-                {FIELDS.map((field) => {
-                  const id = `buyer-${field.key}`;
-                  const error = errors[field.key as BuyerField];
-                  return (
-                    <div key={field.key} className="ps-field">
-                      <label htmlFor={id}>{field.label}{field.optional && <span className="ps-optional"> (optional)</span>}</label>
-                      <input id={id} value={buyer[field.key] ?? ""} autoComplete={field.autoComplete} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : field.hint ? `${id}-hint` : undefined} onChange={(event) => setBuyer({ ...buyer, [field.key]: event.target.value })} />
-                      {field.hint && !error && <p id={`${id}-hint`} className="ps-hint">{field.hint}</p>}
-                      {error && <p id={`${id}-error`} className="ps-error" role="alert">{error}</p>}
+      {step === "confirm" && chosen && price && (
+        <form className="pm-confirm" onSubmit={confirm} noValidate aria-label={collectDetails ? "Billing details" : "Review changes"}>
+          <div className="ps-checkout-grid">
+            <div>
+              {step === "confirm" && (
+                <section className="ps-form pm-form" aria-label="Confirm change">
+                  <div className="pm-form-head">
+                    <span className="pm-h-icon pm-h-icon-lg" aria-hidden="true"><Icon name={kind === "downgrade" ? "calendar" : "receipt"} size={26} /></span>
+                    <div>
+                      <h2>{kind === "downgrade" ? "Confirm downgrade" : "Confirm payment"}</h2>
+                      <p className="pm-muted">Review the changes to your subscription and confirm.</p>
                     </div>
-                  );
-                })}
-                <div className="ps-field">
-                  <label htmlFor="coupon">Coupon code<span className="ps-optional"> (optional)</span></label>
-                  {!live ? (
-                    <input id="coupon" disabled placeholder="Coupons are not switched on yet" />
-                  ) : kind === "downgrade" ? (
-                    <input id="coupon" disabled placeholder="Coupons apply to a new payment, not a downgrade" />
-                  ) : couponApplied ? (
-                    <p data-testid="coupon-applied" className="ps-hint">
-                      Coupon <strong>{couponApplied}</strong> applied.{" "}
-                      <button type="button" className="ps-link" onClick={() => void applyCoupon(null)} disabled={couponBusy || paying}>Remove</button>
-                    </p>
-                  ) : (
-                    <div className="ps-coupon-row">
-                      <input id="coupon" value={couponInput} autoComplete="off" maxLength={64} onChange={(event) => setCouponInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (couponInput.trim()) void applyCoupon(couponInput.trim()); } }} />
-                      <button type="button" className="ps-secondary" disabled={couponBusy || paying || !couponInput.trim() || !quote} onClick={() => void applyCoupon(couponInput.trim())}>{couponBusy ? "Checking..." : "Apply"}</button>
+                  </div>
+
+                  <div className="pm-compare-plans">
+                    {currentPlan && sub ? (
+                      <PlanMini logo={logo} tag="Current plan" name={currentPlan.name} price={sub.interval === "ANNUAL" ? currentPlan.annual : currentPlan.monthly} interval={sub.interval} />
+                    ) : null}
+                    {currentPlan && sub ? <Icon name="arrowRight" size={28} className="pm-arrow" /> : null}
+                    <PlanMini logo={logo} tag={kind === "downgrade" ? `New plan (after ${longDate(sub!.nextRenewal)})` : currentPlan ? "New plan" : "Your plan"} tagTone="green" name={chosen.plan.name} price={price} interval={chosen.interval} />
+                  </div>
+
+                  <div className="pm-next">
+                    <h3><Icon name="info" size={22} />What happens next?</h3>
+                    <ul>{nextSteps().map((line) => <li key={line}>{line}</li>)}</ul>
+                  </div>
+
+                  {kind !== "downgrade" && (
+                    <dl className="pm-pay-rows" aria-label="Payment summary">
+                      {live && quote ? (
+                        <>
+                          <div><dt>Plan price</dt><dd data-testid="amount">{inr(quote.planPrice)}</dd></div>
+                          {quote.credit > 0 && <div><dt>{quote.creditLabel ?? "Credit for unused days"}</dt><dd data-testid="credit">&minus;{inr(quote.credit)}</dd></div>}
+                          {quote.discount > 0 && <div><dt>Coupon {quote.couponCode}</dt><dd data-testid="discount">&minus;{inr(quote.discount)}</dd></div>}
+                          <div><dt>GST ({quote.gstPercent}%)</dt><dd data-testid="gst">{inr(quote.gstAmount)}</dd></div>
+                          <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(quote.total)}</dd></div>
+                          {quote.renewalTotal !== null && quote.renewalFrom && <div><dt>Then, from {longDate(quote.renewalFrom)}</dt><dd data-testid="renewal">{inr(quote.renewalTotal)} a month</dd></div>}
+                        </>
+                      ) : (
+                        <>
+                          <div><dt>Plan price</dt><dd data-testid="amount">{inr(price.amount)}</dd></div>
+                          <div><dt>GST ({price.gstPercent}%)</dt><dd data-testid="gst">{inr(price.gstAmount)}</dd></div>
+                          <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(price.total)}</dd></div>
+                        </>
+                      )}
+                    </dl>
+                  )}
+
+                  {collectDetails && (
+                    <>
+                      <p className="pm-muted">Enter your billing details once. They appear on your first invoice, and you can change them later in your Account.</p>
+                      <div className="pm-fields">
+                        {FIELDS.map((field) => {
+                          const id = `buyer-${field.key}`;
+                          const error = errors[field.key as BuyerField];
+                          return (
+                            <div key={field.key} className={`ps-field${["name", "addressLine1", "addressLine2"].includes(field.key) ? " pm-wide" : ""}`}>
+                              <label htmlFor={id}>{field.label}{field.optional && <span className="ps-optional"> (optional)</span>}</label>
+                              <input id={id} value={buyer[field.key] ?? ""} autoComplete={field.autoComplete} aria-invalid={error ? true : undefined} aria-describedby={error ? `${id}-error` : field.hint ? `${id}-hint` : undefined} onChange={(event) => setBuyer({ ...buyer, [field.key]: event.target.value })} />
+                              {field.hint && !error && <p id={`${id}-hint`} className="ps-hint">{field.hint}</p>}
+                              {error && <p id={`${id}-error`} className="ps-error" role="alert">{error}</p>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+
+                  {kind !== "downgrade" && (
+                    <div className="ps-field">
+                      <label htmlFor="coupon">Coupon code<span className="ps-optional"> (optional)</span></label>
+                      {!live ? (
+                        <input id="coupon" disabled placeholder="Coupons are not switched on yet" />
+                      ) : couponApplied ? (
+                        <p data-testid="coupon-applied" className="ps-hint">
+                          Coupon <strong>{couponApplied}</strong> applied.{" "}
+                          <button type="button" className="ps-link" onClick={() => void applyCoupon(null)} disabled={couponBusy || paying}>Remove</button>
+                        </p>
+                      ) : (
+                        <div className="ps-coupon-row">
+                          <input id="coupon" value={couponInput} autoComplete="off" maxLength={64} onChange={(event) => setCouponInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); if (couponInput.trim()) void applyCoupon(couponInput.trim()); } }} />
+                          <button type="button" className="ps-secondary" disabled={couponBusy || paying || !couponInput.trim() || !quote} onClick={() => void applyCoupon(couponInput.trim())}>{couponBusy ? "Checking..." : "Apply"}</button>
+                        </div>
+                      )}
+                      {couponMessage && <p className="ps-error" role="alert" data-testid="coupon-message">{couponMessage}</p>}
                     </div>
                   )}
-                  {couponMessage && <p className="ps-error" role="alert" data-testid="coupon-message">{couponMessage}</p>}
+                  {kind !== "downgrade" && (
+                    <div className="ps-payblock" role="group" aria-label="Payment">
+                      {live ? <p className="ps-hint">You pay once, by card, UPI or net banking, through Razorpay. Your plan starts as soon as the payment is confirmed.</p> : <p className="ps-sample-pay" role="note">Sample payment. No card or UPI is used and no money moves. Real Razorpay checkout comes in a later step.</p>}
+                      <p>Amount to pay today: <strong>{live && quote ? inr(quote.total) : live ? "Working out your price..." : inr(price.total)}</strong></p>
+                      {quoteError && <p className="ps-error" role="alert">{quoteError}</p>}
+                    </div>
+                  )}
+                  {(payError ?? changeError) && <p className="ps-error" role="alert">{payError ?? changeError}</p>}
+                </section>
+              )}
+            </div>
+
+            <aside className="pm-side" aria-label="Billing and invoice details">
+              {!collectDetails && (
+                <section className="pm-side-card">
+                  <h2><span className="pm-h-icon" aria-hidden="true"><Icon name="fileText" size={20} /></span>Billing &amp; invoice details</h2>
+                  {profileState === "unavailable" ? (
+                    <p className="ps-warn" role="alert">We could not load your billing details just now. Please refresh in a few minutes.</p>
+                  ) : profile && billingComplete(profile) ? (
+                    <>
+                      <p className="pm-muted">Invoices will be issued to the following billing profile:</p>
+                      <p className="pm-bill-name">{profile.name}</p>
+                      <ul className="pm-bill">
+                        <li><Icon name="mapPin" size={18} /><span>{[profile.addressLine1, profile.addressLine2, profile.city, [profile.state, profile.postalCode].filter(Boolean).join(" – ")].filter(Boolean).join(", ")}</span></li>
+                        {profile.gstin && <li><Icon name="receipt" size={18} /><span>GSTIN: {profile.gstin}</span></li>}
+                        {profile.contactEmail && <li><Icon name="mail" size={18} /><span>Billing email: <strong>{profile.contactEmail}</strong></span></li>}
+                        {profile.contactPhone && <li><Icon name="phone" size={18} /><span>Billing phone: <strong>{profile.contactPhone}</strong></span></li>}
+                      </ul>
+                    </>
+                  ) : (
+                    <p className="ps-warn" role="alert">
+                      {kind === "downgrade" ? `This product has no complete billing details yet. Your downgrade can go ahead, but add them before ${longDate(sub?.nextRenewal ?? "")} so your next invoice can be issued.` : "This product has no complete billing details yet. Add them in your Account before you pay, so the invoice can be issued."}
+                    </p>
+                  )}
+                  {editUrl && profileState !== "unavailable" && (
+                    <a className="pm-edit" href={editUrl} target="_blank" rel="noopener noreferrer">{profile && billingComplete(profile) ? "Edit billing details" : "Set up billing details"} <Icon name="externalLink" size={16} /></a>
+                  )}
+                </section>
+              )}
+              <section className="pm-side-card pm-safety">
+                <span className="pm-h-icon" aria-hidden="true"><Icon name="shield" size={22} /></span>
+                <div>
+                  <h2>Invoice safety</h2>
+                  <p className="pm-muted">Changes apply to future invoices only. Previously issued invoices will remain unchanged.</p>
                 </div>
-                {kind !== "downgrade" && (
-                  <div className="ps-payblock" role="group" aria-label="Payment">
-                    {live ? <p className="ps-hint">You pay once, by card, UPI or net banking, through Razorpay. Your plan starts as soon as the payment is confirmed.</p> : <p className="ps-sample-pay" role="note">Sample payment. No card or UPI is used and no money moves. Real Razorpay checkout comes in a later step.</p>}
-                    <p>Amount to pay today: <strong>{live && quote ? inr(quote.total) : live ? "Working out your price..." : inr(price.total)}</strong></p>
-                    {quoteError && <p className="ps-error" role="alert">{quoteError}</p>}
-                  </div>
-                )}
-                {(payError ?? changeError) && <p className="ps-error" role="alert">{payError ?? changeError}</p>}
-                <div className="ps-actions">
-                  <button type="button" className="ps-secondary" onClick={() => setStep("plans")} disabled={paying}>Back</button>
-                  <button type="submit" className="ps-cta" disabled={paying || changing || (live && kind !== "downgrade" && !quote)}>{kind === "downgrade" ? (changing ? "Please wait..." : "Schedule downgrade") : paying ? "Please wait..." : live ? (quote ? `Pay ${inr(quote.total)}` : "Pay") : "Simulate successful payment"}</button>
-                </div>
-              </form>
+              </section>
+            </aside>
+          </div>
+
+          {step === "confirm" && (
+            <div className="pm-bar">
+              <Link href="/" className="pm-cancel-link">Cancel</Link>
+              <div className="pm-bar-actions">
+                <button type="button" className="ps-secondary" onClick={() => setStep("plans")} disabled={paying}>Back</button>
+                <button type="submit" className="ps-cta" disabled={paying || changing || blockedByProfile || (live && kind !== "downgrade" && !quote)}>{kind === "downgrade" ? (changing ? "Please wait..." : "Schedule downgrade") : paying ? "Please wait..." : live ? (quote ? `Pay ${inr(quote.total)}` : "Pay") : "Simulate successful payment"}</button>
+              </div>
+            </div>
+          )}
+        </form>
+      )}
+
+      {step === "done" && chosen && price && (
+        <section className="pm-done-page" aria-label="Confirmation">
+          <div className="pm-hero">
+            <span className="pm-done-icon" aria-hidden="true"><Icon name="check" size={40} /></span>
+            <h2>{kind === "downgrade" ? "Downgrade scheduled" : kind === "upgrade" ? "Upgrade successful" : "Order confirmed"}</h2>
+            {kind === "downgrade" ? (
+              <p>Your subscription will change from <strong>{currentPlan?.name ?? sub?.planName ?? "your current plan"} to {chosen.plan.name}</strong> on <strong className="pm-hero-date">{longDate(sub?.nextRenewal ?? "")}</strong>.</p>
+            ) : (
+              <p>{currentPlan && kind === "upgrade" ? <>Your subscription has been upgraded from <strong>{currentPlan.name}</strong> to <strong>{chosen.plan.name}</strong>.</> : <><strong>{product.name} {chosen.plan.name}</strong> is now your plan.</>}</p>
             )}
-            {step === "done" && (
-              <section className="ps-form" aria-label="Confirmation">
-                <h2>{kind === "downgrade" ? "Downgrade scheduled" : kind === "upgrade" ? "Upgrade confirmed" : "Order confirmed"}</h2>
-                <p>
-                  {kind === "downgrade"
-                    ? `You move to ${chosen.plan.name} on ${longDate(sub!.nextRenewal)}. Until then you keep ${currentPlan?.name ?? sub!.planName ?? "your current plan"}, and nothing is charged today.`
-                    : live
-                      ? `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr((quote ?? price).total)} paid. Your plan is now active.`
-                      : `${product.name} ${chosen.plan.name}, billed ${chosen.interval === "ANNUAL" ? "yearly" : "monthly"}: ${inr(price.total)} would be charged today.`}
-                </p>
-                {live && kind === "downgrade" ? <p role="status">You can undo this from the plans page until then.</p> : live ? <p role="status">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>}
-                {continueUrl ? <a className="ps-cta" href={continueUrl}>Continue to {product.name}</a> : <Link className="ps-cta" href="/">Back to Store</Link>}
+            {kind === "downgrade" ? (
+              live ? <p role="status" className="pm-muted">You can undo this from the plans page until then.</p> : <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>
+            ) : live ? (
+              <p role="status" className="pm-muted">{invoice ? `Your invoice number is ${invoice}.` : "Your invoice will be issued shortly."}</p>
+            ) : (
+              <p className="ps-sample-pay" role="note">Sample only. Nothing was saved or charged, and no invoice was issued.</p>
+            )}
+          </div>
+
+          <div className="pm-done-grid">
+            <section className="pm-side-card pm-detail">
+              <h2><span className="pm-h-icon" aria-hidden="true"><Icon name={kind === "downgrade" ? "calendar" : "layers"} size={20} /></span>Plan change details</h2>
+              <div className="pm-compare-plans">
+                {currentPlan && sub ? <PlanMini logo={logo} tag={kind === "downgrade" ? `Current plan (until ${longDate(sub.nextRenewal)})` : "Previous plan"} name={currentPlan.name} price={sub.interval === "ANNUAL" ? currentPlan.annual : currentPlan.monthly} interval={sub.interval} /> : null}
+                {currentPlan && sub ? <Icon name="arrowRight" size={28} className="pm-arrow" /> : null}
+                <PlanMini logo={logo} tagTone="green" tag={kind === "downgrade" ? `New plan (from ${longDate(sub?.nextRenewal ?? "")})` : "New plan (active now)"} name={chosen.plan.name} price={price} interval={chosen.interval} />
+              </div>
+            </section>
+
+            {kind === "downgrade" ? (
+              <section className="pm-side-card pm-next">
+                <h3><Icon name="info" size={22} />What happens next?</h3>
+                <ul className="pm-ticks">
+                  {(() => {
+                    const n = nextSteps();
+                    return [n[0], n[1], "No payment is collected today.", n[3], "Previously issued invoices remain unchanged."];
+                  })().map((line) => <li key={line}>{line}</li>)}
+                </ul>
+              </section>
+            ) : (
+              <section className="pm-side-card">
+                <h2>
+                  <span className="pm-h-icon" aria-hidden="true"><Icon name="card" size={20} /></span>Payment details
+                  {live && receipt ? <span className="ps-badge ps-badge-success pm-paid"><Icon name="check" size={14} />Paid</span> : null}
+                </h2>
+                <dl className="pm-rows">
+                  <div><dt>Amount paid</dt><dd>{inr(live && quote ? quote.total : price.total)}</dd></div>
+                  <div><dt>Payment mode</dt><dd>{live ? "Razorpay" : "Sample (no money moved)"}</dd></div>
+                  {receipt?.razorpayPaymentId && <div><dt>Transaction ID</dt><dd>{receipt.razorpayPaymentId}</dd></div>}
+                  {receipt && <div><dt>Payment date</dt><dd>{new Date(receipt.paidAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true })}</dd></div>}
+                </dl>
               </section>
             )}
           </div>
-          <aside className="ps-summary" aria-label="Order summary">
-            <h2>{product.name} {chosen.plan.name}</h2>
-            <p className="ps-desc">{chosen.interval === "ANNUAL" ? "Billed once a year" : "Billed every month"}</p>
-            <dl>
-              {live && quote && kind !== "downgrade" ? (
-                <>
-                  <div><dt>Plan price</dt><dd data-testid="amount">{inr(quote.planPrice)}</dd></div>
-                  {quote.credit > 0 && <div><dt>{quote.creditLabel ?? "Credit for unused days"}</dt><dd data-testid="credit">&minus;{inr(quote.credit)}</dd></div>}
-                  {quote.discount > 0 && <div><dt>Coupon {quote.couponCode}</dt><dd data-testid="discount">&minus;{inr(quote.discount)}</dd></div>}
-                  <div><dt>GST ({quote.gstPercent}%)</dt><dd data-testid="gst">{inr(quote.gstAmount)}</dd></div>
-                  <div className="ps-sum-total"><dt>Total today</dt><dd data-testid="total">{inr(quote.total)}</dd></div>
-                  {quote.renewalTotal !== null && quote.renewalFrom && <div><dt>Then, from {longDate(quote.renewalFrom)}</dt><dd data-testid="renewal">{inr(quote.renewalTotal)} a month</dd></div>}
-                </>
-              ) : (
-                <>
-                  <div><dt>Plan price</dt><dd data-testid="amount">{inr(price.amount)}</dd></div>
-                  <div><dt>GST ({price.gstPercent}%)</dt><dd data-testid="gst">{inr(price.gstAmount)}</dd></div>
-                  <div className="ps-sum-total"><dt>{kind === "downgrade" ? "Total from " + longDate(sub!.nextRenewal) : "Total today"}</dt><dd data-testid="total">{inr(price.total)}</dd></div>
-                </>
-              )}
-            </dl>
-            {kind === "downgrade" && <p className="ps-hint">No charge today. This plan starts at your next renewal.</p>}
-          </aside>
-        </div>
+
+          {kind !== "downgrade" && (
+            <section className="pm-strip" aria-label="What happens next">
+              <h3><Icon name="info" size={22} />What happens next?</h3>
+              <div className="pm-strip-cols">
+                <div><span className="pm-tick" aria-hidden="true"><Icon name="check" size={18} /></span><p><strong>{kind === "upgrade" ? "Upgrade" : "Your plan"} is active now</strong><span>You can now use all the features of the {chosen.plan.name} plan.</span></p></div>
+                <div><Icon name="fileText" size={28} /><p><strong>Next renewal</strong>{live && quote?.renewalFrom ? <><b>{longDate(quote.renewalFrom)}</b><span>{inr(quote.renewalTotal ?? price.total)} / {chosen.interval === "ANNUAL" ? "year" : "month"}</span></> : <span>{inr(price.total)} / {chosen.interval === "ANNUAL" ? "year" : "month"}, one year after today. The exact date is on your subscription page.</span>}</p></div>
+                <div><Icon name="shield" size={28} /><p><strong>Your invoices</strong><span>Previously issued invoices remain unchanged.</span></p></div>
+              </div>
+            </section>
+          )}
+
+          <div className="pm-bar">
+            <div className="pm-bar-actions">
+              {accountUrl && <a className="ps-outline" href={`${accountUrl}/subscriptions/${encodeURIComponent(product.key)}`} target="_blank" rel="noopener noreferrer">View subscription <Icon name="externalLink" size={16} /></a>}
+              {live && kind !== "downgrade" && receipt?.opsPaymentId && <a className="ps-outline" href={`/api/store/invoice/${encodeURIComponent(receipt.opsPaymentId)}?product=${encodeURIComponent(product.key)}`}>Download invoice <Icon name="download" size={16} /></a>}
+            </div>
+            {continueUrl ? <a className="ps-cta pm-main" href={continueUrl}>Continue to {product.name}</a> : <Link className="ps-cta pm-main" href="/">Back to Store</Link>}
+          </div>
+        </section>
       )}
     </main>
+  );
+}
+
+function PlanMini({ logo, tag, tagTone = "blue", name, price, interval }: { logo: React.ReactNode; tag: string; tagTone?: "blue" | "green"; name: string; price: PlanOffer["monthly"] | null; interval: Interval }) {
+  return (
+    <div className="pm-mini">
+      <span className={`pm-tag pm-tag-${tagTone}`}>{tag}</span>
+      <div className="pm-mini-id">{logo}<h3>{name}</h3></div>
+      {price ? (
+        <>
+          <p className="ps-total"><span>{inr(price.total)}</span><span className="ps-per"> / {interval === "ANNUAL" ? "year" : "month"}</span></p>
+          <p className="ps-gst">{inr(price.amount)} + {price.gstPercent}% GST</p>
+        </>
+      ) : null}
+    </div>
   );
 }

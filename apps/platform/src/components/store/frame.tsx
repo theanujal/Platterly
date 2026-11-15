@@ -3,12 +3,16 @@ import type { ReactNode } from "react";
 import { getSessionRef } from "@/lib/session";
 import { identityPool } from "@/modules/auth/identity-db";
 import { getProfile } from "@/modules/account/profile";
+import { Icon } from "@/components/account/icons";
 import "./store.css";
 
 /** Platterly's public site, where the policies and contact pages live. Not live yet (no live environment), so these links work once the site is deployed. */
 const SITE = "https://platterly.in";
 const EMAIL = "hello@platterly.in";
 const PHONE = "+91 7624964646";
+
+/** Up to two capital letters from a name: "Kitchen Admin" gives KA. */
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join("") || "?";
 
 /** The signed-in person's name and email for the header, or null when nobody is signed in (or the identity database cannot be reached). */
 async function whoIsSignedIn(): Promise<{ name: string; email: string } | null> {
@@ -27,21 +31,25 @@ export async function StoreFrame({ children }: { children: ReactNode }) {
         <div className="ps-header-in">
           <Link href="/" className="ps-logo" aria-label="Platterly Store home">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/platterly-mark.svg" alt="" width={28} height={28} />
-            <span>Store</span>
+            <img src="/platterly-mark.svg" alt="" width={32} height={32} />
+            <span>Platterly Store</span>
           </Link>
           <nav className="ps-header-nav" aria-label="Store header">
-            <a href={`${SITE}/contact/`}>Help</a>
+            <a href={`${SITE}/contact/`} className="ps-help"><Icon name="lifebuoy" size={20} />Help</a>
             {who ? (
-              <>
-                <span className="ps-user" title={who.email}>
-                  <span className="ps-avatar" aria-hidden="true">{who.name.trim().charAt(0).toUpperCase() || "?"}</span>
-                  <span>{who.name}</span>
-                </span>
-                <form method="post" action="/auth/signout">
-                  <button type="submit" className="ps-signout">Sign out</button>
-                </form>
-              </>
+              <details className="ps-menu">
+                <summary className="ps-user" title={who.email}>
+                  <span className="ps-avatar" aria-hidden="true">{initials(who.name)}</span>
+                  <span className="ps-user-name">{who.name}</span>
+                  <Icon name="chevronDown" size={16} />
+                </summary>
+                <div className="ps-menu-panel">
+                  <p>{who.email}</p>
+                  <form method="post" action="/auth/signout">
+                    <button type="submit" className="ps-signout">Sign out</button>
+                  </form>
+                </div>
+              </details>
             ) : (
               <a href="/auth/start" className="ps-signin">Sign in</a>
             )}

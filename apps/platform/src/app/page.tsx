@@ -6,6 +6,7 @@ import { requireStoreSignIn } from "@/lib/store/guard";
 import { StoreFrame } from "@/components/store/frame";
 import { StoreHome } from "@/components/store/home";
 import { loadStoreProducts } from "@/modules/store/products";
+import { loadAccountProductCards } from "@/modules/account/product-cards";
 import { StoreUnavailable } from "@/components/store/unavailable";
 import { hostKind, originFor, requestHost } from "@/lib/routing/hosts";
 
@@ -21,8 +22,8 @@ export default async function Home() {
   }
   if (kind === "store") {
     await requireStoreSignIn("/");
-    const data = await loadStoreProducts(await getSession());
-    return <StoreFrame>{data.source === "unavailable" ? <StoreUnavailable /> : <StoreHome products={data.products} bundles={data.bundles} live={data.source === "ops"} business={data.source === "ops" ? data.business : null} billing={data.source === "ops" ? data.billing : "ok"} />}</StoreFrame>;
+    const [data, cards] = await Promise.all([loadStoreProducts(await getSession()), loadAccountProductCards()]);
+    return <StoreFrame>{data.source === "unavailable" ? <StoreUnavailable /> : <StoreHome products={data.products} bundles={data.bundles} cards={cards.status === "ok" ? cards.cards : []} accountOrigin={originFor("account")} live={data.source === "ops"} business={data.source === "ops" ? data.business : null} billing={data.source === "ops" ? data.billing : "ok"} />}</StoreFrame>;
   }
   return <main>Platterly {kind}</main>;
 }

@@ -1,4 +1,4 @@
-import type { PlanOffer, PriceView } from "@platterly/contract";
+import type { PlanOffer, PriceView, ProductBillingProfileRecord } from "@platterly/contract";
 import type { Interval } from "./format";
 import type { SubscriptionDisplay } from "./status";
 
@@ -120,3 +120,11 @@ export function changeKind(product: SampleProduct, target: PlanOffer): ChangeKin
   const current = product.plans.find((p) => p.id === sub.planId);
   return current && target.monthly.amount < current.monthly.amount ? "downgrade" : "upgrade";
 }
+
+/** Prototype only (no Ops configured): an invented billing profile, so the sample Store can show the "Billing & invoice details" card. */
+export const SAMPLE_BILLING_PROFILE: ProductBillingProfileRecord = {
+  productKey: "catering", version: 1, source: "account", updatedAt: "2026-11-01T00:00:00.000Z",
+  name: "Spice Route Caterers", brandName: "Spice Route", contactName: "Sample Contact", contactEmail: "billing@example.com", contactPhone: "+91 98765 43210",
+  addressLine1: "12 MG Road", addressLine2: null, city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: "27ABCDE1234F1Z5",
+  description: null, website: null, instagram: null, facebook: null, logoUrl: null,
+};

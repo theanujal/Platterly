@@ -16,6 +16,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
     if (!parsed.ok) return { status: 400, body: { error: parsed.error } };
     const v = parsed.value;
     const payment = "razorpayOrderId" in v ? await verifyCheckout({ businessId, productKey, ...v }) : "failed" in v ? await failAutoPayCheckout({ businessId, productKey, razorpaySubscriptionId: v.razorpaySubscriptionId, ...v.failed }) : await verifyAutoPayCheckout({ businessId, productKey, ...v });
-    return { body: { ok: true, status: payment?.status ?? null, invoiceNumber: payment?.invoiceNumber ?? null } };
+    return { body: { ok: true, status: payment?.status ?? null, invoiceNumber: payment?.invoiceNumber ?? null, paymentId: payment?.id ?? null } };
   });
 }

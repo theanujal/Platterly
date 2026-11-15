@@ -59,12 +59,12 @@ test.describe("Store sign-in", () => {
     await expect(page).toHaveURL(`${STORE}/`);
     await expect(page.getByRole("alert").filter({ hasText: "You have not set up a business yet" })).toBeVisible();
     // A click before the page is interactive is lost, so click until the tab is really selected.
-    const subscribed = page.getByRole("tab", { name: "Subscribed products", exact: true });
+    const subscribed = page.getByRole("tab", { name: /^Subscribed products/ });
     await expect(async () => {
       await subscribed.click();
       await expect(subscribed).toHaveAttribute("aria-selected", "true", { timeout: 1000 });
     }).toPass();
-    await expect(page.getByText("No subscribed products match.")).toBeVisible();
+    await expect(page.getByText("No subscribed products yet.")).toBeVisible();
     await page.goto(`${STORE}/manage/caterly`);
     await expect(page.getByRole("heading", { name: "Set up your business first" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Cancel subscription" })).toHaveCount(0);

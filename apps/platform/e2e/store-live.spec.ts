@@ -152,7 +152,7 @@ test.describe("Live Store", () => {
     expect(credit).toBeLessThanOrEqual(33_000);
     expect(total).toBeCloseTo((plan - credit) * 1.18, 0); // GST is charged on the price after the credit
     await payInRazorpay(page, "Success");
-    await expect(page.getByRole("heading", { name: "Upgrade confirmed" })).toBeVisible({ timeout: 40_000 });
+    await expect(page.getByRole("heading", { name: "Upgrade successful" })).toBeVisible({ timeout: 40_000 });
     expect(Number(await paid())).toBe(before + 1);
     expect(await current()).toMatch(/^ACTIVE\|cp\|ANNUAL$/);
     const [paidTotal, recordedCredit] = (await lastPaid()).split("|");
@@ -163,7 +163,7 @@ test.describe("Live Store", () => {
   test("the Account's Billing details page shows what the payment saved, and the Admin can correct it with the same checks as the Store", async () => {
     expect(await ops(`select city||'|'||source from billing_customer where "businessId"='${BHANDARYS}'`)).toBe("Pune|payment");
     await page.goto(`${ACCOUNT}/billing-details`);
-    await expect(page.getByRole("heading", { name: "Billing details", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Billing Profiles", level: 1 })).toBeVisible();
     await expect(page.getByLabel("City")).toHaveValue("Pune");
     await page.getByLabel("City").fill("Mysuru");
     await page.getByLabel("PIN code").fill("57");
@@ -212,7 +212,7 @@ test.describe("Live Store", () => {
     expect(await sql("DATABASE_URL", `select count(*) from organisation_members where organisation_id='${BHANDARYS}' and central_role='former_admin' and status='active'`)).toMatch(/^[1-9]/);
 
     await page.goto(`${ACCOUNT}/billing-details`);
-    await expect(page.getByText("Billing details are available to the business Admin only.")).toBeVisible();
+    await expect(page.getByText("Billing profiles are available to the business Admin only.")).toBeVisible();
     await expect(page.getByLabel("City")).toHaveCount(0);
     await page.goto(`${ACCOUNT}/invoices`);
     await expect(page.getByText("Billing is available to the business Admin only.")).toBeVisible();
@@ -223,7 +223,7 @@ test.describe("Live Store", () => {
     // The Store still lists its catalogue, as it does for anyone without access; what must not appear is this business's own subscription.
     await expect(page.getByText("Next renewal")).toHaveCount(0);
     await expect(page.getByText("Cross Platform")).toHaveCount(0);
-    await expect(page.getByRole("tab", { name: "Subscribed products", exact: true })).not.toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: /^Subscribed products/ })).not.toHaveAttribute("aria-selected", "true");
 
     // The doors behind the pages refuse as well.
     const get = await page.request.get(`${ACCOUNT}/api/account/billing-profile`);

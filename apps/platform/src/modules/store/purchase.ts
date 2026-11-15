@@ -10,6 +10,9 @@ import { identityPool } from "../auth/identity-db";
 import { getProfile } from "../account/profile";
 import { changeStoreAutoPay, requestStoreRefund, sendOwnerContact, changeStoreSubscription, listStoreMethods, quoteStoreCheckout, removeStoreMethod, startStoreAddCard, startStoreCheckout, startStoreMakePrimary, verifyStoreAddCard, verifyStoreCheckout, verifyStoreMakePrimary, type AddCardWindow, type CheckoutFailure, type MakePrimaryWindow, type StoreCheckoutAnswer, type StoreQuote, type SubscriptionChange } from "./ops-checkout";
 import { opsKeyFor } from "./keys";
+import { fetchOpsProductBillingProfiles } from "./ops-catalogue";
+import { pendingBuyerFor } from "./pending-buyer";
+import { billingComplete, buyerFromProfile } from "./profile-ready";
 
 /** The Store key back to the key Ops uses (`caterly` is `catering` in Ops). A key not listed is used as it is. */
 export { opsKeyFor };
@@ -26,7 +29,7 @@ async function shareOwnerContact(session: Session | null, businessId: string, op
   }
 }
 
-export type PurchaseFailure = "not_signed_in" | "no_business" | "not_admin" | "bad_request" | CheckoutFailure;
+export type PurchaseFailure = "not_signed_in" | "no_business" | "not_admin" | "bad_request" | "billing_profile_missing" | CheckoutFailure;
 export type PurchaseResult<T> = { ok: true; answer: T } | { ok: false; reason: PurchaseFailure; message?: string; fields?: Record<string, string> };
 
 const KEY = /^[a-z][a-z0-9_-]{0,39}$/;
@@ -54,7 +57,17 @@ export async function startPurchase(session: Session | null, input: { productKey
   const planId = text(input.planId, 80);
   const interval = input.interval === "MONTHLY" || input.interval === "ANNUAL" ? input.interval : null;
   if (!productKey || !planId || !interval) return { ok: false, reason: "bad_request" };
-  const buyer = readBuyer(input.buyer);
+  // The invoice goes to the product's saved billing profile (kept in Ops, edited in the Account), never to details typed into the Store. The one exception is a paid-plan
+  // sign-up that has not paid yet: it has no business, so no profile can exist, and the Store takes the details once for the first invoice.
+  let buyer: { ok: true; buyer: Buyer } | { ok: false; fields: Record<string, string> };
+  if (await pendingBuyerFor(session)) buyer = readBuyer(input.buyer);
+  else {
+    const saved = await fetchOpsProductBillingProfiles(who.businessId);
+    const profile = saved.ok ? saved.profiles.find((p) => p.productKey === opsKeyFor(productKey)) ?? null : null;
+    if (!saved.ok && saved.reason !== "not_found") return { ok: false, reason: "unreachable" };
+    if (!profile || !billingComplete(profile)) return { ok: false, reason: "billing_profile_missing", message: "Complete this product's billing details in your Account first, then come back to pay." };
+    buyer = { ok: true, buyer: buyerFromProfile(profile) };
+  }
   if (!buyer.ok) return { ok: false, reason: "bad_request", fields: buyer.fields };
   if (interval === "MONTHLY") await shareOwnerContact(session, who.businessId, opsKeyFor(productKey));
   const couponCode = readCoupon(input.couponCode);
@@ -70,7 +83,7 @@ export const readVerifyRequest = (input: unknown): BillingVerifyRequest | null =
   return parsed.ok ? parsed.value : null;
 };
 
-export async function finishPurchase(session: Session | null, input: { productKey?: unknown } & Record<string, unknown>): Promise<PurchaseResult<{ status: string | null; invoiceNumber: string | null }>> {
+export async function finishPurchase(session: Session | null, input: { productKey?: unknown } & Record<string, unknown>): Promise<PurchaseResult<{ status: string | null; invoiceNumber: string | null; paymentId: string | null }>> {
   const who = await buyerBusiness(session);
   if (!who.ok) return who;
   const productKey = typeof input.productKey === "string" && KEY.test(input.productKey) ? input.productKey : null;

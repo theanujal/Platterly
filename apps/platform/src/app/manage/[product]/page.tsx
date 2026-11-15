@@ -7,8 +7,12 @@ import { ManageFlow, type InitialChoice } from "@/components/store/manage-flow";
 import { getSession } from "@/lib/session";
 import { requireStoreSignIn } from "@/lib/store/guard";
 import { StoreUnavailable } from "@/components/store/unavailable";
-import { fetchOpsBillingProfile } from "@/modules/store/ops-catalogue";
+import { fetchOpsBillingProfile, fetchOpsProductBillingProfiles } from "@/modules/store/ops-catalogue";
+import { pendingBuyerFor } from "@/modules/store/pending-buyer";
+import { opsKeyFor } from "@/modules/store/keys";
+import { SAMPLE_BILLING_PROFILE } from "@/modules/store/sample-catalogue";
 import { loadStoreProducts } from "@/modules/store/products";
+import { loadAccountProductCards } from "@/modules/account/product-cards";
 import "@/components/store/store.css";
 
 export default async function ManagePage({ params, searchParams }: { params: Promise<{ product: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
@@ -47,14 +51,27 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   }
   // The business's saved billing details start the form filled in (live Store only; the business was already checked to be the person's own, as its Admin).
   // Ops being unreachable or having nothing saved just leaves the form blank, as before.
-  const saved = data.source === "ops" && data.business.state === "ok" ? await fetchOpsBillingProfile(data.business.id) : null;
+  // A paid-plan sign-up that has not paid has no business yet, so no product profile can exist: the form still takes the details once, for its first invoice.
+  // Everyone else sees the product's saved billing profile from Ops (edited in the Account), and the Store never collects a second copy.
+  const session = await getSession();
+  const collectDetails = data.source === "ops" && data.business.state === "ok" ? Boolean(await pendingBuyerFor(session)) : false;
+  const saved = collectDetails && data.source === "ops" && data.business.state === "ok" ? await fetchOpsBillingProfile(data.business.id) : null;
   const savedBuyer = saved?.ok ? saved.answer.profile : null;
+  let profile = data.source === "ops" ? null : SAMPLE_BILLING_PROFILE;
+  let profileState: "ok" | "unavailable" = "ok";
+  if (data.source === "ops" && data.business.state === "ok" && !collectDetails) {
+    const list = await fetchOpsProductBillingProfiles(data.business.id);
+    if (list.ok) profile = list.profiles.find((p) => p.productKey === opsKeyFor(key)) ?? null;
+    else if (list.reason !== "not_found") profileState = "unavailable";
+  }
   // After paying, a paid-plan sign-up goes on to the product's own sign-in (already signed in, so no form), which lands in its onboarding.
   const integration = initialChoice ? await getIntegration(prisma, key).catch(() => null) : null;
   const continueUrl = integration ? `${integration.baseUrl}/api/platform/sso/start` : null;
+  const cards = await loadAccountProductCards();
+  const hasLogo = cards.status === "ok" && Boolean(cards.cards.find((c) => c.accountKey === key)?.logoUrl);
   return (
     <StoreFrame>
-      <ManageFlow product={product} live={data.source === "ops"} savedBuyer={savedBuyer} accountUrl={originFor("account")} initialChoice={initialChoice} continueUrl={continueUrl} />
+      <ManageFlow product={product} hasLogo={hasLogo} profile={profile} profileState={profileState} collectDetails={collectDetails} editUrl={`${originFor("account")}/billing-details/${encodeURIComponent(opsKeyFor(key))}`} live={data.source === "ops"} savedBuyer={savedBuyer} accountUrl={originFor("account")} initialChoice={initialChoice} continueUrl={continueUrl} />
     </StoreFrame>
   );
 }
