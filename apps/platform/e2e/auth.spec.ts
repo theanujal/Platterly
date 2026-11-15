@@ -382,13 +382,14 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     await page.goto("/devices");
     const list = page.getByRole("list", { name: "Signed-in devices" });
     await expect(list.getByRole("listitem")).toHaveCount(2);
-    await expect(list.getByText("This device")).toHaveCount(1);
+    await expect(list.getByText("Current device")).toHaveCount(1);
     await expect(list.getByText("Safari on an iPhone")).toBeVisible();
     await expect(page.getByText("Chrome on a Mac").or(page.getByText(/Chrome on/)).first()).toBeVisible();
     await shot(page, "f4-11-devices");
 
     // End the phone's session from this device: the phone is signed out at once, this device stays signed in.
-    await list.getByRole("listitem").filter({ hasText: "Safari on an iPhone" }).getByRole("button", { name: "Sign out" }).click();
+    await list.getByRole("listitem").filter({ hasText: "Safari on an iPhone" }).getByRole("button", { name: /More about/ }).click();
+    await page.getByRole("menuitem", { name: "Sign out" }).click();
     await expect(list.getByRole("listitem")).toHaveCount(1);
     expect((await phone.page.request.get("/api/account/overview")).status()).toBe(401);
     expect((await page.request.get("/api/account/overview")).status()).toBe(200);
@@ -398,7 +399,7 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     const second = await signInSecondDevice(browser, to);
     await page.reload();
     await expect(page.getByRole("list", { name: "Signed-in devices" }).getByRole("listitem")).toHaveCount(2);
-    await page.getByRole("button", { name: "Sign out everywhere" }).click();
+    await page.getByRole("button", { name: "Sign out of all devices" }).click();
     await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     expect((await second.page.request.get("/api/account/overview")).status()).toBe(401);
     await second.context.close();

@@ -8,6 +8,7 @@ import { Icon } from "./icons";
 import { AccountShell } from "./shell";
 import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
+import { Menu } from "./payment-methods";
 import { RecoveryEmail } from "./recovery-email";
 import { TwoFactor } from "./two-factor";
 import { ChangeEmail } from "./change-email";
@@ -134,30 +135,35 @@ export function ProductsView() {
 export function ProfileView() {
   return (
     <AccountShell>
-      <PageHeader title="My Profile" lede="Your personal details and account settings. They apply to every business and product." />
+      <PageHeader title="My Profile" lede="Manage your personal details and account settings. They apply to every business and product." />
       <DataGate>
         {() => (
           <>
-            <ProfileDetails />
-
-            <DataRights />
-
-            <section className="pa-card pa-form" aria-labelledby="pf-security">
-              <div className="pa-section-head">
-                <h2 id="pf-security">
-                  <Icon name="shield" size={16} /> Security
-                </h2>
-              </div>
-              <div className="pa-switch-row">
-                <div>
-                  <span className="pa-row-label">Password, two-step verification and signed-in devices</span>
-                  <span className="pa-hint">These settings have their own page.</span>
-                </div>
-                <Link href="/security" className="pa-btn pa-btn-outline">
-                  Open Security
-                </Link>
-              </div>
-            </section>
+            <ProfileDetails
+              aside={
+                <>
+                  <section className="pa-card pa-profile-link" aria-labelledby="pf-security">
+                    <span className="pa-profile-link-text">
+                      <h2 id="pf-security"><Icon name="shield" size={20} /> Security</h2>
+                      <span className="pa-hint">Password, two-step verification and sign-in settings.</span>
+                    </span>
+                    <Link href="/security" className="pa-btn pa-btn-outline">
+                      Open Security <Icon name="arrowRight" size={16} />
+                    </Link>
+                  </section>
+                  <section className="pa-card pa-profile-link" aria-labelledby="pf-devices">
+                    <span className="pa-profile-link-text">
+                      <h2 id="pf-devices"><Icon name="monitor" size={20} /> Devices</h2>
+                      <span className="pa-hint">See and manage the devices where you&apos;re signed in.</span>
+                    </span>
+                    <Link href="/devices" className="pa-btn pa-btn-outline">
+                      View Devices <Icon name="arrowRight" size={16} />
+                    </Link>
+                  </section>
+                  <DataRights />
+                </>
+              }
+            />
           </>
         )}
       </DataGate>
@@ -211,11 +217,12 @@ function Devices() {
   return (
     <section className="pa-card pa-form" aria-labelledby="sc-devices">
       <div className="pa-section-head">
-        <h2 id="sc-devices">
-          <Icon name="shield" size={16} /> Signed-in devices
-        </h2>
+        <span>
+          <h2 id="sc-devices">Your signed-in devices</h2>
+          <span className="pa-hint">These are the devices currently using your account.</span>
+        </span>
         <button type="button" className="pa-btn pa-btn-outline" disabled={busy || state.phase !== "ready"} onClick={() => revoke({ all: true })}>
-          <Icon name="logout" size={15} /> Sign out everywhere
+          <Icon name="logout" size={15} /> Sign out of all devices
         </button>
       </div>
       {state.phase === "loading" && (
@@ -231,17 +238,23 @@ function Devices() {
       {state.phase === "ready" && (
         <ul className="pa-sessions" aria-label="Signed-in devices">
           {state.devices.map((d) => (
-            <li className="pa-session" key={d.id}>
+            <li className={`pa-session pa-device-row${d.current ? " is-current" : ""}`} key={d.id}>
+              <span className="pa-device-tile"><Icon name={/iphone|android|mobile|ipad/i.test(d.label) ? "smartphone" : "laptop"} size={22} /></span>
               <span className="pa-session-text">
-                <span className="pa-row-label">{d.label}</span>
-                <span className="pa-hint">Last active {new Date(d.lastActive).toLocaleString()}</span>
+                <span className="pa-row-label">
+                  {d.label} {d.current && <Badge tone="success">Current device</Badge>}
+                </span>
+              </span>
+              <span className="pa-device-active">
+                <span className="pa-hint">Last active</span>
+                <span>{new Date(d.lastActive).toLocaleString()}</span>
               </span>
               {d.current ? (
-                <Badge tone="success">This device</Badge>
+                <span className="pa-device-more" aria-hidden="true" />
               ) : (
-                <button type="button" className="pa-btn pa-btn-outline" disabled={busy} onClick={() => revoke({ id: d.id })}>
-                  Sign out
-                </button>
+                <Menu label={`More about ${d.label}`} triggerClass="pa-btn pa-btn-outline pa-more" items={[{ text: "Sign out", icon: "logout", onClick: () => revoke({ id: d.id }) }]}>
+                  <Icon name="more" size={18} />
+                </Menu>
               )}
             </li>
           ))}
@@ -333,10 +346,10 @@ function TrustedDevices() {
 
 type Prefs = { newSignInAlert: boolean; thirdPartyAlert: boolean; newsletter: boolean };
 type PrefsState = { phase: "loading" } | { phase: "error" } | { phase: "ready"; prefs: Prefs };
-const PREF_ROWS: { key: keyof Prefs; label: string; hint: string }[] = [
-  { key: "newSignInAlert", label: "New sign-in to account alert", hint: "An email when your account is signed in to from a browser or system we have not seen before." },
-  { key: "thirdPartyAlert", label: "Third-party app access alert", hint: "An email when another app is given access to your account. Apps cannot be connected yet, so nothing is sent for now." },
-  { key: "newsletter", label: "Newsletter subscription", hint: "News, tips and product updates from Platterly, sent weekly or monthly. Every email has an unsubscribe link." },
+const PREF_ROWS: { key: keyof Prefs; label: string; hint: string; icon: "mail" | "users" | "megaphone" }[] = [
+  { key: "newSignInAlert", icon: "mail", label: "New sign-in to account alert", hint: "An email when your account is signed in to from a browser or system we have not seen before." },
+  { key: "thirdPartyAlert", icon: "users", label: "Third-party app access alert", hint: "An email when another app is given access to your account. Apps cannot be connected yet, so nothing is sent for now." },
+  { key: "newsletter", icon: "megaphone", label: "Newsletter subscription", hint: "News, tips and product updates from Platterly, sent weekly or monthly. Every email has an unsubscribe link." },
 ];
 
 /** Optional account notices with an on/off switch each (AJ, 2026-11-10). Security, ownership and billing notices are always sent; product notices are set in each product. */
@@ -379,50 +392,61 @@ export function NotificationsView() {
 
   return (
     <AccountShell>
-      <PageHeader title="Notifications" lede="Choose which optional emails you get about your Platterly account." />
+      <PageHeader title="Notifications" lede="Choose what updates you'd like to receive from Platterly." />
       <DataGate>
-        {() => (
-          <section className="pa-card pa-form" aria-labelledby="nt-optional">
-            <div className="pa-section-head">
-              <h2 id="nt-optional">
-                <Icon name="bell" size={16} /> Account emails
-              </h2>
-            </div>
-            {state.phase === "loading" && (
-              <p className="pa-muted" role="status" aria-busy="true">
-                Loading your choices…
-              </p>
-            )}
-            {state.phase === "error" && (
-              <p className="pa-muted" role="alert">
-                We could not load or save your choices. Please reload the page.
-              </p>
-            )}
-            {state.phase === "ready" &&
-              PREF_ROWS.map((row) => (
-                <div className="pa-switch-row" key={row.key}>
-                  <div>
-                    <span className="pa-row-label" id={`pref-${row.key}`}>
-                      {row.label}
-                    </span>
-                    <span className="pa-hint">{row.hint}</span>
+        {(overview) => (
+          <div className="pa-detail-grid">
+            <section className="pa-card pa-form pa-list-rows" aria-labelledby="nt-optional">
+              <h2 id="nt-optional" className="pa-visually-hidden">Account emails</h2>
+              {state.phase === "loading" && (
+                <p className="pa-muted" role="status" aria-busy="true">
+                  Loading your choices…
+                </p>
+              )}
+              {state.phase === "error" && (
+                <p className="pa-muted" role="alert">
+                  We could not load or save your choices. Please reload the page.
+                </p>
+              )}
+              {state.phase === "ready" &&
+                PREF_ROWS.map((row) => (
+                  <div className="pa-switch-row pa-setting-row" key={row.key}>
+                    <span className="pa-detail-tile"><Icon name={row.icon} size={22} /></span>
+                    <div>
+                      <span className="pa-row-label" id={`pref-${row.key}`}>
+                        {row.label}
+                      </span>
+                      <span className="pa-hint">{row.hint}</span>
+                    </div>
+                    <input type="checkbox" role="switch" className="pa-switch" aria-labelledby={`pref-${row.key}`} checked={state.prefs[row.key]} onChange={(e) => change(row.key, e.target.checked)} />
                   </div>
-                  <input type="checkbox" role="switch" className="pa-switch" aria-labelledby={`pref-${row.key}`} checked={state.prefs[row.key]} onChange={(e) => change(row.key, e.target.checked)} />
+                ))}
+              {state.phase === "ready" && (
+                <div className="pa-switch-row pa-setting-row">
+                  <span className="pa-detail-tile"><Icon name="shield" size={22} /></span>
+                  <div>
+                    <span className="pa-row-label" id="pref-security">
+                      Security alerts
+                    </span>
+                    <span className="pa-hint">Always on. We email you about changes to your sign-in details, two-step verification and deletion requests.</span>
+                  </div>
+                  <input type="checkbox" role="switch" className="pa-switch" aria-labelledby="pref-security" checked disabled readOnly />
                 </div>
-              ))}
-            {state.phase === "ready" && (
-              <div className="pa-switch-row">
-                <div>
-                  <span className="pa-row-label" id="pref-security">
-                    Security alerts
-                  </span>
-                  <span className="pa-hint">Always on. We email you about changes to your sign-in details, two-step verification and deletion requests.</span>
+              )}
+              <p className="pa-hint pa-list-rows-note">Security, ownership and billing emails are always sent, and notices from a product are set inside that product.</p>
+            </section>
+            <div className="pa-stack pa-detail-side">
+              <section className="pa-card pa-side-green" aria-label="Notification channels">
+                <div className="pa-bd-side-head">
+                  <span className="pa-detail-tile pa-green-tile"><Icon name="bell" size={22} /></span>
+                  <h2>Notification channels</h2>
                 </div>
-                <input type="checkbox" role="switch" className="pa-switch" aria-labelledby="pref-security" checked disabled readOnly />
-              </div>
-            )}
-            <p className="pa-hint">Security, ownership and billing emails are always sent, and notices from a product are set inside that product.</p>
-          </section>
+                <p>We&apos;ll send these updates to your registered email:</p>
+                <p className="pa-channel-email"><Icon name="mail" size={16} /> {overview.user.email}</p>
+                <p>You can change your email from <Link href="/security">Security</Link>.</p>
+              </section>
+            </div>
+          </div>
         )}
       </DataGate>
     </AccountShell>
@@ -432,11 +456,20 @@ export function NotificationsView() {
 export function DevicesView() {
   return (
     <AccountShell>
-      <PageHeader title="Devices and activity" lede="Where you are signed in, which devices skip the two-step code, and your recent sign-ins." />
+      <PageHeader title="Devices" lede="Manage the devices where you're signed in to your Platterly account." />
       <DataGate>
         {() => (
           <>
-            <Devices />
+            <div className="pa-detail-grid">
+              <Devices />
+              <div className="pa-stack pa-detail-side">
+                <section className="pa-card pa-bd-secure" aria-label="About device access">
+                  <span className="pa-detail-tile pa-bd-secure-tile"><Icon name="laptop" size={28} /></span>
+                  <h2>About device access</h2>
+                  <p className="pa-hint">See the devices that are signed in to your Platterly account and sign out of any you don&apos;t recognise.</p>
+                </section>
+              </div>
+            </div>
             <TrustedDevices />
             <SignInHistory />
           </>
@@ -449,17 +482,13 @@ export function DevicesView() {
 export function SecurityView() {
   return (
     <AccountShell>
-      <PageHeader title="Security" lede="How you sign in to Platterly: email, password, two-step verification and recovery. These settings apply to every business and product." />
+      <PageHeader title="Security" lede="Keep your account safe and secure." />
       <DataGate>
         {(overview) => (
-          <>
-            <section className="pa-card pa-form" aria-labelledby="sc-signin">
-              <div className="pa-section-head">
-                <h2 id="sc-signin">
-                  <Icon name="lock" size={16} /> Sign-in
-                </h2>
-              </div>
-              <div className="pa-switch-row">
+          <div className="pa-detail-grid">
+            <section className="pa-card pa-form pa-list-rows" aria-label="Sign-in and security">
+              <div className="pa-switch-row pa-setting-row">
+                <span className="pa-detail-tile"><Icon name="mail" size={22} /></span>
                 <div>
                   <span className="pa-row-label">Email</span>
                   <span className="pa-hint">{overview.user.email}</span>
@@ -470,11 +499,33 @@ export function SecurityView() {
               <ChangePassword />
               <TwoFactor />
               <RecoveryEmail />
+              <div className="pa-switch-row pa-setting-row">
+                <span className="pa-detail-tile"><Icon name="key" size={22} /></span>
+                <div>
+                  <span className="pa-row-label">Account access</span>
+                  <span className="pa-hint">Manage your active sessions and devices.</span>
+                </div>
+                <Link href="/devices" className="pa-btn pa-btn-outline">
+                  Manage devices <Icon name="arrowRight" size={16} />
+                </Link>
+              </div>
             </section>
-          </>
+            <div className="pa-stack pa-detail-side">
+              <section className="pa-card pa-bd-secure" aria-label="Tips for a secure account">
+                <div className="pa-bd-side-head">
+                  <span className="pa-detail-tile pa-bd-secure-tile"><Icon name="shieldCheck" size={26} /></span>
+                  <h2>Tips for a secure account</h2>
+                </div>
+                <ul className="pa-bd-checks">
+                  <li><Icon name="check" size={18} /> Use a strong, unique password.</li>
+                  <li><Icon name="check" size={18} /> Enable two-step verification (2FA).</li>
+                  <li><Icon name="check" size={18} /> Review your signed-in devices regularly.</li>
+                </ul>
+              </section>
+            </div>
+          </div>
         )}
       </DataGate>
     </AccountShell>
   );
 }
-

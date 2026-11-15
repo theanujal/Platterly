@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Icon } from "./icons";
 import { Badge } from "./ui";
 
 const MESSAGES: Record<string, string> = {
@@ -90,7 +91,8 @@ export function RecoveryEmail() {
   }
 
   return (
-    <div className="pa-switch-row" style={{ flexWrap: "wrap" }}>
+    <div className="pa-switch-row pa-setting-row" style={{ flexWrap: "wrap" }}>
+      <span className="pa-detail-tile"><Icon name="lifebuoy" size={22} /></span>
       <div>
         <span className="pa-row-label">Recovery email</span>
         <span className="pa-hint">{email ? <>Where we send a password-reset code if you cannot reach your main email: {email}</> : "A second address where we can send a password-reset code if you cannot reach your main email. It is used only to reset your password."}</span>

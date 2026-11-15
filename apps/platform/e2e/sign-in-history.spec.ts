@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { PASSWORD, fill, newEmail, registerAndSignIn } from "./signed-in";
 
-/** Sign-in history on the Devices and activity page, as a really signed-in person. */
+/** Sign-in history on the Devices page, as a really signed-in person. */
 test("the Devices page lists this person's sign-ins and a refused password, newest first, with no address shown", async ({ page, browser }) => {
   const to = newEmail();
   await registerAndSignIn(page, to, "/devices");
@@ -20,7 +20,7 @@ test("the Devices page lists this person's sign-ins and a refused password, newe
   await expect(other.locator(".pl-auth-error")).toBeVisible();
   await fill(other, "Password", PASSWORD);
   await other.getByRole("button", { name: "Sign in" }).click();
-  await expect(other.getByRole("heading", { name: "Devices and activity" })).toBeVisible();
+  await expect(other.getByRole("heading", { name: "Devices" })).toBeVisible();
 
   await page.reload();
   const items = page.getByRole("list", { name: "Sign-in history" }).getByRole("listitem");

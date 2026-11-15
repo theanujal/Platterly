@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { initials } from "@/lib/account/catalogue";
 import { PhoneField } from "../phone-field";
 import { Icon } from "./icons";
@@ -32,7 +32,7 @@ async function patch(payload: Record<string, unknown>): Promise<{ ok: true; prof
 }
 
 /** The head card, "Personal information" and the product-updates choice, all from the person's own stored profile. */
-export function ProfileDetails() {
+export function ProfileDetails({ aside }: { aside?: ReactNode }) {
   const [state, setState] = useState<State>({ phase: "loading" });
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -134,7 +134,7 @@ export function ProfileDetails() {
           </p>
           <div className="pa-form-actions">
             <label className="pa-btn pa-btn-outline" htmlFor="pf-photo">
-              {profile.photoVersion ? "Change photo" : "Add photo"}
+              <Icon name="camera" size={16} /> {profile.photoVersion ? "Change photo" : "Add photo"}
             </label>
             <input id="pf-photo" type="file" accept="image/jpeg,image/png,image/webp" className="pa-visually-hidden" disabled={busy} onChange={(e) => { void sendPhoto(e.target.files?.[0]); e.target.value = ""; }} />
             {profile.photoVersion && (
@@ -147,9 +147,10 @@ export function ProfileDetails() {
         </div>
       </section>
 
+      <div className="pa-profile-grid">
       <form className="pa-card pa-form" aria-labelledby="pf-personal" onSubmit={save} noValidate>
         <div className="pa-section-head">
-          <h2 id="pf-personal">Personal information</h2>
+          <h2 id="pf-personal"><Icon name="user" size={20} /> Personal Information</h2>
           {!editing && (
             <button type="button" className="pa-btn pa-btn-outline" onClick={startEdit}>
               <Icon name="pencil" size={15} /> Edit
@@ -173,12 +174,15 @@ export function ProfileDetails() {
               )}
             </div>
           ))}
-          <div className="pa-field">
+          <div className="pa-field pa-span-full">
             <label htmlFor="pf-email">Email</label>
-            <input id="pf-email" value={profile.email} disabled readOnly />
+            <span className="pa-input-badge">
+              <input id="pf-email" value={profile.email} disabled readOnly />
+              {profile.emailVerified ? <Badge tone="success">Verified</Badge> : <Badge tone="warning">Not verified</Badge>}
+            </span>
             <span className="pa-hint">To change your email, use the Security page. It needs a code sent to the new address.</span>
           </div>
-          <div className="pa-field">
+          <div className="pa-field pa-span-full">
             <label htmlFor="pf-phone">Business phone number</label>
             <PhoneField id="pf-phone" value={editing ? draft.phone : profile.phone} onChange={(v) => setDraft({ ...draft, phone: v })} disabled={!editing} describedBy={errors.phone ? "pf-phone-err" : undefined} invalid={!!errors.phone} />
             {errors.phone && (
@@ -187,16 +191,19 @@ export function ProfileDetails() {
               </span>
             )}
           </div>
-          <div className="pa-field">
+          <div className="pa-field pa-span-full">
             <label htmlFor="pf-tz">Time zone</label>
-            <select id="pf-tz" value={editing ? draft.timeZone : profile.timeZone} disabled={!editing} onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}>
-              {timeZones.includes(profile.timeZone) ? null : <option value={profile.timeZone}>{profile.timeZone}</option>}
-              {timeZones.map((z) => (
-                <option key={z} value={z}>
-                  {z}
-                </option>
-              ))}
-            </select>
+            <span className="pa-select">
+              <select id="pf-tz" value={editing ? draft.timeZone : profile.timeZone} disabled={!editing} onChange={(e) => setDraft({ ...draft, timeZone: e.target.value })}>
+                {timeZones.includes(profile.timeZone) ? null : <option value={profile.timeZone}>{profile.timeZone}</option>}
+                {timeZones.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevronDown" size={16} />
+            </span>
             {errors.timeZone && (
               <span className="pa-hint" role="alert">
                 {errors.timeZone}
@@ -215,7 +222,8 @@ export function ProfileDetails() {
           </div>
         )}
       </form>
-
+      {aside && <div className="pa-stack">{aside}</div>}
+      </div>
     </>
   );
 }

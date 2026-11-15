@@ -2623,3 +2623,219 @@ textarea.pa-input {
     grid-column: span 6;
   }
 }
+
+/* My Profile: Personal Information on the left; Security, Devices and Your Data stacked on the right. */
+.pa-profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.pa-profile-grid > .pa-stack {
+  min-width: 0;
+}
+.pa-section-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pa-input-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.pa-input-badge input {
+  width: 100%;
+  padding-right: 110px;
+}
+.pa-input-badge .pa-badge,
+.pa-input-badge > span:last-child {
+  position: absolute;
+  right: 10px;
+}
+.pa-profile-link {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pa-profile-link-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pa-profile-link-text h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.pa-profile-link h2 svg,
+.pa-section-head h2 svg {
+  color: var(--primary, #f97316);
+}
+.pa-data-icon {
+  flex: none;
+  color: var(--primary, #f97316);
+}
+.pa-switch-row .pa-data-icon + div {
+  flex: 1;
+}
+@media (max-width: 900px) {
+  .pa-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.pa-form-grid > .pa-span-full {
+  grid-column: 1 / -1;
+}
+.pa-profile-link-text h2,
+.pa-profile-grid .pa-section-head h2,
+#pf-data {
+  font-size: 16px;
+}
+.pa-profile-grid .pa-select select:disabled {
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+  opacity: 1;
+  cursor: default;
+}
+
+/* Danger Zone, after Caterly's: a red-tinted box inside a card, a destructive button, and a narrow confirmation dialog. */
+.pa-danger-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--destructive, #dc2626) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--destructive, #dc2626) 5%, transparent);
+}
+.pa-danger-box h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.pa-btn-danger {
+  background: var(--destructive, #dc2626);
+  color: #fff;
+}
+.pa-btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+.pa-btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pa-modal-narrow {
+  width: min(100%, 480px);
+}
+.pa-modal-actions {
+  justify-content: flex-end;
+}
+.pa-danger-text {
+  color: var(--destructive, #dc2626);
+}
+.pa-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+}
+
+/* Security, Devices and Notifications: a list card whose rows carry an icon tile, a title with a hint, and an action on the right. */
+.pa-list-rows {
+  gap: 0;
+  padding: 0;
+}
+.pa-list-rows > .pa-switch-row,
+.pa-list-rows .pa-setting-row {
+  padding: 16px 20px;
+}
+.pa-list-rows > :first-child.pa-switch-row {
+  border-top: 0;
+}
+.pa-list-rows-note {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+}
+.pa-setting-row {
+  gap: 16px;
+}
+.pa-setting-row > div:first-of-type,
+.pa-setting-row > .pa-detail-tile + div {
+  flex: 1;
+}
+.pa-setting-row .pa-detail-tile {
+  width: 44px;
+  height: 44px;
+}
+.pa-setting-row .pa-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pa-device-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+.pa-device-row.is-current {
+  background: #ecfdf3;
+}
+.pa-device-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--muted);
+  color: var(--foreground);
+}
+.pa-device-row .pa-session-text {
+  flex: 1;
+  min-width: 0;
+}
+.pa-device-active {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  font-size: 13px;
+}
+.pa-device-more {
+  width: 38px;
+}
+.pa-side-green {
+  background: #f0fdf4;
+}
+.pa-green-tile {
+  background: #dcfce7;
+  color: #16a34a;
+}
+.pa-channel-email {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 500;
+}
+.pa-detail-side .pa-bd-secure > .pa-detail-tile {
+  margin-bottom: 12px;
+}
+@media (max-width: 640px) {
+  .pa-device-row {
+    flex-wrap: wrap;
+  }
+  .pa-device-active {
+    min-width: 0;
+  }
+}
+.pa-channel-email + p a {
+  color: var(--primary);
+  font-weight: 500;
+}

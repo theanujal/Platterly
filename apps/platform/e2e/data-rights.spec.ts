@@ -23,13 +23,22 @@ test("a person downloads their data (password asked first, no secrets inside) an
   for (const word of ['"password"', '"token"', "$argon", "scrypt"]) expect(text).not.toContain(word);
   await expect(page.getByText("Your data was downloaded.")).toBeVisible();
 
+  // Deleting follows Caterly's Danger Zone: a dialog where the button stays off until the word DELETE is typed.
+  await expect(page.getByRole("heading", { name: "Danger Zone" })).toBeVisible();
   await page.getByRole("button", { name: "Request deletion" }).click();
-  await page.getByLabel("Current password").fill("not my password 1");
-  await page.getByRole("button", { name: "Send deletion request" }).click();
-  await expect(page.getByText("That is not your current password.")).toBeVisible();
-  await page.getByLabel("Current password").fill(PASSWORD);
-  await page.getByLabel("Reason (optional)").fill("testing");
-  await page.getByRole("button", { name: "Send deletion request" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Delete your account?" });
+  const send = dialog.getByRole("button", { name: "Request deletion" });
+  await dialog.getByLabel("Current password").fill(PASSWORD);
+  await expect(send).toBeDisabled();
+  await dialog.getByLabel(/Type/).fill("delete");
+  await expect(send).toBeDisabled();
+  await dialog.getByLabel(/Type/).fill("DELETE");
+  await dialog.getByLabel("Current password").fill("not my password 1");
+  await send.click();
+  await expect(dialog.getByText("That is not your current password.")).toBeVisible();
+  await dialog.getByLabel("Current password").fill(PASSWORD);
+  await dialog.getByLabel("Reason (optional)").fill("testing");
+  await send.click();
   await expect(page.getByText(/Deletion requested on/)).toBeVisible();
   await page.reload();
   await expect(page.getByText(/Deletion requested on/)).toBeVisible();

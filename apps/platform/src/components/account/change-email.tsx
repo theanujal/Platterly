@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Icon } from "./icons";
 
 const MESSAGES: Record<string, string> = {
   wrong_password: "That is not your current password.",
@@ -87,7 +88,8 @@ export function ChangeEmail() {
   }
 
   return (
-    <div className="pa-switch-row" style={{ flexWrap: "wrap" }}>
+    <div className="pa-switch-row pa-setting-row" style={{ flexWrap: "wrap" }}>
+      <span className="pa-detail-tile"><Icon name="mail" size={22} /></span>
       <div>
         <span className="pa-row-label">Change email</span>
         <span className="pa-hint">Change the address you sign in with. We send a code to the new address and tell the old one, which can cancel the change for 24 hours. You are signed out of every device when it changes.</span>

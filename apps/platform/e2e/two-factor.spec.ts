@@ -6,7 +6,7 @@ const codeNow = (secret: string) => totpFromUri(`otpauth://totp/x?secret=${secre
 
 async function turnOn(page: Page): Promise<{ secret: string; backup: string[] }> {
   await page.goto("/security");
-  await page.getByRole("button", { name: "Set up" }).click();
+  await page.getByRole("button", { name: "Enable 2FA" }).click();
   await page.getByLabel("Current password").fill("not my password 1");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByText("That is not your current password.")).toBeVisible();

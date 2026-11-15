@@ -21,7 +21,7 @@ const PAGES = [
   { path: "/products", h1: "My Products" },
   { path: "/profile", h1: "My Profile" },
   { path: "/security", h1: "Security" },
-  { path: "/devices", h1: "Devices and activity" },
+  { path: "/devices", h1: "Devices" },
   { path: "/notifications", h1: "Notifications" },
 ];
 const nav = (page: Page) => page.getByRole("navigation", { name: "Account" });
@@ -174,7 +174,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await expect(page.getByLabel("First name")).toHaveValue("Owner");
     await expect(page.getByLabel("Last name")).toHaveValue("Kitchen");
     await expect(page.getByLabel("Phone")).toHaveValue("+91 98000 00123");
-    await expect(page.getByText("Verified", { exact: true })).toBeVisible();
+    await expect(page.getByText("Verified", { exact: true })).toHaveCount(2); // the head card and the email field
     await expect(page.getByRole("button", { name: "Edit" })).toBeEnabled();
     await shot(page, "data-profile");
 
@@ -183,7 +183,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await shot(page, "data-security");
     await page.goto("/devices");
     await expect(page.getByText("Chrome on a laptop")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Sign out everywhere" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Sign out of all devices" })).toBeDisabled();
     await shot(page, "data-devices");
   });
 

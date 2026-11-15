@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { Icon } from "./icons";
 import { Badge } from "./ui";
 
 const MESSAGES: Record<string, string> = {
@@ -51,10 +52,11 @@ export function ChangePassword() {
   }
 
   return (
-    <div className="pa-switch-row" style={{ flexWrap: "wrap" }}>
+    <div className="pa-switch-row pa-setting-row" style={{ flexWrap: "wrap" }}>
+      <span className="pa-detail-tile"><Icon name="lock" size={22} /></span>
       <div>
         <span className="pa-row-label">Password</span>
-        <span className="pa-hint">Change the password you use to sign in. Your other devices are signed out.</span>
+        <span className="pa-hint">Change your password regularly to keep your account secure. Your other devices are signed out when you do.</span>
         {done && (
           <span className="pa-hint" role="status">
             {done}
@@ -65,7 +67,7 @@ export function ChangePassword() {
         <div className="pa-row-actions">
           <Badge tone="success">Set</Badge>
           <button type="button" className="pa-btn pa-btn-outline" onClick={() => (setDone(""), setOpen(true))}>
-            Change password
+            Change password <Icon name="arrowRight" size={16} />
           </button>
         </div>
       )}

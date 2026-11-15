@@ -128,7 +128,7 @@ test("with two-step verification on, the change needs the authenticator code too
   test.setTimeout(120_000);
   const to = newEmail();
   await registerAndSignIn(page, to, "/security");
-  await page.getByRole("button", { name: "Set up" }).click();
+  await page.getByRole("button", { name: "Enable 2FA" }).click();
   await page.getByLabel("Current password").fill(PASSWORD);
   await page.getByRole("button", { name: "Continue" }).click();
   const secret = (await page.locator("code").first().textContent())!.trim();

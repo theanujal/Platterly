@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaymentMethodsProduct } from "@/modules/account/payment-methods";
 import { openRazorpayCardRegistration, openRazorpaySubscription, type RazorpayCardRegistration, type RazorpaySubscription } from "@/components/store/razorpay";
 import type { PaymentMethodView } from "@platterly/contract";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { HELP_URL } from "./shell";
 import { Badge } from "./ui";
 
@@ -40,7 +40,7 @@ function BrandMark({ brand }: { brand: ReturnType<typeof describe>["brand"] }) {
 }
 
 /** A small menu placed from its button, so nothing clips it: the "…" on a method, and "Add payment method". */
-function Menu({ label, items, triggerClass, children }: { label: string; items: { text: string; onClick: () => void; icon?: "card"; word?: string; disabled?: boolean; note?: string }[]; triggerClass: string; children: React.ReactNode }) {
+export function Menu({ label, items, triggerClass, children }: { label: string; items: { text: string; onClick: () => void; icon?: IconName; word?: string; disabled?: boolean; note?: string }[]; triggerClass: string; children: React.ReactNode }) {
   const [at, setAt] = useState<{ top: number; right: number } | null>(null);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {

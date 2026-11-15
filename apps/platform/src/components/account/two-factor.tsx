@@ -2,6 +2,7 @@
 
 import QRCode from "qrcode";
 import { useEffect, useState, type FormEvent } from "react";
+import { Icon } from "./icons";
 import { Badge } from "./ui";
 
 const MESSAGES: Record<string, string> = {
@@ -101,10 +102,11 @@ export function TwoFactor() {
 
   const asking = mode === "password-start" || mode === "password-codes" || mode === "password-off";
   return (
-    <div className="pa-switch-row" style={{ flexWrap: "wrap" }}>
+    <div className="pa-switch-row pa-setting-row" style={{ flexWrap: "wrap" }}>
+      <span className="pa-detail-tile"><Icon name="shield" size={22} /></span>
       <div>
         <span className="pa-row-label">Two-step verification</span>
-        <span className="pa-hint">Ask for a code from an authenticator app when you sign in, as well as your password.</span>
+        <span className="pa-hint">Add an extra layer of security to your account: a code from an authenticator app when you sign in, as well as your password.</span>
         {note && (
           <span className="pa-hint" role="status">
             {note}
@@ -113,10 +115,10 @@ export function TwoFactor() {
       </div>
       {mode === "closed" && (
         <div className="pa-row-actions">
-          {enabled === null ? null : enabled ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Off</Badge>}
+          {enabled === null ? null : enabled ? <Badge tone="success">On</Badge> : <Badge tone="neutral">Not enabled</Badge>}
           {enabled === false && (
             <button type="button" className="pa-btn pa-btn-outline" onClick={() => open("password-start")}>
-              Set up
+              Enable 2FA <Icon name="arrowRight" size={16} />
             </button>
           )}
           {enabled === true && (
