@@ -119,6 +119,15 @@ describe("sendMessage", () => {
     expect(await prisma.messageLog.findFirstOrThrow({ where: { businessId: BIZ } })).toMatchObject({ status: "SENT", toEmail: "asha@example.test", providerMessage: "req-1", attempts: 1 });
   });
 
+  it("sends billing messages to the saved billing email, and everything else to the owner", async () => {
+    await prisma.billingCustomer.create({ data: { businessId: BIZ, name: "Asha's Kitchen", source: "account", contactEmail: "accounts@example.test" } });
+    await sendMessage({ businessId: BIZ, productKey: KEY, template: "payment_failed", variables: { planName: "Pro" } }, fakeFetch);
+    expect(calls[0].body.to[0].email_address.address).toBe("accounts@example.test");
+    expect(await prisma.messageLog.findFirstOrThrow({ where: { businessId: BIZ } })).toMatchObject({ toEmail: "accounts@example.test" });
+    await sendMessage({ businessId: BIZ, productKey: KEY, template: "welcome_owner", variables: {} }, fakeFetch);
+    expect(calls[1].body.to[0].email_address.address).toBe("asha@example.test");
+  });
+
   it("opens the Store's pay page and the Account's Payment method page when their addresses are set (trailing slashes ignored)", async () => {
     process.env.STORE_ORIGIN = "https://store.example/";
     process.env.ACCOUNT_ORIGIN = "https://account.example";

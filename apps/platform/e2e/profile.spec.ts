@@ -49,19 +49,22 @@ test("a signed-in person edits first name, last name, phone and time zone, the c
   }
   // Notifications page: the newsletter starts off, the two alerts start on, every choice is stored, and security alerts are always on.
   await page.goto("/notifications");
-  const newsletter = page.getByRole("switch", { name: "Newsletter subscription" });
+  const newsletter = page.getByRole("switch", { name: "Offers and announcements" });
   const signInAlert = page.getByRole("switch", { name: "New sign-in to account alert" });
   const appAlert = page.getByRole("switch", { name: "Third-party app access alert" });
   await expect(newsletter).not.toBeChecked();
   await expect(signInAlert).toBeChecked();
   await expect(appAlert).toBeChecked();
-  await expect(page.getByRole("switch", { name: "Security alerts" })).toBeDisabled();
+  for (const name of ["Account updates", "Billing and payments", "Product updates"]) {
+    await expect(page.getByRole("switch", { name })).toBeChecked();
+    await expect(page.getByRole("switch", { name })).toBeDisabled();
+  }
   await newsletter.check();
   await expect(newsletter).toBeChecked();
   await signInAlert.uncheck();
   await expect(signInAlert).not.toBeChecked();
   await page.reload();
-  await expect(page.getByRole("switch", { name: "Newsletter subscription" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Offers and announcements" })).toBeChecked();
   await expect(page.getByRole("switch", { name: "New sign-in to account alert" })).not.toBeChecked();
   await expect(page.getByRole("switch", { name: "Third-party app access alert" })).toBeChecked();
 });

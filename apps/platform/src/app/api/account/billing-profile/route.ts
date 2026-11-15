@@ -1,5 +1,7 @@
 import { hostKind, requestHost } from "@/lib/routing/hosts";
-import { getSession } from "@/lib/session";
+import { getSession, getSessionRef } from "@/lib/session";
+import { getProfile } from "@/modules/account/profile";
+import { identityPool } from "@/modules/auth/identity-db";
 import { accountOrigin } from "@/modules/auth/config";
 import { loadMyBillingProfile, profileStatus, saveMyBillingProfile, type ProfileResult } from "@/modules/store/billing-profile";
 
@@ -16,7 +18,18 @@ function answer(result: ProfileResult) {
 
 export async function GET(request: Request) {
   if (hostKind(requestHost(request.headers)) !== "account") return Response.json({ error: "not_found" }, { status: 404 });
-  return answer(await loadMyBillingProfile(await getSession()));
+  const result = await loadMyBillingProfile(await getSession());
+  if (!result.ok) return answer(result);
+  // The billing contact starts as the person's own name, email and phone from sign-up; the Admin saves it (or changes it) on the page. Never stored from here.
+  let prefill: { contactName: string; contactEmail: string; contactPhone: string } | null = null;
+  try {
+    const ref = await getSessionRef();
+    const profile = ref ? await getProfile(identityPool(), ref.sub) : null;
+    if (profile) prefill = { contactName: profile.name, contactEmail: profile.email, contactPhone: profile.phone };
+  } catch {
+    /* the contact fields simply start empty */
+  }
+  return Response.json({ status: "ok", ...result.answer, prefill }, { headers: NO_STORE });
 }
 
 export async function PUT(request: Request) {

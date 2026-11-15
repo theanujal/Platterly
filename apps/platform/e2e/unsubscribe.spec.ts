@@ -23,17 +23,17 @@ test("a bad unsubscribe link says so and changes nothing; a good one asks first,
   const pool = new Pool({ connectionString: process.env.IDENTITY_DATABASE_URL });
   const userId = (await pool.query('select "id" from "user" where "email" = $1', [to])).rows[0].id as string;
   await pool.end();
-  await page.getByRole("switch", { name: "Newsletter subscription" }).check();
-  await expect(page.getByRole("switch", { name: "Newsletter subscription" })).toBeChecked();
+  await page.getByRole("switch", { name: "Offers and announcements" }).check();
+  await expect(page.getByRole("switch", { name: "Offers and announcements" })).toBeChecked();
 
   const stranger = await (await browser.newContext()).newPage();
   await stranger.goto(`http://account.localhost:3300/unsubscribe?u=${encodeURIComponent(userId)}&t=${token(userId)}`);
   await expect(stranger.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
   // Opening the link alone changed nothing.
   await page.reload();
-  await expect(page.getByRole("switch", { name: "Newsletter subscription" })).toBeChecked();
+  await expect(page.getByRole("switch", { name: "Offers and announcements" })).toBeChecked();
   await stranger.getByRole("button", { name: "Unsubscribe" }).click();
   await expect(stranger.getByRole("status")).toContainText("You have been unsubscribed");
   await page.reload();
-  await expect(page.getByRole("switch", { name: "Newsletter subscription" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Offers and announcements" })).not.toBeChecked();
 });

@@ -6,21 +6,18 @@ import type { PaymentRow, SubscriptionRow } from "@/modules/account/billing";
 import { AUTO_PAY_LABEL, AutoRenewalControls, Gate, RefundRequest, TONE, daysLeft, day, inr, label, paymentBadge, term, useBilling } from "./billing-shared";
 import { useProductCards } from "./cards";
 import { Icon } from "./icons";
+import { useDialog } from "./use-dialog";
 import { AccountShell, HELP_URL, useLeafCrumb } from "./shell";
 import { Badge, PageHeader } from "./ui";
 
 /** A popup: a dialog over the page, closed with the button, the backdrop or Escape. */
 export function Modal({ title, subtitle, onClose, children, testId }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode; testId?: string }) {
   const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialog(dialogRef, onClose);
   return (
     <div className="pa-modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="pa-modal" role="dialog" aria-modal="true" aria-label={title} data-testid={testId}>
+      <div ref={dialogRef} className="pa-modal" role="dialog" aria-modal="true" aria-label={title} data-testid={testId}>
         <div className="pa-modal-head">
           <span>
             <h2>{title}</h2>

@@ -58,6 +58,9 @@ async function logAndAttempt(input: MessageInput, channel: MessageChannel, dedup
   return { ok: true, id, outcome: await attemptMessage(id, new Date(), fetchImpl) };
 }
 
+/** Messages about money and the subscription: they go to the business's billing email (Account > Billing Details) when it has one, and to the owner otherwise. */
+const BILLING_TEMPLATES = new Set(["payment_received", "payment_failed", "refund_approved", "refund_declined", "plan_changed", "plan_renewal_due", "plan_grace", "plan_locked", "autopay_failed", "autopay_upcoming", "autopay_today", "autopay_stopped", "autopay_paused", "autopay_resumed", "downgrade_approval"]);
+
 export async function attemptMessage(id: string, now: Date = new Date(), fetchImpl: typeof fetch = fetch): Promise<SendOutcome> {
   const claimed = await prisma.messageLog.updateMany({
     where: { id, status: "PENDING", OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
@@ -88,7 +91,9 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
     return retryOrFail(base, result.reason);
   }
 
-  if (!business?.ownerEmail) return finish({ status: "SKIPPED", error: "The business has no owner email.", nextAttemptAt: null }, "skipped");
+  const billingEmail = BILLING_TEMPLATES.has(row.template) ? (await prisma.billingCustomer.findUnique({ where: { businessId: row.businessId }, select: { contactEmail: true } }))?.contactEmail?.trim() || null : null;
+  const toEmail = billingEmail ?? business?.ownerEmail ?? null;
+  if (!toEmail) return finish({ status: "SKIPPED", error: "The business has no owner email.", nextAttemptAt: null }, "skipped");
   const rendered = renderTemplate(row.template, row.variables as Variables, context);
   if (!rendered.ok) return finish({ status: "FAILED", error: rendered.error, nextAttemptAt: null }, "failed");
 
@@ -96,8 +101,8 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
   const refundId = row.template === "refund_approved" ? (row.variables as Variables).refundId : undefined;
   const note = typeof refundId === "string" ? await renderCreditNote(refundId).catch(() => null) : null;
   const attachments = note ? [{ name: note.fileName, bytes: note.bytes, mimeType: "application/pdf" }] : undefined;
-  const result = await sendEmail({ to: business.ownerEmail, subject: rendered.value.subject, html: rendered.value.html, attachments }, fetchImpl);
-  const base = { toEmail: business.ownerEmail, subject: rendered.value.subject };
+  const result = await sendEmail({ to: toEmail, subject: rendered.value.subject, html: rendered.value.html, attachments }, fetchImpl);
+  const base = { toEmail, subject: rendered.value.subject };
   if (result.status === "sent") return finish({ ...base, status: "SENT", sentAt: new Date(), providerMessage: result.providerMessageId, error: null, nextAttemptAt: null }, "sent");
   if (result.status === "skipped") return finish({ ...base, status: "SKIPPED", error: result.reason, nextAttemptAt: null }, "skipped");
   return retryOrFail(base, result.reason);

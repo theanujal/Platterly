@@ -7,7 +7,8 @@ import { PhoneField } from "../phone-field";
 
 type Field = "name" | "contactName" | "contactEmail" | "contactPhone" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin";
 type Errors = Partial<Record<Field, string>>;
-type Loaded = { businessName: string; buyer: Buyer | null; updatedAt: string | null };
+type Prefill = { contactName: string; contactEmail: string; contactPhone: string } | null;
+type Loaded = { businessName: string; buyer: Buyer | null; updatedAt: string | null; prefill?: Prefill };
 type State = { phase: "loading" } | { phase: "error" } | { phase: "no_business" } | { phase: "not_admin" } | ({ phase: "ready" } & Loaded);
 
 const STATES = ["Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"];
@@ -15,11 +16,12 @@ const STATES = ["Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Prad
 const COUNTRY = "India";
 
 type Values = Record<Field, string>;
-const toValues = (b: Buyer | null, businessName: string): Values => ({
+const toValues = (b: Buyer | null, businessName: string, prefill?: Prefill): Values => ({
   name: b?.name || businessName,
-  contactName: b?.contactName ?? "",
-  contactEmail: b?.contactEmail ?? "",
-  contactPhone: b?.contactPhone ?? "",
+  // Until the Admin saves a billing contact, it starts as the person's own details from sign-up.
+  contactName: b?.contactName || prefill?.contactName || "",
+  contactEmail: b?.contactEmail || prefill?.contactEmail || "",
+  contactPhone: b?.contactPhone || prefill?.contactPhone || "",
   addressLine1: b?.addressLine1 ?? "",
   addressLine2: b?.addressLine2 ?? "",
   city: b?.city ?? "",
@@ -63,8 +65,8 @@ export function BillingDetails() {
         if (res.status === 409) return setState({ phase: "no_business" });
         if (res.status === 403) return setState({ phase: "not_admin" });
         if (res.ok && body?.status === "ok") {
-          setState({ phase: "ready", businessName: body.businessName, buyer: body.buyer, updatedAt: body.updatedAt });
-          setDraft(toValues(body.buyer, body.businessName));
+          setState({ phase: "ready", businessName: body.businessName, buyer: body.buyer, updatedAt: body.updatedAt, prefill: body.prefill ?? null });
+          setDraft(toValues(body.buyer, body.businessName, body.prefill));
         } else setState({ phase: "error" });
       } catch {
         if (alive) setState({ phase: "error" });
@@ -94,8 +96,8 @@ export function BillingDetails() {
       const res = await fetch("/api/account/billing-profile", { method: "PUT", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ...values, gstin: values.gstin.trim() }) });
       const body = (await res.json().catch(() => null)) as (Loaded & { status?: string; fields?: Errors; message?: string }) | null;
       if (res.ok && body?.status === "ok") {
-        setState({ phase: "ready", businessName: body.businessName, buyer: body.buyer, updatedAt: body.updatedAt });
-        setDraft(toValues(body.buyer, body.businessName));
+        setState({ phase: "ready", businessName: body.businessName, buyer: body.buyer, updatedAt: body.updatedAt, prefill: state.prefill ?? null });
+        setDraft(toValues(body.buyer, body.businessName, state.prefill));
         setErrors({});
         setNotice({ kind: "saved", text: "Your billing details were saved. New invoices will use them." });
       } else if (res.status === 422 && body?.fields) {
@@ -113,7 +115,7 @@ export function BillingDetails() {
   }
   const cancel = () => {
     if (state.phase !== "ready") return;
-    setDraft(toValues(state.buyer, state.businessName));
+    setDraft(toValues(state.buyer, state.businessName, state.prefill));
     setErrors({});
     setNotice(null);
   };
@@ -167,6 +169,7 @@ export function BillingDetails() {
           <Input {...fieldProps} id="gstin" label="GSTIN" optional span={3} maxLength={15} autoComplete="off" />
         </div>
         <p className="pa-hint">
+          {!state.buyer?.contactEmail && state.prefill ? "The billing contact starts as your own details from sign-up. Save to keep it. " : ""}
           {state.buyer && state.updatedAt ? `Last changed on ${day(state.updatedAt)}. ` : ""}Invoices already issued are never changed.
         </p>
         <div className="pa-form-actions">

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { initials } from "@/lib/account/catalogue";
 import { ProductCards } from "./cards";
 import { BusinessGate, DataGate } from "./data";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { AccountShell } from "./shell";
 import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
@@ -346,10 +346,16 @@ function TrustedDevices() {
 
 type Prefs = { newSignInAlert: boolean; thirdPartyAlert: boolean; newsletter: boolean };
 type PrefsState = { phase: "loading" } | { phase: "error" } | { phase: "ready"; prefs: Prefs };
-const PREF_ROWS: { key: keyof Prefs; label: string; hint: string; icon: "mail" | "users" | "megaphone" }[] = [
-  { key: "newSignInAlert", icon: "mail", label: "New sign-in to account alert", hint: "An email when your account is signed in to from a browser or system we have not seen before." },
+const PREF_ROWS: { key: keyof Prefs; label: string; hint: string; icon: IconName }[] = [
+  { key: "newsletter", icon: "megaphone", label: "Offers and announcements", hint: "Product tips, special offers and important news from Platterly, sent weekly or monthly. Every email has an unsubscribe link." },
+  { key: "newSignInAlert", icon: "monitor", label: "New sign-in to account alert", hint: "An email when your account is signed in to from a browser or system we have not seen before." },
   { key: "thirdPartyAlert", icon: "users", label: "Third-party app access alert", hint: "An email when another app is given access to your account. Apps cannot be connected yet, so nothing is sent for now." },
-  { key: "newsletter", icon: "megaphone", label: "Newsletter subscription", hint: "News, tips and product updates from Platterly, sent weekly or monthly. Every email has an unsubscribe link." },
+];
+// On for everyone and cannot be switched off.
+const ALWAYS_ON: { id: string; icon: IconName; label: string; hint: string }[] = [
+  { id: "account", icon: "mail", label: "Account updates", hint: "Security alerts, password changes and important account activity." },
+  { id: "billing", icon: "card", label: "Billing and payments", hint: "Invoices, payment confirmations, renewal reminders and billing updates." },
+  { id: "product", icon: "layers", label: "Product updates", hint: "New features, improvements and product announcements." },
 ];
 
 /** Optional account notices with an on/off switch each (AJ, 2026-11-10). Security, ownership and billing notices are always sent; product notices are set in each product. */
@@ -409,6 +415,19 @@ export function NotificationsView() {
                 </p>
               )}
               {state.phase === "ready" &&
+                ALWAYS_ON.map((row) => (
+                  <div className="pa-switch-row pa-setting-row" key={row.id}>
+                    <span className="pa-detail-tile"><Icon name={row.icon} size={22} /></span>
+                    <div>
+                      <span className="pa-row-label" id={`pref-${row.id}`}>
+                        {row.label}
+                      </span>
+                      <span className="pa-hint">{row.hint} Always on.</span>
+                    </div>
+                    <input type="checkbox" role="switch" className="pa-switch" aria-labelledby={`pref-${row.id}`} checked disabled readOnly />
+                  </div>
+                ))}
+              {state.phase === "ready" &&
                 PREF_ROWS.map((row) => (
                   <div className="pa-switch-row pa-setting-row" key={row.key}>
                     <span className="pa-detail-tile"><Icon name={row.icon} size={22} /></span>
@@ -421,18 +440,6 @@ export function NotificationsView() {
                     <input type="checkbox" role="switch" className="pa-switch" aria-labelledby={`pref-${row.key}`} checked={state.prefs[row.key]} onChange={(e) => change(row.key, e.target.checked)} />
                   </div>
                 ))}
-              {state.phase === "ready" && (
-                <div className="pa-switch-row pa-setting-row">
-                  <span className="pa-detail-tile"><Icon name="shield" size={22} /></span>
-                  <div>
-                    <span className="pa-row-label" id="pref-security">
-                      Security alerts
-                    </span>
-                    <span className="pa-hint">Always on. We email you about changes to your sign-in details, two-step verification and deletion requests.</span>
-                  </div>
-                  <input type="checkbox" role="switch" className="pa-switch" aria-labelledby="pref-security" checked disabled readOnly />
-                </div>
-              )}
               <p className="pa-hint pa-list-rows-note">Security, ownership and billing emails are always sent, and notices from a product are set inside that product.</p>
             </section>
             <div className="pa-stack pa-detail-side">
