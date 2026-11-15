@@ -1,4 +1,4 @@
-import { InvoicesView } from "@/components/account/billing-views";
+import { InvoicesView } from "@/components/account/invoices-view";
 import { requireAccountSignIn } from "@/lib/account/guard";
 
 export default async function Page() {

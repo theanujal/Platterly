@@ -36,12 +36,18 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 
 test.describe.configure({ mode: "serial" });
 
+/** The Payment History popup on the Caterly subscription page: where each payment, its invoice and its refund request now live. */
+async function openPayments(page: import("@playwright/test").Page) {
+  await page.goto(`${ACCOUNT}/subscriptions/caterly`);
+  await page.getByTestId("billing-history").click();
+}
+
 test("the Admin asks for a refund on a paid payment, it is pending in Ops, and cannot be asked twice", async ({ page }) => {
   ops(`delete from refund_request where "paymentId"='${PAY}'; delete from subscription_payment where id='${PAY}'`);
   ops(`insert into subscription_payment (id, "businessId", "productKey", "planId", interval, amount, "gstPercent", "gstAmount", total, status, "razorpayPaymentId", "invoiceNumber", "paidAt") select '${PAY}', '${BHANDARYS}', 'catering', p.id, 'ANNUAL', 1000, 18, 180, 1180, 'PAID', 'pay_rzp_e2erefund1', 'E2E-REFUND-1', now() from plan p where p."productKey"='catering' and p."isTrial"=false limit 1`);
   try {
     await signInAsBhandarysAdmin(page);
-    await page.goto(`${ACCOUNT}/subscriptions`);
+    await openPayments(page);
     const row = page.getByTestId(`refund-${PAY}`);
     await expect(row.getByRole("button", { name: "Request a refund" })).toBeVisible();
 
@@ -56,11 +62,13 @@ test("the Admin asks for a refund on a paid payment, it is pending in Ops, and c
 
     // The state is Ops's, so it survives a reload.
     await page.reload();
+    await page.getByTestId("billing-history").click();
     await expect(page.getByTestId(`refund-${PAY}`).getByText("Refund requested")).toBeVisible();
 
     // Staff turn it down: the owner sees it and may ask again.
     ops(`update refund_request set status='REJECTED', "decidedAt"=now() where "paymentId"='${PAY}'`);
     await page.reload();
+    await page.getByTestId("billing-history").click();
     await expect(page.getByTestId(`refund-${PAY}`).getByText("Refund declined")).toBeVisible();
     await expect(page.getByTestId(`refund-${PAY}`).getByRole("button", { name: "Request a refund" })).toBeVisible();
   } finally {
@@ -77,7 +85,7 @@ test("a refunded payment shows its credit note, and the Admin can download the P
   ops(`insert into refund (id, "requestId", "paymentId", amount, "gstAmount", total, "endMode", "razorpayRefundId", "creditNoteNumber") values ('${REF}', 'rfr_e2erefund0000000000000000000002', '${PAY2}', 500, 90, 590, 'KEEP_TO_PERIOD_END', 'rfnd_e2e_2', 'E2ECN-26-11-1')`);
   try {
     await signInAsBhandarysAdmin(page);
-    await page.goto(`${ACCOUNT}/subscriptions`);
+    await openPayments(page);
     const row = page.getByTestId(`refund-${PAY2}`);
     await expect(row.getByText("Partly refunded")).toBeVisible();
     const link = row.getByRole("link", { name: "Credit note E2ECN-26-11-1" });

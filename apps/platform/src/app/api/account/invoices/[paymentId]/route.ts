@@ -19,5 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ paym
   if (!/^[a-z][a-z0-9-]{1,31}$/.test(product) || !/^[A-Za-z0-9_-]{1,64}$/.test(paymentId)) return Response.json({ error: "not_found" }, { status: 404, headers });
   const invoice = await fetchOpsInvoice(access.businessId, opsKeyFor(product), paymentId);
   if (!invoice.ok) return Response.json({ error: invoice.reason === "not_found" ? "not_found" : "unavailable" }, { status: invoice.reason === "not_found" ? 404 : 502, headers });
-  return new Response(new Uint8Array(invoice.pdf), { headers: { ...headers, "content-type": "application/pdf", "content-disposition": `attachment; filename="${invoice.fileName}"` } });
+  // `?view=1` opens the PDF in the browser (the "View invoice" button); without it the PDF is a download.
+  const disposition = new URL(request.url).searchParams.get("view") === "1" ? "inline" : "attachment";
+  return new Response(new Uint8Array(invoice.pdf), { headers: { ...headers, "content-type": "application/pdf", "content-disposition": `${disposition}; filename="${invoice.fileName}"`, "x-content-type-options": "nosniff" } });
 }

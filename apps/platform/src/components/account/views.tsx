@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { initials } from "@/lib/account/catalogue";
-import { selectedProduct } from "@/lib/account/state";
-import { CaterlyCard, RivoCard, TeamCard } from "./cards";
+import { ProductCards } from "./cards";
 import { BusinessGate, DataGate } from "./data";
 import { Icon } from "./icons";
 import { AccountShell } from "./shell";
-import { useAccount } from "./store";
 import { useEffect, useState } from "react";
 import { DataRights } from "./data-rights";
 import { RecoveryEmail } from "./recovery-email";
@@ -19,8 +17,8 @@ import { SignInHistory } from "./sign-in-history";
 import { ProfileDetails } from "./profile-details";
 import { Avatar, Badge, PageHeader } from "./ui";
 
-/** The Overview's profile card: the stored name and phone from the Account's own profile, falling back to the email while loading or if the read fails. */
-function ProfileSummary({ email, emailVerified, fallbackName }: { email: string; emailVerified: boolean; fallbackName?: string }) {
+/** What the Overview's top shows: the welcome line and the account card, from the Account's stored profile (falling back to the email while loading). */
+function OverviewTop({ email, emailVerified, fallbackName, storeOrigin }: { email: string; emailVerified: boolean; fallbackName?: string; storeOrigin: string }) {
   const [profile, setProfile] = useState<{ name: string; phone: string } | null>(null);
   useEffect(() => {
     let alive = true;
@@ -39,56 +37,71 @@ function ProfileSummary({ email, emailVerified, fallbackName }: { email: string;
   }, []);
   const name = profile?.name || fallbackName || email;
   return (
-    <div className="pa-card pa-profile-sum">
-      <Avatar label={initials(name)} size="lg" round />
-      <div>
-        <h3>{name}</h3>
-        <p className="pa-line">
-          <Icon name="mail" size={14} /> {emailVerified ? "Email verified" : "Email not verified"}
-        </p>
-        {profile?.phone ? (
-          <p className="pa-line">
-            <Icon name="phone" size={14} /> {profile.phone}
-          </p>
-        ) : null}
+    <>
+      <PageHeader title={`Welcome back, ${name} \u{1F44B}`} lede="Your Platterly account gives you access to your products, subscriptions and billing, all in one place." />
+      <div className="pa-ov-top">
+        <section className="pa-card pa-acct-card" aria-label="Your account">
+          <Avatar label={initials(name)} size="xl" round />
+          <div className="pa-acct-card-id">
+            <span className="pa-hint">Your account</span>
+            <h3>{name}</h3>
+            <p className="pa-line">
+              <Icon name="mail" size={14} /> {email}
+              <Badge tone={emailVerified ? "success" : "warning"}>{emailVerified ? "Email verified" : "Email not verified"}</Badge>
+            </p>
+            {profile?.phone ? (
+              <p className="pa-line">
+                <Icon name="phone" size={14} /> {profile.phone}
+              </p>
+            ) : null}
+          </div>
+          <Link href="/profile" className="pa-btn pa-btn-outline">
+            <Icon name="pencil" size={15} /> Edit profile
+          </Link>
+        </section>
+        <section className="pa-card pa-quick" aria-labelledby="ov-quick">
+          <h2 id="ov-quick">Quick actions</h2>
+          <div className="pa-quick-grid">
+            <a href={storeOrigin} className="pa-quick-item">
+              <span className="pa-quick-tile"><Icon name="plus" size={20} /></span>
+              Add product
+            </a>
+            <Link href="/subscriptions" className="pa-quick-item">
+              <span className="pa-quick-tile"><Icon name="card" size={20} /></span>
+              Manage billing
+            </Link>
+            <Link href="/security" className="pa-quick-item">
+              <span className="pa-quick-tile"><Icon name="users" size={20} /></span>
+              Account settings
+            </Link>
+          </div>
+        </section>
       </div>
-    </div>
+    </>
   );
 }
 
-export function OverviewView() {
-  const account = useAccount();
-  const product = selectedProduct(account);
-
+export function OverviewView({ storeOrigin }: { storeOrigin: string }) {
   return (
     <AccountShell>
-      <PageHeader title="Welcome back" lede="Your Platterly products, in one place." />
       <DataGate>
         {(overview) => (
           <>
-            <section aria-labelledby="ov-profile" className="pa-narrow">
-              <div className="pa-section-head">
-                <h2 id="ov-profile">Your profile</h2>
-                <Link href="/profile" className="pa-link">
-                  View <Icon name="chevronRight" size={14} />
-                </Link>
-              </div>
-              <ProfileSummary email={overview.user.email} emailVerified={overview.user.emailVerified} fallbackName={overview.user.name} />
-            </section>
+            <OverviewTop email={overview.user.email} emailVerified={overview.user.emailVerified} fallbackName={overview.user.name} storeOrigin={storeOrigin} />
 
             <section aria-labelledby="ov-products">
               <div className="pa-section-head">
-                <h2 id="ov-products">My Products</h2>
+                <span>
+                  <h2 id="ov-products">Your products</h2>
+                  <p className="pa-hint">Access and manage your Platterly products.</p>
+                </span>
                 <Link href="/products" className="pa-link">
                   All products <Icon name="chevronRight" size={14} />
                 </Link>
               </div>
               <BusinessGate overview={overview}>
                 {(b) => (
-                  <div className="pa-grid-2">
-                    <CaterlyCard business={b.business} link={b.products.caterly} selected={product.id === "caterly"} />
-                    <RivoCard selected={product.id === "rivo"} />
-                  </div>
+                  <ProductCards products={b.products} openUrls={b.openUrls} compact limit={4} className="pa-grid-2" />
                 )}
               </BusinessGate>
             </section>
@@ -102,22 +115,14 @@ export function OverviewView() {
 }
 
 export function ProductsView() {
-  const account = useAccount();
-  const product = selectedProduct(account);
   return (
     <AccountShell>
-      <PageHeader title="My Products" lede={`Products available to your business. Use the switcher in the sidebar to choose the product you are working in. Now: ${product.name}.`} />
+      <PageHeader title="My Products" lede="Products available to your business." />
       <DataGate>
         {(overview) => (
           <BusinessGate overview={overview}>
             {(b) => (
-              <>
-                <div className="pa-grid-2">
-                  <CaterlyCard business={b.business} link={b.products.caterly} selected={product.id === "caterly"} />
-                  <RivoCard selected={product.id === "rivo"} />
-                </div>
-                {b.products.caterly !== "none" ? <TeamCard product="Caterly" team={b.team} /> : null}
-              </>
+              <ProductCards products={b.products} openUrls={b.openUrls} className="pa-product-grid" />
             )}
           </BusinessGate>
         )}
@@ -402,7 +407,7 @@ export function NotificationsView() {
                     </span>
                     <span className="pa-hint">{row.hint}</span>
                   </div>
-                  <input type="checkbox" role="switch" aria-labelledby={`pref-${row.key}`} checked={state.prefs[row.key]} onChange={(e) => change(row.key, e.target.checked)} />
+                  <input type="checkbox" role="switch" className="pa-switch" aria-labelledby={`pref-${row.key}`} checked={state.prefs[row.key]} onChange={(e) => change(row.key, e.target.checked)} />
                 </div>
               ))}
             {state.phase === "ready" && (
@@ -413,7 +418,7 @@ export function NotificationsView() {
                   </span>
                   <span className="pa-hint">Always on. We email you about changes to your sign-in details, two-step verification and deletion requests.</span>
                 </div>
-                <input type="checkbox" role="switch" aria-labelledby="pref-security" checked disabled readOnly />
+                <input type="checkbox" role="switch" className="pa-switch" aria-labelledby="pref-security" checked disabled readOnly />
               </div>
             )}
             <p className="pa-hint">Security, ownership and billing emails are always sent, and notices from a product are set inside that product.</p>

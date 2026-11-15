@@ -7,7 +7,7 @@ import { CATALOGUE_KEYS, type AccountOverview, type BusinessSection, type LinkSt
 // Account read-only data layer. Identity comes ONLY from the `session` argument (the authenticated-session interface); nothing here takes an
 // organisation id from the caller, so a request can only ever see the business its own membership points at (isolation by construction). Every
 // read of organisation data goes through the F3.2.3 permission map (`org.view`). No write is made here.
-export type AccountDb = Pick<Prisma.TransactionClient, "user" | "organisationMember" | "organisationProduct" | "organisationTeamMember">;
+export type AccountDb = Pick<Prisma.TransactionClient, "user" | "organisationMember" | "organisationProduct" | "organisationTeamMember" | "productIntegration">;
 
 const RANK: Record<string, number> = { active: 0, disabled: 1, removed: 2 };
 
@@ -35,7 +35,11 @@ export async function loadAccountOverview(db: AccountDb, session: Session | null
         const products = Object.fromEntries(CATALOGUE_KEYS.map((k) => [k, "none"])) as Record<ProductKey, LinkState>;
         for (const l of links) if ((CATALOGUE_KEYS as readonly string[]).includes(l.productKey)) products[l.productKey as ProductKey] = l.status === "active" ? "linked" : "suspended";
         const team = await db.organisationTeamMember.findMany({ where: { organisationId: chosen.organisationId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, name: true, email: true, role: true } });
-        business = { state: "ok", business: { id: chosen.organisation.id, name: chosen.organisation.name, status: chosen.organisation.status === "suspended" ? "suspended" : "active", role: "Admin" }, products, team };
+        // Where "Open" goes: the registered address of each linked product, then its dashboard.
+        const registered = await db.productIntegration.findMany({ where: { key: { in: [...CATALOGUE_KEYS] }, status: "current" }, select: { key: true, baseUrl: true } });
+        const openUrls: Partial<Record<ProductKey, string>> = {};
+        for (const r of registered) if (products[r.key as ProductKey] === "linked") openUrls[r.key as ProductKey] = `${r.baseUrl}/dashboard`;
+        business = { state: "ok", business: { id: chosen.organisation.id, name: chosen.organisation.name, status: chosen.organisation.status === "suspended" ? "suspended" : "active", role: "Admin" }, products, team, openUrls };
       }
     }
     const overview: AccountOverview = { user: { id: user.id, email: user.email, emailVerified: user.emailVerified }, business };

@@ -34,7 +34,7 @@ function readOnly(tx: Tx): AccountDb {
         return Reflect.get(target, prop, receiver);
       },
     });
-  return { user: guard(tx.user), organisationMember: guard(tx.organisationMember), organisationProduct: guard(tx.organisationProduct), organisationTeamMember: guard(tx.organisationTeamMember) } as unknown as AccountDb;
+  return { user: guard(tx.user), organisationMember: guard(tx.organisationMember), organisationProduct: guard(tx.organisationProduct), organisationTeamMember: guard(tx.organisationTeamMember), productIntegration: guard(tx.productIntegration) } as unknown as AccountDb;
 }
 
 describe.skipIf(credentials === null)("Account data layer against the real database", () => {
@@ -109,7 +109,19 @@ describe.skipIf(credentials === null)("Account data layer against the real datab
       const org = await business(tx, id, "Spice Route Caterers");
       const o = okOverview(await loadAccountOverview(readOnly(tx), testSession(id)));
       expect(o.user.emailVerified).toBe(true);
-      expect(o.business).toEqual({ state: "ok", business: { id: org, name: "Spice Route Caterers", status: "active", role: "Admin" }, products: { caterly: "linked", rivo: "none" }, team: [] });
+      expect(o.business).toEqual({ state: "ok", business: { id: org, name: "Spice Route Caterers", status: "active", role: "Admin" }, products: { caterly: "linked", rivo: "none" }, team: [], openUrls: expect.any(Object) });
+    }));
+
+  it("a linked product's Open address is its registered dashboard; an unlinked or retired registry entry gives none", () =>
+    scenario(async (tx) => {
+      const id = await createTestUser(tx);
+      await business(tx, id, "Spice Route Caterers");
+      await tx.productIntegration.upsert({ where: { key: "caterly" }, create: { key: "caterly", name: "Caterly", baseUrl: "https://caterly.example.test", outboundSecret: "x", inboundSecret: "y" }, update: { baseUrl: "https://caterly.example.test", status: "current" } });
+      const linked = okOverview(await loadAccountOverview(readOnly(tx), testSession(id))).business;
+      expect(linked.state === "ok" && linked.openUrls).toEqual({ caterly: "https://caterly.example.test/dashboard" });
+      await tx.productIntegration.update({ where: { key: "caterly" }, data: { status: "retired" } });
+      const retired = okOverview(await loadAccountOverview(readOnly(tx), testSession(id))).business;
+      expect(retired.state === "ok" && retired.openUrls).toEqual({});
     }));
 
   it("a suspended business and a suspended link are reported as such; unknown product keys are not shown", () =>

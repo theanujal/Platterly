@@ -53,7 +53,7 @@ function CaterlyShell({ title, lede, footer, children, hydrated, icon }: { title
     <div className="pl-cat" data-hydrated={hydrated} data-theme="caterly">
       <aside className="pl-cat-panel">
         <div className="pl-cat-brand">
-          <ChefHatIcon size={32} />
+          {icon ? <img src={icon} alt="" width={36} height={36} style={{ borderRadius: 8 }} /> : <ChefHatIcon size={32} />}
           <span>Caterly</span>
           <small>by Platterly</small>
         </div>

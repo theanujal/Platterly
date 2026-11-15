@@ -145,7 +145,8 @@ test.describe("Live Store: UPI auto-pay", () => {
   test("a card can be added next to a UPI primary", async () => {
     test.setTimeout(240_000);
     await page.goto(`${ACCOUNT}/payment-methods`);
-    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add card" }).click();
+    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
+    await page.getByRole("menuitem", { name: "Add card" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(page.getByText(/was saved\. The ₹5/)).toBeVisible({ timeout: 60_000 });
     await expect(methodRows()).toHaveCount(2);
@@ -166,7 +167,8 @@ test.describe("Live Store: UPI auto-pay", () => {
   test("switching from a card to UPI (a UPI mandate that starts in the future) works: the UPI id becomes the primary and both cards stay as secondaries", async () => {
     test.setTimeout(300_000);
     await page.goto(`${ACCOUNT}/payment-methods`);
-    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add card" }).click();
+    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
+    await page.getByRole("menuitem", { name: "Add card" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(methodRows()).toHaveCount(2, { timeout: 60_000 });
     const before = await ops(`select "razorpaySubscriptionId" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);

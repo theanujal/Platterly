@@ -7,7 +7,7 @@ export default async function Page() {
   await requireAccountSignIn("/payment-methods");
   return (
     <AccountShell>
-      <PageHeader title="Payment method" lede="The cards your subscriptions renew with. Monthly plans renew automatically from the primary method." />
+      <PageHeader title="Payment Methods" lede="Manage the cards and payment methods used for your Platterly subscriptions." />
       <PaymentMethods />
     </AccountShell>
   );

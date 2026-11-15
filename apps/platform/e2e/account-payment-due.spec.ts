@@ -27,8 +27,8 @@ const seed = (autoPay: string) => ops(`update subscription set "planId"=(select 
 
 async function signInAsBhandarysAdmin(page: Page): Promise<void> {
   const email = newEmail();
-  await registerAndSignIn(page, email, `${ACCOUNT}/subscriptions`, "Due Admin");
-  await expect(page).toHaveURL(`${ACCOUNT}/subscriptions`);
+  await registerAndSignIn(page, email, `${ACCOUNT}/subscriptions/caterly`, "Due Admin");
+  await expect(page).toHaveURL(`${ACCOUNT}/subscriptions/caterly`);
   const linked = sql("DATABASE_URL", `begin; update organisation_members set central_role='former_admin' where organisation_id='${BHANDARYS}' and central_role='admin' and status='active'; insert into organisation_members (organisation_id, user_id, central_role) select '${BHANDARYS}', id, 'admin' from users where email='${email}'; commit; select count(*) from organisation_members m join users u on u.id=m.user_id where m.organisation_id='${BHANDARYS}' and m.central_role='admin' and m.status='active' and u.email='${email}'`);
   expect(linked.split("\n").pop()).toBe("1");
 }
@@ -37,13 +37,13 @@ test("a failed auto-pay renewal reads Payment due in the Account and the Store; 
   await signInAsBhandarysAdmin(page);
 
   seed("PENDING");
-  await page.goto(`${ACCOUNT}/subscriptions`);
+  await page.goto(`${ACCOUNT}/subscriptions/caterly`);
   const card = page.getByTestId("subscription-caterly");
   await expect(card.getByText("Payment due").first()).toBeVisible();
   await expect(card).toContainText(FAILED);
   await expect(card).toContainText("We will try your payment method again.");
   // The page also says what the plan costs (this interval, GST included) and what it includes, from Ops's plan list (cleanup, AJ 2026-11-15).
-  await expect(card.getByTestId("plan-price")).toHaveText("₹5,898.82 a month, GST included");
+  await expect(card.getByTestId("plan-price")).toHaveText("₹5,898.82 / month (incl. GST)");
   await expect(card.getByTestId("plan-includes")).toContainText("everything upcoming");
 
   await page.goto(`${STORE}/manage/caterly`);
@@ -51,13 +51,13 @@ test("a failed auto-pay renewal reads Payment due in the Account and the Store; 
 
   // Razorpay gave up: still Payment due, no promise of a retry.
   seed("HALTED");
-  await page.goto(`${ACCOUNT}/subscriptions`);
+  await page.goto(`${ACCOUNT}/subscriptions/caterly`);
   await expect(page.getByTestId("subscription-caterly")).toContainText(FAILED);
   await expect(page.getByTestId("subscription-caterly")).not.toContainText("We will try your payment method again.");
 
   // A healthy auto-pay inside its period is just Active.
   ops(`update subscription set "currentPeriodEnd"=(now() at time zone 'utc') + interval '20 days', "autoPay"='ACTIVE' where "businessId"='${BHANDARYS}' and "endDate" is null`);
-  await page.goto(`${ACCOUNT}/subscriptions`);
+  await page.goto(`${ACCOUNT}/subscriptions/caterly`);
   await expect(page.getByTestId("subscription-caterly")).not.toContainText("Payment due");
   await expect(page.getByTestId("subscription-caterly")).not.toContainText(FAILED);
 });

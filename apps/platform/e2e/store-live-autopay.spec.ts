@@ -163,7 +163,7 @@ test.describe("Live Store: monthly auto-pay", () => {
 
   test("the Account's Payment method page shows the card as primary and auto-renewal as on", async () => {
     await page.goto(`${ACCOUNT}/payment-methods`);
-    await expect(page.getByRole("heading", { name: "Payment method", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Payment Methods", level: 1 })).toBeVisible();
     await expect(methodRows()).toHaveCount(1);
     await expect(methodRows().first()).toContainText("Visa ending 4366");
     await expect(methodRows().first()).toContainText("Primary");
@@ -182,31 +182,36 @@ test.describe("Live Store: monthly auto-pay", () => {
   });
 
   test("the Account's Subscriptions page shows the plan like Caterly's old page did: status, billing information, history, and the payment with its invoice", async () => {
-    await page.goto(`${ACCOUNT}/subscriptions`);
-    await expect(page.getByRole("heading", { name: "Subscriptions", level: 1 })).toBeVisible();
+    await page.goto(`${ACCOUNT}/subscriptions/caterly`);
+    await expect(page.getByRole("heading", { name: "Caterly Subscription", level: 1 })).toBeVisible();
     const caterly = page.getByTestId("subscription-caterly");
     await expect(caterly.getByRole("region", { name: /Current subscription/ })).toContainText("Premium");
     await expect(caterly.getByRole("region", { name: /Current subscription/ })).toContainText("Active");
     await expect(caterly.getByRole("region", { name: "Billing information" })).toContainText("Auto-pay every 30 days");
     await expect(caterly.getByTestId("autopay-status")).toContainText("On, next charge");
-    await expect(caterly.getByRole("region", { name: /Subscription history/ })).toContainText("Premium");
-    const payments = caterly.getByTestId("payments-list");
+    await caterly.getByTestId("subscription-history-link").click();
+    await expect(page.getByRole("dialog", { name: "Subscription History" })).toContainText("Premium");
+    await page.keyboard.press("Escape");
+    await caterly.getByTestId("billing-history").click();
+    const payments = page.getByTestId("payments-list");
     await expect(payments).toContainText("monthly");
     await expect(payments.getByRole("link", { name: "Invoice" }).first()).toHaveAttribute("href", /\/api\/account\/invoices\/.+product=caterly/);
+    await page.keyboard.press("Escape");
     // "Manage plan" goes to the Store, where plans are changed and paid.
     await expect(caterly.getByTestId("manage-plan")).toHaveAttribute("href", `${STORE}/manage/caterly`);
   });
 
-  test("pause and resume auto-renewal work on the Subscriptions page itself", async () => {
+  test("pause and resume auto-renewal work on the Caterly subscription page itself", async () => {
     test.setTimeout(120_000);
-    await page.goto(`${ACCOUNT}/subscriptions`);
-    await page.getByRole("button", { name: "Pause auto-renewal" }).click();
+    await page.goto(`${ACCOUNT}/subscriptions/caterly`);
+    await page.getByTestId("cancel-subscription").click();
+    await page.getByRole("switch", { name: "Pause auto-renewal" }).click();
     await page.getByRole("button", { name: "Yes, pause" }).click();
     await expect(page.getByText("Auto-renewal is paused.")).toBeVisible({ timeout: 30_000 });
     expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("PAUSED");
     // The page reloads itself with the new state.
     await expect(page.getByTestId("autopay-status")).toContainText("Paused", { timeout: 30_000 });
-    await page.getByRole("button", { name: "Resume auto-renewal" }).click();
+    await page.getByRole("switch", { name: "Resume auto-renewal" }).click();
     await expect(page.getByText("Auto-renewal is back on.")).toBeVisible({ timeout: 30_000 });
     expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE");
   });
@@ -216,13 +221,13 @@ test.describe("Live Store: monthly auto-pay", () => {
     const periodEnd = () => ops(`select "currentPeriodEnd" from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`);
     const before = await periodEnd();
     await page.goto(`${ACCOUNT}/payment-methods`);
-    await page.getByRole("button", { name: "Pause auto-renewal" }).click();
+    await page.getByRole("switch", { name: "Pause auto-renewal" }).click();
     await page.getByRole("button", { name: "Yes, pause" }).click();
     await expect(page.getByText("Auto-renewal is paused.")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("auto-renewal")).toContainText("Paused.");
     expect(await ops(`select "autoPay"::text||'|'||status::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("PAUSED|ACTIVE");
     expect(await periodEnd()).toBe(before);
-    await page.getByRole("button", { name: "Resume auto-renewal" }).click();
+    await page.getByRole("switch", { name: "Resume auto-renewal" }).click();
     await expect(page.getByText("Auto-renewal is back on.")).toBeVisible({ timeout: 30_000 });
     expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE");
   });
@@ -230,7 +235,8 @@ test.describe("Live Store: monthly auto-pay", () => {
   test("adding a card saves it as a secondary and Ops refunds the Rs 5", async () => {
     test.setTimeout(240_000);
     await page.goto(`${ACCOUNT}/payment-methods`);
-    await onPage("Add card").click();
+    await onPage("Add payment method").click();
+    await page.getByRole("menuitem", { name: "Add card" }).click();
     await completeRazorpayCard(page, RECURRING_CARD);
     await expect(page.getByText(/was saved\. The ₹5/)).toBeVisible({ timeout: 60_000 });
     await expect(methodRows()).toHaveCount(2);
@@ -255,7 +261,8 @@ test.describe("Live Store: monthly auto-pay", () => {
     test.setTimeout(120_000);
     await page.goto(`${ACCOUNT}/payment-methods`);
     await expect(methodRows()).toHaveCount(2);
-    await secondaryRow().getByRole("button", { name: "Remove", exact: true }).click();
+    await secondaryRow().getByRole("button", { name: /More about/ }).click();
+    await page.getByRole("menuitem", { name: "Remove" }).click();
     await page.getByRole("button", { name: /^Remove Visa/ }).click();
     await expect(page.getByText("The payment method was removed.")).toBeVisible({ timeout: 30_000 });
     await expect(methodRows()).toHaveCount(1);
@@ -270,7 +277,7 @@ test.describe("Live Store: monthly auto-pay", () => {
     await page.getByRole("button", { name: "Yes, stop auto-renewal" }).click();
     await expect(page.getByText("Auto-renewal is stopped.")).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId("auto-renewal")).toContainText("Stopped.");
-    await expect(page.getByRole("button", { name: "Resume auto-renewal" })).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: "Resume auto-renewal" })).toHaveCount(0);
     expect(await ops(`select "autoPay"::text||'|'||status::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("CANCELLED|ACTIVE");
   });
 

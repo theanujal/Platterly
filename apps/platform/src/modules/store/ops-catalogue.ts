@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue } from "@platterly/contract";
+import { newId, parseBillingProfileAnswer, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, parsePlatformProductCards, platformProductCardImagePath, PLATFORM_PRODUCT_CARDS_PATH, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue, type PlatformProductCards } from "@platterly/contract";
 import { signPullRequest, verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -89,4 +89,26 @@ export async function fetchOpsCreditNote(businessId: string, opsProductKey: stri
   if (typeof fileName !== "string" || !/^[A-Za-z0-9._-]{1,80}$/.test(fileName) || typeof pdfBase64 !== "string") return { ok: false, reason: "bad_answer" };
   const pdf = Buffer.from(pdfBase64, "base64");
   return pdf.subarray(0, 5).toString("latin1") === "%PDF-" ? { ok: true, fileName, pdf } : { ok: false, reason: "bad_answer" };
+}
+
+export type ProductCardsResult = { ok: true; cards: PlatformProductCards } | { ok: false; reason: OpsReadFailure };
+
+/** The product cards (My Products) from Ops: a signed read with the read-only secret. Ops owns the names, lines, pictures and launch dates; nothing is made up here. */
+export async function fetchOpsProductCards(deps: Deps = {}): Promise<ProductCardsResult> {
+  const got = await signedOpsGet(PLATFORM_PRODUCT_CARDS_PATH, deps);
+  if (!got.ok) return { ok: false, reason: got.reason === "not_found" ? "refused" : got.reason };
+  const parsed = parsePlatformProductCards(got.json);
+  return parsed.ok ? { ok: true, cards: parsed.value } : { ok: false, reason: "bad_answer" };
+}
+
+export type CardImageResult = { ok: true; mime: string; bytes: Buffer } | { ok: false; reason: OpsReadFailure | "not_found" };
+const IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+
+/** One uploaded card picture from Ops (signed read, the file as base64 in the signed answer). Only an image type is passed on. */
+export async function fetchOpsCardImage(name: string, deps: Deps = {}): Promise<CardImageResult> {
+  const got = await signedOpsGet(platformProductCardImagePath(name), deps);
+  if (!got.ok) return got;
+  const { mime, bytesBase64 } = got.json;
+  if (typeof mime !== "string" || !IMAGE_MIMES.has(mime) || typeof bytesBase64 !== "string") return { ok: false, reason: "bad_answer" };
+  return { ok: true, mime, bytes: Buffer.from(bytesBase64, "base64") };
 }

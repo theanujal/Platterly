@@ -7,7 +7,7 @@ import { StoreFrame } from "@/components/store/frame";
 import { StoreHome } from "@/components/store/home";
 import { loadStoreProducts } from "@/modules/store/products";
 import { StoreUnavailable } from "@/components/store/unavailable";
-import { hostKind, requestHost } from "@/lib/routing/hosts";
+import { hostKind, originFor, requestHost } from "@/lib/routing/hosts";
 
 /**
  * The account host shows the Account overview (real data) and the store host shows the Store home (a prototype with sample
@@ -17,7 +17,7 @@ export default async function Home() {
   const kind = hostKind(requestHost(await headers()));
   if (kind === "account") {
     await requireAccountSignIn("/");
-    return <OverviewView />;
+    return <OverviewView storeOrigin={originFor("store")} />;
   }
   if (kind === "store") {
     await requireStoreSignIn("/");

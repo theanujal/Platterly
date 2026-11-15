@@ -146,10 +146,11 @@ test.describe("Live Store: a coupon on a monthly plan", () => {
   });
 
   test("the Account shows auto-pay on and the next billing date a month away", async () => {
-    await page.goto(`${ACCOUNT}/subscriptions`);
+    await page.goto(`${ACCOUNT}/subscriptions/caterly`);
     const caterly = page.getByTestId("subscription-caterly");
     await expect(caterly.getByRole("region", { name: "Billing information" })).toContainText("Auto-pay every 30 days");
     await expect(caterly.getByTestId("autopay-status")).toContainText("On");
-    await expect(caterly.getByTestId("payments-list")).toContainText("₹3,186");
+    await caterly.getByTestId("billing-history").click();
+    await expect(page.getByTestId("payments-list")).toContainText("₹3,186");
   });
 });
