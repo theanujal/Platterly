@@ -69,6 +69,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
     prisma.subscriptionPayment.findMany({ where: { businessId, productKey, status: "PAID" }, include: { plan: { select: { name: true } }, refunds: { select: { id: true, total: true, creditNoteNumber: true }, orderBy: { issuedAt: "asc" } }, refundRequests: { select: { status: true }, orderBy: { createdAt: "desc" } } }, orderBy: { paidAt: "desc" } }),
   ]);
   const current = subs.find((s) => s.endDate === null) ?? null;
+  const primaryMethod = current?.razorpaySubscriptionId ? await prisma.paymentMethod.findFirst({ where: { businessId, razorpaySubscriptionId: current.razorpaySubscriptionId }, select: { label: true } }) : null;
   const pendingPlan = current?.pendingPlanId ? await prisma.plan.findUnique({ where: { id: current.pendingPlanId }, select: { name: true } }) : null;
   return {
     onlineBillingAvailable: onlineBillingAvailable(),
@@ -83,6 +84,7 @@ export async function getBillingView(businessId: string, productKey: string): Pr
       pending: current.pendingPlanId && pendingPlan ? { planId: current.pendingPlanId, planName: pendingPlan.name, interval: current.pendingInterval } : null,
       cancelledAt: iso(current.cancelledAt),
       autoPay: current.autoPay ? { status: current.autoPay, nextChargeAt: current.autoPay === "ACTIVE" && !current.pendingPlanId ? iso(current.currentPeriodEnd) : null } : null,
+      paymentMethod: primaryMethod?.label ?? null,
     },
     history: subs.map((s) => ({ id: s.id, planName: s.plan.name, status: s.status, startDate: s.startDate.toISOString(), endDate: iso(s.endDate) })),
     payments: payments.map((p) => ({ id: p.id, planName: p.plan.name, interval: p.interval, total: Number(p.total), paidAt: iso(p.paidAt), periodStart: iso(p.periodStart), periodEnd: iso(p.periodEnd), invoiceNumber: p.invoiceNumber, refund: refundState({ total: Number(p.total), refunded: p.refunds.reduce((sum, r) => sum + Number(r.total), 0), pending: p.refundRequests.some((r) => r.status === "PENDING"), lastRequest: p.refundRequests[0]?.status ?? null }), creditNotes: p.refunds.map((r) => ({ id: r.id, number: r.creditNoteNumber, total: Number(r.total) })) })),

@@ -176,6 +176,8 @@ export interface BillingView {
     cancelledAt?: string | null;
     /** Monthly auto-pay; null (or absent, from an older ops) for yearly and hand-assigned plans. `nextChargeAt` only while it is on. */
     autoPay?: { status: AutoPayStatus; nextChargeAt: string | null } | null;
+    /** The primary saved payment method as a label (never card data), for example "Visa ending 1234". Null when none is saved; absent from an older ops. */
+    paymentMethod?: string | null;
   } | null;
   history: { id: string; planName: string; status: SubscriptionStatus; startDate: string; endDate: string | null }[];
   payments: { id: string; planName: string; interval: BillingInterval; total: number; paidAt: string | null; periodStart: string | null; periodEnd: string | null; invoiceNumber: string | null;
