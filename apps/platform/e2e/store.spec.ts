@@ -42,7 +42,9 @@ test.describe("Store home", () => {
   test("On trial and Available products show their own products and actions", async ({ page }) => {
     await page.goto(`${STORE}/`);
     await tab(page, "On trial products").click();
-    await expect(article(page, "Stockroom")).toContainText("Trial ends on 15 Nov 2026");
+    // The label and the date are separate lines on the card now, so each is checked on its own.
+    await expect(article(page, "Stockroom")).toContainText("Trial ends on");
+    await expect(article(page, "Stockroom")).toContainText("15 Nov 2026");
     await expect(article(page, "Stockroom").getByRole("link", { name: /Choose a plan/ })).toHaveAttribute("href", "/manage/stockroom");
     await expect(article(page, "Caterly")).toHaveCount(0);
     await tab(page, "Available products").click();
@@ -195,6 +197,9 @@ test.describe("Store header and footer", () => {
       await expect(header.getByRole("link", { name: "Platterly Store home" })).toHaveAttribute("href", "/");
       await expect(header.getByRole("link", { name: "Help" })).toHaveAttribute("href", "https://platterly.in/contact/");
       await expect(header).toContainText("E2E Person");
+      // Sign out sits in the signed-in person's menu: closed until opened.
+      await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
+      await header.locator("summary.ps-user").click();
       await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
       const footer = page.getByRole("contentinfo");
       await expect(footer.getByRole("link", { name: "hello@platterly.in" })).toHaveAttribute("href", "mailto:hello@platterly.in");
