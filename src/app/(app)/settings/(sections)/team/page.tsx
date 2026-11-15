@@ -109,13 +109,17 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
             <p className="text-sm text-muted-foreground">
               Need to add someone who does not sign in, such as serving or delivery crew? Add them as <Link href="/staff" className="underline">staff without a login</Link>.
             </p>
-            {linked && admin && viewerIsAdmin && (
-              <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4">
+            {admin && (
+              <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border p-4" data-testid="business-admin-card">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold">Business Admin: {admin.user.name}</p>
-                  <p className="text-sm text-muted-foreground">You can hand this role to someone else. It is done in your Platterly Account, and nothing changes until they accept.</p>
+                  {linked && viewerIsAdmin ? (
+                    <p className="text-sm text-muted-foreground">You can hand this role to someone else. It is done in your Platterly Account, and nothing changes until they accept.</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">The Business Admin is managed in the Platterly Account. It cannot be changed or removed here.</p>
+                  )}
                 </div>
-                <Button variant="outline" size="sm" render={<a href={`${platformAccountOrigin()}/admin-role`} />}>Transfer admin role</Button>
+                {linked && viewerIsAdmin && <Button variant="outline" size="sm" render={<a href={`${platformAccountOrigin()}/admin-role`} />}>Transfer admin role</Button>}
               </div>
             )}
             <ul className="flex flex-col gap-3">
@@ -144,7 +148,7 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
                         <span className="text-xs text-muted-foreground">Joined {formatDate(member.createdAt)}</span>
                       </div>
                     </div>
-                    {canManage && !isYou && (
+                    {canManage && !isYou && member.role !== "owner" && (
                       <MemberRowActions memberId={member.id} memberName={member.user.name} role={member.role} disabled={!!member.disabledAt} locationId={member.locationId} locations={locationSettings.enabled ? locationList.map((l) => ({ id: l.id, name: l.name })) : null} />
                     )}
                   </li>

@@ -72,7 +72,7 @@ test("settings, invoice, recording payments, payment link with UPI QR, pending c
 
   // GST lives only under Payments: Business Profile neither shows the number nor edits it (AJ, 2026-10-14).
   await page.goto("/settings/account/business-profile");
-  await expect(page.getByRole("heading", { name: "Business Profile" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Caterly Profile" })).toBeVisible();
   await expect(page.getByText("29ABCDE1234F1Z5")).toHaveCount(0);
   await expect(page.getByText("GST Number")).toHaveCount(0);
   await page.getByRole("button", { name: "Edit Profile" }).click();

@@ -7,7 +7,7 @@ import { Detail, DetailGrid, SettingsCard, SettingsSection } from "../../../_com
 import { BusinessProfileForm } from "./_components/business-profile-form";
 
 export const metadata: Metadata = {
-  title: "Business Profile — Caterly",
+  title: "Caterly Profile — Caterly",
   robots: { index: false, follow: false },
 };
 
@@ -19,7 +19,7 @@ export default async function BusinessProfilePage() {
   const nextOrderNumber = `${organization.orderNumberPrefix}-${String(organization.orderNumberNextValue).padStart(organization.orderNumberPadding, "0")}`;
 
   return (
-    <SettingsCard title="Business Profile" description="Keep your business profile up to date.">
+    <SettingsCard title="Caterly Profile" description="Keep your business profile up to date.">
       <EditablePanel
         editLabel="Edit Profile"
         heading={

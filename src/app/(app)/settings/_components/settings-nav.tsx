@@ -18,16 +18,16 @@ interface NavGroup {
 // always-show/gate-on-visit rather than hiding nav items).
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Account",
+    label: "Business",
     items: [
-      { label: "Business Profile", href: "/settings/account/business-profile", icon: Building2 },
+      { label: "Caterly Profile", href: "/settings/account/business-profile", icon: Building2 },
       { label: "Currency & Time Zone", href: "/settings/account/currency-preferences", icon: Coins },
     ],
   },
   { label: "Kitchen", items: [{ label: "Kitchen Rules", href: "/settings/kitchen/kitchen-rules", icon: ChefHat }] },
   { label: "Team", items: [{ label: "Team Management", href: "/settings/team", icon: Users }] },
   {
-    label: "Integration",
+    label: "Sell online",
     items: [
       { label: "Platterly Link", href: "/settings/integration/public-menu-link", icon: Link2 },
       { label: "Iframe", href: "/settings/integration/iframe", icon: Code2 },
