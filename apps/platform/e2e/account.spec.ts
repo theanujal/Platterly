@@ -97,7 +97,7 @@ test.describe("No product switcher", () => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Switch product/ })).toHaveCount(0);
-    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Billing details", "My Profile", "Security", "Devices", "Notifications", "Help & Support"]) {
+    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Billing Details", "My Profile", "Security", "Devices", "Notifications", "Help & Support"]) {
       await expect(nav(page).getByRole("link", { name })).toBeVisible();
     }
     await expect(nav(page).locator("hr")).toHaveCount(1);
@@ -485,6 +485,38 @@ test.describe("My Products: the cards come from Ops", () => {
     await page.getByLabel("Date range").selectOption("all");
   });
 
+  test("Billing Details: the form with contact and address fields, required checks and the side cards", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    await business(page);
+    await mockProfile(page);
+    let saved: Record<string, string> | null = null;
+    const buyer = { name: "The Kitchen Co.", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: null, contactName: null, contactEmail: null, contactPhone: null };
+    await page.route("**/api/account/billing-profile", (r) => {
+      if (r.request().method() === "GET") return json(r, 200, { status: "ok", businessName: "The Kitchen Co.", buyer, updatedAt: "2026-11-01T00:00:00.000Z" });
+      saved = r.request().postDataJSON();
+      return json(r, 200, { status: "ok", businessName: "The Kitchen Co.", buyer: { ...buyer, ...saved }, updatedAt: "2026-11-15T00:00:00.000Z" });
+    });
+    await page.goto("/billing-details");
+    await expect(page.getByRole("heading", { name: "Billing Details", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Business billing information" })).toBeVisible();
+    await expect(page.getByLabel("Business / Organisation name")).toHaveValue("The Kitchen Co.");
+    await expect(page.getByLabel("State")).toHaveValue("Maharashtra");
+    await expect(page.getByLabel("Country *")).toHaveValue("India");
+    await expect(page.getByRole("heading", { name: "About billing details" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your information is secure" })).toBeVisible();
+    // The contact fields are required: a bad email and phone are refused in the form, not silently saved.
+    await page.getByLabel("Billing contact person").fill("Amit Sharma");
+    await page.getByLabel("Billing email").fill("accounts@thekitchenco.in");
+    await page.getByLabel("Billing phone number").fill("98765 43210");
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Your billing details were saved. New invoices will use them.")).toBeVisible();
+    expect(saved).toMatchObject({ contactName: "Amit Sharma", contactEmail: "accounts@thekitchenco.in", contactPhone: "+919876543210", state: "Maharashtra", country: "India" });
+    // Cancel puts back what was last saved.
+    await page.getByLabel("City").fill("Pune");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByLabel("City")).toHaveValue("Mumbai");
+  });
+
   test("Payment Methods: the methods with Primary, Make primary and a menu, the automatic-renewals switch, and the side cards", async ({ page, context }) => {
     await withPlaceholderSession(context);
     await business(page);
@@ -499,7 +531,17 @@ test.describe("My Products: the cards come from Ops", () => {
     await page.getByRole("button", { name: "Add payment method" }).click();
     await expect(page.getByRole("menuitem")).toHaveText([/Add card/, /Add UPI/]);
     await expect(page.getByRole("menuitem", { name: "Add card" })).toBeEnabled();
-    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menuitem", { name: /Add UPI/ })).toBeDisabled();
+    // Adding a card asks for explicit consent first; nothing opens until it is ticked.
+    await page.getByRole("menuitem", { name: "Add card" }).click();
+    const consent = page.getByRole("alertdialog", { name: "Save a card" });
+    await expect(consent).toContainText("Platterly never sees the number");
+    await expect(consent).toContainText("does not start any payment");
+    await expect(consent.getByRole("button", { name: "Continue to Razorpay" })).toBeDisabled();
+    await consent.getByRole("checkbox").check();
+    await expect(consent.getByRole("button", { name: "Continue to Razorpay" })).toBeEnabled();
+    await consent.getByRole("button", { name: "Cancel" }).click();
+    await expect(consent).toBeHidden();
     const rows = page.getByTestId("method-row");
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(0)).toContainText("•••• 8246");

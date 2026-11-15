@@ -17,6 +17,10 @@ export interface Buyer {
   postalCode: string | null;
   country: string | null;
   gstin: string | null;
+  /** Who to write to about billing, kept with the saved details (Account's Billing Details). The Store checkout does not ask for them, so they may be absent. */
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 }
 
 function text(value: unknown, max: number): string | null | undefined {
@@ -34,7 +38,14 @@ export function parseBuyer(input: unknown): ParseResult<Buyer> {
     if (value === undefined) return fail(`buyer.${key} must be short text`);
     out[key] = value;
   }
-  return ok({ name, ...out } as unknown as Buyer);
+  const contact: Record<string, string | null> = {};
+  for (const key of ["contactName", "contactEmail", "contactPhone"]) {
+    if (input[key] === undefined) continue;
+    const value = text(input[key], 200);
+    if (value === undefined) return fail(`buyer.${key} must be short text`);
+    contact[key] = value;
+  }
+  return ok({ name, ...out, ...contact } as unknown as Buyer);
 }
 
 /** What Razorpay last said about a monthly auto-pay (Razorpay Subscriptions). Yearly and hand-assigned plans have none. */

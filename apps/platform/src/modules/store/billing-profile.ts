@@ -1,5 +1,5 @@
 import "server-only";
-import type { Buyer } from "@platterly/contract";
+import { checkBillingProfile, type Buyer } from "@platterly/contract";
 import type { Session } from "@/lib/session";
 import { billingAccess } from "./billing-rights";
 import { fetchOpsBillingProfile, type OpsReadFailure } from "./ops-catalogue";
@@ -28,9 +28,13 @@ export async function loadMyBillingProfile(session: Session | null): Promise<Pro
 export async function saveMyBillingProfile(session: Session | null, input: unknown): Promise<ProfileResult> {
   const access = await billingAccess(session);
   if (access.status !== "ok" || !session) return refusal(access.status === "ok" ? "unauthenticated" : access.status);
-  const buyer = readBuyer(input);
-  if (!buyer.ok) return { ok: false, reason: "bad_request", fields: buyer.fields };
-  const got = await saveOpsBillingProfile({ businessId: access.businessId, buyer: buyer.buyer, editedBy: session.userId });
+  const base = readBuyer(input);
+  const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const contact = (value: unknown, max: number) => (typeof value === "string" ? value.trim().slice(0, max) || null : null);
+  const buyer = { ...(base.ok ? base.buyer : { name: "", addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null, country: null, gstin: null }), contactName: contact(o.contactName, 120), contactEmail: contact(o.contactEmail, 160), contactPhone: contact(o.contactPhone, 20) };
+  const fields = { ...(base.ok ? {} : base.fields), ...checkBillingProfile(buyer) } as Record<string, string>;
+  if (Object.keys(fields).length) return { ok: false, reason: "bad_request", fields };
+  const got = await saveOpsBillingProfile({ businessId: access.businessId, buyer, editedBy: session.userId });
   if (!got.ok) return got;
   return { ok: true, answer: { businessName: access.businessName, buyer: got.answer.profile, updatedAt: got.answer.updatedAt } };
 }

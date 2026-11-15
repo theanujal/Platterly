@@ -12,6 +12,24 @@ const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
 const PINCODE = /^\d{6}$/;
 
 export type BuyerField = "name" | "addressLine1" | "city" | "state" | "postalCode" | "gstin";
+export type ProfileField = BuyerField | "contactName" | "contactEmail" | "contactPhone" | "country";
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** An Indian mobile number: ten digits starting 6 to 9, with an optional +91 or 0 in front and spaces or dashes anywhere. */
+export function isIndianMobile(value: string): boolean {
+  const digits = value.replace(/[\s-]/g, "").replace(/^(\+91|91|0)(?=\d{10}$)/, "");
+  return /^[6-9]\d{9}$/.test(digits);
+}
+
+/** The Account's Billing Details form also needs a billing contact and the country; the Store checkout does not ask for them, so `checkBuyer` alone leaves them out. */
+export function checkBillingProfile(buyer: Buyer): Partial<Record<ProfileField, string>> {
+  const errors: Partial<Record<ProfileField, string>> = checkBuyer(buyer);
+  if (!buyer.contactName?.trim()) errors.contactName = "Enter the billing contact person.";
+  if (!EMAIL.test(buyer.contactEmail?.trim() ?? "")) errors.contactEmail = "Enter a valid billing email.";
+  if (!isIndianMobile(buyer.contactPhone ?? "")) errors.contactPhone = "Enter a 10-digit mobile number.";
+  if (!buyer.country?.trim()) errors.country = "Choose the country.";
+  return errors;
+}
 
 /** Field by field problems with a set of billing details; empty when they are fine. GSTIN is optional, and accepted in lower case. */
 export function checkBuyer(buyer: Buyer): Partial<Record<BuyerField, string>> {
@@ -38,7 +56,7 @@ export function parseBillingProfileRequest(input: unknown): ParseResult<BillingP
   const buyer = parseBuyer(input.buyer);
   if (!buyer.ok) return buyer;
   const value: Buyer = { ...buyer.value, gstin: buyer.value.gstin ? buyer.value.gstin.toUpperCase() : null };
-  const problems = checkBuyer(value);
+  const problems = checkBillingProfile(value);
   const first = Object.entries(problems)[0];
   if (first) return fail(`buyer.${first[0]}: ${first[1]}`);
   if (input.editedBy !== undefined && (typeof input.editedBy !== "string" || !input.editedBy || input.editedBy.length > 100)) return fail("editedBy must be short text");

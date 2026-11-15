@@ -248,6 +248,10 @@ model BillingCustomer {
   postalCode   String?
   country      String?
   gstin        String?
+  // Who to write to about billing (the Account's Billing Details page). Not set by a payment.
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
   // Where the last change came from: "payment" (a confirmed purchase) or "account" (the Admin's own edit).
   source       String
   createdAt    DateTime @default(now())

@@ -2547,3 +2547,79 @@ textarea.pa-input {
   width: 16px;
   font-size: 9px;
 }
+
+/* Billing Details: a six-column form so two, three or full-width fields share a row. */
+.pa-bd-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px 24px;
+}
+.pa-span-2 {
+  grid-column: span 2;
+}
+.pa-span-3 {
+  grid-column: span 3;
+}
+.pa-span-6 {
+  grid-column: span 6;
+}
+.pa-bd-subhead {
+  margin: 4px 0 -8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.pa-required {
+  color: var(--destructive, #dc2626);
+}
+.pa-optional {
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.pa-field .pa-select {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+}
+.pa-field .pa-select select {
+  border-color: var(--input);
+  font-size: inherit;
+}
+.pa-bd-side-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.pa-bd-side-head h2 {
+  margin: 0;
+}
+.pa-bd-checks {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.pa-bd-checks li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.pa-bd-checks svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary, #f97316);
+}
+.pa-bd-secure {
+  background: #f5f3ff;
+}
+.pa-bd-secure-tile {
+  background: #ede9fe;
+  color: #6d5bd0;
+}
+@media (max-width: 640px) {
+  .pa-span-2,
+  .pa-span-3 {
+    grid-column: span 6;
+  }
+}

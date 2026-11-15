@@ -19,7 +19,7 @@ const NAV: { href: string; prefix?: string; label: string; title: string; icon: 
   { href: "/subscriptions", label: "Subscriptions", title: "Subscriptions", icon: "layers" },
   { href: "/invoices", label: "Invoices", title: "Invoices", icon: "receipt" },
   { href: "/payment-methods", label: "Payment Methods", title: "Payment Methods", icon: "card" },
-  { href: "/billing-details", label: "Billing details", title: "Billing details", icon: "building" },
+  { href: "/billing-details", label: "Billing Details", title: "Billing Details", icon: "building" },
   { href: "/profile", prefix: "My ", label: "Profile", title: "My Profile", icon: "user", divider: true },
   { href: "/security", label: "Security", title: "Security", icon: "shield" },
   { href: "/devices", label: "Devices", title: "Devices and activity", icon: "monitor" },

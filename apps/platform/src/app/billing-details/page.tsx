@@ -7,7 +7,7 @@ export default async function Page() {
   await requireAccountSignIn("/billing-details");
   return (
     <AccountShell>
-      <PageHeader title="Billing details" lede="The business name, address and GSTIN on your GST invoices. The Store fills them in for you at checkout." />
+      <PageHeader title="Billing Details" lede="Manage your business and billing information. These details are used for invoices and official communication." />
       <BillingDetails />
     </AccountShell>
   );
