@@ -32,7 +32,7 @@ log() { printf '%s [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "${LOG_TAG:-deploy}
 die() { log "ERROR: $*" >&2; exit 1; }
 
 require_app() {
-  case "$1" in catering|ops) ;; *) die "the app must be catering or ops (got '$1')" ;; esac
+  case "$1" in catering|ops|platform) ;; *) die "the app must be catering, ops or platform (got '$1')" ;; esac
 }
 
 # The port each slot listens on (127.0.0.1 only; Nginx is the only way in).
@@ -42,6 +42,9 @@ port_of() {
     catering-green) echo "${CATERING_PORT_GREEN:-3001}" ;;
     ops-blue) echo "${OPS_PORT_BLUE:-3200}" ;;
     ops-green) echo "${OPS_PORT_GREEN:-3201}" ;;
+    # 3300 stays free for the marketing-site deploy hook (SITE_HOOK_PORT).
+    platform-blue) echo "${PLATFORM_PORT_BLUE:-3400}" ;;
+    platform-green) echo "${PLATFORM_PORT_GREEN:-3401}" ;;
     *) die "unknown slot $1-$2" ;;
   esac
 }
@@ -49,8 +52,8 @@ port_of() {
 other_slot() { [ "$1" = blue ] && echo green || echo blue; }
 slot_dir() { echo "$PLATTERLY_ROOT/$1/$2"; }
 unit_of() { echo "platterly-app@$1-$2"; }
-# Where the app's own package lives inside a clone: the catering app is the repository root, ops is apps/ops.
-app_dir() { [ "$1" = ops ] && echo "$2/apps/ops" || echo "$2"; }
+# Where the app's own package lives inside a clone: the catering app is the repository root, ops is apps/ops, the platform is apps/platform.
+app_dir() { case "$1" in ops) echo "$2/apps/ops" ;; platform) echo "$2/apps/platform" ;; *) echo "$2" ;; esac; }
 
 active_slot() {
   local file="$STATE_DIR/$1.active"

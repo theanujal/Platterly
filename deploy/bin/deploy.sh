@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Blue/green deploy of one app (deploy/README.md).
-#   deploy.sh catering [git-ref]      deploy.sh ops [git-ref]        (default ref: origin/main)
+#   deploy.sh catering [git-ref]      deploy.sh ops [git-ref]      deploy.sh platform [git-ref]        (default ref: origin/main)
 # Builds the release in the idle slot, backs up and migrates the database, starts the idle slot, checks it, and only then moves
 # Nginx to it. The slot that was live stays up for DRAIN_MINUTES so rollback.sh is one command. Any failure before the switch leaves the
 # live slot exactly as it was.
@@ -24,10 +24,19 @@ sha="$(as_app "$app" "$clone" git -C "$clone" rev-parse "$ref")"
 as_app "$app" "$clone" git -C "$clone" checkout --detach "$sha"
 log "checked out $sha"
 
+# 1b. Catering has no login of its own: people sign in at the Platform (central sign-in). A catering release must never go live while that sign-in is
+# missing or unreachable, or every kitchen is locked out. So the Platform has to be deployed first (docs/go-live-order.md).
+if [ "$app" = catering ]; then
+  as_app "$app" "$clone" bash -c 'test -n "${PLATFORM_AUTH_ORIGIN:-}" && curl -fsS --max-time 10 "$PLATFORM_AUTH_ORIGIN/api/auth/.well-known/openid-configuration" >/dev/null' \
+    || die "Platterly's central sign-in is not answering (PLATFORM_AUTH_ORIGIN unset or unreachable). Deploy and check the Platform first, or catering has no way to sign in. Nothing was changed."
+fi
+
 # 2. Build, as the service user with the app's env loaded (lib.sh as_app). The migration guard first, so a release that could lose
 # data never gets as far as the database.
 if [ "$app" = ops ]; then
   as_app "$app" "$clone" node scripts/check-migrations.mjs
+  as_app "$app" "$dir" npm ci
+elif [ "$app" = platform ]; then
   as_app "$app" "$dir" npm ci
 else
   as_app "$app" "$clone" npm ci
@@ -36,9 +45,11 @@ fi
 as_app "$app" "$dir" npm run build
 
 # 3. Database: backup, then only additive migrations (both slots share the database, so the live slot keeps working).
-# Catering's first, then Ops's own (docs/production-checklist.md).
+# Order for a release that touches several apps: Platform first, then catering, then Ops (docs/go-live-order.md).
 as_app "$app" "$PLATTERLY_ROOT" "$HERE/backup.sh" --db-only --tag "pre-deploy-$app-${sha:0:8}"
 as_app "$app" "$dir" npx prisma migrate deploy
+# The Platform has a second database, the identity one (people, passwords, sessions), with its own numbered SQL migrations.
+if [ "$app" = platform ]; then as_app "$app" "$dir" npm run identity:migrate; fi
 
 # 4. Start the idle slot and prove it works before any visitor is sent to it.
 systemctl restart "$(unit_of "$app" "$idle")"

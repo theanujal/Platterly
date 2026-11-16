@@ -6,8 +6,8 @@ import { DecideForms, EraseForm, RestoreForm } from "./deletion-forms";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Account deletions" };
 
-const TONE = { PENDING: "warning", APPROVED: "danger", DECLINED: "neutral", WITHDRAWN: "neutral", RESTORED: "success", ERASED: "neutral" } as const;
-const LABEL = { PENDING: "Waiting for you", APPROVED: "Approved: suspended", DECLINED: "Declined", WITHDRAWN: "Withdrawn by the person", RESTORED: "Restored", ERASED: "Erased" } as const;
+const TONE = { PENDING: "warning", APPROVING: "warning", APPROVED: "danger", DECLINED: "neutral", WITHDRAWN: "neutral", RESTORED: "success", ERASED: "neutral" } as const;
+const LABEL = { PENDING: "Waiting for you", APPROVING: "Being approved", APPROVED: "Approved: suspended", DECLINED: "Declined", WITHDRAWN: "Withdrawn by the person", RESTORED: "Restored", ERASED: "Erased" } as const;
 
 export default async function AccountDeletionsPage() {
   const rows = await listAccountDeletions();

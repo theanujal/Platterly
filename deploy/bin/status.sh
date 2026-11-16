@@ -4,7 +4,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib.sh
 . "$HERE/lib.sh"
-for app in catering ops; do
+for app in catering ops platform; do
   active="$(active_slot "$app")"
   printf '%s: live on %s\n' "$app" "$active"
   for slot in blue green; do

@@ -1073,7 +1073,7 @@ model AccountDeletionRequest {
   products      Json
   reason        String    @default("")
   requestedAt   DateTime
-  // PENDING, APPROVED, DECLINED, WITHDRAWN, RESTORED or ERASED (the Platform confirmed the final removal).
+  // PENDING, APPROVING (staff are suspending the business: a withdrawal is refused), APPROVED, DECLINED, WITHDRAWN, RESTORED or ERASED (the Platform confirmed the final removal).
   status        String    @default("PENDING")
   declineReason String?
   decidedAt     DateTime?

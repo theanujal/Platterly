@@ -18,20 +18,20 @@ printf '#!/usr/bin/env bash\necho "backup $*" >> "%s"\n' "$CALLS" > "$ROOT/bin/b
 stub() { printf '#!/usr/bin/env bash\n%s\n' "$2" > "$BIN/$1"; chmod +x "$BIN/$1"; }
 stub git 'echo "git $*" >> "'"$CALLS"'"
 case "$1 $2" in
-  "clone "*) mkdir -p "${3}/.git" "${3}/apps/ops" "${3}/deploy/bin"; cp "'"$ROOT"'"/bin/*.sh "${3}/deploy/bin/" ;;
+  "clone "*) mkdir -p "${3}/.git" "${3}/apps/ops" "${3}/apps/platform" "${3}/deploy/bin"; cp "'"$ROOT"'"/bin/*.sh "${3}/deploy/bin/" ;;
 esac
 if [ "$1" = "-C" ] && [ "$3" = "rev-parse" ]; then if [ "$4" = "--short" ]; then echo abc1234; else echo "${FAKE_SHA:-1111111111111111111111111111111111111111}"; fi; fi
 exit 0'
 stub npm 'echo "npm $* (in $PWD) url=${NEXT_PUBLIC_APP_URL:-}" >> "'"$CALLS"'"; exit 0'
 stub npx 'echo "npx $* (in $PWD) db=${DATABASE_URL:-}" >> "'"$CALLS"'"; exit 0'
-printf 'NEXT_PUBLIC_APP_URL="https://catering.test"\nDATABASE_URL="postgresql://catering-db"\n' > "$ROOT/env/catering.env"
+printf 'NEXT_PUBLIC_APP_URL="https://catering.test"\nDATABASE_URL="postgresql://catering-db"\nPLATFORM_AUTH_ORIGIN="http://auth.test"\n' > "$ROOT/env/catering.env"
 stub node 'echo "node $*" >> "'"$CALLS"'"; exit 0'
 stub systemctl 'echo "systemctl $*" >> "'"$CALLS"'"; [ "$1" = is-active ] && echo active; exit 0'
 stub systemd-run 'echo "systemd-run $*" >> "'"$CALLS"'"; exit 0'
 stub journalctl 'exit 0'
 stub nginx 'echo "nginx $*" >> "'"$CALLS"'"; if [ "$1" = "-t" ] && [ -f "'"$T"'/nginx-broken" ]; then exit 1; fi; exit 0'
 # curl answers healthy unless a marker file for that port exists.
-stub curl 'url="${@: -1}"; port="$(echo "$url" | sed -E "s#.*:([0-9]+)/.*#\1#")"; if [ -f "'"$T"'/unhealthy-$port" ]; then exit 22; fi; echo "{\"status\":\"ok\"}"'
+stub curl 'url="${@: -1}"; case "$url" in *auth.test*) [ -f "'"$T"'/auth-down" ] && exit 22; echo "{}"; exit 0;; esac; port="$(echo "$url" | sed -E "s#.*:([0-9]+)/.*#\1#")"; if [ -f "'"$T"'/unhealthy-$port" ]; then exit 22; fi; echo "{\"status\":\"ok\"}"'
 export PATH="$BIN:$PATH" PLATTERLY_ROOT="$ROOT" PLATTERLY_CONF=/nonexistent NGINX_INCLUDE_DIR="$T/nginx" HEALTH_TIMEOUT=4 DRAIN_MINUTES=10
 D="$ROOT/bin/deploy.sh"; R="$ROOT/bin/rollback.sh"
 upstream() { grep -o 'server 127.0.0.1:[0-9]*' "$T/nginx/active-$1.conf" | cut -d: -f2; }
@@ -61,6 +61,14 @@ echo "second deploy: the other way round";
 assert_eq "$(active catering)" blue "traffic moved back to blue"
 assert_eq "$(upstream catering)" 3000 "nginx upstream is blue's port (3000)"
 assert_eq "$(tr -d '[:space:]' < "$ROOT/state/catering.previous")" green "green is remembered as the previous slot"
+
+echo "catering is not released while the central sign-in is down"
+touch "$T/auth-down"; : > "$CALLS"
+"$D" catering origin/main >>"$T/out.log" 2>&1; rc=$?
+if [ "$rc" -ne 0 ]; then ok "deploy fails"; else bad "deploy should fail"; fi
+assert_eq "$(active catering)" blue "blue is still live"
+if grep -q "npm run build\|prisma migrate" "$CALLS"; then bad "it built or migrated anyway"; else ok "nothing was built or migrated"; fi
+rm -f "$T/auth-down"
 
 echo "a slot that does not come up healthy never gets traffic"
 touch "$T/unhealthy-3001"; : > "$CALLS"
@@ -103,6 +111,16 @@ echo "ops uses its own slots, ports and folder"
 assert_eq "$(active ops)" green "ops moved to green"
 assert_eq "$(upstream ops)" 3201 "ops upstream is 3201"
 assert_contains "$CALLS" "npx prisma migrate deploy (in $ROOT/ops/green/apps/ops)" "ops migrations run in apps/ops"
+assert_eq "$(active catering)" blue "catering was not touched"
+
+echo "platform uses its own slots, ports, folder and both of its migrations"
+printf 'DATABASE_URL="postgresql://platform-db"\n' > "$ROOT/env/platform.env"
+: > "$CALLS"
+"$D" platform origin/main >>"$T/out.log" 2>&1; rc=$?
+assert_eq "$rc" 0 "platform deploy exits 0"
+assert_eq "$(upstream platform)" 3401 "platform upstream is green's port (3401)"
+assert_contains "$CALLS" "npx prisma migrate deploy (in $ROOT/platform/green/apps/platform)" "platform migrations run in apps/platform"
+assert_contains "$CALLS" "npm run identity:migrate (in $ROOT/platform/green/apps/platform)" "the identity database is migrated too"
 assert_eq "$(active catering)" blue "catering was not touched"
 
 echo "a bad app name is refused"

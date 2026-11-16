@@ -3,7 +3,7 @@ import { parseAccountDeletionIdRequest, parseAccountDeletionRequest } from "@pla
 import { Prisma } from "@/generated/prisma/client";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
-import { notify } from "@/modules/notifications/notifications";
+import { notifySafely } from "@/modules/notifications/notifications";
 import { signedCall } from "@/modules/account-reviews/account-reviews";
 import { deleteRazorpayToken, platformRazorpay, updateRazorpayCustomer } from "@/modules/billing/razorpay";
 import { LifecycleError, deleteBusiness, restoreBusiness, runCommand } from "@/modules/lifecycle/lifecycle";
@@ -30,7 +30,7 @@ export const handleAccountDeletionOpen = (request: Request) =>
       skipDuplicates: true,
     });
     if (made.count > 0) {
-      await notify({
+      await notifySafely({
         kind: "account.deletion_requested",
         severity: "WARNING",
         title: "An account deletion was requested",
@@ -39,7 +39,7 @@ export const handleAccountDeletionOpen = (request: Request) =>
         businessId: r.businessId,
         dedupeKey: `account.deletion:${r.requestId}`,
         emailStaff: true,
-      }).catch((error) => console.error("[account-deletions] notification failed", error));
+      });
     }
     return { status: 200, body: { requestId: r.requestId, created: made.count > 0 } };
   });
@@ -49,7 +49,7 @@ export const handleAccountDeletionStatus = (request: Request) =>
     const parsed = parseAccountDeletionIdRequest(json);
     if (!parsed.ok) return { status: 400, body: { error: parsed.error } };
     const row = await prisma.accountDeletionRequest.findUnique({ where: { requestId: parsed.value.requestId }, select: { status: true, declineReason: true, eraseAfter: true, eraseRequestedAt: true, eraseLogoUrls: true } });
-    return row ? { status: 200, body: { requestId: parsed.value.requestId, status: row.status, declineReason: row.declineReason, eraseAfter: row.eraseAfter?.toISOString() ?? null, eraseRequested: row.eraseRequestedAt !== null, logoUrls: row.eraseRequestedAt && Array.isArray(row.eraseLogoUrls) ? row.eraseLogoUrls : [] } } : { status: 404, body: { error: "unknown_request" } };
+    return row ? { status: 200, body: { requestId: parsed.value.requestId, status: row.status === "APPROVING" ? "PENDING" : row.status, declineReason: row.declineReason, eraseAfter: row.eraseAfter?.toISOString() ?? null, eraseRequested: row.eraseRequestedAt !== null, logoUrls: row.eraseRequestedAt && Array.isArray(row.eraseLogoUrls) ? row.eraseLogoUrls : [] } } : { status: 404, body: { error: "unknown_request" } };
   });
 
 export const handleAccountDeletionWithdraw = (request: Request) =>
@@ -60,7 +60,7 @@ export const handleAccountDeletionWithdraw = (request: Request) =>
     const done = await prisma.accountDeletionRequest.updateMany({ where: { requestId: parsed.value.requestId, status: "PENDING" }, data: { status: "WITHDRAWN", decidedAt: new Date() } });
     if (done.count > 0) await audit({ actorUserId: null, action: "account_deletion.withdrawn", subject: parsed.value.requestId });
     const row = await prisma.accountDeletionRequest.findUnique({ where: { requestId: parsed.value.requestId }, select: { status: true } });
-    return row ? { status: 200, body: { requestId: parsed.value.requestId, status: row.status } } : { status: 404, body: { error: "unknown_request" } };
+    return row ? { status: 200, body: { requestId: parsed.value.requestId, status: row.status === "APPROVING" ? "PENDING" : row.status } } : { status: 404, body: { error: "unknown_request" } };
   });
 
 export const listAccountDeletions = () => prisma.accountDeletionRequest.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
@@ -72,24 +72,30 @@ async function linkedProducts(businessId: string): Promise<string[]> {
 }
 
 /**
- * Approve: the business (if there is one) is suspended in every product it uses and stays restorable for the retention period, then the request is marked
- * approved. If a product refuses, nothing is approved and the reason is shown to staff.
+ * Approve: the request is claimed first (PENDING to APPROVING, which a withdrawal refuses), then the business (if there is one) is suspended in every product it
+ * uses and stays restorable for the retention period, then the request is marked approved. If a product refuses, the request goes back to PENDING and the reason
+ * is shown to staff. Every product is told on every try (suspending an already suspended business is harmless), so a retry after a partial failure finishes the job.
  */
-export async function approveAccountDeletion(id: string, staffId: string | null, now: Date = new Date()): Promise<void> {
-  const row = await prisma.accountDeletionRequest.findUnique({ where: { id } });
-  if (!row || row.status !== "PENDING") throw new LifecycleError("This request is no longer pending.");
-  if (row.businessId) {
-    const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, status: true } });
-    if (business && business.status !== "PENDING_DELETE") {
-      for (const productKey of await linkedProducts(row.businessId)) {
-        const result = await deleteBusiness(row.businessId, productKey, business.name, staffId, now);
-        if (!result.ok) throw new LifecycleError(`${productKey} did not accept the suspension: ${result.error}`);
+export async function approveAccountDeletion(id: string, staffId: string | null, now: Date = new Date(), fetchImpl?: typeof fetch): Promise<void> {
+  const claimed = await prisma.accountDeletionRequest.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVING" } });
+  if (claimed.count === 0) throw new LifecycleError("This request is no longer pending.");
+  const row = await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id } });
+  const eraseAfter = new Date(now.getTime() + RETENTION_DAYS * 86_400_000);
+  try {
+    if (row.businessId) {
+      const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true } });
+      if (business) {
+        for (const productKey of await linkedProducts(row.businessId)) {
+          const result = await deleteBusiness(row.businessId, productKey, business.name, staffId, now, fetchImpl);
+          if (!result.ok) throw new LifecycleError(`${productKey} did not accept the suspension: ${result.error}`);
+        }
       }
     }
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVED", decidedAt: now, decidedBy: staffId, eraseAfter } });
+  } catch (error) {
+    await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING" } });
+    throw error;
   }
-  const eraseAfter = new Date(now.getTime() + RETENTION_DAYS * 86_400_000);
-  const done = await prisma.accountDeletionRequest.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVED", decidedAt: now, decidedBy: staffId, eraseAfter } });
-  if (done.count === 0) throw new LifecycleError("This request is no longer pending.");
   await audit({ actorUserId: staffId, action: "account_deletion.approved", subject: row.requestId, detail: { businessId: row.businessId, eraseAfter: eraseAfter.toISOString() } });
 }
 
@@ -103,12 +109,12 @@ export async function declineAccountDeletion(id: string, reason: string, staffId
 }
 
 /** Staff change their mind during the retention period: the business is brought back and the person's account is released. */
-export async function restoreAccountDeletion(id: string, staffId: string | null): Promise<void> {
+export async function restoreAccountDeletion(id: string, staffId: string | null, fetchImpl?: typeof fetch): Promise<void> {
   const row = await prisma.accountDeletionRequest.findUnique({ where: { id } });
   if (!row || row.status !== "APPROVED") throw new LifecycleError("Only an approved request can be restored.");
   if (row.businessId) {
     for (const productKey of await linkedProducts(row.businessId)) {
-      const result = await restoreBusiness(row.businessId, productKey, staffId);
+      const result = await restoreBusiness(row.businessId, productKey, staffId, fetchImpl);
       if (!result.ok) throw new LifecycleError(`${productKey} did not accept the restore: ${result.error}`);
     }
   }

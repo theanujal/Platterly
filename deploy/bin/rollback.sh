@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Puts traffic back on the slot that was live before the last deploy (deploy/README.md).
-#   rollback.sh catering        rollback.sh ops
+#   rollback.sh catering        rollback.sh ops        rollback.sh platform
 # The previous slot is started if the drain already stopped it (its build is still on disk), checked, and only then does Nginx move back.
 # A migration is never undone: releases only add to the database, so the old code keeps working against it.
 set -euo pipefail

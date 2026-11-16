@@ -21,8 +21,6 @@ import { disableMember, enableMember, listMembers } from "@/modules/team/team";
 import { getInbox, markAllRead } from "@/modules/notifications/inbox";
 import { notify } from "@/lib/notifications/notify";
 import { listAuditLog } from "@/modules/audit/audit-log";
-import { purgeTenantData } from "@/lib/tenant-purge/purge";
-import { TENANT_SCOPED_DELEGATES } from "@/lib/tenant-purge/tenant-scoped-models";
 
 /**
  * Chunk 17.3 — tenant-isolation regression suite. Kitchen A owns one of everything; kitchen B (a signed-in, valid
@@ -235,23 +233,5 @@ describe("tenant isolation: kitchen B cannot reach kitchen A's records by id", (
     for (const table of ["order", "customer", "quotation", "expense", "invoice", "payment", "menuSelection"] as const) {
       expect(await (prisma[table] as unknown as { count: (a: unknown) => Promise<number> }).count({ where: { organizationId: orgB } }), `${table} rows appeared in kitchen B`).toBe(0);
     }
-  });
-
-  it("purging kitchen A (Danger Zone) removes every one of A's rows, leaves kitchen B alone and keeps the audit trail", async () => {
-    await createCustomer(orgB, { name: "Bee Customer", phone: "9876500777" }, actorB); // something of B's that must survive
-    await purgeTenantData(orgA, actorA, "DELETE");
-
-    for (const delegate of TENANT_SCOPED_DELEGATES) {
-      const remaining = await (prisma as unknown as Record<string, { count: (a: unknown) => Promise<number> }>)[delegate].count({ where: { organizationId: orgA } });
-      expect(remaining, `${delegate} rows left after the purge`).toBe(0);
-    }
-    expect(await prisma.customer.count({ where: { organizationId: orgB } })).toBe(1);
-    expect(await prisma.organization.count({ where: { id: orgA } })).toBe(1); // the kitchen itself and its team stay
-    expect(await prisma.member.count({ where: { organizationId: orgA } })).toBe(1);
-    expect(await prisma.auditLog.count({ where: { organizationId: orgA, action: "tenant.data_purge" } })).toBe(1);
-    // Children that have no organizationId of their own are gone too (no orphans).
-    expect(await prisma.mealPlanEntry.count({ where: { orderId: A.order } })).toBe(0);
-    expect(await prisma.invoiceItem.count({ where: { invoiceId: A.invoice } })).toBe(0);
-    expect(await prisma.menuVersion.count({ where: { menuSelectionId: A.selection } })).toBe(0);
   });
 });

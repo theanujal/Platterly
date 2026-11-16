@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backs up Platterly: both Postgres databases (catering and ops), the uploads folder and Ops's website pictures, and an encrypted copy
+# Backs up Platterly: the Postgres databases (catering, ops and, once deployed, the Platform and its identity database), the uploads folder and Ops's website pictures, and an encrypted copy
 # of the env files. Runs nightly from cron and before every deploy that migrates (deploy.sh calls it with --db-only).
 #   backup.sh [--db-only] [--tag NAME]
 # Every dump is checked by listing it back (a backup that cannot be read is a failed backup), copied offsite if configured, and the
@@ -23,19 +23,19 @@ SITE_MEDIA_DIR="${SITE_MEDIA_DIR:-$PLATTERLY_ROOT/site-media}"
 files=()
 
 # DATABASE_URL of an app, from its env file (without the ?schema= part Prisma adds, which pg_dump does not know).
-db_url() {
-  local file="$ENV_DIR/$1.env"
+db_url() { # db_url <app> [variable, default DATABASE_URL]
+  local file="$ENV_DIR/$1.env" var="${2:-DATABASE_URL}"
   [ -f "$file" ] || die "missing $file"
-  local url; url="$(grep -E '^DATABASE_URL=' "$file" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')"
-  [ -n "$url" ] || die "no DATABASE_URL in $file"
+  local url; url="$(grep -E "^$var=" "$file" | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')"
+  [ -n "$url" ] || die "no $var in $file"
   echo "${url%%\?*}"
 }
 
-dump_db() {
-  local app="$1"
-  local out="$daily/$app-$stamp$suffix.dump"
-  log "dumping the $app database"
-  pg_dump --format=custom --no-owner --file "$out" "$(db_url "$app")"
+dump_db() { # dump_db <app> [variable] [file label]
+  local app="$1" var="${2:-DATABASE_URL}" label="${3:-$1}"
+  local out="$daily/$label-$stamp$suffix.dump"
+  log "dumping the $label database"
+  pg_dump --format=custom --no-owner --file "$out" "$(db_url "$app" "$var")"
   # Read it back: the table of contents must list, and the file must not be empty.
   [ -s "$out" ] || die "$out is empty"
   pg_restore --list "$out" >/dev/null || die "$out cannot be read back"
@@ -55,9 +55,15 @@ archive_dir() {
 
 dump_db catering
 dump_db ops
+# The Platform (people and sign-in) has two databases and its own saved pictures. Skipped until its env file exists, so backups work before it is deployed.
+if [ -f "$ENV_DIR/platform.env" ]; then
+  dump_db platform DATABASE_URL platform
+  dump_db platform IDENTITY_DATABASE_URL identity
+fi
 if [ "$db_only" -eq 0 ]; then
   archive_dir uploads "$UPLOAD_ROOT"
   archive_dir site-media "$SITE_MEDIA_DIR"
+  archive_dir account-files "${ACCOUNT_FILES_ROOT:-$PLATTERLY_ROOT/account}"
   # The env files hold the keys that make saved data readable (OPS_SECRETS_KEY, PAYMENT_SECRETS_KEY...): without them a restored
   # database is not enough. They are only kept encrypted, with the passphrase in a file only root can read.
   if [ -n "${BACKUP_PASSPHRASE_FILE:-}" ] && [ -f "$BACKUP_PASSPHRASE_FILE" ]; then

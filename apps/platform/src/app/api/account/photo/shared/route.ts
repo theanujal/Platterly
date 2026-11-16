@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   try {
     const photo = await readPhotoVersion(identityPool(), u, v);
     if (!photo) return miss();
-    return new Response(new Uint8Array(photo.bytes), { headers: { "content-type": photo.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=31536000, immutable", "content-security-policy": "default-src 'none'; sandbox", "cross-origin-resource-policy": "cross-origin" } });
+    return new Response(new Uint8Array(photo.bytes), { headers: { "content-type": photo.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=300", "content-security-policy": "default-src 'none'; sandbox", "cross-origin-resource-policy": "cross-origin" } });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: { "cache-control": "no-store" } });
   }
