@@ -140,6 +140,19 @@ test("policy pages: a contents list that follows you, the company named, and the
   await expect(page.getByText("uses analytics and marketing cookies only if you accept them")).toBeVisible();
 });
 
+test("search words: the Caterly title and the descriptions say catering management software, and the Organization lists the social profiles", async ({ page }) => {
+  await page.goto("/caterly/");
+  await expect(page).toHaveTitle("Catering Management Software | Caterly by Platterly"); // absolute: the brand only once (#53)
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /^Catering management software for /);
+  await page.goto("/");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /^Platterly builds catering management software/);
+  const sameAs = await page.evaluate(() => {
+    const ld = [...document.querySelectorAll('script[type="application/ld+json"]')].map((s) => JSON.parse(s.textContent ?? "{}"));
+    return ld.find((d) => d["@type"] === "Organization")?.sameAs;
+  });
+  expect(sameAs).toEqual(["https://www.facebook.com/platterlyindia", "https://www.instagram.com/platterlyindia/", "https://www.linkedin.com/company/platterlyindia"]);
+});
+
 test("search files: the sitemap lists every page and robots allows the site", async ({ request }) => {
   const sitemap = await (await request.get("/sitemap.xml")).text();
   for (const path of ["", "caterly/", "about/", "talk-to-us/", "contact/", "blog/", "whats-new/", "upcoming/", "privacy/", "terms/", "refund/", "cookie-policy/", "shipping-and-delivery/", "security/", "blog/plan-a-multi-day-wedding-menu/"]) expect(sitemap).toContain(`<loc>https://platterly.in/${path}</loc>`);
@@ -446,10 +459,15 @@ test("the Catering closing band is just the heading, copy and its two buttons", 
   await expect(band.locator("img")).toHaveCount(0);
 });
 
-test("the footer has Products, Discover and Support, and no Features group", async ({ page }) => {
+test("the footer has Products, Discover, Support and Follow us, and no Features group", async ({ page }) => {
   await page.goto("/");
   const footer = page.getByRole("contentinfo");
-  for (const group of ["Products", "Discover", "Support"]) await expect(footer.getByRole("navigation", { name: group }).or(footer.getByText(group, { exact: true })).first()).toBeVisible();
+  for (const group of ["Products", "Discover", "Support", "Follow us"]) await expect(footer.getByRole("navigation", { name: group }).or(footer.getByText(group, { exact: true })).first()).toBeVisible();
+  const follow = footer.getByRole("navigation", { name: "Follow us" });
+  for (const [name, href] of [["Facebook", "https://www.facebook.com/platterlyindia"], ["Instagram", "https://www.instagram.com/platterlyindia/"], ["LinkedIn", "https://www.linkedin.com/company/platterlyindia"]]) {
+    await expect(follow.getByRole("link", { name })).toHaveAttribute("href", href);
+    await expect(follow.getByRole("link", { name })).toHaveAttribute("target", "_blank");
+  }
   await expect(footer.getByText("Features", { exact: true })).toHaveCount(0);
   await expect(footer.getByText("Solutions")).toHaveCount(0);
   await expect(footer.getByText("Pricing")).toHaveCount(0);

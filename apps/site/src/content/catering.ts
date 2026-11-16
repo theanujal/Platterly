@@ -3,7 +3,7 @@ import type { ShowcaseItem } from "@/components/feature-showcase";
 export const CATERING = {
   hero: {
     title: "Run your catering business without the chaos.",
-    copy: "From enquiries and customers to menus, events and orders, Caterly by Platterly brings your entire catering workflow into one place.",
+    copy: "From customer enquiries and order management to kitchen coordination and payment tracking, Caterly by Platterly brings your entire catering workflow into one place.",
   },
   howSteps: [
     { card: "order", colourway: "sunrise", title: "Add the customer and the event", text: "to keep every enquiry, date and guest count together. Adults and children are counted separately, so pricing and quantities are right." },

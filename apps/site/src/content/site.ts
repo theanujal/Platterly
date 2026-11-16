@@ -12,7 +12,7 @@ export const SITE = {
   accountUrl: "https://account.platterly.in/",
   contactEmail: "hello@platterly.in",
   tagline: "Software built for the food business.",
-  description: "Platterly builds focused software for food businesses, starting with Caterly by Platterly: customers, events, menus, orders, kitchen and payments in one place.",
+  description: "Platterly builds catering management software: customer enquiries, orders, menus, kitchen coordination and payment tracking in one place.",
   /** Real social profiles only; they become the Organization's `sameAs` and the footer's "Follow us" links. */
   social: ["https://www.facebook.com/platterlyindia", "https://www.instagram.com/platterlyindia/", "https://www.linkedin.com/company/platterlyindia"],
 } as const;

@@ -15,8 +15,8 @@ import { CATERING_PRODUCT, productVars } from "@/content/products";
 import { pageLinks, SITE, TESTIMONIALS } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "Caterly by Platterly | Software for catering businesses",
-  description: "Run your catering business without the chaos. Customers, events, menus, orders, kitchen, delivery and payments in one workflow. Start free for 7 days.",
+  title: { absolute: "Catering Management Software | Caterly by Platterly" },
+  description: "Catering management software for enquiries, orders, menus, kitchen and payments. Less manual work, fewer missed details. Start free for 7 days.",
   ...pageLinks("/caterly/"),
 };
 
