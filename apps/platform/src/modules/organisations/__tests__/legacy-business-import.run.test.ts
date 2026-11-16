@@ -18,7 +18,7 @@ describe.skipIf(mode !== "dry" && mode !== "apply")("Caterly business import (ru
     const s = part(sourceUrl);
     const t = part(targetUrl);
     if (!/copy/i.test(s.db) || s.port === "5432" || s.port === "55432") throw new Error("the source must be a COPY database, not on 5432 or 55432");
-    if (t.port !== "55434" || t.db !== "platterly_platform") throw new Error("the target must be platterly_platform on the F4 cluster (55434)");
+    if (t.port !== "55434" || !["platterly_platform", "platterly_rehearsal_platform"].includes(t.db)) throw new Error("the target must be platterly_platform (or the scratch platterly_rehearsal_platform) on the F4 cluster (55434)");
 
     const source = new Pool({ connectionString: sourceUrl, max: 1 });
     const pool = new Pool({ connectionString: targetUrl, max: 1 });
