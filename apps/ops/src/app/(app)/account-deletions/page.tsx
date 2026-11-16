@@ -1,6 +1,6 @@
 import { UserX } from "lucide-react";
 import { Badge, Empty, PageHeader, formatWhen } from "@/components/ui";
-import { listAccountDeletions } from "@/modules/account-deletions/account-deletions";
+import { isStaleApproving, listAccountDeletions } from "@/modules/account-deletions/account-deletions";
 import { DecideForms, EraseForm, RestoreForm } from "./deletion-forms";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +37,8 @@ export default async function AccountDeletionsPage() {
                 </dl>
                 {r.reason ? <p className="mt-2 text-sm text-muted-foreground">Reason given: “{r.reason}”</p> : null}
                 {r.declineReason ? <p className="mt-2 text-sm text-muted-foreground">Declined because: “{r.declineReason}”</p> : null}
-                {status === "PENDING" ? <DecideForms id={r.id} hasBusiness={!!r.businessId} /> : null}
+                {status === "APPROVING" && isStaleApproving(r) ? <p className="mt-3 text-sm text-muted-foreground">An earlier approve was cut off. Approve again to finish it, or decline to bring the business back.</p> : null}
+                {status === "PENDING" || isStaleApproving(r) ? <DecideForms id={r.id} hasBusiness={!!r.businessId} /> : null}
                 {status === "APPROVED" && !r.eraseRequestedAt ? <RestoreForm id={r.id} /> : null}
                 {status === "APPROVED" && !r.eraseRequestedAt ? <EraseForm id={r.id} email={r.email} /> : null}
                 {status === "APPROVED" && r.eraseRequestedAt ? <p className="mt-3 text-sm text-muted-foreground">Erase started {formatWhen(r.eraseRequestedAt)}. Waiting for the Platform to remove the person.</p> : null}

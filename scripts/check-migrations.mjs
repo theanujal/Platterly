@@ -5,9 +5,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// The catering app's migrations and the Platform app's (apps/platform). Ops has its own database and is not covered here.
-// A name in migrations-baseline.txt is exempt; Platform has none, so every Platform migration is checked.
-const DIRS = [join(here, "..", "prisma", "migrations"), join(here, "..", "apps", "platform", "prisma", "migrations")];
+// The catering app's migrations and the Platform app's (apps/platform): its Prisma migrations and its identity database's numbered .sql files. Ops has its own
+// database and is not covered here. A name in migrations-baseline.txt is exempt; Platform has none, so every Platform migration is checked.
+const DIRS = [join(here, "..", "prisma", "migrations"), join(here, "..", "apps", "platform", "prisma", "migrations"), join(here, "..", "apps", "platform", "identity", "migrations")];
 
 export const RISKY = [
   [/\bDROP\s+TABLE\b/i, "drops a table"],
@@ -37,7 +37,9 @@ export function check(dirs = DIRS) {
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
       if (name === "migration_lock.toml" || baseline.has(name)) continue;
-      const problems = findProblems(readFileSync(join(dir, name, "migration.sql"), "utf8"));
+      // Prisma migrations are folders holding migration.sql; the identity ones are numbered .sql files.
+      const file = name.endsWith(".sql") ? join(dir, name) : join(dir, name, "migration.sql");
+      const problems = findProblems(readFileSync(file, "utf8"));
       if (problems.length) failures.push({ name, problems });
     }
   }

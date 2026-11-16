@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { registerProduct } from "@/modules/registry/products";
 import { setOrderCounter, createProfileFromPayment, getProductBillingEmail, getProductBuyer, productBillingProfileHistory, copyProductBillingProfile, getProductBillingProfile, listProductBillingProfiles, saveProductBillingProfile } from "../product-billing-profile";
 
 const BIZ = `biz_${"c".repeat(32)}`;
@@ -7,9 +8,11 @@ const base = { name: "Spice Route Caterers", brandName: "Spice Route", contactEm
 const save = (productKey: string, fields: Parameters<typeof saveProductBillingProfile>[0]["fields"], baseVersion: number | null, source: "account" | "product" = "account") =>
   saveProductBillingProfile({ businessId: BIZ, productKey, fields, baseVersion, source });
 
+const createdProducts: string[] = [];
 const wipe = async () => {
   await prisma.auditLog.deleteMany({ where: { subject: BIZ, action: "billing.profile_saved" } });
   await prisma.business.deleteMany({ where: { id: BIZ } });
+  if (createdProducts.length) await prisma.product.deleteMany({ where: { key: { in: createdProducts.splice(0) } } });
 };
 beforeEach(async () => { await wipe(); await prisma.business.create({ data: { id: BIZ, name: "Spice Route" } }); });
 afterEach(wipe);
@@ -96,6 +99,10 @@ describe("product billing profiles", () => {
   });
 
   it("a product the business uses with no profile yet starts as a copy of the latest one, without order numbering, so details are never typed twice", async () => {
+    // The link needs both products to exist; make any that this database lacks, and remove only those afterwards.
+    for (const key of ["catering", "impt"]) {
+      if (!(await prisma.product.findUnique({ where: { key } }))) { await registerProduct({ key, name: key, baseUrl: `http://${key}.test`, actorUserId: null }); createdProducts.push(key); }
+    }
     await prisma.businessProduct.createMany({ data: [{ businessId: BIZ, productKey: "catering" }, { businessId: BIZ, productKey: "impt" }] });
     await save("catering", { ...base, businessPhone: "+919800000123", orderNumberPrefix: "SR", orderNumberNextValue: "42", orderNumberPadding: "4" }, null);
     const list = await listProductBillingProfiles(BIZ);

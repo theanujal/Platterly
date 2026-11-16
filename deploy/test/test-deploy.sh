@@ -121,6 +121,9 @@ assert_eq "$rc" 0 "platform deploy exits 0"
 assert_eq "$(upstream platform)" 3401 "platform upstream is green's port (3401)"
 assert_contains "$CALLS" "npx prisma migrate deploy (in $ROOT/platform/green/apps/platform)" "platform migrations run in apps/platform"
 assert_contains "$CALLS" "npm run identity:migrate (in $ROOT/platform/green/apps/platform)" "the identity database is migrated too"
+assert_contains "$CALLS" "node scripts/check-migrations.mjs" "the migration guard runs for the Platform"
+a=$(grep -n "node scripts/check-migrations.mjs" "$CALLS" | tail -1 | cut -d: -f1); b=$(grep -n "migrate deploy (in $ROOT/platform" "$CALLS" | head -1 | cut -d: -f1)
+if [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then ok "the guard runs before the Platform migrates"; else bad "the guard did not run before the Platform migrated ($a $b)"; fi
 assert_eq "$(active catering)" blue "catering was not touched"
 
 echo "a bad app name is refused"

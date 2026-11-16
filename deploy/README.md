@@ -30,16 +30,16 @@ Nothing here is needed until go-live. The scripts are tested with stand-ins (`ba
 ## Every release
 `deploy.sh catering` (or `ops`) builds the idle slot, runs the migration guard, backs up the database, runs migrations, starts the slot, waits for
 `/api/health`, tests and reloads Nginx, then stops the old slot after `DRAIN_MINUTES`. Any failure before the switch leaves the live slot as it was.
-Order for a release that touches several apps: **platform first, then catering, then ops** (`docs/production-checklist.md`).
+Order for a release that touches several apps, the same as the first go-live: **platform, then ops, then catering** (`docs/go-live-order.md`). Catering last because it refuses to deploy until the central sign-in answers.
 
 - **Roll back:** `rollback.sh catering` (within the drain window it is instant; afterwards it restarts the old slot first).
 - **See what is live:** `status.sh`.
 - Rollback does not undo migrations. That is why migrations are additive; a destructive change ships in two releases (expand, then contract).
 
 ## Backups
-`backup.sh` (nightly 02:15 and before each deploy) dumps both databases, archives uploads and site pictures, stores an encrypted copy of the env
+`backup.sh` (nightly 02:15 and before each deploy) dumps the databases (catering, ops, and the Platform's platform and identity ones once `platform.env` exists), archives uploads and site pictures, stores an encrypted copy of the env
 files, verifies every dump by listing it back, and keeps 14 daily, 8 weekly and 12 monthly copies (`KEEP_*` in deploy.conf). `last-backup.json` shows the
-result; `status.sh` prints it. `restore-drill.sh` (Sundays) restores the newest dump into scratch databases and checks row counts, so you learn a backup is bad
+result; `status.sh` prints it. `restore-drill.sh` (Sundays) restores the newest dump of each database (including the Platform's identity one, which holds the passwords) into scratch databases and checks row counts, so you learn a backup is bad
 before you need it.
 
 Restore for real: `pg_restore --clean --if-exists -d <db> <dump>` into the database, stop the slots first, then start them.

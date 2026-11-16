@@ -36,7 +36,7 @@ export function Footer({ cookieSettings = false }: { cookieSettings?: boolean })
             <div className="flex flex-col justify-between gap-20">
             <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3">
               <Group title="Products">
-                <Link href="/catering/" className={LINK}>
+                <Link href="/caterly/" className={LINK}>
                   Caterly by Platterly
                 </Link>
               </Group>

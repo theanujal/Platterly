@@ -5,7 +5,7 @@ import { registerProduct } from "@/modules/registry/products";
 import { POST as openPOST } from "@/app/api/platform/account-deletions/route";
 import { POST as withdrawPOST } from "@/app/api/platform/account-deletions/withdraw/route";
 import { POST as statusPOST } from "@/app/api/platform/account-deletions/status/route";
-import { approveAccountDeletion, restoreAccountDeletion } from "../account-deletions";
+import { APPROVING_STALE_MS, approveAccountDeletion, declineAccountDeletion, restoreAccountDeletion } from "../account-deletions";
 
 const sendEmail = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("@/modules/messages/zeptomail", () => ({ sendEmail, zeptoConfigured: () => true }));
@@ -88,16 +88,52 @@ describe("account deletion with a business", () => {
     expect(await businessStatus()).toBe("ACTIVE");
   });
 
-  it("a product that refuses puts the request back to pending; the retry tells every product again and finishes", async () => {
+  it("a product that refuses puts the request back to pending and brings back the products suspended in that try; the retry finishes", async () => {
     const { id } = await openRequest();
     refuse = { adbizb: true };
     await expect(approveAccountDeletion(id, null, new Date(), stub)).rejects.toThrow(/adbizb did not accept the suspension/);
+    expect(received).toEqual([{ product: "adbiza", type: "business.delete" }, { product: "adbizb", type: "business.delete" }, { product: "adbiza", type: "business.restore" }]);
     expect(await requestStatus(id)).toBe("PENDING");
-    expect(await businessStatus()).toBe("PENDING_DELETE"); // the first product already accepted
+    expect(await businessStatus()).toBe("ACTIVE"); // nothing stays suspended, so Decline afterwards leaves the business as it was
     received = []; refuse = {};
     await approveAccountDeletion(id, null, new Date(), stub);
-    expect(received).toEqual([{ product: "adbiza", type: "business.delete" }, { product: "adbizb", type: "business.delete" }]); // not skipped because the business is PENDING_DELETE
+    expect(received).toEqual([{ product: "adbiza", type: "business.delete" }, { product: "adbizb", type: "business.delete" }]);
     expect(await requestStatus(id)).toBe("APPROVED");
+    expect(await businessStatus()).toBe("PENDING_DELETE");
+  });
+
+  it("a business that was already suspended is not restored by a failed try, and a retry keeps its restore date", async () => {
+    const { id } = await openRequest();
+    const first = new Date("2026-11-01T00:00:00Z");
+    await prisma.business.update({ where: { id: businessId }, data: { status: "PENDING_DELETE", deleteAfter: new Date(first.getTime() + 30 * 86_400_000) } });
+    refuse = { adbizb: true };
+    await expect(approveAccountDeletion(id, null, new Date(), stub)).rejects.toThrow(/did not accept/);
+    expect(received.some((r) => r.type === "business.restore")).toBe(false);
+    refuse = {};
+    await approveAccountDeletion(id, null, new Date("2026-11-10T00:00:00Z"), stub);
+    const row = await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id } });
+    expect(row.eraseAfter?.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+    expect((await prisma.business.findUniqueOrThrow({ where: { id: businessId } })).deleteAfter?.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+  });
+
+  it("a request stuck in APPROVING can be approved again once the claim is stale, but not while it is fresh", async () => {
+    const { id } = await openRequest();
+    const now = new Date();
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVING", decidedAt: now } });
+    await expect(approveAccountDeletion(id, null, now, stub)).rejects.toThrow(/no longer pending/);
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { decidedAt: new Date(now.getTime() - APPROVING_STALE_MS - 1000) } });
+    await approveAccountDeletion(id, null, now, stub);
+    expect(await requestStatus(id)).toBe("APPROVED");
+  });
+
+  it("a stale APPROVING request can be declined: the business is brought back first", async () => {
+    const { id } = await openRequest();
+    await prisma.business.update({ where: { id: businessId }, data: { status: "PENDING_DELETE", deleteAfter: new Date() } });
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVING", decidedAt: new Date(Date.now() - APPROVING_STALE_MS - 1000) } });
+    await declineAccountDeletion(id, "Please finish your invoices first.", null, new Date(), stub);
+    expect(received.map((r) => r.type)).toEqual(["business.restore", "business.restore"]);
+    expect(await requestStatus(id)).toBe("DECLINED");
+    expect(await businessStatus()).toBe("ACTIVE");
   });
 
   it("a withdrawal that arrives while staff approve is refused: the request ends approved, never withdrawn with a suspended business", async () => {

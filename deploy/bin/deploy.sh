@@ -37,6 +37,8 @@ if [ "$app" = ops ]; then
   as_app "$app" "$clone" node scripts/check-migrations.mjs
   as_app "$app" "$dir" npm ci
 elif [ "$app" = platform ]; then
+  # Covers the Platform's Prisma migrations and its identity database's numbered .sql files (the database with everyone's passwords).
+  as_app "$app" "$clone" node scripts/check-migrations.mjs
   as_app "$app" "$dir" npm ci
 else
   as_app "$app" "$clone" npm ci
@@ -45,7 +47,7 @@ fi
 as_app "$app" "$dir" npm run build
 
 # 3. Database: backup, then only additive migrations (both slots share the database, so the live slot keeps working).
-# Order for a release that touches several apps: Platform first, then catering, then Ops (docs/go-live-order.md).
+# Order for a release that touches several apps: Platform, then Ops, then catering (docs/go-live-order.md).
 as_app "$app" "$PLATTERLY_ROOT" "$HERE/backup.sh" --db-only --tag "pre-deploy-$app-${sha:0:8}"
 as_app "$app" "$dir" npx prisma migrate deploy
 # The Platform has a second database, the identity one (people, passwords, sessions), with its own numbered SQL migrations.

@@ -71,40 +71,90 @@ async function linkedProducts(businessId: string): Promise<string[]> {
   return (await prisma.businessProduct.findMany({ where: { businessId }, select: { productKey: true } })).map((p) => p.productKey);
 }
 
+/** An APPROVING claim older than this is treated as abandoned (Ops restarted or crashed mid-approve): staff can claim it again or decline it. */
+export const APPROVING_STALE_MS = 5 * 60_000;
+export const isStaleApproving = (row: { status: string; decidedAt: Date | null }, now: Date = new Date()) =>
+  row.status === "APPROVING" && (!row.decidedAt || now.getTime() - row.decidedAt.getTime() > APPROVING_STALE_MS);
+
+/** Brings the business back in the given products (best effort, returns the products that refused). */
+async function restoreProducts(businessId: string, productKeys: string[], staffId: string | null, fetchImpl?: typeof fetch): Promise<string[]> {
+  const failed: string[] = [];
+  for (const productKey of productKeys) {
+    try {
+      const result = await restoreBusiness(businessId, productKey, staffId, fetchImpl);
+      if (!result.ok) failed.push(productKey);
+    } catch { failed.push(productKey); }
+  }
+  return failed;
+}
+
 /**
- * Approve: the request is claimed first (PENDING to APPROVING, which a withdrawal refuses), then the business (if there is one) is suspended in every product it
- * uses and stays restorable for the retention period, then the request is marked approved. If a product refuses, the request goes back to PENDING and the reason
- * is shown to staff. Every product is told on every try (suspending an already suspended business is harmless), so a retry after a partial failure finishes the job.
+ * Approve: the request is claimed first (PENDING to APPROVING, with the claim time in `decidedAt`; a withdrawal refuses it, and a claim older than
+ * APPROVING_STALE_MS is taken over so a crash never strands it), then the business (if there is one) is suspended in every product it uses and stays restorable for
+ * the retention period, then the request is marked approved. If a product refuses, the products suspended in this try are restored, the request goes back to PENDING
+ * and the reason is shown to staff. Every product is told on every try (suspending an already suspended business is harmless). A business that was already
+ * suspended keeps its original restore date, so a retry never pushes it out again.
  */
 export async function approveAccountDeletion(id: string, staffId: string | null, now: Date = new Date(), fetchImpl?: typeof fetch): Promise<void> {
-  const claimed = await prisma.accountDeletionRequest.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVING" } });
+  const staleBefore = new Date(now.getTime() - APPROVING_STALE_MS);
+  const claimed = await prisma.accountDeletionRequest.updateMany({
+    where: { id, OR: [{ status: "PENDING" }, { status: "APPROVING", OR: [{ decidedAt: null }, { decidedAt: { lt: staleBefore } }] }] },
+    data: { status: "APPROVING", decidedAt: now },
+  });
   if (claimed.count === 0) throw new LifecycleError("This request is no longer pending.");
   const row = await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id } });
-  const eraseAfter = new Date(now.getTime() + RETENTION_DAYS * 86_400_000);
+  let eraseAfter = new Date(now.getTime() + RETENTION_DAYS * 86_400_000);
+  const suspendedNow: string[] = [];
+  let before: { status: string; deleteAfter: Date | null } | null = null;
   try {
     if (row.businessId) {
-      const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true } });
+      const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, status: true, deleteAfter: true } });
       if (business) {
+        before = business;
         for (const productKey of await linkedProducts(row.businessId)) {
           const result = await deleteBusiness(row.businessId, productKey, business.name, staffId, now, fetchImpl);
           if (!result.ok) throw new LifecycleError(`${productKey} did not accept the suspension: ${result.error}`);
+          suspendedNow.push(productKey);
+        }
+        // Already suspended before this try (an earlier attempt that was cut off): keep that restore date instead of moving it out again.
+        if (business.status === "PENDING_DELETE" && business.deleteAfter) {
+          eraseAfter = business.deleteAfter;
+          await prisma.business.update({ where: { id: row.businessId }, data: { deleteAfter: business.deleteAfter } });
         }
       }
     }
     await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVED", decidedAt: now, decidedBy: staffId, eraseAfter } });
   } catch (error) {
-    await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING" } });
-    throw error;
+    // Undo what this try did, unless the business was already suspended before it (that suspension is not ours to undo).
+    let note = "";
+    if (row.businessId && before && before.status !== "PENDING_DELETE" && suspendedNow.length > 0) {
+      const failed = await restoreProducts(row.businessId, suspendedNow, staffId, fetchImpl);
+      if (failed.length > 0) note = ` The business is still suspended in ${failed.join(", ")}; restore it there by hand.`;
+    } else if (row.businessId && before?.status === "PENDING_DELETE") {
+      // Already suspended before this try: put its restore date back, since each suspension call moved it.
+      await prisma.business.update({ where: { id: row.businessId }, data: { deleteAfter: before.deleteAfter } }).catch(() => undefined);
+    }
+    await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING", decidedAt: null } });
+    throw note && error instanceof Error ? new LifecycleError(`${error.message}${note}`) : error;
   }
   await audit({ actorUserId: staffId, action: "account_deletion.approved", subject: row.requestId, detail: { businessId: row.businessId, eraseAfter: eraseAfter.toISOString() } });
 }
 
-export async function declineAccountDeletion(id: string, reason: string, staffId: string | null, now: Date = new Date()): Promise<void> {
+/**
+ * Decline a pending request. A stale APPROVING one (the approve was cut off) can be declined too: the business may be half suspended, so it is restored first;
+ * if a product refuses, the request stays as it is and staff are told which one.
+ */
+export async function declineAccountDeletion(id: string, reason: string, staffId: string | null, now: Date = new Date(), fetchImpl?: typeof fetch): Promise<void> {
   const text = reason.trim().slice(0, 500);
   if (!text) throw new LifecycleError("Give the person a reason for declining.");
-  const row = await prisma.accountDeletionRequest.findUnique({ where: { id }, select: { requestId: true, status: true } });
-  if (!row || row.status !== "PENDING") throw new LifecycleError("This request is no longer pending.");
-  await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "DECLINED", declineReason: text, decidedAt: now, decidedBy: staffId } });
+  const row = await prisma.accountDeletionRequest.findUnique({ where: { id }, select: { requestId: true, status: true, decidedAt: true, businessId: true } });
+  if (!row || (row.status !== "PENDING" && !isStaleApproving(row, now))) throw new LifecycleError("This request is no longer pending.");
+  if (row.status === "APPROVING" && row.businessId) {
+    const failed = await restoreProducts(row.businessId, await linkedProducts(row.businessId), staffId, fetchImpl);
+    if (failed.length > 0) throw new LifecycleError(`${failed.join(", ")} did not accept the restore, so the request was not declined. Try again.`);
+  }
+  const done = await prisma.accountDeletionRequest.updateMany({ where: { id, status: row.status }, data: { status: "DECLINED", declineReason: text, decidedAt: now, decidedBy: staffId } });
+  if (done.count === 0) throw new LifecycleError("This request is no longer pending.");
   await audit({ actorUserId: staffId, action: "account_deletion.declined", subject: row.requestId, detail: { reason: text } });
 }
 
