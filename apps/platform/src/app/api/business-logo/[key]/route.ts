@@ -7,5 +7,5 @@ export async function GET(request: Request, { params }: { params: Promise<{ key:
   if (hostKind(requestHost(request.headers)) !== "account") return Response.json({ error: "not_found" }, { status: 404 });
   const logo = await readLogo((await params).key);
   if (!logo) return Response.json({ error: "not_found" }, { status: 404 });
-  return new Response(new Uint8Array(logo.bytes), { headers: { "content-type": logo.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=31536000, immutable", "content-security-policy": "default-src 'none'; sandbox" } });
+  return new Response(new Uint8Array(logo.bytes), { headers: { "content-type": logo.type, "x-content-type-options": "nosniff", "cache-control": "public, max-age=300", "content-security-policy": "default-src 'none'; sandbox" } });
 }

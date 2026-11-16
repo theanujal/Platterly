@@ -49,7 +49,7 @@ function Logo({ card }: { card: Pick<AccountProductCard, "name" | "logoUrl"> | n
 
 /**
  * The top of Subscriptions (AJ's reference, 2026-11-15): three summary cards, "Your subscriptions" (one row per product, the names, lines and logos from Ops),
- * the benefits and the help card. Everything shown is the business's real billing; nothing is invented, and a missing value shows a dash.
+ * the benefits and the help card. Everything shown is the business's real billing; nothing is made up, and a missing value shows a dash.
  */
 export function SubscriptionsOverview({ subscriptions, invoices, payments, storeOrigin, onChanged }: { subscriptions: SubscriptionRow[]; invoices: InvoiceRow[]; payments: PaymentRow[]; storeOrigin: string; onChanged: () => void }) {
   const { state } = useProductCards();
