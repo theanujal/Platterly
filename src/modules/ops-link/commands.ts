@@ -106,8 +106,10 @@ async function execute(command: Command): Promise<CommandReply> {
       return { status: 200, body: { ok: true, status: "SUSPENDED", dataRemoved: false } };
     }
     case "business.erase": {
-      // Irreversible. Only a business Ops already suspended for deletion (SUSPENDED) can be erased, and the typed confirmation is the business's name.
-      if (command.payload.confirmation.trim() !== org.name.trim()) return { status: 400, body: { ok: false, error: "confirmation_mismatch" } };
+      // Irreversible. Only a business Ops already suspended for deletion (SUSPENDED) can be erased. Ops confirms with the business id (a rename that Ops has not heard
+      // about must not block the erase); the business name is still accepted.
+      const confirmation = command.payload.confirmation.trim();
+      if (confirmation !== command.businessId && confirmation !== org.name.trim()) return { status: 400, body: { ok: false, error: "confirmation_mismatch" } };
       if (org.status !== "SUSPENDED") return { status: 409, body: { ok: false, error: "not_suspended_for_deletion" } };
       const done = await eraseTenant(org.id);
       return { status: 200, body: { ok: true, erased: done.removed, people: done.people } };

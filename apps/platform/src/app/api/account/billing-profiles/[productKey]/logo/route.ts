@@ -1,5 +1,6 @@
 import { hostKind, requestHost } from "@/lib/routing/hosts";
-import { getSession } from "@/lib/session";
+import { getSession, getSessionRef } from "@/lib/session";
+import { identityPool } from "@/modules/auth/identity-db";
 import { accountOrigin } from "@/modules/auth/config";
 import { LOGO_MAX_BYTES, saveLogo } from "@/modules/account/business-logo";
 import { billingAccess } from "@/modules/store/billing-rights";
@@ -17,5 +18,8 @@ export async function POST(request: Request) {
   if (Number(request.headers.get("content-length") ?? "0") > LOGO_MAX_BYTES + 1024) return Response.json({ status: "too_large" }, { status: 413, headers: NO_STORE });
   const saved = await saveLogo(new Uint8Array(await request.arrayBuffer()));
   if (!saved.ok) return Response.json({ status: saved.reason }, { status: REFUSALS[saved.reason], headers: NO_STORE });
+  // Remember who uploaded the file so a permanent erase can delete it even if the form is never saved. Not worth failing an upload over.
+  const ref = await getSessionRef();
+  if (ref) await identityPool().query(`insert into "accountLogoUpload" ("key", "userId") values ($1, $2) on conflict do nothing`, [saved.key, ref.sub]).catch(() => undefined);
   return Response.json({ status: "ok", url: `${accountOrigin()}/api/business-logo/${saved.key}` }, { headers: NO_STORE });
 }

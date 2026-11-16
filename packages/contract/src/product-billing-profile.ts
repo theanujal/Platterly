@@ -29,6 +29,8 @@ export interface ProductBillingProfileRequest {
   copyFrom?: string;
   editedBy?: string;
   source: "account" | "product";
+  /** "business": saved from the Business Profile card alone, so the billing address and contact are not required yet (the Account shows the profile as incomplete). */
+  section?: "business";
 }
 
 /**
@@ -96,12 +98,13 @@ export function parseProductBillingProfileRequest(input: unknown, options: { len
   if (base !== null && !(typeof base === "number" && Number.isInteger(base) && base >= 1)) return fail("baseVersion must be a version number or null");
   if (input.source !== "account" && input.source !== "product") return fail("source must be account or product");
   if (input.editedBy !== undefined && (typeof input.editedBy !== "string" || !input.editedBy || input.editedBy.length > 100)) return fail("editedBy must be short text");
-  const common = { baseVersion: base as number | null, source: input.source as "account" | "product", ...(typeof input.editedBy === "string" ? { editedBy: input.editedBy } : {}) };
+  const businessOnly = input.section === "business";
+  const common = { baseVersion: base as number | null, source: input.source as "account" | "product", ...(typeof input.editedBy === "string" ? { editedBy: input.editedBy } : {}), ...(businessOnly ? { section: "business" as const } : {}) };
   if (input.copyFrom !== undefined) {
     if (!isProductKey(input.copyFrom)) return fail("copyFrom must be a product key");
     return ok({ ...common, copyFrom: input.copyFrom });
   }
-  const fields = parseFields(input.fields, options.lenient);
+  const fields = parseFields(input.fields, options.lenient || businessOnly);
   return fields.ok ? ok({ ...common, fields: fields.value }) : fields;
 }
 

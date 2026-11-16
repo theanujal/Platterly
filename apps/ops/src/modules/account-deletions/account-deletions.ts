@@ -5,6 +5,7 @@ import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/db";
 import { notify } from "@/modules/notifications/notifications";
 import { signedCall } from "@/modules/account-reviews/account-reviews";
+import { deleteRazorpayToken, platformRazorpay, updateRazorpayCustomer } from "@/modules/billing/razorpay";
 import { LifecycleError, deleteBusiness, restoreBusiness, runCommand } from "@/modules/lifecycle/lifecycle";
 
 /**
@@ -126,6 +127,8 @@ const stripContact = (column: string) => CONTACT_KEYS.reduce((expr, key) => `${e
  */
 export async function anonymiseBusinessRecords(businessId: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    // Printed-stand orders keep their numbers, amounts and invoice (legal buyer name, address, GSTIN); the delivery address, contact person and logo go.
+    await tx.$executeRawUnsafe(`UPDATE "stand_order" SET "shipTo" = '{"erased":true}'::jsonb, "buyer" = ${stripContact('"buyer"')}, "invoiceSnapshot" = CASE WHEN "invoiceSnapshot" ? 'buyer' THEN jsonb_set("invoiceSnapshot", '{buyer}', ${stripContact(`("invoiceSnapshot"->'buyer')`)}) ELSE "invoiceSnapshot" END, "kitchenLogoUrl" = NULL, "trackingNote" = NULL WHERE "businessId" = $1`, businessId);
     await tx.productBillingProfile.deleteMany({ where: { businessId } });
     await tx.paymentMethod.deleteMany({ where: { businessId } });
     await tx.razorpayCustomer.deleteMany({ where: { businessId } });
@@ -133,6 +136,24 @@ export async function anonymiseBusinessRecords(businessId: string): Promise<void
     await tx.$executeRawUnsafe(`UPDATE "subscription_payment" SET "buyer" = ${stripContact('"buyer"')}, "invoiceSnapshot" = CASE WHEN "invoiceSnapshot" ? 'buyer' THEN jsonb_set("invoiceSnapshot", '{buyer}', ${stripContact(`("invoiceSnapshot"->'buyer')`)}) ELSE "invoiceSnapshot" END WHERE "businessId" = $1`, businessId);
     await tx.business.update({ where: { id: businessId }, data: { name: `Erased business ${businessId.slice(-6)}`, ownerName: null, ownerEmail: null, ownerPhone: null } });
   });
+}
+
+const isNotFound = (error: unknown) => error instanceof Error && /\(404\)/.test(error.message);
+
+/**
+ * Razorpay holds a customer record and saved tokens for the business. Razorpay has no way to delete a customer, so the saved cards and UPI ids are deleted and the customer
+ * is overwritten with placeholders. Runs before anything else is erased: a Razorpay outage stops the erase with nothing changed. Skipped when Razorpay is not configured.
+ */
+export async function scrubRazorpayCustomer(businessId: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const creds = platformRazorpay();
+  const customer = await prisma.razorpayCustomer.findUnique({ where: { businessId } });
+  if (!creds || !customer) return;
+  const tokens = await prisma.paymentMethod.findMany({ where: { businessId, razorpayTokenId: { not: null } }, select: { razorpayTokenId: true } });
+  for (const t of tokens) {
+    try { await deleteRazorpayToken(creds, customer.customerId, t.razorpayTokenId!, fetchImpl); } catch (error) { if (!isNotFound(error)) throw error; }
+  }
+  const tag = businessId.slice(-6).toLowerCase();
+  try { await updateRazorpayCustomer(creds, customer.customerId, { name: `Erased business ${tag}`, email: `erased-${tag}@erased.invalid`, contact: "9999999999" }, fetchImpl); } catch (error) { if (!isNotFound(error)) throw error; }
 }
 
 /**
@@ -147,11 +168,14 @@ export async function requestAccountErasure(id: string, confirmation: string, st
   if (confirmation.trim().toLowerCase() !== row.email.toLowerCase()) throw new LifecycleError("Type the person's email exactly to confirm.");
   let logoUrls: string[] = [];
   if (row.businessId) {
+    const undelivered = await prisma.standOrder.count({ where: { businessId: row.businessId, paymentStatus: "PAID", fulfilment: { not: "DELIVERED" } } });
+    if (undelivered > 0) throw new LifecycleError("A paid printed-stand order has not been delivered yet. Deliver or cancel it first, because erasing removes its delivery address.");
+    await scrubRazorpayCustomer(row.businessId, fetchImpl);
     const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true } });
     if (business) {
       logoUrls = (await prisma.productBillingProfile.findMany({ where: { businessId: row.businessId, logoUrl: { not: null } }, select: { logoUrl: true } })).map((p) => p.logoUrl!);
       for (const productKey of await linkedProducts(row.businessId)) {
-        const result = await runCommand({ productKey, dedupeKey: `erase:${row.businessId}:${productKey}`, command: { type: "business.erase", businessId: row.businessId, payload: { confirmation: business.name } } }, fetchImpl);
+        const result = await runCommand({ productKey, dedupeKey: `erase:${row.businessId}:${productKey}`, command: { type: "business.erase", businessId: row.businessId, payload: { confirmation: row.businessId! } } }, fetchImpl);
         if (!result.ok) throw new LifecycleError(`${productKey} did not accept the erase: ${result.error}`);
       }
       await anonymiseBusinessRecords(row.businessId);

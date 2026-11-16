@@ -5,7 +5,7 @@ import { POST as openPOST } from "@/app/api/platform/account-deletions/route";
 import { POST as statusPOST } from "@/app/api/platform/account-deletions/status/route";
 import { POST as withdrawPOST } from "@/app/api/platform/account-deletions/withdraw/route";
 import { POST as erasedPOST } from "@/app/api/platform/account-deletions/erased/route";
-import { anonymiseBusinessRecords, approveAccountDeletion, declineAccountDeletion, requestAccountErasure, restoreAccountDeletion } from "../account-deletions";
+import { anonymiseBusinessRecords, scrubRazorpayCustomer, approveAccountDeletion, declineAccountDeletion, requestAccountErasure, restoreAccountDeletion } from "../account-deletions";
 
 // The Platform opens a deletion request when a person asks on My Profile; staff decide; the Platform asks for the decision.
 const SECRET = "platform-billing-secret-0123456789abcdef0123";
@@ -134,5 +134,75 @@ describe("final erasure (staff Erase now)", () => {
       await prisma.subscriptionPayment.deleteMany({ where: { businessId } });
       await prisma.business.delete({ where: { id: businessId } });
     }
+  });
+});
+
+describe("erase gaps closed (Razorpay record, stand orders)", () => {
+  const mk = async () => {
+    const businessId = `biz_${crypto.randomUUID().replace(/-/g, "")}`;
+    await prisma.business.create({ data: { id: businessId, name: "Gap Kitchen", ownerName: "Ravi", ownerEmail: "ravi@example.com", ownerPhone: "+919800000999" } });
+    return businessId;
+  };
+  const cleanup = async (businessId: string) => {
+    await prisma.standOrder.deleteMany({ where: { businessId } });
+    await prisma.business.delete({ where: { id: businessId } });
+  };
+
+  it("stand orders lose delivery address, contact person and logo; amounts, invoice and legal buyer stay", async () => {
+    const businessId = await mk();
+    try {
+      const buyer = { name: "Gap Kitchen", gstin: "27AAPFU0939F1ZV", contactName: "Ravi", contactEmail: "ravi@example.com", contactPhone: "+919800000999" };
+      await prisma.standOrder.create({ data: { id: `so_${crypto.randomUUID()}`, businessId, productKey: "catering", quantity: 1, unitAmount: 100, amount: 100, gstPercent: 18, gstAmount: 18, total: 118, paymentStatus: "PAID", fulfilment: "DELIVERED", invoiceNumber: `SO-${crypto.randomUUID()}`, invoiceSnapshot: { buyer }, shipTo: { name: "Ravi", line1: "12 MG Road", phone: "+919800000999" }, buyer, kitchenName: "Gap Kitchen", kitchenLogoUrl: "http://x/logo.png", linkUrl: "http://x/l" } });
+      await anonymiseBusinessRecords(businessId);
+      const row = await prisma.standOrder.findFirstOrThrow({ where: { businessId } });
+      expect(row.shipTo).toEqual({ erased: true });
+      expect(row.buyer).toEqual({ name: "Gap Kitchen", gstin: "27AAPFU0939F1ZV" });
+      expect(row.invoiceSnapshot).toEqual({ buyer: { name: "Gap Kitchen", gstin: "27AAPFU0939F1ZV" } });
+      expect(row.kitchenLogoUrl).toBeNull();
+      expect(Number(row.total)).toBe(118);
+    } finally { await cleanup(businessId); }
+  });
+
+  it("Razorpay: saved tokens are deleted and the customer is overwritten with placeholders; a 404 is fine; nothing happens without keys", async () => {
+    const businessId = await mk();
+    const prev = { id: process.env.RAZORPAY_KEY_ID, secret: process.env.RAZORPAY_KEY_SECRET };
+    try {
+      await prisma.razorpayCustomer.create({ data: { businessId, customerId: `cust_${businessId.slice(-8)}` } });
+      await prisma.paymentMethod.create({ data: { id: `pm_${crypto.randomUUID()}`, businessId, kind: "CARD", label: "Visa ending 4366", razorpayTokenId: `token_${businessId.slice(-8)}` } });
+      const calls: string[] = [];
+      const fetchImpl = (async (url: string, init: RequestInit) => {
+        calls.push(`${init.method} ${new URL(url).pathname}`);
+        if (init.method === "DELETE") return new Response("{}", { status: 404 });
+        return new Response(JSON.stringify({ id: "c" }), { status: 200 });
+      }) as never;
+      delete process.env.RAZORPAY_KEY_ID; delete process.env.RAZORPAY_KEY_SECRET;
+      await scrubRazorpayCustomer(businessId, fetchImpl);
+      expect(calls).toEqual([]);
+      process.env.RAZORPAY_KEY_ID = "rzp_test_x"; process.env.RAZORPAY_KEY_SECRET = "s";
+      await scrubRazorpayCustomer(businessId, fetchImpl);
+      expect(calls).toEqual([`DELETE /v1/customers/cust_${businessId.slice(-8)}/tokens/token_${businessId.slice(-8)}`, `PUT /v1/customers/cust_${businessId.slice(-8)}`]);
+      // Razorpay down: the erase must stop.
+      await expect(scrubRazorpayCustomer(businessId, (async () => new Response("{}", { status: 500 })) as never)).rejects.toThrow(/Razorpay refused/);
+    } finally {
+      if (prev.id === undefined) delete process.env.RAZORPAY_KEY_ID; else process.env.RAZORPAY_KEY_ID = prev.id;
+      if (prev.secret === undefined) delete process.env.RAZORPAY_KEY_SECRET; else process.env.RAZORPAY_KEY_SECRET = prev.secret;
+      await prisma.paymentMethod.deleteMany({ where: { businessId } });
+      await prisma.razorpayCustomer.deleteMany({ where: { businessId } });
+      await cleanup(businessId);
+    }
+  });
+
+  it("refuses to erase while a paid printed-stand order is not delivered, and nothing is erased", async () => {
+    const businessId = await mk();
+    try {
+      await prisma.standOrder.create({ data: { id: `so_${crypto.randomUUID()}`, businessId, productKey: "catering", quantity: 1, unitAmount: 100, amount: 100, gstPercent: 18, gstAmount: 18, total: 118, paymentStatus: "PAID", fulfilment: "PRINTING", shipTo: { line1: "12 MG Road" }, buyer: {}, kitchenName: "Gap Kitchen", linkUrl: "http://x/l" } });
+      const b = body({ businessId, businessName: "Gap Kitchen" });
+      await open(b);
+      const id = await idOf(b.requestId as string);
+      await approveAccountDeletion(id, null);
+      await expect(requestAccountErasure(id, "asha@example.com", null)).rejects.toThrow(/printed-stand order has not been delivered/);
+      expect((await prisma.standOrder.findFirstOrThrow({ where: { businessId } })).shipTo).toEqual({ line1: "12 MG Road" });
+      expect((await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id } })).eraseRequestedAt).toBeNull();
+    } finally { await cleanup(businessId); }
   });
 });

@@ -599,7 +599,7 @@ test.describe("My Products: the cards come from Ops", () => {
     await page.getByRole("button", { name: "Add payment method" }).click();
     await expect(page.getByRole("menuitem")).toHaveText([/Add card/, /Add UPI/]);
     await expect(page.getByRole("menuitem", { name: "Add card" })).toBeEnabled();
-    await expect(page.getByRole("menuitem", { name: /Add UPI/ })).toBeDisabled();
+    await expect(page.getByRole("menuitem", { name: /Add UPI/ })).toBeEnabled();
     // Adding a card asks for explicit consent first; nothing opens until it is ticked.
     await page.getByRole("menuitem", { name: "Add card" }).click();
     const consent = page.getByRole("alertdialog", { name: "Save a card" });
@@ -636,6 +636,35 @@ test.describe("My Products: the cards come from Ops", () => {
     await expect(page.getByText("Subscription renewals")).toBeVisible();
     await expect(page.getByRole("link", { name: /Contact Support/ })).toBeVisible();
     if (process.env.ACCOUNT_SHOTS) await page.screenshot({ path: `${process.env.ACCOUNT_SHOTS}/payment-methods.png`, fullPage: true });
+  });
+
+  test("Payment Methods, Add UPI edges: greyed out on an annual plan (no auto-pay), and a UPI primary is told to make a card primary first", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    await business(page);
+    const annual = [{ productKey: "caterly", product: "Caterly", planName: "Premium", interval: "ANNUAL", autoPay: null, methods: [{ id: "m1", kind: "CARD", label: "Mastercard ending 8246", isPrimary: true }] }];
+    await page.route("**/api/account/payment-methods", (r) => (r.request().method() === "GET" ? json(r, 200, { status: "ok", businessName: "Kitchen", products: annual }) : json(r, 200, { ok: true })));
+    await page.goto("/payment-methods");
+    await page.getByRole("button", { name: "Add payment method" }).click();
+    const addUpi = page.getByRole("menuitem", { name: /Add UPI/ });
+    await expect(addUpi).toBeDisabled();
+    await expect(addUpi).toHaveAttribute("title", "Available while monthly auto-renewal is on.");
+
+    // Monthly auto-pay with a UPI primary: the menu item works, Ops refuses, and the person is told why; nothing opens and nothing changes.
+    const upiPrimary = [{ productKey: "caterly", product: "Caterly", planName: "Premium", interval: "MONTHLY", autoPay: { status: "ACTIVE", nextChargeAt: "2099-12-07T00:00:00.000Z" }, methods: [{ id: "u1", kind: "UPI", label: "UPI testuser@razorpay", isPrimary: true }, { id: "m2", kind: "CARD", label: "Visa ending 4312", isPrimary: false }] }];
+    await page.unroute("**/api/account/payment-methods");
+    const posts: unknown[] = [];
+    await page.route("**/api/account/payment-methods", (r) => {
+      if (r.request().method() === "GET") return json(r, 200, { status: "ok", businessName: "Kitchen", products: upiPrimary });
+      posts.push(r.request().postDataJSON());
+      return json(r, 400, { error: "rejected", message: "A UPI id is already your primary method. Make another method primary first, then add a new UPI id." });
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Add payment method" }).click();
+    await page.getByRole("menuitem", { name: /Add UPI/ }).click();
+    await expect(page.getByText("A UPI id is already your primary method. Make another method primary first, then add a new UPI id.")).toBeVisible();
+    expect(posts).toEqual([{ action: "add-upi", productKey: "caterly" }]);
+    await expect(page.locator("iframe.razorpay-checkout-frame")).toHaveCount(0);
+    await expect(page.getByTestId("method-row")).toHaveCount(2);
   });
 
   test("a product Ops does not show has no details page", async ({ page, context }) => {

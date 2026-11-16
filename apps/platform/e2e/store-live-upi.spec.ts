@@ -225,4 +225,15 @@ test.describe("Live Store: UPI auto-pay", () => {
     await expect(methodRows().first()).toContainText("Primary");
     await expect(methodRows().first()).toContainText("UPI testuser@razorpay");
   });
+
+  test("with a UPI id as the primary, Add UPI is refused with a clear message, no Razorpay window opens and nothing changes", async () => {
+    test.setTimeout(120_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    const before = await methods();
+    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
+    await page.getByRole("menuitem", { name: "Add UPI" }).click();
+    await expect(page.getByText("A UPI id is already your primary method. Make another method primary first, then add a new UPI id.")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("iframe.razorpay-checkout-frame")).toHaveCount(0);
+    expect(await methods()).toBe(before);
+  });
 });

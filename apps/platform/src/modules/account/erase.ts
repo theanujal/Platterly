@@ -4,7 +4,7 @@ import type { Pool } from "pg";
 import type { Prisma } from "@/generated/prisma/client";
 import { writeAudit } from "../audit/write-audit";
 import { releaseSlot } from "../organisations/slots";
-import { logoDir, logoKeyFromUrl } from "./business-logo";
+import { deleteLogo, logoDir, logoKeyFromUrl } from "./business-logo";
 import { photoDir } from "./photo";
 
 /**
@@ -46,6 +46,8 @@ export async function eraseAccount(pool: Pool, input: { requestId: string; userI
   const { rows } = await pool.query(`select u."email", p."photoKey" from "user" u left join "accountProfile" p on p."userId" = u."id" where u."id" = $1`, [input.userId]);
   if (!rows[0]) return false;
   const { email, photoKey } = rows[0] as { email: string; photoKey: string | null };
+  // Logo files this person uploaded, saved or not: read before the person's rows go.
+  const uploaded = (await pool.query(`select "key" from "accountLogoUpload" where "userId" = $1`, [input.userId])).rows.map((r: { key: string }) => r.key);
   const erasePlatform: PlatformEraser = eraser ?? (async (subject, businessId) => {
     const { prisma } = await import("@/lib/db");
     await prisma.$transaction((tx) => erasePlatformRecords(tx, subject, businessId), { timeout: 30_000 });
@@ -73,5 +75,6 @@ export async function eraseAccount(pool: Pool, input: { requestId: string; userI
     const key = logoKeyFromUrl(url);
     if (key) await rm(path.join(dirs.logos ?? logoDir(), key), { force: true });
   }
+  for (const key of uploaded) await deleteLogo(key, dirs.logos ?? logoDir());
   return true;
 }

@@ -3,6 +3,7 @@ import { parseProductBillingProfileAnswer, parseProductBillingProfileConflict, t
 import { prisma } from "@/lib/db";
 import { OpsUnavailableError, opsBilling } from "./billing-client";
 import { opsLink } from "./config";
+import { canonicalUrl } from "@/lib/seo/canonical";
 import { updateTenant, type TenantProfileUpdateInput } from "@/modules/tenants/tenant";
 
 /**
@@ -85,10 +86,33 @@ export async function refreshOwnProfile(organizationId: string, businessId: stri
       await storeProfileCopy(organizationId, profile);
       // A profile made before order numbering was shared has none: hand Ops this product's own setting once.
       if (!profile.orderNumberPrefix) await reportOrderCounter(organizationId);
+    } else {
+      await seedOwnProfile(organizationId, businessId);
     }
   } catch {
     /* keep what is held */
   }
+}
+
+/**
+ * A business with no profile in Ops yet (it signed up before profiles, or a push was lost): sends Caterly's own details as its first profile, so the Account
+ * shows them without anyone retyping. Skipped while the business still has no real name. Best effort: if Ops refuses (a field Caterly allows but the profile
+ * does not, such as an odd GSTIN), nothing changes and the first save from either page still creates the profile.
+ */
+export async function seedOwnProfile(organizationId: string, businessId: string): Promise<boolean> {
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
+  if (!org.name.trim() || org.name === "Unnamed Business") return false;
+  const absolute = (u: string | null) => (u ? (/^https?:\/\//.test(u) ? u : canonicalUrl(u)) : null);
+  const result = await saveOwnProfile(businessId, null, {
+    name: org.name, brandName: null, businessPhone: org.contactPhone, contactName: null, contactEmail: null, contactPhone: null,
+    addressLine1: org.addressLine1, addressLine2: org.addressLine2, city: org.city, state: org.state, postalCode: org.postalCode, country: org.country, gstin: org.gstNumber,
+    description: org.businessDescription, website: org.websiteUrl, instagram: org.instagramUrl, facebook: org.facebookUrl,
+    orderNumberPrefix: org.orderNumberPrefix, orderNumberNextValue: String(org.orderNumberNextValue), orderNumberPadding: String(org.orderNumberPadding),
+    logoUrl: absolute(org.logo),
+  });
+  if (!result.ok) return false;
+  await storeProfileCopy(organizationId, result.profile);
+  return true;
 }
 
 export type SaveOwnResult = { ok: true; profile: ProductBillingProfileRecord } | { ok: false; conflict: ProductBillingProfileRecord | null } | { ok: false; unknownBusiness: true } | { ok: false; error: string };

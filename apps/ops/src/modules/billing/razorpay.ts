@@ -63,7 +63,7 @@ export interface RazorpaySubscription {
   customer_id?: string | null;
 }
 
-async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST" | "DELETE", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {
+async function call<T>(creds: PlatformRazorpay, method: "GET" | "POST" | "PUT" | "DELETE", path: string, body: unknown, fetchImpl: typeof fetch): Promise<T> {
   const response = await fetchImpl(`${API}${path}`, {
     method,
     headers: { Authorization: `Basic ${Buffer.from(`${creds.keyId}:${creds.keySecret}`).toString("base64")}`, "Content-Type": "application/json" },
@@ -137,3 +137,7 @@ export interface RazorpayToken {
 export const fetchCustomerTokens = (creds: PlatformRazorpay, customerId: string, fetchImpl: typeof fetch = fetch) =>
   call<{ items: RazorpayToken[] }>(creds, "GET", `/customers/${customerId}/tokens`, undefined, fetchImpl).then(({ items }) => items ?? []);
 export const deleteRazorpayToken = (creds: PlatformRazorpay, customerId: string, tokenId: string, fetchImpl: typeof fetch = fetch) => call<{ deleted: boolean }>(creds, "DELETE", `/customers/${customerId}/tokens/${tokenId}`, undefined, fetchImpl);
+
+/** Razorpay cannot delete a customer, so an erased business's record is overwritten with placeholders (name, email, contact). */
+export const updateRazorpayCustomer = (creds: PlatformRazorpay, customerId: string, p: { name: string; email: string; contact: string }, fetchImpl: typeof fetch = fetch) =>
+  call<{ id: string }>(creds, "PUT", `/customers/${customerId}`, { name: p.name, email: p.email, contact: p.contact }, fetchImpl);

@@ -306,6 +306,17 @@ describe("business lifecycle commands", () => {
     expect((await prisma.auditLog.findMany({ where: { organizationId: org.id, action: { startsWith: "tenant.delete" } } })).map((a) => a.action).sort()).toEqual(["tenant.delete_requested", "tenant.delete_restored"]);
   });
 
+  it("erase accepts the business id even when Ops has an older name; a wrong confirmation or an active business is refused", async () => {
+    const org = await makeOrg({ name: "Renamed Kitchen", status: "SUSPENDED" });
+    expect((await send(command(org.businessId, "business.erase", { confirmation: "Old Ops Name" }))).body).toMatchObject({ error: "confirmation_mismatch" });
+    expect(await prisma.organization.findUnique({ where: { id: org.id } })).not.toBeNull();
+    const active = await makeOrg({ name: "Still Active" });
+    expect((await send(command(active.businessId, "business.erase", { confirmation: active.businessId }))).body).toMatchObject({ error: "not_suspended_for_deletion" });
+    expect((await send(command(org.businessId, "business.erase", { confirmation: org.businessId }))).body).toMatchObject({ ok: true, erased: true });
+    expect(await prisma.organization.findUnique({ where: { id: org.id } })).toBeNull();
+    await prisma.organization.delete({ where: { id: active.id } }).catch(() => undefined);
+  });
+
   it("delete and restore leave a deactivated business alone (409)", async () => {
     const org = await makeOrg({ name: "Gone Kitchen", status: "DEACTIVATED" });
     expect((await send(command(org.businessId, "business.delete", { confirmation: "Gone Kitchen" }))).status).toBe(409);

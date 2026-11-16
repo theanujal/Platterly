@@ -15,6 +15,14 @@ describe("product billing profile contract", () => {
       expect(parseProductBillingProfileRequest({ baseVersion: null, source: "account", fields, ...bad }).ok).toBe(false);
     }
   });
+  it("a save from the Business Profile card alone does not need the billing address or contact; the strict save still does", () => {
+    const partial = { name: "Spice Route", businessPhone: "+919800000123", orderNumberPrefix: "SR", orderNumberNextValue: "25", orderNumberPadding: "4" };
+    expect(parseProductBillingProfileRequest({ baseVersion: null, source: "account", fields: partial }).ok).toBe(false);
+    const r = parseProductBillingProfileRequest({ baseVersion: null, source: "account", section: "business", fields: partial });
+    expect(r.ok && r.value.section).toBe("business");
+    // What IS given must still be well formed.
+    expect(parseProductBillingProfileRequest({ baseVersion: null, source: "account", section: "business", fields: { ...partial, gstin: "bad" } }).ok).toBe(false);
+  });
   it("reads a conflict answer and matches only the two real routes", () => {
     expect(parseProductBillingProfileConflict({ current: null })).toEqual({ ok: true, value: { current: null } });
     expect(parseProductBillingProfileConflict({}).ok).toBe(false);

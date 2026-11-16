@@ -105,6 +105,9 @@ describe.skipIf(!testUrl)("account deletion requests and Ops", () => {
     const logoKey = `${"a".repeat(32)}.png`;
     await writeFile(path.join(logos, logoKey), "x");
     await writeFile(path.join(logos, `${"b".repeat(32)}.png`), "x");
+    // An upload by u1 that was never saved to a profile (not in Ops's list) goes too; u2's upload stays.
+    await writeFile(path.join(logos, `${"c".repeat(32)}.png`), "x");
+    await h.pool.query(`insert into "accountLogoUpload" ("key", "userId") values ($1, 'u1')`, [`${"c".repeat(32)}.png`]);
     const erased: [string, string | null][] = [];
     const eraser = async (subject: string, businessId: string | null) => { erased.push([subject, businessId]); };
     const { eraseAccount } = await import("../erase");

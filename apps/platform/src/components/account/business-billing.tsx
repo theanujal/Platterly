@@ -352,7 +352,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
     setNotice(null);
     try {
       const fields = { ...draft, gstin: draft.gstin.trim(), logoUrl: draft.logoUrl.trim() || null };
-      const res = await fetch(`/api/account/billing-profiles/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ baseVersion: base, fields }) });
+      const res = await fetch(`/api/account/billing-profiles/${encodeURIComponent(key)}`, { method: "PUT", headers: { "content-type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ baseVersion: base, fields, ...(editing === "business" ? { section: "business" } : {}) }) });
       const body = (await res.json().catch(() => null)) as { status?: string; profile?: ProductBillingProfileRecord; current?: ProductBillingProfileRecord | null; fields?: Errors; message?: string } | null;
       if (res.ok && body?.status === "ok" && body.profile) {
         const profile = body.profile;
@@ -370,6 +370,8 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
         if (current) setState({ ...s, profiles: [...s.profiles.filter((p) => p.productKey !== key), current] });
       } else if (res.status === 422 && body?.fields) {
         setErrors(body.fields);
+        // An error on a field this card does not show would otherwise look like a save that did nothing.
+        if (editing === "business" && Object.keys(body.fields).some((k) => !["businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding"].includes(k))) setNotice({ kind: "failed", text: "Some details in the Billing Profile are missing or invalid. Complete the Billing Profile, then try again." });
       } else if (res.status === 403) {
         setState({ phase: "not_admin" });
       } else {

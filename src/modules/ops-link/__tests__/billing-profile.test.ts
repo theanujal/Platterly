@@ -83,4 +83,35 @@ describe("the shared billing profile, from Caterly", () => {
     vi.stubGlobal("fetch", (async () => { throw new Error("down"); }) as typeof fetch);
     expect(await saveOwnProfile("biz_x", 3, fields)).toMatchObject({ ok: false, error: expect.stringContaining("Nothing was changed") });
   });
+
+  it("a business with no profile in Ops gets its Caterly details sent as the first profile; an unnamed one waits; a refusal changes nothing", async () => {
+    const org = await makeOrg();
+    await prisma.organization.update({ where: { id: org.id }, data: { contactPhone: "+919800000001", gstNumber: "27AAPFU0939F1ZV", websiteUrl: "https://spice.example" } });
+    const sent: { method: string; body: string }[] = [];
+    vi.stubGlobal("fetch", (async (_url: string, init?: RequestInit) => {
+      sent.push({ method: String(init?.method), body: String(init?.body ?? "") });
+      const reply = init?.method === "GET" ? { profile: null } : { profile: record(1, { source: "product", name: "Profile Test Kitchen", city: "Old City" }) };
+      const text = JSON.stringify(reply);
+      return new Response(text, { status: 200, headers: signedHeaders(COMMAND_SECRET, newId("command"), text) });
+    }) as typeof fetch);
+    await refreshOwnProfile(org.id, "biz_seed");
+    expect(sent.map((c) => c.method)).toEqual(["GET", "PUT"]);
+    expect(JSON.parse(sent[1].body)).toMatchObject({ baseVersion: null, fields: { name: "Profile Test Kitchen", businessPhone: "+919800000001", gstin: "27AAPFU0939F1ZV", city: "Old City", website: "https://spice.example" } });
+    expect((await prisma.organizationBillingProfile.findUniqueOrThrow({ where: { organizationId: org.id } })).version).toBe(1);
+
+    const unnamed = await makeOrg();
+    await prisma.organization.update({ where: { id: unnamed.id }, data: { name: "Unnamed Business" } });
+    sent.length = 0;
+    await refreshOwnProfile(unnamed.id, "biz_unnamed");
+    expect(sent.map((c) => c.method)).toEqual(["GET"]);
+
+    const refused = await makeOrg();
+    vi.stubGlobal("fetch", (async (_url: string, init?: RequestInit) => {
+      const body = init?.method === "GET" ? { profile: null } : { error: "fields.gstin: bad" };
+      const text = JSON.stringify(body);
+      return new Response(text, { status: init?.method === "GET" ? 200 : 400, headers: signedHeaders(COMMAND_SECRET, newId("command"), text) });
+    }) as typeof fetch);
+    await expect(refreshOwnProfile(refused.id, "biz_refused")).resolves.toBeUndefined();
+    expect(await prisma.organizationBillingProfile.findUnique({ where: { organizationId: refused.id } })).toBeNull();
+  });
 });
