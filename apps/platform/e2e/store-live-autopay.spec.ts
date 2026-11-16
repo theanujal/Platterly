@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
+import { expectSavedProfile, seedBillingProfile } from "./store-live-profile";
 
 /**
  * The LIVE Store, monthly auto-pay (step 3b.2): a monthly plan is always auto-renewal, so the Store opens Razorpay's auto-pay window (a subscription for the
@@ -47,14 +48,11 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 }
 
 async function fillBilling(page: Page) {
-  await page.getByLabel("Business name").fill("Bhandarys Kitchen");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
+  // Nothing is typed any more: the checkout shows the product's saved billing profile (seeded in beforeAll).
+  await expectSavedProfile(page);
 }
 
-/** Opens the Manage page, picks the MONTHLY price of a plan and fills the billing details; stops with Pay available. */
+/** Opens the Manage page, picks the MONTHLY price of a plan and checks the saved billing profile; stops with Pay available. */
 async function chooseMonthly(p: Page, planName: string, button: "Subscribe" | "Upgrade") {
   await p.goto(`${STORE}/manage/caterly`);
   await p.getByRole("button", { name: "Monthly" }).click();
@@ -115,6 +113,7 @@ test.describe("Live Store: monthly auto-pay", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signInAsBhandarysAdmin(page);
+    seedBillingProfile(ops, BHANDARYS);
   });
   test.afterAll(async () => {
     await page.close();
@@ -165,7 +164,7 @@ test.describe("Live Store: monthly auto-pay", () => {
     await page.goto(`${ACCOUNT}/payment-methods`);
     await expect(page.getByRole("heading", { name: "Payment Methods", level: 1 })).toBeVisible();
     await expect(methodRows()).toHaveCount(1);
-    await expect(methodRows().first()).toContainText("Visa ending 4366");
+    await expect(methodRows().first()).toContainText(/4366.*Primary/);
     await expect(methodRows().first()).toContainText("Primary");
     await expect(page.getByTestId("auto-renewal")).toContainText("On.");
     await expect(page.getByTestId("pm-caterly")).toContainText(/next charge is on/);
@@ -205,13 +204,13 @@ test.describe("Live Store: monthly auto-pay", () => {
     test.setTimeout(120_000);
     await page.goto(`${ACCOUNT}/subscriptions/caterly`);
     await page.getByTestId("cancel-subscription").click();
-    await page.getByRole("switch", { name: "Pause auto-renewal" }).click();
+    await page.getByTestId("renewal-popup").getByRole("button", { name: "Pause auto-renewal" }).click();
     await page.getByRole("button", { name: "Yes, pause" }).click();
     await expect(page.getByText("Auto-renewal is paused.")).toBeVisible({ timeout: 30_000 });
     expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("PAUSED");
     // The page reloads itself with the new state.
     await expect(page.getByTestId("autopay-status")).toContainText("Paused", { timeout: 30_000 });
-    await page.getByRole("switch", { name: "Resume auto-renewal" }).click();
+    await page.getByTestId("renewal-popup").getByRole("button", { name: "Resume auto-renewal" }).click();
     await expect(page.getByText("Auto-renewal is back on.")).toBeVisible({ timeout: 30_000 });
     expect(await ops(`select "autoPay"::text from subscription where "businessId"='${BHANDARYS}' and "endDate" is null`)).toBe("ACTIVE");
   });

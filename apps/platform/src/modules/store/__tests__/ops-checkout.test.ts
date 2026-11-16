@@ -68,7 +68,7 @@ describe("Store: buy calls to Ops", () => {
   it("verify sends Razorpay's three values to the verify route and returns the invoice number", async () => {
     const { fetchImpl, seen } = ops({ body: { ok: true, status: "PAID", invoiceNumber: "FPSR-26-11-1" } });
     const result = await verifyStoreCheckout({ businessId: BIZ, opsProductKey: "catering", razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "sig" }, { env, fetchImpl });
-    expect(result).toEqual({ ok: true, answer: { status: "PAID", invoiceNumber: "FPSR-26-11-1" } });
+    expect(result).toEqual({ ok: true, answer: { status: "PAID", invoiceNumber: "FPSR-26-11-1", paymentId: null } });
     expect(seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "verify")}`);
     expect(JSON.parse(seen.body!)).toEqual({ razorpayOrderId: "order_1", razorpayPaymentId: "pay_1", signature: "sig" });
   });

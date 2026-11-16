@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
+import { expectSavedProfile, seedBillingProfile } from "./store-live-profile";
 
 /**
  * The LIVE Store: real plans from Ops, a real Razorpay TEST-mode payment through Razorpay's own checkout window and demo bank page, a failed payment, and an
@@ -49,14 +50,11 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 }
 
 async function fillBilling(page: Page) {
-  await page.getByLabel("Business name").fill("Bhandarys Kitchen");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
+  // Nothing is typed any more: the checkout shows the product's saved billing profile (seeded in beforeAll).
+  await expectSavedProfile(page);
 }
 
-/** Opens the Manage page, picks the yearly price of a plan and fills the billing details; stops with Pay available. */
+/** Opens the Manage page, picks the yearly price of a plan and checks the saved billing profile; stops with Pay available. */
 async function chooseAnnual(page: Page, planName: string, button: "Subscribe" | "Upgrade", fill = true) {
   await page.goto(`${STORE}/manage/caterly`);
   await page.getByRole("button", { name: "Annual" }).click();
@@ -76,11 +74,16 @@ async function payInRazorpay(page: Page, outcome: "Success" | "Failure") {
   // Razorpay refuses obviously sequential numbers; it moves on by itself once the number is accepted. A second payment in the same session is not asked again.
   const mobile = frame.getByPlaceholder("Mobile number");
   if (await mobile.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) await mobile.pressSequentially("9845671203", { delay: 60 });
+  // Razorpay's checkout now asks for a tap on Continue after the number.
+  const next = frame.getByRole("button", { name: "Continue", exact: true });
+  if (await mobile.isVisible().catch(() => false)) await next.click();
   await frame.getByText("Cards", { exact: true }).first().click();
   await frame.getByText("Add a new card").click();
   await frame.locator('input[name="card.number"]').pressSequentially("4111111111111111", { delay: 40 });
   await frame.locator('input[name="card.expiry"]').pressSequentially("1230", { delay: 40 });
   await frame.locator('input[name="card.cvv"]').pressSequentially("123", { delay: 40 });
+  const cardName = frame.getByPlaceholder("Enter name on card");
+  if (await cardName.isVisible().catch(() => false)) await cardName.fill("Store Buyer");
   await frame.getByPlaceholder("Enter Email").fill("buyer@auth.test");
   await frame.getByRole("button", { name: "Continue", exact: true }).click();
   await frame.getByText("Maybe later", { exact: true }).locator("visible=true").first().click({ timeout: 8000 }).catch(() => {});
@@ -97,6 +100,7 @@ test.describe("Live Store", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signInAsBhandarysAdmin(page);
+    seedBillingProfile(ops, BHANDARYS);
   });
   test.afterAll(async () => {
     await page.close();
@@ -138,13 +142,9 @@ test.describe("Live Store", () => {
   test("upgrading to the dearer plan takes the unused Premium days off the price and Ops records the credit", async () => {
     test.setTimeout(180_000);
     const before = Number(await paid());
-    // The details typed for the Premium purchase were saved when it was paid, so this purchase starts with them filled in: nothing is typed here.
+    // The saved billing profile (seeded in beforeAll) is shown on the confirm screen: nothing is typed here.
     await chooseAnnual(page, "Cross Platform", "Upgrade", false);
-    await expect(page.getByLabel("Business name")).toHaveValue("Bhandarys Kitchen");
-    await expect(page.getByLabel("Address line 1")).toHaveValue("12 MG Road");
-    await expect(page.getByLabel("City")).toHaveValue("Pune");
-    await expect(page.getByLabel("State")).toHaveValue("Maharashtra");
-    await expect(page.getByLabel("PIN code")).toHaveValue("411001");
+    await expectSavedProfile(page);
     const credit = rupees(await page.getByTestId("credit").textContent());
     const plan = rupees(await page.getByTestId("amount").textContent());
     const total = rupees(await page.getByTestId("total").textContent());
@@ -160,50 +160,70 @@ test.describe("Live Store", () => {
     expect(Number(recordedCredit)).toBeCloseTo(credit, 1);
   });
 
-  test("the Account's Billing details page shows what the payment saved, and the Admin can correct it with the same checks as the Store", async () => {
-    expect(await ops(`select city||'|'||source from billing_customer where "businessId"='${BHANDARYS}'`)).toBe("Pune|payment");
-    await page.goto(`${ACCOUNT}/billing-details`);
-    await expect(page.getByRole("heading", { name: "Billing Profiles", level: 1 })).toBeVisible();
-    await expect(page.getByLabel("City")).toHaveValue("Pune");
-    await page.getByLabel("City").fill("Mysuru");
-    await page.getByLabel("PIN code").fill("57");
-    await page.getByLabel("GSTIN").fill("NOT-A-GSTIN");
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByText("Enter the billing contact person.")).toBeVisible();
-    await expect(page.getByText("Enter a 6-digit PIN code.")).toBeVisible();
-    await expect(page.getByText("Enter a valid 15-character GSTIN, or leave it blank.")).toBeVisible();
-    expect(await ops(`select city from billing_customer where "businessId"='${BHANDARYS}'`)).toBe("Pune");
-    await page.getByLabel("PIN code").fill("570001");
-    await page.getByLabel("Billing contact person").fill("Asha Bhandary");
-    await page.getByLabel("Billing email").fill("accounts@bhandarys.example");
-    await page.getByLabel("Billing phone number").fill("98765 43210");
-    await page.getByLabel("GSTIN").fill("29aapfu0939f1zv");
-    await page.getByRole("button", { name: "Save changes" }).click();
-    await expect(page.getByText("Your billing details were saved. New invoices will use them.")).toBeVisible();
-    expect(await ops(`select city||'|'||"postalCode"||'|'||gstin||'|'||source from billing_customer where "businessId"='${BHANDARYS}'`)).toBe("Mysuru|570001|29AAPFU0939F1ZV|account");
+  test("the Account's Billing Profile card shows the saved profile, validates edits, and the Admin can correct it; the Store checkout then uses the correction", async () => {
+    expect(await ops(`select city||'|'||source from product_billing_profile where "businessId"='${BHANDARYS}' and "productKey"='catering'`)).toBe("Pune|account");
+    await page.goto(`${ACCOUNT}/billing-details/catering`);
+    const card = page.getByRole("region", { name: "Billing Profile" });
+    await expect(card).toContainText("Pune");
+    await card.getByRole("button", { name: "Edit" }).click();
+    const form = page.getByRole("form", { name: "Edit billing profile" });
+    await form.getByLabel("City").fill("Mysuru");
+    await form.getByLabel("PIN code").fill("57");
+    await form.getByLabel("GSTIN").fill("NOT-A-GSTIN");
+    await form.getByLabel("Billing contact person").fill("");
+    await form.getByRole("button", { name: "Save changes" }).click();
+    await expect(form.getByText("Enter the billing contact person.")).toBeVisible();
+    await expect(form.getByText("Enter a 6-digit PIN code.")).toBeVisible();
+    await expect(form.getByText("Enter a valid 15-character GSTIN, or leave it blank.")).toBeVisible();
+    expect(await ops(`select city||'|'||version from product_billing_profile where "businessId"='${BHANDARYS}' and "productKey"='catering'`)).toBe("Pune|1");
+    await form.getByLabel("PIN code").fill("570001");
+    await form.getByLabel("Billing contact person").fill("Asha Bhandary");
+    await form.getByLabel("GSTIN").fill("29aapfu0939f1zv");
+    await form.getByRole("button", { name: "Save changes" }).click();
+    await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
+    expect(await ops(`select city||'|'||"postalCode"||'|'||gstin||'|'||source||'|'||version from product_billing_profile where "businessId"='${BHANDARYS}' and "productKey"='catering'`)).toBe("Mysuru|570001|29AAPFU0939F1ZV|account|2");
+    expect(Number(await ops(`select count(*) from audit_log where action='billing.profile_saved' and subject='${BHANDARYS}'`))).toBeGreaterThan(0);
     await page.reload();
-    await expect(page.getByLabel("City")).toHaveValue("Mysuru");
+    await expect(page.getByRole("region", { name: "Billing Profile" })).toContainText("Mysuru");
     // Invoices already issued keep the details they were made with.
     expect(await ops(`select "invoiceSnapshot"->'buyer'->>'city' from subscription_payment where "businessId"='${BHANDARYS}' and status='PAID' order by "paidAt" limit 1`)).toBe("Pune");
+
+    // The Store checkout then shows the corrected profile. A downgrade shows the same confirm screen as a purchase; nothing is confirmed.
+    await page.goto(`${STORE}/manage/caterly`);
+    await page.getByRole("article").filter({ hasText: "Premium" }).getByRole("button", { name: "Downgrade" }).click();
+    const billing = page.getByRole("complementary", { name: "Billing and invoice details" });
+    await expect(billing).toContainText("Mysuru");
+    await expect(billing).toContainText("570001");
+    await expect(billing).toContainText("GSTIN: 29AAPFU0939F1ZV");
   });
 
-  test("the Store checkout then starts with the details the Admin saved in the Account", async () => {
-    await page.goto(`${STORE}/manage/caterly`);
-    // A downgrade shows the same billing form as a purchase, which is all this test needs; nothing is confirmed.
-    await page.getByRole("article").filter({ hasText: "Premium" }).getByRole("button", { name: "Downgrade" }).click();
-    await expect(page.getByLabel("City")).toHaveValue("Mysuru");
-    await expect(page.getByLabel("PIN code")).toHaveValue("570001");
-    await expect(page.getByLabel("GSTIN (optional)")).toHaveValue("29AAPFU0939F1ZV");
+  test("a payment is refused until the product's billing profile is complete", async () => {
+    ops(`update product_billing_profile set "postalCode"=null where "businessId"='${BHANDARYS}' and "productKey"='catering'`);
+    try {
+      await page.goto(`${STORE}/manage/caterly`);
+      // A downgrade charges nothing today, so the confirm screen is reachable; it warns that the profile is incomplete and offers the Account link.
+      await page.getByRole("article").filter({ hasText: "Premium" }).getByRole("button", { name: "Downgrade" }).click();
+      await expect(page.getByRole("complementary", { name: "Billing and invoice details" })).toContainText("no complete billing details yet");
+      await expect(page.getByRole("link", { name: "Set up billing details" })).toHaveAttribute("href", /\/billing-details\/catering$/);
+      const before = await paid();
+      const res = await page.request.post(`${STORE}/api/store/checkout`, { headers: { origin: STORE }, data: { productKey: "caterly", planId: "x", interval: "ANNUAL" } });
+      expect(res.status()).toBe(409);
+      expect((await res.json()).error).toBe("billing_profile_missing");
+      expect(await paid()).toBe(before);
+    } finally {
+      seedBillingProfile(ops, BHANDARYS);
+    }
   });
 
   test("the Store home is live and does not claim that payment is unavailable", async () => {
     await page.goto(`${STORE}/`);
-    await expect(page.getByRole("note")).toContainText("live from Platterly");
-    await expect(page.getByRole("note")).not.toContainText("Payment is not connected");
+    // The live home no longer carries a banner; the sample banner ("Prototype with sample data") must not appear, and the live plans do.
+    await expect(page.getByText("Prototype with sample data")).toHaveCount(0);
+    await expect(page.getByText("Payment is not connected")).toHaveCount(0);
     await expect(page.getByRole("article", { name: "Caterly" })).toBeVisible();
   });
 
-  test("the Old Admin buys nothing and sees no billing, no invoices and no billing details, whatever address they ask for", async ({ browser }) => {
+  test("the Old Admin buys nothing and sees no billing, no invoices and no billing profiles, whatever address they ask for", async ({ browser }) => {
     test.setTimeout(120_000);
     // A new person takes over as Admin; the signed-in person becomes the Old Admin (a former_admin row that stays active and read-only).
     const other = await browser.newPage();
@@ -211,9 +231,9 @@ test.describe("Live Store", () => {
     await other.close();
     expect(await sql("DATABASE_URL", `select count(*) from organisation_members where organisation_id='${BHANDARYS}' and central_role='former_admin' and status='active'`)).toMatch(/^[1-9]/);
 
-    await page.goto(`${ACCOUNT}/billing-details`);
+    await page.goto(`${ACCOUNT}/billing-details/catering`);
     await expect(page.getByText("Billing profiles are available to the business Admin only.")).toBeVisible();
-    await expect(page.getByLabel("City")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
     await page.goto(`${ACCOUNT}/invoices`);
     await expect(page.getByText("Billing is available to the business Admin only.")).toBeVisible();
     await page.goto(`${ACCOUNT}/payments`);
@@ -226,12 +246,17 @@ test.describe("Live Store", () => {
     await expect(page.getByRole("tab", { name: /^Subscribed products/ })).not.toHaveAttribute("aria-selected", "true");
 
     // The doors behind the pages refuse as well.
-    const get = await page.request.get(`${ACCOUNT}/api/account/billing-profile`);
-    expect(get.status()).toBe(403);
-    expect(await get.json()).not.toHaveProperty("buyer");
-    const put = await page.request.put(`${ACCOUNT}/api/account/billing-profile`, { headers: { origin: ACCOUNT }, data: { name: "Hijack", addressLine1: "1 Road", city: "Pune", state: "Maharashtra", postalCode: "411001" } });
+    for (const path of ["billing-profiles", "billing-profiles/catering", "billing-profiles/catering/history", "billing-profile"]) {
+      const get = await page.request.get(`${ACCOUNT}/api/account/${path}`);
+      // The per-product address only accepts PUT, so a GET there is a 405; every other address answers 403. Either way nothing is handed over.
+      expect(get.status(), path).toBe(path === "billing-profiles/catering" ? 405 : 403);
+      if (get.status() === 405) continue;
+      expect(await get.json()).not.toHaveProperty("buyer");
+      expect(await get.json()).not.toHaveProperty("profile");
+    }
+    const put = await page.request.put(`${ACCOUNT}/api/account/billing-profiles/catering`, { headers: { origin: ACCOUNT }, data: { name: "Hijack", baseVersion: 2, addressLine1: "1 Road", city: "Pune", state: "Maharashtra", postalCode: "411001" } });
     expect(put.status()).toBe(403);
-    expect(await ops(`select name from billing_customer where "businessId"='${BHANDARYS}'`)).toBe("Bhandarys Kitchen");
+    expect(await ops(`select name from product_billing_profile where "businessId"='${BHANDARYS}' and "productKey"='catering'`)).toBe("Bhandarys Kitchen");
     expect((await page.request.get(`${ACCOUNT}/api/account/billing`)).status()).toBe(200);
     expect(await (await page.request.get(`${ACCOUNT}/api/account/billing`)).json()).toEqual({ status: "not_admin" });
     const paidId = await ops(`select id from subscription_payment where "businessId"='${BHANDARYS}' and status='PAID' order by "paidAt" limit 1`);

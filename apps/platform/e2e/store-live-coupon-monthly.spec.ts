@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
+import { expectSavedProfile, seedBillingProfile } from "./store-live-profile";
 
 /**
  * A coupon on a MONTHLY plan in the live Store (slice C4, 2026-11-14): the coupon is the first month only. The owner authorises auto-pay in Razorpay's TEST window
@@ -42,14 +43,11 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 }
 
 async function fillBilling(page: Page) {
-  await page.getByLabel("Business name").fill("Bhandarys Kitchen");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
+  // Nothing is typed any more: the checkout shows the product's saved billing profile (seeded in beforeAll).
+  await expectSavedProfile(page);
 }
 
-/** Opens the Manage page, picks the MONTHLY price of a plan and fills the billing details; stops with Pay available. */
+/** Opens the Manage page, picks the MONTHLY price of a plan and checks the saved billing profile; stops with Pay available. */
 async function chooseMonthly(p: Page, planName: string, button: "Subscribe" | "Upgrade") {
   await p.goto(`${STORE}/manage/caterly`);
   await p.getByRole("button", { name: "Monthly" }).click();
@@ -112,6 +110,7 @@ test.describe("Live Store: a coupon on a monthly plan", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signInAsBhandarysAdmin(page);
+    seedBillingProfile(ops, BHANDARYS);
     ops(`insert into coupon (id, code, kind, value, active, "createdAt") values ('cpn_e2e_m10', 'MONTH10', 'PERCENT', 10, true, now())`);
   });
   test.afterAll(async () => {

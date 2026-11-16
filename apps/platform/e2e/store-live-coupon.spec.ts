@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
+import { expectSavedProfile, seedBillingProfile } from "./store-live-profile";
 
 /**
  * Coupons in the live Store (plan slice C3, 2026-11-14): a typed code is checked by Ops, the discount comes off before GST, a refused code says why, and a paid
@@ -37,14 +38,11 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 }
 
 async function fillBilling(page: Page) {
-  await page.getByLabel("Business name").fill("Bhandarys Kitchen");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
+  // Nothing is typed any more: the checkout shows the product's saved billing profile (seeded in beforeAll).
+  await expectSavedProfile(page);
 }
 
-/** Opens the Manage page, picks the yearly price of a plan and fills the billing details; stops with Pay available. */
+/** Opens the Manage page, picks the yearly price of a plan and checks the saved billing profile; stops with Pay available. */
 async function chooseAnnual(page: Page, planName: string, button: "Subscribe" | "Upgrade", fill = true) {
   await page.goto(`${STORE}/manage/caterly`);
   await page.getByRole("button", { name: "Annual" }).click();
@@ -64,11 +62,15 @@ async function payInRazorpay(page: Page, outcome: "Success" | "Failure") {
   // Razorpay refuses obviously sequential numbers; it moves on by itself once the number is accepted. A second payment in the same session is not asked again.
   const mobile = frame.getByPlaceholder("Mobile number");
   if (await mobile.waitFor({ state: "visible", timeout: 10_000 }).then(() => true, () => false)) await mobile.pressSequentially("9845671203", { delay: 60 });
+  // Razorpay's checkout now asks for a tap on Continue after the number.
+  if (await mobile.isVisible().catch(() => false)) await frame.getByRole("button", { name: "Continue", exact: true }).click();
   await frame.getByText("Cards", { exact: true }).first().click();
   await frame.getByText("Add a new card").click();
   await frame.locator('input[name="card.number"]').pressSequentially("4111111111111111", { delay: 40 });
   await frame.locator('input[name="card.expiry"]').pressSequentially("1230", { delay: 40 });
   await frame.locator('input[name="card.cvv"]').pressSequentially("123", { delay: 40 });
+  const cardName = frame.getByPlaceholder("Enter name on card");
+  if (await cardName.isVisible().catch(() => false)) await cardName.fill("Store Buyer");
   await frame.getByPlaceholder("Enter Email").fill("buyer@auth.test");
   await frame.getByRole("button", { name: "Continue", exact: true }).click();
   await frame.getByText("Maybe later", { exact: true }).locator("visible=true").first().click({ timeout: 8000 }).catch(() => {});
@@ -87,6 +89,7 @@ test.describe("Live Store: coupons", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signInAsBhandarysAdmin(page);
+    seedBillingProfile(ops, BHANDARYS);
     ops(`insert into coupon (id, code, kind, value, active, "maxUses", "createdAt") values ('cpn_e2e10', 'STORE10', 'PERCENT', 10, true, 1, now()), ('cpn_e2e_off', 'STOREOFF', 'FIXED', 500, false, null, now())`);
   });
   test.afterAll(async () => {

@@ -34,7 +34,7 @@ describe("Store: monthly auto-pay", () => {
 
   it("verify carries an auto-pay's three values, or a setup report, to the same verify route", async () => {
     const paid = ops({ ok: true, status: "PAID", invoiceNumber: "FP-1" });
-    expect(await verifyStoreCheckout({ ...base, razorpaySubscriptionId: "sub_1", razorpayPaymentId: "pay_1", signature: "s" }, deps(paid.fetchImpl))).toEqual({ ok: true, answer: { status: "PAID", invoiceNumber: "FP-1" } });
+    expect(await verifyStoreCheckout({ ...base, razorpaySubscriptionId: "sub_1", razorpayPaymentId: "pay_1", signature: "s" }, deps(paid.fetchImpl))).toEqual({ ok: true, answer: { status: "PAID", invoiceNumber: "FP-1", paymentId: null } });
     expect(paid.seen.url).toBe(`http://ops.test${platformCheckoutPath(BIZ, "catering", "verify")}`);
     expect(JSON.parse(paid.seen.body!)).toEqual({ razorpaySubscriptionId: "sub_1", razorpayPaymentId: "pay_1", signature: "s" });
     const failed = ops({ ok: true, status: "FAILED", invoiceNumber: null });
