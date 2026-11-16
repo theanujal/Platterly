@@ -17,9 +17,10 @@
     "paths": {
       "@/*": ["./src/*"],
       "@platterly/contract": ["../../packages/contract/index.ts"],
-      "@platterly/platform-contract": ["../../packages/platform-contract/index.ts"]
+      "@platterly/platform-contract": ["../../packages/platform-contract/index.ts"],
+      "jose": ["./node_modules/jose"]
     }
   },
   "include": ["next-env.d.ts", "src/**/*.ts", "src/**/*.tsx", "../../packages/contract/**/*.ts", "../../packages/platform-contract/**/*.ts", "vitest.config.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules", "../../packages/contract/__tests__", "../../packages/platform-contract/__tests__"]
+  "exclude": ["node_modules", "../../packages/contract/__tests__", "../../packages/platform-contract/__tests__", "../../packages/contract/src/plan-invoice-pdf.ts"]
 }

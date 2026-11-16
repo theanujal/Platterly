@@ -9,7 +9,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   allowedDevOrigins: ["*.localhost"],
   devIndicators: { position: "bottom-right" },
-  turbopack: { root: repoRoot },
+  // The shared platform-contract imports jose, which only this app's own node_modules has when the Platform is installed on its own (CI, deploy.sh platform):
+  // a file under ../../packages looks for it beside packages/, not here. (The contract's invoice PDF needs jsPDF; the Platform never uses it, so tsconfig leaves it out.)
+  turbopack: { root: repoRoot, resolveAlias: { jose: "./node_modules/jose" } },
   outputFileTracingRoot: repoRoot,
   async headers() {
     // Not indexed and never framed; sign-in pages must not be embeddable.
