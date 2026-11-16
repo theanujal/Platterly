@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { notifySafely } from "@/modules/notifications/notifications";
 import { signedCall } from "@/modules/account-reviews/account-reviews";
 import { deleteRazorpayToken, platformRazorpay, updateRazorpayCustomer } from "@/modules/billing/razorpay";
-import { LifecycleError, deleteBusiness, restoreBusiness, runCommand, suspendBusiness } from "@/modules/lifecycle/lifecycle";
+import { LifecycleError, deleteBusiness, restoreBusiness, runCommand } from "@/modules/lifecycle/lifecycle";
 
 /**
  * Account deletion requests (AJ, 2026-11-15). The Platform opens a request when a person asks on My Profile; staff approve or decline here; the Platform asks for
@@ -144,6 +144,9 @@ export async function approveAccountDeletion(id: string, staffId: string | null,
     } else if (row.businessId && before?.status === "PENDING_DELETE") {
       // Put its restore date back, since each suspension call moved it.
       await prisma.business.update({ where: { id: row.businessId }, data: { deleteAfter: before.deleteAfter } }).catch(() => undefined);
+    } else if (row.businessId && prior === "SUSPENDED") {
+      // The products stay suspended (a deletion request is a suspension to them), but Ops's own label must go back from "Marked for deletion" to "Suspended".
+      await prisma.business.update({ where: { id: row.businessId }, data: { status: "SUSPENDED", deleteAfter: null } }).catch(() => undefined);
     }
     await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING", decidedAt: null, ...(rolledBack ? { priorBusinessStatus: null } : {}) } });
     throw note && error instanceof Error ? new LifecycleError(`${error.message}${note}`) : error;
@@ -171,18 +174,22 @@ export async function declineAccountDeletion(id: string, reason: string, staffId
   await audit({ actorUserId: staffId, action: "account_deletion.declined", subject: row.requestId, detail: { reason: text } });
 }
 
-/** Staff change their mind during the retention period: the business is brought back and the person's account is released. */
+/**
+ * Staff change their mind during the retention period: the business is brought back and the person's account is released. Only a business that was ACTIVE when the
+ * request was approved is reactivated. One that was suspended for another reason stays suspended (the products already hold it suspended, so only Ops's label goes
+ * back to "Suspended"), and one that was already marked for deletion before the request stays marked, with its own restore date. Requests approved before the status
+ * was saved (null) are treated as ACTIVE.
+ */
 export async function restoreAccountDeletion(id: string, staffId: string | null, fetchImpl?: typeof fetch): Promise<void> {
   const row = await prisma.accountDeletionRequest.findUnique({ where: { id } });
   if (!row || row.status !== "APPROVED") throw new LifecycleError("Only an approved request can be restored.");
   if (row.businessId) {
-    for (const productKey of await linkedProducts(row.businessId)) {
-      const result = await restoreBusiness(row.businessId, productKey, staffId, fetchImpl);
-      if (!result.ok) throw new LifecycleError(`${productKey} did not accept the restore: ${result.error}`);
-      // The business was suspended for another reason before this request: bringing it back from the deletion must not reactivate it.
-      if (row.priorBusinessStatus === "SUSPENDED") {
-        const again = await suspendBusiness(row.businessId, productKey, "Still suspended: it was suspended before the deletion request.", staffId, fetchImpl);
-        if (!again.ok) throw new LifecycleError(`${productKey} did not accept keeping the earlier suspension: ${again.error}`);
+    if (row.priorBusinessStatus === "SUSPENDED") {
+      await prisma.business.update({ where: { id: row.businessId }, data: { status: "SUSPENDED", deleteAfter: null } });
+    } else if (row.priorBusinessStatus !== "PENDING_DELETE") {
+      for (const productKey of await linkedProducts(row.businessId)) {
+        const result = await restoreBusiness(row.businessId, productKey, staffId, fetchImpl);
+        if (!result.ok) throw new LifecycleError(`${productKey} did not accept the restore: ${result.error}`);
       }
     }
   }

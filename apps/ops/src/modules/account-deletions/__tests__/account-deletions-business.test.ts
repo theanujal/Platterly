@@ -150,14 +150,36 @@ describe("account deletion with a business", () => {
     expect(received).toEqual([]);
   });
 
-  it("restoring an approved request keeps a business that was suspended for another reason suspended", async () => {
+  it("a failed approve for a business that was SUSPENDED puts Ops's status back to Suspended, not 'Marked for deletion'", async () => {
+    const { id } = await openRequest();
+    await prisma.business.update({ where: { id: businessId }, data: { status: "SUSPENDED" } });
+    refuse = { adbizb: true };
+    await expect(approveAccountDeletion(id, null, new Date(), stub)).rejects.toThrow(/did not accept/);
+    expect(await requestStatus(id)).toBe("PENDING");
+    expect(await businessStatus()).toBe("SUSPENDED");
+    expect((await prisma.business.findUniqueOrThrow({ where: { id: businessId } })).deleteAfter).toBeNull();
+  });
+
+  it("restoring an approved request keeps a business that was suspended for another reason suspended, and one already marked for deletion marked", async () => {
     const { id } = await openRequest();
     await prisma.business.update({ where: { id: businessId }, data: { status: "SUSPENDED" } });
     await approveAccountDeletion(id, null, new Date(), stub);
+    expect(await businessStatus()).toBe("PENDING_DELETE");
     received = [];
     await restoreAccountDeletion(id, null, stub);
-    expect(received.map((r) => r.type)).toEqual(["business.restore", "business.suspend", "business.restore", "business.suspend"]);
+    expect(received).toEqual([]); // the products are still suspended; nothing is sent, so nothing is reactivated even for a moment
     expect(await businessStatus()).toBe("SUSPENDED");
+    expect(await requestStatus(id)).toBe("RESTORED");
+
+    const second = await openRequest();
+    const date = new Date("2027-01-01T00:00:00Z");
+    await prisma.business.update({ where: { id: businessId }, data: { status: "PENDING_DELETE", deleteAfter: date } });
+    await approveAccountDeletion(second.id, null, new Date("2026-11-20T00:00:00Z"), stub);
+    received = [];
+    await restoreAccountDeletion(second.id, null, stub);
+    expect(received).toEqual([]);
+    expect(await businessStatus()).toBe("PENDING_DELETE"); // it was marked for deletion before the request, and still is
+    expect((await prisma.business.findUniqueOrThrow({ where: { id: businessId } })).deleteAfter?.toISOString()).toBe(date.toISOString());
   });
 
   it("a withdrawal that arrives while staff approve is refused: the request ends approved, never withdrawn with a suspended business", async () => {
