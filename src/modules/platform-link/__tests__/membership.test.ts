@@ -194,6 +194,49 @@ describe("pending members (a person with no Caterly user yet)", () => {
     expect(await consumePendingMembership(p.id, p.subject)).toBe(false);
   });
 
+  // Go-live for an existing kitchen (Sharath, 2026-11-16): the Platform business created for it sends one `membership.changed` (admin) for its chosen Admin.
+  it("go-live: the event for an existing kitchen's Admin changes no business data; a second owner becomes a manager, nothing else moves", async () => {
+    const o = await org();
+    await prisma.organization.update({ where: { id: o.id }, data: { name: "Existing Kitchen", contactPhone: "+919800000123", ownerFirstName: "Asha" } });
+    const admin = await person();
+    const second = await person();
+    await join(o.id, admin.id, "owner");
+    await join(o.id, second.id, "owner");
+    await join(o.id, (await person()).id, "staff");
+    const before = await prisma.organization.findUniqueOrThrow({ where: { id: o.id } });
+    const subsBefore = await prisma.subscription.count({ where: { organizationId: o.id } });
+    expect(await (await send(event(o.businessId, { subject: admin.subject, role: "admin" }))).json()).toEqual({ status: "ok", applied: true });
+    expect(await roleOf(o.id, admin.id)).toBe("owner");
+    expect(await roleOf(o.id, second.id)).toBe("manager"); // one Admin: the other owner is demoted (the only change)
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: o.id } })).toEqual(before);
+    expect(await prisma.subscription.count({ where: { organizationId: o.id } })).toBe(subsBefore);
+  });
+
+  it("go-live: an existing owner signing in centrally for the first time is not 'joined' again: no trial plan, no profile changes", async () => {
+    const o = await org();
+    await prisma.organization.update({ where: { id: o.id }, data: { ownerFirstName: null, contactPhone: null } });
+    const admin = await person(false); // an existing Caterly user (same id), not yet linked to the central person
+    await join(o.id, admin.id, "owner");
+    await send(event(o.businessId, { subject: admin.subject, role: "admin" })); // no account for the subject yet: stored as pending
+    expect(await prisma.platformPendingMember.findUnique({ where: { subject: admin.subject } })).not.toBeNull();
+    const before = await prisma.organization.findUniqueOrThrow({ where: { id: o.id } });
+    expect(await consumePendingMembership(admin.id, admin.subject)).toBe(false); // already a member: the join (and its trial / profile set-up) does not run
+    expect(await prisma.subscription.count({ where: { organizationId: o.id } })).toBe(0);
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: o.id } })).toEqual(before);
+    expect(await roleOf(o.id, admin.id)).toBe("owner");
+  });
+
+  it("control: a NEW owner joining an empty business does get the set-up (so the test above would notice it)", async () => {
+    const o = await org();
+    await prisma.organization.update({ where: { id: o.id }, data: { ownerFirstName: null } });
+    const fresh = await person(false);
+    await prisma.user.update({ where: { id: fresh.id }, data: { firstName: "Nina" } });
+    await send(event(o.businessId, { subject: fresh.subject, role: "admin" }));
+    expect(await consumePendingMembership(fresh.id, fresh.subject)).toBe(true);
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: o.id } })).ownerFirstName).toBe("Nina");
+    expect(await prisma.subscription.count({ where: { organizationId: o.id } })).toBe(1); // the trial: what the existing owner above must NOT get
+  });
+
   it("does nothing when the person already belongs to a business here, or the business is not linked", async () => {
     const o = await org();
     const mine = await org();

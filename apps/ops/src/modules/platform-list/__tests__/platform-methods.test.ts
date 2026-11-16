@@ -209,6 +209,9 @@ describe("payment-method calls", () => {
       expect(await prisma.business.findUnique({ where: { id: PENDING }, select: { name: true, ownerEmail: true, ownerPhone: true } })).toEqual({ name: "Asha Rao", ownerEmail: "asha@pending.test", ownerPhone: "+919800000123" });
       expect(await prisma.businessProduct.count({ where: { businessId: PENDING, productKey: KEY } })).toBe(1);
       expect(await prisma.subscription.count({ where: { businessId: PENDING } })).toBe(0); // no trial, no plan
+      // a repeat for a business that already exists changes nothing: it never overwrites the name or owner details
+      expect((await call("register-pending", { name: "Someone Else", ownerName: "Someone Else", ownerEmail: "other@pending.test", ownerPhone: "+919800000999" }, BILLING_SECRET, PENDING)).status).toBe(200);
+      expect(await prisma.business.findUnique({ where: { id: PENDING }, select: { name: true, ownerEmail: true, ownerPhone: true } })).toEqual({ name: "Asha Rao", ownerEmail: "asha@pending.test", ownerPhone: "+919800000123" });
       // bad input and a wrong signature are refused
       expect((await call("register-pending", { name: "", ownerEmail: "x" }, BILLING_SECRET, PENDING)).status).toBe(400);
       expect((await call("register-pending", { name: "A", ownerEmail: "a@b.test" }, null, PENDING)).status).toBe(401);

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { notifySafely } from "@/modules/notifications/notifications";
 import { signedCall } from "@/modules/account-reviews/account-reviews";
 import { deleteRazorpayToken, platformRazorpay, updateRazorpayCustomer } from "@/modules/billing/razorpay";
-import { LifecycleError, deleteBusiness, restoreBusiness, runCommand } from "@/modules/lifecycle/lifecycle";
+import { LifecycleError, deleteBusiness, restoreBusiness, runCommand, suspendBusiness } from "@/modules/lifecycle/lifecycle";
 
 /**
  * Account deletion requests (AJ, 2026-11-15). The Platform opens a request when a person asks on My Profile; staff approve or decline here; the Platform asks for
@@ -106,11 +106,18 @@ export async function approveAccountDeletion(id: string, staffId: string | null,
   let eraseAfter = new Date(now.getTime() + RETENTION_DAYS * 86_400_000);
   const suspendedNow: string[] = [];
   let before: { status: string; deleteAfter: Date | null } | null = null;
+  // What the business was before the FIRST try of this request (a cut-off earlier try may already have suspended it). Saved before any product is told anything.
+  const reclaimed = row.priorBusinessStatus !== null;
+  let prior: string | null = row.priorBusinessStatus;
   try {
     if (row.businessId) {
       const business = await prisma.business.findUnique({ where: { id: row.businessId }, select: { name: true, status: true, deleteAfter: true } });
       if (business) {
         before = business;
+        if (!prior) {
+          prior = business.status;
+          await prisma.accountDeletionRequest.update({ where: { id }, data: { priorBusinessStatus: prior } });
+        }
         for (const productKey of await linkedProducts(row.businessId)) {
           const result = await deleteBusiness(row.businessId, productKey, business.name, staffId, now, fetchImpl);
           if (!result.ok) throw new LifecycleError(`${productKey} did not accept the suspension: ${result.error}`);
@@ -125,31 +132,37 @@ export async function approveAccountDeletion(id: string, staffId: string | null,
     }
     await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVED", decidedAt: now, decidedBy: staffId, eraseAfter } });
   } catch (error) {
-    // Undo what this try did, unless the business was already suspended before it (that suspension is not ours to undo).
+    // Undo only what this request suspended: the business must have been ACTIVE before the request's first try. One that was suspended for another reason
+    // (staff, non-payment) or already pending deletion is left exactly as it was, because a restore would reactivate it.
     let note = "";
-    if (row.businessId && before && before.status !== "PENDING_DELETE" && suspendedNow.length > 0) {
-      const failed = await restoreProducts(row.businessId, suspendedNow, staffId, fetchImpl);
+    let rolledBack = false;
+    if (row.businessId && prior === "ACTIVE") {
+      const targets = reclaimed ? await linkedProducts(row.businessId) : suspendedNow;
+      const failed = await restoreProducts(row.businessId, targets, staffId, fetchImpl);
       if (failed.length > 0) note = ` The business is still suspended in ${failed.join(", ")}; restore it there by hand.`;
+      else rolledBack = true;
     } else if (row.businessId && before?.status === "PENDING_DELETE") {
-      // Already suspended before this try: put its restore date back, since each suspension call moved it.
+      // Put its restore date back, since each suspension call moved it.
       await prisma.business.update({ where: { id: row.businessId }, data: { deleteAfter: before.deleteAfter } }).catch(() => undefined);
     }
-    await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING", decidedAt: null } });
+    await prisma.accountDeletionRequest.updateMany({ where: { id, status: "APPROVING" }, data: { status: "PENDING", decidedAt: null, ...(rolledBack ? { priorBusinessStatus: null } : {}) } });
     throw note && error instanceof Error ? new LifecycleError(`${error.message}${note}`) : error;
   }
   await audit({ actorUserId: staffId, action: "account_deletion.approved", subject: row.requestId, detail: { businessId: row.businessId, eraseAfter: eraseAfter.toISOString() } });
 }
 
 /**
- * Decline a pending request. A stale APPROVING one (the approve was cut off) can be declined too: the business may be half suspended, so it is restored first;
- * if a product refuses, the request stays as it is and staff are told which one.
+ * Decline a pending request. A stale APPROVING one (the approve was cut off) can be declined too: if the business was ACTIVE before the request started it may be
+ * half suspended, so it is restored first (a business that was suspended for another reason is left alone); if a product refuses, the request stays as it is and
+ * staff are told which one.
  */
 export async function declineAccountDeletion(id: string, reason: string, staffId: string | null, now: Date = new Date(), fetchImpl?: typeof fetch): Promise<void> {
   const text = reason.trim().slice(0, 500);
   if (!text) throw new LifecycleError("Give the person a reason for declining.");
-  const row = await prisma.accountDeletionRequest.findUnique({ where: { id }, select: { requestId: true, status: true, decidedAt: true, businessId: true } });
+  const row = await prisma.accountDeletionRequest.findUnique({ where: { id }, select: { requestId: true, status: true, decidedAt: true, businessId: true, priorBusinessStatus: true } });
   if (!row || (row.status !== "PENDING" && !isStaleApproving(row, now))) throw new LifecycleError("This request is no longer pending.");
-  if (row.status === "APPROVING" && row.businessId) {
+  // Only what this request suspended comes back: a business that was not ACTIVE when the request started stays as it was.
+  if (row.status === "APPROVING" && row.businessId && row.priorBusinessStatus === "ACTIVE") {
     const failed = await restoreProducts(row.businessId, await linkedProducts(row.businessId), staffId, fetchImpl);
     if (failed.length > 0) throw new LifecycleError(`${failed.join(", ")} did not accept the restore, so the request was not declined. Try again.`);
   }
@@ -166,6 +179,11 @@ export async function restoreAccountDeletion(id: string, staffId: string | null,
     for (const productKey of await linkedProducts(row.businessId)) {
       const result = await restoreBusiness(row.businessId, productKey, staffId, fetchImpl);
       if (!result.ok) throw new LifecycleError(`${productKey} did not accept the restore: ${result.error}`);
+      // The business was suspended for another reason before this request: bringing it back from the deletion must not reactivate it.
+      if (row.priorBusinessStatus === "SUSPENDED") {
+        const again = await suspendBusiness(row.businessId, productKey, "Still suspended: it was suspended before the deletion request.", staffId, fetchImpl);
+        if (!again.ok) throw new LifecycleError(`${productKey} did not accept keeping the earlier suspension: ${again.error}`);
+      }
     }
   }
   await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "RESTORED", decidedAt: new Date(), decidedBy: staffId, eraseAfter: null } });

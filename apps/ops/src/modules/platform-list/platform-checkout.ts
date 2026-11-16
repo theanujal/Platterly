@@ -77,7 +77,7 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       if (!name || !ownerEmail?.includes("@")) return reply(400, { error: "register-pending needs a name and an owner email" });
       if (!(await prisma.product.findUnique({ where: { key: productKey }, select: { key: true } }))) return reply(404, { error: "unknown_business" });
       const owner = { ownerName: text(body.ownerName, 200) ?? name, ownerEmail, ownerPhone: text(body.ownerPhone, 20) };
-      await prisma.business.upsert({ where: { id: businessId }, create: { id: businessId, name, ...owner }, update: { name, ...owner } });
+      await prisma.business.upsert({ where: { id: businessId }, create: { id: businessId, name, ...owner }, update: {} }); // a business that already exists keeps its details: a retry never overwrites them
       await prisma.businessProduct.upsert({ where: { businessId_productKey: { businessId, productKey } }, create: { businessId, productKey }, update: {} });
       return reply(200, { ok: true });
     }

@@ -129,11 +129,35 @@ describe("account deletion with a business", () => {
   it("a stale APPROVING request can be declined: the business is brought back first", async () => {
     const { id } = await openRequest();
     await prisma.business.update({ where: { id: businessId }, data: { status: "PENDING_DELETE", deleteAfter: new Date() } });
-    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVING", decidedAt: new Date(Date.now() - APPROVING_STALE_MS - 1000) } });
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVING", priorBusinessStatus: "ACTIVE", decidedAt: new Date(Date.now() - APPROVING_STALE_MS - 1000) } });
     await declineAccountDeletion(id, "Please finish your invoices first.", null, new Date(), stub);
     expect(received.map((r) => r.type)).toEqual(["business.restore", "business.restore"]);
     expect(await requestStatus(id)).toBe("DECLINED");
     expect(await businessStatus()).toBe("ACTIVE");
+  });
+
+  it("a business that was SUSPENDED before the request is never reactivated: not by a failed approve, a stale decline or a restore", async () => {
+    const { id } = await openRequest();
+    await prisma.business.update({ where: { id: businessId }, data: { status: "SUSPENDED" } });
+    refuse = { adbizb: true };
+    await expect(approveAccountDeletion(id, null, new Date(), stub)).rejects.toThrow(/did not accept/);
+    expect(received.some((r) => r.type === "business.restore")).toBe(false); // no undo for a business that was not ACTIVE
+    expect((await prisma.accountDeletionRequest.findUniqueOrThrow({ where: { id } })).priorBusinessStatus).toBe("SUSPENDED");
+    // a stale decline brings nothing back either
+    await prisma.accountDeletionRequest.update({ where: { id }, data: { status: "APPROVING", decidedAt: new Date(Date.now() - APPROVING_STALE_MS - 1000) } });
+    received = [];
+    await declineAccountDeletion(id, "Not now.", null, new Date(), stub);
+    expect(received).toEqual([]);
+  });
+
+  it("restoring an approved request keeps a business that was suspended for another reason suspended", async () => {
+    const { id } = await openRequest();
+    await prisma.business.update({ where: { id: businessId }, data: { status: "SUSPENDED" } });
+    await approveAccountDeletion(id, null, new Date(), stub);
+    received = [];
+    await restoreAccountDeletion(id, null, stub);
+    expect(received.map((r) => r.type)).toEqual(["business.restore", "business.suspend", "business.restore", "business.suspend"]);
+    expect(await businessStatus()).toBe("SUSPENDED");
   });
 
   it("a withdrawal that arrives while staff approve is refused: the request ends approved, never withdrawn with a suspended business", async () => {

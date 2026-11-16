@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // The catering app's migrations and the Platform app's (apps/platform): its Prisma migrations and its identity database's numbered .sql files. Ops has its own
-// database and is not covered here. A name in migrations-baseline.txt is exempt; Platform has none, so every Platform migration is checked.
+// database and is not covered here. A name in migrations-baseline.txt is exempt: the catering ones and, since the identity files were added to the check, the 17 identity migrations that existed then. Every newer Platform migration is checked.
 const DIRS = [join(here, "..", "prisma", "migrations"), join(here, "..", "apps", "platform", "prisma", "migrations"), join(here, "..", "apps", "platform", "identity", "migrations")];
 
 export const RISKY = [

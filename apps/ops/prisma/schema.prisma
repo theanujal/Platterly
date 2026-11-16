@@ -1078,6 +1078,9 @@ model AccountDeletionRequest {
   declineReason String?
   decidedAt     DateTime?
   decidedBy     String?
+  // The business's status (ACTIVE, SUSPENDED, PENDING_DELETE) when staff first pressed Approve, kept so an undo or a decline only brings back what THIS request
+  // suspended: a business that was suspended for another reason (staff, non-payment) is never reactivated by it. Null until an approve starts.
+  priorBusinessStatus String?
   // When the retention period ends and the final removal may happen (set on approval).
   eraseAfter    DateTime?
   // Staff pressed "Erase now": the products were told and Ops's own records anonymised. The Platform sees this when it asks for the status, erases the person
