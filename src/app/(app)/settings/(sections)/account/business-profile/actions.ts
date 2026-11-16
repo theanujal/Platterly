@@ -13,7 +13,7 @@ import type { ProductBillingProfileRecord } from "@platterly/contract";
 import { profileLinkOn, saveOwnProfile, storeProfileCopy } from "@/modules/ops-link/billing-profile";
 
 /** `conflict` means the shared profile changed elsewhere (the Account) since the form opened: the form keeps the person's edits and offers the new values. */
-export type ProfileConflict = { version: number | null; at: string | null; values: Partial<Record<"brandName" | "businessDescription" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "legalName" | "billingContactName" | "billingEmail" | "billingPhone", string>> | null };
+export type ProfileConflict = { version: number | null; at: string | null; values: Partial<Record<"brandName" | "businessDescription" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessName" | "mobileNumber" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding" | "billingContactName" | "billingEmail" | "billingPhone", string>> | null };
 export type ActionResult = { ok: true } | { ok: false; error: string; conflict?: ProfileConflict };
 
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
@@ -33,10 +33,11 @@ function numberField(formData: FormData, name: string): number | undefined {
 }
 
 /**
- * The Business Profile page has two cards, like the Account's Business & Billing page: the Business Profile and the Billing Profile. Each has its own form and
- * says which `section` it is saving; a field the form did not send keeps its current value. The shared fields (everything except the business name, mobile number,
- * logo upload and order numbering) live in the business's billing profile in Platterly Ops: they are saved there first, with the version the form was based on, so
- * a change made meanwhile in the Account is never silently overwritten. If Ops refuses, nothing local changes.
+ * The Business Profile page has two cards, like the Account's Business & Billing page, with the same fields: the Business Profile (logo, brand name, description,
+ * mobile number, website, Instagram, Facebook, order numbering) and the Billing Profile (the business name, GSTIN, address, billing contact). Each has its own form
+ * and says which `section` it is saving; a field the form did not send keeps its current value. Everything lives in the business's billing profile in Platterly
+ * Ops: it is saved there first, with the version the form was based on, so a change made meanwhile in the Account is never silently overwritten. If Ops refuses,
+ * nothing local changes. The business name is ONE field, in the Billing Profile: it is the name on invoices and the business's name everywhere.
  */
 export async function updateBusinessProfileAction(formData: FormData): Promise<ActionResult> {
   const { session, organizationId } = await requireActiveOrganization();
@@ -48,8 +49,6 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
   let removeLogo = false;
 
   if (section === "business") {
-    const businessName = stringField(formData, "businessName");
-    if (!businessName) return { ok: false, error: "Business name is required." };
     // The business always has a mobile number: it cannot be cleared or saved invalid here.
     const mobileNumber = stringField(formData, "mobileNumber");
     if (!mobileNumber || !isValidPhone(normalizePhone(mobileNumber))) return { ok: false, error: "Enter a valid mobile number." };
@@ -73,7 +72,6 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     if (orderNumberPadding !== undefined && (orderNumberPadding < 1 || orderNumberPadding > 10)) return { ok: false, error: "Digits must be between 1 and 10." };
 
     Object.assign(input, {
-      name: businessName,
       businessDescription: textOrNull(formData, "businessDescription"),
       contactPhone: normalizePhone(mobileNumber),
       websiteUrl: textOrNull(formData, "websiteUrl"),
@@ -86,6 +84,9 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     if (logoUrl) input.logo = logoUrl;
     else if (removeLogo) input.logo = null;
   } else {
+    const businessName = stringField(formData, "businessName");
+    if (!businessName) return { ok: false, error: "Business name is required." };
+    input.name = businessName;
     const gstin = textOrNull(formData, "gstin")?.toUpperCase() ?? null;
     if (gstin && !GSTIN.test(gstin)) return { ok: false, error: "Enter a valid 15-character GSTIN, or leave it blank." };
     Object.assign(input, {
@@ -108,8 +109,12 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     const logoNow = logoUrl ?? (removeLogo ? null : org.logo);
     const billing = section === "billing";
     const saved = await saveOwnProfile(org.businessId, stringField(formData, "profileVersion") ? Number(stringField(formData, "profileVersion")) : null, {
-      name: (billing ? textOrNull(formData, "legalName") : null) ?? held?.name ?? (section === "business" ? input.name : org.name),
+      name: billing ? input.name : (held?.name ?? org.name),
       brandName: section === "business" ? textOrNull(formData, "brandName") : (held?.brandName ?? null),
+      businessPhone: section === "business" ? (input.contactPhone ?? null) : org.contactPhone,
+      orderNumberPrefix: section === "business" ? (input.orderNumberPrefix ?? String(org.orderNumberPrefix)) : org.orderNumberPrefix,
+      orderNumberNextValue: String(section === "business" ? (input.orderNumberNextValue ?? org.orderNumberNextValue) : org.orderNumberNextValue),
+      orderNumberPadding: String(section === "business" ? (input.orderNumberPadding ?? org.orderNumberPadding) : org.orderNumberPadding),
       contactName: billing ? textOrNull(formData, "billingContactName") : (held?.contactName ?? null),
       contactEmail: billing ? textOrNull(formData, "billingEmail") : (held?.contactEmail ?? null),
       contactPhone: billing ? phoneOrNull(textOrNull(formData, "billingPhone")) : (held?.contactPhone ?? null),
@@ -137,7 +142,7 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
           conflict: {
             version: c?.version ?? null,
             at: c?.updatedAt ?? null,
-            values: c ? { brandName: c.brandName ?? "", businessDescription: c.description ?? "", websiteUrl: c.website ?? "", instagramUrl: c.instagram ?? "", facebookUrl: c.facebook ?? "", addressLine1: c.addressLine1 ?? "", addressLine2: c.addressLine2 ?? "", city: c.city ?? "", state: c.state ?? "", postalCode: c.postalCode ?? "", country: c.country ?? "", gstin: c.gstin ?? "", legalName: c.name, billingContactName: c.contactName ?? "", billingEmail: c.contactEmail ?? "", billingPhone: c.contactPhone ?? "" } : null,
+            values: c ? { brandName: c.brandName ?? "", businessDescription: c.description ?? "", websiteUrl: c.website ?? "", instagramUrl: c.instagram ?? "", facebookUrl: c.facebook ?? "", addressLine1: c.addressLine1 ?? "", addressLine2: c.addressLine2 ?? "", city: c.city ?? "", state: c.state ?? "", postalCode: c.postalCode ?? "", country: c.country ?? "", gstin: c.gstin ?? "", businessName: c.name, mobileNumber: c.businessPhone ?? "", orderNumberPrefix: c.orderNumberPrefix ?? "", orderNumberNextValue: c.orderNumberNextValue ?? "", orderNumberPadding: c.orderNumberPadding ?? "", billingContactName: c.contactName ?? "", billingEmail: c.contactEmail ?? "", billingPhone: c.contactPhone ?? "" } : null,
           },
         };
       }
@@ -146,8 +151,8 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
     else savedProfile = saved.profile;
   }
 
-  // Only the business section changes the business's own name; the billing section leaves it as it is.
-  if (section === "billing") input.name = (await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } })).name;
+  // The business name is saved with the Billing Profile; the business section leaves the name as it is.
+  if (section === "business") input.name = (await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true } })).name;
   await updateTenant(organizationId, input, session.user.id);
   if (savedProfile) await storeProfileCopy(organizationId, savedProfile);
 

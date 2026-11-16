@@ -54,7 +54,6 @@ export default async function BusinessProfilePage() {
             <>
               <SettingsSection icon={Store} title="Basic Information">
                 <DetailGrid>
-                  <Detail label="Business Name" value={businessName || "No business name yet"} />
                   {linked && <Detail label="Brand Name" value={shared?.brandName} />}
                   <Detail label="Business Description" value={organization.businessDescription} className="sm:col-span-2" />
                 </DetailGrid>
@@ -76,6 +75,9 @@ export default async function BusinessProfilePage() {
 
               <SettingsSection icon={Hash} title="Order Numbering">
                 <DetailGrid>
+                  <Detail label="Prefix" value={organization.orderNumberPrefix} />
+                  <Detail label="Starting Number" value={String(organization.orderNumberNextValue)} />
+                  <Detail label="Digits" value={String(organization.orderNumberPadding)} />
                   <Detail label="Next Order Number" value={nextOrderNumber} />
                 </DetailGrid>
               </SettingsSection>
@@ -85,7 +87,6 @@ export default async function BusinessProfilePage() {
             <BusinessProfileForm
               key={`business-${version}`}
               initialValues={{
-                businessName,
                 brandName: shared?.brandName ?? "",
                 showBrand: linked,
                 profileVersion: version,
@@ -112,17 +113,16 @@ export default async function BusinessProfilePage() {
               </span>
               <div>
                 <h2 className="text-lg font-semibold">Billing Profile</h2>
-                <p className="text-xs text-muted-foreground">Legal and tax information used for subscriptions and invoices. Changes apply to future invoices only.</p>
+                <p className="text-xs text-muted-foreground">The business name, tax number, address and billing contact used for subscriptions and invoices. Changes apply to future invoices only.</p>
               </div>
             </div>
           }
           view={
             <>
-              <SettingsSection icon={Receipt} title="Legal & Tax">
+              <SettingsSection icon={Receipt} title="Business & Tax">
                 <DetailGrid>
-                  {linked && <Detail label="Legal Billing Name" value={shared?.name} />}
+                  <Detail label="Business Name" value={businessName || "No business name yet"} />
                   <Detail label="GSTIN" value={organization.gstNumber} />
-                  <Detail label="Tax Information" value={organization.gstNumber ? "Registered under GST" : organization.billingProfile ? "Not registered under GST" : null} />
                 </DetailGrid>
               </SettingsSection>
 
@@ -153,7 +153,7 @@ export default async function BusinessProfilePage() {
               initialValues={{
                 showShared: linked,
                 profileVersion: version,
-                legalName: shared?.name ?? "",
+                businessName,
                 gstin: organization.gstNumber ?? "",
                 billingContactName: shared?.contactName ?? "",
                 billingEmail: shared?.contactEmail ?? "",

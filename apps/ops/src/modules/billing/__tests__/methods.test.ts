@@ -272,6 +272,35 @@ describe("making a method the primary", () => {
     expect(calls.some((c) => c.path === "/subscriptions/sub_OLD/cancel")).toBe(false);
   });
 
+  it("Add UPI: starts a subscription with no saved method, and on verify the UPI id becomes the primary while the old card stays as a secondary", async () => {
+    const { biz, primary } = await withTwoCards();
+    const start = await startMakePrimary({ businessId: biz, productKey: KEY, newMethod: "upi" }, creds);
+    expect(start).toMatchObject({ onlyMethod: "upi", razorpaySubscriptionId: expect.stringMatching(/^sub_T/) });
+    expect(calls.find((c) => c.path === "/subscriptions")?.body).toMatchObject({ notes: { businessId: biz, productKey: KEY, newMethod: "upi" } });
+    rz[start.razorpaySubscriptionId].status = "authenticated";
+    pays.pay_upi = { id: "pay_upi", status: "captured", amount: 500, method: "upi", vpa: "asha@okbank", token_id: null, customer_id: "cust_T1" };
+    const made = await verifyMakePrimary({ businessId: biz, productKey: KEY, razorpaySubscriptionId: start.razorpaySubscriptionId, razorpayPaymentId: "pay_upi", signature: subSig(start.razorpaySubscriptionId, "pay_upi") }, creds);
+    expect(made).toMatchObject({ kind: "UPI", label: "UPI asha@okbank", razorpaySubscriptionId: start.razorpaySubscriptionId });
+    const list = await listMethods(biz, KEY);
+    expect(list[0]).toMatchObject({ label: "UPI asha@okbank", isPrimary: true });
+    expect(list.find((m) => m.id === primary.id)).toMatchObject({ isPrimary: false });
+    expect(calls.some((c) => c.path === "/subscriptions/sub_OLD/cancel")).toBe(true);
+  });
+
+  it("Add UPI: a card used in the window changes nothing, and a UPI primary must be replaced before another UPI id is added", async () => {
+    const { biz } = await withTwoCards();
+    const start = await startMakePrimary({ businessId: biz, productKey: KEY, newMethod: "upi" }, creds);
+    rz[start.razorpaySubscriptionId].status = "authenticated";
+    pays.pay_card = card("pay_card", "token_Z", "5555", "cust_T1");
+    await expect(verifyMakePrimary({ businessId: biz, productKey: KEY, razorpaySubscriptionId: start.razorpaySubscriptionId, razorpayPaymentId: "pay_card", signature: subSig(start.razorpaySubscriptionId, "pay_card") }, creds)).rejects.toThrow(/not a UPI/);
+    expect((await prisma.subscription.findFirstOrThrow({ where: { businessId: biz, endDate: null } })).razorpaySubscriptionId).toBe("sub_OLD");
+    expect(await prisma.paymentMethod.count({ where: { businessId: biz, kind: "UPI" } })).toBe(0);
+
+    pays.pay_u = { id: "pay_u", status: "captured", amount: 500, method: "upi", vpa: "name@bank", token_id: null };
+    await recordMethodFromPayment(biz, "pay_u", "sub_OLD", creds);
+    await expect(startMakePrimary({ businessId: biz, productKey: KEY, newMethod: "upi" }, creds)).rejects.toThrow(/already your primary/);
+  });
+
   it("refuses a subscription that this business did not start", async () => {
     const { biz } = await withTwoCards();
     rz.sub_FOREIGN = { status: "authenticated", current_start: null, current_end: null, notes: { businessId: "biz_other", productKey: KEY } };

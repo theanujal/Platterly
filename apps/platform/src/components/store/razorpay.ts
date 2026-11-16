@@ -1,7 +1,7 @@
 // Razorpay Checkout in the browser: the one script Razorpay publishes for it, loaded only when someone is about to pay. The order, the amount and the key come
 // from Ops (through /api/store/checkout); this file only opens the window and hands back what Razorpay returns, for Ops to check.
 export type RazorpayOrder = { keyId: string; razorpayOrderId: string; amountPaise: number; businessName: string; description: string };
-export type RazorpaySubscription = { keyId: string; razorpaySubscriptionId: string; amountPaise: number; businessName: string; description: string };
+export type RazorpaySubscription = { keyId: string; razorpaySubscriptionId: string; amountPaise: number; businessName: string; description: string; /** Offer this one method only ("Add UPI"). */ onlyMethod?: "upi" };
 /** A card registration: the Rs 5 order for the business's Razorpay customer, opened with the recurring flag so the card is saved for renewals. */
 export type RazorpayCardRegistration = { keyId: string; razorpayOrderId: string; customerId: string; amountPaise: number; description: string };
 export type RazorpayReturn = { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string };
@@ -43,7 +43,7 @@ export const openRazorpay = (order: RazorpayOrder, prefill: { name: string }) =>
 
 /** An auto-pay (monthly plans, or a new primary method): the person authorises the mandate; Razorpay charges every 30 days from then. */
 export const openRazorpaySubscription = (sub: RazorpaySubscription, prefill: { name: string }) =>
-  open<RazorpaySubscriptionReturn>({ key: sub.keyId, subscription_id: sub.razorpaySubscriptionId, name: sub.businessName, description: sub.description, prefill: { name: prefill.name } });
+  open<RazorpaySubscriptionReturn>({ key: sub.keyId, subscription_id: sub.razorpaySubscriptionId, name: sub.businessName, description: sub.description, prefill: { name: prefill.name }, ...(sub.onlyMethod === "upi" ? { method: { upi: true, card: false, netbanking: false, wallet: false, emi: false, paylater: false } } : {}) });
 
 /** Saves a card for renewals: the Rs 5 registration order of the business's Razorpay customer, opened with the recurring flag. */
 export const openRazorpayCardRegistration = (reg: RazorpayCardRegistration, prefill: { name: string }) =>

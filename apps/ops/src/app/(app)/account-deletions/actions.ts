@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireStaff } from "@/lib/session";
 import { LifecycleError } from "@/modules/lifecycle/lifecycle";
-import { approveAccountDeletion, declineAccountDeletion, restoreAccountDeletion } from "@/modules/account-deletions/account-deletions";
+import { approveAccountDeletion, declineAccountDeletion, requestAccountErasure, restoreAccountDeletion } from "@/modules/account-deletions/account-deletions";
 
 export type DeletionFormState = { error?: string; done?: string };
 
@@ -32,4 +32,9 @@ export async function declineDeletionAction(_prev: DeletionFormState, formData: 
 export async function restoreDeletionAction(_prev: DeletionFormState, formData: FormData): Promise<DeletionFormState> {
   const staff = await requireStaff();
   return run(() => restoreAccountDeletion(String(formData.get("id") ?? ""), staff.id), "Restored. The business and the account are released.");
+}
+
+export async function eraseDeletionAction(_prev: DeletionFormState, formData: FormData): Promise<DeletionFormState> {
+  const staff = await requireStaff();
+  return run(() => requestAccountErasure(String(formData.get("id") ?? ""), String(formData.get("confirmation") ?? ""), staff.id), "Erase started. The products are erasing the business and the Platform will remove the person the next time it checks.");
 }

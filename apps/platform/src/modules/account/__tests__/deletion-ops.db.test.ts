@@ -1,7 +1,10 @@
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { signedHeaders } from "@platterly/contract";
 import { requestDeletion } from "../data-rights";
-import { isDeletionApproved, sendRequestToOps, sendWithdrawalToOps, syncDeletionRequests } from "../deletion-ops";
+import { isDeletionApproved, reportErasures, sendRequestToOps, sendWithdrawalToOps, syncDeletionRequests } from "../deletion-ops";
 import { mayStartSession } from "../hold";
 import { cancelDeletion } from "../data-rights";
 import { openHarness, testUrl, type Harness } from "../../auth/__tests__/helpers";
@@ -87,5 +90,53 @@ describe.skipIf(!testUrl)("account deletion requests and Ops", () => {
     await syncDeletionRequests(h.pool, { env, fetchImpl: f as never, sendEmail });
     expect(f.mock.calls.map(([u]) => new URL(String(u)).pathname)).toContain("/api/platform/account-deletions/withdraw");
     expect((await h.pool.query('select "withdrawNotifiedAt" from "deletionRequest" where id = $1', [id])).rows[0].withdrawNotifiedAt).not.toBeNull();
+  });
+
+  it("Erase now: the person and their rows go, the files go, and Ops is told once, even if it was down at first", async () => {
+    const id = await opened();
+    await h.pool.query('update "deletionRequest" set "opsNotifiedAt" = now(), "status" = \'approved\' where id = $1', [id]);
+    await h.pool.query(`insert into "accountProfile" ("userId", "photoKey", "photoType", "photoUpdatedAt") values ('u1', 'photo-u1.png', 'image/png', now())`);
+    await h.pool.query(`insert into session (id, "userId", token, "expiresAt", "createdAt", "updatedAt") values ('s1', 'u1', 'tok', now() + interval '1 day', now(), now())`);
+    await h.pool.query(`insert into "verification" (id, identifier, value, "expiresAt") values ('v1', 'sign-in-otp-u1@x.test', '123456', now() + interval '1 day')`);
+    await h.pool.query(`insert into "user" (id, name, email, "emailVerified") values ('u2', 'Other', 'u2@x.test', true)`);
+    const photos = await mkdtemp(path.join(os.tmpdir(), "erase-photos-"));
+    const logos = await mkdtemp(path.join(os.tmpdir(), "erase-logos-"));
+    await writeFile(path.join(photos, "photo-u1.png"), "x");
+    const logoKey = `${"a".repeat(32)}.png`;
+    await writeFile(path.join(logos, logoKey), "x");
+    await writeFile(path.join(logos, `${"b".repeat(32)}.png`), "x");
+    const erased: [string, string | null][] = [];
+    const eraser = async (subject: string, businessId: string | null) => { erased.push([subject, businessId]); };
+    const { eraseAccount } = await import("../erase");
+    expect(await eraseAccount(h.pool, { requestId: id, userId: "u1", businessId: "biz_1", logoUrls: [`http://account.localhost:3300/api/business-logo/${logoKey}`] }, eraser, { photos, logos })).toBe(true);
+    expect(erased).toEqual([["u1", "biz_1"]]);
+    expect((await h.pool.query(`select count(*) from "user" where id = 'u1'`)).rows[0].count).toBe("0");
+    for (const table of ["session", "accountProfile", "deletionRequest"]) expect((await h.pool.query(`select count(*) from "${table}" where "userId" = 'u1'`)).rows[0].count, table).toBe("0");
+    expect((await h.pool.query(`select count(*) from "verification" where id = 'v1'`)).rows[0].count).toBe("0");
+    expect((await h.pool.query(`select count(*) from "user" where id = 'u2'`)).rows[0].count).toBe("1");
+    expect(await readdir(photos)).toEqual([]);
+    expect(await readdir(logos)).toEqual([`${"b".repeat(32)}.png`]);
+    // Nobody left to erase: a second run does nothing.
+    expect(await eraseAccount(h.pool, { requestId: id, userId: "u1", businessId: "biz_1", logoUrls: [] }, eraser, { photos, logos })).toBe(false);
+
+    // Ops is told; if it is down the receipt waits for the next pass.
+    expect((await h.pool.query('select "reportedAt" from "erasureReceipt" where "requestId" = $1', [id])).rows[0].reportedAt).toBeNull();
+    expect(await reportErasures(h.pool, { env, fetchImpl: (async () => { throw new Error("down"); }) as never })).toBe(0);
+    const told = ops(() => ({ requestId: id, status: "ERASED" }));
+    expect(await reportErasures(h.pool, { env, fetchImpl: told as never })).toBe(1);
+    expect(told.mock.calls.map(([u]) => new URL(String(u)).pathname)).toEqual(["/api/platform/account-deletions/erased"]);
+    expect(await reportErasures(h.pool, { env, fetchImpl: told as never })).toBe(0);
+  });
+
+  it("the sync pass erases when Ops says staff pressed Erase now, with the logo links Ops kept", async () => {
+    const id = await opened();
+    await h.pool.query('update "deletionRequest" set "opsNotifiedAt" = now(), "status" = \'approved\' where id = $1', [id]);
+    const erased: [string, string | null][] = [];
+    const f = ops((path) => (path.endsWith("/erased") ? { requestId: id, status: "ERASED" } : { requestId: id, status: "APPROVED", declineReason: null, eraseAfter: null, eraseRequested: true, logoUrls: [] }));
+    const result = await syncDeletionRequests(h.pool, { env, fetchImpl: f as never, sendEmail, eraser: async (s, b) => { erased.push([s, b]); } });
+    expect(result).toMatchObject({ erased: 1 });
+    expect(erased).toEqual([["u1", "biz_1"]]);
+    expect((await h.pool.query(`select count(*) from "user" where id = 'u1'`)).rows[0].count).toBe("0");
+    expect((await h.pool.query('select "reportedAt" from "erasureReceipt" where "requestId" = $1', [id])).rows[0].reportedAt).not.toBeNull();
   });
 });

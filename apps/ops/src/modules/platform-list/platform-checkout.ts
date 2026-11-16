@@ -1,5 +1,5 @@
 import "server-only";
-import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
+import { CONTRACT_VERSION, isId, isProductKey, parseBillingVerifyRequest, parseCheckoutRequest, parseMakePrimaryRequest, parseMethodRequest, parseVerifyRequest, requestTarget, signedHeaders, verifyRequest, type PlatformBillingAction } from "@platterly/contract";
 import { BillingError, cancelAutoPay, cancelScheduledDowngrade, cancelSubscription, failAutoPayCheckout, pauseAutoPay, quoteCheckout, reactivateSubscription, resumeAutoPay, scheduleDowngrade, startAutoPayCheckout, startCheckout, verifyAutoPayCheckout, verifyCheckout } from "@/modules/billing/billing";
 import { requestRefund } from "@/modules/billing/refunds";
 import { methodsView, recordFirstMethod, removeMethod, startAddCard, startMakePrimary, verifyAddCard, verifyMakePrimary } from "@/modules/billing/methods";
@@ -123,10 +123,14 @@ export async function handlePlatformBillingPost(request: Request, params: { busi
       const method = await verifyMakePrimary({ businessId, productKey, ...parsed.value }, platformRazorpay());
       return reply(200, { ok: true, label: method.label });
     }
-    if (action === "method-primary" || action === "method-remove") {
+    if (action === "method-primary") {
+      const parsed = parseMakePrimaryRequest(json);
+      if (!parsed.ok) return reply(400, { error: parsed.error });
+      return reply(200, await startMakePrimary({ businessId, productKey, ...parsed.value }, platformRazorpay()));
+    }
+    if (action === "method-remove") {
       const parsed = parseMethodRequest(json);
       if (!parsed.ok) return reply(400, { error: parsed.error });
-      if (action === "method-primary") return reply(200, await startMakePrimary({ businessId, productKey, ...parsed.value }, platformRazorpay()));
       await removeMethod({ businessId, productKey, ...parsed.value }, platformRazorpay());
       return reply(200, { ok: true });
     }

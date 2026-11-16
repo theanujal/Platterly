@@ -127,4 +127,5 @@ export const SAMPLE_BILLING_PROFILE: ProductBillingProfileRecord = {
   name: "Spice Route Caterers", brandName: "Spice Route", contactName: "Sample Contact", contactEmail: "billing@example.com", contactPhone: "+91 98765 43210",
   addressLine1: "12 MG Road", addressLine2: null, city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: "27ABCDE1234F1Z5",
   description: null, website: null, instagram: null, facebook: null, logoUrl: null,
+  businessPhone: "+91 98765 43210", orderNumberPrefix: "ORD", orderNumberNextValue: "1", orderNumberPadding: "4",
 };

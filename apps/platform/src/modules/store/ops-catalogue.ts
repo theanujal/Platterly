@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, parseProductBillingProfileHistoryAnswer, platformProductBillingProfileHistoryPath, type ProductBillingProfileChange, parseProductBillingProfilesAnswer, platformProductBillingProfilesPath, type ProductBillingProfileRecord, platformBillingProfilePath, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, parsePlatformProductCards, platformProductCardImagePath, PLATFORM_PRODUCT_CARDS_PATH, platformBillingPath, PLATFORM_PLANS_PATH, type BillingProfileAnswer, type PlatformBusinessBilling, type PlatformPlanCatalogue, type PlatformProductCards } from "@platterly/contract";
+import { newId, parseProductBillingProfileHistoryAnswer, platformProductBillingProfileHistoryPath, type ProductBillingProfileChange, parseProductBillingProfilesAnswer, platformProductBillingProfilesPath, type ProductBillingProfileRecord, platformInvoicePath, platformCreditNotePath, parsePlatformBusinessBilling, parsePlatformPlanCatalogue, parsePlatformProductCards, platformProductCardImagePath, PLATFORM_PRODUCT_CARDS_PATH, platformBillingPath, PLATFORM_PLANS_PATH, type PlatformBusinessBilling, type PlatformPlanCatalogue, type PlatformProductCards } from "@platterly/contract";
 import { signPullRequest, verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -51,19 +51,6 @@ export async function fetchOpsBilling(businessId: string, deps: Deps = {}): Prom
   const parsed = parsePlatformBusinessBilling(got.json);
   if (!parsed.ok || parsed.value.businessId !== businessId) return { ok: false, reason: "bad_answer" };
   return { ok: true, billing: parsed.value };
-}
-
-export type BillingProfileResult = { ok: true; answer: BillingProfileAnswer } | { ok: false; reason: OpsReadFailure | "not_found" };
-
-/**
- * One business's saved billing details from Ops (signed read, read-only secret). The caller must already have checked that the signed-in person is the
- * business's active Admin (`billingAccess`): Ops answers for any business id it knows.
- */
-export async function fetchOpsBillingProfile(businessId: string, deps: Deps = {}): Promise<BillingProfileResult> {
-  const got = await signedOpsGet(platformBillingProfilePath(businessId), deps);
-  if (!got.ok) return got;
-  const parsed = parseBillingProfileAnswer(got.json);
-  return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
 }
 
 /** Every per-product billing profile of one business (signed read). The caller must already have checked the person is the business's Admin. */

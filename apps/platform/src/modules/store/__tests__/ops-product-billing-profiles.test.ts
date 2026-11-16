@@ -8,7 +8,7 @@ const BILLING = "billing-secret-0123456789abcdef0123456789abcdef";
 const BIZ = `biz_${"a".repeat(32)}`;
 const readEnv = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_READER_SECRET: READER } as unknown as NodeJS.ProcessEnv;
 const saveEnv = { OPS_BASE_URL: "http://ops.test", OPS_PLATFORM_BILLING_SECRET: BILLING } as unknown as NodeJS.ProcessEnv;
-const profile: ProductBillingProfileRecord = { productKey: "caterly", version: 2, source: "product", updatedAt: "2026-11-16T10:00:00.000Z", name: "Spice Route", brandName: "Spice", contactName: "Asha", contactEmail: "a@example.com", contactPhone: "9876543210", addressLine1: "1 MG Road", addressLine2: null, city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: null, description: null, website: null, instagram: null, facebook: null, logoUrl: "https://caterly.example/logo.png" };
+const profile: ProductBillingProfileRecord = { businessPhone: null, orderNumberPrefix: null, orderNumberNextValue: null, orderNumberPadding: null, productKey: "caterly", version: 2, source: "product", updatedAt: "2026-11-16T10:00:00.000Z", name: "Spice Route", brandName: "Spice", contactName: "Asha", contactEmail: "a@example.com", contactPhone: "9876543210", addressLine1: "1 MG Road", addressLine2: null, city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: null, description: null, website: null, instagram: null, facebook: null, logoUrl: "https://caterly.example/logo.png" };
 const { productKey: _k, version: _v, source: _s, updatedAt: _u, ...fields } = profile;
 void _k; void _v; void _s; void _u;
 const request: ProductBillingProfileRequest = { baseVersion: 2, source: "account", editedBy: "u1", fields };

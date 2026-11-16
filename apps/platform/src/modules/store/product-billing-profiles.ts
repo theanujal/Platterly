@@ -1,8 +1,9 @@
 import "server-only";
-import { checkBillingProfile, type Buyer, isProductKey, parseProductBillingProfileRequest, type ProductBillingProfileChange, type ProductBillingProfileRecord, type ProductBillingProfileRequest } from "@platterly/contract";
+import { checkBillingProfile, checkOrderNumbering, type Buyer, isProductKey, parseProductBillingProfileRequest, type ProductBillingProfileChange, type ProductBillingProfileRecord, type ProductBillingProfileRequest } from "@platterly/contract";
 import type { Session } from "@/lib/session";
+import { removeReplacedLogo } from "@/modules/account/business-logo";
 import { billingAccess } from "./billing-rights";
-import { fetchOpsProductBillingProfileHistory, fetchOpsBilling, fetchOpsBillingProfile, fetchOpsProductBillingProfiles, type OpsReadFailure } from "./ops-catalogue";
+import { fetchOpsProductBillingProfileHistory, fetchOpsBilling, fetchOpsProductBillingProfiles, type OpsReadFailure } from "./ops-catalogue";
 import { saveOpsProductBillingProfile, type CheckoutFailure } from "./ops-checkout";
 
 /**
@@ -40,28 +41,40 @@ export async function saveMyProductBillingProfile(session: Session | null, produ
     const f = (input as { fields?: Record<string, unknown> }).fields;
     const str = (k: string) => (typeof f?.[k] === "string" ? (f[k] as string).trim() || null : null);
     const fields = f ? (checkBillingProfile({ name: str("name") ?? "", addressLine1: str("addressLine1"), addressLine2: str("addressLine2"), city: str("city"), state: str("state"), postalCode: str("postalCode"), country: str("country"), gstin: str("gstin"), contactName: str("contactName"), contactEmail: str("contactEmail"), contactPhone: str("contactPhone") }) as Record<string, string>) : {};
+    const numbering = f ? checkOrderNumbering({ orderNumberPrefix: str("orderNumberPrefix"), orderNumberNextValue: str("orderNumberNextValue"), orderNumberPadding: str("orderNumberPadding") }) : null;
+    if (numbering) {
+      const key = (/^fields\.(\w+):/.exec(numbering)?.[1] ?? "orderNumberPrefix") as string;
+      (fields as Record<string, string>)[key] = numbering.replace(/^fields\.\w+: /, "");
+    }
     return { ok: false, reason: "bad_request", message: parsed.error, ...(Object.keys(fields).length ? { fields } : {}) };
   }
   const request: ProductBillingProfileRequest = parsed.value;
+  const before = await fetchOpsProductBillingProfiles(access.businessId);
   const got = await saveOpsProductBillingProfile({ businessId: access.businessId, productKey, request });
   if (!got.ok) return got;
-  return "conflict" in got.answer ? { ok: false, reason: "conflict", current: got.answer.current } : { ok: true, profile: got.answer.profile };
+  if ("conflict" in got.answer) return { ok: false, reason: "conflict", current: got.answer.current };
+  // A logo the profile no longer shows is deleted from disk, unless another product of the business still links to it.
+  if (before.ok) {
+    const old = before.profiles.find((p) => p.productKey === productKey);
+    await removeReplacedLogo(old?.logoUrl, got.answer.profile.logoUrl, before.profiles.filter((p) => p.productKey !== productKey).map((p) => p.logoUrl)).catch(() => undefined);
+  }
+  return { ok: true, profile: got.answer.profile };
 }
 
 /** What the Account page shows: the business's products, each product's saved profile (if any), and the business's older single record as a starting point for a product with none. */
-export type ProfilesPage = { businessName: string; products: { productKey: string; name: string }[]; profiles: ProductBillingProfileRecord[]; legacy: Buyer | null };
+export type ProfilesPage = { businessName: string; products: { productKey: string; name: string }[]; profiles: ProductBillingProfileRecord[] };
 export type ProfilesPageResult = { ok: true; page: ProfilesPage } | { ok: false; reason: ProductProfilesFailure };
 
 export async function loadMyBillingProfilesPage(session: Session | null): Promise<ProfilesPageResult> {
   const access = await billingAccess(session);
   if (access.status !== "ok") return refusal(access.status);
-  const [list, billing, legacy] = await Promise.all([fetchOpsProductBillingProfiles(access.businessId), fetchOpsBilling(access.businessId), fetchOpsBillingProfile(access.businessId)]);
+  const [list, billing] = await Promise.all([fetchOpsProductBillingProfiles(access.businessId), fetchOpsBilling(access.businessId)]);
   if (!list.ok && list.reason !== "not_found") return { ok: false, reason: list.reason };
   const profiles = list.ok ? list.profiles : [];
   // A business Ops does not know yet has no products; one Ops knows lists every product it uses, subscribed or not.
   const products = billing.ok ? billing.billing.products.map((p) => ({ productKey: p.productKey, name: p.name })) : [];
   for (const p of profiles) if (!products.some((x) => x.productKey === p.productKey)) products.push({ productKey: p.productKey, name: p.productKey });
-  return { ok: true, page: { businessName: access.businessName, products, profiles, legacy: legacy.ok ? legacy.answer.profile : null } };
+  return { ok: true, page: { businessName: access.businessName, products, profiles } };
 }
 
 /** The Change History tab: each change with who made it ("you", a teammate, or the product itself). The person's own id never leaves the server. */

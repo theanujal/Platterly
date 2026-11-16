@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, registerAndSignIn } from "./signed-in";
+import { expectSavedProfile, seedBillingProfile } from "./store-live-profile";
 
 /**
  * The LIVE Store, monthly auto-pay paid with UPI (step 3b): a monthly plan is always auto-renewal, so the Store opens Razorpay's auto-pay window (a subscription for the
@@ -47,14 +48,11 @@ async function signInAsBhandarysAdmin(page: Page): Promise<string> {
 }
 
 async function fillBilling(page: Page) {
-  await page.getByLabel("Business name").fill("Bhandarys Kitchen");
-  await page.getByLabel("Address line 1").fill("12 MG Road");
-  await page.getByLabel("City").fill("Pune");
-  await page.getByLabel("State").fill("Maharashtra");
-  await page.getByLabel("PIN code").fill("411001");
+  // Nothing is typed any more: the checkout shows the product's saved billing profile (seeded in beforeAll).
+  await expectSavedProfile(page);
 }
 
-/** Opens the Manage page, picks the MONTHLY price of a plan and fills the billing details; stops with Pay available. */
+/** Opens the Manage page, picks the MONTHLY price of a plan and checks the saved billing profile; stops with Pay available. */
 async function chooseMonthly(p: Page, planName: string, button: "Subscribe" | "Upgrade") {
   await p.goto(`${STORE}/manage/caterly`);
   await p.getByRole("button", { name: "Monthly" }).click();
@@ -119,6 +117,7 @@ test.describe("Live Store: UPI auto-pay", () => {
   test.beforeAll(async ({ browser }) => {
     page = await browser.newPage();
     await signInAsBhandarysAdmin(page);
+    seedBillingProfile(ops, BHANDARYS);
   });
   test.afterAll(async () => {
     await page.close();
@@ -203,5 +202,27 @@ test.describe("Live Store: UPI auto-pay", () => {
     await expect(page.getByText(/auto-pay was not set up|not been charged/)).toBeVisible({ timeout: 30_000 });
     expect(await paid()).toBe(before);
     expect(await current()).toMatch(/^ACTIVE\|premium\|MONTHLY$/);
+  });
+
+  test("Add UPI from the Account: the UPI window offers UPI only, the new UPI id becomes the primary, and the card that was primary stays saved as a secondary", async () => {
+    test.setTimeout(300_000);
+    await page.goto(`${ACCOUNT}/payment-methods`);
+    // Put a card back as the primary first (the earlier test left a UPI id as the primary, and a UPI id is added only next to a card).
+    await secondaryRow().first().getByRole("button", { name: "Make primary" }).click();
+    await completeRazorpayCard(page, RECURRING_CARD);
+    await expect(page.getByText(/is now your primary method/)).toBeVisible({ timeout: 60_000 });
+    expect(await methods()).not.toContain("UPI|");
+    await page.getByTestId("pm-caterly").getByRole("button", { name: "Add payment method" }).click();
+    await page.getByRole("menuitem", { name: "Add UPI" }).click();
+    // Only UPI is offered: no Cards tab in the window.
+    const frame = page.frameLocator("iframe.razorpay-checkout-frame");
+    await frame.getByText("UPI", { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
+    await expect(frame.getByText("Cards", { exact: true })).toHaveCount(0);
+    await payWithUpiQr(page);
+    await expect(page.getByText(/UPI testuser@razorpay is now your primary method\. Your next renewal is charged to it\. Your card stays saved as a secondary\./)).toBeVisible({ timeout: 60_000 });
+    expect(await methods()).toMatch(/UPI\|UPI testuser@razorpay\|true/);
+    expect(await methods()).toMatch(/CARD\|Visa ending 4366\|false/);
+    await expect(methodRows().first()).toContainText("Primary");
+    await expect(methodRows().first()).toContainText("UPI testuser@razorpay");
   });
 });

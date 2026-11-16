@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import type { Buyer, ProductBillingProfileRecord } from "@platterly/contract";
+import type { ProductBillingProfileRecord } from "@platterly/contract";
 import { useProductCards } from "./cards";
 import { Icon } from "./icons";
 import { AccountShell, useLeafCrumb } from "./shell";
@@ -18,13 +18,15 @@ import { billingComplete } from "@/modules/store/profile-ready";
  */
 
 type Product = { productKey: string; name: string };
-type Loaded = { businessName: string; products: Product[]; profiles: ProductBillingProfileRecord[]; legacy: Buyer | null; prefill?: Prefill };
+type Loaded = { businessName: string; products: Product[]; profiles: ProductBillingProfileRecord[]; prefill?: Prefill };
 type Prefill = { contactName: string; contactEmail: string; contactPhone: string } | null;
 type State = { phase: "loading" } | { phase: "error" } | { phase: "no_business" } | { phase: "not_admin" } | ({ phase: "ready" } & Loaded);
 
 const STATES = ["Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal"];
 // Platterly bills in India only for now, so India is the one country; GST invoices need an Indian state.
 const COUNTRY = "India";
+/** Products that number their orders (and so share prefix, next number and digits on both pages). */
+const ORDER_NUMBERING_PRODUCTS = ["catering"];
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
@@ -48,7 +50,7 @@ function useProfiles() {
         if (!alive) return;
         if (res.status === 409) return setState({ phase: "no_business" });
         if (res.status === 403) return setState({ phase: "not_admin" });
-        if (res.ok && body?.status === "ok") setState({ phase: "ready", businessName: body.businessName, products: body.products, profiles: body.profiles, legacy: body.legacy, prefill: body.prefill ?? null });
+        if (res.ok && body?.status === "ok") setState({ phase: "ready", businessName: body.businessName, products: body.products, profiles: body.profiles, prefill: body.prefill ?? null });
         else setState({ phase: "error" });
       } catch {
         if (alive) setState({ phase: "error" });
@@ -157,14 +159,14 @@ export function BusinessBillingList() {
 
 /* ------------------------------------------------------------- the details */
 
-type Field = "logoUrl" | "brandName" | "description" | "website" | "instagram" | "facebook" | "name" | "contactName" | "contactEmail" | "contactPhone" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin";
+type Field = "logoUrl" | "brandName" | "description" | "website" | "instagram" | "facebook" | "name" | "contactName" | "contactEmail" | "contactPhone" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessPhone" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding";
 type Errors = Partial<Record<Field, string>>;
 type Values = Record<Field, string>;
 type Notice = { kind: "saved" | "failed"; text: string };
 
-/** A saved profile fills the form; a product with none starts from the business's older single record, then from the business name and the person's own contact. */
-function toValues(p: ProductBillingProfileRecord | null, legacy: Buyer | null, businessName: string, prefill?: Prefill): Values {
-  const b = p ?? legacy;
+/** A saved profile fills the form; a product with none starts from the business name and the person's own contact. */
+function toValues(p: ProductBillingProfileRecord | null, businessName: string, prefill?: Prefill): Values {
+  const b = p;
   return {
     name: b?.name || businessName,
     logoUrl: p?.logoUrl ?? "",
@@ -183,6 +185,10 @@ function toValues(p: ProductBillingProfileRecord | null, legacy: Buyer | null, b
     postalCode: b?.postalCode ?? "",
     country: b?.country || COUNTRY,
     gstin: b?.gstin ?? "",
+    businessPhone: b?.businessPhone || prefill?.contactPhone || "",
+    orderNumberPrefix: p?.orderNumberPrefix ?? "",
+    orderNumberNextValue: p?.orderNumberNextValue ?? "",
+    orderNumberPadding: p?.orderNumberPadding ?? "",
   };
 }
 
@@ -286,7 +292,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
   const saved = s.profiles.find((p) => p.productKey === key) ?? null;
   const [tab, setTab] = useState<"profile" | "history">("profile");
   const [editing, setEditing] = useState<"business" | "billing" | null>(null);
-  const [draft, setDraft] = useState<Values>(() => toValues(saved, s.legacy, s.businessName, s.prefill));
+  const [draft, setDraft] = useState<Values>(() => toValues(saved, s.businessName, s.prefill));
   const [base, setBase] = useState<number | null>(saved ? saved.version : null);
   const [conflict, setConflict] = useState<ProductBillingProfileRecord | null | undefined>(undefined);
   const [errors, setErrors] = useState<Errors>({});
@@ -315,6 +321,8 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
     }
   }
 
+  // Order numbering is a Caterly setting: only a product that numbers its orders shows it.
+  const hasNumbering = ORDER_NUMBERING_PRODUCTS.includes(key) || Boolean(saved?.orderNumberPrefix);
   const complete = isComplete(saved);
   const copyable = s.profiles.filter((p) => p.productKey !== key);
   const nameOf = (k: string) => s.products.find((p) => p.productKey === k)?.name ?? k;
@@ -323,7 +331,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
   const stateOptions = draft.state && !STATES.includes(draft.state) ? [draft.state, ...STATES] : STATES;
 
   const startEdit = (which: "business" | "billing") => {
-    setDraft(toValues(saved, saved ? null : s.legacy, s.businessName, s.prefill));
+    setDraft(toValues(saved, s.businessName, s.prefill));
     setErrors({});
     setNotice(null);
     setEditing(which);
@@ -336,6 +344,10 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (editing === "business" && draft.businessPhone.replace(/\D/g, "").length <= 3) {
+      setErrors({ businessPhone: "Enter the business mobile number." });
+      return;
+    }
     setBusy(true);
     setNotice(null);
     try {
@@ -371,13 +383,13 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
   }
   const useCurrent = () => {
     if (!conflict) return;
-    setDraft(toValues(conflict, null, s.businessName, s.prefill));
+    setDraft(toValues(conflict, s.businessName, s.prefill));
     setConflict(undefined);
   };
   const copyFrom = (from: string) => {
     const source = s.profiles.find((p) => p.productKey === from);
     if (!source) return;
-    setDraft(toValues(source, null, s.businessName, s.prefill));
+    setDraft(toValues(source, s.businessName, s.prefill));
     setErrors({});
   };
 
@@ -483,33 +495,52 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
                     {draft.logoUrl && <button type="button" className="pa-dropzone-remove" onClick={() => change("logoUrl", "")}>Remove image</button>}
                     {logoError && <span className="pa-hint" role="alert">{logoError}</span>}
                   </div>
-                  <Input {...fieldProps} id="brandName" label="Brand name" optional span={6} maxLength={120} autoComplete="off" hint="Shown to customers. The legal billing name is used on invoices." />
+                  <Input {...fieldProps} id="brandName" label="Brand name" optional span={6} maxLength={120} autoComplete="off" hint="Shown to customers. The business name (under Billing Profile) is used on invoices." />
                   <div className="pa-field pa-span-6">
                     <label htmlFor="bd-description">Description <span className="pa-optional">(Optional)</span></label>
                     <textarea id="bd-description" rows={3} value={draft.description} maxLength={2000} onChange={(e) => change("description", e.target.value)} />
                   </div>
+                  <div className="pa-field pa-span-6">
+                    <label htmlFor="bd-businessPhone">Mobile number <span className="pa-required" aria-hidden="true">*</span></label>
+                    <PhoneField id="bd-businessPhone" value={draft.businessPhone} onChange={(v) => change("businessPhone", v)} describedBy={errors.businessPhone ? "bd-businessPhone-err" : undefined} invalid={!!errors.businessPhone} />
+                    {errors.businessPhone && <span className="pa-hint" id="bd-businessPhone-err" role="alert">{errors.businessPhone}</span>}
+                  </div>
                   <Input {...fieldProps} id="website" label="Website" optional span={2} maxLength={300} type="url" autoComplete="url" hint="Starts with https://" />
                   <Input {...fieldProps} id="instagram" label="Instagram" optional span={2} maxLength={300} type="url" autoComplete="off" hint="Link to your page" />
                   <Input {...fieldProps} id="facebook" label="Facebook" optional span={2} maxLength={300} type="url" autoComplete="off" hint="Link to your page" />
+                  {hasNumbering && (
+                    <>
+                      <h3 className="pa-span-6 pa-bd-subhead">Order numbering</h3>
+                      <Input {...fieldProps} id="orderNumberPrefix" label="Prefix" span={2} maxLength={10} autoComplete="off" hint="Letters, numbers or dashes, e.g. ORD" />
+                      <Input {...fieldProps} id="orderNumberNextValue" label="Starting number" span={2} maxLength={9} autoComplete="off" hint="The next order gets this number. From here it can only be raised." />
+                      <Input {...fieldProps} id="orderNumberPadding" label="Digits" span={2} maxLength={2} autoComplete="off" hint="1 to 10, e.g. 4 gives ORD-0001" />
+                    </>
+                  )}
                 </div>
                 {actions}
               </form>
             ) : (
               <dl className="pa-bb-grid">
-                <Item label="Business Name">{s.businessName}</Item>
                 <Item label="Brand Name">{dash(saved?.brandName)}</Item>
                 <Item label="Business Description" wide>{dash(saved?.description)}</Item>
                 <Item label="Website">
                   {saved?.website ? <a className="pa-link" href={saved.website} target="_blank" rel="noopener noreferrer">{host(saved.website)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
                 </Item>
-                <Item label="Social Links">
-                  {saved?.instagram || saved?.facebook ? (
-                    <span className="pa-bb-social">
-                      {saved.instagram && <a className="pa-link" href={saved.instagram} target="_blank" rel="noopener noreferrer">Instagram</a>}
-                      {saved.facebook && <a className="pa-link" href={saved.facebook} target="_blank" rel="noopener noreferrer">Facebook</a>}
-                    </span>
-                  ) : dash(null)}
+                <Item label="Mobile Number">{dash(saved?.businessPhone)}</Item>
+                <Item label="Instagram">
+                  {saved?.instagram ? <a className="pa-link" href={saved.instagram} target="_blank" rel="noopener noreferrer">{host(saved.instagram)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
                 </Item>
+                <Item label="Facebook">
+                  {saved?.facebook ? <a className="pa-link" href={saved.facebook} target="_blank" rel="noopener noreferrer">{host(saved.facebook)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
+                </Item>
+                {hasNumbering && (
+                  <>
+                    <Item label="Order Prefix">{dash(saved?.orderNumberPrefix)}</Item>
+                    <Item label="Starting Number">{dash(saved?.orderNumberNextValue)}</Item>
+                    <Item label="Digits">{dash(saved?.orderNumberPadding)}</Item>
+                    <Item label="Next Order Number">{saved?.orderNumberPrefix && saved.orderNumberNextValue && saved.orderNumberPadding ? `${saved.orderNumberPrefix}-${saved.orderNumberNextValue.padStart(Number(saved.orderNumberPadding), "0")}` : dash(null)}</Item>
+                  </>
+                )}
               </dl>
             )}
           </section>
@@ -519,7 +550,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
               <span className="pa-detail-tile"><Icon name="receipt" size={22} /></span>
               <div>
                 <h2 id="bb-billing-title">Billing Profile</h2>
-                <p className="pa-muted">Legal and tax information used for subscriptions and invoices.</p>
+                <p className="pa-muted">The business name, tax number, address and billing contact used for subscriptions and invoices.</p>
               </div>
               {editing !== "billing" && <button type="button" className="pa-btn pa-btn-outline" onClick={() => startEdit("billing")} disabled={editing === "business"}><Icon name="pencil" size={14} /> Edit</button>}
             </div>
@@ -539,7 +570,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
                   </div>
                 )}
                 <div className="pa-bd-grid">
-                  <Input {...fieldProps} id="name" label="Legal billing name" span={3} maxLength={120} autoComplete="organization" />
+                  <Input {...fieldProps} id="name" label="Business name" span={3} maxLength={120} autoComplete="organization" />
                   <Input {...fieldProps} id="gstin" label="GSTIN" optional span={3} maxLength={15} autoComplete="off" />
                   <Input {...fieldProps} id="contactName" label="Billing contact person" span={3} maxLength={120} autoComplete="name" />
                   <Input {...fieldProps} id="contactEmail" label="Billing email" span={3} maxLength={160} type="email" autoComplete="email" />
@@ -580,13 +611,12 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
               </form>
             ) : (
               <dl className="pa-bb-grid">
-                <Item label="Legal Billing Name">{dash(saved?.name)}</Item>
+                <Item label="Business Name">{dash(saved?.name)}</Item>
                 <Item label="GSTIN">{dash(saved?.gstin)}</Item>
                 <Item label="Billing Address" wide>{address.length ? address.map((line) => <span key={line} className="pa-bb-line">{line}</span>) : dash(null)}</Item>
                 <Item label="Billing Contact">{dash(saved?.contactName)}</Item>
                 <Item label="Billing Email">{dash(saved?.contactEmail)}</Item>
                 <Item label="Billing Phone">{dash(saved?.contactPhone)}</Item>
-                <Item label="Tax Information">{saved ? (saved.gstin ? "Registered under GST" : "Not registered under GST") : dash(null)}</Item>
               </dl>
             )}
           </section>
@@ -595,7 +625,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
             <Icon name="helpCircle" size={22} />
             <div>
               <h3>Invoice update rule</h3>
-              <p className="pa-muted">Changes to GSTIN, legal billing name or billing address will apply to future invoices only. Previously issued invoices will remain unchanged.</p>
+              <p className="pa-muted">Changes to GSTIN, business name or billing address will apply to future invoices only. Previously issued invoices will remain unchanged.</p>
             </div>
           </aside>
         </>

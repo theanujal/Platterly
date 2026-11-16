@@ -30,10 +30,10 @@ export async function POST(request: Request) {
   for (const n of notices) await sendNotYou(n.oldEmail);
   const opsTold = await resendUnnotified(pool).catch(() => 0);
   // Deletion requests: Ops is told about new ones and withdrawals, and its decisions are picked up (an approval blocks the person's sign-in).
-  const deletions = await syncDeletionRequests(pool).catch(() => ({ sent: 0, decided: 0 }));
+  const deletions = await syncDeletionRequests(pool).catch(() => ({ sent: 0, decided: 0, erased: 0 }));
   const ctx = { initiator: { kind: "system" as const, ref: "cron" }, executor: { kind: "system" as const, ref: "cron" } };
   const due = await prisma.ownershipTransfer.findMany({ where: { status: "pending", expiresAt: { lte: new Date() } }, select: { id: true }, take: 100 });
   let expiredTransfers = 0;
   for (const t of due) if (await prisma.$transaction((tx) => expireTransfer(tx, ctx, t.id)).catch(() => false)) expiredTransfers += 1;
-  return Response.json({ expiredChangeNotices: notices.length, opsTold, expiredTransfers, deletionRequestsSent: deletions.sent, deletionDecisions: deletions.decided });
+  return Response.json({ expiredChangeNotices: notices.length, opsTold, expiredTransfers, deletionRequestsSent: deletions.sent, deletionDecisions: deletions.decided, accountsErased: deletions.erased });
 }

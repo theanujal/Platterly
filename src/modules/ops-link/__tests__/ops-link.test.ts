@@ -258,10 +258,22 @@ describe("business lifecycle commands", () => {
     expect(((await held())?.profile as { city: string }).city).toBe("Mumbai");
     expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(9, { productKey: "rivo" }) }))).body).toMatchObject({ applied: false });
     expect((await held())?.version).toBe(3);
-    // The shared fields reach the Organization row, so invoices use them; the business's own name and phone are not touched.
-    expect(await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).toMatchObject({ name: "OpsLink Test Kitchen", city: "Mumbai", addressLine1: "1 MG Road", state: "Maharashtra", postalCode: "411001", gstNumber: null });
+    // The shared fields reach the Organization row, so invoices use them; the business name is one of them now, so it follows the profile.
+    expect(await prisma.organization.findUniqueOrThrow({ where: { id: org.id } })).toMatchObject({ name: "Legal Name", city: "Mumbai", addressLine1: "1 MG Road", state: "Maharashtra", postalCode: "411001", gstNumber: null });
     expect((await send(command(org.businessId, "billing_profile.set", { profile: { ...profile(4), version: 0 } }))).status).toBe(400);
     expect((await send(command("biz_" + "7".repeat(32), "billing_profile.set", { profile: profile(1) }))).status).toBe(404);
+  });
+
+  it("billing_profile.set carries the business name, mobile number and order numbering; the next number only ever goes up", async () => {
+    const org = await makeOrg();
+    await prisma.organization.update({ where: { id: org.id }, data: { orderNumberPrefix: "ORD", orderNumberNextValue: 50, orderNumberPadding: 4 } });
+    const profile = (version: number, over: Record<string, unknown> = {}) => ({ productKey: "catering", version, source: "account", updatedAt: "2026-11-16T10:00:00.000Z", name: "New Name", brandName: null, contactName: null, contactEmail: null, contactPhone: null, addressLine1: null, addressLine2: null, city: null, state: null, postalCode: null, country: null, gstin: null, description: null, website: null, instagram: null, facebook: null, logoUrl: null, businessPhone: "+919800000777", orderNumberPrefix: "SR", orderNumberNextValue: "20", orderNumberPadding: "5", ...over });
+    const row = () => prisma.organization.findUniqueOrThrow({ where: { id: org.id } });
+    expect((await send(command(org.businessId, "billing_profile.set", { profile: profile(1) }))).body).toMatchObject({ applied: true });
+    // A lower next number from the Account is ignored (an order number already given must not repeat); prefix and digits apply.
+    expect(await row()).toMatchObject({ name: "New Name", contactPhone: "+919800000777", orderNumberPrefix: "SR", orderNumberPadding: 5, orderNumberNextValue: 50 });
+    await send(command(org.businessId, "billing_profile.set", { profile: profile(2, { orderNumberNextValue: "120" }) }));
+    expect((await row()).orderNumberNextValue).toBe(120);
   });
 
   it("update on only the slug leaves the profile alone; a taken slug is 409 and a badly formed one 400", async () => {

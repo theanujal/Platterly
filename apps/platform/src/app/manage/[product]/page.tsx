@@ -7,9 +7,10 @@ import { ManageFlow, type InitialChoice } from "@/components/store/manage-flow";
 import { getSession } from "@/lib/session";
 import { requireStoreSignIn } from "@/lib/store/guard";
 import { StoreUnavailable } from "@/components/store/unavailable";
-import { fetchOpsBillingProfile, fetchOpsProductBillingProfiles } from "@/modules/store/ops-catalogue";
+import { fetchOpsProductBillingProfiles } from "@/modules/store/ops-catalogue";
 import { pendingBuyerFor } from "@/modules/store/pending-buyer";
 import { opsKeyFor } from "@/modules/store/keys";
+import { buyerFromProfile } from "@/modules/store/profile-ready";
 import { SAMPLE_BILLING_PROFILE } from "@/modules/store/sample-catalogue";
 import { loadStoreProducts } from "@/modules/store/products";
 import { loadAccountProductCards } from "@/modules/account/product-cards";
@@ -55,8 +56,9 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   // Everyone else sees the product's saved billing profile from Ops (edited in the Account), and the Store never collects a second copy.
   const session = await getSession();
   const collectDetails = data.source === "ops" && data.business.state === "ok" ? Boolean(await pendingBuyerFor(session)) : false;
-  const saved = collectDetails && data.source === "ops" && data.business.state === "ok" ? await fetchOpsBillingProfile(data.business.id) : null;
-  const savedBuyer = saved?.ok ? saved.answer.profile : null;
+  const saved = collectDetails && data.source === "ops" && data.business.state === "ok" ? await fetchOpsProductBillingProfiles(data.business.id) : null;
+  const savedProfile = saved?.ok ? saved.profiles.find((p) => p.productKey === opsKeyFor(key)) ?? null : null;
+  const savedBuyer = savedProfile ? buyerFromProfile(savedProfile) : null;
   let profile = data.source === "ops" ? null : SAMPLE_BILLING_PROFILE;
   let profileState: "ok" | "unavailable" = "ok";
   if (data.source === "ops" && data.business.state === "ok" && !collectDetails) {

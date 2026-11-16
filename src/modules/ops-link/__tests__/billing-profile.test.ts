@@ -7,7 +7,7 @@ import { fetchOwnProfile, refreshOwnProfile, saveOwnProfile, storeProfileCopy } 
 const COMMAND_SECRET = "opssec_command_test";
 const orgIds: string[] = [];
 const saved: Record<string, string | undefined> = {};
-const record = (version: number, over: Partial<ProductBillingProfileRecord> = {}): ProductBillingProfileRecord => ({ productKey: "catering", version, source: "account", updatedAt: "2026-11-16T10:00:00.000Z", name: "Legal Name", brandName: "Brand", contactName: null, contactEmail: null, contactPhone: null, addressLine1: "1 MG Road", addressLine2: "Floor 2", city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: "27AAPFU0939F1ZV", description: "Weddings", website: "https://spice.example", instagram: null, facebook: null, logoUrl: null, ...over });
+const record = (version: number, over: Partial<ProductBillingProfileRecord> = {}): ProductBillingProfileRecord => ({ productKey: "catering", version, source: "account", updatedAt: "2026-11-16T10:00:00.000Z", name: "Legal Name", brandName: "Brand", businessPhone: null, orderNumberPrefix: null, orderNumberNextValue: null, orderNumberPadding: null, contactName: null, contactEmail: null, contactPhone: null, addressLine1: "1 MG Road", addressLine2: "Floor 2", city: "Pune", state: "Maharashtra", postalCode: "411001", country: "India", gstin: "27AAPFU0939F1ZV", description: "Weddings", website: "https://spice.example", instagram: null, facebook: null, logoUrl: null, ...over });
 
 function fakeOps(reply: { status: number; body: unknown } | (() => { status: number; body: unknown })) {
   const calls: { method: string; url: string; body: string }[] = [];

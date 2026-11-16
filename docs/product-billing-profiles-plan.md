@@ -101,3 +101,18 @@ One migration copies each business's current billing record into a (`businessId`
 - Fields: legal name, brand name, contact person, one email, one phone, address lines 1-2, city, state, PIN, country, GSTIN, description, website, Instagram, Facebook. No PAN, GST type, CC email or reference. No owner name.
 - "Copy from another product" button; edit rights: the Admin, and the person with access in the product.
 - Logo: decided 2026-11-16: the product keeps the file; Ops stores only a link (`logoUrl`). The product sends its link when it saves.
+
+## 2026-11-17: the two pages carry the same fields (AJ)
+
+The Account's Business & Billing page and Caterly's Business Profile page now show and edit the same record, field for field:
+
+| Card | Fields (both pages) |
+|---|---|
+| Business Profile | Logo, Brand name, Business description, Mobile number, Website, Instagram, Facebook (three separate fields), Order numbering (Prefix, Starting number, Digits; shown for a product that numbers its orders, today Caterly) |
+| Billing Profile | **Business name** (one field: the old "Company / business name" and "Legal billing name" are merged here and removed from the Business Profile card), GSTIN, address, billing contact (person, email, phone) |
+
+- "Tax Information" is gone: it was only a line worked out from the GSTIN. GSTIN is the one tax field.
+- Order numbering: Caterly reports its live next number to Ops after every order (no new version, no history); the Account's save can only raise the next number (a lower one is ignored, so an order number is never repeated). Prefix and digits apply either way.
+- The business name saved on either page is the business's name everywhere: Caterly applies it through `updateTenant`, which tells Ops and the Platform.
+- Nobody types the same details twice: a product the business uses with no profile yet starts as a copy of the latest profile (source "copy"; order numbering is never copied), made the first time the profiles are read.
+- Ops `product_billing_profile` has four new text columns (`businessPhone`, `orderNumberPrefix`, `orderNumberNextValue`, `orderNumberPadding`; migration `20261117100000`, `businessPhone` back-filled from the business's own mobile number).

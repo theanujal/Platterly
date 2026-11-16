@@ -1,7 +1,6 @@
 import "server-only";
 import { CONTRACT_VERSION, isId, isProductKey, parseProductBillingProfileRequest, requestTarget, signedHeaders, verifyRequest, type ProductBillingProfileRecord } from "@platterly/contract";
 import { sendCommand } from "@/modules/commands/outbox";
-import { saveBillingProfile } from "@/modules/billing/billing-profile";
 import { productBillingProfileHistory, copyProductBillingProfile, listProductBillingProfiles, saveProductBillingProfile, type ProductBillingProfile, type SaveResult } from "@/modules/billing/product-billing-profile";
 import { prisma } from "@/lib/db";
 import { platformBillingSecrets } from "./platform-checkout";
@@ -87,9 +86,7 @@ export async function handleProductProfilePut(request: Request, businessId: stri
       result = await saveProductBillingProfile({ businessId, productKey, fields: req.fields!, baseVersion: req.baseVersion, ...editor });
     }
     if (result.ok) {
-      // Until Store checkout and the billing emails read the per-product profile, they still read the business's single record: keep it in step with the latest save.
       const p = result.profile;
-      await saveBillingProfile(businessId, { name: p.name, addressLine1: p.addressLine1, addressLine2: p.addressLine2, city: p.city, state: p.state, postalCode: p.postalCode, country: p.country, gstin: p.gstin, contactName: p.contactName, contactEmail: p.contactEmail, contactPhone: p.contactPhone }, "account");
       if (req.source === "account") await pushToProduct(businessId, productKey, toRecord(p));
       return reply(200, { profile: toRecord(p) });
     }

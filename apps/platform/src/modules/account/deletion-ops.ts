@@ -1,17 +1,19 @@
-import { PLATFORM_ACCOUNT_DELETION_PATH, PLATFORM_ACCOUNT_DELETION_STATUS_PATH, PLATFORM_ACCOUNT_DELETION_WITHDRAW_PATH, parseAccountDeletionRequest } from "@platterly/contract";
+import { PLATFORM_ACCOUNT_DELETION_ERASED_PATH, PLATFORM_ACCOUNT_DELETION_PATH, PLATFORM_ACCOUNT_DELETION_STATUS_PATH, PLATFORM_ACCOUNT_DELETION_WITHDRAW_PATH, parseAccountDeletionRequest } from "@platterly/contract";
 import type { Pool } from "pg";
 import { deletionApprovedEmail, deletionDeclinedEmail, deletionRestoredEmail } from "../auth/email-templates";
 import { sendAuthEmail } from "../auth/mailer";
 import { opsPost } from "./hold";
+import { eraseAccount, type PlatformEraser } from "./erase";
 import { getProfile } from "./profile";
 
 // Account deletion requests, Platform side (AJ, 2026-11-15). The person asks on My Profile; Ops staff decide; this module tells Ops (and tells it again if Ops was
 // down), asks Ops for the decision (so Ops never calls the Platform) and acts on it:
 //   approved  -> every session of the person ends and they cannot sign in (see `isDeletionApproved`), and they are emailed;
 //   declined  -> the request closes with the reason, and they are emailed;
-//   restored  -> staff changed their mind during the retention period: sign-in works again, and they are emailed.
+//   restored  -> staff changed their mind during the retention period: sign-in works again, and they are emailed;
+//   erase     -> staff pressed "Erase now" on an approved request: the person and the business's central records are removed (see `erase.ts`) and Ops is told.
 // Each transition is claimed in one UPDATE, so its email goes out once however many times this runs.
-type Deps = { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; now?: number; sendEmail?: typeof sendAuthEmail };
+type Deps = { env?: NodeJS.ProcessEnv; fetchImpl?: typeof fetch; now?: number; sendEmail?: typeof sendAuthEmail; eraser?: PlatformEraser };
 export const RETENTION_DAYS = 30;
 
 /** Whether the person's deletion was approved, which blocks signing in until staff restore it. */
@@ -55,11 +57,12 @@ async function emailPerson(pool: Pool, userId: string, mail: ReturnType<typeof d
  * One pass: tell Ops about requests it has not heard of, tell it about withdrawals, then ask it for the decision on every open request and act on a change.
  * `userId` limits the pass to one person (used when that person opens their Profile or tries to sign in).
  */
-export async function syncDeletionRequests(pool: Pool, deps: Deps = {}, userId?: string): Promise<{ sent: number; decided: number }> {
+export async function syncDeletionRequests(pool: Pool, deps: Deps = {}, userId?: string): Promise<{ sent: number; decided: number; erased: number }> {
   const scope = userId ? ` and "userId" = $1` : "";
   const args = userId ? [userId] : [];
   let sent = 0;
   let decided = 0;
+  let erased = 0;
 
   const unsent = await pool.query(`select "id" from "deletionRequest" where "status" = 'pending' and "opsNotifiedAt" is null${scope}`, args);
   for (const r of unsent.rows) if (await sendRequestToOps(pool, r.id, deps)) sent += 1;
@@ -89,6 +92,10 @@ export async function syncDeletionRequests(pool: Pool, deps: Deps = {}, userId?:
       }
     } else if (r.status === "pending" && ops === "WITHDRAWN") {
       await pool.query(`update "deletionRequest" set "status" = 'cancelled', "cancelledAt" = now(), "withdrawNotifiedAt" = now() where "id" = $1 and "status" = 'pending'`, [r.id]);
+    } else if (r.status === "approved" && ops === "APPROVED" && got.value.eraseRequested === true) {
+      const payload = (await pool.query(`select "opsPayload" from "deletionRequest" where "id" = $1`, [r.id])).rows[0]?.opsPayload as { businessId?: string | null } | null;
+      const logoUrls = Array.isArray(got.value.logoUrls) ? (got.value.logoUrls as unknown[]).filter((u): u is string => typeof u === "string") : [];
+      if (await eraseAccount(pool, { requestId: r.id, userId: r.userId, businessId: payload?.businessId ?? null, logoUrls }, deps.eraser)) erased += 1;
     } else if (r.status === "approved" && ops === "RESTORED") {
       const done = await pool.query(`update "deletionRequest" set "status" = 'restored', "decidedAt" = now() where "id" = $1 and "status" = 'approved'`, [r.id]);
       if (done.rowCount === 1) {
@@ -97,5 +104,19 @@ export async function syncDeletionRequests(pool: Pool, deps: Deps = {}, userId?:
       }
     }
   }
-  return { sent, decided };
+  await reportErasures(pool, deps);
+  return { sent, decided, erased };
+}
+
+/** Tells Ops about every erase that is done and not yet reported (the receipt outlives the person, so a pass after an outage still reports it). */
+export async function reportErasures(pool: Pool, deps: Deps = {}): Promise<number> {
+  const { rows } = await pool.query(`select "requestId" from "erasureReceipt" where "reportedAt" is null`);
+  let reported = 0;
+  for (const r of rows as { requestId: string }[]) {
+    const got = await opsPost(PLATFORM_ACCOUNT_DELETION_ERASED_PATH, { requestId: r.requestId }, deps);
+    if (!got.ok) continue;
+    await pool.query(`update "erasureReceipt" set "reportedAt" = now() where "requestId" = $1`, [r.requestId]);
+    reported += 1;
+  }
+  return reported;
 }

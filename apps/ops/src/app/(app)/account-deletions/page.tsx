@@ -1,13 +1,13 @@
 import { UserX } from "lucide-react";
 import { Badge, Empty, PageHeader, formatWhen } from "@/components/ui";
 import { listAccountDeletions } from "@/modules/account-deletions/account-deletions";
-import { DecideForms, RestoreForm } from "./deletion-forms";
+import { DecideForms, EraseForm, RestoreForm } from "./deletion-forms";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Account deletions" };
 
-const TONE = { PENDING: "warning", APPROVED: "danger", DECLINED: "neutral", WITHDRAWN: "neutral", RESTORED: "success" } as const;
-const LABEL = { PENDING: "Waiting for you", APPROVED: "Approved: suspended", DECLINED: "Declined", WITHDRAWN: "Withdrawn by the person", RESTORED: "Restored" } as const;
+const TONE = { PENDING: "warning", APPROVED: "danger", DECLINED: "neutral", WITHDRAWN: "neutral", RESTORED: "success", ERASED: "neutral" } as const;
+const LABEL = { PENDING: "Waiting for you", APPROVED: "Approved: suspended", DECLINED: "Declined", WITHDRAWN: "Withdrawn by the person", RESTORED: "Restored", ERASED: "Erased" } as const;
 
 export default async function AccountDeletionsPage() {
   const rows = await listAccountDeletions();
@@ -38,7 +38,10 @@ export default async function AccountDeletionsPage() {
                 {r.reason ? <p className="mt-2 text-sm text-muted-foreground">Reason given: “{r.reason}”</p> : null}
                 {r.declineReason ? <p className="mt-2 text-sm text-muted-foreground">Declined because: “{r.declineReason}”</p> : null}
                 {status === "PENDING" ? <DecideForms id={r.id} hasBusiness={!!r.businessId} /> : null}
-                {status === "APPROVED" ? <RestoreForm id={r.id} /> : null}
+                {status === "APPROVED" && !r.eraseRequestedAt ? <RestoreForm id={r.id} /> : null}
+                {status === "APPROVED" && !r.eraseRequestedAt ? <EraseForm id={r.id} email={r.email} /> : null}
+                {status === "APPROVED" && r.eraseRequestedAt ? <p className="mt-3 text-sm text-muted-foreground">Erase started {formatWhen(r.eraseRequestedAt)}. Waiting for the Platform to remove the person.</p> : null}
+                {status === "ERASED" ? <p className="mt-3 text-sm text-muted-foreground">Erased {r.erasedAt ? formatWhen(r.erasedAt) : ""}. Invoices and payments are kept without contact details.</p> : null}
               </li>
             );
           })}

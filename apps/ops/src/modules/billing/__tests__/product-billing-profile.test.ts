@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { createProfileFromPayment, getProductBillingEmail, getProductBuyer, productBillingProfileHistory, copyProductBillingProfile, getProductBillingProfile, listProductBillingProfiles, saveProductBillingProfile } from "../product-billing-profile";
+import { setOrderCounter, createProfileFromPayment, getProductBillingEmail, getProductBuyer, productBillingProfileHistory, copyProductBillingProfile, getProductBillingProfile, listProductBillingProfiles, saveProductBillingProfile } from "../product-billing-profile";
 
 const BIZ = `biz_${"c".repeat(32)}`;
 const base = { name: "Spice Route Caterers", brandName: "Spice Route", contactEmail: "bill@example.com", city: "Pune", gstin: "27AAPFU0939F1ZV", website: "https://spice.example", logoUrl: "https://caterly.example/logo.png" };
@@ -93,5 +93,33 @@ describe("product billing profiles", () => {
   it("reports an unknown business", async () => {
     const r = await saveProductBillingProfile({ businessId: "biz_missing", productKey: "caterly", fields: base, baseVersion: null, source: "account" });
     expect(!r.ok && r.reason).toBe("not_found");
+  });
+
+  it("a product the business uses with no profile yet starts as a copy of the latest one, without order numbering, so details are never typed twice", async () => {
+    await prisma.businessProduct.createMany({ data: [{ businessId: BIZ, productKey: "catering" }, { businessId: BIZ, productKey: "impt" }] });
+    await save("catering", { ...base, businessPhone: "+919800000123", orderNumberPrefix: "SR", orderNumberNextValue: "42", orderNumberPadding: "4" }, null);
+    const list = await listProductBillingProfiles(BIZ);
+    const copy = list.find((p) => p.productKey === "impt")!;
+    expect(copy).toMatchObject({ name: base.name, brandName: "Spice Route", city: "Pune", businessPhone: "+919800000123", source: "copy", version: 1, orderNumberPrefix: null, orderNumberNextValue: null, orderNumberPadding: null });
+    expect(list.find((p) => p.productKey === "catering")).toMatchObject({ orderNumberPrefix: "SR", orderNumberNextValue: "42", source: "account" });
+    // Reading again changes nothing.
+    expect((await listProductBillingProfiles(BIZ)).find((p) => p.productKey === "impt")!.version).toBe(1);
+  });
+
+  it("copying one product's profile to another leaves order numbering out", async () => {
+    await save("caterly", { ...base, orderNumberPrefix: "SR", orderNumberNextValue: "42", orderNumberPadding: "4" }, null);
+    const copied = await copyProductBillingProfile({ businessId: BIZ, fromProductKey: "caterly", toProductKey: "rivo", baseVersion: null, source: "account" });
+    expect(copied.ok && copied.profile).toMatchObject({ city: "Pune", orderNumberPrefix: null, orderNumberNextValue: null });
+  });
+
+  it("the product's live order counter moves the next number without a new version, and seeds numbering once", async () => {
+    await save("catering", base, null);
+    expect(await setOrderCounter(BIZ, "catering", { orderNumberNextValue: "5", orderNumberPrefix: "SR", orderNumberPadding: "4" })).toBe(true);
+    expect(await getProductBillingProfile(BIZ, "catering")).toMatchObject({ orderNumberPrefix: "SR", orderNumberNextValue: "5", orderNumberPadding: "4", version: 1 });
+    // A later report only moves the counter; it never overwrites the prefix an edit set.
+    await save("catering", { ...base, orderNumberPrefix: "AB", orderNumberNextValue: "5", orderNumberPadding: "4" }, 1);
+    expect(await setOrderCounter(BIZ, "catering", { orderNumberNextValue: "9", orderNumberPrefix: "SR", orderNumberPadding: "4" })).toBe(true);
+    expect(await getProductBillingProfile(BIZ, "catering")).toMatchObject({ orderNumberPrefix: "AB", orderNumberNextValue: "9", version: 2 });
+    expect(await setOrderCounter(BIZ, "rivo", { orderNumberNextValue: "3" })).toBe(false);
   });
 });

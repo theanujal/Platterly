@@ -127,6 +127,14 @@ export function parseMethodRequest(input: unknown): ParseResult<MethodRequest> {
   return ok({ methodId: input.methodId });
 }
 
+/** Make-primary names either a saved method, or asks for a new UPI id to be added as the primary (decided 2026-11-16: any method may be primary; the old primary card stays as a secondary). */
+export type MakePrimaryRequest = { methodId: string } | { newMethod: "upi" };
+
+export function parseMakePrimaryRequest(input: unknown): ParseResult<MakePrimaryRequest> {
+  if (isRecord(input) && input.newMethod === "upi" && input.methodId === undefined) return ok({ newMethod: "upi" });
+  return parseMethodRequest(input);
+}
+
 /** A saved payment method as the Store shows it: a label only, never card data. */
 export interface PaymentMethodView {
   id: string;

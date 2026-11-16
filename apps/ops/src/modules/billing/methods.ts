@@ -129,27 +129,32 @@ export interface MakePrimaryAnswer {
   customerId: string;
   razorpaySubscriptionId: string;
   description: string;
+  /** Set when the window must offer one method only ("Add UPI"). */
+  onlyMethod?: "upi";
 }
 
 /**
  * Step one of making a saved method the primary: Razorpay cannot swap the method of a subscription, so a new subscription for the same plan is
  * made, starting when the paid period ends. The owner authorises it in Checkout (₹5, refunded by Razorpay); nothing changes until `verifyMakePrimary`.
  */
-export async function startMakePrimary(input: { businessId: string; productKey: string; methodId: string }, creds?: PlatformRazorpay | null, fetchImpl: typeof fetch = fetch): Promise<MakePrimaryAnswer> {
+export async function startMakePrimary(input: { businessId: string; productKey: string; methodId?: string; newMethod?: "upi" }, creds?: PlatformRazorpay | null, fetchImpl: typeof fetch = fetch): Promise<MakePrimaryAnswer> {
   const keys = needCreds(creds);
   await requireBusiness(input.businessId, input.productKey);
-  const method = await prisma.paymentMethod.findUnique({ where: { id: input.methodId } });
-  if (!method || method.businessId !== input.businessId) throw new BillingError("That payment method was not found.");
+  // Either a saved method is made primary, or a new UPI id is added as the primary ("Add UPI", decided 2026-11-16: the old primary card stays as a secondary).
+  const method = input.methodId ? await prisma.paymentMethod.findUnique({ where: { id: input.methodId } }) : null;
+  if (input.methodId && (!method || method.businessId !== input.businessId)) throw new BillingError("That payment method was not found.");
+  if (!input.methodId && input.newMethod !== "upi") throw new BillingError("Choose a payment method.");
   const current = await currentSubscription(input.businessId, input.productKey);
   if (!current?.razorpaySubscriptionId || current.billingInterval !== "MONTHLY") throw new BillingError("Auto-pay is not on, so there is no primary method to change.");
-  if (method.razorpaySubscriptionId === current.razorpaySubscriptionId) throw new BillingError("That method is already the primary.");
+  if (method && method.razorpaySubscriptionId === current.razorpaySubscriptionId) throw new BillingError("That method is already the primary.");
+  if (!method && (await prisma.paymentMethod.findFirst({ where: { businessId: input.businessId, kind: "UPI", razorpaySubscriptionId: current.razorpaySubscriptionId } }))) throw new BillingError("A UPI id is already your primary method. Make another method primary first, then add a new UPI id.");
   if (!current.currentPeriodEnd || current.currentPeriodEnd.getTime() <= Date.now() + 60_000) throw new BillingError("The paid period is over. Renew first, then change the payment method.");
   const plan = (await listSellablePlans(input.productKey)).find((candidate) => candidate.id === current.planId);
   if (!plan) throw new BillingError("This plan is no longer sold, so the payment method cannot be changed.");
   const customerId = await ensureRazorpayCustomer(input.businessId, keys, fetchImpl);
   const razorpayPlanId = await razorpayPlanFor(keys, plan, fetchImpl);
-  const sub = await createRazorpaySubscription(keys, { razorpayPlanId, customerId, startAt: Math.floor(current.currentPeriodEnd.getTime() / 1000), notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id, purpose: "change_primary_method", methodId: method.id } }, fetchImpl);
-  return { keyId: keys.keyId, customerId, razorpaySubscriptionId: sub.id, description: "Authorise your new payment method (₹5, refunded straight away)" };
+  const sub = await createRazorpaySubscription(keys, { razorpayPlanId, customerId, startAt: Math.floor(current.currentPeriodEnd.getTime() / 1000), notes: { businessId: input.businessId, productKey: input.productKey, planId: plan.id, purpose: "change_primary_method", ...(method ? { methodId: method.id } : { newMethod: "upi" }) } }, fetchImpl);
+  return { keyId: keys.keyId, customerId, razorpaySubscriptionId: sub.id, description: method ? "Authorise your new payment method (₹5, refunded straight away)" : "Authorise your UPI id (₹5, refunded straight away)", ...(method ? {} : { onlyMethod: "upi" as const }) };
 }
 
 /** Step two: the subscription must be this business's own and authorised. Then the business's subscription row points at it and the old one is cancelled. */
@@ -167,6 +172,14 @@ export async function verifyMakePrimary(input: { businessId: string; productKey:
   const current = await currentSubscription(input.businessId, input.productKey);
   if (!current?.razorpaySubscriptionId) throw new BillingError("Auto-pay is not on, so there is no primary method to change.");
   const old = current.razorpaySubscriptionId;
+  if (notes.newMethod === "upi") {
+    // "Add UPI": the person must really have authorised with a UPI id; anything else changes nothing.
+    const paidWith = describePayment(await fetchRazorpayPayment(keys, input.razorpayPaymentId, fetchImpl));
+    if (paidWith.kind !== "UPI") {
+      await stopAutoPay({ businessId: input.businessId, productKey: input.productKey, razorpaySubscriptionId: sub.id }, false);
+      throw new BillingError("That was not a UPI id, so nothing was changed.");
+    }
+  }
   const method = await methodAuthorised(input.businessId, notes.methodId, input.razorpayPaymentId, sub.id, keys, fetchImpl);
   await prisma.$transaction(async (tx) => {
     await tx.subscription.update({ where: { id: current.id }, data: { razorpaySubscriptionId: sub.id, autoPay: "ACTIVE" } });

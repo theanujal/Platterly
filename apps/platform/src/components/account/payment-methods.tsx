@@ -159,19 +159,20 @@ export function PaymentMethods() {
     }
   }
 
-  async function makePrimary(productKey: string, methodId: string) {
-    setBusy(`primary:${methodId}`);
+  /** Makes a saved method the primary, or (methodId null) adds a new UPI id as the primary; the old primary card stays saved as a secondary. */
+  async function makePrimary(productKey: string, methodId: string | null) {
+    setBusy(`primary:${methodId ?? "upi"}`);
     setNotice(null);
     try {
-      const started = await post({ action: "primary", productKey, methodId });
-      if (!started.ok) return say(productKey, "failed", messageOf(started, "We could not change your primary method. Nothing was changed."));
+      const started = await post(methodId ? { action: "primary", productKey, methodId } : { action: "add-upi", productKey });
+      if (!started.ok) return say(productKey, "failed", messageOf(started, methodId ? "We could not change your primary method. Nothing was changed." : "We could not start adding your UPI id. Nothing was changed."));
       const sub = { ...started.json, amountPaise: 0, businessName } as unknown as RazorpaySubscription;
       const paid = await openRazorpaySubscription(sub, { name: businessName });
-      if (!paid) return say(productKey, "failed", "The new payment method was not authorised, so nothing was changed.");
+      if (!paid) return say(productKey, "failed", methodId ? "The new payment method was not authorised, so nothing was changed." : "Your UPI id was not authorised, so nothing was changed.");
       const verified = await post({ action: "primary-verify", productKey, razorpaySubscriptionId: paid.razorpay_subscription_id, razorpayPaymentId: paid.razorpay_payment_id, signature: paid.razorpay_signature });
       if (!verified.ok) return say(productKey, "failed", messageOf(verified, "We could not confirm the change. Nothing was changed."));
       await load();
-      say(productKey, "ok", `${String(verified.json.label ?? "Your card")} is now your primary method. Your next renewal is charged to it.`);
+      say(productKey, "ok", `${String(verified.json.label ?? "Your payment method")} is now your primary method. Your next renewal is charged to it.${methodId ? "" : " Your card stays saved as a secondary."}`);
     } catch {
       say(productKey, "failed", "Something went wrong. Nothing was changed.");
     } finally {
@@ -230,7 +231,7 @@ export function PaymentMethods() {
                     triggerClass="pa-btn pa-btn-primary"
                     items={[
                       { text: "Add card", icon: "card", onClick: () => setConsentAdd({ productKey: p.productKey, agreed: false }), disabled: busy !== null },
-                      { text: "Add UPI", word: "UPI", onClick: () => {}, disabled: true, note: "Adding a UPI id on its own is not available yet." },
+                      { text: "Add UPI", word: "UPI", onClick: () => makePrimary(p.productKey, null), disabled: busy !== null || !p.autoPay || p.autoPay.status !== "ACTIVE", note: p.autoPay?.status === "ACTIVE" ? "Authorise a UPI id in Razorpay. It becomes your primary method; your card stays saved." : "Available while monthly auto-renewal is on." },
                     ]}
                   >
                     <Icon name="plus" size={16} /> Add payment method

@@ -19,7 +19,6 @@ import { toast } from "@/components/ui/toaster";
 
 /** The two cards of this page, like the Account's Business & Billing page: each has its own form and saves its own fields (the rest stay as they are). */
 export interface BusinessCardValues {
-  businessName: string;
   brandName: string;
   /** Whether the brand name is kept (it lives in the shared billing profile, which needs the Platterly Ops link). */
   showBrand: boolean;
@@ -36,10 +35,10 @@ export interface BusinessCardValues {
   orderNumberPadding: string;
 }
 export interface BillingCardValues {
-  /** Whether the legal name and billing contact are kept (they live in the shared billing profile, which needs the Platterly Ops link). */
+  /** Whether the billing contact is kept (it lives in the shared billing profile, which needs the Platterly Ops link). */
   showShared: boolean;
   profileVersion: string;
-  legalName: string;
+  businessName: string;
   gstin: string;
   billingContactName: string;
   billingEmail: string;
@@ -124,7 +123,6 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const formData = new FormData();
-    formData.set("businessName", values.businessName);
     formData.set("brandName", values.brandName);
     formData.set("businessDescription", values.businessDescription);
     formData.set("mobileNumber", values.mobileNumber);
@@ -149,9 +147,6 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
       </SettingsSection>
 
       <SettingsSection icon={Store} title="Basic Information">
-        <Field id="businessName" label="Company / business name">
-          <IconInput icon={Building} id="businessName" required value={values.businessName} onChange={(e) => setField("businessName", e.target.value)} />
-        </Field>
         {values.showBrand && (
           <Field id="brandName" label="Brand name">
             <Input id="brandName" value={values.brandName} onChange={(e) => setField("brandName", e.target.value)} />
@@ -211,7 +206,7 @@ export function BillingProfileForm({ initialValues }: { initialValues: BillingCa
     const formData = new FormData();
     for (const key of ["gstin", "addressLine1", "addressLine2", "city", "state", "postalCode", "country"] as const) formData.set(key, values[key]);
     if (values.showShared) {
-      formData.set("legalName", values.legalName);
+      formData.set("businessName", values.businessName);
       formData.set("billingContactName", values.billingContactName);
       formData.set("billingEmail", values.billingEmail);
       formData.set("billingPhone", values.billingPhone);
@@ -222,14 +217,12 @@ export function BillingProfileForm({ initialValues }: { initialValues: BillingCa
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6" aria-label="Edit billing profile">
       <ConflictNotice conflict={conflict} onUse={useNewValues} />
-      <SettingsSection icon={Receipt} title="Legal & Tax">
+      <SettingsSection icon={Receipt} title="Business & Tax">
         <p className="text-xs text-muted-foreground">Used for subscriptions and invoices. Changes apply to future invoices only.</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {values.showShared && (
-            <Field id="legalName" label="Legal billing name">
-              <Input id="legalName" value={values.legalName} onChange={(e) => setField("legalName", e.target.value)} />
-            </Field>
-          )}
+          <Field id="businessName" label="Business name">
+            <IconInput icon={Building} id="businessName" required value={values.businessName} onChange={(e) => setField("businessName", e.target.value)} />
+          </Field>
           <Field id="gstin" label="GSTIN">
             <Input id="gstin" maxLength={15} placeholder="29ABCDE1234F1Z5" value={values.gstin} onChange={(e) => setField("gstin", e.target.value.toUpperCase())} />
           </Field>

@@ -9,7 +9,7 @@ import { audit } from "@/lib/audit";
  * names the version it was based on; a stale one is refused and the current record comes back, so two screens never silently overwrite each other.
  * Issued invoices keep their own frozen copy of the buyer and are never touched here.
  */
-export const PROFILE_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "logoUrl"] as const;
+export const PROFILE_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 export type ProfileFields = { name: string } & Partial<Record<Exclude<ProfileField, "name">, string | null>>;
 export type ProductBillingProfile = { businessId: string; productKey: string; version: number; source: string; updatedAt: string } & { name: string } & Record<Exclude<ProfileField, "name">, string | null>;
@@ -20,13 +20,52 @@ const toProfile = (r: Row): ProductBillingProfile => ({
   businessId: r.businessId, productKey: r.productKey, version: r.version, source: r.source, updatedAt: r.updatedAt.toISOString(),
   name: r.name, brandName: r.brandName, contactName: r.contactName, contactEmail: r.contactEmail, contactPhone: r.contactPhone,
   addressLine1: r.addressLine1, addressLine2: r.addressLine2, city: r.city, state: r.state, postalCode: r.postalCode, country: r.country,
-  gstin: r.gstin, description: r.description, website: r.website, instagram: r.instagram, facebook: r.facebook, logoUrl: r.logoUrl,
+  gstin: r.gstin, description: r.description, website: r.website, instagram: r.instagram, facebook: r.facebook, businessPhone: r.businessPhone,
+  orderNumberPrefix: r.orderNumberPrefix, orderNumberNextValue: r.orderNumberNextValue, orderNumberPadding: r.orderNumberPadding, logoUrl: r.logoUrl,
 });
 const clean = (f: ProfileFields): Record<ProfileField, string | null> =>
   Object.fromEntries(PROFILE_FIELDS.map((k) => [k, k === "name" ? f.name.trim() : (f[k as Exclude<ProfileField, "name">]?.trim() || null)])) as Record<ProfileField, string | null>;
 
 export async function listProductBillingProfiles(businessId: string): Promise<ProductBillingProfile[]> {
+  await fillFromSibling(businessId);
   return (await prisma.productBillingProfile.findMany({ where: { businessId }, orderBy: { productKey: "asc" } })).map(toProfile);
+}
+
+/**
+ * So nobody types the same details twice: a product the business uses that has no profile yet starts as a copy of the business's most recently changed profile
+ * (everything shared; order numbering is left out), marked source "copy". It is a one-time copy, never a link, and is made the first time the profiles are read.
+ */
+async function fillFromSibling(businessId: string): Promise<void> {
+  const [products, profiles] = await Promise.all([
+    prisma.businessProduct.findMany({ where: { businessId }, select: { productKey: true } }),
+    prisma.productBillingProfile.findMany({ where: { businessId }, orderBy: { updatedAt: "desc" } }),
+  ]);
+  const source = profiles[0];
+  if (!source) return;
+  for (const { productKey } of products) {
+    if (profiles.some((p) => p.productKey === productKey)) continue;
+    const data = { ...toProfile(source), productKey, orderNumberPrefix: null, orderNumberNextValue: null, orderNumberPadding: null };
+    const { version: _v, source: _s, updatedAt: _u, ...fields } = data;
+    void _v; void _s; void _u;
+    try {
+      await prisma.productBillingProfile.create({ data: { ...fields, source: "copy" } });
+      await audit({ actorUserId: null, action: "billing.profile_saved", subject: businessId, detail: { productKey, source: "copy", editedBy: null, version: 1, created: true } });
+    } catch {
+      /* another read made it first */
+    }
+  }
+}
+
+/** The product reports its live order counter. No version change and no history: it is not an edit, the Account just shows the current number. */
+export async function setOrderCounter(businessId: string, productKey: string, counter: { orderNumberNextValue: string; orderNumberPrefix?: string; orderNumberPadding?: string }): Promise<boolean> {
+  const where = { businessId, productKey };
+  // A profile with no order numbering yet is seeded once from the product's own setting; one that has it only has its counter moved.
+  if (counter.orderNumberPrefix && counter.orderNumberPadding) {
+    const seeded = await prisma.productBillingProfile.updateMany({ where: { ...where, orderNumberPrefix: null }, data: { orderNumberPrefix: counter.orderNumberPrefix, orderNumberPadding: counter.orderNumberPadding, orderNumberNextValue: counter.orderNumberNextValue } });
+    if (seeded.count > 0) return true;
+  }
+  const res = await prisma.productBillingProfile.updateMany({ where: { ...where, orderNumberPrefix: { not: null } }, data: { orderNumberNextValue: counter.orderNumberNextValue } });
+  return res.count > 0;
 }
 
 export async function getProductBillingProfile(businessId: string, productKey: string): Promise<ProductBillingProfile | null> {
@@ -75,7 +114,9 @@ export async function saveProductBillingProfile(args: { businessId: string; prod
 export async function copyProductBillingProfile(args: { businessId: string; fromProductKey: string; toProductKey: string; baseVersion: number | null; source: "account" | "product"; editedBy?: string | null }): Promise<SaveResult | { ok: false; reason: "no_source" }> {
   const from = await getProductBillingProfile(args.businessId, args.fromProductKey);
   if (!from) return { ok: false, reason: "no_source" };
-  return saveProductBillingProfile({ businessId: args.businessId, productKey: args.toProductKey, fields: from, baseVersion: args.baseVersion, source: args.source, editedBy: args.editedBy });
+  // Order numbering belongs to one product (its counter is live), so it is never copied.
+  const fields = { ...from, orderNumberPrefix: null, orderNumberNextValue: null, orderNumberPadding: null };
+  return saveProductBillingProfile({ businessId: args.businessId, productKey: args.toProductKey, fields, baseVersion: args.baseVersion, source: args.source, editedBy: args.editedBy });
 }
 
 /** The changes made to one product's profile, newest first, read back from the audit rows each save wrote. */

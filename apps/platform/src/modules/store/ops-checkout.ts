@@ -1,5 +1,5 @@
 import "server-only";
-import { newId, parseBillingProfileAnswer, parseProductBillingProfileAnswer, parseProductBillingProfileConflict, platformBillingProfilePath, platformProductBillingProfilePath, type ProductBillingProfileRecord, type ProductBillingProfileRequest, platformCheckoutPath, requestTarget, signedHeaders, type BillingProfileAnswer, type Buyer, type CheckoutAnswer, type MethodsAnswer, type PlatformBillingAction } from "@platterly/contract";
+import { newId, parseProductBillingProfileAnswer, parseProductBillingProfileConflict, platformProductBillingProfilePath, type ProductBillingProfileRecord, type ProductBillingProfileRequest, platformCheckoutPath, requestTarget, signedHeaders, type Buyer, type CheckoutAnswer, type MethodsAnswer, type PlatformBillingAction } from "@platterly/contract";
 import { verifyPullResponse } from "@platterly/platform-contract";
 
 /**
@@ -48,17 +48,6 @@ async function signedOpsBilling(method: "POST" | "PUT", path: string, body: unkn
 }
 
 const signedOpsPost = (businessId: string, productKey: string, action: PlatformBillingAction, body: unknown, deps: Deps) => signedOpsBilling("POST", platformCheckoutPath(businessId, productKey, action), body, deps);
-
-/**
- * Saves a business's billing details (the Account's Billing details page). Ops checks them with the same rules as the forms and answers with the saved record.
- * The caller must already have checked that the signed-in person is the business's active Admin; `editedBy` is their id, kept in Ops's audit log.
- */
-export async function saveOpsBillingProfile(input: { businessId: string; buyer: Buyer; editedBy: string }, deps: Deps = {}): Promise<CheckoutResult<BillingProfileAnswer>> {
-  const got = await signedOpsBilling("PUT", platformBillingProfilePath(input.businessId), { buyer: input.buyer, editedBy: input.editedBy }, deps);
-  if (!got.ok) return got;
-  const parsed = parseBillingProfileAnswer(got.answer);
-  return parsed.ok ? { ok: true, answer: parsed.value } : { ok: false, reason: "bad_answer" };
-}
 
 export type ProductProfileSave = { profile: ProductBillingProfileRecord } | { conflict: true; current: ProductBillingProfileRecord | null };
 
@@ -197,13 +186,13 @@ export async function verifyStoreAddCard(input: Scope & { razorpayOrderId: strin
   return str(got.answer, "label") && typeof got.answer.refunded === "boolean" ? { ok: true, answer: { label: got.answer.label as string, refunded: got.answer.refunded } } : { ok: false, reason: "bad_answer" };
 }
 
-export type MakePrimaryWindow = { keyId: string; customerId: string; razorpaySubscriptionId: string; description: string };
+export type MakePrimaryWindow = { keyId: string; customerId: string; razorpaySubscriptionId: string; description: string; onlyMethod?: "upi" };
 /** Step one of making a saved method the primary: a new subscription for the owner to authorise. */
-export async function startStoreMakePrimary(input: Scope & { methodId: string }, deps: Deps = {}): Promise<CheckoutResult<MakePrimaryWindow>> {
-  const got = await signedOpsPost(input.businessId, input.opsProductKey, "method-primary", { methodId: input.methodId }, deps);
+export async function startStoreMakePrimary(input: Scope & ({ methodId: string } | { newMethod: "upi" }), deps: Deps = {}): Promise<CheckoutResult<MakePrimaryWindow>> {
+  const got = await signedOpsPost(input.businessId, input.opsProductKey, "method-primary", "methodId" in input ? { methodId: input.methodId } : { newMethod: input.newMethod }, deps);
   if (!got.ok) return got;
   const a = got.answer;
-  return str(a, "keyId") && str(a, "customerId") && str(a, "razorpaySubscriptionId") && str(a, "description") ? { ok: true, answer: a as unknown as MakePrimaryWindow } : { ok: false, reason: "bad_answer" };
+  return str(a, "keyId") && str(a, "customerId") && str(a, "razorpaySubscriptionId") && str(a, "description") ? { ok: true, answer: { keyId: a.keyId as string, customerId: a.customerId as string, razorpaySubscriptionId: a.razorpaySubscriptionId as string, description: a.description as string, ...(a.onlyMethod === "upi" ? { onlyMethod: "upi" as const } : {}) } } : { ok: false, reason: "bad_answer" };
 }
 
 export async function verifyStoreMakePrimary(input: Scope & { razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string }, deps: Deps = {}): Promise<CheckoutResult<{ label: string }>> {

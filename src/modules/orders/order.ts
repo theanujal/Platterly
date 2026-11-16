@@ -1,4 +1,5 @@
 import { isKitchenLocked, isOrderLocked, OrderLockedError } from "./order-lock";
+import { reportOrderCounter } from "@/modules/ops-link/billing-profile";
 import { lockAndReadOrder } from "./kitchen-lock";
 import { approvalWhere, outstandingApprovalWhere, type ApprovalFilter } from "./approval-list";
 import { DetailsFrozenError, PriceFrozenError, detailFieldChanges, priceFieldChanges } from "./price-freeze";
@@ -250,6 +251,8 @@ async function nextOrderNumber(organizationId: string): Promise<string> {
     select: { orderNumberPrefix: true, orderNumberNextValue: true, orderNumberPadding: true },
   });
   const assigned = org.orderNumberNextValue - 1;
+  // The Account shows the number Caterly will give next: tell Ops, without making the order wait for it.
+  void reportOrderCounter(organizationId);
   return `${org.orderNumberPrefix}-${String(assigned).padStart(org.orderNumberPadding, "0")}`;
 }
 

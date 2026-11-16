@@ -92,9 +92,9 @@ export async function attemptMessage(id: string, now: Date = new Date(), fetchIm
     return retryOrFail(base, result.reason);
   }
 
-  // A billing message goes to the billing email of the product it is about, else the business's older single record, else the owner.
+  // A billing message goes to the billing email of the product it is about, else the owner.
   const billingEmail = BILLING_TEMPLATES.has(row.template)
-    ? ((row.productKey ? await getProductBillingEmail(row.businessId, row.productKey) : null) ?? (await prisma.billingCustomer.findUnique({ where: { businessId: row.businessId }, select: { contactEmail: true } }))?.contactEmail?.trim() ?? null)
+    ? ((row.productKey ? await getProductBillingEmail(row.businessId, row.productKey) : null) ?? null)
     : null;
   const toEmail = billingEmail ?? business?.ownerEmail ?? null;
   if (!toEmail) return finish({ status: "SKIPPED", error: "The business has no owner email.", nextAttemptAt: null }, "skipped");

@@ -1,6 +1,6 @@
-import { parseProductBillingProfileRequest } from "@platterly/contract";
+import { parseProductBillingProfileRequest, parseProductCounterRequest } from "@platterly/contract";
 import { billingRoute, parseJson } from "@/modules/billing/api";
-import { getProductBillingProfile, saveProductBillingProfile } from "@/modules/billing/product-billing-profile";
+import { getProductBillingProfile, saveProductBillingProfile, setOrderCounter } from "@/modules/billing/product-billing-profile";
 import { prisma } from "@/lib/db";
 import { toRecord } from "@/modules/platform-list/platform-product-billing-profiles";
 
@@ -27,6 +27,14 @@ export async function PUT(request: Request, { params }: { params: Promise<{ prod
   const { productKey, businessId } = await params;
   return billingRoute(request, productKey, async ({ rawBody }) => {
     const json = parseJson(rawBody);
+    // The product's live order counter: no version, no history (it is not an edit).
+    const counter = parseProductCounterRequest(json);
+    if (counter) {
+      if (!counter.ok) return { status: 400, body: { error: counter.error } };
+      if (!(await registered(businessId, productKey))) return { status: 404, body: { error: "unknown_business" } };
+      const applied = await setOrderCounter(businessId, productKey, counter.value);
+      return { body: { ok: true, applied } };
+    }
     const parsed = parseProductBillingProfileRequest(json && typeof json === "object" ? { ...(json as object), source: "product" } : json, { lenient: true });
     if (!parsed.ok || !parsed.value.fields) return { status: 400, body: { error: parsed.ok ? "fields are required" : parsed.error } };
     if (!(await registered(businessId, productKey))) return { status: 404, body: { error: "unknown_business" } };

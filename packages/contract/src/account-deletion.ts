@@ -9,7 +9,10 @@ export const PLATFORM_ACCOUNT_DELETION_PATH = "/api/platform/account-deletions";
 export const PLATFORM_ACCOUNT_DELETION_STATUS_PATH = "/api/platform/account-deletions/status";
 export const PLATFORM_ACCOUNT_DELETION_WITHDRAW_PATH = "/api/platform/account-deletions/withdraw";
 
-export const ACCOUNT_DELETION_STATUSES = ["PENDING", "APPROVED", "DECLINED", "WITHDRAWN", "RESTORED"] as const;
+/** The Platform reports that it has erased the person (and the business's central records): Ops then closes the request as ERASED. */
+export const PLATFORM_ACCOUNT_DELETION_ERASED_PATH = "/api/platform/account-deletions/erased";
+
+export const ACCOUNT_DELETION_STATUSES = ["PENDING", "APPROVED", "DECLINED", "WITHDRAWN", "RESTORED", "ERASED"] as const;
 export type AccountDeletionStatus = (typeof ACCOUNT_DELETION_STATUSES)[number];
 
 export interface AccountDeletionRequest {

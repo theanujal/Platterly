@@ -7,7 +7,7 @@ import { fail, isIsoDate, isRecord, ok, type ParseResult } from "./result";
  * record. Every save names the version it was based on (`baseVersion`, null for a first save); Ops refuses a stale one with 409 and the current record.
  * The logo is a link: the product keeps the file.
  */
-export const PROFILE_TEXT_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "logoUrl"] as const;
+export const PROFILE_TEXT_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
 export type ProductProfileField = (typeof PROFILE_TEXT_FIELDS)[number];
 export type ProductProfileFields = { name: string } & Record<Exclude<ProductProfileField, "name">, string | null>;
 export interface ProductBillingProfileRecord extends ProductProfileFields {
@@ -18,7 +18,8 @@ export interface ProductBillingProfileRecord extends ProductProfileFields {
   updatedAt: string;
 }
 
-const MAX: Partial<Record<ProductProfileField, number>> = { description: 2000, website: 300, instagram: 300, facebook: 300, logoUrl: 500 };
+const MAX: Partial<Record<ProductProfileField, number>> = { businessPhone: 40, description: 2000, website: 300, instagram: 300, facebook: 300, logoUrl: 500 };
+const ADDED_LATER: ProductProfileField[] = ["businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding"];
 const URL_FIELDS: ProductProfileField[] = ["website", "instagram", "facebook", "logoUrl"];
 
 /** What the Platform sends to save one product's profile (`copyFrom` instead of `fields` copies another product's profile once). */
@@ -48,10 +49,40 @@ function parseFields(input: unknown, lenient = false): ParseResult<ProductProfil
   }
   if (!out.name) return fail("fields.name is required");
   const gstin = out.gstin ? out.gstin.toUpperCase() : null;
-  const value = { ...out, gstin } as ProductProfileFields;
+  const numbering = checkOrderNumbering(out);
+  if (numbering) return fail(numbering);
+  const value = { ...out, gstin, orderNumberPrefix: out.orderNumberPrefix ? out.orderNumberPrefix.toUpperCase() : null } as ProductProfileFields;
   const problems = lenient ? checkLenient(value) : checkBillingProfile({ name: value.name, addressLine1: value.addressLine1, addressLine2: value.addressLine2, city: value.city, state: value.state, postalCode: value.postalCode, country: value.country, gstin: value.gstin, contactName: value.contactName, contactEmail: value.contactEmail, contactPhone: value.contactPhone });
   const first = Object.entries(problems)[0];
   return first ? fail(`fields.${first[0]}: ${first[1]}`) : ok(value);
+}
+
+/** Order numbering (a product that numbers its orders, such as Caterly): a short prefix, a next number of at least 1 and 1 to 10 digits. All three or none. */
+export function checkOrderNumbering(f: Partial<Record<"orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding", string | null>>): string | null {
+  const { orderNumberPrefix: prefix, orderNumberNextValue: next, orderNumberPadding: digits } = f;
+  if (!prefix && !next && !digits) return null;
+  if (!prefix || !/^[A-Za-z0-9-]{1,10}$/.test(prefix)) return "fields.orderNumberPrefix: use 1 to 10 letters, numbers or dashes";
+  if (!next || !/^\d{1,9}$/.test(next) || Number(next) < 1) return "fields.orderNumberNextValue: the starting number must be at least 1";
+  if (!digits || !/^\d{1,2}$/.test(digits) || Number(digits) < 1 || Number(digits) > 10) return "fields.orderNumberPadding: digits must be between 1 and 10";
+  return null;
+}
+
+/** A product reports its live order counter (the next number goes up with every order). It changes no version and writes no history; the Account just shows the current number. */
+export interface ProductCounterRequest {
+  orderNumberNextValue: string;
+  /** Sent once to fill in a profile that has no order numbering yet (the product's existing setting); never overwrites one that has. */
+  orderNumberPrefix?: string;
+  orderNumberPadding?: string;
+}
+export function parseProductCounterRequest(input: unknown): ParseResult<ProductCounterRequest> | null {
+  if (!isRecord(input) || !("counter" in input)) return null;
+  const c = input.counter;
+  if (!isRecord(c) || typeof c.orderNumberNextValue !== "string" || !/^\d{1,9}$/.test(c.orderNumberNextValue) || Number(c.orderNumberNextValue) < 1) return fail("counter.orderNumberNextValue must be a number of at least 1");
+  const extra = typeof c.orderNumberPrefix === "string" || typeof c.orderNumberPadding === "string"
+    ? checkOrderNumbering({ orderNumberPrefix: c.orderNumberPrefix as string, orderNumberNextValue: c.orderNumberNextValue, orderNumberPadding: c.orderNumberPadding as string })
+    : null;
+  if (extra) return fail(extra);
+  return ok({ orderNumberNextValue: c.orderNumberNextValue, ...(typeof c.orderNumberPrefix === "string" ? { orderNumberPrefix: c.orderNumberPrefix.toUpperCase() } : {}), ...(typeof c.orderNumberPadding === "string" ? { orderNumberPadding: c.orderNumberPadding } : {}) });
 }
 
 function checkLenient(v: ProductProfileFields): Record<string, string> {
@@ -82,7 +113,8 @@ export function parseProductBillingProfileRecord(input: unknown): ParseResult<Pr
   if (typeof input.source !== "string" || !isIsoDate(input.updatedAt)) return fail("profile.source and updatedAt are required");
   const out: Record<string, string | null> = {};
   for (const key of PROFILE_TEXT_FIELDS) {
-    const v = input[key];
+    // A profile sent before the business phone and order numbering were shared lacks those keys: they read as empty.
+    const v = input[key] === undefined && ADDED_LATER.includes(key) ? null : input[key];
     if (v !== null && typeof v !== "string") return fail(`profile.${key} must be text or null`);
     out[key] = v as string | null;
   }

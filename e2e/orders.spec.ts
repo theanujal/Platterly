@@ -296,9 +296,6 @@ test("Multi Order: created from its dates, a configured Order Number, and the ty
   // --- Configure Order Numbering (Business Profile settings) ---
   await page.goto("/settings/account/business-profile");
   await page.getByRole("button", { name: "Edit Profile" }).click(); // opens in view mode (AJ, 2026-09-30)
-  // Onboarding was skipped, so the business name starts blank (the "Unnamed
-  // Business" placeholder is never shown back in the field) — required to save.
-  await page.getByLabel("Company / business name").fill(`Multi Order Test Co ${suffix}`);
   await page.getByLabel("Prefix").fill("AJ");
   await page.getByLabel("Starting number").fill("1");
   await page.getByLabel("Digits").fill("4");

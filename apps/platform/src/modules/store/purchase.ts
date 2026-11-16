@@ -157,7 +157,7 @@ export async function requestRefund(session: Session | null, input: { productKey
 // ---------- Saved payment methods ----------
 
 export type MethodRequest =
-  | { action: "list" | "add" | "autopay-pause" | "autopay-resume" | "autopay-cancel"; productKey: string }
+  | { action: "list" | "add" | "add-upi" | "autopay-pause" | "autopay-resume" | "autopay-cancel"; productKey: string }
   | { action: "primary" | "remove"; productKey: string; methodId: string }
   | { action: "add-verify"; productKey: string; razorpayOrderId: string; razorpayPaymentId: string; signature: string }
   | { action: "primary-verify"; productKey: string; razorpaySubscriptionId: string; razorpayPaymentId: string; signature: string };
@@ -167,7 +167,7 @@ export function readMethodRequest(input: unknown): MethodRequest | null {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const productKey = typeof o.productKey === "string" && KEY.test(o.productKey) ? o.productKey : null;
   if (!productKey) return null;
-  if (o.action === "list" || o.action === "add" || o.action === "autopay-pause" || o.action === "autopay-resume" || o.action === "autopay-cancel") return { action: o.action, productKey };
+  if (o.action === "list" || o.action === "add" || o.action === "add-upi" || o.action === "autopay-pause" || o.action === "autopay-resume" || o.action === "autopay-cancel") return { action: o.action, productKey };
   if (o.action === "primary" || o.action === "remove") {
     const m = parseMethodRequest(o);
     return m.ok ? { action: o.action, productKey, methodId: m.value.methodId } : null;
@@ -196,6 +196,7 @@ export async function managePaymentMethod(session: Session | null, input: unknow
     case "list": return listStoreMethods(scope);
     case "add": await shareOwnerContact(session, scope.businessId, scope.opsProductKey); return startStoreAddCard(scope);
     case "add-verify": return verifyStoreAddCard({ ...scope, razorpayOrderId: request.razorpayOrderId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });
+    case "add-upi": return startStoreMakePrimary({ ...scope, newMethod: "upi" });
     case "primary": return startStoreMakePrimary({ ...scope, methodId: request.methodId });
     case "primary-verify": return verifyStoreMakePrimary({ ...scope, razorpaySubscriptionId: request.razorpaySubscriptionId, razorpayPaymentId: request.razorpayPaymentId, signature: request.signature });
     case "remove": return removeStoreMethod({ ...scope, methodId: request.methodId });

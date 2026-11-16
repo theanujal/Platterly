@@ -226,7 +226,6 @@ describe("auto-pay checkout and charges", () => {
     const a = await startAutoPayCheckout({ businessId: biz, productKey: KEY, planId: pro.id, buyer });
     const first = cycle(a.razorpaySubscriptionId, new Date());
     await chargeAutoPay({ razorpaySubscriptionId: a.razorpaySubscriptionId, razorpayPaymentId: "pay_p1", ...first });
-    expect(await prisma.billingCustomer.findUnique({ where: { businessId: biz } })).toMatchObject({ city: "Bengaluru", source: "payment" });
     // The first payment created the product's profile; the Admin then edits it in the Account.
     const created = (await getProductBillingProfile(biz, KEY))!;
     expect(created).toMatchObject({ city: "Bengaluru", source: "payment", version: 1 });

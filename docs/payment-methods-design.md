@@ -10,7 +10,7 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 | 2 | At least one method must always stay registered. The last method can be replaced, never removed. |
 | 3 | Only the business's active Admin adds, changes or removes methods (same rule as buying). |
 | 4 | A **monthly** plan cannot be bought without a registered method (it is bought as an auto-pay). An **annual** plan above Rs 15,000 follows the RBI e-mandate rules: no silent debit; the customer gets a renewal reminder with a Store pay link and authenticates each year. |
-| 5 | UPI AutoPay can be a primary method. A UPI method cannot be kept as a saved secondary (UPI has no saved-method equivalent). |
+| 5 | **Revised 2026-11-16 (AJ):** any method, UPI included, may be primary or secondary; the customer chooses the primary. Original wording: UPI AutoPay can be a primary method; a UPI method cannot be kept as a saved secondary because Razorpay has no saved-method equivalent for a UPI id (an authorised UPI mandate is a subscription and charges on its own at its start date). **Open (mechanics, not decided):** how a UPI id is kept as a secondary without a live mandate; see "Add UPI" below. Until then a card can be switched to UPI (and back) through Make primary, and a UPI row is dropped when it stops being primary. |
 | 6 | Making a saved method the primary needs the customer to authorise it at that moment (an OTP or UPI approval). Razorpay offers no way to swap the method of an existing subscription, so this is the design, not a gap. |
 
 ## What the spike proved (Razorpay test mode, 2026-11-14)
@@ -57,7 +57,7 @@ Decided with AJ on 2026-11-14, after a Razorpay test-mode spike the same day. Bu
 - `verifyMakePrimary` accepts only a subscription this business started (notes carry business, product and purpose) that Razorpay reports `authenticated` or `active`; otherwise it cancels it and changes nothing. It points the subscription row first, then cancels the old one, so the old one's cancelled webhook is ignored. The old card stays as a secondary; an old UPI method is deleted (decision 5).
 - The Rs 5 refund of a card registration that fails keeps the card, writes a `billing.method_refund_failed` audit row, raises a staff alert, and tells the owner the refund is pending (never that it was refunded).
 - Add card registers a reusable, recurring-authorised **token** (up to Rs 15,000 a charge, one year, `as_presented`); it is not a subscription or mandate and nothing is debited by saving it. The Account shows this in a consent panel the owner must tick before Razorpay opens. The card is saved only after Ops verifies the signature and finds a captured payment of this business's customer with a token.
-- **Add UPI stays disabled** until the renewal model is decided (AJ, 2026-11-15). Renewal behaviour is unchanged.
+- **Add UPI stays disabled** (AJ, 2026-11-15; on 2026-11-16 AJ decided any method may be primary or secondary, but Razorpay still has no way to hold a UPI id without a live mandate: an authorised UPI subscription charges by itself on its start date). The options and what each costs are listed in the 2026-11-16 handover. Renewal behaviour is unchanged.
 - Not built yet: routes and `proxy.ts` entries (3b.2), recording the first method from a verified monthly purchase (3b.2), Account page (3b.3), annual reminders (3b.4).
 
 ## Built (3b.2, 2026-11-14, Ops and Platform; proven in a browser for the monthly purchase)

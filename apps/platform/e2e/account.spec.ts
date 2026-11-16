@@ -489,7 +489,7 @@ test.describe("My Products: the cards come from Ops", () => {
     await withPlaceholderSession(context);
     await business(page);
     await mockProfile(page);
-    const rec = (productKey: string, over: Record<string, unknown> = {}) => ({ productKey, version: 1, source: "account", updatedAt: "2026-11-01T10:00:00.000Z", name: "The Kitchen Co. LLP", brandName: "Kitchen Co", contactName: "Amit Sharma", contactEmail: "a@thekitchenco.in", contactPhone: "+919876543210", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: "27AAPFU0939F1ZV", description: "Catering for events", website: "https://thekitchenco.in", instagram: "https://instagram.com/kitchenco", facebook: null, logoUrl: null, ...over });
+    const rec = (productKey: string, over: Record<string, unknown> = {}) => ({ productKey, version: 1, source: "account", updatedAt: "2026-11-01T10:00:00.000Z", name: "The Kitchen Co. LLP", brandName: "Kitchen Co", contactName: "Amit Sharma", contactEmail: "a@thekitchenco.in", contactPhone: "+919876543210", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: "27AAPFU0939F1ZV", description: "Catering for events", website: "https://thekitchenco.in", instagram: "https://instagram.com/kitchenco", facebook: null, logoUrl: null, businessPhone: "+919800000123", orderNumberPrefix: "KC", orderNumberNextValue: "12", orderNumberPadding: "4", ...over });
     const profiles = [rec("caterly"), rec("rivo", { brandName: null, addressLine1: null })];
     const puts: { key: string; body: Record<string, unknown> }[] = [];
     let conflictNext = false;
@@ -518,10 +518,18 @@ test.describe("My Products: the cards come from Ops", () => {
     await expect(page.getByRole("heading", { name: "Caterly", level: 1 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Business Profile" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Billing Profile" })).toBeVisible();
-    await expect(page.getByText("Registered under GST")).toBeVisible();
+    // The same fields as Caterly's own page: no Tax Information line, no combined social links, the mobile number and order numbering are here, and the business name is a Billing Profile field only.
+    await expect(page.getByText("Registered under GST")).toHaveCount(0);
+    await expect(page.getByText("Tax Information")).toHaveCount(0);
+    await expect(page.getByText("Social Links")).toHaveCount(0);
+    const businessCard = page.getByRole("region", { name: "Business Profile" });
+    for (const label of ["Brand Name", "Mobile Number", "Website", "Instagram", "Facebook", "Order Prefix", "Starting Number", "Digits", "Next Order Number"]) await expect(businessCard).toContainText(label);
+    await expect(businessCard).not.toContainText("Business Name");
+    await expect(businessCard).toContainText("KC-0012");
+    await expect(page.getByRole("region", { name: "Billing Profile" })).toContainText("Business Name");
     await expect(page.getByText("Invoice update rule")).toBeVisible();
     await page.getByRole("region", { name: "Billing Profile" }).getByRole("button", { name: "Edit" }).click();
-    await expect(page.getByLabel("Legal billing name")).toHaveValue("The Kitchen Co. LLP");
+    await expect(page.getByLabel("Business name")).toHaveValue("The Kitchen Co. LLP");
     await expect(page.getByLabel("State")).toHaveValue("Maharashtra");
     await page.getByLabel("City").fill("Pune");
     await page.getByRole("button", { name: "Save changes" }).click();
@@ -530,13 +538,18 @@ test.describe("My Products: the cards come from Ops", () => {
     // The business card saves the same record, with the version the page now holds.
     await page.getByRole("region", { name: "Business Profile" }).getByRole("button", { name: "Edit" }).click();
     await page.getByLabel("Brand name").fill("Kitchen Co Events");
+    // The business card carries the same fields as Caterly's: the mobile number (required) and the order numbering.
+    await expect(page.getByLabel("Prefix")).toHaveValue("KC");
+    await expect(page.getByLabel("Starting number")).toHaveValue("12");
+    await expect(page.getByLabel("Digits")).toHaveValue("4");
+    await page.getByLabel("Digits").fill("5");
     // A logo can be added here too: the file is uploaded first and only its link goes into the profile.
     await page.route("**/api/account/billing-profiles/*/logo", (r) => json(r, 200, { status: "ok", url: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` }));
     await page.locator("#bd-logo").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: Buffer.from("png") });
     await expect(page.getByAltText("Logo preview")).toBeVisible();
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
-    expect(puts[1]).toMatchObject({ key: "caterly", body: { baseVersion: 2, fields: { brandName: "Kitchen Co Events", city: "Pune", logoUrl: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` } } });
+    expect(puts[1]).toMatchObject({ key: "caterly", body: { baseVersion: 2, fields: { brandName: "Kitchen Co Events", orderNumberPadding: "5", businessPhone: "+919800000123", city: "Pune", logoUrl: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` } } });
     await expect(page.getByAltText("Caterly logo")).toBeVisible();
     // A save that Ops refuses as stale keeps the person's edits and says what happened.
     conflictNext = true;

@@ -382,25 +382,25 @@ describe("Platform reads: invoice PDF and unfinished payments", () => {
   });
 });
 
-describe("saved billing details come from a confirmed payment", () => {
-  const profile = () => prisma.billingCustomer.findUnique({ where: { businessId: BIZ } });
+describe("a product's billing profile is created by its first confirmed payment", () => {
+  const profile = () => prisma.productBillingProfile.findFirst({ where: { businessId: BIZ, productKey: KEY } });
 
   it("a pending checkout saves nothing, so an abandoned attempt cannot overwrite good details", async () => {
     await call("checkout", BIZ, { planId: await planIdOf("pro"), interval: "ANNUAL", buyer });
     expect(await profile()).toBeNull();
   });
 
-  it("a confirmed payment saves the details typed at checkout, marked as coming from a payment", async () => {
+  it("a confirmed payment creates the profile from the details used at checkout, marked as coming from a payment", async () => {
     await pay("pro", "ANNUAL", "pay_prof_1");
     expect(await profile()).toMatchObject({ name: buyer.name, addressLine1: buyer.addressLine1, city: buyer.city, state: buyer.state, postalCode: buyer.postalCode, gstin: buyer.gstin, source: "payment" });
   });
 
-  it("a later purchase with changed details updates the saved record, still one per business", async () => {
+  it("a later purchase with other details leaves the saved profile alone, still one per product", async () => {
     await pay("pro", "ANNUAL", "pay_prof_2");
     const checkout = (await (await call("checkout", BIZ, { planId: await planIdOf("max"), interval: "ANNUAL", buyer: { ...buyer, city: "Mysuru", gstin: null } })).json()) as { razorpayOrderId: string };
     await call("verify", BIZ, { razorpayOrderId: checkout.razorpayOrderId, razorpayPaymentId: "pay_prof_3", signature: razorpaySig(checkout.razorpayOrderId, "pay_prof_3") });
-    expect(await prisma.billingCustomer.count({ where: { businessId: BIZ } })).toBe(1);
-    expect(await profile()).toMatchObject({ city: "Mysuru", gstin: null, source: "payment" });
+    expect(await prisma.productBillingProfile.count({ where: { businessId: BIZ, productKey: KEY } })).toBe(1);
+    expect(await profile()).toMatchObject({ city: buyer.city, gstin: buyer.gstin, source: "payment", version: 1 });
   });
 
   it("a failed payment saves nothing", async () => {

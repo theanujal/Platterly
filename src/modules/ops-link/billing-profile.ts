@@ -3,11 +3,12 @@ import { parseProductBillingProfileAnswer, parseProductBillingProfileConflict, t
 import { prisma } from "@/lib/db";
 import { OpsUnavailableError, opsBilling } from "./billing-client";
 import { opsLink } from "./config";
+import { updateTenant, type TenantProfileUpdateInput } from "@/modules/tenants/tenant";
 
 /**
  * Caterly's side of the shared billing profile (docs/product-billing-profiles-plan.md). The record lives in Platterly Ops, one per business and product; the
  * Account and this product's Business Profile page both edit it. Caterly keeps a read copy (`organization_billing_profile`) and copies the shared fields into its
- * own Organization columns so invoices and the storefront never wait on Ops. The business NAME and phone are not part of it and are never touched from here.
+ * own Organization columns so invoices and the storefront never wait on Ops. The business name, mobile number and order numbering ARE part of it now (one set of fields on both pages): a profile pushed from the Account is applied to them with `applyProfileIdentity`, which goes through `updateTenant` so Ops and the Platform hear about a new name.
  */
 export const profileLinkOn = () => opsLink() !== null;
 
@@ -30,6 +31,39 @@ export async function storeProfileCopy(organizationId: string, profile: ProductB
   return true;
 }
 
+/**
+ * Applies the parts of a profile pushed from the Account that are not plain copies: the business name, the mobile number and the order numbering. They go through
+ * `updateTenant` so the audit trail, the Ops record and the Platform's business name follow. Order numbers only ever go UP from here (the next number is a live
+ * counter; lowering it could repeat a number already given to an order); the product's own form still sets it freely.
+ */
+export async function applyProfileIdentity(organizationId: string, profile: ProductBillingProfileRecord): Promise<void> {
+  const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { name: true, contactPhone: true, orderNumberPrefix: true, orderNumberNextValue: true, orderNumberPadding: true } });
+  const input: TenantProfileUpdateInput = { name: org.name };
+  let changed = false;
+  if (profile.name.trim() && profile.name.trim() !== org.name) { input.name = profile.name.trim(); changed = true; }
+  if (profile.businessPhone && profile.businessPhone !== org.contactPhone) { input.contactPhone = profile.businessPhone; changed = true; }
+  if (profile.orderNumberPrefix && profile.orderNumberPadding && profile.orderNumberNextValue) {
+    if (profile.orderNumberPrefix !== org.orderNumberPrefix) { input.orderNumberPrefix = profile.orderNumberPrefix; changed = true; }
+    if (Number(profile.orderNumberPadding) !== org.orderNumberPadding) { input.orderNumberPadding = Number(profile.orderNumberPadding); changed = true; }
+    if (Number(profile.orderNumberNextValue) > org.orderNumberNextValue) { input.orderNumberNextValue = Number(profile.orderNumberNextValue); changed = true; }
+  }
+  if (changed) await updateTenant(organizationId, input);
+}
+
+/**
+ * Tells Ops the live order counter after an order is numbered (and seeds the prefix and digits once for a profile that has none), so the Account shows the number
+ * Caterly will give next. Best effort and never awaited by an order: a failure only leaves the Account's number a little behind until the next order.
+ */
+export async function reportOrderCounter(organizationId: string): Promise<void> {
+  if (!profileLinkOn()) return;
+  try {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId }, select: { businessId: true, orderNumberPrefix: true, orderNumberNextValue: true, orderNumberPadding: true } });
+    await opsBilling("PUT", `/businesses/${org.businessId}/billing-profile`, { counter: { orderNumberNextValue: String(org.orderNumberNextValue), orderNumberPrefix: org.orderNumberPrefix, orderNumberPadding: String(org.orderNumberPadding) } });
+  } catch {
+    /* the next order reports again */
+  }
+}
+
 /** The profile as it stands in Ops, or null when it has none yet. Throws OpsUnavailableError when Ops cannot be reached. */
 export async function fetchOwnProfile(businessId: string): Promise<ProductBillingProfileRecord | null> {
   const { status, json } = await opsBilling("GET", `/businesses/${businessId}/billing-profile`);
@@ -47,7 +81,11 @@ export async function refreshOwnProfile(organizationId: string, businessId: stri
   if (!profileLinkOn()) return;
   try {
     const profile = await fetchOwnProfile(businessId);
-    if (profile) await storeProfileCopy(organizationId, profile);
+    if (profile) {
+      await storeProfileCopy(organizationId, profile);
+      // A profile made before order numbering was shared has none: hand Ops this product's own setting once.
+      if (!profile.orderNumberPrefix) await reportOrderCounter(organizationId);
+    }
   } catch {
     /* keep what is held */
   }

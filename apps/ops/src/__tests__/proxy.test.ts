@@ -19,7 +19,7 @@ describe("ops proxy: public routes", () => {
     for (const path of ["/api/platform/account-reviews/", "/api/platform/account-reviews/other", "/api/platform/account-reviews/status/x"]) expect(through(path).passed, path).toBe(false);
   });
   it("lets exactly the three signed account-deletion calls through without a session", () => {
-    for (const path of ["/api/platform/account-deletions", "/api/platform/account-deletions/status", "/api/platform/account-deletions/withdraw"]) expect(through(path).passed, path).toBe(true);
+    for (const path of ["/api/platform/account-deletions", "/api/platform/account-deletions/status", "/api/platform/account-deletions/withdraw", "/api/platform/account-deletions/erased"]) expect(through(path).passed, path).toBe(true);
     for (const path of ["/api/platform/account-deletions/", "/api/platform/account-deletions/other", "/api/platform/account-deletions/status/x"]) expect(through(path).passed, path).toBe(false);
   });
   it("sends every other route under /api/platform to sign-in, however it is written", () => {
@@ -56,11 +56,10 @@ describe("ops proxy: public routes", () => {
 
   it("lets exactly the billing-details read and save for one business through, and nothing near it", () => {
     const biz = `biz_${"a".repeat(32)}`;
-    expect(through(`/api/platform/businesses/${biz}/billing-profile`).passed).toBe(true);
     expect(through(`/api/platform/businesses/${biz}/billing-profiles`).passed).toBe(true);
     expect(through(`/api/platform/businesses/${biz}/billing-profiles/caterly`).passed).toBe(true);
     expect(through(`/api/platform/businesses/${biz}/billing-profiles/caterly/history`).passed).toBe(true);
-    for (const path of [`/api/platform/businesses/${biz}/billing-profile/`, `/api/platform/businesses/${biz}/billing-profile/x`, `/api/platform/businesses/${biz}/billing-profiles/`, `/api/platform/businesses/${biz}/billing-profiles/Caterly`, `/api/platform/businesses/${biz}/billing-profiles/x/y`, `/api/platform/businesses/biz_short/billing-profiles`, `/api/platform/businesses/biz_short/billing-profile`, `/api/platform/businesses/${biz}/products/catering/billing-profile`, `/api/platform/businesses/billing-profile`]) {
+    for (const path of [`/api/platform/businesses/${biz}/billing-profile`, `/api/platform/businesses/${biz}/billing-profile/x`, `/api/platform/businesses/${biz}/billing-profiles/`, `/api/platform/businesses/${biz}/billing-profiles/Caterly`, `/api/platform/businesses/${biz}/billing-profiles/x/y`, `/api/platform/businesses/biz_short/billing-profiles`, `/api/platform/businesses/biz_short/billing-profile`, `/api/platform/businesses/${biz}/products/catering/billing-profile`, `/api/platform/businesses/billing-profile`]) {
       expect(through(path).passed, path).toBe(false);
     }
   });

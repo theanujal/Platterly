@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { sniffImage, type PhotoType } from "./photo";
 
@@ -32,4 +32,23 @@ export async function readLogo(key: string, dir: string = logoDir()): Promise<{ 
   } catch {
     return null;
   }
+}
+
+/** The key of a logo this Platform hosts, read from its link (`.../api/business-logo/{key}`); null for a link to anywhere else (a product's own upload, for example). */
+export function logoKeyFromUrl(url: string | null | undefined): string | null {
+  const m = /\/api\/business-logo\/([0-9a-f]{32}\.(?:jpg|png|webp))$/.exec((url ?? "").split("?")[0]);
+  return m ? m[1] : null;
+}
+
+/** Deletes a logo file we host. A missing file is fine. */
+export async function deleteLogo(key: string, dir: string = logoDir()): Promise<void> {
+  if (!KEY.test(key)) return;
+  await rm(path.join(dir, key), { force: true });
+}
+
+/** After a profile save: removes the file the profile used to show when it no longer shows it and no other profile of the business still links to it (copying a profile copies the link). */
+export async function removeReplacedLogo(oldUrl: string | null | undefined, newUrl: string | null | undefined, otherUrls: (string | null | undefined)[], dir: string = logoDir()): Promise<void> {
+  const key = logoKeyFromUrl(oldUrl);
+  if (!key || key === logoKeyFromUrl(newUrl) || otherUrls.some((u) => logoKeyFromUrl(u) === key)) return;
+  await deleteLogo(key, dir);
 }

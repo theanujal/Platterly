@@ -2,7 +2,7 @@
 
 import { Button, Field, inputClass } from "@/components/ui";
 import { useFormAction } from "@/lib/use-form-action";
-import { approveDeletionAction, declineDeletionAction, restoreDeletionAction, type DeletionFormState } from "./actions";
+import { approveDeletionAction, declineDeletionAction, eraseDeletionAction, restoreDeletionAction, type DeletionFormState } from "./actions";
 
 function Result({ state }: { state: DeletionFormState }) {
   return (
@@ -44,6 +44,22 @@ export function RestoreForm({ id }: { id: string }) {
       <input type="hidden" name="id" value={id} />
       <Button type="submit" size="md" variant="outline" disabled={restore.pending}>{restore.pending ? "Restoring…" : "Restore the business and account"}</Button>
       <Result state={restore.state} />
+    </form>
+  );
+}
+
+/** The final, irreversible removal. The staff member types the person's email first. */
+export function EraseForm({ id, email }: { id: string; email: string }) {
+  const erase = useFormAction(eraseDeletionAction, {});
+  return (
+    <form onSubmit={erase.onSubmit} className="mt-3 rounded-lg border border-destructive/40 p-3">
+      <input type="hidden" name="id" value={id} />
+      <p className="mb-2 text-sm text-muted-foreground">Erase now removes the business&apos;s data from every product, removes the person&apos;s account and sign-in records, and strips the contact details from invoices and payments (the invoices themselves are kept). It cannot be undone.</p>
+      <Field label={`Type ${email} to confirm`} htmlFor={`erase-${id}`}>
+        <input id={`erase-${id}`} name="confirmation" autoComplete="off" className={inputClass} />
+      </Field>
+      <div className="mt-2"><Button type="submit" size="md" variant="danger" disabled={erase.pending}>{erase.pending ? "Erasing…" : "Erase now"}</Button></div>
+      <Result state={erase.state} />
     </form>
   );
 }

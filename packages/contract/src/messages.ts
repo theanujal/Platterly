@@ -7,7 +7,7 @@ import { parseProductBillingProfileRecord, type ProductBillingProfileRecord } fr
 
 /* ---------- Commands: ops -> product (POST {product}/api/ops/commands) ---------- */
 
-export const COMMAND_TYPES = ["business.provision", "snapshot.push", "business.suspend", "business.reactivate", "notice.set", "business.delete", "business.restore", "business.update", "provider.set", "billing_profile.set"] as const;
+export const COMMAND_TYPES = ["business.provision", "snapshot.push", "business.suspend", "business.reactivate", "notice.set", "business.delete", "business.restore", "business.update", "provider.set", "billing_profile.set", "business.erase"] as const;
 export type CommandType = (typeof COMMAND_TYPES)[number];
 
 export interface ProvisionPayload {
@@ -51,6 +51,8 @@ export type Command =
   | { commandId: string; type: "notice.set"; businessId: string; payload: NoticePayload }
   | { commandId: string; type: "business.delete"; businessId: string; payload: DeletePayload }
   | { commandId: string; type: "business.restore"; businessId: string; payload: Record<string, never> }
+  /** The final removal after an approved account deletion's retention period: the product erases the business's data for good. Staff-triggered, irreversible. */
+  | { commandId: string; type: "business.erase"; businessId: string; payload: { confirmation: string } }
   | { commandId: string; type: "business.update"; businessId: string; payload: UpdatePayload }
   | { commandId: string; type: "provider.set"; businessId: string; payload: { channel: ProviderChannel; connected: boolean } }
   /** The business's billing profile for THIS product changed in Ops (the Account saved it): the product refreshes its read copy. Never sent for a save the product itself made. */
@@ -130,6 +132,11 @@ export function parseCommand(input: unknown, defs?: readonly EntitlementDef[]): 
     case "provider.set": {
       if (!PROVIDER_CHANNELS.includes(payload.channel as ProviderChannel) || typeof payload.connected !== "boolean") return fail("provider.set needs a channel (whatsapp or email) and connected true or false");
       return ok({ ...base, type, payload: { channel: payload.channel as ProviderChannel, connected: payload.connected } });
+    }
+    case "business.erase": {
+      const confirmation = shortText(payload.confirmation, 200);
+      if (!confirmation?.trim()) return fail("erase needs the typed confirmation");
+      return ok({ ...base, type, payload: { confirmation } });
     }
     case "business.delete": {
       const confirmation = shortText(payload.confirmation, 200);

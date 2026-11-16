@@ -13,7 +13,8 @@ import { InvalidSlugError, SlugTakenError, activateTenant, claimSuspensionForOps
 import { CATERING_ENTITLEMENTS } from "./manifest";
 import { storeSnapshot } from "./snapshots";
 import { opsLink } from "./config";
-import { storeProfileCopy } from "./billing-profile";
+import { applyProfileIdentity, storeProfileCopy } from "./billing-profile";
+import { eraseTenant } from "@/lib/tenant-purge/erase";
 import { parseCommand } from "@platterly/contract";
 
 export interface CommandReply {
@@ -84,6 +85,7 @@ async function execute(command: Command): Promise<CommandReply> {
       const { profile } = command.payload;
       if (profile.productKey !== opsLink()?.productKey) return { status: 200, body: { ok: true, applied: false } };
       const applied = await storeProfileCopy(org.id, profile);
+      if (applied) await applyProfileIdentity(org.id, profile);
       return { status: 200, body: { ok: true, applied, version: profile.version } };
     }
     case "provider.set": {
@@ -102,6 +104,13 @@ async function execute(command: Command): Promise<CommandReply> {
       else await claimSuspensionForOps(org.id);
       await audit({ organizationId: org.id, action: "tenant.delete_requested", recordType: "Organization", recordId: org.id, after: { retentionDays: command.payload.retentionDays } });
       return { status: 200, body: { ok: true, status: "SUSPENDED", dataRemoved: false } };
+    }
+    case "business.erase": {
+      // Irreversible. Only a business Ops already suspended for deletion (SUSPENDED) can be erased, and the typed confirmation is the business's name.
+      if (command.payload.confirmation.trim() !== org.name.trim()) return { status: 400, body: { ok: false, error: "confirmation_mismatch" } };
+      if (org.status !== "SUSPENDED") return { status: 409, body: { ok: false, error: "not_suspended_for_deletion" } };
+      const done = await eraseTenant(org.id);
+      return { status: 200, body: { ok: true, erased: done.removed, people: done.people } };
     }
     case "business.restore": {
       if (org.status === "DEACTIVATED") return { status: 409, body: { ok: false, error: "deactivated" } };

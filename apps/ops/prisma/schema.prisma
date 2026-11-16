@@ -197,7 +197,6 @@ model Business {
   subscriptions          Subscription[]
   payments               SubscriptionPayment[]
   standOrders            StandOrder[]
-  billingCustomer        BillingCustomer?
   productBillingProfiles ProductBillingProfile[]
   razorpayCustomer       RazorpayCustomer?
   paymentMethods         PaymentMethod[]
@@ -235,32 +234,6 @@ model PaymentMethod {
   @@map("payment_method")
 }
 
-// A business's saved billing details (F12.2.1): what starts every purchase filled in and what the Account's Billing details page edits. One row per business.
-// Written when a payment is confirmed paid (never for an abandoned attempt) and when the Admin saves the Account page. An invoice keeps its own frozen copy in
-// `SubscriptionPayment.invoiceSnapshot`, so changing this never rewrites an invoice.
-model BillingCustomer {
-  businessId   String   @id
-  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  name         String
-  addressLine1 String?
-  addressLine2 String?
-  city         String?
-  state        String?
-  postalCode   String?
-  country      String?
-  gstin        String?
-  // Who to write to about billing (the Account's Billing Details page). Not set by a payment.
-  contactName  String?
-  contactEmail String?
-  contactPhone String?
-  // Where the last change came from: "payment" (a confirmed purchase) or "account" (the Admin's own edit).
-  source       String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  @@map("billing_customer")
-}
-
 // One billing profile per business and product (the Account's Billing Profiles and the product's Business Profile edit this same record).
 model ProductBillingProfile {
   businessId   String
@@ -284,6 +257,12 @@ model ProductBillingProfile {
   website      String?
   instagram    String?
   facebook     String?
+  // The business's own mobile number (Caterly's "Mobile number"); the billing phone is contactPhone.
+  businessPhone String?
+  // Order numbering, for a product that numbers its orders (Caterly). Text like every field; the next number is the product's live counter.
+  orderNumberPrefix     String?
+  orderNumberNextValue  String?
+  orderNumberPadding    String?
   // A link to the logo. The product keeps the file; Ops stores only this link.
   logoUrl      String?
   // Where the last change came from: "account" or "product".
@@ -1094,13 +1073,19 @@ model AccountDeletionRequest {
   products      Json
   reason        String    @default("")
   requestedAt   DateTime
-  // PENDING, APPROVED, DECLINED, WITHDRAWN or RESTORED.
+  // PENDING, APPROVED, DECLINED, WITHDRAWN, RESTORED or ERASED (the Platform confirmed the final removal).
   status        String    @default("PENDING")
   declineReason String?
   decidedAt     DateTime?
   decidedBy     String?
   // When the retention period ends and the final removal may happen (set on approval).
   eraseAfter    DateTime?
+  // Staff pressed "Erase now": the products were told and Ops's own records anonymised. The Platform sees this when it asks for the status, erases the person
+  // and reports back; `erasedAt` is that report.
+  eraseRequestedAt DateTime?
+  // The logo links the business's profiles had when Erase now was pressed, so the Platform can delete the files it hosts (the profile rows are gone by then).
+  eraseLogoUrls Json?
+  erasedAt      DateTime?
   createdAt     DateTime  @default(now())
 
   @@index([status, createdAt])
