@@ -31,6 +31,21 @@ if [ "$app" = catering ]; then
     || die "Platterly's central sign-in is not answering (PLATFORM_AUTH_ORIGIN unset or unreachable). Deploy and check the Platform first, or catering has no way to sign in. Nothing was changed."
 fi
 
+# 1c. The business link with the Platform: without both secrets catering answers 404 to the Platform, so the membership event that adopts a business (and every
+# later one) never arrives. They come from go-live step 3c (the register-product runner). Nothing is changed when they are missing.
+if [ "$app" = catering ]; then
+  as_app "$app" "$clone" bash -c 'test -n "${PLATFORM_COMMAND_SECRETS:-}" && test -n "${PLATFORM_ANSWER_SECRET:-}"' \
+    || die "PLATFORM_COMMAND_SECRETS or PLATFORM_ANSWER_SECRET is not set in catering.env. Register Caterly with the Platform first (docs/go-live-order.md step 3c) and put both secrets in the env file. Nothing was changed."
+fi
+
+# 1d. The mail guard is ON unless MAIL_GUARD=off: real email then goes only to the allowed address. Right before go-live, wrong after it (sign-in codes, password
+# resets and customer email would be skipped without any error), so every deploy says which it is. A warning, not a stop: before go-live the guard should stay on.
+if as_app "$app" "$clone" bash -c '[ "$(printf %s "${MAIL_GUARD:-}" | tr "[:upper:]" "[:lower:]" | tr -d " ")" = off ]'; then
+  log "mail guard is OFF for $app: real email is sent to everyone"
+else
+  log "WARNING: the mail guard is ON for $app (MAIL_GUARD is not off in $app.env): real email goes only to the allowed address. Correct before go-live; at go-live set MAIL_GUARD=off (docs/go-live-order.md step 6b)."
+fi
+
 # 2. Build, as the service user with the app's env loaded (lib.sh as_app). The migration guard first, so a release that could lose
 # data never gets as far as the database.
 if [ "$app" = ops ]; then

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { registerIntegration } from "../../integrations/registry";
 import { receiveBusinessCreated } from "../../organisations/business-created";
-import { erasePlatformRecords } from "../erase";
+import { erasePlatformRecords } from "../../account/erase";
 
 // The Platform's central records for an erased person, against the dev database inside ONE transaction that is rolled back (the audit table cannot have rows deleted).
 const enabled = Boolean(process.env.DATABASE_URL && (process.env.PLATFORM_SECRETS_KEY || process.env.AUTH_SECRET));

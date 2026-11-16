@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { newId, requestTarget, signedHeaders } from "@platterly/contract";
 import { prisma } from "@/lib/db";
+import { registerProduct } from "@/modules/registry/products";
 import { POST as openPOST } from "@/app/api/platform/account-deletions/route";
 import { POST as statusPOST } from "@/app/api/platform/account-deletions/status/route";
 import { POST as withdrawPOST } from "@/app/api/platform/account-deletions/withdraw/route";
@@ -116,8 +117,10 @@ describe("final erasure (staff Erase now)", () => {
 
   it("anonymises a business: the people go, the invoices stay without contact details", async () => {
     const businessId = `biz_${crypto.randomUUID().replace(/-/g, "")}`;
-    const plan = await prisma.plan.findFirstOrThrow({});
-    const product = { key: plan.productKey };
+    // Its own product and plan: an empty database (CI) has neither, and it must not borrow one from a developer's data.
+    const product = { key: `adan${crypto.randomUUID().slice(0, 8)}` };
+    await registerProduct({ key: product.key, name: product.key, baseUrl: `http://${product.key}.test`, actorUserId: null });
+    const plan = await prisma.plan.create({ data: { productKey: product.key, code: "erase-test", name: "Erase test" } });
     await prisma.business.create({ data: { id: businessId, name: "Spice Route", ownerName: "Asha Rao", ownerEmail: "asha@example.com", ownerPhone: "+919800000123" } });
     try {
       await prisma.productBillingProfile.create({ data: { businessId, productKey: product.key, name: "Spice Route", source: "account", contactEmail: "asha@example.com" } });
@@ -133,6 +136,8 @@ describe("final erasure (staff Erase now)", () => {
     } finally {
       await prisma.subscriptionPayment.deleteMany({ where: { businessId } });
       await prisma.business.delete({ where: { id: businessId } });
+      await prisma.plan.delete({ where: { id: plan.id } });
+      await prisma.product.delete({ where: { key: product.key } });
     }
   });
 });

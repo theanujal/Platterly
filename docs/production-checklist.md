@@ -18,6 +18,8 @@
 | Marketing site publish (`docs/site-publish.md`) | Ops `SITE_SECRET` + `SITE_DEPLOY_HOOK_URL`; the hook (`scripts/site-deploy-hook.mjs`) running on the VPS with the same secret; Nginx root `.../current`; `npm run ops:import-site -- --apply` once before the first Publish |
 | Website pictures (`docs/site-publish.md`) | Ops `SITE_MEDIA_DIR` on a persistent, backed-up folder; included in the Postgres backup routine |
 | Duplicate-name check (before migrate) | `psql "$DATABASE_URL" -f scripts/pre-migrate-duplicate-check.sql` must return no rows for food items and inventory, else `migrate deploy` fails on the unique indexes |
+| Real email | `MAIL_GUARD=off` in `catering.env`, `ops.env` and `platform.env` at go-live (`docs/go-live-order.md` step 6b); it is ON by default, so real email goes only to the allowed address until then. `deploy.sh` logs which it is |
+| Platform link | Caterly registered with the Platform (step 3c) and `PLATFORM_COMMAND_SECRETS` + `PLATFORM_ANSWER_SECRET` in `catering.env`; `deploy.sh catering` refuses without them |
 | Migration order | Platform first (`deploy.sh platform`), then Ops (`prisma migrate deploy` in `apps/ops`), then catering `prisma migrate deploy` (includes `library_candidates`, food item and inventory unique names, catalogs); the same order as `docs/go-live-order.md` |
 | Master catalogs | `npm run db:seed-catalog` after the catering migration (529 dishes, 335 ingredients); safe to repeat |
 | Library review cron | `/api/cron/daily` runs the nightly scan (once a day); Ops `/api/cron` pulls candidates every 30 minutes; both need their cron secrets |

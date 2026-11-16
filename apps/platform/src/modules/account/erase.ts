@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { writeAudit } from "../audit/write-audit";
 import { releaseSlot } from "../organisations/slots";
 import { deleteLogo, logoDir, logoKeyFromUrl } from "./business-logo";
+import { erasePersonRecords } from "../users/erase-person";
 import { photoDir } from "./photo";
 
 /**
@@ -33,12 +34,7 @@ export async function erasePlatformRecords(tx: Prisma.TransactionClient, identit
     await tx.$executeRaw`delete from organisations where id = ${businessId}`;
     await writeAudit(tx, { action: "organisation.erased", outcome: "done", initiator: ctx.initiator, executor: ctx.executor, organisationId: businessId, subject: { type: "organisation", id: businessId }, requestId: undefined });
   }
-  const people = await tx.$queryRaw<{ user_id: string }[]>`select user_id from user_identities where subject = ${identitySubject}`;
-  for (const { user_id } of people) {
-    await tx.$executeRaw`delete from legacy_mappings where user_id = ${user_id}::uuid`;
-    await tx.$executeRaw`delete from user_identities where user_id = ${user_id}::uuid`;
-    await tx.$executeRaw`delete from users where id = ${user_id}::uuid`;
-  }
+  await erasePersonRecords(tx, identitySubject);
 }
 
 /** Erases one approved request's person. Safe to run again: it does nothing for a person already gone. Returns false when there was nobody to erase. */

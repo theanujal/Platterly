@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { InvoiceRow, PaymentRow, SubscriptionRow } from "@/modules/account/billing";
 import type { AccountProductCard } from "@/modules/account/types";
 import { useProductCards } from "./cards";
@@ -53,8 +54,9 @@ function Logo({ card }: { card: Pick<AccountProductCard, "name" | "logoUrl"> | n
  */
 export function SubscriptionsOverview({ subscriptions, invoices, payments, storeOrigin, onChanged }: { subscriptions: SubscriptionRow[]; invoices: InvoiceRow[]; payments: PaymentRow[]; storeOrigin: string; onChanged: () => void }) {
   const { state } = useProductCards();
+  const [now] = useState(() => Date.now()); // read once per mount, so a render never depends on the clock
   const active = subscriptions.filter((s) => s.current?.status === "ACTIVE");
-  const renewals = subscriptions.map(endOf).filter((d): d is string => Boolean(d) && new Date(d as string).getTime() > Date.now()).sort();
+  const renewals = subscriptions.map(endOf).filter((d): d is string => Boolean(d) && new Date(d as string).getTime() > now).sort();
   const last = invoices[0];
   const byKey = new Map(subscriptions.map((s) => [s.productKey, s]));
 

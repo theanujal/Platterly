@@ -24,7 +24,7 @@ if [ "$1" = "-C" ] && [ "$3" = "rev-parse" ]; then if [ "$4" = "--short" ]; then
 exit 0'
 stub npm 'echo "npm $* (in $PWD) url=${NEXT_PUBLIC_APP_URL:-}" >> "'"$CALLS"'"; exit 0'
 stub npx 'echo "npx $* (in $PWD) db=${DATABASE_URL:-}" >> "'"$CALLS"'"; exit 0'
-printf 'NEXT_PUBLIC_APP_URL="https://catering.test"\nDATABASE_URL="postgresql://catering-db"\nPLATFORM_AUTH_ORIGIN="http://auth.test"\n' > "$ROOT/env/catering.env"
+printf 'NEXT_PUBLIC_APP_URL="https://catering.test"\nDATABASE_URL="postgresql://catering-db"\nPLATFORM_AUTH_ORIGIN="http://auth.test"\nPLATFORM_COMMAND_SECRETS=plsec_cmd_test\nPLATFORM_ANSWER_SECRET=plsec_answer_test\n' > "$ROOT/env/catering.env"
 stub node 'echo "node $*" >> "'"$CALLS"'"; exit 0'
 stub systemctl 'echo "systemctl $*" >> "'"$CALLS"'"; [ "$1" = is-active ] && echo active; exit 0'
 stub systemd-run 'echo "systemd-run $*" >> "'"$CALLS"'"; exit 0'
@@ -69,6 +69,23 @@ if [ "$rc" -ne 0 ]; then ok "deploy fails"; else bad "deploy should fail"; fi
 assert_eq "$(active catering)" blue "blue is still live"
 if grep -q "npm run build\|prisma migrate" "$CALLS"; then bad "it built or migrated anyway"; else ok "nothing was built or migrated"; fi
 rm -f "$T/auth-down"
+
+echo "catering is not released without the Platform business-link secrets"
+cp "$ROOT/env/catering.env" "$T/catering.env.keep"
+grep -v "^PLATFORM_ANSWER_SECRET" "$T/catering.env.keep" > "$ROOT/env/catering.env"; : > "$CALLS"
+"$D" catering origin/main >"$T/out.log" 2>&1; rc=$?
+if [ "$rc" -ne 0 ]; then ok "deploy fails with no answer secret"; else bad "deploy should fail with no answer secret"; fi
+assert_contains "$T/out.log" "PLATFORM_COMMAND_SECRETS or PLATFORM_ANSWER_SECRET is not set" "it says which step to do"
+if grep -q "npm run build\|prisma migrate" "$CALLS"; then bad "it built or migrated anyway"; else ok "nothing was built or migrated"; fi
+cp "$T/catering.env.keep" "$ROOT/env/catering.env"
+
+echo "every deploy says whether the mail guard is on"
+: > "$CALLS"; "$D" catering origin/main >"$T/out.log" 2>&1
+assert_contains "$T/out.log" "WARNING: the mail guard is ON for catering" "a warning while MAIL_GUARD is not off"
+printf 'MAIL_GUARD=off\n' >> "$ROOT/env/catering.env"
+: > "$CALLS"; "$D" catering origin/main >"$T/out.log" 2>&1
+assert_contains "$T/out.log" "mail guard is OFF for catering" "no warning once MAIL_GUARD=off"
+cp "$T/catering.env.keep" "$ROOT/env/catering.env"
 
 echo "a slot that does not come up healthy never gets traffic"
 touch "$T/unhealthy-3001"; : > "$CALLS"

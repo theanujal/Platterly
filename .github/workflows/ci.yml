@@ -79,6 +79,7 @@ jobs:
       - run: npm run check:links
 
   # Ops (apps/ops) has its own install and its own database; it shares only packages/contract with the other apps.
+  # The database name must contain "test": several Ops tests delete the platform_reader row and refuse to run on any other name (platform-list/__tests__/helpers.ts).
   ops:
     runs-on: ubuntu-latest
 
@@ -88,7 +89,7 @@ jobs:
         env:
           POSTGRES_USER: platterly_app
           POSTGRES_PASSWORD: ci_only_password
-          POSTGRES_DB: platterly_ops
+          POSTGRES_DB: platterly_ops_ci_test
         ports:
           - 5432:5432
         options: >-
@@ -102,7 +103,7 @@ jobs:
         working-directory: apps/ops
 
     env:
-      DATABASE_URL: postgresql://platterly_app:ci_only_password@localhost:5432/platterly_ops?schema=public
+      DATABASE_URL: postgresql://platterly_app:ci_only_password@localhost:5432/platterly_ops_ci_test?schema=public
       BETTER_AUTH_SECRET: ci-only-secret-not-for-real-use
       BETTER_AUTH_URL: http://ops.localhost:3200
 

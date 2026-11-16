@@ -74,6 +74,7 @@ function InvoiceList({ invoices, payments }: { invoices: InvoiceRow[]; payments:
   const [range, setRange] = useState<(typeof RANGES)[number]["id"]>("all");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [now] = useState(() => Date.now()); // read once per mount: the date filter must not change on every render
 
   const payment = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments]);
   const logos = new Map((state.phase === "ready" ? state.cards : []).map((c) => [c.accountKey, c.logoUrl]));
@@ -84,7 +85,7 @@ function InvoiceList({ invoices, payments }: { invoices: InvoiceRow[]; payments:
   const last = invoices[0];
 
   const days = RANGES.find((r) => r.id === range)!.days;
-  const shown = invoices.filter((i) => (product === "all" || i.productKey === product) && (days === null || (i.paidAt && Date.now() - new Date(i.paidAt).getTime() <= days * 86_400_000)) && i.invoiceNumber.toLowerCase().includes(query.trim().toLowerCase()));
+  const shown = invoices.filter((i) => (product === "all" || i.productKey === product) && (days === null || (i.paidAt && now - new Date(i.paidAt).getTime() <= days * 86_400_000)) && i.invoiceNumber.toLowerCase().includes(query.trim().toLowerCase()));
   const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
   const current = Math.min(page, pages);
   const rows = shown.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
