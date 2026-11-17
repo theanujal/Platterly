@@ -28,8 +28,11 @@ export type ImportReport = {
 
 export const PRODUCT_KEY = "caterly";
 
+/** Runs one business's work in its own transaction: a transaction may change only one organisation (lockOrganisation), so two new businesses can't share one. */
+export type PerBusinessTransaction = <T>(work: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+
 export async function importCaterlyBusinesses(
-  tx: Prisma.TransactionClient,
+  inTransaction: PerBusinessTransaction,
   input: { organisations: SourceOrganisation[]; members: SourceMember[]; users: SourceUser[]; batchId: string },
 ): Promise<ImportReport> {
   const ctx: Context = { initiator: { kind: "system", ref: "caterly-business-import" }, executor: { kind: "system", ref: input.batchId } };
@@ -52,29 +55,32 @@ export async function importCaterlyBusinesses(
       continue;
     }
     const email = emailOf.get(owner.userId);
-    const userId = email ? await findUserIdByEmail(tx, email) : null;
-    if (!userId) {
-      report.waitingForFirstSignIn.push(org.id);
-      continue;
-    }
-    const result = await createOrganisation(tx, ctx, { userId, idempotencyKey: `caterly-${org.id}`, name: org.name, productKey: PRODUCT_KEY, organisationId: org.businessId });
-    if (!result.ok) {
-      report.refused.push({ organisationId: org.id, code: result.code });
-      continue;
-    }
-    if (result.created) report.created++;
-    else report.alreadyImported++;
-    // Everyone active who is not the chosen Admin is shown on the business as a read-only team list (a second owner is listed with the role "owner").
-    for (const m of active.filter((x) => x.id !== owner.id)) {
-      const person = input.users.find((u) => u.id === m.userId);
-      if (!person) continue;
-      await tx.organisationTeamMember.upsert({
-        where: { organisationId_legacyMemberId: { organisationId: result.organisationId, legacyMemberId: m.id } },
-        create: { organisationId: result.organisationId, legacyMemberId: m.id, name: person.name || person.email, email: person.email.trim().toLowerCase(), role: m.role },
-        update: { name: person.name || person.email, role: m.role },
-      });
-      report.teamListed++;
-    }
+    const businessId = org.businessId;
+    await inTransaction(async (tx) => {
+      const userId = email ? await findUserIdByEmail(tx, email) : null;
+      if (!userId) {
+        report.waitingForFirstSignIn.push(org.id);
+        return;
+      }
+      const result = await createOrganisation(tx, ctx, { userId, idempotencyKey: `caterly-${org.id}`, name: org.name, productKey: PRODUCT_KEY, organisationId: businessId });
+      if (!result.ok) {
+        report.refused.push({ organisationId: org.id, code: result.code });
+        return;
+      }
+      if (result.created) report.created++;
+      else report.alreadyImported++;
+      // Everyone active who is not the chosen Admin is shown on the business as a read-only team list (a second owner is listed with the role "owner").
+      for (const m of active.filter((x) => x.id !== owner.id)) {
+        const person = input.users.find((u) => u.id === m.userId);
+        if (!person) continue;
+        await tx.organisationTeamMember.upsert({
+          where: { organisationId_legacyMemberId: { organisationId: result.organisationId, legacyMemberId: m.id } },
+          create: { organisationId: result.organisationId, legacyMemberId: m.id, name: person.name || person.email, email: person.email.trim().toLowerCase(), role: m.role },
+          update: { name: person.name || person.email, role: m.role },
+        });
+        report.teamListed++;
+      }
+    });
   }
   return report;
 }

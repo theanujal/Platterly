@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { describe, it } from "vitest";
 import { PrismaClient } from "@/generated/prisma/client";
-import { importCaterlyBusinesses } from "../legacy-business-import";
+import { importCaterlyBusinesses, type PerBusinessTransaction } from "../legacy-business-import";
 
 // Runner for the Caterly business import (there is no script runner for TypeScript here). Skipped unless CATERLY_BUSINESS_IMPORT is "dry" or "apply".
 //   CATERLY_BUSINESS_IMPORT=dry   CATERLY_COPY_DATABASE_URL=... DATABASE_URL=... npx vitest run legacy-business-import.run
@@ -35,13 +35,14 @@ describe.skipIf(mode !== "dry" && mode !== "apply")("Caterly business import (ru
       const members = (await source.query(`select id, "organizationId", "userId", role, "createdAt", "disabledAt" from member`)).rows;
       const users = (await source.query(`select id, name, email from "user"`)).rows;
       const batchId = `caterly-biz-${new Date().toISOString().slice(0, 10)}`;
-      const run = (tx: Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]) => importCaterlyBusinesses(tx, { organisations, members, users, batchId });
-      let report: unknown;
-      if (mode === "apply") {
-        report = await prisma.$transaction(run, { timeout: 60_000 });
-      } else {
-        await prisma.$transaction(async (tx) => { report = await run(tx); throw new Rollback(); }, { timeout: 60_000 }).catch((e: unknown) => { if (!(e instanceof Rollback)) throw e; });
-      }
+      // One transaction per business (a transaction may change only one organisation). Apply commits each one; a dry run rolls each one back.
+      const perBusiness: PerBusinessTransaction = async (work) => {
+        if (mode === "apply") return prisma.$transaction(work, { timeout: 60_000 });
+        let result: Awaited<ReturnType<typeof work>> | undefined;
+        await prisma.$transaction(async (tx) => { result = await work(tx); throw new Rollback(); }, { timeout: 60_000 }).catch((e: unknown) => { if (!(e instanceof Rollback)) throw e; });
+        return result as Awaited<ReturnType<typeof work>>;
+      };
+      const report = await importCaterlyBusinesses(perBusiness, { organisations, members, users, batchId });
       console.log(mode === "apply" ? "APPLIED" : "DRY RUN (nothing written)", JSON.stringify(report, null, 2));
     } finally {
       await prisma.$disconnect();
