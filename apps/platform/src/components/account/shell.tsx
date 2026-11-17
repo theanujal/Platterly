@@ -6,7 +6,6 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { initials } from "@/lib/account/catalogue";
 import { AccountDataProvider, useAccountData } from "./data";
 import { Icon, type IconName } from "./icons";
-import { Avatar } from "./ui";
 import { AccountDrawer } from "@/components/drawer/account-drawer";
 import { HelpDrawer } from "@/components/drawer/help-drawer";
 import "./account.css";
@@ -108,7 +107,6 @@ export function AccountShell({ children }: { children: ReactNode }) {
 function ShellFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const who = useWho();
-  const signedIn = useAccountData().phase === "ready";
   const [menuOpen, setMenuOpen] = useState(false);
 
   // The phone drawer closes when a page is picked (the nav's onClick) and on Escape.
@@ -157,22 +155,6 @@ function ShellFrame({ children }: { children: ReactNode }) {
             <span>Help &amp; Support</span>
           </HelpDrawer>
         </nav>
-        <div className="pa-side-foot">
-          <Link href="/profile" className="pa-user" aria-label="Your profile">
-            <Avatar label={who.label} size="sm" round photo={who.photo} />
-            <span className="pa-user-text">
-              <span className="pa-user-name">{who.name}</span>
-              <span className="pa-user-mail">{who.sub}</span>
-            </span>
-          </Link>
-          {signedIn && (
-            <form method="post" action="/auth/signout">
-              <button type="submit" className="pa-btn pa-btn-outline">
-                <Icon name="logout" size={15} /> Sign out
-              </button>
-            </form>
-          )}
-        </div>
       </aside>
       <div className="pa-content">
         <AccountHeader onMenu={() => setMenuOpen(true)} menuOpen={menuOpen} />

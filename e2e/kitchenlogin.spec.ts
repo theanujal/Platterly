@@ -100,6 +100,8 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
     await expect(page.locator(`#${id}`)).toHaveAttribute("placeholder", placeholder);
     await expect(page.locator(`div:has(> #${id}) svg`)).toHaveCount(1);
   }
+  // A LinkedIn link typed here must be saved with the business (checked in Settings below).
+  await page.locator("#linkedinUrl").fill("https://linkedin.com/company/onboarding-kitchen");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 5 of 5")).toBeVisible();
 
@@ -174,6 +176,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.goto("/settings/account/business-profile");
   await expect(page.getByText("+919800000099").first()).toBeVisible();
   await expect(page.getByText("KIT-0101").first()).toBeVisible();
+  await expect(page.getByText("https://linkedin.com/company/onboarding-kitchen").first()).toBeVisible();
   await page.goto("/settings/integration/payments");
   await expect(page.getByLabel("GST rate (%)")).toHaveValue("12");
 });

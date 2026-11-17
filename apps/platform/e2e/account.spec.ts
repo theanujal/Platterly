@@ -184,7 +184,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 3, name: "Owner Kitchen" })).toBeVisible();
-    await expect(page.locator(".pa-acct-chip")).toContainText(USER.email);
+    await expect(page.locator(".pd-chip")).toContainText(USER.email);
     // The Overview's product cards are the compact ones (status and buttons); the business name and link detail are on My Products.
     await expect(page.getByRole("article", { name: "Caterly", exact: true })).toContainText("Active");
     await expect(page.getByRole("article", { name: "Caterly", exact: true }).getByRole("link", { name: "View details" })).toBeVisible();
@@ -279,7 +279,7 @@ test.describe("Data states (the browser's request is intercepted; the running ap
     await page.route(OVERVIEW, (r) => json(r, 500, { status: "error" }));
     await page.goto("/profile");
     await expect(page.getByRole("region", { name: "We could not load your account" })).toBeVisible();
-    await expect(page.locator(".pa-acct-chip")).toContainText("Account unavailable");
+    await expect(page.locator(".pd-chip")).toContainText("Account unavailable");
     await shot(page, "state-error-profile");
     await page.unroute(OVERVIEW);
     await page.route(OVERVIEW, (r) => r.abort());
@@ -791,7 +791,7 @@ test.describe("Phone layout", () => {
         await page.getByRole("button", { name: "Open menu" }).click();
         await expect(nav(page).getByRole("link", { name: "Products" })).toBeVisible();
         await expect(nav(page).getByRole("link", { name: "Security" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+        await expect(page.locator("#pa-side").getByRole("button", { name: "Sign out" })).toHaveCount(0); // Sign out lives in the account drawer, not the sidebar
         await expect.poll(async () => (await page.locator("#pa-side").boundingBox())!.x, { message: "the drawer slides fully in" }).toBeGreaterThanOrEqual(-1);
         expect((await page.locator("#pa-side").boundingBox())!.width).toBeLessThanOrEqual(288);
         await page.getByRole("button", { name: "Close menu" }).click();
