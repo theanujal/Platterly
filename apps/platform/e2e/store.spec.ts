@@ -195,12 +195,18 @@ test.describe("Store header and footer", () => {
       await page.goto(`${STORE}${path}`);
       const header = page.getByRole("banner");
       await expect(header.getByRole("link", { name: "Platterly Store home" })).toHaveAttribute("href", "/");
-      await expect(header.getByRole("link", { name: "Help" })).toHaveAttribute("href", "https://platterly.in/contact/");
+      await expect(page).toHaveTitle(/Platterly Store/);
+      await header.getByRole("button", { name: "Help" }).click();
+      await expect(page.getByRole("dialog", { name: "Help" }).getByRole("link", { name: "Contact Us" })).toHaveAttribute("href", "https://platterly.in/contact/");
+      await page.keyboard.press("Escape");
       await expect(header).toContainText("E2E Person");
-      // Sign out sits in the signed-in person's menu: closed until opened.
-      await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
-      await header.locator("summary.ps-user").click();
+      // Sign out sits in the same account drawer as the Account's: closed until opened. Help has no underline here or in the Account.
+      await expect(header.getByRole("button", { name: "Help" })).toHaveCSS("text-decoration-line", "none");
+      await expect(header.getByRole("button", { name: "Sign out" })).toHaveCount(0);
+      await header.getByRole("button", { name: "Account menu" }).click();
       await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
+      await expect(header.getByRole("link", { name: "Platterly on LinkedIn" })).toBeVisible();
+      await page.keyboard.press("Escape");
       const footer = page.getByRole("contentinfo");
       await expect(footer.getByRole("link", { name: "hello@platterly.in" })).toHaveAttribute("href", "mailto:hello@platterly.in");
       await expect(footer.getByRole("link", { name: "+91 7624964646" })).toHaveAttribute("href", "tel:+917624964646");

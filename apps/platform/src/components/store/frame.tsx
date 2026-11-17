@@ -4,6 +4,8 @@ import { getSessionRef } from "@/lib/session";
 import { identityPool } from "@/modules/auth/identity-db";
 import { getProfile } from "@/modules/account/profile";
 import { Icon } from "@/components/account/icons";
+import { AccountDrawer } from "@/components/drawer/account-drawer";
+import { HelpDrawer } from "@/components/drawer/help-drawer";
 import "./store.css";
 
 /** Platterly's public site, where the policies and contact pages live. Not live yet (no live environment), so these links work once the site is deployed. */
@@ -35,21 +37,9 @@ export async function StoreFrame({ children }: { children: ReactNode }) {
             <span>Platterly Store</span>
           </Link>
           <nav className="ps-header-nav" aria-label="Store header">
-            <a href={`${SITE}/contact/`} className="ps-help"><Icon name="lifebuoy" size={20} />Help</a>
+            <HelpDrawer className="ps-help"><Icon name="lifebuoy" size={20} />Help</HelpDrawer>
             {who ? (
-              <details className="ps-menu">
-                <summary className="ps-user" title={who.email}>
-                  <span className="ps-avatar" aria-hidden="true">{initials(who.name)}</span>
-                  <span className="ps-user-name">{who.name}</span>
-                  <Icon name="chevronDown" size={16} />
-                </summary>
-                <div className="ps-menu-panel">
-                  <p>{who.email}</p>
-                  <form method="post" action="/auth/signout">
-                    <button type="submit" className="ps-signout">Sign out</button>
-                  </form>
-                </div>
-              </details>
+              <AccountDrawer signedIn person={{ name: who.name, email: who.email, business: null, initials: initials(who.name) }} />
             ) : (
               <a href="/auth/start" className="ps-signin">Sign in</a>
             )}

@@ -1,5 +1,5 @@
 import { Globe } from "lucide-react";
-import { FacebookIcon, InstagramIcon } from "@/components/ui/brand-icons";
+import { FacebookIcon, InstagramIcon, LinkedinIcon } from "@/components/ui/brand-icons";
 import { Label } from "@/components/ui/label";
 import { IconInput } from "../../../_components/icon-input";
 import type { WizardState } from "../types";
@@ -43,6 +43,17 @@ export function OnlinePresenceStep({ values, setField }: OnlinePresenceStepProps
           type="url"
           value={values.facebookUrl}
           onChange={(e) => setField("facebookUrl", e.target.value)}
+        />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="linkedinUrl">LinkedIn URL</Label>
+        <IconInput
+          icon={LinkedinIcon}
+          id="linkedinUrl"
+          placeholder="https://linkedin.com/company/yourkitchen"
+          type="url"
+          value={values.linkedinUrl}
+          onChange={(e) => setField("linkedinUrl", e.target.value)}
         />
       </div>
     </div>

@@ -2,6 +2,8 @@ import { SubscriptionsView } from "@/components/account/billing-views";
 import { requireAccountSignIn } from "@/lib/account/guard";
 import { originFor } from "@/lib/routing/hosts";
 
+export const metadata = { title: "Subscriptions" };
+
 export default async function Page() {
   await requireAccountSignIn("/subscriptions");
   return <SubscriptionsView storeOrigin={originFor("store")} />;

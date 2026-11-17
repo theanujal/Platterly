@@ -96,7 +96,7 @@ test("sign up, complete the redesigned onboarding wizard, claim a public link, s
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(page.getByText("Step 4 of 5")).toBeVisible();
   // Online presence fields show where to type: an icon and an example in each (AJ, 2026-10-14).
-  for (const [id, placeholder] of [["websiteUrl", "https://yourwebsite.com"], ["instagramUrl", "https://instagram.com/yourkitchen"], ["facebookUrl", "https://facebook.com/yourkitchen"]]) {
+  for (const [id, placeholder] of [["websiteUrl", "https://yourwebsite.com"], ["instagramUrl", "https://instagram.com/yourkitchen"], ["facebookUrl", "https://facebook.com/yourkitchen"], ["linkedinUrl", "https://linkedin.com/company/yourkitchen"]]) {
     await expect(page.locator(`#${id}`)).toHaveAttribute("placeholder", placeholder);
     await expect(page.locator(`div:has(> #${id}) svg`)).toHaveCount(1);
   }

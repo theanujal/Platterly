@@ -40,6 +40,7 @@ test.describe("Store sign-in", () => {
 
     // Signing out of the Store ends the central session, so the Account needs a sign-in again.
     await page.goto(`${STORE}/`);
+    await page.getByRole("banner").getByRole("button", { name: "Account menu" }).click();
     await page.getByRole("banner").getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     await page.goto(`${ACCOUNT}/`);

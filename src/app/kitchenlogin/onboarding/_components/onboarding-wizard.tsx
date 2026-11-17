@@ -110,6 +110,7 @@ export function OnboardingWizard({ accountHolderFirstName, accountHolderLastName
     formData.set("websiteUrl", values.websiteUrl);
     formData.set("instagramUrl", values.instagramUrl);
     formData.set("facebookUrl", values.facebookUrl);
+    formData.set("linkedinUrl", values.linkedinUrl);
     if (logo) {
       formData.set("logo", logo);
     }

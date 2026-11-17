@@ -29,6 +29,7 @@ export interface TenantProfileInput {
   websiteUrl?: string;
   instagramUrl?: string;
   facebookUrl?: string;
+  linkedinUrl?: string;
   gstShowOnInvoices?: boolean;
   // Order Numbering — Kitchen Admin-configurable prefix/counter/padding for
   // human-readable Order Numbers (e.g. "AJ-0001"), consumed by
@@ -84,6 +85,7 @@ export async function createTenant(input: TenantProfileInput, actorUserId: strin
       websiteUrl: input.websiteUrl,
       instagramUrl: input.instagramUrl,
       facebookUrl: input.facebookUrl,
+      linkedinUrl: input.linkedinUrl,
       gstShowOnInvoices: input.gstShowOnInvoices,
     },
   });
@@ -124,6 +126,7 @@ export async function updateTenant(id: string, input: TenantProfileUpdateInput, 
       websiteUrl: input.websiteUrl,
       instagramUrl: input.instagramUrl,
       facebookUrl: input.facebookUrl,
+      linkedinUrl: input.linkedinUrl,
       gstShowOnInvoices: input.gstShowOnInvoices,
       orderNumberPrefix: input.orderNumberPrefix,
       orderNumberNextValue: input.orderNumberNextValue,

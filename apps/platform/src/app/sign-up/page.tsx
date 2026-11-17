@@ -11,6 +11,8 @@ import { ROOT_DOMAIN } from "@/lib/routing/hosts";
 // The Terms and Privacy pages live on the marketing site: localhost:3100 in dev, the apex domain in production.
 const SITE = ROOT_DOMAIN.startsWith("localhost") ? "http://localhost:3100" : `https://${ROOT_DOMAIN}`;
 
+export const metadata = { title: "Create an account" };
+
 export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   await requireHost("auth");
   // Sign-up is for a person who arrived through a registered product's real sign-in link (the provider signs it); anyone else (the Account, the Store, a typed

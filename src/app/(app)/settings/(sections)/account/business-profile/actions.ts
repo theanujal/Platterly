@@ -13,7 +13,7 @@ import type { ProductBillingProfileRecord } from "@platterly/contract";
 import { profileLinkOn, saveOwnProfile, storeProfileCopy } from "@/modules/ops-link/billing-profile";
 
 /** `conflict` means the shared profile changed elsewhere (the Account) since the form opened: the form keeps the person's edits and offers the new values. */
-export type ProfileConflict = { version: number | null; at: string | null; values: Partial<Record<"brandName" | "businessDescription" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessName" | "mobileNumber" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding" | "billingContactName" | "billingEmail" | "billingPhone", string>> | null };
+export type ProfileConflict = { version: number | null; at: string | null; values: Partial<Record<"brandName" | "businessDescription" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessName" | "mobileNumber" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding" | "billingContactName" | "billingEmail" | "billingPhone", string>> | null };
 export type ActionResult = { ok: true } | { ok: false; error: string; conflict?: ProfileConflict };
 
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
@@ -77,6 +77,7 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
       websiteUrl: textOrNull(formData, "websiteUrl"),
       instagramUrl: textOrNull(formData, "instagramUrl"),
       facebookUrl: textOrNull(formData, "facebookUrl"),
+      linkedinUrl: textOrNull(formData, "linkedinUrl"),
       orderNumberPrefix: stringField(formData, "orderNumberPrefix")?.toUpperCase(),
       orderNumberNextValue,
       orderNumberPadding,
@@ -129,6 +130,7 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
       website: pick("websiteUrl", org.websiteUrl),
       instagram: pick("instagramUrl", org.instagramUrl),
       facebook: pick("facebookUrl", org.facebookUrl),
+      linkedin: pick("linkedinUrl", org.linkedinUrl),
       logoUrl: logoNow ? (/^https?:\/\//.test(logoNow) ? logoNow : canonicalUrl(logoNow)) : null,
     });
     if (!saved.ok && "unknownBusiness" in saved) {
@@ -142,7 +144,7 @@ export async function updateBusinessProfileAction(formData: FormData): Promise<A
           conflict: {
             version: c?.version ?? null,
             at: c?.updatedAt ?? null,
-            values: c ? { brandName: c.brandName ?? "", businessDescription: c.description ?? "", websiteUrl: c.website ?? "", instagramUrl: c.instagram ?? "", facebookUrl: c.facebook ?? "", addressLine1: c.addressLine1 ?? "", addressLine2: c.addressLine2 ?? "", city: c.city ?? "", state: c.state ?? "", postalCode: c.postalCode ?? "", country: c.country ?? "", gstin: c.gstin ?? "", businessName: c.name, mobileNumber: c.businessPhone ?? "", orderNumberPrefix: c.orderNumberPrefix ?? "", orderNumberNextValue: c.orderNumberNextValue ?? "", orderNumberPadding: c.orderNumberPadding ?? "", billingContactName: c.contactName ?? "", billingEmail: c.contactEmail ?? "", billingPhone: c.contactPhone ?? "" } : null,
+            values: c ? { brandName: c.brandName ?? "", businessDescription: c.description ?? "", websiteUrl: c.website ?? "", instagramUrl: c.instagram ?? "", facebookUrl: c.facebook ?? "", linkedinUrl: c.linkedin ?? "", addressLine1: c.addressLine1 ?? "", addressLine2: c.addressLine2 ?? "", city: c.city ?? "", state: c.state ?? "", postalCode: c.postalCode ?? "", country: c.country ?? "", gstin: c.gstin ?? "", businessName: c.name, mobileNumber: c.businessPhone ?? "", orderNumberPrefix: c.orderNumberPrefix ?? "", orderNumberNextValue: c.orderNumberNextValue ?? "", orderNumberPadding: c.orderNumberPadding ?? "", billingContactName: c.contactName ?? "", billingEmail: c.contactEmail ?? "", billingPhone: c.contactPhone ?? "" } : null,
           },
         };
       }

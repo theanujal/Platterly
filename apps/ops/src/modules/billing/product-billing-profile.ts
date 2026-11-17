@@ -9,7 +9,7 @@ import { audit } from "@/lib/audit";
  * names the version it was based on; a stale one is refused and the current record comes back, so two screens never silently overwrite each other.
  * Issued invoices keep their own frozen copy of the buyer and are never touched here.
  */
-export const PROFILE_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
+export const PROFILE_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "linkedin", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
 export type ProfileField = (typeof PROFILE_FIELDS)[number];
 export type ProfileFields = { name: string } & Partial<Record<Exclude<ProfileField, "name">, string | null>>;
 export type ProductBillingProfile = { businessId: string; productKey: string; version: number; source: string; updatedAt: string } & { name: string } & Record<Exclude<ProfileField, "name">, string | null>;
@@ -20,7 +20,7 @@ const toProfile = (r: Row): ProductBillingProfile => ({
   businessId: r.businessId, productKey: r.productKey, version: r.version, source: r.source, updatedAt: r.updatedAt.toISOString(),
   name: r.name, brandName: r.brandName, contactName: r.contactName, contactEmail: r.contactEmail, contactPhone: r.contactPhone,
   addressLine1: r.addressLine1, addressLine2: r.addressLine2, city: r.city, state: r.state, postalCode: r.postalCode, country: r.country,
-  gstin: r.gstin, description: r.description, website: r.website, instagram: r.instagram, facebook: r.facebook, businessPhone: r.businessPhone,
+  gstin: r.gstin, description: r.description, website: r.website, instagram: r.instagram, facebook: r.facebook, linkedin: r.linkedin, businessPhone: r.businessPhone,
   orderNumberPrefix: r.orderNumberPrefix, orderNumberNextValue: r.orderNumberNextValue, orderNumberPadding: r.orderNumberPadding, logoUrl: r.logoUrl,
 });
 const clean = (f: ProfileFields): Record<ProfileField, string | null> =>

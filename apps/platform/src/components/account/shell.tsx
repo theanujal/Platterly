@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { initials } from "@/lib/account/catalogue";
 import { AccountDataProvider, useAccountData } from "./data";
 import { Icon, type IconName } from "./icons";
 import { Avatar } from "./ui";
+import { AccountDrawer } from "@/components/drawer/account-drawer";
+import { HelpDrawer } from "@/components/drawer/help-drawer";
 import "./account.css";
 
 /** Platterly's public site, where help lives (the same address the Store's Help link uses). */
@@ -31,63 +33,17 @@ const isActive = (href: string, pathname: string) => (href === "/" ? pathname ==
 /** Who the shell says is signed in, from the real data: the email, a placeholder while loading, or "Not signed in". */
 function useWho() {
   const data = useAccountData();
-  if (data.phase === "ready") return { photo: data.overview.user.photoVersion ? `/api/account/photo?v=${data.overview.user.photoVersion}` : undefined, label: initials(data.overview.user.name ?? data.overview.user.email), name: data.overview.user.name ?? data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified", business: data.overview.business.state === "ok" ? data.overview.business.business.name : null };
-  if (data.phase === "unauthenticated") return { photo: undefined, label: "?", name: "Not signed in", sub: "Sign in to see your account", business: null };
-  if (data.phase === "error") return { photo: undefined, label: "!", name: "Account unavailable", sub: "Could not load", business: null };
-  return { photo: undefined, label: "…", name: "Loading", sub: "", business: null };
+  if (data.phase === "ready") return { email: data.overview.user.email, photo: data.overview.user.photoVersion ? `/api/account/photo?v=${data.overview.user.photoVersion}` : undefined, label: initials(data.overview.user.name ?? data.overview.user.email), name: data.overview.user.name ?? data.overview.user.email, sub: data.overview.user.emailVerified ? "Email verified" : "Email not verified", business: data.overview.business.state === "ok" ? data.overview.business.business.name : null };
+  if (data.phase === "unauthenticated") return { email: "", photo: undefined, label: "?", name: "Not signed in", sub: "Sign in to see your account", business: null };
+  if (data.phase === "error") return { email: "", photo: undefined, label: "!", name: "Account unavailable", sub: "Could not load", business: null };
+  return { email: "", photo: undefined, label: "…", name: "Loading", sub: "", business: null };
 }
 
-/** The name at the top right: a small menu with the pages about the person and Sign out. */
+/** The name at the top right opens the shared account drawer (the same one the Store and Caterly have). */
 function UserMenu() {
   const who = useWho();
   const signedIn = useAccountData().phase === "ready";
-  const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-  const menuId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointer = (e: PointerEvent) => {
-      if (root.current && !root.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("pointerdown", onPointer);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("pointerdown", onPointer);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <div className="pa-usermenu" ref={root}>
-      <button type="button" className="pa-acct-chip" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} aria-label="Account menu" onClick={() => setOpen((v) => !v)}>
-        <span className="pa-acct-chip-name">
-          <strong>{who.name}</strong>
-          <small>{who.business ?? who.sub}</small>
-        </span>
-        <Avatar label={who.label} size="sm" round photo={who.photo} />
-        <Icon name="chevronDown" size={16} />
-      </button>
-      {open && (
-        <div className="pa-menu" id={menuId} role="menu" aria-label="Account menu">
-          <Link href="/profile" role="menuitem" className="pa-menu-item" onClick={() => setOpen(false)}>
-            <Icon name="user" size={16} /> My Profile
-          </Link>
-          <Link href="/security" role="menuitem" className="pa-menu-item" onClick={() => setOpen(false)}>
-            <Icon name="shield" size={16} /> Security
-          </Link>
-          {signedIn && (
-            <form method="post" action="/auth/signout">
-              <button type="submit" role="menuitem" className="pa-menu-item">
-                <Icon name="logout" size={16} /> Sign out
-              </button>
-            </form>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  return <AccountDrawer signedIn={signedIn} person={{ name: who.name, email: who.email, business: who.business, initials: who.label, photo: who.photo }} />;
 }
 
 const LeafCrumb = createContext<{ leaf: string | null; setLeaf: (label: string | null) => void }>({ leaf: null, setLeaf: () => {} });
@@ -125,9 +81,9 @@ function AccountHeader({ onMenu, menuOpen }: { onMenu: () => void; menuOpen: boo
         )}
       </nav>
       <div className="pa-topbar-right">
-        <a href={HELP_URL} className="pa-help-btn" target="_blank" rel="noopener noreferrer">
+        <HelpDrawer className="pa-help-btn">
           <Icon name="lifebuoy" size={20} />Help
-        </a>
+        </HelpDrawer>
         <UserMenu />
       </div>
     </header>
@@ -196,10 +152,10 @@ function ShellFrame({ children }: { children: ReactNode }) {
               </div>
             );
           })}
-          <a href={HELP_URL} className="pa-nav-item" target="_blank" rel="noopener noreferrer">
+          <HelpDrawer className="pa-nav-item pa-nav-button">
             <Icon name="lifebuoy" size={18} />
             <span>Help &amp; Support</span>
-          </a>
+          </HelpDrawer>
         </nav>
         <div className="pa-side-foot">
           <Link href="/profile" className="pa-user" aria-label="Your profile">

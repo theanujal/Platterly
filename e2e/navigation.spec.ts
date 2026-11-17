@@ -59,6 +59,10 @@ test("merged menus open as tabs, and Settings, Billing and Sign out are in the a
   await expect(drawer).toBeVisible();
   await expect(drawer.getByRole("link", { name: "Account", exact: true })).toHaveAttribute("href", /account\.localhost:3300/);
   await expect(drawer.getByRole("button", { name: "Sign out" })).toBeVisible();
+  // The same "Follow us" icons as the Account and Store drawers.
+  for (const [name, href] of [["Facebook", "facebook.com/platterlyindia"], ["Instagram", "instagram.com/platterlyindia"], ["LinkedIn", "linkedin.com/company/platterlyindia"]]) {
+    await expect(drawer.getByTestId("drawer-social").getByRole("link", { name: `Platterly on ${name}` })).toHaveAttribute("href", new RegExp(href));
+  }
   // Billing is Caterly's read-only Subscription page; the Store (the Business Admin's, another app) sits beside it, so only its link is checked.
   await expect(drawer.getByRole("link", { name: "Billing" })).toHaveAttribute("href", "/settings/subscription");
   await expect(drawer.getByRole("link", { name: "Store" })).toHaveAttribute("href", /store\.localhost:3300/);

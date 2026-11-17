@@ -66,10 +66,11 @@ export default async function BusinessProfilePage() {
               </SettingsSection>
 
               <SettingsSection icon={Globe} title="Online Presence">
-                <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
                   <Detail label="Website URL" value={organization.websiteUrl} />
                   <Detail label="Instagram" value={organization.instagramUrl} />
                   <Detail label="Facebook" value={organization.facebookUrl} />
+                  <Detail label="LinkedIn" value={organization.linkedinUrl} />
                 </div>
               </SettingsSection>
 
@@ -95,6 +96,7 @@ export default async function BusinessProfilePage() {
                 websiteUrl: organization.websiteUrl ?? "",
                 instagramUrl: organization.instagramUrl ?? "",
                 facebookUrl: organization.facebookUrl ?? "",
+                linkedinUrl: organization.linkedinUrl ?? "",
                 logoUrl: organization.logo,
                 orderNumberPrefix: organization.orderNumberPrefix,
                 orderNumberNextValue: String(organization.orderNumberNextValue),

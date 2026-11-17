@@ -19,6 +19,7 @@ export interface WizardState {
   websiteUrl: string;
   instagramUrl: string;
   facebookUrl: string;
+  linkedinUrl: string;
 }
 
 export const EMPTY_WIZARD_STATE: WizardState = {
@@ -40,6 +41,7 @@ export const EMPTY_WIZARD_STATE: WizardState = {
   websiteUrl: "",
   instagramUrl: "",
   facebookUrl: "",
+  linkedinUrl: "",
 };
 
 export const STEP_LABELS = [

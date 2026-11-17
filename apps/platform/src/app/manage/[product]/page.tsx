@@ -16,6 +16,8 @@ import { loadStoreProducts } from "@/modules/store/products";
 import { loadAccountProductCards } from "@/modules/account/product-cards";
 import "@/components/store/store.css";
 
+export const metadata = { title: "Manage plan" };
+
 export default async function ManagePage({ params, searchParams }: { params: Promise<{ product: string }>; searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const key = (await params).product;
   const query = (await searchParams) ?? {};
