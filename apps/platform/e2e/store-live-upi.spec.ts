@@ -196,8 +196,9 @@ test.describe("Live Store: UPI auto-pay", () => {
     const frame = page.frameLocator("iframe.razorpay-checkout-frame");
     await frame.getByPlaceholder("Mobile number").waitFor({ state: "visible", timeout: 15_000 }).catch(() => {});
     await page.waitForTimeout(2000);
-    // The X at the top right of Razorpay's window, as a person would click it, then its "Cancel Payment?" confirmation.
-    await page.mouse.click(1109, 98);
+    // The X at the top right of Razorpay's window, as a person would click it (found in the window, not by screen position), then its "Cancel Payment?" confirmation.
+    const closeX = frame.locator('button[title="Close Checkout"]');
+    await closeX.click({ timeout: 10_000 });
     await frame.getByRole("button", { name: /^yes/i }).first().click({ timeout: 8000 }).catch(() => {}); // only if Razorpay asks "Cancel payment?"
     await expect(page.getByText(/auto-pay was not set up|not been charged/)).toBeVisible({ timeout: 30_000 });
     expect(await paid()).toBe(before);
