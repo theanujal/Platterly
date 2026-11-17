@@ -97,26 +97,74 @@ test.describe("No product switcher", () => {
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     await page.goto("/");
     await expect(page.getByRole("button", { name: /Switch product/ })).toHaveCount(0);
-    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Business & Billing", "My Profile", "Security", "Devices", "Notifications", "Help & Support"]) {
+    for (const name of ["Overview", "My Products", "Subscriptions", "Invoices", "Payment Methods", "Business & Billing", "My Profile", "Security", "Devices", "Notifications"]) {
       await expect(nav(page).getByRole("link", { name })).toBeVisible();
     }
+    // Help & Support is a button that opens the Help panel.
+    await expect(nav(page).getByRole("button", { name: "Help & Support" })).toBeVisible();
     await expect(nav(page).locator("hr")).toHaveCount(1);
-    await expect(page.getByRole("banner").getByRole("link", { name: "Help" })).toHaveAttribute("href", "https://platterly.in/contact/");
+    // Both Help buttons (sidebar and header) open the same panel of help pages on platterly.in.
+    await page.getByRole("banner").getByRole("button", { name: "Help" }).click();
+    const help = page.getByRole("dialog", { name: "Help" });
+    await expect(help.getByRole("heading", { name: "Help documents" })).toBeVisible();
+    for (const [name, href] of [["FAQs", "https://platterly.in/caterly/#faq"], ["Contact Us", "https://platterly.in/contact/"]]) {
+      await expect(help.getByRole("link", { name })).toHaveAttribute("href", href);
+    }
+    await expect(help.getByRole("link")).toHaveCount(2);
+    await shot(page, "help-panel");
+    await page.keyboard.press("Escape");
+    await expect(help).toHaveCount(0);
+    await nav(page).getByRole("button", { name: "Help & Support" }).click();
+    await expect(page.getByRole("dialog", { name: "Help" })).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("banner").getByRole("button", { name: /notification/i })).toHaveCount(0);
   });
 
-  test("the name at the top right opens a menu with the profile, security and Sign out", async ({ page, context }) => {
+  test("each page names itself in the browser tab, and every host shows the Platterly favicon", async ({ page, context }) => {
+    await withPlaceholderSession(context);
+    await mockProfile(page);
+    await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
+    for (const [path, title] of [["/", "Overview · Platterly Account"], ["/products", "My Products · Platterly Account"], ["/subscriptions", "Subscriptions · Platterly Account"], ["/invoices", "Invoices · Platterly Account"], ["/payment-methods", "Payment Methods · Platterly Account"], ["/billing-details", "Business & Billing · Platterly Account"], ["/profile", "My Profile · Platterly Account"], ["/security", "Security · Platterly Account"], ["/devices", "Devices · Platterly Account"], ["/notifications", "Notifications · Platterly Account"]]) {
+      // The title is in the server's page, so read it from the response (a page that needs data would otherwise redirect to sign-in while loading).
+      const html = await (await page.request.get(path)).text();
+      expect(html.match(/<title>([^<]*)<\/title>/)?.[1].replace(/&amp;/g, "&"), path).toBe(title);
+    }
+    await page.goto("/");
+    await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /icon\.svg/);
+    // The sign-in pages are on the auth host and say "Platterly".
+    await page.goto("http://auth.localhost:3300/sign-in");
+    await expect(page).toHaveTitle("Sign in · Platterly");
+    await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /icon\.svg/);
+    expect((await page.request.get("http://account.localhost:3300/icon.svg")).status()).toBe(200);
+    expect((await page.request.get("http://store.localhost:3300/icon.svg")).status()).toBe(200);
+  });
+
+  test("the name at the top right opens the account drawer: who you are, links, social icons and Sign out; Help has no underline", async ({ page, context }) => {
     await withPlaceholderSession(context);
     await mockProfile(page);
     await page.route(OVERVIEW, (r) => json(r, 200, okBody()));
     await page.goto("/");
     const header = page.getByRole("banner");
+    await expect(header.getByRole("button", { name: "Help" })).toHaveCSS("text-decoration-line", "none");
     await header.getByRole("button", { name: "Account menu" }).click();
-    await expect(header.getByRole("menuitem", { name: "My Profile" })).toBeVisible();
-    await expect(header.getByRole("menuitem", { name: "Security" })).toBeVisible();
-    await expect(header.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
+    const drawer = page.getByRole("dialog", { name: "Account" });
+    await expect(drawer).toContainText("owner@kitchen.test");
+    const links = drawer.getByRole("navigation", { name: "Account links" });
+    // Under the four links and above the social icons: the Help documents.
+    await expect(drawer.getByRole("heading", { name: "Help documents" })).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Contact Us" })).toHaveAttribute("href", "https://platterly.in/contact/");
+    await expect(drawer.getByRole("link", { name: "FAQs" })).toBeVisible();
+    await expect(links.getByRole("link", { name: "My Profile", exact: true })).toBeVisible();
+    await expect(links.getByRole("link", { name: "Security", exact: true })).toBeVisible();
+    await expect(links.getByRole("link", { name: "Store" })).toHaveAttribute("href", /^http:\/\/store\.localhost:3300\/$/);
+    for (const [name, href] of [["Facebook", "facebook.com/platterlyindia"], ["Instagram", "instagram.com/platterlyindia"], ["LinkedIn", "linkedin.com/company/platterlyindia"]]) {
+      await expect(drawer.getByRole("link", { name: `Platterly on ${name}` })).toHaveAttribute("href", new RegExp(href));
+    }
+    await expect(drawer.getByRole("button", { name: "Sign out" })).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await shot(page, "account-drawer");
     await page.keyboard.press("Escape");
-    await expect(header.getByRole("menu")).toHaveCount(0);
+    await expect(drawer).toHaveCount(0);
   });
 });
 
@@ -489,7 +537,7 @@ test.describe("My Products: the cards come from Ops", () => {
     await withPlaceholderSession(context);
     await business(page);
     await mockProfile(page);
-    const rec = (productKey: string, over: Record<string, unknown> = {}) => ({ productKey, version: 1, source: "account", updatedAt: "2026-11-01T10:00:00.000Z", name: "The Kitchen Co. LLP", brandName: "Kitchen Co", contactName: "Amit Sharma", contactEmail: "a@thekitchenco.in", contactPhone: "+919876543210", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: "27AAPFU0939F1ZV", description: "Catering for events", website: "https://thekitchenco.in", instagram: "https://instagram.com/kitchenco", facebook: null, logoUrl: null, businessPhone: "+919800000123", orderNumberPrefix: "KC", orderNumberNextValue: "12", orderNumberPadding: "4", ...over });
+    const rec = (productKey: string, over: Record<string, unknown> = {}) => ({ productKey, version: 1, source: "account", updatedAt: "2026-11-01T10:00:00.000Z", name: "The Kitchen Co. LLP", brandName: "Kitchen Co", contactName: "Amit Sharma", contactEmail: "a@thekitchenco.in", contactPhone: "+919876543210", addressLine1: "301, Lotus Business Park", addressLine2: null, city: "Mumbai", state: "Maharashtra", postalCode: "400104", country: "India", gstin: "27AAPFU0939F1ZV", description: "Catering for events", website: "https://thekitchenco.in", instagram: "https://instagram.com/kitchenco", facebook: null, linkedin: "https://linkedin.com/company/kitchen-co", logoUrl: null, businessPhone: "+919800000123", orderNumberPrefix: "KC", orderNumberNextValue: "12", orderNumberPadding: "4", ...over });
     const profiles = [rec("caterly"), rec("rivo", { brandName: null, addressLine1: null })];
     const puts: { key: string; body: Record<string, unknown> }[] = [];
     let conflictNext = false;
@@ -523,8 +571,13 @@ test.describe("My Products: the cards come from Ops", () => {
     await expect(page.getByText("Tax Information")).toHaveCount(0);
     await expect(page.getByText("Social Links")).toHaveCount(0);
     const businessCard = page.getByRole("region", { name: "Business Profile" });
-    for (const label of ["Brand Name", "Mobile Number", "Website", "Instagram", "Facebook", "Order Prefix", "Starting Number", "Digits", "Next Order Number"]) await expect(businessCard).toContainText(label);
+    for (const label of ["Brand Name", "Mobile Number", "Website", "Instagram", "Facebook", "LinkedIn", "Order Prefix", "Starting Number", "Digits", "Next Order Number"]) await expect(businessCard).toContainText(label);
     await expect(businessCard).not.toContainText("Business Name");
+    // Each social link set is a round icon button that opens the page in a new tab; one not set says so.
+    await expect(businessCard.getByRole("link", { name: "Open Instagram" }).first()).toHaveAttribute("href", "https://instagram.com/kitchenco");
+    await expect(businessCard.getByRole("link", { name: "Open LinkedIn" }).first()).toHaveAttribute("href", "https://linkedin.com/company/kitchen-co");
+    await expect(businessCard.getByRole("link", { name: "Open Facebook" })).toHaveCount(0);
+    await shot(page, "business-profile-social");
     await expect(businessCard).toContainText("KC-0012");
     await expect(page.getByRole("region", { name: "Billing Profile" })).toContainText("Business Name");
     await expect(page.getByText("Invoice update rule")).toBeVisible();
@@ -543,13 +596,16 @@ test.describe("My Products: the cards come from Ops", () => {
     await expect(page.getByLabel("Starting number")).toHaveValue("12");
     await expect(page.getByLabel("Digits")).toHaveValue("4");
     await page.getByLabel("Digits").fill("5");
+    // LinkedIn is a field like Instagram and Facebook, and a link that is not a web address is refused.
+    await expect(page.getByLabel("LinkedIn")).toHaveValue("https://linkedin.com/company/kitchen-co");
+    await page.getByLabel("LinkedIn").fill("https://linkedin.com/company/kitchen-co-events");
     // A logo can be added here too: the file is uploaded first and only its link goes into the profile.
     await page.route("**/api/account/billing-profiles/*/logo", (r) => json(r, 200, { status: "ok", url: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` }));
     await page.locator("#bd-logo").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: Buffer.from("png") });
     await expect(page.getByAltText("Logo preview")).toBeVisible();
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page.getByText("Your profile was saved. New invoices will use it.")).toBeVisible();
-    expect(puts[1]).toMatchObject({ key: "caterly", body: { baseVersion: 2, fields: { brandName: "Kitchen Co Events", orderNumberPadding: "5", businessPhone: "+919800000123", city: "Pune", logoUrl: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` } } });
+    expect(puts[1]).toMatchObject({ key: "caterly", body: { baseVersion: 2, fields: { brandName: "Kitchen Co Events", orderNumberPadding: "5", linkedin: "https://linkedin.com/company/kitchen-co-events", businessPhone: "+919800000123", city: "Pune", logoUrl: `http://account.localhost:3300/api/business-logo/${"a".repeat(32)}.png` } } });
     await expect(page.getByAltText("Caterly logo")).toBeVisible();
     // A save that Ops refuses as stale keeps the person's edits and says what happened.
     conflictNext = true;

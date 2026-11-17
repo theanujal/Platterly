@@ -4,6 +4,8 @@ import { PageHeader } from "@/components/account/ui";
 import { requireAccountHost } from "@/lib/account/guard";
 
 // The page the invitation email opens. It does not force a sign-in first: the person may need to create an account, and the page offers both.
+export const metadata = { title: "Admin Transfer" };
+
 export default async function Page({ searchParams }: { searchParams: Promise<{ invite?: string | string[] }> }) {
   await requireAccountHost();
   const invite = (await searchParams).invite;

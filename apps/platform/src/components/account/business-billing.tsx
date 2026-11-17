@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { ProductBillingProfileRecord } from "@platterly/contract";
 import { useProductCards } from "./cards";
-import { Icon } from "./icons";
+import { Icon, type IconName } from "./icons";
 import { AccountShell, useLeafCrumb } from "./shell";
 import { Badge } from "./ui";
 import { PhoneField } from "../phone-field";
@@ -159,7 +159,7 @@ export function BusinessBillingList() {
 
 /* ------------------------------------------------------------- the details */
 
-type Field = "logoUrl" | "brandName" | "description" | "website" | "instagram" | "facebook" | "name" | "contactName" | "contactEmail" | "contactPhone" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessPhone" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding";
+type Field = "logoUrl" | "brandName" | "description" | "website" | "instagram" | "facebook" | "linkedin" | "name" | "contactName" | "contactEmail" | "contactPhone" | "addressLine1" | "addressLine2" | "city" | "state" | "postalCode" | "country" | "gstin" | "businessPhone" | "orderNumberPrefix" | "orderNumberNextValue" | "orderNumberPadding";
 type Errors = Partial<Record<Field, string>>;
 type Values = Record<Field, string>;
 type Notice = { kind: "saved" | "failed"; text: string };
@@ -175,6 +175,7 @@ function toValues(p: ProductBillingProfileRecord | null, businessName: string, p
     website: p?.website ?? "",
     instagram: p?.instagram ?? "",
     facebook: p?.facebook ?? "",
+    linkedin: p?.linkedin ?? "",
     contactName: b?.contactName || prefill?.contactName || "",
     contactEmail: b?.contactEmail || prefill?.contactEmail || "",
     contactPhone: b?.contactPhone || prefill?.contactPhone || "",
@@ -214,10 +215,18 @@ function Item({ label, children, wide }: { label: string; children: ReactNode; w
   );
 }
 const dash = (v: string | null | undefined) => (v && v.trim() ? v : <span className="pa-muted">Not added</span>);
+/** A social link as a round icon button (opens the page in a new tab) with the address beside it; "Not added" when empty. */
+const social = (name: string, icon: IconName, url: string | null | undefined) =>
+  url ? (
+    <span className="pa-social-row">
+      <a className="pa-social" href={url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${name}`}><Icon name={icon} size={16} /></a>
+      <a className="pa-link" href={url} target="_blank" rel="noopener noreferrer">{host(url)}</a>
+    </span>
+  ) : dash(null);
 const host = (url: string) => url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 
 type HistoryEntry = { at: string; version: number; source: string; created: boolean; by: "you" | "someone" | "product" | "payment"; changes: { field: string; from: string | null; to: string | null }[] };
-const FIELD_LABEL: Record<string, string> = { name: "Legal billing name", brandName: "Brand name", contactName: "Billing contact", contactEmail: "Billing email", contactPhone: "Billing phone", addressLine1: "Address line 1", addressLine2: "Address line 2", city: "City", state: "State", postalCode: "PIN code", country: "Country", gstin: "GSTIN", description: "Description", website: "Website", instagram: "Instagram", facebook: "Facebook", logoUrl: "Logo" };
+const FIELD_LABEL: Record<string, string> = { name: "Legal billing name", brandName: "Brand name", contactName: "Billing contact", contactEmail: "Billing email", contactPhone: "Billing phone", addressLine1: "Address line 1", addressLine2: "Address line 2", city: "City", state: "State", postalCode: "PIN code", country: "Country", gstin: "GSTIN", description: "Description", website: "Website", instagram: "Instagram", facebook: "Facebook", linkedin: "LinkedIn", logoUrl: "Logo" };
 
 function History({ productKey, productName, version }: { productKey: string; productName: string; version: number | null }) {
   const [rows, setRows] = useState<HistoryEntry[] | "loading" | "error">("loading");
@@ -510,6 +519,7 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
                   <Input {...fieldProps} id="website" label="Website" optional span={2} maxLength={300} type="url" autoComplete="url" hint="Starts with https://" />
                   <Input {...fieldProps} id="instagram" label="Instagram" optional span={2} maxLength={300} type="url" autoComplete="off" hint="Link to your page" />
                   <Input {...fieldProps} id="facebook" label="Facebook" optional span={2} maxLength={300} type="url" autoComplete="off" hint="Link to your page" />
+                  <Input {...fieldProps} id="linkedin" label="LinkedIn" optional span={2} maxLength={300} type="url" autoComplete="off" hint="Link to your page" />
                   {hasNumbering && (
                     <>
                       <h3 className="pa-span-6 pa-bd-subhead">Order numbering</h3>
@@ -529,12 +539,9 @@ function Detail({ s, product, setState }: { s: Extract<State, { phase: "ready" }
                   {saved?.website ? <a className="pa-link" href={saved.website} target="_blank" rel="noopener noreferrer">{host(saved.website)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
                 </Item>
                 <Item label="Mobile Number">{dash(saved?.businessPhone)}</Item>
-                <Item label="Instagram">
-                  {saved?.instagram ? <a className="pa-link" href={saved.instagram} target="_blank" rel="noopener noreferrer">{host(saved.instagram)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
-                </Item>
-                <Item label="Facebook">
-                  {saved?.facebook ? <a className="pa-link" href={saved.facebook} target="_blank" rel="noopener noreferrer">{host(saved.facebook)} <Icon name="arrowUpRight" size={14} /></a> : dash(null)}
-                </Item>
+                <Item label="Instagram">{social("Instagram", "instagram", saved?.instagram)}</Item>
+                <Item label="Facebook">{social("Facebook", "facebook", saved?.facebook)}</Item>
+                <Item label="LinkedIn">{social("LinkedIn", "linkedin", saved?.linkedin)}</Item>
                 {hasNumbering && (
                   <>
                     <Item label="Order Prefix">{dash(saved?.orderNumberPrefix)}</Item>

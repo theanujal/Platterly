@@ -10,6 +10,11 @@ import { loadAccountProductCards } from "@/modules/account/product-cards";
 import { StoreUnavailable } from "@/components/store/unavailable";
 import { hostKind, originFor, requestHost } from "@/lib/routing/hosts";
 
+/** The Account's Overview is titled (written out in full: a layout's title template does not reach the page of its own segment); the Store's home keeps the plain "Platterly Store". */
+export async function generateMetadata() {
+  return hostKind(requestHost(await headers())) === "account" ? { title: { absolute: "Overview · Platterly Account" } } : {};
+}
+
 /**
  * The account host shows the Account overview (real data) and the store host shows the Store home (a prototype with sample
  * data). The auth host stays a placeholder that names the surface that answered; its real pages arrive in later phases.

@@ -3,6 +3,8 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { hostKind, requestHost } from "@/lib/routing/hosts";
 
+export const metadata = { title: "Sign-in problem" };
+
 export default async function Page() {
   const kind = hostKind(requestHost(await headers()));
   if (kind !== "account" && kind !== "store") notFound();

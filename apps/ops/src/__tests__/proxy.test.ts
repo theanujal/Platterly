@@ -76,3 +76,17 @@ describe("ops proxy: public routes", () => {
     expect(withSession.headers.get("x-middleware-next")).toBe("1");
   });
 });
+
+describe("ops proxy: host", () => {
+  const page = (host: string) => proxy(new NextRequest(`http://${host}:3200/sign-in`, { headers: { host: `${host}:3200`, "sec-fetch-dest": "document" } })).status;
+  it("serves browser pages only on the Ops host", () => {
+    const before = process.env.BETTER_AUTH_URL;
+    process.env.BETTER_AUTH_URL = "http://ops.localhost:3200";
+    try {
+      expect(page("ops.localhost")).toBe(200);
+      for (const host of ["localhost", "127.0.0.1", "ops.localhost.evil.test", "catering.localhost"]) expect(page(host), host).toBe(404);
+    } finally {
+      if (before === undefined) delete process.env.BETTER_AUTH_URL; else process.env.BETTER_AUTH_URL = before;
+    }
+  });
+});

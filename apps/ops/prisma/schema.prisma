@@ -257,6 +257,7 @@ model ProductBillingProfile {
   website      String?
   instagram    String?
   facebook     String?
+  linkedin     String?
   // The business's own mobile number (Caterly's "Mobile number"); the billing phone is contactPhone.
   businessPhone String?
   // Order numbering, for a product that numbers its orders (Caterly). Text like every field; the next number is the product's live counter.

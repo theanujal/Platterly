@@ -9,6 +9,13 @@ describe("product billing profile contract", () => {
     expect(r.ok && r.value.fields?.gstin).toBe("27AAPFU0939F1ZV");
     expect(r.ok && r.value.fields?.logoUrl).toBeNull();
   });
+  it("keeps a LinkedIn link, treats a sender that omits it as none, and refuses one that is not a web link", () => {
+    const ok = parseProductBillingProfileRequest({ baseVersion: null, source: "account", fields: { ...fields, linkedin: " https://linkedin.com/company/spice-route " } });
+    expect(ok.ok && ok.value.fields?.linkedin).toBe("https://linkedin.com/company/spice-route");
+    const omitted = parseProductBillingProfileRequest({ baseVersion: null, source: "account", fields });
+    expect(omitted.ok && omitted.value.fields?.linkedin).toBeNull();
+    expect(parseProductBillingProfileRequest({ baseVersion: null, source: "account", fields: { ...fields, linkedin: "linkedin.com/x" } }).ok).toBe(false);
+  });
   it("accepts a copy and refuses bad versions, sources, links and details", () => {
     expect(parseProductBillingProfileRequest({ baseVersion: 3, source: "product", copyFrom: "rivo" }).ok).toBe(true);
     for (const bad of [{ baseVersion: 0 }, { baseVersion: "1" }, { source: "staff" }, { fields: { ...fields, website: "javascript:x" } }, { fields: { ...fields, postalCode: "12" } }, { copyFrom: "Bad Key" }]) {

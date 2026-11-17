@@ -1,0 +1,309 @@
+/* The account drawer shared by the Account and the Store (the same look as Caterly's). Uses the colour tokens both apps already define. */
+.pd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pd-chip:hover {
+  background: var(--muted);
+}
+.pd-chip:focus-visible,
+.pd-close:focus-visible,
+.pd-signout:focus-visible,
+.pd-links a:focus-visible,
+.pd-social-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.pd-chip-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+  text-align: right;
+}
+.pd-chip-name strong {
+  font-size: 12px;
+  font-weight: 500;
+}
+.pd-chip-name small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-chip-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 105, 0, 0.1);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pd-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pd-initials {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+@media (max-width: 760px) {
+  .pd-chip-name {
+    display: none;
+  }
+}
+
+.pd-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.4);
+}
+.pd-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  width: min(384px, 100%);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: -8px 0 24px rgba(15, 23, 42, 0.16);
+}
+.pd-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.pd-close:hover {
+  background: var(--muted);
+}
+.pd-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+.pd-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 24px 24px;
+  text-align: center;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.pd-big {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 105, 0, 0.1);
+  color: var(--primary);
+  font-size: 22px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+.pd-name {
+  margin: 8px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+.pd-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.pd-email {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.pd-copy {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.pd-copy:hover {
+  background: var(--border);
+}
+.pd-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pd-links a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.pd-links a:hover {
+  background: var(--muted);
+}
+.pd-social {
+  padding: 20px 24px;
+}
+.pd-social h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.pd-social-row {
+  display: flex;
+  gap: 10px;
+}
+.pd-social-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  background: var(--background);
+  text-decoration: none;
+}
+.pd-social-btn:hover {
+  background: var(--accent);
+  color: var(--primary);
+}
+.pd-foot {
+  margin: 0;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+}
+.pd-signout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--destructive);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.pd-signout:hover {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+
+/* The Help panel. The trigger is a button that takes the look of whatever link it replaces. */
+.pd-help-trigger {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+.pd-help-head {
+  padding: 40px 24px 20px;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.pd-help-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.pd-help-head p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--muted-foreground);
+}
+.pd-help-title {
+  margin: 20px 24px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.pd-help-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 8px;
+}
+.pd-help-list a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 24px;
+  color: var(--foreground);
+  font-size: 14px;
+  text-decoration: none;
+}
+.pd-help-list a:hover {
+  background: var(--muted);
+}
+.pd-help-list a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+.pd-help-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: rgba(255, 105, 0, 0.1);
+  color: var(--primary);
+}

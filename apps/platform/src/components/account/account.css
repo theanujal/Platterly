@@ -379,6 +379,25 @@
 .pa-link:hover {
   text-decoration: underline;
 }
+.pa-social-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.pa-social {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--primary);
+  background: var(--card);
+}
+.pa-social:hover {
+  background: var(--accent);
+}
 .pa-foot-note {
   font-size: 13px;
   color: var(--muted-foreground);
@@ -1302,6 +1321,7 @@ a.pa-btn {
   gap: 6px;
   font-weight: 500;
   color: var(--foreground);
+  text-decoration: none;
 }
 @media (max-width: 760px) {
   .pa-help-btn {
@@ -3228,4 +3248,15 @@ textarea.pa-input {
 }
 .pa-dropzone-remove:hover {
   text-decoration: underline;
+}
+
+/* The sidebar's Help & Support is a button now (it opens the Help panel); it keeps the nav item look. */
+button.pa-nav-button {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
 }

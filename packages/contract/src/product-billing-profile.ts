@@ -7,7 +7,7 @@ import { fail, isIsoDate, isRecord, ok, type ParseResult } from "./result";
  * record. Every save names the version it was based on (`baseVersion`, null for a first save); Ops refuses a stale one with 409 and the current record.
  * The logo is a link: the product keeps the file.
  */
-export const PROFILE_TEXT_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
+export const PROFILE_TEXT_FIELDS = ["name", "brandName", "contactName", "contactEmail", "contactPhone", "addressLine1", "addressLine2", "city", "state", "postalCode", "country", "gstin", "description", "website", "instagram", "facebook", "linkedin", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding", "logoUrl"] as const;
 export type ProductProfileField = (typeof PROFILE_TEXT_FIELDS)[number];
 export type ProductProfileFields = { name: string } & Record<Exclude<ProductProfileField, "name">, string | null>;
 export interface ProductBillingProfileRecord extends ProductProfileFields {
@@ -18,9 +18,9 @@ export interface ProductBillingProfileRecord extends ProductProfileFields {
   updatedAt: string;
 }
 
-const MAX: Partial<Record<ProductProfileField, number>> = { businessPhone: 40, description: 2000, website: 300, instagram: 300, facebook: 300, logoUrl: 500 };
-const ADDED_LATER: ProductProfileField[] = ["businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding"];
-const URL_FIELDS: ProductProfileField[] = ["website", "instagram", "facebook", "logoUrl"];
+const MAX: Partial<Record<ProductProfileField, number>> = { businessPhone: 40, description: 2000, website: 300, instagram: 300, facebook: 300, linkedin: 300, logoUrl: 500 };
+const ADDED_LATER: ProductProfileField[] = ["linkedin", "businessPhone", "orderNumberPrefix", "orderNumberNextValue", "orderNumberPadding"];
+const URL_FIELDS: ProductProfileField[] = ["website", "instagram", "facebook", "linkedin", "logoUrl"];
 
 /** What the Platform sends to save one product's profile (`copyFrom` instead of `fields` copies another product's profile once). */
 export interface ProductBillingProfileRequest {

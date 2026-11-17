@@ -78,14 +78,17 @@ test("business name, mobile and order numbering saved in Caterly show in the Acc
   await page.getByLabel("Prefix", { exact: true }).fill("SR");
   await page.getByLabel("Starting number", { exact: true }).fill("25");
   await page.getByLabel("Digits", { exact: true }).fill("4");
+  await page.getByLabel("LinkedIn URL").fill("https://linkedin.com/company/spice-route");
   await page.getByRole("button", { name: "Save Changes" }).click();
   await expect(page.getByText("SR-0025")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("https://linkedin.com/company/spice-route")).toBeVisible();
 
   // The Account shows the same values (the profile reaches Ops, then the Account reads it).
   await expect(async () => {
     await page.goto(`${ACCOUNT}/billing-details/catering`);
     await expect(page.getByText("Spice Route Caterers").first()).toBeVisible({ timeout: 4_000 });
     await expect(page.getByText("SR-0025")).toBeVisible({ timeout: 4_000 });
+    await expect(page.getByRole("link", { name: "Open LinkedIn" }).first()).toHaveAttribute("href", "https://linkedin.com/company/spice-route", { timeout: 4_000 });
     await expect(page.getByText("98000 00777").or(page.getByText("9800000777"))).toBeVisible({ timeout: 4_000 });
   }).toPass({ timeout: 60_000 });
 

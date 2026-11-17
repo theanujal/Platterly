@@ -182,6 +182,7 @@ model Organization {
   websiteUrl          String?
   instagramUrl        String?
   facebookUrl         String?
+  linkedinUrl         String?
   gstShowOnInvoices   Boolean? @default(false)
 
   // Set only when the onboarding wizard's final "Complete Setup" step

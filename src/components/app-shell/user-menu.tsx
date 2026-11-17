@@ -6,10 +6,18 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, CreditCard, Crown, ExternalLink, LogOut, Settings as SettingsIcon, Store, UserRound } from "lucide-react";
 import { signOutAndLeave } from "@/lib/auth/client-sign-out";
 import { Badge } from "@/components/ui/badge";
+import { FacebookIcon, InstagramIcon, LinkedinIcon } from "@/components/ui/brand-icons";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "cn";
+
+/** Platterly's own social profiles (the same three the marketing site and the Platform's account drawer link to). */
+const SOCIAL = [
+  { name: "Facebook", Icon: FacebookIcon, href: "https://www.facebook.com/platterlyindia" },
+  { name: "Instagram", Icon: InstagramIcon, href: "https://www.instagram.com/platterlyindia/" },
+  { name: "LinkedIn", Icon: LinkedinIcon, href: "https://www.linkedin.com/company/platterlyindia" },
+];
 
 export type DrawerUsage = { key: string; label: string; used: number; limit: number | null };
 export type DrawerPlan = { name: string; status: string; detail: string };
@@ -111,6 +119,17 @@ export function UserMenu({
               {usage.map((row) => <UsageBar key={row.key} row={row} />)}
             </section>
           )}
+
+          <section className="flex flex-col gap-3 border-t border-border px-6 py-5" data-testid="drawer-social" aria-label="Follow Platterly">
+            <h2 className="text-sm font-semibold">Follow us</h2>
+            <div className="flex gap-2.5">
+              {SOCIAL.map(({ name, Icon, href }) => (
+                <a key={name} href={href} target="_blank" rel="noopener noreferrer" aria-label={`Platterly on ${name}`} className="flex size-[38px] items-center justify-center rounded-[10px] border border-border text-foreground transition-colors hover:bg-muted hover:text-primary">
+                  <Icon className="size-[18px]" />
+                </a>
+              ))}
+            </div>
+          </section>
         </div>
 
         <div className="border-t border-border bg-muted/40 p-3">

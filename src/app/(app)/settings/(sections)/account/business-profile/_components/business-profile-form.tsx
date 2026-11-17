@@ -6,7 +6,7 @@ import { Building, Globe, Hash, MapPin, Palette, Receipt, Store } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { IconInput } from "@/components/ui/icon-input";
-import { FacebookIcon, InstagramIcon } from "@/components/ui/brand-icons";
+import { FacebookIcon, InstagramIcon, LinkedinIcon } from "@/components/ui/brand-icons";
 import { Label } from "@/components/ui/label";
 import { ImageDropzone } from "@/components/ui/image-dropzone";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -29,6 +29,7 @@ export interface BusinessCardValues {
   websiteUrl: string;
   instagramUrl: string;
   facebookUrl: string;
+  linkedinUrl: string;
   logoUrl: string | null;
   orderNumberPrefix: string;
   orderNumberNextValue: string;
@@ -129,6 +130,7 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
     formData.set("websiteUrl", values.websiteUrl);
     formData.set("instagramUrl", values.instagramUrl);
     formData.set("facebookUrl", values.facebookUrl);
+    formData.set("linkedinUrl", values.linkedinUrl);
     formData.set("orderNumberPrefix", values.orderNumberPrefix);
     formData.set("orderNumberNextValue", values.orderNumberNextValue);
     formData.set("orderNumberPadding", values.orderNumberPadding);
@@ -170,6 +172,9 @@ export function BusinessProfileForm({ initialValues }: { initialValues: Business
         </Field>
         <Field id="facebookUrl" label="Facebook URL">
           <IconInput icon={FacebookIcon} id="facebookUrl" placeholder="https://facebook.com/yourkitchen" type="url" value={values.facebookUrl} onChange={(e) => setField("facebookUrl", e.target.value)} />
+        </Field>
+        <Field id="linkedinUrl" label="LinkedIn URL">
+          <IconInput icon={LinkedinIcon} id="linkedinUrl" placeholder="https://linkedin.com/company/yourkitchen" type="url" value={values.linkedinUrl} onChange={(e) => setField("linkedinUrl", e.target.value)} />
         </Field>
       </SettingsSection>
 

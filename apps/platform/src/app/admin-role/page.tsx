@@ -3,6 +3,8 @@ import { PageHeader } from "@/components/account/ui";
 import { AccountShell } from "@/components/account/shell";
 import { requireAccountSignIn } from "@/lib/account/guard";
 
+export const metadata = { title: "Business Admin" };
+
 export default async function Page() {
   await requireAccountSignIn("/admin-role");
   return (

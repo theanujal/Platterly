@@ -2,6 +2,8 @@ import { SubscriptionDetailsView } from "@/components/account/subscription-detai
 import { requireAccountSignIn } from "@/lib/account/guard";
 import { originFor } from "@/lib/routing/hosts";
 
+export const metadata = { title: "Subscription Details" };
+
 export default async function Page({ params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
   await requireAccountSignIn(`/subscriptions/${encodeURIComponent(key)}`);

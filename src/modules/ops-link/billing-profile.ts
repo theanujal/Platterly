@@ -26,7 +26,7 @@ export async function storeProfileCopy(organizationId: string, profile: ProductB
     prisma.organizationBillingProfile.upsert({ where: { organizationId }, create: { organizationId, ...data }, update: data }),
     prisma.organization.update({
       where: { id: organizationId },
-      data: { addressLine1: profile.addressLine1, addressLine2: profile.addressLine2, city: profile.city, state: profile.state, postalCode: profile.postalCode, country: profile.country, gstNumber: profile.gstin, businessDescription: profile.description, websiteUrl: profile.website, instagramUrl: profile.instagram, facebookUrl: profile.facebook, ...logo },
+      data: { addressLine1: profile.addressLine1, addressLine2: profile.addressLine2, city: profile.city, state: profile.state, postalCode: profile.postalCode, country: profile.country, gstNumber: profile.gstin, businessDescription: profile.description, websiteUrl: profile.website, instagramUrl: profile.instagram, facebookUrl: profile.facebook, linkedinUrl: profile.linkedin, ...logo },
     }),
   ]);
   return true;
@@ -106,7 +106,7 @@ export async function seedOwnProfile(organizationId: string, businessId: string)
   const result = await saveOwnProfile(businessId, null, {
     name: org.name, brandName: null, businessPhone: org.contactPhone, contactName: null, contactEmail: null, contactPhone: null,
     addressLine1: org.addressLine1, addressLine2: org.addressLine2, city: org.city, state: org.state, postalCode: org.postalCode, country: org.country, gstin: org.gstNumber,
-    description: org.businessDescription, website: org.websiteUrl, instagram: org.instagramUrl, facebook: org.facebookUrl,
+    description: org.businessDescription, website: org.websiteUrl, instagram: org.instagramUrl, facebook: org.facebookUrl, linkedin: org.linkedinUrl,
     orderNumberPrefix: org.orderNumberPrefix, orderNumberNextValue: String(org.orderNumberNextValue), orderNumberPadding: String(org.orderNumberPadding),
     logoUrl: absolute(org.logo),
   });

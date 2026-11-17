@@ -3,6 +3,8 @@ import { BusinessBillingList } from "@/components/account/business-billing";
 import { PageHeader } from "@/components/account/ui";
 import { requireAccountSignIn } from "@/lib/account/guard";
 
+export const metadata = { title: "Business & Billing" };
+
 export default async function Page() {
   await requireAccountSignIn("/billing-details");
   return (
