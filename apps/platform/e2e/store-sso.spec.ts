@@ -71,6 +71,22 @@ test.describe("Store sign-in", () => {
     await expect(page.getByRole("button", { name: "Cancel subscription" })).toHaveCount(0);
   });
 
+  test("the Store header shows the person's profile photo, and the photo can be read on the Store host but never changed there", async ({ page }) => {
+    const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+    await registerAndSignIn(page, newEmail(), `${STORE}/manage/caterly`, "Photo Person");
+    await expect(page).toHaveURL(`${STORE}/manage/caterly`);
+    await expect(page.getByRole("banner")).toContainText("Photo Person");
+    await expect(page.getByRole("banner").locator("img.pd-photo")).toHaveCount(0); // no photo yet: initials
+    await page.goto(`${ACCOUNT}/`);
+    await expect(page).toHaveURL(`${ACCOUNT}/`); // single sign-on finished
+    expect((await page.request.put(`${ACCOUNT}/api/account/photo`, { headers: { origin: ACCOUNT }, data: PNG })).status()).toBe(200);
+    await page.goto(`${STORE}/`);
+    const img = page.getByRole("banner").locator("img.pd-photo");
+    await expect(img).toBeVisible();
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0); // the image really loaded
+    expect((await page.request.put(`${STORE}/api/account/photo`, { headers: { origin: STORE }, data: PNG })).status()).toBe(404); // no change from the Store
+  });
+
   test("the Store's pay routes refuse a signed-out caller, another site's page, and any host but the Store", async ({ request }) => {
     for (const path of ["/api/store/checkout", "/api/store/verify", "/api/store/quote", "/api/store/change"]) {
       // Signed out, from the Store's own page: 401. From another site: 403 before anything else is looked at. On the Account host: not there.

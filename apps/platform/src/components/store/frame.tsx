@@ -17,11 +17,11 @@ const PHONE = "+91 7624964646";
 const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map((w) => w.charAt(0).toUpperCase()).join("") || "?";
 
 /** The signed-in person's name and email for the header, or null when nobody is signed in (or the identity database cannot be reached). */
-async function whoIsSignedIn(): Promise<{ name: string; email: string } | null> {
+async function whoIsSignedIn(): Promise<{ name: string; email: string; photo?: string } | null> {
   const ref = await getSessionRef();
   if (!ref) return null;
   const profile = await getProfile(identityPool(), ref.sub).catch(() => null);
-  return profile ? { name: profile.name || profile.email, email: profile.email } : null;
+  return profile ? { name: profile.name || profile.email, email: profile.email, photo: profile.photoVersion ? `/api/account/photo?v=${profile.photoVersion}` : undefined } : null;
 }
 
 /** The Store's header and footer around a page. The header shows who is signed in (with Sign out), or a Sign in link. */
@@ -39,7 +39,7 @@ export async function StoreFrame({ children }: { children: ReactNode }) {
           <nav className="ps-header-nav" aria-label="Store header">
             <HelpDrawer className="ps-help"><Icon name="lifebuoy" size={20} />Help</HelpDrawer>
             {who ? (
-              <AccountDrawer signedIn person={{ name: who.name, email: who.email, business: null, initials: initials(who.name) }} />
+              <AccountDrawer signedIn person={{ name: who.name, email: who.email, business: null, initials: initials(who.name), photo: who.photo }} />
             ) : (
               <a href="/auth/start" className="ps-signin">Sign in</a>
             )}

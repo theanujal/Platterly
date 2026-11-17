@@ -10,7 +10,9 @@ const NO_STORE = { "cache-control": "no-store" };
 const REFUSALS = { too_large: 413, not_an_image: 415, empty: 400 } as const;
 
 async function caller(request: Request, write: boolean) {
-  if (hostKind(requestHost(request.headers)) !== "account") return Response.json({ error: "not_found" }, { status: 404 });
+  // Reading is also allowed on the Store host (its header shows the person's photo, with the Store's own session); changes are Account only.
+  const kind = hostKind(requestHost(request.headers));
+  if (kind !== "account" && !(kind === "store" && !write)) return Response.json({ error: "not_found" }, { status: 404 });
   if (write && request.headers.get("origin") !== accountOrigin()) return Response.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
   const ref = await getSessionRef();
   if (!ref) return Response.json({ status: "unauthenticated" }, { status: 401, headers: NO_STORE });
