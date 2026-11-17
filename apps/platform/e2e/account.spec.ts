@@ -134,6 +134,10 @@ test.describe("No product switcher", () => {
     // The sign-in pages are on the auth host and say "Platterly".
     await page.goto("http://auth.localhost:3300/sign-in");
     await expect(page).toHaveTitle("Sign in · Platterly");
+    for (const [path, title] of [["/sign-up", "Create an account · Platterly"], ["/forgot", "Forgot password · Platterly"], ["/verify", "Verify your email · Platterly"], ["/reset", "Reset password · Platterly"]]) {
+      const html = await (await page.request.get(`http://auth.localhost:3300${path}`)).text();
+      expect(html.match(/<title>([^<]*)<\/title>/)?.[1], path).toBe(title);
+    }
     await expect(page.locator('link[rel="icon"]').first()).toHaveAttribute("href", /icon\.svg/);
     expect((await page.request.get("http://account.localhost:3300/icon.svg")).status()).toBe(200);
     expect((await page.request.get("http://store.localhost:3300/icon.svg")).status()).toBe(200);
