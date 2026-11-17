@@ -126,6 +126,12 @@ export async function getPendingInvitationId(email: string): Promise<string | nu
   return rows[0]?.id ?? null;
 }
 
+/** How many businesses a person belongs to in Caterly (an invited teammate must belong to exactly one, the inviter's). */
+export async function countMembershipsForUser(email: string): Promise<number> {
+  const { rows } = await pool.query<{ n: string }>(`SELECT count(*) AS n FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1`, [email]);
+  return Number(rows[0].n);
+}
+
 export async function getOrganizationNameForUser(email: string): Promise<string | null> {
   const { rows } = await pool.query<{ name: string }>(
     `SELECT o.name FROM organization o

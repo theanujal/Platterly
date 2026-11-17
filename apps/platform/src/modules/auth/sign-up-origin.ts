@@ -26,7 +26,7 @@ export function queryFromSearchParams(searchParams: Record<string, string | stri
 }
 
 /** What a paid-plan sign-up link adds to the signed address: a plan code and a billing interval. Only well-formed values count; anything else is a trial sign-up. */
-export type SignUpOrigin = { clientId: string; plan: { code: string; interval: "MONTHLY" | "ANNUAL" } | null };
+export type SignUpOrigin = { clientId: string; plan: { code: string; interval: "MONTHLY" | "ANNUAL" } | null; invited: boolean };
 
 export function planFromQuery(query: string): SignUpOrigin["plan"] {
   const params = new URLSearchParams(query);
@@ -35,8 +35,13 @@ export function planFromQuery(query: string): SignUpOrigin["plan"] {
   return code && /^[a-z0-9_-]{1,60}$/.test(code) && (interval === "MONTHLY" || interval === "ANNUAL") ? { code, interval } : null;
 }
 
+/** A team invitation sent the person here (`invite=1`): they only need an account to join the inviter's business, so none is made for them. */
+export function invitedFromQuery(query: string): boolean {
+  return new URLSearchParams(query).get("invite") === "1";
+}
+
 /** `signedProduct` plus the plan the product's link carried. The provider signs every part of the address, so the plan cannot be changed or invented by the person. */
 export async function signedSignUpOrigin(pool: Pool, query: string | null | undefined, secret: string): Promise<SignUpOrigin | null> {
   const clientId = await signedProduct(pool, query, secret);
-  return clientId && query ? { clientId, plan: planFromQuery(query) } : null;
+  return clientId && query ? { clientId, plan: planFromQuery(query), invited: invitedFromQuery(query) } : null;
 }

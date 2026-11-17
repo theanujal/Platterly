@@ -21,7 +21,7 @@ export async function provisionBusinessForVerifiedSignup(subject: string): Promi
       await markPendingVerified(subject);
       return null;
     }
-    if (rows[0].status === "completed") return null;
+    if (rows[0].status === "completed" || rows[0].status === "invited") return null; // invited: joins the inviter's business, makes none
     const result = await createBusinessForSignup(
       {
         prisma,

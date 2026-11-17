@@ -26,6 +26,9 @@ export async function GET(request: Request) {
     target.searchParams.set("plan", plan);
     target.searchParams.set("interval", interval);
   }
+  // A team invitation sends the person here to create an account only so they can join the inviter's business: the mark rides on the signed address too, so the
+  // Account makes no business of their own for it (the same rule `provisionTenantForNewUser` applies to Caterly's own tenant).
+  if (asked && next === asked && /^\/invitations\/[^/?#]+\/accept$/.test(next)) target.searchParams.set("invite", "1");
   const response = NextResponse.redirect(target, 303);
   response.headers.set("cache-control", "no-store");
   return response;

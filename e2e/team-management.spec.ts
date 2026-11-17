@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser, setPushPromptState } from "./db";
+import { cleanupOnboardingTestUser, cleanupInviteeUser, getPendingInvitationId, getOrganizationNameForUser, countMembershipsForUser, setPushPromptState } from "./db";
 import { fillWizardBusinessName, signUpOnCentralPage } from "./auth-helpers";
 
 /**
@@ -121,6 +121,8 @@ test("inviting a teammate, accepting via signup, joins the SAME organization, an
   const inviteeOrgName = await getOrganizationNameForUser(staffEmail);
   expect(inviteeOrgName).toBe(ownerOrgName);
   expect(inviteeOrgName).toBe(businessName);
+  // And no stray business of their own next to it (the Account makes none for a sign-up that came from an invitation).
+  expect(await countMembershipsForUser(staffEmail)).toBe(1);
 
   // --- Owner sees the new member and disables them ---
   await page.goto("/settings/team");

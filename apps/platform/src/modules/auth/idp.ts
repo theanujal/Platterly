@@ -120,11 +120,11 @@ export function createIdp(options: IdpOptions = {}) {
             const found = typeof email === "string" ? await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase()) : null;
             if (found && ctx.path === "/sign-up/email") {
               const origin = await signedSignUpOrigin(pool, ctx.headers?.get(OAUTH_QUERY_HEADER), ctx.context.secret);
-              // A paid-plan link has no trial: the plan and the business id reserved for the person are kept until they pay (docs/paid-plan-signup-plan.md).
+              // A team invitation makes no business (status "invited"). A paid-plan link has no trial: the plan and the business id reserved for the person are kept until they pay (docs/paid-plan-signup-plan.md).
               if (origin) {
                 await pool.query(
                   `insert into "signupProduct" ("userId", "clientId", "planCode", "interval", "reservedBusinessId", "status") values ($1, $2, $3, $4, $5, $6) on conflict ("userId") do nothing`,
-                  [found.user.id, origin.clientId, origin.plan?.code ?? null, origin.plan?.interval ?? null, origin.plan ? mintOrganisationId() : null, origin.plan ? "pending_payment" : "trial"],
+                  [found.user.id, origin.clientId, origin.invited ? null : (origin.plan?.code ?? null), origin.invited ? null : (origin.plan?.interval ?? null), origin.plan && !origin.invited ? mintOrganisationId() : null, origin.invited ? "invited" : origin.plan ? "pending_payment" : "trial"],
                 );
               }
             } else if (found) {

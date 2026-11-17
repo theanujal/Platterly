@@ -247,7 +247,7 @@ test("the sign-up phone is already the business mobile, even if onboarding is ab
 
   // The mobile number cannot be cleared in Settings: it must stay a valid number there too.
   await page.getByRole("button", { name: "Edit Profile" }).click();
-  await page.getByLabel("Company / business name").fill("Leave Kitchen");
+  await page.getByLabel("Brand name").fill("Leave Kitchen");
   const mobile = page.locator("input#mobileNumber");
   await expect(mobile).toHaveValue("+91 98000 00088");
   await mobile.fill("");
