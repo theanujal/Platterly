@@ -7,7 +7,9 @@ import { importCaterlyBusinesses } from "../legacy-business-import";
 // Runner for the Caterly business import (there is no script runner for TypeScript here). Skipped unless CATERLY_BUSINESS_IMPORT is "dry" or "apply".
 //   CATERLY_BUSINESS_IMPORT=dry   CATERLY_COPY_DATABASE_URL=... DATABASE_URL=... npx vitest run legacy-business-import.run
 // A dry run does all the work in a transaction and rolls it back. The source must be a COPY database on the F4 cluster; the target must be the F4 Platform database.
+// On the live server (one Postgres, port 5432) add CATERLY_BUSINESS_IMPORT_PRODUCTION=1: the target must then be platterly_platform and the source a copy, on any port.
 const mode = process.env.CATERLY_BUSINESS_IMPORT;
+const production = process.env.CATERLY_BUSINESS_IMPORT_PRODUCTION === "1";
 class Rollback extends Error {}
 const part = (url: string) => ({ db: new URL(url).pathname.replace(/^\//, ""), port: new URL(url).port || "5432" });
 
@@ -17,8 +19,13 @@ describe.skipIf(mode !== "dry" && mode !== "apply")("Caterly business import (ru
     const targetUrl = process.env.DATABASE_URL ?? "";
     const s = part(sourceUrl);
     const t = part(targetUrl);
-    if (!/copy/i.test(s.db) || s.port === "5432" || s.port === "55432") throw new Error("the source must be a COPY database, not on 5432 or 55432");
-    if (t.port !== "55434" || !["platterly_platform", "platterly_rehearsal_platform"].includes(t.db)) throw new Error("the target must be platterly_platform (or the scratch platterly_rehearsal_platform) on the F4 cluster (55434)");
+    if (!/copy/i.test(s.db)) throw new Error("the source must be a COPY database (name contains 'copy')");
+    if (production) {
+      if (t.db !== "platterly_platform") throw new Error("with CATERLY_BUSINESS_IMPORT_PRODUCTION=1 the target must be platterly_platform");
+    } else {
+      if (s.port === "5432" || s.port === "55432") throw new Error("the source must not be on 5432 or 55432 (a live server needs CATERLY_BUSINESS_IMPORT_PRODUCTION=1)");
+      if (t.port !== "55434" || !["platterly_platform", "platterly_rehearsal_platform"].includes(t.db)) throw new Error("the target must be platterly_platform (or the scratch platterly_rehearsal_platform) on the F4 cluster (55434); a live server needs CATERLY_BUSINESS_IMPORT_PRODUCTION=1");
+    }
 
     const source = new Pool({ connectionString: sourceUrl, max: 1 });
     const pool = new Pool({ connectionString: targetUrl, max: 1 });

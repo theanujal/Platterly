@@ -1,6 +1,7 @@
 // F4.1.3: import Caterly users (and password hashes) from a COPY of Caterly's user and account tables into the identity database.
 //   CATERLY_COPY_DATABASE_URL=... IDENTITY_DATABASE_URL=... node scripts/import-caterly-users.mjs            (dry run: nothing is written)
 //   CATERLY_COPY_DATABASE_URL=... IDENTITY_DATABASE_URL=... node scripts/import-caterly-users.mjs --apply    (writes)
+// On the live server (one Postgres, port 5432) add --production: the target must then be platterly_identity and the source a copy, on any port.
 import pg from "pg";
 import { importCaterlyUsers } from "../src/modules/auth/legacy-import.mjs";
 
@@ -9,9 +10,16 @@ const targetUrl = process.env.IDENTITY_DATABASE_URL;
 if (!sourceUrl || !targetUrl) throw new Error("CATERLY_COPY_DATABASE_URL and IDENTITY_DATABASE_URL must be set");
 const dbName = (url) => new URL(url).pathname.replace(/^\//, "");
 const port = (url) => new URL(url).port || "5432";
+const production = process.argv.includes("--production");
 // The source must say it is a copy; the live and shared databases are refused by name and by port.
-if (!/copy/i.test(dbName(sourceUrl)) || port(sourceUrl) === "5432" || port(sourceUrl) === "55432") throw new Error("the source must be a COPY database (name contains 'copy', not on 5432 or 55432)");
-if (port(targetUrl) === "5432" || port(targetUrl) === "55432" || port(targetUrl) === "55433") throw new Error("the identity target must be on the F4 cluster, not 5432, 55432 or 55433");
+if (!/copy/i.test(dbName(sourceUrl))) throw new Error("the source must be a COPY database (name contains 'copy')");
+if (production) {
+  if (dbName(targetUrl) !== "platterly_identity") throw new Error("with --production the identity target must be platterly_identity");
+} else {
+  // Without --production these guard the shared dev databases (5432, 55432, 55433); a live database needs --production.
+  if (port(sourceUrl) === "5432" || port(sourceUrl) === "55432") throw new Error("the source must not be on 5432 or 55432 (a live server needs --production)");
+  if (port(targetUrl) === "5432" || port(targetUrl) === "55432" || port(targetUrl) === "55433") throw new Error("the identity target must be on the F4 cluster, not 5432, 55432 or 55433 (a live server needs --production)");
+}
 
 const apply = process.argv.includes("--apply");
 const source = new pg.Pool({ connectionString: sourceUrl, max: 1 });
