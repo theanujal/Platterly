@@ -27,6 +27,20 @@ Nothing here is needed until go-live. The scripts are tested with stand-ins (`ba
    In `ops.env` set the same `SITE_SECRET` and `SITE_DEPLOY_HOOK_URL=http://127.0.0.1:3300/` (same server, so no public address is needed).
    Then press Publish in Ops (`docs/site-publish.md`).
 
+## Adding the Platform to a server that already runs catering and Ops
+The one-time setup above is written for an empty server. On a running one, the installed scripts are the old release's (they refresh themselves only after
+a successful deploy, and the old `require_app` refuses `platform`), so do these by hand, as root, from a checkout of the release you are deploying:
+1. Folders first: `mkdir -p /srv/platterly/account/{photos,logos} && chown -R platterly /srv/platterly/account`. The new unit lists `/srv/platterly/account`
+   in `ReadWritePaths`; installed before the folder exists, it stops every slot (catering and Ops too) from starting.
+2. Scripts and unit: `install -m 0755 deploy/bin/*.sh /srv/platterly/bin/`, copy `deploy/systemd/platterly-app@.service` to `/etc/systemd/system/`, then
+   `systemctl daemon-reload`.
+3. Nginx: create `active-platform.conf` (step 5 above) before loading the new `platterly.conf`.
+4. After `deploy.sh platform`: append the Platform lines of `deploy/cron/platterly.cron` to `/etc/cron.d/platterly`. Without them the outbox never delivers
+   membership events.
+5. The repository-root scripts of go-live step 6 (`scripts/link-platform-accounts.mjs`, `scripts/compare-business-ids.mjs`) need `pg`, and no clone on the
+   server has root `node_modules`. Copy the two files to a scratch folder and symlink its `node_modules` to the live Platform slot's
+   (`/srv/platterly/platform/<slot>/apps/platform/node_modules`).
+
 ## Every release
 `deploy.sh catering` (or `ops`) builds the idle slot, runs the migration guard, backs up the database, runs migrations, starts the slot, waits for
 `/api/health`, tests and reloads Nginx, then stops the old slot after `DRAIN_MINUTES`. Any failure before the switch leaves the live slot as it was.
