@@ -167,7 +167,7 @@ describe("platform link: events", () => {
 });
 
 describe("platform link: person.profile is applied", () => {
-  const profileEvent = (businessId: string, sequence: number, subject: string, data: Partial<{ firstName: string; lastName: string; phone: string; email: string }> = {}) => ({
+  const profileEvent = (businessId: string, sequence: number, subject: string, data: Partial<{ firstName: string; lastName: string; phone: string; email: string; picture: string }> = {}) => ({
     version: 1, eventId: newId("event"), businessId, sequence, occurredAt: new Date().toISOString(), type: "person.profile",
     data: { userId: "plat-user", subject, firstName: "Asha", lastName: "Rao", phone: "+919876543210", email: "new@example.com", ...data },
   });
@@ -196,6 +196,17 @@ describe("platform link: person.profile is applied", () => {
     const u = await linkedUser({ phone: "+912222222222" });
     await send(profileEvent(bizId(), 1, u.subject, { phone: "", email: u.email }));
     expect((await prisma.user.findUniqueOrThrow({ where: { id: u.id } })).phone).toBe("+912222222222");
+  });
+
+  it("follows the photo: a new picture is saved, an empty one clears it, and an event without one leaves it alone", async () => {
+    const u = await linkedUser();
+    const image = () => prisma.user.findUniqueOrThrow({ where: { id: u.id } }).then((x) => x.image);
+    await send(profileEvent(bizId(), 1, u.subject, { email: u.email, picture: "https://account.example/api/account/photo/shared?u=1&v=2&s=3" }));
+    expect(await image()).toBe("https://account.example/api/account/photo/shared?u=1&v=2&s=3");
+    await send(profileEvent(bizId(), 1, u.subject, { email: u.email, firstName: "Again" })); // no picture: unchanged
+    expect(await image()).toBe("https://account.example/api/account/photo/shared?u=1&v=2&s=3");
+    await send(profileEvent(bizId(), 1, u.subject, { email: u.email, picture: "" })); // removed in the Account
+    expect(await image()).toBe("");
   });
 
   it("keeps the current Caterly email when another Caterly user already holds the new one, but still updates the rest", async () => {

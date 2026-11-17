@@ -102,4 +102,15 @@ test("a name and phone changed in the Account show in Caterly's top bar", async 
   await expect(page.getByTestId("account-drawer").getByRole("link", { name: "Account", exact: true })).toBeVisible();
   await page.goto(`${CATERLY}/settings/account/user-profile`);
   await expect(page.getByText("This page could not be found.")).toBeVisible();
+
+  // A photo added in the Account reaches Caterly without a new sign-in, and a removal clears it.
+  const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const image = async () => (await pool.query('select image from "user" where email = $1', [to])).rows[0]?.image as string | null;
+  await page.goto(`${ACCOUNT}/profile`);
+  expect((await page.request.put(`${ACCOUNT}/api/account/photo`, { headers: { origin: ACCOUNT }, data: PNG })).status()).toBe(200);
+  await runPlatformOutbox(page);
+  await expect.poll(image, { timeout: 20_000 }).toContain("/api/account/photo/shared");
+  expect((await page.request.delete(`${ACCOUNT}/api/account/photo`, { headers: { origin: ACCOUNT } })).status()).toBe(200);
+  await runPlatformOutbox(page);
+  await expect.poll(image, { timeout: 20_000 }).toBe("");
 });

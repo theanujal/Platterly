@@ -7,6 +7,8 @@ vi.mock("@/lib/db", () => ({ prisma: { membershipProductSlot: { findMany: (...a:
 vi.mock("../enqueue", () => ({ enqueueOutbox: (tx: unknown, input: unknown) => enqueue(tx, input) }));
 vi.mock("../../users/email-sync", () => ({ platformUserIdForSubject: (...a: unknown[]) => platformUser(...a) }));
 vi.mock("../../auth/identity-db", () => ({ identityPool: () => ({}) }));
+vi.mock("../../auth/config", () => ({ accountOrigin: () => "http://account.test" }));
+vi.mock("../../account/photo-link", () => ({ photoLinkUrl: (origin: string, id: string, v: string) => `${origin}/photo/${id}/${v}` }));
 const getProfile = vi.fn();
 vi.mock("../../account/profile", () => ({ getProfile: (...a: unknown[]) => getProfile(...a) }));
 
@@ -32,6 +34,17 @@ describe("person.profile emitter", () => {
     findSlots.mockResolvedValue([]);
     expect(await emitPersonProfile("sub-y", profile)).toBe(0);
     expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("carries the photo address when the person has a photo and an empty one when they have none or removed it", async () => {
+    platformUser.mockResolvedValue("user-1");
+    findSlots.mockResolvedValue([{ organisationId: "biz_a", productKey: "caterly" }]);
+    getProfile.mockResolvedValue({ ...profile, photoVersion: "123" });
+    await emitCurrentPersonProfile("sub-1");
+    expect((enqueue.mock.calls[0][1] as { payload: { picture: string } }).payload.picture).toBe("http://account.test/photo/sub-1/123");
+    getProfile.mockResolvedValue({ ...profile, photoVersion: null });
+    await emitCurrentPersonProfile("sub-1");
+    expect((enqueue.mock.calls[1][1] as { payload: { picture: string } }).payload.picture).toBe("");
   });
 
   it("the route helper reads the current details, skips a person with no name, and never throws", async () => {

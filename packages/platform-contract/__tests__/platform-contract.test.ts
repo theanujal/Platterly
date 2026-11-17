@@ -69,6 +69,13 @@ describe("events: person.profile", () => {
     expect(profile({ lastName: 5 })).toBe(false);
     expect(profile({ email: "not-an-email" })).toBe(false);
   });
+  it("may carry the photo address: present, empty (removed) or absent are fine; a non-text or very long one is not", () => {
+    expect(profile({ picture: "https://account.example/api/account/photo/shared?u=1" })).toBe(true);
+    expect(profile({ picture: "" })).toBe(true);
+    expect(profile({ picture: undefined })).toBe(true);
+    expect(profile({ picture: 5 })).toBe(false);
+    expect(profile({ picture: "x".repeat(2049) })).toBe(false);
+  });
 });
 
 describe("sequence numbers", () => {

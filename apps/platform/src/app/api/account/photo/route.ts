@@ -2,6 +2,7 @@ import { hostKind, requestHost } from "@/lib/routing/hosts";
 import { getSessionRef } from "@/lib/session";
 import { accountOrigin } from "@/modules/auth/config";
 import { identityPool } from "@/modules/auth/identity-db";
+import { emitCurrentPersonProfile } from "@/modules/outbox/person-profile";
 import { PHOTO_MAX_BYTES, readPhoto, removePhoto, savePhoto } from "@/modules/account/photo";
 
 // GET /api/account/photo: the signed-in person's own photo. PUT: replace it (the raw image as the body, at most 2 MB). DELETE: remove it. Account host
@@ -40,6 +41,7 @@ export async function PUT(request: Request) {
     const bytes = new Uint8Array(await request.arrayBuffer());
     const result = await savePhoto(identityPool(), who.sub, bytes);
     if (!result.ok) return Response.json({ status: result.reason }, { status: REFUSALS[result.reason], headers: NO_STORE });
+    await emitCurrentPersonProfile(who.sub); // products follow now, not at the next sign-in; never fails the save
     return Response.json({ status: "ok", version: result.version }, { headers: NO_STORE });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });
@@ -51,6 +53,7 @@ export async function DELETE(request: Request) {
   if (who instanceof Response) return who;
   try {
     await removePhoto(identityPool(), who.sub);
+    await emitCurrentPersonProfile(who.sub);
     return Response.json({ status: "ok" }, { headers: NO_STORE });
   } catch {
     return Response.json({ status: "error" }, { status: 500, headers: NO_STORE });

@@ -49,6 +49,8 @@ export interface PersonProfileData {
   /** International format. An empty string means the person has none on file. */
   phone: string;
   email: string;
+  /** The person's photo as a signed address, or an empty string when they have none or removed it. Absent when the Platform did not say (a product then changes nothing). */
+  picture?: string;
 }
 
 type EventBase = {
@@ -93,7 +95,9 @@ function parseData(type: PlatformEventType, input: unknown): ParseResult<Platfor
     if (!shortText(firstName, 80) || !shortText(lastName, 80)) return fail("data.firstName and data.lastName are required");
     if (typeof phone !== "string" || phone.length > 32) return fail("data.phone must be text of at most 32 characters");
     if (!shortText(email, 254) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail("data.email must be an email address");
-    return ok({ userId, subject, firstName, lastName, phone, email });
+    const picture = input.picture;
+    if (picture !== undefined && (typeof picture !== "string" || picture.length > 2048)) return fail("data.picture must be text of at most 2048 characters when present");
+    return ok({ userId, subject, firstName, lastName, phone, email, ...(picture !== undefined ? { picture } : {}) });
   }
   const { ownerUserIds, billingContactEmail } = input;
   if (!Array.isArray(ownerUserIds) || ownerUserIds.length < 1 || ownerUserIds.length > 3 || !ownerUserIds.every(isUserId) || new Set(ownerUserIds).size !== ownerUserIds.length) return fail("data.ownerUserIds must be 1 to 3 different user ids");

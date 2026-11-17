@@ -2,9 +2,11 @@ import { prisma } from "@/lib/db";
 import { platformUserIdForSubject } from "../users/email-sync";
 import { identityPool } from "../auth/identity-db";
 import { getProfile } from "../account/profile";
+import { accountOrigin } from "../auth/config";
+import { photoLinkUrl } from "../account/photo-link";
 import { enqueueOutbox } from "./enqueue";
 
-export type PersonProfile = { firstName: string; lastName: string; phone: string; email: string };
+export type PersonProfile = { firstName: string; lastName: string; phone: string; email: string; picture?: string };
 
 /**
  * Queues `person.profile` for every product the person holds a seat in (one event per seat, each in its own transaction with its own business
@@ -22,7 +24,7 @@ export async function emitPersonProfile(subject: string, profile: PersonProfile)
         organisationId: seat.organisationId,
         productKey: seat.productKey,
         eventType: "person.profile",
-        payload: { userId, subject, firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email },
+        payload: { userId, subject, firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email, ...(profile.picture !== undefined ? { picture: profile.picture } : {}) },
       }),
     );
   }
@@ -37,7 +39,9 @@ export async function emitCurrentPersonProfile(subject: string): Promise<void> {
   try {
     const profile = await getProfile(identityPool(), subject);
     if (!profile || !profile.firstName.trim() || !profile.lastName.trim()) return;
-    await emitPersonProfile(subject, { firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email });
+    // The photo goes as a signed address, or "" when there is none (so a removal reaches the products); left out when there is no secret to sign with.
+    const picture = profile.photoVersion ? photoLinkUrl(accountOrigin(), subject, profile.photoVersion) ?? undefined : "";
+    await emitPersonProfile(subject, { firstName: profile.firstName, lastName: profile.lastName, phone: profile.phone, email: profile.email, ...(picture !== undefined ? { picture } : {}) });
   } catch (error) {
     console.error("person.profile was not queued", error instanceof Error ? error.message : "unknown");
   }

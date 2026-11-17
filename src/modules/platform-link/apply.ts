@@ -21,6 +21,8 @@ export async function applyPersonProfile(tx: Pick<Prisma.TransactionClient, "acc
   const update: Prisma.UserUpdateInput = {};
   if (firstName && lastName) Object.assign(update, { firstName, lastName, name: `${firstName} ${lastName}`.trim() });
   if (data.phone.trim()) update.phone = data.phone.trim();
+  // The photo: an empty value means the person removed it (the screens treat "" as no photo, as at sign-in); absent means the Platform did not say.
+  if (data.picture !== undefined) update.image = data.picture;
 
   const email = data.email.trim().toLowerCase();
   if (email && email !== link.user.email.toLowerCase()) {
