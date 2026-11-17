@@ -28,8 +28,13 @@ async function turnOn(page: Page): Promise<{ secret: string; backup: string[] }>
 
 /** Signs out through the Account and comes back to the sign-in page. */
 async function signOut(page: Page) {
-  await page.goto("/profile"); // the sidebar's Sign out button is the only one on this page (Security also lists a Sign out per device)
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.goto("/profile"); // Sign out is in the account drawer (Security also lists a Sign out per device)
+  // Retry until the drawer is open: a click before the page has loaded is lost.
+  await expect(async () => {
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await expect(page.getByRole("dialog", { name: "Account" })).toBeVisible({ timeout: 2_000 });
+  }).toPass();
+  await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
 }
 async function passwordStep(page: Page, to: string) {

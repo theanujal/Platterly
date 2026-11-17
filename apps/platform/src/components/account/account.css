@@ -83,43 +83,6 @@
   color: var(--sidebar-primary-foreground);
 }
 
-.pa-side-foot {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.pa-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: var(--radius);
-  color: var(--foreground);
-  text-decoration: none;
-  min-width: 0;
-}
-.pa-user:hover {
-  background: var(--sidebar-accent);
-}
-.pa-user-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.pa-user-name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pa-user-mail {
-  font-size: 12px;
-  color: var(--muted-foreground);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .pa-proto-note {
   padding: 0 8px;
   font-size: 12px;

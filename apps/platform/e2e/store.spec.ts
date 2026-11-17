@@ -191,11 +191,12 @@ test.describe("Manage a product", () => {
 test.describe("Store header and footer", () => {
   test("every Store page has a header with the logo link, Help and the signed-in person, and a footer with contact, sales and legal links", async ({ page }) => {
     await signInToStore(page, "/manage/caterly");
+    const titles: Record<string, string> = { "/": "Platterly Store", "/manage/caterly": "Manage plan · Platterly Store", "/manage/nope": "Manage plan · Platterly Store" };
     for (const path of ["/", "/manage/caterly", "/manage/nope"]) {
       await page.goto(`${STORE}${path}`);
       const header = page.getByRole("banner");
       await expect(header.getByRole("link", { name: "Platterly Store home" })).toHaveAttribute("href", "/");
-      await expect(page).toHaveTitle(/Platterly Store/);
+      await expect(page).toHaveTitle(titles[path]);
       await header.getByRole("button", { name: "Help" }).click();
       await expect(page.getByRole("dialog", { name: "Help" }).getByRole("link", { name: "Contact Us" })).toHaveAttribute("href", "https://platterly.in/contact/");
       await page.keyboard.press("Escape");

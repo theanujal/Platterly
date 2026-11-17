@@ -132,14 +132,14 @@ test.describe("Sign-in journey", () => {
     // Back on the Account, signed in, with the person's real email and no business yet.
     await expect(page).toHaveURL("http://account.localhost:3300/");
     await expect(page.getByRole("heading", { level: 3, name: "E2E Person" })).toBeVisible();
-    await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
+    await expect(page.locator(".pd-chip")).toContainText("E2E Person");
     await expect(page.getByText("Email verified").first()).toBeVisible();
     await expect(page.getByRole("region", { name: "No business yet" })).toBeVisible();
     await expect(page.getByRole("region", { name: "You are not signed in" })).toHaveCount(0);
     await shot(page, "f4-5-account-signed-in");
     for (const p of ["/products", "/profile", "/security", "/devices", "/notifications"]) {
       await page.goto(p);
-      await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
+      await expect(page.locator(".pd-chip")).toContainText("E2E Person");
     }
     await shot(page, "f4-6-security-signed-in");
 
@@ -160,7 +160,12 @@ test.describe("Sign-in journey", () => {
 
     // Sign out: back to not signed in, the cookie is gone, and the old cookie no longer works.
     await page.goto("/");
-    await page.getByRole("button", { name: "Sign out" }).click();
+    // Retry until the drawer is open: a click before the page has loaded is lost.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await expect(page.getByRole("dialog", { name: "Account" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
     expect((await cookiesFor(context, "account.localhost")).some((c) => c.name === "platterly_account_session")).toBe(false);
     await context.addCookies([mine]);
@@ -175,7 +180,12 @@ test.describe("Sign-in journey", () => {
     await expect(page).toHaveURL("http://account.localhost:3300/profile");
     await expect(page.getByLabel("Email")).toHaveValue(to);
     const first = (await (await page.request.get("/api/account/overview")).json()).overview.user.id;
-    await page.getByRole("button", { name: "Sign out" }).click();
+    // Retry until the drawer is open: a click before the page has loaded is lost.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await expect(page.getByRole("dialog", { name: "Account" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out" }).click();
     await page.goto("/security");
     await fill(page, "Email", to);
     await fill(page, "Password", PASSWORD);
@@ -189,7 +199,12 @@ test.describe("Sign-in safety", () => {
   test("a wrong password and an unknown email get the same message; neither signs anyone in", async ({ page }) => {
     const to = newEmail();
     await registerAndSignIn(page, to);
-    await page.getByRole("button", { name: "Sign out" }).click();
+    // Retry until the drawer is open: a click before the page has loaded is lost.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await expect(page.getByRole("dialog", { name: "Account" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out" }).click();
     await page.goto("/");
     const message = "The email or password is not right. Check them and try again.";
     await fill(page, "Email", to);
@@ -339,7 +354,12 @@ test.describe("Password reset", () => {
   test("forgot -> emailed code -> new password -> sign in with it; the old password no longer works", async ({ page }) => {
     const to = newEmail();
     await registerAndSignIn(page, to);
-    await page.getByRole("button", { name: "Sign out" }).click();
+    // Retry until the drawer is open: a click before the page has loaded is lost.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Account menu" }).click();
+      await expect(page.getByRole("dialog", { name: "Account" })).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Sign out" }).click();
     await page.goto("/");
     await page.getByRole("link", { name: "Forgot your password?" }).click();
     await expect(page.getByRole("heading", { name: "Reset your password" })).toBeVisible();
@@ -357,7 +377,7 @@ test.describe("Password reset", () => {
     await fill(page, "Password", "a brand new pass 5");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page).toHaveURL("http://account.localhost:3300/");
-    await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
+    await expect(page.locator(".pd-chip")).toContainText("E2E Person");
   });
 });
 
@@ -369,7 +389,7 @@ async function signInSecondDevice(browser: Browser, to: string) {
   await fill(page, "Email", to);
   await fill(page, "Password", PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.locator(".pa-acct-chip")).toContainText("E2E Person");
+  await expect(page.locator(".pd-chip")).toContainText("E2E Person");
   return { context, page };
 }
 
@@ -416,7 +436,7 @@ test.describe("Signed-in devices (F4.3.1)", () => {
     const otherContext = await browser.newContext({ baseURL: "http://account.localhost:3300" });
     const other = { context: otherContext, page: await otherContext.newPage() };
     await registerAndSignIn(other.page, b);
-    await expect(other.page.locator(".pa-acct-chip")).toContainText("E2E Person");
+    await expect(other.page.locator(".pd-chip")).toContainText("E2E Person");
     const theirs = (await (await other.page.request.get("/api/account/sessions")).json()).devices[0].id as string;
     const post = (data: unknown, origin = "http://account.localhost:3300") => page.request.post("/api/account/sessions/revoke", { headers: { origin }, data });
     expect((await post({ id: theirs })).status(), "another person's session id").toBe(404);
