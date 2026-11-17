@@ -132,14 +132,14 @@ test("the green box: trial countdown by default, nothing on a paid plan, the pla
   await expect(sidebar.getByRole("button", { name: "Upgrade Now" })).toBeVisible();
 
   // A paid plan hides it
-  await activatePaidPlan(email, "premium", 30).catch(() => undefined);
+  await activatePaidPlan(email, "premium", 30);
   await page.goto("/dashboard");
   await expect(sidebar).not.toContainText(/left on your trial/);
 
   // Platform staff write a notice with a button and switch it on (in Ops; the row it lands in is set directly here, and the form's
   // own checks are covered by Ops's specs).
   try {
-    await setPlatformNotice({ title: "Diwali offer", message: "20% off yearly plans until 31 Oct.", buttonLabel: "See plans", buttonUrl: "/subscribe" });
+    await setPlatformNotice({ title: "Diwali offer", message: "20% off yearly plans until 31 Oct.", buttonLabel: "See plans", buttonUrl: "/subscribe" }, email);
 
     // Every kitchen sees it, even one on a paid plan
     await page.goto("/dashboard");
@@ -149,7 +149,7 @@ test("the green box: trial countdown by default, nothing on a paid plan, the pla
     await expect(notice.locator('a[href="/subscribe"]')).toContainText("See plans");
 
     // Switched off: gone again
-    await switchOffPlatformNotice();
+    await switchOffPlatformNotice(email);
     await page.goto("/dashboard");
     await expect(page.getByTestId("sidebar-notice")).toHaveCount(0);
   } finally {

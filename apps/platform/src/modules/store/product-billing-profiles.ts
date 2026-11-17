@@ -2,6 +2,8 @@ import "server-only";
 import { checkBillingProfile, checkOrderNumbering, type Buyer, isProductKey, parseProductBillingProfileRequest, type ProductBillingProfileChange, type ProductBillingProfileRecord, type ProductBillingProfileRequest } from "@platterly/contract";
 import type { Session } from "@/lib/session";
 import { removeReplacedLogo } from "@/modules/account/business-logo";
+import { markLogoSaved } from "@/modules/account/logo-sweep";
+import { identityPool } from "@/modules/auth/identity-db";
 import { billingAccess } from "./billing-rights";
 import { fetchOpsProductBillingProfileHistory, fetchOpsBilling, fetchOpsProductBillingProfiles, type OpsReadFailure } from "./ops-catalogue";
 import { saveOpsProductBillingProfile, type CheckoutFailure } from "./ops-checkout";
@@ -53,6 +55,8 @@ export async function saveMyProductBillingProfile(session: Session | null, produ
   const got = await saveOpsProductBillingProfile({ businessId: access.businessId, productKey, request });
   if (!got.ok) return got;
   if ("conflict" in got.answer) return { ok: false, reason: "conflict", current: got.answer.current };
+  // The logo the profile now shows is in use, so the abandoned-upload sweep must leave it.
+  await markLogoSaved(identityPool(), got.answer.profile.logoUrl).catch(() => undefined);
   // A logo the profile no longer shows is deleted from disk, unless another product of the business still links to it.
   if (before.ok) {
     const old = before.profiles.find((p) => p.productKey === productKey);

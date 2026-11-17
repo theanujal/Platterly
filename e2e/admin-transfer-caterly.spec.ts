@@ -138,6 +138,23 @@ test("Admin transfer in Caterly: the old Admin stays Admin until the new Admin a
   await admin.goto(`${CATERLY}/orders`);
   await expect(admin.getByRole("heading", { name: "You don't have access to this page" })).toHaveCount(0);
 
+  // At phone width: the Old Admin's pages and the Admin's team page still fit the screen (no sideways scroll), and the row shows its Old Admin tag and Remove.
+  const fits = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  await admin.setViewportSize({ width: 390, height: 844 });
+  await admin.goto(`${CATERLY}/orders`);
+  await expect(admin.getByRole("heading", { name: "You don't have access to this page" })).toHaveCount(0);
+  expect(await fits(admin), "Old Admin: Orders at 390px").toBe(true);
+  await admin.goto(`${CATERLY}/settings/team`);
+  await expectNoAccessPage(admin);
+  expect(await fits(admin), "Old Admin: no-access page at 390px").toBe(true);
+  await nom.setViewportSize({ width: 390, height: 844 });
+  await nom.goto(`${CATERLY}/settings/team`);
+  const phoneRow = nom.getByRole("listitem").filter({ hasText: adminEmail });
+  await expect(phoneRow.getByText("Old Admin", { exact: true })).toBeVisible();
+  await expect(phoneRow.getByRole("button", { name: /^Remove / })).toBeVisible();
+  expect(await fits(nom), "Admin: Team Management at 390px").toBe(true);
+  await nom.setViewportSize({ width: 1280, height: 720 });
+
   // The new Admin sees the Old Admin with only Remove, and removes them.
   await nom.goto(`${CATERLY}/settings/team`);
   await expect(nom.getByText("Business Admin: New Admin")).toBeVisible();

@@ -634,6 +634,19 @@ export async function activatePaidPlan(email: string, planCode: string, daysFrom
      FROM org, subscription_plan p WHERE p.code = $2`,
     [email, planCode, String(daysFromNow), interval],
   );
+  // With OPS_BILLING on, Caterly reads Ops's snapshot instead of these rows, so the snapshot is made paid too (once Ops has sent the first one).
+  if (process.env.OPS_BILLING === "1") {
+    for (let i = 0; i < 40; i++) {
+      const { rows } = await pool.query(`SELECT s."businessId", s.data FROM ops_snapshot s JOIN member m ON m."organizationId" = s."organizationId" JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1`, [email]);
+      if (rows[0]) {
+        const end = new Date(Date.now() + daysFromNow * 86_400_000).toISOString();
+        const data = { ...rows[0].data, status: "ACTIVE", plan: { code: planCode, name: planCode }, interval, trialEndsAt: null, currentPeriodEnd: end, validUntil: end };
+        await pool.query(`UPDATE ops_snapshot SET data = $2::jsonb WHERE "businessId" = $1`, [rows[0].businessId, JSON.stringify(data)]);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
 }
 
 /** Chunk 23: moves a kitchen onto a plan that includes multiple locations (its own plan row, not the shared ones). */
@@ -695,7 +708,8 @@ export async function clearPlatformNotice(): Promise<void> {
 }
 
 /** Switches the platform sidebar notice on, as Platterly Ops's notice screen does for a product (the row catering reads while OPS_BILLING is off). */
-export async function setPlatformNotice(notice: { title: string; message: string; buttonLabel: string; buttonUrl: string }): Promise<void> {
+export async function setPlatformNotice(notice: { title: string; message: string; buttonLabel: string; buttonUrl: string }, email?: string): Promise<void> {
+  if (email && process.env.OPS_BILLING === "1") await setOpsNotice(email, true, notice);
   await pool.query(
     `INSERT INTO platform_notice (id, enabled, title, message, "buttonLabel", "buttonUrl", "updatedAt") VALUES ('platform', true, $1, $2, $3, $4, now())
      ON CONFLICT (id) DO UPDATE SET enabled = true, title = $1, message = $2, "buttonLabel" = $3, "buttonUrl" = $4, "updatedAt" = now()`,
@@ -703,8 +717,19 @@ export async function setPlatformNotice(notice: { title: string; message: string
   );
 }
 
+/** With OPS_BILLING on, the notice Ops pushed for this kitchen (the row Caterly reads instead of the shared one). */
+async function setOpsNotice(email: string, enabled: boolean, notice: { title: string; message: string; buttonLabel: string; buttonUrl: string }): Promise<void> {
+  await pool.query(
+    `INSERT INTO ops_notice ("businessId", "organizationId", enabled, title, message, "buttonLabel", "buttonUrl", "updatedAt")
+     SELECT o."businessId", o.id, $2, $3, $4, $5, $6, now() FROM organization o JOIN member m ON m."organizationId" = o.id JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1
+     ON CONFLICT ("businessId") DO UPDATE SET enabled = $2, title = $3, message = $4, "buttonLabel" = $5, "buttonUrl" = $6, "updatedAt" = now()`,
+    [email, enabled, notice.title, notice.message, notice.buttonLabel, notice.buttonUrl],
+  );
+}
+
 /** Switches the platform sidebar notice off (what Ops's "show the notice" switch does), keeping its text. */
-export async function switchOffPlatformNotice(): Promise<void> {
+export async function switchOffPlatformNotice(email?: string): Promise<void> {
+  if (email && process.env.OPS_BILLING === "1") await pool.query(`UPDATE ops_notice SET enabled = false WHERE "organizationId" IN (SELECT m."organizationId" FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1)`, [email]);
   await pool.query(`UPDATE platform_notice SET enabled = false WHERE id = 'platform'`);
 }
 

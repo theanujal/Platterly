@@ -29,6 +29,16 @@ describe.skipIf(!testUrl)("change password (identity test database)", () => {
     expect((await h.pool.query('select id from session order by id')).rows.map((r) => r.id)).toEqual(["s1", "s9"]);
     expect(await hasher.verify({ hash: await stored("u2"), password: "old password 1" })).toBe(true);
   });
+  it("a new password also ends every trusted device of that person and nobody else's", async () => {
+    await h.pool.query('delete from verification');
+    for (const [id, uid] of [["a", "u1"], ["b", "u1"], ["c", "u2"]]) await h.pool.query(`insert into verification (id, identifier, value, "expiresAt") values ($1, $2, $3, now() + interval '399 days')`, [`v-${id}`, `trust-device-${id}`, uid]);
+    expect((await run()).ok).toBe(true);
+    expect((await h.pool.query(`select value from verification where identifier like 'trust-device-%' order by identifier`)).rows.map((r) => r.value)).toEqual(["u2"]);
+    // A refused change (wrong current password) leaves them alone.
+    await h.pool.query(`insert into verification (id, identifier, value, "expiresAt") values ('v-d', 'trust-device-d', 'u1', now() + interval '399 days')`);
+    expect((await run({ current: "not it" })).ok).toBe(false);
+    expect((await h.pool.query(`select count(*) from verification where value = 'u1'`)).rows[0].count).toBe("1");
+  });
   it("a wrong current password changes nothing and ends nothing", async () => {
     const before = await stored("u1");
     expect(await run({ current: "not it" })).toEqual({ ok: false, reason: "wrong_password" });
