@@ -46,8 +46,13 @@ test("icon actions show a tooltip on hover: Public Menu / QR on the dashboard an
   await page.goto("/dashboard");
 
   for (const label of ["View public menu", "Copy link", "Download QR code", "Share on WhatsApp", "Manage public link"]) {
-    await page.getByRole("button", { name: label }).or(page.getByRole("link", { name: label })).hover();
-    await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: label })).toBeVisible();
+    // The page can be server-rendered but not hydrated yet, which loses a hover: move off and on again until the tooltip shows.
+    const target = page.getByRole("button", { name: label }).or(page.getByRole("link", { name: label }));
+    await expect(async () => {
+      await page.mouse.move(0, 0);
+      await target.hover();
+      await expect(page.locator("[data-slot=tooltip-content]").filter({ hasText: label })).toBeVisible({ timeout: 1500 });
+    }).toPass({ timeout: 15_000 });
   }
 
   // Copy link: the tooltip stays on screen after the click and says "Copied!".

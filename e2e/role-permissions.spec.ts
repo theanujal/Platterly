@@ -36,7 +36,7 @@ test("the owner changes a role across the three tabs, it persists, and reset res
   await expect(page.getByRole("navigation", { name: "Roles" }).getByRole("button", { name: /^Admin/ })).toHaveCount(0);
 
   await pickRole(page, /^Staff/);
-  await expect(summary(page)).toContainText("Opens 2 of 14 modules · 0 actions allowed · 0 of 8 sensitive items");
+  await expect(summary(page)).toContainText("Opens 2 of 14 modules · 0 actions allowed · 0 of 9 sensitive items");
   await expect(tab(page, "Module Access")).toHaveAttribute("aria-selected", "true");
 
   // Read-only until Edit is pressed.
@@ -85,7 +85,7 @@ test("the owner changes a role across the three tabs, it persists, and reset res
   await expect(orderPrices).not.toBeChecked();
   await orderPrices.click();
   await expect(orderPrices).toBeChecked();
-  await expect(summary(page)).toContainText("1 of 8 sensitive items");
+  await expect(summary(page)).toContainText("1 of 9 sensitive items");
 
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("alertdialog", { name: "Save Staff permissions?" }).getByRole("button", { name: "Save changes" }).click();
@@ -101,7 +101,7 @@ test("the owner changes a role across the three tabs, it persists, and reset res
   await expect(page.getByRole("checkbox", { name: "Staff: Edit Customers" })).toBeChecked();
   await tab(page, "Sensitive Data Access").click();
   await expect(page.getByRole("switch", { name: "Staff: Order & quotation prices" })).toBeChecked();
-  await expect(page.getByTestId("role-summary")).toContainText("2 actions allowed · 1 of 8 sensitive items");
+  await expect(page.getByTestId("role-summary")).toContainText("2 actions allowed · 1 of 9 sensitive items");
 
   // Reset to defaults.
   await page.getByRole("button", { name: "Edit", exact: true }).click();
@@ -111,7 +111,7 @@ test("the owner changes a role across the three tabs, it persists, and reset res
   await page.reload();
   await pickRole(page, /^Staff/);
   await expect(page.getByRole("navigation", { name: "Roles" }).getByRole("button", { name: /^Staff/ })).not.toContainText("Customised");
-  await expect(summary(page)).toContainText("Opens 2 of 14 modules · 0 actions allowed · 0 of 8 sensitive items");
+  await expect(summary(page)).toContainText("Opens 2 of 14 modules · 0 actions allowed · 0 of 9 sensitive items");
 });
 
 test("the tabs work by keyboard, and each tab shows what it should", async ({ page }) => {
@@ -128,7 +128,7 @@ test("the tabs work by keyboard, and each tab shows what it should", async ({ pa
   await expect(page.getByText("Coming soon", { exact: true }).first()).toBeVisible();
   await page.keyboard.press("ArrowRight");
   await expect(tab(page, "Sensitive Data Access")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("switch")).toHaveCount(8);
+  await expect(page.getByRole("switch")).toHaveCount(9);
   await page.keyboard.press("ArrowRight");
   await expect(tab(page, "Module Access")).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("End");
@@ -143,7 +143,7 @@ test("a built-in role loads exactly as its preset: Kitchen Team has no Orders or
   await open(page, `e2e-rolepreset-${Date.now()}@example.test`);
 
   await pickRole(page, /^Kitchen Team/);
-  await expect(summary(page)).toContainText("Opens 3 of 14 modules · 7 actions allowed · 0 of 8 sensitive items");
+  await expect(summary(page)).toContainText("Opens 3 of 14 modules · 7 actions allowed · 0 of 9 sensitive items");
   await expect(page.getByRole("switch", { name: "Kitchen Team: View Kitchen Dashboard" })).toBeChecked();
   await expect(page.getByRole("switch", { name: "Kitchen Team: View Orders" })).not.toBeChecked();
   await expect(page.getByRole("switch", { name: "Kitchen Team: View Menu Catalog & Approvals" })).not.toBeChecked();
