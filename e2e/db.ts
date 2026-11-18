@@ -631,7 +631,7 @@ export async function expireSubscription(email: string): Promise<void> {
 }
 
 /** Chunk 20: what a successful payment leaves behind, without going through Razorpay. */
-export async function activatePaidPlan(email: string, planCode: string, daysFromNow: number, interval: "MONTHLY" | "ANNUAL" = "MONTHLY"): Promise<void> {
+export async function activatePaidPlan(email: string, planCode: string, daysFromNow: number, interval: "MONTHLY" | "ANNUAL" = "MONTHLY", entitlements: Record<string, boolean | number | null> = {}): Promise<void> {
   await pool.query(
     `WITH org AS (SELECT m."organizationId" AS id FROM member m JOIN "user" u ON u.id = m."userId" WHERE u.email = $1),
           ended AS (UPDATE subscription SET status = 'CANCELLED', "endDate" = now() WHERE "endDate" IS NULL AND "organizationId" IN (SELECT id FROM org))
@@ -646,7 +646,7 @@ export async function activatePaidPlan(email: string, planCode: string, daysFrom
       const { rows } = await pool.query(`SELECT s."businessId", s.data FROM ops_snapshot s JOIN member m ON m."organizationId" = s."organizationId" JOIN "user" u ON u.id = m."userId" WHERE u.email = $1 LIMIT 1`, [email]);
       if (rows[0]) {
         const end = new Date(Date.now() + daysFromNow * 86_400_000).toISOString();
-        const data = { ...rows[0].data, status: "ACTIVE", plan: { code: planCode, name: planCode }, interval, trialEndsAt: null, currentPeriodEnd: end, validUntil: end };
+        const data = { ...rows[0].data, status: "ACTIVE", plan: { code: planCode, name: planCode }, interval, trialEndsAt: null, currentPeriodEnd: end, validUntil: end, entitlements: { ...rows[0].data.entitlements, ...entitlements } };
         await pool.query(`UPDATE ops_snapshot SET data = $2::jsonb WHERE "businessId" = $1`, [rows[0].businessId, JSON.stringify(data)]);
         return;
       }
@@ -662,7 +662,7 @@ export async function givePlanWithMultiLocation(email: string): Promise<void> {
      VALUES ('plan_e2e_multi_location', 'e2e-multi-location', 'E2E Multi Location', true, now())
      ON CONFLICT (code) DO UPDATE SET "multiLocation" = true`,
   );
-  await activatePaidPlan(email, "e2e-multi-location", 30);
+  await activatePaidPlan(email, "e2e-multi-location", 30, "MONTHLY", { multiLocation: true });
 }
 
 /** Chunk 20: a paid plan payment with its invoice snapshot, as confirming a Razorpay payment would leave it. */
