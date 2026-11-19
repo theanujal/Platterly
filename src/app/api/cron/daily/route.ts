@@ -42,16 +42,27 @@ async function run(request: Request) {
   );
 }
 
+/** Each step catches its own error so one broken step never skips the rest (#124). Notifications still throw: a broken run must show in the cron mail. */
 async function runJobs() {
   const now = new Date();
   const notifications = await runDueNotifications(now);
   let recurringExpenses = 0;
   for (const org of await prisma.recurringExpense.findMany({ where: { isActive: true }, select: { organizationId: true }, distinct: ["organizationId"] })) {
-    recurringExpenses += await generateDueRecurringExpenses(org.organizationId, now);
+    // Inside the loop, so one kitchen's failure doesn't stop the others.
+    recurringExpenses += await generateDueRecurringExpenses(org.organizationId, now).catch((error) => {
+      console.error(`[cron] recurring expenses failed for ${org.organizationId}:`, error);
+      return 0;
+    });
   }
-  const visitsScrubbed = await scrubOldVisits(now);
+  const visitsScrubbed = await scrubOldVisits(now).catch((error) => {
+    console.error("[cron] visit scrub failed:", error);
+    return 0;
+  });
   // Ops link: pending events, the catch-up sign-ups and the daily usage report (a no-op until OPS_* is configured).
-  const opsLink = await runOpsLinkJobs(now);
+  const opsLink = await runOpsLinkJobs(now).catch((error) => {
+    console.error("[cron] ops link jobs failed:", error);
+    return null;
+  });
   // Messages to the Platform ("business created") that are due for a retry (a no-op until PLATFORM_ANSWER_SECRET is set; never fails the cron).
   const platformLink = await runDuePlatformOutbox(now).catch((error) => {
     console.error("[platform-link] outbox run failed:", error);

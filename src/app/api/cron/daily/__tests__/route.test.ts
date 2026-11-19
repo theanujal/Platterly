@@ -61,3 +61,16 @@ describe("daily cron: one run at a time (#121)", () => {
   });
 });
 
+describe("daily cron: one failing step (#124)", () => {
+  it("a failing step does not stop the steps after it", async () => {
+    vi.mocked(prisma.recurringExpense.findMany).mockResolvedValue([{ organizationId: "org-a" }, { organizationId: "org-b" }] as never);
+    vi.mocked(generateDueRecurringExpenses).mockRejectedValueOnce(new Error("org-a broke")).mockResolvedValueOnce(2);
+    vi.mocked(scrubOldVisits).mockRejectedValueOnce(new Error("scrub broke"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await GET(req());
+    expect(res.status).toBe(200);
+    expect(generateDueRecurringExpenses).toHaveBeenCalledWith("org-b", expect.any(Date));
+    expect((await res.json()).recurringExpenses).toBe(2);
+    for (const step of [runOpsLinkJobs, runDuePlatformOutbox, runDuePlatformPull, runLibraryScanIfDue]) expect(step).toHaveBeenCalledTimes(1);
+  });
+});
