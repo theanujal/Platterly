@@ -1,10 +1,11 @@
 "use client";
 
+import { ChevronDown } from "@/components/icons";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { BUSINESS_TYPES, EMPTY_ENQUIRY, SUBJECTS, submitEnquiry, validateEnquiry, type EnquiryErrors, type EnquiryKind, type EnquiryValues } from "@/lib/enquiry";
 
-/** A native select with our own chevron instead of the browser's. */
-const SELECT = "cursor-pointer appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23071a31%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22m6 9 6 6 6-6%22/></svg>')] bg-[length:1.25rem] bg-[right_1rem_center] bg-no-repeat pr-11";
+/** A native select with our own chevron (an icon laid over its right end) instead of the browser's. */
+const SELECT = "cursor-pointer appearance-none pr-11";
 const INPUT = "mt-2 block min-h-12 w-full rounded-[12px] border border-ink-navy/25 bg-paper px-4 py-3 text-base text-ink-navy outline-none transition-colors duration-150 placeholder:text-slate-gray/70 hover:border-ink-navy/50 focus:border-ink-navy focus:ring-2 focus:ring-ink-navy/20 aria-[invalid=true]:border-[#b3261e]";
 
 function Field({ id, label, optional, error, children }: { id: string; label: string; optional?: boolean; error?: string; children: ReactNode }) {
@@ -81,21 +82,27 @@ export function EnquiryForm({ kind, contact }: { kind: EnquiryKind; contact: { e
         </Field>
         {kind === "talk" ? (
           <Field id="talk-businessType" label="What do you run?" error={errors.businessType}>
-            <select id="talk-businessType" name="businessType" value={values.businessType} onChange={set("businessType")} className={`${INPUT} ${SELECT}`} {...aria("businessType")}>
-              <option value="">Choose one</option>
-              {BUSINESS_TYPES.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
+            <span className="relative block">
+              <select id="talk-businessType" name="businessType" value={values.businessType} onChange={set("businessType")} className={`${INPUT} ${SELECT}`} {...aria("businessType")}>
+                <option value="">Choose one</option>
+                {BUSINESS_TYPES.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden className="pointer-events-none absolute right-4 top-1/2 mt-1 size-5 -translate-y-1/2" />
+            </span>
           </Field>
         ) : (
           <Field id="contact-subject" label="What is this about?" error={errors.subject}>
-            <select id="contact-subject" name="subject" value={values.subject} onChange={set("subject")} className={`${INPUT} ${SELECT}`} {...aria("subject")}>
-              <option value="">Choose one</option>
-              {SUBJECTS.map((t) => (
-                <option key={t}>{t}</option>
-              ))}
-            </select>
+            <span className="relative block">
+              <select id="contact-subject" name="subject" value={values.subject} onChange={set("subject")} className={`${INPUT} ${SELECT}`} {...aria("subject")}>
+                <option value="">Choose one</option>
+                {SUBJECTS.map((t) => (
+                  <option key={t}>{t}</option>
+                ))}
+              </select>
+              <ChevronDown aria-hidden className="pointer-events-none absolute right-4 top-1/2 mt-1 size-5 -translate-y-1/2" />
+            </span>
           </Field>
         )}
       </div>
