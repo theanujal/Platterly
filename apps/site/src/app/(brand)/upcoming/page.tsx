@@ -7,7 +7,7 @@ import { getUpcoming } from "@/lib/content";
 import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "Upcoming features",
+  title: "Upcoming features and products in Caterly",
   description: "What we are building next in Caterly by Platterly, from WhatsApp messages for customers to new products for food businesses. Tell us what you need.",
   ...pageLinks("/upcoming/"),
 };

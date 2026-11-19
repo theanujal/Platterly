@@ -8,7 +8,7 @@ import { getContact } from "@/lib/content";
 import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "Contact us",
+  title: "Contact us: help with Caterly and your account",
   description: "Questions, help with your account or an idea for Caterly by Platterly? Write to us and a person will reply.",
   ...pageLinks("/contact/"),
 };

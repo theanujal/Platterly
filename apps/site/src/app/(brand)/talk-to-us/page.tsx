@@ -7,7 +7,7 @@ import { pageLinks, SITE } from "@/content/site";
 import { getContact } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: "Talk to us",
+  title: "Talk to us: Caterly for your catering business",
   description: "Tell us about your catering business and we will show you how Caterly by Platterly fits. A short call, no pressure.",
   ...pageLinks("/talk-to-us/"),
 };

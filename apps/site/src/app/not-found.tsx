@@ -1,5 +1,9 @@
+import type { Metadata } from "next";
 import { SiteFrame } from "@/components/site-frame";
 import { ButtonLink, Section } from "@/components/ui";
+
+/** A missing page keeps its own title and stays out of search. */
+export const metadata: Metadata = { title: "Page not found", robots: { index: false, follow: false } };
 
 export default function NotFound() {
   return (

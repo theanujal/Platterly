@@ -6,7 +6,7 @@ import { formatDate, getReleases } from "@/lib/content";
 import { pageLinks } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "What's new",
+  title: "What's new in Caterly: product updates",
   description: "Every update to Caterly by Platterly, newest first: new features, improvements and fixes for catering businesses running events, menus and orders.",
   ...pageLinks("/whats-new/"),
 };

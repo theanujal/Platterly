@@ -5,7 +5,7 @@ import { OPEN_GRAPH } from "@/content/site";
 import { getPosts } from "@/lib/content";
 
 export const metadata: Metadata = {
-  title: "Blog",
+  title: "Catering business tips: menus, events, payments",
   description: "Practical ideas for running a catering business: planning events, working with the kitchen and getting paid.",
   alternates: { canonical: "/blog/", types: { "application/rss+xml": "/blog/rss.xml" } },
   openGraph: { ...OPEN_GRAPH, url: "/blog/" },

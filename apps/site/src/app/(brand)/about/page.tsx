@@ -8,8 +8,8 @@ import { CATERING_PRODUCT } from "@/content/products";
 import { COMPANY, pageLinks, SITE } from "@/content/site";
 
 export const metadata: Metadata = {
-  title: "About us",
-  description: "Platterly builds focused software for the work behind food businesses, starting with catering.",
+  title: "About us: software for food businesses",
+  description: "Platterly builds focused software for the work behind food businesses, starting with Caterly, catering software for Indian caterers. Learn who we are and why.",
   ...pageLinks("/about/"),
 };
 
