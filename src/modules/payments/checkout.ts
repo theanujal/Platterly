@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit/audit";
 import { onPaymentActivity } from "@/modules/notifications/triggers";
 import { sendReceiptForPayment } from "@/modules/invoices/invoice-send";
-import { issueReceipt, PaymentError, recordPayment, syncOrderPayments } from "./payment";
+import { completeConfirmedPayment, PaymentError, recordPayment } from "./payment";
 import type { ResolvedPaymentLink } from "./payment-links";
 import { getRazorpayCredentials } from "./payment-settings";
 import { createRazorpayOrder } from "./razorpay";
@@ -44,7 +44,10 @@ export async function startRazorpayCheckout(link: ResolvedPaymentLink) {
 export async function confirmRazorpayPayment(organizationId: string, razorpayOrderId: string, razorpayPaymentId: string, method?: string, capturedPaise?: number) {
   const payment = await prisma.payment.findFirst({ where: { organizationId, razorpayOrderId, source: "RAZORPAY" } });
   if (!payment) return null;
-  if (payment.status === "CONFIRMED") return payment;
+  if (payment.status === "CONFIRMED") {
+    await completeConfirmedPayment(organizationId, payment);
+    return payment;
+  }
   // The webhook says how much Razorpay actually captured. If that is not what this payment asked for, it is not this payment: never confirm it.
   if (capturedPaise !== undefined && capturedPaise !== Math.round(Number(payment.amount) * 100)) {
     console.error("[payments] captured amount does not match", payment.id);
@@ -55,10 +58,12 @@ export async function confirmRazorpayPayment(organizationId: string, razorpayOrd
     where: { id: payment.id, status: { in: ["PENDING", "FAILED"] } },
     data: { status: "CONFIRMED", razorpayPaymentId, confirmedAt: new Date(), ...(method ? { method: paymentMethodForRazorpay(method) } : {}) },
   });
-  if (claimed.count === 0) return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+  if (claimed.count === 0) {
+    await completeConfirmedPayment(organizationId, payment);
+    return prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+  }
 
-  await syncOrderPayments(payment.orderId);
-  await issueReceipt(organizationId, payment.id);
+  await completeConfirmedPayment(organizationId, payment);
   // The customer paid through the link, so they get the receipt without anyone clicking anything.
   await sendReceiptForPayment(organizationId, payment.id);
   await onPaymentActivity(organizationId, payment.orderId, Number(payment.amount), "received");

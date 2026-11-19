@@ -237,7 +237,10 @@ export async function recordStagedPayments(organizationId: string, orderId: stri
 /** The kitchen team confirms a UPI payment once it has reached their account. */
 export async function confirmPayment(organizationId: string, paymentId: string, actorUserId?: string) {
   const payment = await prisma.payment.findFirstOrThrow({ where: { id: paymentId, organizationId } });
-  if (payment.status === "CONFIRMED") return payment;
+  if (payment.status === "CONFIRMED") {
+    await completeConfirmedPayment(organizationId, payment);
+    return payment;
+  }
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be confirmed.");
   // Razorpay rows are confirmed by Razorpay alone; a PENDING one is a checkout that may never have been paid.
   if (payment.source !== "UPI_QR") throw new PaymentError("Only a UPI payment the customer reported can be confirmed here.");
@@ -265,6 +268,16 @@ const TYPE_LABEL: Record<PaymentType, string> = { ADVANCE: "Advance", PARTIAL: "
 const METHOD_LABEL: Record<PaymentMethod, string> = { UPI: "UPI", CARD: "Card", NET_BANKING: "Net Banking", CASH: "Cash", BANK_TRANSFER: "Bank Transfer" };
 export { TYPE_LABEL as PAYMENT_TYPE_LABEL, METHOD_LABEL as PAYMENT_METHOD_LABEL };
 
+/**
+ * What follows a payment becoming CONFIRMED: the order's totals, then its receipt. Both are safe to repeat, so a retry of a confirm
+ * that stopped half-way (a crash after the claim) finishes the job (#122).
+ * shortcut: a retry never sends the receipt email, because the customer may already have it; a receipt that was missing is still on the payment page. Upgrade if kitchens report missing receipt emails.
+ */
+export async function completeConfirmedPayment(organizationId: string, payment: { id: string; orderId: string }) {
+  await syncOrderPayments(payment.orderId);
+  await issueReceipt(organizationId, payment.id);
+}
+
 /** The receipt for one confirmed payment. Made once; calling again returns the same receipt. */
 export async function issueReceipt(organizationId: string, paymentId: string) {
   const existing = await prisma.invoice.findUnique({ where: { receiptForPaymentId: paymentId } });
@@ -274,15 +287,15 @@ export async function issueReceipt(organizationId: string, paymentId: string) {
     include: { order: { include: { customer: true } } },
   });
   const organization = await prisma.organization.findUniqueOrThrow({ where: { id: organizationId } });
-  const number = await nextInvoiceNumber(organizationId, "RECEIPT");
   const amount = Number(payment.amount);
   const addressParts = [organization.addressLine1, organization.addressLine2, organization.city, organization.state, organization.postalCode].filter(Boolean);
-  return prisma.invoice.create({
+  // The number and the receipt share one transaction: a second caller that loses the race on receiptForPaymentId rolls back its number too, so no gap.
+  return prisma.$transaction(async (tx) => tx.invoice.create({
     data: {
       organizationId,
       orderId: payment.orderId,
       type: "RECEIPT",
-      number,
+      number: await nextInvoiceNumber(organizationId, "RECEIPT", tx),
       status: "PAID",
       issueDate: payment.receivedAt,
       customerName: payment.order.customer.name,
@@ -308,6 +321,9 @@ export async function issueReceipt(organizationId: string, paymentId: string) {
         ],
       },
     },
+  })).catch(async (error) => {
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    return prisma.invoice.findUniqueOrThrow({ where: { receiptForPaymentId: paymentId } });
   });
 }
 

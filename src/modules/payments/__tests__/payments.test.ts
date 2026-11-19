@@ -472,6 +472,48 @@ describe("what the customer's link shows about payments", () => {
   });
 });
 
+describe("a confirm that stopped half-way is finished on the retry (#122)", () => {
+  // The state a crash right after the claim leaves: the payment says CONFIRMED, but the order totals and the receipt were never done.
+  async function halfConfirmed(source: "RAZORPAY" | "UPI_QR") {
+    const made = await makeOrderWithTotal(10000);
+    const payment = await recordPayment({ organizationId: made.org.id, orderId: made.order.id, amount: 2000, type: "ADVANCE", method: "UPI", source, status: "PENDING", razorpayOrderId: source === "RAZORPAY" ? `order_half_${made.order.id}` : undefined });
+    await prisma.payment.update({ where: { id: payment.id }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+    return { ...made, payment };
+  }
+  const receipts = (paymentId: string) => prisma.invoice.count({ where: { receiptForPaymentId: paymentId } });
+  const balance = async (orderId: string) => Number((await prisma.order.findUniqueOrThrow({ where: { id: orderId } })).balance);
+
+  it("a Razorpay payment left CONFIRMED without its receipt is completed when the webhook retries", async () => {
+    const { org, order, payment } = await halfConfirmed("RAZORPAY");
+    await confirmRazorpayPayment(org.id, payment.razorpayOrderId!, "pay_half", "upi", 200000);
+    expect(await receipts(payment.id)).toBe(1);
+    expect(await balance(order.id)).toBe(8000);
+  });
+
+  it("a UPI claim left CONFIRMED without its receipt is completed on the next Confirm", async () => {
+    const { org, actor, order, payment } = await halfConfirmed("UPI_QR");
+    await confirmPayment(org.id, payment.id, actor.id);
+    expect(await receipts(payment.id)).toBe(1);
+    expect(await balance(order.id)).toBe(8000);
+  });
+
+  it("confirming twice changes nothing the second time", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(10000);
+    const claim = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 3000, type: "ADVANCE", method: "UPI", source: "UPI_QR" });
+    await confirmPayment(org.id, claim.id, actor.id);
+    await confirmPayment(org.id, claim.id, actor.id);
+    expect(await receipts(claim.id)).toBe(1);
+    expect(await balance(order.id)).toBe(7000);
+  });
+
+  it("two retries at once make one receipt and neither fails", async () => {
+    const { org, payment } = await halfConfirmed("RAZORPAY");
+    const retry = () => confirmRazorpayPayment(org.id, payment.razorpayOrderId!, "pay_half", "upi", 200000);
+    await expect(Promise.all([retry(), retry()])).resolves.toHaveLength(2);
+    expect(await receipts(payment.id)).toBe(1);
+  });
+});
+
 describe("money safety (issues 75, 79, 81, 86)", () => {
   it("a Razorpay retry after a failed attempt on the same order is still recorded (75)", async () => {
     const { org, order } = await makeOrderWithTotal(10000);
