@@ -5,6 +5,7 @@
 
 const ACTIONS: Record<string, string> = {
   "tenant.create": "Kitchen account created",
+  "tenant.linked_by_platform": "Kitchen account created",
   "tenant.update": "Business profile updated",
   "tenant.onboarding_complete": "Set-up wizard finished",
   "tenant.slug_self_service": "Public link changed",

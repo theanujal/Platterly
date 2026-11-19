@@ -7,6 +7,10 @@ describe("describeAction", () => {
     expect(describeAction("tenant.data_purge")).toBe("All data deleted (Danger Zone)");
   });
 
+  it("a kitchen made by a central sign-up reads like any other new kitchen", () => {
+    expect(describeAction("tenant.linked_by_platform")).toBe("Kitchen account created");
+  });
+
   it("makes a readable guess for an action it does not know", () => {
     expect(describeAction("menu_item.duplicate")).toBe("Food item: duplicate");
     expect(describeAction("brand_new.thing_happened")).toBe("Brand new: thing happened");
