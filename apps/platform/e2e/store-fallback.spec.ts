@@ -8,6 +8,12 @@ import { newEmail, registerAndSignIn } from "./signed-in";
  */
 const STORE = "http://store.localhost:3300";
 
+// The Store only shows "not available" when Ops cannot be reached, so this test has nothing to prove while Ops is up.
+test.beforeEach(async () => {
+  const opsUp = await fetch("http://127.0.0.1:3200/api/health", { signal: AbortSignal.timeout(2_000) }).then((r) => r.status < 500).catch(() => false);
+  test.skip(opsUp, "Ops is answering on 3200; stop it to run this test");
+});
+
 test("plans are not available: the Store home and Manage show the shared notice, with a way to try again", async ({ page }) => {
   test.setTimeout(120_000);
   await registerAndSignIn(page, newEmail(), `${STORE}/`);
@@ -20,7 +26,6 @@ test("plans are not available: the Store home and Manage show the shared notice,
     await expect(notice.locator(".ps-notice-icon svg")).toBeVisible();
     await expect(notice.getByRole("link", { name: "Try again" })).toHaveAttribute("href", "/");
   }
-  await page.screenshot({ path: "/tmp/store-unavailable.png" });
   await page.setViewportSize({ width: 375, height: 700 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

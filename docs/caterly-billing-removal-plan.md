@@ -64,7 +64,7 @@ Also: `OPS_BILLING` leaves `.env.example`, `deploy/env/catering.env.example`, `d
 |---|---|---|
 | 2 | After removal, local Caterly cannot show plans or limits unless Ops is running. Fine? | **Yes.** Note: this is only about local development and billing screens. In production, if Ops stops, Account, sign-in and sign-up (Platform) keep working and Caterly keeps working from the last snapshot it received: a paid or trial kitchen is allowed until its `validUntil`, then for the grace days more (`packages/contract/src/snapshot.ts`). What stops is buying, plan changes, refunds, notices, and a brand-new sign-up only has the 24 hour window before it locks. A local developer needs Ops running or a seeded snapshot row (the e2e helpers seed one). |
 | 4 | R1 to R3 as one pull request, R4 as a second, later one? | **Yes.** |
-| 1 | Wait before R1 | AJ: go live at the earliest once everything is tested. The 4-week wait after go-live (one real monthly cycle) is still **to confirm**. |
+| 1 | Wait before R1 | **No wait (AJ, 2026-11-19).** Everything is tested locally first; the old billing code is removed right after go-live. The 4-week wait is dropped. |
 | 3 | Keep or drop the legacy `PlatformNotice` table | **AJ, 2026-11-19: keep it, AJ needs the platform notice.** It is the old single Super Admin row for the sidebar box (enabled, title, message, button label and URL); `OpsNotice` replaced it per business. Local has one row, switched off. Do not drop it in R4; it stays out of the removal list. |
 
 ## Go-live data check (separate, done before the switch)
