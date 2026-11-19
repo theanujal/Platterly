@@ -90,6 +90,50 @@ function CaterlyShell({ title, lede, footer, children, hydrated, icon }: { title
   );
 }
 
+const PLATTERLY_FEATURES = [
+  { Icon: UserIcon, label: "One account for every Platterly product" },
+  { Icon: TrendingUpIcon, label: "Your plans, invoices and payments in one place" },
+  { Icon: ShieldCheckIcon, label: "Optional two-step verification and trusted devices" },
+  { Icon: MailIcon, label: "Notifications you choose" },
+];
+
+/** The same split screen for the Platterly Account, the Store and any sign-in that does not belong to one product: orange panel beside the form, like Caterly and Ops. */
+function PlatterlyShell({ title, lede, footer, children, hydrated }: { title: string; lede?: string; footer?: ReactNode; children: ReactNode; hydrated: boolean }) {
+  return (
+    <div className="pl-cat" data-hydrated={hydrated} data-theme="platterly">
+      <aside className="pl-cat-panel">
+        <div className="pl-cat-pitch">
+          <p className="pl-cat-eyebrow">Platterly Account</p>
+          <p className="pl-cat-headline">One account for everything you run with Platterly</p>
+          <p className="pl-cat-sub">Sign in once to manage your business, plans, invoices and payments across every Platterly product.</p>
+        </div>
+        <ul className="pl-cat-features">
+          {PLATTERLY_FEATURES.map(({ Icon, label }) => (
+            <li key={label}>
+              <span className="pl-cat-feature-icon">
+                <Icon size={16} />
+              </span>
+              {label}
+            </li>
+          ))}
+        </ul>
+      </aside>
+      <main className="pl-cat-main">
+        <div className="pl-cat-col">
+          <div className="pl-cat-head">
+            {/* eslint-disable-next-line @next/next/no-img-element -- the Platterly logo from this app's own public folder */}
+            <img className="pl-cat-logo" src="/platterly-logo.png" alt="Platterly" width={1200} height={270} />
+            <h1 id="auth-title">{title}</h1>
+            {lede && <p className="pl-cat-lede">{lede}</p>}
+          </div>
+          {children}
+          {footer && <p className="pl-cat-footer">{footer}</p>}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 export function AuthCard({ title, lede, footer, children }: { title: string; lede?: string; footer?: ReactNode; children: ReactNode }) {
   const hydrated = useHydrated();
   const brand = useProductBrand();
@@ -98,6 +142,12 @@ export function AuthCard({ title, lede, footer, children }: { title: string; led
       <CaterlyShell title={title} lede={lede} footer={footer} hydrated={hydrated} icon={brand.icon}>
         {children}
       </CaterlyShell>
+    );
+  if (!brand)
+    return (
+      <PlatterlyShell title={title} lede={lede} footer={footer} hydrated={hydrated}>
+        {children}
+      </PlatterlyShell>
     );
   return (
     <main className="pl-auth" data-hydrated={hydrated}>
@@ -137,7 +187,8 @@ export function AuthCard({ title, lede, footer, children }: { title: string; led
 }
 
 function Field({ id, label, type = "text", value, onChange, autoComplete, inputMode, maxLength, hint, star, user }: { star?: boolean; user?: boolean; id: string; label: string; type?: string; value: string; onChange: (v: string) => void; autoComplete?: string; inputMode?: "numeric" | "email"; maxLength?: number; hint?: string }) {
-  const themed = useProductBrand()?.theme === "caterly";
+  const brand = useProductBrand();
+  const themed = brand?.theme === "caterly" || !brand;
   const [shown, setShown] = useState(false);
   const icon = themed && (type === "email" || type === "password" || user);
   const input = <input id={id} name={id} type={type === "password" && shown ? "text" : type} value={value} onChange={(e) => onChange(e.target.value)} autoComplete={autoComplete} inputMode={inputMode} maxLength={maxLength} required />;

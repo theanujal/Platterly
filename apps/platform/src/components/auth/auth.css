@@ -343,3 +343,7 @@
 .pl-terms a:hover {
   text-decoration: underline;
 }
+
+/* The Platterly split screen (Account, Store, no product): the Caterly layout with Platterly's own wording and the full logo. */
+.pl-cat-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8; margin: 0; }
+.pl-cat-logo { height: 36px; width: auto; }
