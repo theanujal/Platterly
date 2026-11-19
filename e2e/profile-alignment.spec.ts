@@ -65,7 +65,7 @@ test("business name, mobile and order numbering saved in Caterly show in the Acc
   await fill(page, "Verification code", await codeFor(page, to));
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
-  await expect.poll(async () => (await pool.query(`select count(*) from "platform_outbox" where status = 'SENT' and type = 'business.created' and payload->'owner'->>'subject' is not null`)).rows[0].count, { timeout: 30_000 }).not.toBe("0");
+  // Single sign-up: the Platform made this business at sign-up and sent it to Caterly, so it already knows the person's seat.
 
   // Caterly: the business name (Billing Profile card), then the mobile number and order numbering (Business Profile card).
   await page.goto(`${CATERLY}/settings/account/business-profile`);

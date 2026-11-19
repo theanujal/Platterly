@@ -12,7 +12,8 @@ test("a bad unsubscribe link says so and changes nothing; a good one asks first,
   test.setTimeout(60_000);
   // The link is not valid without its signature, and the API refuses it.
   await page.goto("http://account.localhost:3300/unsubscribe?u=someone&t=wrong");
-  await expect(page.getByRole("alert")).toContainText("This link is not valid");
+  // filter: a production build also has Next's own empty role="alert" route announcer
+  await expect(page.getByRole("alert").filter({ hasText: "This link is not valid" })).toBeVisible();
   expect((await page.request.post("http://account.localhost:3300/api/newsletter/unsubscribe", { form: { u: "someone", t: "wrong" } })).status()).toBe(400);
 
   // A person turns the newsletter on, then uses the link from a browser that is not signed in.

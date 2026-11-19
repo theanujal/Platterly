@@ -148,8 +148,10 @@ test.describe("Sign-in journey", () => {
     const auth = await cookiesFor(context, "auth.localhost");
     const mine = account.find((c) => c.name === "platterly_account_session")!;
     expect(mine).toMatchObject({ httpOnly: true, sameSite: "Lax", domain: "account.localhost", path: "/" });
-    expect(account.some((c) => c.name.startsWith("platterly-idp"))).toBe(false);
-    expect(auth.some((c) => c.name === "platterly-idp.session_token" && c.httpOnly && c.sameSite === "Lax")).toBe(true);
+    // A production server (https, or http on *.localhost) puts "__Secure-" in front of the provider's cookie names.
+    const bare = (name: string) => name.replace(/^__Secure-/, "");
+    expect(account.some((c) => bare(c.name).startsWith("platterly-idp"))).toBe(false);
+    expect(auth.some((c) => bare(c.name) === "platterly-idp.session_token" && c.httpOnly && c.sameSite === "Lax")).toBe(true);
     expect(auth.some((c) => c.name === "platterly_account_session")).toBe(false);
     expect(await page.evaluate(() => document.cookie)).not.toContain("platterly");
 

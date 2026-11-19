@@ -198,7 +198,8 @@ test("Lead -> Customer (auto, via Order) -> Event, with required inventory and t
   await expect(side.getByTestId("customer-note").first()).toContainText("Prefers a live dosa counter.");
   await page.reload();
   await expect(page.getByTestId("side-notes-list").getByTestId("customer-note")).toHaveCount(2);
-  // Edit one, then delete it
+  // Edit one, then delete it. A note only says "edited" when the edit comes more than a second after it was written (customer-notes.tsx), so wait that out.
+  await page.waitForTimeout(1_100);
   await page.getByTestId("side-notes-list").getByTestId("customer-note").first().getByRole("button", { name: "Edit note" }).click();
   await page.getByRole("textbox", { name: "Edit note" }).fill("Prefers a live dosa and chaat counter.");
   await page.getByRole("button", { name: "Save", exact: true }).click();

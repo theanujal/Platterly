@@ -79,8 +79,7 @@ test("a name and phone changed in the Account show in Caterly's top bar", async 
   await page.goto(`${CATERLY}/settings/account/business-profile`);
   await expect(page.getByRole("button", { name: "Account menu" })).toContainText("Sso Person");
 
-  // Caterly tells the Platform about the new business; run the Platform's outbox until the person has a seat.
-  await expect.poll(async () => (await pool.query(`select count(*) from "platform_outbox" where status = 'SENT' and type = 'business.created' and payload->'owner'->>'subject' is not null`)).rows[0].count, { timeout: 30_000 }).not.toBe("0");
+  // Single sign-up: the Platform made this business at sign-up and sent it to Caterly, so it already knows the person's seat.
 
   // Edit in the Account.
   await page.goto(`${ACCOUNT}/profile`);

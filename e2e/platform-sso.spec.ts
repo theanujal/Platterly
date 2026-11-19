@@ -58,7 +58,7 @@ async function codeFor(page: Page, to: string): Promise<string> {
   }
   throw new Error(`no code arrived for ${to}`);
 }
-/** On the central sign-in page: register, verify by the emailed code, and sign in (so the browser goes back to where it came from). */
+/** On the central sign-in page: register and verify by the emailed code. Verifying signs the person in and sends the browser back to where it came from (single sign-up). */
 async function registerOnCentralPage(page: Page, to: string) {
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.getByRole("link", { name: "Create an account" }).click();
@@ -73,9 +73,12 @@ async function registerOnCentralPage(page: Page, to: string) {
   await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
   await fill(page, "Verification code", await codeFor(page, to));
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page.getByText("Your email is verified. You can sign in now.")).toBeVisible();
-  await fill(page, "Password", PASSWORD, { exact: true });
-  await page.getByRole("button", { name: /^Sign in( to your account)?$/ }).click();
+  await expect(page).not.toHaveURL(/auth\.localhost:3300\//);
+}
+/** Signs out on an Account page: Sign out lives in the account drawer, opened by the name at the top right. */
+async function signOutOfAccount(page: Page) {
+  await page.getByRole("banner").getByRole("button", { name: "Account menu" }).click();
+  await page.getByTestId("account-drawer").getByRole("button", { name: "Sign out" }).click();
 }
 const caterlySession = async (page: Page) => (await (await page.request.get(`${CATERLY}/api/auth/get-session`)).json()) as { user?: { email: string; id: string } } | null;
 const userCount = async (email: string) => Number((await pool.query('select count(*) from "user" where email = $1', [email])).rows[0].count);
@@ -152,7 +155,7 @@ test("signing out at the Account ends the Caterly session through the back-chann
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   expect((await caterlySession(page))?.user?.email).toBe(to);
   await page.goto(`${ACCOUNT}/`);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutOfAccount(page);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await expect.poll(async () => (await caterlySession(page))?.user?.email ?? null, { message: "the Caterly session ended without the person visiting Caterly" }).toBeNull();
 });
@@ -258,7 +261,7 @@ test("a person with two-step verification is asked for the code on the central p
   await expect(page).toHaveURL(/catering\.localhost:3000\/kitchenlogin\/onboarding/);
   // Turn on two-step verification at the Account (single sign-on signs the person in there).
   await page.goto(`${ACCOUNT}/security`);
-  await page.getByRole("button", { name: "Set up" }).click();
+  await page.getByRole("button", { name: "Enable 2FA" }).click();
   await page.getByLabel("Current password").fill(PASSWORD);
   await page.getByRole("button", { name: "Continue" }).click();
   const secret = (await page.locator("code").first().textContent())!.trim();
@@ -269,7 +272,7 @@ test("a person with two-step verification is asked for the code on the central p
   await page.getByRole("button", { name: "I have saved them" }).click();
   // Switching it on ends the person's other sessions, Caterly's included; the next Caterly visit goes to the central page and asks for the code.
   await page.goto(`${ACCOUNT}/profile`);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutOfAccount(page);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await page.goto(`${CATERLY}/`);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
@@ -312,7 +315,7 @@ test("a name and phone changed in the Account reach Caterly at the next sign-in"
   // Not pushed: Caterly still holds the old details until the person signs in there again.
   expect(await caterlyRow(to)).toMatchObject({ firstName: "Sso", phone: "+919800000123" });
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutOfAccount(page);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await signInToCaterly(page, to);
   expect(await caterlyRow(to)).toEqual({ name: "Renu Person", firstName: "Renu", lastName: "Person", phone: "+919800000999", email: to });
@@ -335,7 +338,7 @@ test("an Account that holds no phone never erases the phone Caterly already has"
   }
   await pool.query(`update "user" set phone = '+919811111111' where email = $1`, [to]);
   await page.goto(`${ACCOUNT}/profile`);
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await signOutOfAccount(page);
   await expect(page).toHaveURL(/auth\.localhost:3300\/sign-in\?/);
   await signInToCaterly(page, to);
   expect((await caterlyRow(to)).phone, "Caterly's own phone stays when the Account has none").toBe("+919811111111");
