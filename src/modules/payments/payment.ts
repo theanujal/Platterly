@@ -5,6 +5,7 @@ import { confirmedPaidForOrder, nextInvoiceNumber, syncInvoiceStatuses } from "@
 import { PAYMENT_BLOCKED_TEXT, customerHasApproved, derivePaymentState, round2 } from "./payment-math";
 import { longDate } from "@/modules/invoices/invoice-format";
 import type { PaymentMethod, PaymentSource, PaymentType } from "@/generated/prisma/enums";
+import type { Prisma } from "@/generated/prisma/client";
 
 export class PaymentError extends Error {}
 
@@ -24,6 +25,11 @@ export async function syncOrderPayments(orderId: string) {
     });
   }
   await syncInvoiceStatuses(orderId);
+}
+
+/** Holds the order row until the caller's transaction ends. The balance is then read through the global client: it sees only committed rows, and the lock orders the writers. */
+async function lockOrder(tx: Prisma.TransactionClient, orderId: string) {
+  await tx.$queryRaw`SELECT id FROM "order" WHERE id = ${orderId} FOR UPDATE`;
 }
 
 export async function orderBalance(organizationId: string, orderId: string) {
@@ -105,31 +111,35 @@ export async function assertInvoiceOfOrder(organizationId: string, orderId: stri
 export async function recordPayment(input: RecordPaymentInput) {
   const amount = round2(input.amount);
   if (!Number.isFinite(amount) || amount <= 0) throw new PaymentError("Enter an amount greater than zero.");
-  const { balance } = await orderBalance(input.organizationId, input.orderId);
-  await assertInvoiceOfOrder(input.organizationId, input.orderId, input.invoiceId);
-  if (amount > balance + 0.005) throw new PaymentError(`That is more than the balance of ₹${balance.toLocaleString("en-IN")}.`);
-
   const source = input.source ?? "MANUAL";
   const status = input.status ?? (source === "UPI_QR" ? "PENDING" : "CONFIRMED");
-  const payment = await prisma.payment.create({
-    data: {
-      organizationId: input.organizationId,
-      orderId: input.orderId,
-      invoiceId: input.invoiceId ?? null,
-      paymentLinkId: input.paymentLinkId ?? null,
-      amount,
-      type: input.type,
-      method: input.method,
-      source,
-      status,
-      receivedAt: input.receivedAt ?? new Date(),
-      reference: input.reference?.trim() || null,
-      note: input.note?.trim() || null,
-      razorpayOrderId: input.razorpayOrderId,
-      razorpayPaymentId: input.razorpayPaymentId,
-      recordedByUserId: input.actorUserId,
-      confirmedAt: status === "CONFIRMED" ? new Date() : null,
-    },
+  // One payment at a time per order: the balance check and the save share a lock on the order row, so two payments made at the
+  // same moment cannot both pass the check and overpay it (#123). Confirming a UPI claim takes the same lock.
+  const payment = await prisma.$transaction(async (tx) => {
+    await lockOrder(tx, input.orderId);
+    const { balance } = await orderBalance(input.organizationId, input.orderId);
+    await assertInvoiceOfOrder(input.organizationId, input.orderId, input.invoiceId);
+    if (amount > balance + 0.005) throw new PaymentError(`That is more than the balance of ₹${balance.toLocaleString("en-IN")}.`);
+    return tx.payment.create({
+      data: {
+        organizationId: input.organizationId,
+        orderId: input.orderId,
+        invoiceId: input.invoiceId ?? null,
+        paymentLinkId: input.paymentLinkId ?? null,
+        amount,
+        type: input.type,
+        method: input.method,
+        source,
+        status,
+        receivedAt: input.receivedAt ?? new Date(),
+        reference: input.reference?.trim() || null,
+        note: input.note?.trim() || null,
+        razorpayOrderId: input.razorpayOrderId,
+        razorpayPaymentId: input.razorpayPaymentId,
+        recordedByUserId: input.actorUserId,
+        confirmedAt: status === "CONFIRMED" ? new Date() : null,
+      },
+    });
   });
   if (status === "CONFIRMED") {
     await syncOrderPayments(input.orderId);
@@ -244,13 +254,20 @@ export async function confirmPayment(organizationId: string, paymentId: string, 
   if (payment.status !== "PENDING") throw new PaymentError("Only a payment that is awaiting confirmation can be confirmed.");
   // Razorpay rows are confirmed by Razorpay alone; a PENDING one is a checkout that may never have been paid.
   if (payment.source !== "UPI_QR") throw new PaymentError("Only a UPI payment the customer reported can be confirmed here.");
-  const { balance } = await orderBalance(organizationId, payment.orderId);
-  if (Number(payment.amount) > balance + 0.005) throw new PaymentError("Confirming this would take the order past what it owes.");
-  // Two people clicking Confirm at once: only the one that flips PENDING goes on to the receipt and audit.
-  const claimed = await prisma.payment.updateMany({ where: { id: paymentId, organizationId, status: "PENDING" }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
-  if (claimed.count === 0) return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
-  await syncOrderPayments(payment.orderId);
-  await issueReceipt(organizationId, paymentId);
+  // Same order-row lock as recordPayment (#123). Two people clicking Confirm at once: only the one that flips PENDING goes on to the receipt and audit.
+  const claimed = await prisma.$transaction(async (tx) => {
+    await lockOrder(tx, payment.orderId);
+    // Someone else confirmed it while we waited for the lock: their payment is already in the balance, so don't check it again.
+    if ((await tx.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { status: true } })).status !== "PENDING") return { count: 0 };
+    const { balance } = await orderBalance(organizationId, payment.orderId);
+    if (Number(payment.amount) > balance + 0.005) throw new PaymentError("Confirming this would take the order past what it owes.");
+    return tx.payment.updateMany({ where: { id: paymentId, organizationId, status: "PENDING" }, data: { status: "CONFIRMED", confirmedAt: new Date() } });
+  });
+  if (claimed.count === 0) {
+    await completeConfirmedPayment(organizationId, payment);
+    return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  }
+  await completeConfirmedPayment(organizationId, payment);
   await audit({ organizationId, actorUserId, action: "payment.confirm", recordType: "Payment", recordId: paymentId, after: { amount: Number(payment.amount) } });
   return prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
 }

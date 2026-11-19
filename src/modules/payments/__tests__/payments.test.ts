@@ -514,6 +514,38 @@ describe("a confirm that stopped half-way is finished on the retry (#122)", () =
   });
 });
 
+describe("one payment at a time per order (#123)", () => {
+  const confirmedSum = async (orderId: string) => (await prisma.payment.findMany({ where: { orderId, status: "CONFIRMED" } })).reduce((sum, p) => sum + Number(p.amount), 0);
+
+  it("two payments recorded at the same moment cannot take the order past its total", async () => {
+    const { org, order } = await makeOrderWithTotal(1000);
+    const pay = () => recordPayment({ organizationId: org.id, orderId: order.id, amount: 600, type: "PARTIAL", method: "CASH", status: "CONFIRMED" });
+    const results = await Promise.allSettled([pay(), pay()]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(rejected.reason).toBeInstanceOf(PaymentError);
+    expect(await confirmedSum(order.id)).toBe(600);
+  });
+
+  it("two people confirming the same claim at once both see it confirmed, not an overpay error", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(1000);
+    const claim = await recordPayment({ organizationId: org.id, orderId: order.id, amount: 1000, type: "FINAL", method: "UPI", source: "UPI_QR" });
+    const results = await Promise.allSettled([confirmPayment(org.id, claim.id, actor.id), confirmPayment(org.id, claim.id, actor.id)]);
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(await prisma.invoice.count({ where: { receiptForPaymentId: claim.id } })).toBe(1);
+  });
+
+  it("two UPI claims confirmed at the same moment cannot overpay", async () => {
+    const { org, actor, order } = await makeOrderWithTotal(1000);
+    const claim = () => recordPayment({ organizationId: org.id, orderId: order.id, amount: 600, type: "PARTIAL", method: "UPI", source: "UPI_QR" });
+    const [a, b] = [await claim(), await claim()];
+    const results = await Promise.allSettled([confirmPayment(org.id, a.id, actor.id), confirmPayment(org.id, b.id, actor.id)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect(await confirmedSum(order.id)).toBe(600);
+  });
+});
+
 describe("money safety (issues 75, 79, 81, 86)", () => {
   it("a Razorpay retry after a failed attempt on the same order is still recorded (75)", async () => {
     const { org, order } = await makeOrderWithTotal(10000);
