@@ -50,6 +50,11 @@ Order for a release that touches several apps, the same as the first go-live: **
 - **See what is live:** `status.sh`.
 - Rollback does not undo migrations. That is why migrations are additive; a destructive change ships in two releases (expand, then contract).
 
+### Changes that ship outside the slot switch (PR #3, November 2026)
+- **Nginx config changes at this deploy.** The `platterly.in` server block in `deploy/nginx/platterly.conf` gained gzip lines (`gzip on` and its settings, from `cd5aecb`). Copy the file to the server, run `nginx -t`, then reload. It has never run on a real server, so watch the first reload and check that `curl -sI -H 'Accept-Encoding: gzip' https://platterly.in/` answers `content-encoding: gzip`. Rolling the app back does not roll this back: put the old file back and reload.
+- **Platform: the marketing site's header asks `GET /api/account/header` on the Account host** who is signed in. The Platform must be deployed before the site, or signed-in visitors keep seeing Get Started. By default it accepts requests from `https://platterly.in` and `https://www.platterly.in`; set `SITE_ORIGINS` (comma separated) only if the site is served from another address.
+- **Identity migration `0018_logo_saved.sql` carries a `-- data-safe-approved:` line** (the guard flags its backfill of the new column). The runner records a checksum of each applied file and refuses a changed one, so a database that applied the file before the line was added must have its recorded checksum updated first (`update identity_migrations set checksum = '<sha256 of the file>' where name = '0018_logo_saved.sql'`). No live database has it yet; the two local ones were updated on 2026-11-19.
+
 ## Backups
 `backup.sh` (nightly 02:15 and before each deploy) dumps the databases (catering, ops, and the Platform's platform and identity ones once `platform.env` exists), archives uploads and site pictures, stores an encrypted copy of the env
 files, verifies every dump by listing it back, and keeps 14 daily, 8 weekly and 12 monthly copies (`KEEP_*` in deploy.conf). `last-backup.json` shows the
