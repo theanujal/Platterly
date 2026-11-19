@@ -15,6 +15,7 @@
     "ops:create-staff": "node scripts/create-staff.mjs",
     "platform-reader": "node scripts/platform-reader.mjs",
     "ops:import-catering": "node scripts/import-catering.mjs",
+    "ops:compare-catering": "node scripts/compare-catering-ops.mjs",
     "ops:import-site": "node scripts/import-site-content.mjs",
     "postinstall": "prisma generate"
   },
