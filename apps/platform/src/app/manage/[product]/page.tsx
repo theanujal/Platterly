@@ -1,12 +1,11 @@
 import { prisma } from "@/lib/db";
 import { getIntegration } from "@/modules/integrations/registry";
 import { originFor } from "@/lib/routing/hosts";
-import Link from "next/link";
 import { StoreFrame } from "@/components/store/frame";
 import { ManageFlow, type InitialChoice } from "@/components/store/manage-flow";
 import { getSession } from "@/lib/session";
 import { requireStoreSignIn } from "@/lib/store/guard";
-import { StoreUnavailable } from "@/components/store/unavailable";
+import { StoreNotice, StoreUnavailable } from "@/components/store/unavailable";
 import { fetchOpsProductBillingProfiles } from "@/modules/store/ops-catalogue";
 import { pendingBuyerFor } from "@/modules/store/pending-buyer";
 import { opsKeyFor } from "@/modules/store/keys";
@@ -31,13 +30,12 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   const data = await loadStoreProducts(await getSession());
   if (data.source === "unavailable") return <StoreFrame><StoreUnavailable /></StoreFrame>;
   if (data.source === "ops" && data.business.state !== "ok") {
+    const state = data.business.state;
     return (
       <StoreFrame>
-        <main className="ps-page ps-manage">
-          <h1>{data.business.state === "not_admin" ? "Only your business's Admin can change the plan" : "Set up your business first"}</h1>
-          <p>{data.business.state === "none" ? "You have not set up a business yet. Create it in your Account, then come back to choose a plan." : data.business.state === "not_admin" ? "Plans and payments for your business are managed by its Admin. Ask them to make the change." : "Your access to your business has ended, so you cannot change its plan."}</p>
-          <p><Link href="/">Back to Store</Link></p>
-        </main>
+        <StoreNotice icon={state === "not_admin" ? "lock" : "building"} title={state === "not_admin" ? "Only your business's Admin can change the plan" : "Set up your business first"} href="/" action="Back to Store">
+          {state === "none" ? "You have not set up a business yet. Create it in your Account, then come back to choose a plan." : state === "not_admin" ? "Plans and payments for your business are managed by its Admin. Ask them to make the change." : "Your access to your business has ended, so you cannot change its plan."}
+        </StoreNotice>
       </StoreFrame>
     );
   }
@@ -45,10 +43,9 @@ export default async function ManagePage({ params, searchParams }: { params: Pro
   if (!product) {
     return (
       <StoreFrame>
-        <main className="ps-page ps-manage">
-          <h1>We could not find that product</h1>
-          <p><Link href="/">Back to Store</Link></p>
-        </main>
+        <StoreNotice icon="search" title="We could not find that product" href="/" action="Back to Store">
+          It may have been renamed or is not sold in the Store. You can pick a product from the Store.
+        </StoreNotice>
       </StoreFrame>
     );
   }
