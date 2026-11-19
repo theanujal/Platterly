@@ -409,6 +409,8 @@ model Notification {
   whatsAppMessages WhatsAppMessage[]
 
   @@index([organizationId])
+  // The cron's "already sent?" check looks up by kitchen and message type (#125).
+  @@index([organizationId, event])
   @@index([recipientUserId, channel, readAt])
   @@map("notification")
 }
